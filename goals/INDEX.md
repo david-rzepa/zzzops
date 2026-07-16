@@ -5,7 +5,7 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 ## Human input queue
 | Blocker | Goal | Category | Request | Impact | Raised |
 | --- | --- | --- | --- | --- | --- |
-| None | - | - | - | - | - |
+| B-001 | [G-20260716-002](items/G-20260716-002-brand-skills-as-zzzops.md) | human-action | Reopen checkout at `C:\dev\zzzops` and verify Codex group label. | Final branding verification only. | 2026-07-16 |
 
 ## Active claims
 | Goal | Owner | Claimed | Expires | Checkpoint |
@@ -20,19 +20,18 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 ## Ready queue
 | Goal | Parent | Priority | Value | Difficulty | Unlocks | Next action |
 | --- | --- | --- | --- | --- | --- | --- |
-| [G-20260716-002](items/G-20260716-002-brand-skills-as-zzzops.md) | - | P1 | high | M | Coherent discovery | Apply and verify one atomic skill rename map. |
 | [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | - | P1 | high | M | Automated releases | Implement shared dry-run/publish release behavior. |
 
 ## Blocked goals
 | Goal | Priority | Blockers | Recheck trigger | Safe work? |
 | --- | --- | --- | --- | --- |
-| None | - | - | - | - |
+| [G-20260716-002](items/G-20260716-002-brand-skills-as-zzzops.md) | P1 | B-001 `human-action` | Workspace reopened at `C:\dev\zzzops` | No repository work remains; release goal is safe. |
 
 ## Root goals
 | Goal | Status | Priority | Value | Difficulty | Progress summary |
 | --- | --- | --- | --- | --- | --- |
 | [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | ready | P1 | high | M | `dev` established; CI implementation queued after required policy child. |
-| [G-20260716-002](items/G-20260716-002-brand-skills-as-zzzops.md) | ready | P1 | high | M | Rename surface inventoried; queued after Git policy. |
+| [G-20260716-002](items/G-20260716-002-brand-skills-as-zzzops.md) | blocked | P1 | high | M | Repository rename verified; awaiting ZzzOps-path UI check. |
 
 ## Recently completed or cancelled
 | Goal | Final status | Date | Evidence/rationale |

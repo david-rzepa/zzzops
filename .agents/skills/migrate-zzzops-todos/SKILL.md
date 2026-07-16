@@ -1,9 +1,9 @@
 ---
-name: migrate-project-goals
-description: Agent-led discovery and migration of repository TODOs into durable goals. Use for TODO.md/BACKLOG files, unchecked tasks, inline TODO/FIXME/HACK/XXX annotations, repeat migration, or pending goal-template changes; not mechanics installation or goal execution.
+name: migrate-zzzops-todos
+description: Agent-led discovery and migration of repository TODOs into durable ZzzOps goals. Use for TODO.md/BACKLOG files, unchecked tasks, inline TODO/FIXME/HACK/XXX annotations, repeat migration, or pending goal-template changes; not mechanics installation or goal execution.
 ---
 
-# Migrate Project Goals
+# Migrate ZzzOps TODOs
 
 Use `.agents/templates/project-goals/` for artifact shapes.
 

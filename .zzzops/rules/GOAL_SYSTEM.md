@@ -8,7 +8,7 @@ Order: user/safety; project instructions; `goals/PROJECT.md`; goal; derived `goa
 - Never store secrets/raw sensitive data; link to approved systems and name authority/sync direction.
 - Project charter defines success/value. Preserve unknown KPI/target/tradeoff fields; ask rather than invent.
 - Ignored `.zzzops/PREFERENCES.json` is user-local: validate types/ranges, preserve unknown keys, never commit/enable options yourself.
-- Canonical blank shapes live in `.agents/templates/project-goals/`. Never overwrite state mechanically; `$migrate-project-goals` processes pending `.zzzops/migration/template-diffs/` preservation-aware.
+- Canonical blank shapes live in `.agents/templates/project-goals/`. Never overwrite state mechanically; `$migrate-zzzops-todos` processes pending `.zzzops/migration/template-diffs/` preservation-aware.
 
 ## Lifecycle
 

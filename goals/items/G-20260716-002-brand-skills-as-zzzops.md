@@ -1,7 +1,7 @@
 ---
 id: G-20260716-002-brand-skills-as-zzzops
 title: Brand all skills clearly as ZzzOps
-status: ready
+status: blocked
 priority: P1
 value: high
 difficulty: M
@@ -15,7 +15,7 @@ review_after: null
 parent: null
 depends_on: []
 blocks: []
-needs_human: false
+needs_human: true
 tags: [skills, naming, branding, discovery, installer]
 external_refs: ["user-request:2026-07-16"]
 claim: {owner: null, claimed_at: null, expires_at: null}
@@ -29,13 +29,14 @@ Every installed and repository-local skill is unmistakably part of ZzzOps in age
 
 ## Success criteria
 
-- [ ] Define and apply one concise ZzzOps naming map for every skill identifier, directory, frontmatter name, UI display name, default prompt, and user-facing heading; it includes `Add ZzzOps TODO`.
-- [ ] Installer and Claude Code bootstrap mechanics install and reference only the renamed skills, with no stale generic skill directories created in a fresh target.
-- [ ] All repository prompts, scripts, templates, README examples, cross-skill calls, and generated prompt-budget paths use the new names consistently.
-- [ ] A repository-wide search finds no obsolete skill invocation or display-name references except any explicitly documented compatibility fixture.
-- [ ] A clean install into a temporary repository makes the skills discoverable under clear ZzzOps names in supported harness layouts.
-- [ ] The compatibility policy for repositories that already contain the first-release skill names is explicit and verified; stale aliases are either safely removed/migrated or intentionally retained and documented.
-- [ ] Prompt budget counts are regenerated and pass `.agents/prompt_stats.py --check`.
+- [x] Define and apply one concise ZzzOps naming map for every skill identifier, directory, frontmatter name, UI display name, default prompt, and user-facing heading; it includes `Add ZzzOps TODO`. Evidence: new directories/metadata use `add-zzzops-todo`, `install-zzzops`, `migrate-zzzops-todos`, and `suggest-zzzops-work`.
+- [x] Installer and Claude Code bootstrap mechanics install and reference only the renamed skills, with no stale generic skill directories created in a fresh target. Evidence: fresh-install probe listed five ZzzOps-named skill directories in both harness layouts.
+- [x] All repository prompts, scripts, templates, README examples, cross-skill calls, and generated prompt-budget paths use the new names consistently. Evidence: old-name scan found only the deliberate legacy compatibility tuple.
+- [x] A repository-wide search finds no obsolete skill invocation or display-name references except explicitly documented compatibility fixtures. Evidence: focused `rg` scan returned only `LEGACY_SKILLS`.
+- [x] A clean install into a temporary repository makes the skills discoverable under clear ZzzOps names in supported harness layouts. Evidence: installer preview/apply succeeded with 46 mechanical files and exact Codex/Claude directory listings.
+- [x] The compatibility policy for repositories that already contain the first-release skill names is explicit and verified; stale aliases are intentionally retained and documented. Evidence: update preview reported `Legacy skill directories retained: add-project-todo`; README explains manual removal after verification.
+- [x] Prompt budget counts are regenerated and pass `.agents/prompt_stats.py --check`. Evidence: 22 prompts, 39,983 bytes, ~10,006 estimated tokens.
+- [ ] Reopen the checkout at `C:\dev\zzzops` and verify Codex groups its project-local skills under ZzzOps rather than `agent-goals`.
 
 ## Scope
 
@@ -60,7 +61,7 @@ Every installed and repository-local skill is unmistakably part of ZzzOps in age
 - Observation surface (test/harness/API/UI/log/MCP/etc.): Repository search, installer dry run/apply output, installed `.agents/skills` and `.claude/skills` trees, and harness skill discovery lists.
 - Smallest chunk: Express the old-to-new naming map as a table and validate that each old identifier/path occurrence is assigned exactly one disposition.
 - Probe/action and expected signal: Scan all tracked files and a clean install; no unapproved old skill name remains and each renamed skill is discoverable once.
-- Actual result/evidence: Initial search recorded in this goal; implementation not run.
+- Actual result/evidence: Fresh install, legacy-update preview, old-name scan, Python parse, and prompt-budget probes passed. UI group remains tied to the current checkout path.
 - Wider checks after local proof: Fresh install, update over a first-release install, prompt-budget verification, Python parsing, and README quickstart command validation.
 
 ### Execution constraints
@@ -80,7 +81,15 @@ Every installed and repository-local skill is unmistakably part of ZzzOps in age
 
 ### Open
 
-None. Exact identifiers beyond the required `Add ZzzOps TODO` display name remain a design choice to settle during investigation.
+### B-001 - Reopen from a ZzzOps-named checkout
+- Status/category/raised/owner: open / `human-action` / 2026-07-16 / user
+- Blocks: final UI grouping verification only
+- Question or required action: after this run, rename or clone the checkout to `C:\dev\zzzops`, reopen it in Codex, and confirm the group label is ZzzOps.
+- Why/options/recommendation: Codex groups project-local `.agents/skills` by workspace path; keep the canonical discovery folder and rename the checkout rather than moving skills out of `.agents/skills`.
+- Evidence gathered: current workspace and skill source paths are rooted at `C:\dev\agent-goals`; README already instructs cloning to `C:\dev\zzzops`.
+- Continuation: `continue-bounded`
+- Safe work remaining/recheck trigger: release-CI goal can continue; recheck after the workspace is reopened at the new path.
+- Resolution/resolved/resolved by: pending
 
 ### Resolved
 
@@ -88,7 +97,7 @@ None.
 
 ## Progress and evidence
 
-Triaged as actionable. `rg` identified affected references in `README.md`, `AGENTS.md`, `.agents/skills/`, `.claude/skills/`, installer code, templates, and prompt accounting.
+Repository-side rename is complete and committed as one pending checkpoint. Remaining work is the human UI verification after reopening the checkout at `C:\dev\zzzops`.
 
 ## History
 
@@ -96,3 +105,4 @@ Triaged as actionable. `rg` identified affected references in `README.md`, `AGEN
 | --- | --- | --- | --- |
 | 2026-07-16 | Codex | Created `new` | User requested clear ZzzOps skill grouping and “Add ZzzOps TODO” naming. |
 | 2026-07-16 | Codex/R-20260716-zzzops | Triaged `ready`; difficulty `M` | Full rename surface and observable fresh/update-install probes are defined. |
+| 2026-07-16 | Codex/R-20260716-1500-root | Repository rename verified; set `blocked` | Fresh/update installs and scans pass; Codex group header requires reopening a ZzzOps-named checkout. |

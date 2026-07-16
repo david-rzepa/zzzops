@@ -1,4 +1,0 @@
-interface:
-  display_name: "Add Project TODO"
-  short_description: "Add one durable project goal safely"
-  default_prompt: "Use $add-project-todo to add this work as a durable project goal."

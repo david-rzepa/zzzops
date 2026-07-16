@@ -1,0 +1,4 @@
+interface:
+  display_name: "Install ZzzOps"
+  short_description: "Install mechanics while preserving goal state"
+  default_prompt: "Use $install-zzzops to preview and install only ZzzOps mechanics into another repository."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add ZzzOps TODO"
+  short_description: "Add one durable project goal safely"
+  default_prompt: "Use $add-zzzops-todo to add this work as a durable ZzzOps goal."

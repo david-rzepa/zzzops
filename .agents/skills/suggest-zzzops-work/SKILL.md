@@ -1,17 +1,17 @@
 ---
-name: suggest-project-work
-description: Audit project code, tests, docs, config, and goal state to suggest valuable durable work. Use for proactive backlog discovery or preference-enabled refill. Dry-run by default; write goals only on explicit apply or authorized exhausted-queue refill.
+name: suggest-zzzops-work
+description: Audit project code, tests, docs, config, and ZzzOps state to suggest valuable durable work. Use for proactive backlog discovery or preference-enabled refill. Dry-run by default; write goals only on explicit apply or authorized exhausted-queue refill.
 ---
 
-# Suggest Project Work
+# Suggest ZzzOps Work
 
 Read project instructions, charter, local `.zzzops/PREFERENCES.json`, and existing goals.
 
-1. Mode defaults to `dry-run`: no edits to source, Git, goals, index, or preferences. `apply` requires explicit user request or `$execute-bedops` invocation under an enabled refill preference. Never edit/commit preferences.
+1. Mode defaults to `dry-run`: no edits to source, Git, goals, index, or preferences. `apply` requires explicit user request or `$execute-zzzops` invocation under an enabled refill preference. Never edit/commit preferences.
 2. Inspect actual architecture/entry points and relevant active code, tests/coverage evidence, user/developer/operations docs, CI/build/config, errors/observability/security/performance/accessibility, and stale/dead paths. Use focused native commands; do not run expensive suites merely for ideas.
 3. Compare charter, goals, blockers/history, and trackers. Reject duplicates, generated/dependency work, speculative rewrites, cosmetic churn, and ideas without evidenced beneficiary/observable result.
 4. Rank a short high-confidence list by acceptance/KPI value, risk/urgency, unlocks, confidence, difficulty, and feedback speed. For each give path/line evidence, outcome/criteria, value rationale, dependencies/blockers, baseline, observation surface, smallest chunk/probe, and estimate. No observation surface means no suggestion unless a concrete harness/debug-adapter plan exists.
-5. Dry-run: report ranking and state no files changed. Apply: create only approved/authorized goals using `$add-project-todo` semantics, update index/links, and record evidence/source. Never implement while suggesting.
+5. Dry-run: report ranking and state no files changed. Apply: create only approved/authorized goals using `$add-zzzops-todo` semantics, update index/links, and record evidence/source. Never implement while suggesting.
 
 Exhausted-queue apply honors independent opt-ins:
 

@@ -12,6 +12,6 @@ Read `../../../.zzzops/rules/GOAL_SYSTEM.md`, `../../../goals/PROJECT.md`, and l
 - Select/execute/complete/handoff: [EXECUTE.md](references/EXECUTE.md).
 - Tests, delegation, parallelism, or long commands: `../../../.zzzops/rules/EXECUTION_STRATEGY.md`.
 - Usage records/interpretation: `../../../.zzzops/rules/USAGE_ACCOUNTING.md`.
-- Exhausted-queue backlog suggestions: `$suggest-project-work` when enabled by preferences.
+- Exhausted-queue backlog suggestions: `$suggest-zzzops-work` when enabled by preferences.
 
 This is the primary autonomous loop. On an interactive run, inspect the human-input queue before ordinary prioritization. If open human blockers exist, run the unblock interview immediately, persist answers, then continue. When execution exhausts actionable work, interview again before stopping if human input could restore progress. Treat local parallelization preferences as maximum permission, never a utilization target. User authority and project rules outrank goals. Persist resumable state before switching/stopping; continue across goals while safe useful work exists. Optimize verified value, not item count or limit consumption.

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Install Project Goals"
-  short_description: "Install mechanics while preserving goal state"
-  default_prompt: "Use $install-project-goals to preview and install only durable goal mechanics into another repository."

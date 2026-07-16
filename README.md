@@ -19,13 +19,13 @@ Open `C:\dev\zzzops` in Codex or Claude Code.
 Codex:
 
 ```text
-Use $install-project-goals to preview and install ZzzOps into C:\path\to\your-project.
+Use $install-zzzops to preview and install ZzzOps into C:\path\to\your-project.
 ```
 
 Claude Code:
 
 ```text
-/install-project-goals preview and install ZzzOps into C:\path\to\your-project
+/install-zzzops preview and install ZzzOps into C:\path\to\your-project
 ```
 
 Review the preview and let the skill apply it. The installer copies discoverable skills, mechanics, and blank state—never itself, another project’s goals, or the target’s `AGENTS.md`/`CLAUDE.md`.
@@ -37,13 +37,13 @@ Open a new Codex task or Claude Code session in the target project so its ZzzOps
 From the target project in Codex:
 
 ```text
-Use $migrate-project-goals to inspect and migrate existing TODOs.
+Use $migrate-zzzops-todos to inspect and migrate existing TODOs.
 ```
 
 In Claude Code, invoke the same workflow as:
 
 ```text
-/migrate-project-goals inspect and migrate existing TODOs
+/migrate-zzzops-todos inspect and migrate existing TODOs
 ```
 
 The agent inventories candidates, asks about project goals/KPIs and exclusions, presents a human-readable plan, then migrates only after approval. Inline TODO comments remain; dedicated backlog files retire only after verified coverage.
@@ -51,7 +51,7 @@ The agent inventories candidates, asks about project goals/KPIs and exclusions, 
 ### 4. Add new work
 
 ```text
-Use $add-project-todo to capture <the thing we should eventually do>.
+Use $add-zzzops-todo to capture <the thing we should eventually do>.
 ```
 
 ZzzOps checks duplicates, asks important questions, relates value to `goals/PROJECT.md`, and creates a durable goal with a resumable next action.
@@ -84,10 +84,12 @@ For persistent Codex execution:
 Use $execute-zzzops to interview me about and unblock blocked goals.
 Use $execute-zzzops to reprioritize all goals against project KPIs.
 Use $analyze-zzzops-usage to analyze value-per-token efficiency and recommend changes.
-Use $suggest-project-work in dry-run mode to audit the project and suggest valuable goals.
+Use $suggest-zzzops-work in dry-run mode to audit the project and suggest valuable goals.
 ```
 
 In Claude Code, replace `$name` with `/name`, for example `/analyze-zzzops-usage`.
+
+First-release installs may retain the old generic skill directories after an update so local customizations are never deleted automatically. Once the renamed skills are discovered and verified, remove the obsolete `add-project-todo`, `migrate-project-goals`, and `suggest-project-work` directories from `.agents/skills/` and `.claude/skills/`.
 
 Usage analysis reports real KPI/outcome efficiency when measurable, plus a clearly labeled heuristic for cross-goal comparison. It also tracks management overhead, because spending 40,000 tokens organizing a 3,000-token fix is not “agentic”—it is a committee.
 
@@ -147,29 +149,29 @@ python .agents/prompt_stats.py --check
 <!-- PROMPT_BUDGET_START -->
 | Prompt | Bytes | Est. tokens |
 | --- | ---: | ---: |
-| `.agents/skills/add-project-todo/SKILL.md` | 740 | 185 |
+| `.agents/skills/add-zzzops-todo/SKILL.md` | 737 | 185 |
 | `.agents/skills/analyze-zzzops-usage/SKILL.md` | 2265 | 567 |
-| `.agents/skills/execute-zzzops/SKILL.md` | 1773 | 444 |
+| `.agents/skills/execute-zzzops/SKILL.md` | 1772 | 443 |
 | `.agents/skills/execute-zzzops/references/CREATE.md` | 2644 | 661 |
-| `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3286 | 822 |
+| `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3285 | 822 |
 | `.agents/skills/execute-zzzops/references/UNBLOCK.md` | 1532 | 383 |
-| `.agents/skills/install-project-goals/SKILL.md` | 1348 | 337 |
-| `.agents/skills/migrate-project-goals/SKILL.md` | 1849 | 463 |
-| `.agents/skills/suggest-project-work/SKILL.md` | 2498 | 625 |
+| `.agents/skills/install-zzzops/SKILL.md` | 1465 | 367 |
+| `.agents/skills/migrate-zzzops-todos/SKILL.md` | 1854 | 464 |
+| `.agents/skills/suggest-zzzops-work/SKILL.md` | 2497 | 625 |
 | `.agents/templates/project-goals/INDEX.md` | 1135 | 284 |
 | `.agents/templates/project-goals/MIGRATION_SUMMARY.md` | 222 | 56 |
 | `.agents/templates/project-goals/PROJECT.md` | 1295 | 324 |
-| `.agents/templates/project-goals/TEMPLATE_DIFF.md` | 360 | 90 |
+| `.agents/templates/project-goals/TEMPLATE_DIFF.md` | 352 | 88 |
 | `.agents/templates/project-goals/USAGE_LEDGER.md` | 1105 | 277 |
-| `.claude/skills/install-project-goals/SKILL.md` | 396 | 99 |
+| `.claude/skills/install-zzzops/SKILL.md` | 382 | 96 |
 | `.zzzops/rules/BLOCKERS.md` | 2213 | 554 |
 | `.zzzops/rules/EXECUTION_STRATEGY.md` | 4861 | 1216 |
-| `.zzzops/rules/GOAL_SYSTEM.md` | 3642 | 911 |
+| `.zzzops/rules/GOAL_SYSTEM.md` | 3641 | 911 |
 | `.zzzops/rules/USAGE_ACCOUNTING.md` | 2355 | 589 |
-| `AGENTS.md` | 2514 | 629 |
+| `AGENTS.md` | 2506 | 627 |
 | `CLAUDE.md` | 217 | 55 |
 | `goals/TEMPLATE.md` | 1648 | 412 |
-| **Total** | **39898** | **9983** |
+| **Total** | **39983** | **10006** |
 <!-- PROMPT_BUDGET_END -->
 
 </details>

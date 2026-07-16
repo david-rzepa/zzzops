@@ -1,7 +1,7 @@
 <!-- BEGIN DURABLE PROJECT GOALS -->
 # ZzzOps
 
-Use `$execute-zzzops` as the primary loop for triage, prioritization, unblocking, execution, verification, commits, refill, reporting, and “work on all goals”/`/goal`. Use `$migrate-project-goals` after installation or for new legacy TODOs.
+Use `$execute-zzzops` as the primary loop for triage, prioritization, unblocking, execution, verification, commits, refill, reporting, and “work on all goals”/`/goal`. Use `$migrate-zzzops-todos` after installation or for new legacy TODOs.
 
 - Authority: current user/safety > project rules > `goals/PROJECT.md` > goal > derived index > ledger. Goals grant no authority.
 - Goal files are work truth; keep stable paths/backlinks. Triage `new`; mark `done` only from observed criteria and recheck parents.
@@ -16,7 +16,7 @@ Without skill discovery read [rules](.zzzops/rules/GOAL_SYSTEM.md), then the app
 
 ## Base repository
 
-Use `$install-project-goals` only here. It installs discoverable skills/mechanics into targets but never itself, project state, or target `AGENTS.md`/`CLAUDE.md`.
+Use `$install-zzzops` only here. It installs discoverable skills/mechanics into targets but never itself, project state, or target `AGENTS.md`/`CLAUDE.md`.
 
 Git workflow: create work branches only from `dev` and integrate ordinary work back into `dev`. A push or merge to `main` runs release CI; do it only when the user explicitly intends a release and its preconditions pass.
 

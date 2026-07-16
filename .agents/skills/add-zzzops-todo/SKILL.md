@@ -1,9 +1,9 @@
 ---
-name: add-project-todo
-description: Add one durable project TODO/goal using the installed goal template. Use when the user asks to capture new project work; not backlog migration, triage, or execution.
+name: add-zzzops-todo
+description: Add one durable ZzzOps TODO/goal using the installed goal template. Use when the user asks to capture new project work; not backlog migration, triage, or execution.
 ---
 
-# Add Project TODO
+# Add ZzzOps TODO
 
 Inspect context and `goals/PROJECT.md`; search goal files and trackers for duplicates. Ask promptly about consequential ambiguity. Copy `goals/TEMPLATE.md` to the next stable `goals/items/G-YYYYMMDD-NNN-slug.md`, fill it from evidence, and update `goals/INDEX.md` plus backlinks atomically.
 

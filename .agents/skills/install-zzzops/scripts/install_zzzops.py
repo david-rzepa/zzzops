@@ -1,4 +1,4 @@
-"""Preview/apply a mechanics-only goal-system installation."""
+"""Preview/apply a mechanics-only ZzzOps installation."""
 
 from __future__ import annotations
 
@@ -10,7 +10,8 @@ import os
 import tempfile
 from pathlib import Path
 
-TARGET_SKILLS = ("add-project-todo", "analyze-zzzops-usage", "execute-zzzops", "migrate-project-goals", "suggest-project-work")
+TARGET_SKILLS = ("add-zzzops-todo", "analyze-zzzops-usage", "execute-zzzops", "migrate-zzzops-todos", "suggest-zzzops-work")
+LEGACY_SKILLS = ("add-project-todo", "migrate-project-goals", "suggest-project-work")
 
 
 def digest(data: bytes) -> str:
@@ -84,7 +85,7 @@ def safe_target(root: Path, path: Path) -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Install goal mechanics; never migrate TODOs or overwrite state.")
+    parser = argparse.ArgumentParser(description="Install ZzzOps mechanics; never migrate TODOs or overwrite state.")
     parser.add_argument("target", type=Path)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--confirm-plan")
@@ -182,6 +183,8 @@ def main() -> int:
     print("Mechanical files: " + ", ".join(f"{key}={value}" for key, value in sorted(counts.items())))
     print("State: " + ", ".join(f"{key}={value}" for key, value in state_actions.items()))
     print(f"Template diff: {diff_path or 'none'}")
+    legacy = [name for name in LEGACY_SKILLS if (target / ".agents" / "skills" / name).is_dir() or (target / ".claude" / "skills" / name).is_dir()]
+    print("Legacy skill directories retained: " + (", ".join(legacy) if legacy else "none"))
     for error in errors:
         print(f"ERROR: {error}")
     if errors:
@@ -213,7 +216,7 @@ def main() -> int:
             elif data is not None:
                 atomic_write(path, data)
         raise
-    print("Apply complete. Run $migrate-project-goals from the target when ready.")
+    print("Apply complete. Run $migrate-zzzops-todos from the target when ready.")
     return 0
 
 
