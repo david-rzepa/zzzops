@@ -1,0 +1,5 @@
+PREFERENCES.json
+migration/plan.json
+migration/SUMMARY.md
+migration/template-diffs/
+migration/*.tmp

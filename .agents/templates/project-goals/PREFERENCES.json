@@ -1,0 +1,12 @@
+{
+  "fill_backlog": {
+    "documentation": false,
+    "tests": false,
+    "code_quality_non_behavioral": false,
+    "max_goals_per_refill": 3
+  },
+  "parallelization": {
+    "mode": "read_only",
+    "max_workers": 2
+  }
+}

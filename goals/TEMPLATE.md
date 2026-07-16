@@ -1,0 +1,94 @@
+# Goal template
+
+Copy to `goals/items/<id>.md`; replace placeholders.
+
+```markdown
+---
+id: G-YYYYMMDD-NNN-slug
+title: Outcome title
+status: new
+priority: P2
+value: medium
+difficulty: unknown
+confidence: low
+owner: unassigned
+created: YYYY-MM-DD
+updated: YYYY-MM-DD
+target_date: null
+last_reviewed: YYYY-MM-DD
+review_after: null
+parent: null
+depends_on: []
+blocks: []
+needs_human: false
+tags: []
+external_refs: []
+claim: {owner: null, claimed_at: null, expires_at: null}
+---
+
+# ID - Title
+
+## Outcome / Why
+
+Observable end state, beneficiary, value, urgency evidence.
+
+## Success criteria
+
+- [ ] Verifiable result and evidence method.
+
+## Scope
+
+- In: ...
+- Out: ...
+
+## Context and decisions
+
+- Facts, constraints, assumptions, links, durable decisions.
+
+## Approach and next action
+
+**Next action:** Verb + target + stop condition.
+
+### Fast feedback
+
+- Baseline/current observable behavior:
+- Hypothesis:
+- Observation surface (test/harness/API/UI/log/MCP/etc.):
+- Smallest chunk:
+- Probe/action and expected signal:
+- Actual result/evidence:
+- Wider checks after local proof:
+
+### Execution constraints
+
+- Mode: `sequential`
+- Parallel exception: `none`
+- Resources/shared state: `none`
+
+## Relationships
+
+- Parent: none
+- Children (required/optional + purpose/status): none
+- Dependencies (status/reason): none
+- Blocks (impact): none
+
+## Blockers
+
+### Open
+
+None. Use `.zzzops/rules/BLOCKERS.md` schema.
+
+### Resolved
+
+None.
+
+## Progress and evidence
+
+Current resumable state and verification artifacts.
+
+## History
+
+| Date | Actor/run | Change | Reason/evidence |
+| --- | --- | --- | --- |
+| YYYY-MM-DD | actor | Created `new` | source |
+```

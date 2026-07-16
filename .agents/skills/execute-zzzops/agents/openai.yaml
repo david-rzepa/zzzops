@@ -1,0 +1,4 @@
+interface:
+  display_name: "Execute ZzzOps"
+  short_description: "Run the primary autonomous ZzzOps goal loop"
+  default_prompt: "Use $execute-zzzops to work autonomously through all actionable project goals."

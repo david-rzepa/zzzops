@@ -1,0 +1,4 @@
+interface:
+  display_name: "Analyze ZzzOps Usage"
+  short_description: "Measure value delivered per token spent"
+  default_prompt: "Use $analyze-zzzops-usage to assess value-per-token efficiency and recommend reprioritization."
