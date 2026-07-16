@@ -20,7 +20,7 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 ## Ready queue
 | Goal | Parent | Priority | Value | Difficulty | Unlocks | Next action |
 | --- | --- | --- | --- | --- | --- | --- |
-| [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | - | P1 | high | M | Automated releases | Implement shared dry-run/publish release behavior. |
+| [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | - | P1 | high | M | Automated releases | Push integrated work to `dev` and inspect the dry-run job. |
 
 ## Blocked goals
 | Goal | Priority | Blockers | Recheck trigger | Safe work? |
@@ -30,7 +30,7 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 ## Root goals
 | Goal | Status | Priority | Value | Difficulty | Progress summary |
 | --- | --- | --- | --- | --- | --- |
-| [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | ready | P1 | high | M | `dev` established; CI implementation queued after required policy child. |
+| [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | in_progress | P1 | high | M | Local planner/workflow/tests pass; live `dev` dry run is next. |
 | [G-20260716-002](items/G-20260716-002-brand-skills-as-zzzops.md) | blocked | P1 | high | M | Repository rename verified; awaiting ZzzOps-path UI check. |
 
 ## Recently completed or cancelled

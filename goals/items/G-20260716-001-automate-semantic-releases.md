@@ -1,12 +1,12 @@
 ---
 id: G-20260716-001-automate-semantic-releases
 title: Automate semantic GitHub releases
-status: ready
+status: in_progress
 priority: P1
 value: high
 difficulty: M
 confidence: medium
-owner: unassigned
+owner: Codex
 created: 2026-07-16
 updated: 2026-07-16
 target_date: null
@@ -18,7 +18,7 @@ blocks: []
 needs_human: false
 tags: [ci, release, semantic-versioning, github-actions]
 external_refs: ["user-request:2026-07-16"]
-claim: {owner: null, claimed_at: null, expires_at: null}
+claim: {owner: Codex, claimed_at: "2026-07-16T15:00:00-06:00", expires_at: "2026-07-16T19:00:00-06:00"}
 ---
 
 # G-20260716-001-automate-semantic-releases - Automate semantic GitHub releases
@@ -45,7 +45,7 @@ ZzzOps derives semantic versions from repository history and publishes reproduci
 - User requested this goal on 2026-07-16 after the first commit was pushed to `main`.
 - Implementation work must occur on `dev`; production release publication is triggered by pushes to `main`.
 - The `dev` workflow must be a true dry run with permissions configured to prevent publication, not merely a convention agents are expected to follow.
-- Release tooling and the exact mapping from Conventional Commits to versions remain implementation decisions to validate against this repository's minimal Python/Markdown shape.
+- Release tooling decision: use a dependency-free Python planner shared by both workflow paths. Breaking commits bump major; `feat` bumps minor; `fix`/`perf` bump patch; other commit types do not release. With no prior tag, the same rules apply from `0.0.0`.
 
 ## Approach and next action
 
@@ -58,7 +58,7 @@ ZzzOps derives semantic versions from repository history and publishes reproduci
 - Observation surface (test/harness/API/UI/log/MCP/etc.): GitHub Actions logs, calculated next version/release notes, repository tags, and GitHub Releases.
 - Smallest chunk: Calculate and print the next version/release notes from synthetic Conventional Commit histories without publishing.
 - Probe/action and expected signal: Run the selected engine in dry-run mode against patch, minor, major, and no-release fixtures; each reports the expected result and produces no remote mutation.
-- Actual result/evidence: Not run.
+- Actual result/evidence: Six unit/integration tests pass, including a temporary Git history from first release through patch/minor/major/no-release/idempotent paths. The real repository plans `none -> v1.0.0 (major)` with notes for breaking commit `c91e580`. GitHub's official workflow and CLI references confirm the branch filters, job-scoped `contents: write`, automatic tag creation, `--target`, `--notes-file`, and `--fail-on-no-commits` semantics. Live `dev` evidence remains next.
 - Wider checks after local proof: Exercise `dev`, inspect token/permission boundaries, merge a controlled qualifying change to `main`, verify tag/release contents, and verify a rerun is idempotent.
 
 ### Execution constraints
@@ -86,7 +86,7 @@ None.
 
 ## Progress and evidence
 
-Triaged as an actionable medium implementation goal. Baseline: no `.github` workflow files or tags exist; `dev` now exists and the work branch was created from it.
+Implementation checkpoint ready: shared dependency-free planner, synthetic Git integration suite, minimally permissioned `dev`/`main` workflow, and maintainer documentation are locally verified. Next action: integrate this work branch into `dev`, push, and inspect the live dry-run job before considering any `main` release.
 
 ## History
 
@@ -96,3 +96,4 @@ Triaged as an actionable medium implementation goal. Baseline: no `.github` work
 | 2026-07-16 | Codex | Added required child `G-20260716-003` | User requested explicit root `AGENTS.md` guidance for the `dev`-first/release workflow. |
 | 2026-07-16 | Codex/R-20260716-zzzops | Triaged `ready`; difficulty `M` | Scope, baseline, branch targets, probes, and dependencies are concrete. |
 | 2026-07-16 | Codex/R-20260716-1500-root | Required child `G-20260716-003` completed | Root policy is documented; this parent must now implement its stated `main` behavior. |
+| 2026-07-16 | Codex/R-20260716-1500-root | Local implementation checkpoint | Six tests and real-history dry run passed; ready for live `dev` verification. |

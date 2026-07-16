@@ -1,0 +1,51 @@
+name: Semantic release
+
+on:
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: semantic-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test release planner
+        run: python -m unittest discover -s .github/scripts -p 'test_*.py'
+      - name: Preview semantic release
+        run: python .github/scripts/semantic_release.py --notes "$RUNNER_TEMP/release-notes.md"
+
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test release planner
+        run: python -m unittest discover -s .github/scripts -p 'test_*.py'
+      - name: Plan semantic release
+        id: plan
+        run: python .github/scripts/semantic_release.py --notes "$RUNNER_TEMP/release-notes.md"
+      - name: Publish GitHub release
+        if: steps.plan.outputs.release_needed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ steps.plan.outputs.tag }}" --target "$GITHUB_SHA" --title "${{ steps.plan.outputs.tag }}" --notes-file "${{ steps.plan.outputs.notes }}" --fail-on-no-commits

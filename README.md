@@ -120,6 +120,14 @@ python .agents/zzzops.py
 
 Today it edits preferences. Tomorrow it may achieve sentience and add a “notify spouse that deployment is stable” menu item, so the command has room to grow.
 
+## Releases
+
+Develop on branches created from `dev` and integrate ordinary work back into `dev`. Each push to `dev` runs the release planner and tests with read-only repository permission; it prints the next version and notes but cannot publish anything. Push or merge to `main` only for an intended release: the same planner then receives `contents: write` and creates the Git tag and GitHub Release.
+
+Versions follow Conventional Commits since the latest `vMAJOR.MINOR.PATCH` tag: `!` or `BREAKING CHANGE:` bumps major, `feat` bumps minor, and `fix`/`perf` bumps patch. Other types do not release. The first release applies those rules from `0.0.0`; reruns with no new releasable commits are no-ops. No repository secret is required beyond GitHub's job token.
+
+To diagnose a release, inspect the **Semantic release** run and its test, preview, or publish step. Reproduce the planner locally with `python -m unittest discover -s .github/scripts -p 'test_*.py'` and `python .github/scripts/semantic_release.py`; the latter only writes a local notes file. Confirm branch, commit messages, latest tag, job permission, and GitHub CLI output before retrying.
+
 ## The files that remember things
 
 - `goals/PROJECT.md` — success, KPIs, acceptance criteria, and what “valuable” means.
