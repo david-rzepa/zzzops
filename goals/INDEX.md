@@ -21,7 +21,6 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 ## Ready queue
 | Goal | Parent | Priority | Value | Difficulty | Unlocks | Next action |
 | --- | --- | --- | --- | --- | --- | --- |
-| [G-20260716-005](items/G-20260716-005-document-pr-workflow.md) | [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | P1 | high | S | PR workflow safety | Update and scenario-check root guidance. |
 | [G-20260716-006](items/G-20260716-006-protect-main-and-dev.md) | [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | P1 | high | M | Enforced branch safety | Inspect capabilities, add PR CI, configure rules if supported. |
 | [G-20260716-004](items/G-20260716-004-stabilize-prompt-budget-line-endings.md) | - | P2 | medium | S | Stable prompt regression | Add LF/CRLF test, normalize, regenerate. |
 
@@ -42,6 +41,7 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 | Goal | Final status | Date | Evidence/rationale |
 | --- | --- | --- | --- |
 | [G-20260716-003](items/G-20260716-003-document-dev-branch-workflow.md) | done | 2026-07-16 | Work branch descends from `dev`; exact root policy and prompt-budget checks passed. |
+| [G-20260716-005](items/G-20260716-005-document-pr-workflow.md) | done | 2026-07-16 | Root policy now requires `dev`-targeted PRs and intentional atomic commit boundaries. |
 
 ## Portfolio notes
 - Release tooling remains intentionally undecided pending repository investigation.

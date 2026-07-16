@@ -18,6 +18,6 @@ Without skill discovery read [rules](.zzzops/rules/GOAL_SYSTEM.md), then the app
 
 Use `$install-zzzops` only here. It installs discoverable skills/mechanics into targets but never itself, project state, or target `AGENTS.md`/`CLAUDE.md`.
 
-Git workflow: create work branches only from `dev` and integrate ordinary work back into `dev`. A push or merge to `main` runs release CI; do it only when the user explicitly intends a release and its preconditions pass.
+Git workflow: branch all work from current `dev` and open ordinary PRs against `dev`, never `main`. Large work may use smaller coherent semantic commits when they aid review, testing, or independent rollback; squash changes that are valid only together into one atomic commit, while keeping independently useful/revertible changes separate. Only repository owner `david-rzepa` may update `main`, by an explicitly intended release force-push after preconditions pass; any `main` update runs release CI.
 
 When any installed prompt/instruction/template Markdown changes, regenerate README “Prompt budget” counts with `.agents/prompt_stats.py`, then run `--check`; never hand-edit those numbers.

@@ -176,10 +176,10 @@ python .agents/prompt_stats.py --check
 | `.zzzops/rules/EXECUTION_STRATEGY.md` | 4861 | 1216 |
 | `.zzzops/rules/GOAL_SYSTEM.md` | 3691 | 923 |
 | `.zzzops/rules/USAGE_ACCOUNTING.md` | 2355 | 589 |
-| `AGENTS.md` | 2529 | 633 |
+| `AGENTS.md` | 2809 | 703 |
 | `CLAUDE.md` | 217 | 55 |
 | `goals/TEMPLATE.md` | 1648 | 412 |
-| **Total** | **40178** | **10053** |
+| **Total** | **40458** | **10123** |
 <!-- PROMPT_BUDGET_END -->
 
 </details>
