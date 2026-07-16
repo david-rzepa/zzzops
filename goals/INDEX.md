@@ -6,6 +6,7 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 | Blocker | Goal | Category | Request | Impact | Raised |
 | --- | --- | --- | --- | --- | --- |
 | B-001 | [G-20260716-002](items/G-20260716-002-brand-skills-as-zzzops.md) | human-action | Reopen checkout at `C:\dev\zzzops` and verify Codex group label. | Final branding verification only. | 2026-07-16 |
+| B-002 | [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | access-approval | Authorize integrating `dev` into `main` to publish expected `v1.0.0`. | Final production-release verification. | 2026-07-16 |
 
 ## Active claims
 | Goal | Owner | Claimed | Expires | Checkpoint |
@@ -20,17 +21,18 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 ## Ready queue
 | Goal | Parent | Priority | Value | Difficulty | Unlocks | Next action |
 | --- | --- | --- | --- | --- | --- | --- |
-| [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | - | P1 | high | M | Automated releases | Push integrated work to `dev` and inspect the dry-run job. |
+| None | - | - | - | - | - | - |
 
 ## Blocked goals
 | Goal | Priority | Blockers | Recheck trigger | Safe work? |
 | --- | --- | --- | --- | --- |
 | [G-20260716-002](items/G-20260716-002-brand-skills-as-zzzops.md) | P1 | B-001 `human-action` | Workspace reopened at `C:\dev\zzzops` | No repository work remains; release goal is safe. |
+| [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | P1 | B-002 `access-approval` | Explicit first-release authorization | No safe production-release work remains. |
 
 ## Root goals
 | Goal | Status | Priority | Value | Difficulty | Progress summary |
 | --- | --- | --- | --- | --- | --- |
-| [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | in_progress | P1 | high | M | Local planner/workflow/tests pass; live `dev` dry run is next. |
+| [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | blocked | P1 | high | M | Two live `dev` dry runs passed; awaiting `v1.0.0` release approval. |
 | [G-20260716-002](items/G-20260716-002-brand-skills-as-zzzops.md) | blocked | P1 | high | M | Repository rename verified; awaiting ZzzOps-path UI check. |
 
 ## Recently completed or cancelled

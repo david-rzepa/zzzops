@@ -1,7 +1,7 @@
 ---
 id: G-20260716-001-automate-semantic-releases
 title: Automate semantic GitHub releases
-status: in_progress
+status: blocked
 priority: P1
 value: high
 difficulty: M
@@ -15,10 +15,10 @@ review_after: null
 parent: null
 depends_on: []
 blocks: []
-needs_human: false
+needs_human: true
 tags: [ci, release, semantic-versioning, github-actions]
 external_refs: ["user-request:2026-07-16"]
-claim: {owner: Codex, claimed_at: "2026-07-16T15:00:00-06:00", expires_at: "2026-07-16T19:00:00-06:00"}
+claim: {owner: null, claimed_at: null, expires_at: null}
 ---
 
 # G-20260716-001-automate-semantic-releases - Automate semantic GitHub releases
@@ -29,11 +29,11 @@ ZzzOps derives semantic versions from repository history and publishes reproduci
 
 ## Success criteria
 
-- [ ] A CI workflow triggered by pushes to `main` calculates the next semantic version from an explicitly documented commit/tag convention.
+- [x] A CI workflow triggered by pushes to `main` calculates the next semantic version from an explicitly documented commit/tag convention. Evidence: `.github/workflows/release.yml`, local real-history plan `none -> v1.0.0 (major)`, and README release convention.
 - [ ] A qualifying `main` push creates the expected Git tag and GitHub Release with generated release notes; a non-qualifying push does not publish a release.
-- [ ] A workflow on `dev` runs the same release/version calculation in dry-run mode and cannot create tags, GitHub Releases, or other release-side effects.
-- [ ] Repository documentation explains the release convention, branch behavior, required permissions/secrets, and how to diagnose a failed release.
-- [ ] Tests or controlled workflow evidence demonstrate the first-release, patch/minor/major, no-release, rerun/idempotency, and dry-run paths.
+- [x] A workflow on `dev` runs the same release/version calculation in dry-run mode and cannot create tags, GitHub Releases, or other release-side effects. Evidence: runs `29535036331` and `29535149186` passed all dry-run steps, skipped `release`, and left remote releases/tags empty.
+- [x] Repository documentation explains the release convention, branch behavior, required permissions/secrets, and how to diagnose a failed release. Evidence: README “Releases” section.
+- [x] Tests or controlled workflow evidence demonstrate the first-release, patch/minor/major, no-release, rerun/idempotency, and dry-run paths. Evidence: six local tests include a temporary real Git history; two live `dev` runs passed.
 
 ## Scope
 
@@ -78,7 +78,15 @@ ZzzOps derives semantic versions from repository history and publishes reproduci
 
 ### Open
 
-None. Preserve tool choice and permission details as unknowns until investigated.
+### B-002 - Authorize the first production release
+- Status/category/raised/owner: open / `access-approval` / 2026-07-16 / user
+- Blocks: live verification that a qualifying `main` push creates the expected tag and GitHub Release
+- Question or required action: authorize integrating current `dev` into `main`; this is expected to publish `v1.0.0`.
+- Why/options/recommendation: root `AGENTS.md` reserves `main` for explicit release intent. Recommended: approve after reviewing the two successful dry runs; otherwise leave `dev` as the verified staging state.
+- Evidence gathered: runs `29535036331` and `29535149186` passed; both skipped release; remote has no releases/tags; real-history preview plans `v1.0.0`.
+- Continuation: `stop-affected-work`
+- Safe work remaining/recheck trigger: none for this goal; recheck when the user explicitly authorizes or declines the release.
+- Resolution/resolved/resolved by: pending
 
 ### Resolved
 
@@ -86,7 +94,7 @@ None.
 
 ## Progress and evidence
 
-Implementation checkpoint ready: shared dependency-free planner, synthetic Git integration suite, minimally permissioned `dev`/`main` workflow, and maintainer documentation are locally verified. Next action: integrate this work branch into `dev`, push, and inspect the live dry-run job before considering any `main` release.
+Shared planner, tests, workflow, and docs are on `dev`. Live dry runs `29535036331` and `29535149186` passed; release jobs were skipped and remote releases/tags stayed empty. The goal awaits explicit authorization to merge/push `dev` to `main` and verify the expected `v1.0.0` release.
 
 ## History
 
@@ -97,3 +105,4 @@ Implementation checkpoint ready: shared dependency-free planner, synthetic Git i
 | 2026-07-16 | Codex/R-20260716-zzzops | Triaged `ready`; difficulty `M` | Scope, baseline, branch targets, probes, and dependencies are concrete. |
 | 2026-07-16 | Codex/R-20260716-1500-root | Required child `G-20260716-003` completed | Root policy is documented; this parent must now implement its stated `main` behavior. |
 | 2026-07-16 | Codex/R-20260716-1500-root | Local implementation checkpoint | Six tests and real-history dry run passed; ready for live `dev` verification. |
+| 2026-07-16 | Codex/R-20260716-1500-root | `dev` verified; set `blocked` | Two live dry runs passed with no remote mutation; explicit approval is required before the first `main` release. |
