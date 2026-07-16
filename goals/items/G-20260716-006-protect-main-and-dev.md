@@ -1,12 +1,12 @@
 ---
 id: G-20260716-006-protect-main-and-dev
 title: Protect main and require validated PRs to dev
-status: ready
+status: in_progress
 priority: P1
 value: high
 difficulty: M
 confidence: medium
-owner: unassigned
+owner: Codex
 created: 2026-07-16
 updated: 2026-07-16
 target_date: null
@@ -18,7 +18,7 @@ blocks: []
 needs_human: false
 tags: [github, branch-protection, rulesets, ci, pull-requests, release-safety]
 external_refs: ["https://github.com/david-rzepa/zzzops", "user-request:2026-07-16"]
-claim: {owner: null, claimed_at: null, expires_at: null}
+claim: {owner: Codex, claimed_at: "2026-07-16T15:30:00-06:00", expires_at: "2026-07-16T19:30:00-06:00"}
 ---
 
 # G-20260716-006-protect-main-and-dev - Protect main and require validated PRs to dev
