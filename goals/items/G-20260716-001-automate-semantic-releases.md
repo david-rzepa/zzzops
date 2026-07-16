@@ -1,7 +1,7 @@
 ---
 id: G-20260716-001-automate-semantic-releases
 title: Automate semantic GitHub releases
-status: blocked
+status: triaged
 priority: P1
 value: high
 difficulty: M
@@ -15,7 +15,7 @@ review_after: null
 parent: null
 depends_on: []
 blocks: []
-needs_human: true
+needs_human: false
 tags: [ci, release, semantic-versioning, github-actions]
 external_refs: ["user-request:2026-07-16"]
 claim: {owner: null, claimed_at: null, expires_at: null}
@@ -70,7 +70,7 @@ ZzzOps derives semantic versions from repository history and publishes reproduci
 ## Relationships
 
 - Parent: none
-- Children (required/optional + purpose/status): [G-20260716-003](G-20260716-003-document-dev-branch-workflow.md) (required; initial `dev`-first Git/release guidance; `done`); [G-20260716-005](G-20260716-005-document-pr-workflow.md) (required; document `dev`-targeted PR and atomic commit policy; `done`); [G-20260716-006](G-20260716-006-protect-main-and-dev.md) (required; PR CI plus protection/fallback; `done`).
+- Children (required/optional + purpose/status): [G-20260716-003](G-20260716-003-document-dev-branch-workflow.md) (required; initial `dev`-first Git/release guidance; `done`); [G-20260716-005](G-20260716-005-document-pr-workflow.md) (required; document `dev`-targeted PR and atomic commit policy; `done`); [G-20260716-006](G-20260716-006-protect-main-and-dev.md) (required; PR CI plus protection/fallback; `done`); [G-20260716-007](G-20260716-007-squash-v1-main-history.md) (required; publish audited single-root `v1.0.0`; `triaged`).
 - Dependencies (status/reason): none recorded; repository settings or branch creation may become a human-action blocker during investigation.
 - Blocks (impact): none recorded.
 
@@ -78,23 +78,23 @@ ZzzOps derives semantic versions from repository history and publishes reproduci
 
 ### Open
 
-### B-002 - Authorize the first production release
-- Status/category/raised/owner: open / `access-approval` / 2026-07-16 / user
-- Blocks: live verification that a qualifying `main` push creates the expected tag and GitHub Release
-- Question or required action: authorize integrating current `dev` into `main`; this is expected to publish `v1.0.0`.
-- Why/options/recommendation: root `AGENTS.md` reserves `main` for explicit release intent. Recommended: approve after reviewing the two successful dry runs; otherwise leave `dev` as the verified staging state.
-- Evidence gathered: runs `29535036331` and `29535149186` passed; both skipped release; remote has no releases/tags; real-history preview plans `v1.0.0`.
-- Continuation: `stop-affected-work`
-- Safe work remaining/recheck trigger: none for this goal; recheck when the user explicitly authorizes or declines the release.
-- Resolution/resolved/resolved by: pending
+None.
 
 ### Resolved
 
-None.
+### B-002 - Authorize the first production release
+- Status/category/raised/owner: resolved / `access-approval` / 2026-07-16 / user
+- Blocks: resolved; release remains dependency-gated.
+- Question or required action: authorize the first `main` release.
+- Why/options/recommendation: user explicitly requested terminal goal `G-007` to owner-force-push a single-root `main` and publish `v1.0.0`.
+- Evidence gathered: prior dry runs passed; user specified exact final release/history outcome.
+- Continuation: `stop-affected-work`
+- Safe work remaining/recheck trigger: execute `G-007` after `G-002` completes.
+- Resolution/resolved/resolved by: authorized through `G-007` request / 2026-07-16 / user
 
 ## Progress and evidence
 
-Shared planner, tests, workflow, and docs are on `dev`. Live dry runs `29535036331` and `29535149186` passed; release jobs were skipped and remote releases/tags stayed empty. The goal awaits explicit authorization to merge/push `dev` to `main` and verify the expected `v1.0.0` release.
+Shared planner, tests, workflow, and docs are on `dev`; live dry runs passed without mutation. Release authorization is resolved. Parent remains `triaged` until required terminal child `G-007` publishes and verifies the single-root `v1.0.0` after `G-002`.
 
 ## History
 
@@ -109,3 +109,4 @@ Shared planner, tests, workflow, and docs are on `dev`. Live dry runs `295350363
 | 2026-07-16 | Codex | Added required children `G-20260716-005` and `G-20260716-006` | User expanded the release-safety workflow with PR/commit guidance and GitHub enforcement. |
 | 2026-07-16 | Codex/R-20260716-queued | Required child `G-20260716-005` completed | PR/commit policy is now explicit in root instructions. |
 | 2026-07-16 | Codex/R-20260716-queued | Required child `G-20260716-006` completed | Live PR CI passed; unavailable protection is covered by the user's documented manual fallback. |
+| 2026-07-16 | user/Codex | Resolved `B-002`; added required child `G-007` | User explicitly authorized the terminal single-root `v1.0.0` release operation. |

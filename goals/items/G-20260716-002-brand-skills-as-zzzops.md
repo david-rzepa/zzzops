@@ -88,7 +88,7 @@ Every installed and repository-local skill is unmistakably part of ZzzOps in age
 - Why/options/recommendation: Codex groups project-local `.agents/skills` by workspace path; keep the canonical discovery folder and rename the checkout rather than moving skills out of `.agents/skills`.
 - Evidence gathered: current workspace and skill source paths are rooted at `C:\dev\agent-goals`; README already instructs cloning to `C:\dev\zzzops`.
 - Continuation: `continue-bounded`
-- Safe work remaining/recheck trigger: release-CI goal can continue; recheck after the workspace is reopened at the new path.
+- Safe work remaining/recheck trigger: correctly named checkout now exists at `C:\dev\zzzops`; recheck after the user opens it in Codex.
 - Resolution/resolved/resolved by: pending
 
 ### Resolved
@@ -97,7 +97,7 @@ None.
 
 ## Progress and evidence
 
-Repository-side rename is complete and committed as one pending checkpoint. Remaining work is the human UI verification after reopening the checkout at `C:\dev\zzzops`.
+Repository-side rename is complete. A fresh `dev` checkout now exists at `C:\dev\zzzops`; remaining work is the human UI verification after opening that folder in Codex.
 
 ## History
 
@@ -106,3 +106,4 @@ Repository-side rename is complete and committed as one pending checkpoint. Rema
 | 2026-07-16 | Codex | Created `new` | User requested clear ZzzOps skill grouping and “Add ZzzOps TODO” naming. |
 | 2026-07-16 | Codex/R-20260716-zzzops | Triaged `ready`; difficulty `M` | Full rename surface and observable fresh/update-install probes are defined. |
 | 2026-07-16 | Codex/R-20260716-1500-root | Repository rename verified; set `blocked` | Fresh/update installs and scans pass; Codex group header requires reopening a ZzzOps-named checkout. |
+| 2026-07-16 | Codex/R-20260716-queued | Created `C:\dev\zzzops` checkout | Removed the filesystem action; user must reopen it once for UI evidence. |
