@@ -128,6 +128,8 @@ Versions follow Conventional Commits since the latest `vMAJOR.MINOR.PATCH` tag: 
 
 To diagnose a PR or release, inspect **PR validation / dev-required-tests** or the **Semantic release** run and its failing step. Reproduce checks locally with `python .agents/test_prompt_stats.py`, `python -m unittest discover -s .github/scripts -p 'test_*.py'`, and `python .agents/prompt_stats.py --check`. `python .github/scripts/semantic_release.py` only writes a local notes file. Confirm branch, commit messages, latest tag, job permission, and GitHub CLI output before retrying.
 
+Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required `dev` check, current GitHub Free limitation, closest enforceable `main` policy, and recovery procedure.
+
 ## The files that remember things
 
 - `goals/PROJECT.md` — success, KPIs, acceptance criteria, and what “valuable” means.
