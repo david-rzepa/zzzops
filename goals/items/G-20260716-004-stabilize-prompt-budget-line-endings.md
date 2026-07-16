@@ -1,12 +1,12 @@
 ---
 id: G-20260716-004-stabilize-prompt-budget-line-endings
 title: Make prompt-budget counts line-ending invariant
-status: ready
+status: done
 priority: P2
 value: medium
 difficulty: S
 confidence: high
-owner: unassigned
+owner: Codex
 created: 2026-07-16
 updated: 2026-07-16
 target_date: null
@@ -29,10 +29,10 @@ Prompt-budget estimates remain identical across Git line-ending conversion and s
 
 ## Success criteria
 
-- [ ] A focused test proves logically identical LF and CRLF prompt content yields the same byte/token estimate.
-- [ ] `.agents/prompt_stats.py` computes counts from a documented canonical representation without changing prompt content.
-- [ ] Existing prompt-budget regeneration/check behavior remains deterministic and passes on the repository.
-- [ ] README accurately describes the normalization and estimate limits.
+- [x] A focused test proves logically identical LF, CRLF, and CR prompt content yields the same byte estimate. Evidence: `.agents/test_prompt_stats.py` passes.
+- [x] `.agents/prompt_stats.py` computes counts from a documented canonical representation without changing prompt content. Evidence: `canonical_size` normalizes byte line endings to LF before counting.
+- [x] Existing prompt-budget regeneration/check behavior remains deterministic and passes on the repository. Evidence: regeneration followed by `--check` reports 22 prompts, 40,263 bytes, ~10,076 tokens.
+- [x] README accurately describes the normalization and estimate limits. Evidence: Prompt budget section specifies canonical UTF-8 bytes and LF normalization.
 
 ## Scope
 
@@ -56,7 +56,7 @@ Prompt-budget estimates remain identical across Git line-ending conversion and s
 - Observation surface (test/harness/API/UI/log/MCP/etc.): Focused Python unit test and `.agents/prompt_stats.py --check`.
 - Smallest chunk: Extract canonical byte-count calculation and test LF/CRLF equivalence.
 - Probe/action and expected signal: Both encodings return identical byte/token values; current script does not.
-- Actual result/evidence: Bug reproduced through the failed check; no fix attempted.
+- Actual result/evidence: Regression first failed with missing normalization API, then passed for LF/CRLF/CR after the smallest production change; repository regeneration/check passed.
 - Wider checks after local proof: Regenerate README and repeat after a Git checkout on Windows.
 
 ### Execution constraints
@@ -92,7 +92,7 @@ None.
 
 ## Progress and evidence
 
-Bug captured with source lines and reproduction evidence. User authorized completing all queued work; implementation is ready.
+Completed with one canonical byte-count function and focused regression test; prompt content remains untouched.
 
 ## History
 
@@ -100,3 +100,4 @@ Bug captured with source lines and reproduction evidence. User authorized comple
 | --- | --- | --- | --- |
 | 2026-07-16 | Codex/R-20260716-1500-root | Created `blocked` | Combined release verification exposed platform-dependent prompt counts; policy forbids fixing a test-discovered bug without human input. |
 | 2026-07-16 | user/Codex | Resolved `B-003`; set `ready` | User instructed `$execute-zzzops` to complete all queued work. |
+| 2026-07-16 | Codex/R-20260716-queued | Completed `done` | LF/CRLF/CR regression and repository prompt-budget checks passed. |

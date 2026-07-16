@@ -12,6 +12,11 @@ START = "<!-- PROMPT_BUDGET_START -->"
 END = "<!-- PROMPT_BUDGET_END -->"
 
 
+def canonical_size(data: bytes) -> int:
+    """Count UTF-8 bytes after normalizing platform line endings to LF."""
+    return len(data.replace(b"\r\n", b"\n").replace(b"\r", b"\n"))
+
+
 def prompt_files(root: Path) -> list[Path]:
     files = [root / "AGENTS.md", root / "CLAUDE.md", root / "goals" / "TEMPLATE.md"]
     files.extend((root / ".zzzops" / "rules").glob("*.md"))
@@ -30,7 +35,7 @@ def main() -> int:
     rows = []
     for path in prompt_files(root):
         relative = path.relative_to(root).as_posix()
-        size = len(path.read_bytes())
+        size = canonical_size(path.read_bytes())
         rows.append((relative, size, math.ceil(size / 4)))
     total_bytes = sum(row[1] for row in rows)
     total_tokens = sum(row[2] for row in rows)

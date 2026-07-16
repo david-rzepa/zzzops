@@ -22,7 +22,6 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 | Goal | Parent | Priority | Value | Difficulty | Unlocks | Next action |
 | --- | --- | --- | --- | --- | --- | --- |
 | [G-20260716-006](items/G-20260716-006-protect-main-and-dev.md) | [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | P1 | high | M | Enforced branch safety | Inspect capabilities, add PR CI, configure rules if supported. |
-| [G-20260716-004](items/G-20260716-004-stabilize-prompt-budget-line-endings.md) | - | P2 | medium | S | Stable prompt regression | Add LF/CRLF test, normalize, regenerate. |
 
 ## Blocked goals
 | Goal | Priority | Blockers | Recheck trigger | Safe work? |
@@ -35,13 +34,14 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 | --- | --- | --- | --- | --- | --- |
 | [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | blocked | P1 | high | M | Two live `dev` dry runs passed; awaiting `v1.0.0` release approval. |
 | [G-20260716-002](items/G-20260716-002-brand-skills-as-zzzops.md) | blocked | P1 | high | M | Repository rename verified; awaiting ZzzOps-path UI check. |
-| [G-20260716-004](items/G-20260716-004-stabilize-prompt-budget-line-endings.md) | ready | P2 | medium | S | Approved; normalization test and fix queued. |
+| [G-20260716-004](items/G-20260716-004-stabilize-prompt-budget-line-endings.md) | done | P2 | medium | S | Canonical LF byte counting and regression test verified. |
 
 ## Recently completed or cancelled
 | Goal | Final status | Date | Evidence/rationale |
 | --- | --- | --- | --- |
 | [G-20260716-003](items/G-20260716-003-document-dev-branch-workflow.md) | done | 2026-07-16 | Work branch descends from `dev`; exact root policy and prompt-budget checks passed. |
 | [G-20260716-005](items/G-20260716-005-document-pr-workflow.md) | done | 2026-07-16 | Root policy now requires `dev`-targeted PRs and intentional atomic commit boundaries. |
+| [G-20260716-004](items/G-20260716-004-stabilize-prompt-budget-line-endings.md) | done | 2026-07-16 | LF/CRLF/CR estimates match; regenerated prompt budget passes. |
 
 ## Portfolio notes
 - Release tooling remains intentionally undecided pending repository investigation.
