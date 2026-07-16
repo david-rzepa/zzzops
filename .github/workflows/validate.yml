@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   validate:
-    name: ZzzOps checks
+    name: dev-required-tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
