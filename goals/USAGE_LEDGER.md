@@ -15,6 +15,7 @@ Append only; corrections identify superseded rows. Follow `.zzzops/rules/USAGE_A
 | R-20260716-queued-root | root/goal-management | 2026-07-16 | portfolio | Triaged G-005/G-006 and resolved G-004 approval | - | - | - | - | unavailable | n/a | No callable exact token counter; work branch created from `dev`. |
 | R-20260716-queued-root | root/goal-work | 2026-07-16 | G-20260716-005 | Completed and verified dev-targeted PR/commit guidance | - | - | - | - | unavailable | n/a | Ancestry, exact-text, and prompt-budget probes passed. |
 | R-20260716-queued-root | root/goal-work | 2026-07-16 | G-20260716-004 | Fixed line-ending-dependent prompt counts | - | - | - | - | unavailable | n/a | Focused LF/CRLF/CR regression and repository check passed. |
+| R-20260716-queued-root | root/goal-work | 2026-07-16 | G-20260716-006 | Implemented/published PR CI; inspected GitHub protection capability | - | - | - | - | unavailable | n/a | Local checks pass; auth and private Free-plan limitations block live PR/settings completion. |
 
 ## Limit snapshots
 | Run ID | Date/time | Source | Context | Rate/credit state | Notes |
