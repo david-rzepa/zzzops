@@ -70,7 +70,7 @@ ZzzOps derives semantic versions from repository history and publishes reproduci
 ## Relationships
 
 - Parent: none
-- Children (required/optional + purpose/status): [G-20260716-003](G-20260716-003-document-dev-branch-workflow.md) (required; document the verified `dev`-first Git and `main` release workflow; `new`). Create further implementation sub-goals after investigation if the workflow and test harness are independently verifiable.
+- Children (required/optional + purpose/status): [G-20260716-003](G-20260716-003-document-dev-branch-workflow.md) (required; document the `dev`-first Git and `main` release workflow; `done`). Create further implementation sub-goals after investigation if the workflow and test harness are independently verifiable.
 - Dependencies (status/reason): none recorded; repository settings or branch creation may become a human-action blocker during investigation.
 - Blocks (impact): none recorded.
 
@@ -95,3 +95,4 @@ Triaged as an actionable medium implementation goal. Baseline: no `.github` work
 | 2026-07-16 | Codex | Created `new` | User requested semantic GitHub releases from `main`, development on `dev`, and a dry-run workflow on `dev`. |
 | 2026-07-16 | Codex | Added required child `G-20260716-003` | User requested explicit root `AGENTS.md` guidance for the `dev`-first/release workflow. |
 | 2026-07-16 | Codex/R-20260716-zzzops | Triaged `ready`; difficulty `M` | Scope, baseline, branch targets, probes, and dependencies are concrete. |
+| 2026-07-16 | Codex/R-20260716-1500-root | Required child `G-20260716-003` completed | Root policy is documented; this parent must now implement its stated `main` behavior. |

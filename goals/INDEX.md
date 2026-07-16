@@ -20,7 +20,6 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 ## Ready queue
 | Goal | Parent | Priority | Value | Difficulty | Unlocks | Next action |
 | --- | --- | --- | --- | --- | --- | --- |
-| [G-20260716-003](items/G-20260716-003-document-dev-branch-workflow.md) | [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | P1 | high | S | Release safety policy | Add and scenario-check the root Git workflow rule. |
 | [G-20260716-002](items/G-20260716-002-brand-skills-as-zzzops.md) | - | P1 | high | M | Coherent discovery | Apply and verify one atomic skill rename map. |
 | [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | - | P1 | high | M | Automated releases | Implement shared dry-run/publish release behavior. |
 
@@ -38,7 +37,7 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 ## Recently completed or cancelled
 | Goal | Final status | Date | Evidence/rationale |
 | --- | --- | --- | --- |
-| None | - | - | - |
+| [G-20260716-003](items/G-20260716-003-document-dev-branch-workflow.md) | done | 2026-07-16 | Work branch descends from `dev`; exact root policy and prompt-budget checks passed. |
 
 ## Portfolio notes
 - Release tooling remains intentionally undecided pending repository investigation.

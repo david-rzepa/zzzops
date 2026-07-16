@@ -158,7 +158,7 @@ python .agents/prompt_stats.py --check
 | `.agents/skills/suggest-project-work/SKILL.md` | 2498 | 625 |
 | `.agents/templates/project-goals/INDEX.md` | 1135 | 284 |
 | `.agents/templates/project-goals/MIGRATION_SUMMARY.md` | 222 | 56 |
-| `.agents/templates/project-goals/PROJECT.md` | 1297 | 325 |
+| `.agents/templates/project-goals/PROJECT.md` | 1295 | 324 |
 | `.agents/templates/project-goals/TEMPLATE_DIFF.md` | 360 | 90 |
 | `.agents/templates/project-goals/USAGE_LEDGER.md` | 1105 | 277 |
 | `.claude/skills/install-project-goals/SKILL.md` | 396 | 99 |
@@ -166,10 +166,10 @@ python .agents/prompt_stats.py --check
 | `.zzzops/rules/EXECUTION_STRATEGY.md` | 4861 | 1216 |
 | `.zzzops/rules/GOAL_SYSTEM.md` | 3642 | 911 |
 | `.zzzops/rules/USAGE_ACCOUNTING.md` | 2355 | 589 |
-| `AGENTS.md` | 2292 | 573 |
+| `AGENTS.md` | 2514 | 629 |
 | `CLAUDE.md` | 217 | 55 |
 | `goals/TEMPLATE.md` | 1648 | 412 |
-| **Total** | **39678** | **9928** |
+| **Total** | **39898** | **9983** |
 <!-- PROMPT_BUDGET_END -->
 
 </details>

@@ -1,12 +1,12 @@
 ---
 id: G-20260716-003-document-dev-branch-workflow
 title: Document the dev-first Git workflow
-status: ready
+status: done
 priority: P1
 value: high
 difficulty: S
 confidence: high
-owner: unassigned
+owner: Codex
 created: 2026-07-16
 updated: 2026-07-16
 target_date: null
@@ -29,11 +29,11 @@ Repository agents follow one safe Git workflow: create work branches from `dev`,
 
 ## Success criteria
 
-- [ ] Root `AGENTS.md` states that all work branches must branch from `dev`, not `main`.
-- [ ] Root `AGENTS.md` states that ordinary work is merged/integrated into `dev` and that pushing to `main` runs release CI.
-- [ ] Guidance tells agents not to push or merge to `main` unless the user explicitly intends a release and the release preconditions are satisfied.
-- [ ] Guidance is concise and unambiguous for new and resumed work; the parent goal later verifies that CI enforces the documented release trigger.
-- [ ] Prompt-budget counts are regenerated and `.agents/prompt_stats.py --check` passes.
+- [x] Root `AGENTS.md` states that all work branches must branch from `dev`, not `main`. Evidence: `AGENTS.md:21`; `git merge-base --is-ancestor dev HEAD` passed on the work branch.
+- [x] Root `AGENTS.md` states that ordinary work is merged/integrated into `dev` and that pushing to `main` runs release CI. Evidence: `AGENTS.md:21` exact-text probe.
+- [x] Guidance tells agents not to push or merge to `main` unless the user explicitly intends a release and the release preconditions are satisfied. Evidence: `AGENTS.md:21`.
+- [x] Guidance is concise and unambiguous for new and resumed work; the parent goal later verifies that CI enforces the documented release trigger. Evidence: one three-action policy paragraph covering branch, integration, and release gates.
+- [x] Prompt-budget counts are regenerated and `.agents/prompt_stats.py --check` passes. Evidence: 22 prompts, 39,898 bytes, ~9,983 estimated tokens.
 
 ## Scope
 
@@ -57,7 +57,7 @@ Repository agents follow one safe Git workflow: create work branches from `dev`,
 - Observation surface (test/harness/API/UI/log/MCP/etc.): `AGENTS.md`, actual Git branches, CI trigger YAML, and prompt-budget check.
 - Smallest chunk: Add one compact paragraph specifying branch source, integration target, and `main` release semantics.
 - Probe/action and expected signal: Ask the rule what to do for ordinary work, a `dev` merge, and a proposed `main` push; each yields one unambiguous safe action.
-- Actual result/evidence: Not run.
+- Actual result/evidence: Work branch ancestry passed; exact branch and release-policy phrases were found at `AGENTS.md:21`; prompt-budget check passed.
 - Wider checks after local proof: Compare wording to release workflow triggers and branch-protection/settings evidence, then regenerate prompt counts.
 
 ### Execution constraints
@@ -85,7 +85,7 @@ None.
 
 ## Progress and evidence
 
-Triaged as an actionable small documentation goal. Observed `dev` created from `main`, published to `origin/dev`, and current work branch created from `dev` before editing.
+Completed. `dev` was created from `main` and published; `codex/execute-initial-goals` was created from `dev`. Root `AGENTS.md:21` now binds agents to that flow and gates `main` release pushes. Parent goal remains responsible for implementing the documented CI behavior.
 
 ## History
 
@@ -93,3 +93,4 @@ Triaged as an actionable small documentation goal. Observed `dev` created from `
 | --- | --- | --- | --- |
 | 2026-07-16 | Codex | Created `new` as a required sub-goal | User requested explicit `dev`-first work and `main` release-CI guidance in root `AGENTS.md`. |
 | 2026-07-16 | Codex/R-20260716-zzzops | Triaged `ready`; difficulty `S` | User resolved sequencing: document policy first and follow it during this run. |
+| 2026-07-16 | Codex/R-20260716-1500-root | Completed `done` | Branch ancestry, exact policy text, and prompt-budget probes passed. |

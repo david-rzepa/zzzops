@@ -7,6 +7,7 @@ Append only; corrections identify superseded rows. Follow `.zzzops/rules/USAGE_A
 | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |
 | None | - | - | - | - | - | - | - | - | unavailable | - | - |
 | R-20260716-1500-root | root/goal-management | 2026-07-16 | portfolio | Triaged three goals; established `dev` and work branch | - | - | - | - | unavailable | n/a | Harness exposes no callable token counter; management usage recorded separately. |
+| R-20260716-1500-root | root/goal-work | 2026-07-16 | G-20260716-003 | Documented and verified dev-first Git policy | - | - | - | - | unavailable | n/a | Branch ancestry, exact-text, and prompt-budget probes passed. |
 
 ## Limit snapshots
 | Run ID | Date/time | Source | Context | Rate/credit state | Notes |

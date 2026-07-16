@@ -18,4 +18,6 @@ Without skill discovery read [rules](.zzzops/rules/GOAL_SYSTEM.md), then the app
 
 Use `$install-project-goals` only here. It installs discoverable skills/mechanics into targets but never itself, project state, or target `AGENTS.md`/`CLAUDE.md`.
 
+Git workflow: create work branches only from `dev` and integrate ordinary work back into `dev`. A push or merge to `main` runs release CI; do it only when the user explicitly intends a release and its preconditions pass.
+
 When any installed prompt/instruction/template Markdown changes, regenerate README “Prompt budget” counts with `.agents/prompt_stats.py`, then run `--check`; never hand-edit those numbers.
