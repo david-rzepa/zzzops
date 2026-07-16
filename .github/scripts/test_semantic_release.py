@@ -22,6 +22,7 @@ class SemanticReleaseTests(unittest.TestCase):
         self.assertEqual(bump_for([change("fix: correct"), change("feat(ui): add")]), "minor")
         self.assertEqual(bump_for([change("feat: add"), change("fix!: remove API")]), "major")
         self.assertEqual(bump_for([change("fix: alter", "BREAKING CHANGE: protocol")]), "major")
+        self.assertEqual(bump_for([change("fix: alter", "BREAKING-CHANGE: protocol")]), "major")
 
     def test_non_release_commits_and_idempotent_empty_range(self) -> None:
         self.assertIsNone(bump_for([change("docs: explain"), change("chore: tidy")]))

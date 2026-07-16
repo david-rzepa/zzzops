@@ -27,7 +27,7 @@ class Change:
     @property
     def breaking(self) -> bool:
         parsed = self.parsed
-        return bool((parsed and parsed.group("breaking")) or "BREAKING CHANGE:" in self.body)
+        return bool((parsed and parsed.group("breaking")) or re.search(r"BREAKING[ -]CHANGE:", self.body))
 
 
 def git(*args: str) -> str:
