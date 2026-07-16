@@ -1,7 +1,7 @@
 ---
 id: G-20260716-006-protect-main-and-dev
 title: Protect main and require validated PRs to dev
-status: in_progress
+status: blocked
 priority: P1
 value: high
 difficulty: M
@@ -15,10 +15,10 @@ review_after: null
 parent: G-20260716-001-automate-semantic-releases
 depends_on: []
 blocks: []
-needs_human: false
+needs_human: true
 tags: [github, branch-protection, rulesets, ci, pull-requests, release-safety]
 external_refs: ["https://github.com/david-rzepa/zzzops", "user-request:2026-07-16"]
-claim: {owner: Codex, claimed_at: "2026-07-16T15:30:00-06:00", expires_at: "2026-07-16T19:30:00-06:00"}
+claim: {owner: null, claimed_at: null, expires_at: null}
 ---
 
 # G-20260716-006-protect-main-and-dev - Protect main and require validated PRs to dev
@@ -32,7 +32,7 @@ GitHub enforces the repository workflow: `main` cannot change through ordinary w
 - [x] Inspect repository plan/features and current rules using GitHub CLI/API, then document whether classic branch protection or repository rulesets best express the requested policy. Evidence: repository is private on GitHub Free; protection and rulesets endpoints return 403 requiring Pro or public visibility; both branches report unprotected.
 - [ ] `main` rejects every update path except force pushes performed by repository owner `david-rzepa`; ordinary pushes, PR merges, deletions, bots, collaborators, and other bypass paths cannot change it.
 - [ ] `dev` requires a pull request and a passing, stable required check before merge; direct pushes and force pushes are rejected.
-- [ ] Every PR targeting `dev` runs a deterministic validation job with read-only permissions; it exercises prompt accounting, semantic-release behavior, prompt-budget consistency, and Python syntax.
+- [x] CI defines a deterministic validation job for every PR targeting `dev`, with read-only permissions and prompt accounting, semantic-release, prompt-budget, and Python syntax checks. Evidence: `.github/workflows/validate.yml`; all commands pass locally. Live PR execution remains blocked by GitHub authentication.
 - [ ] Required-check name `dev-required-tests` is stable, unique, runs on every PR targeting `dev`, and matches the configured or manually documented GitHub rule exactly.
 - [ ] Controlled GitHub/API evidence shows the rules encode owner-only force-push access and reject every other `main` update path, without actually force-pushing, deleting branches, or publishing a release.
 - [ ] Maintainer documentation records the rules, bypass semantics, recovery path, and any GitHub-plan limitation.
@@ -81,7 +81,25 @@ GitHub enforces the repository workflow: `main` cannot change through ordinary w
 
 ### Open
 
-None.
+### B-005 - Restore authenticated GitHub control
+- Status/category/raised/owner: resolved / `access-approval` / 2026-07-16 / user
+- Blocks: resolved; PR/API work may resume.
+- Question or required action: re-authenticate `gh` for `david-rzepa` with `repo` and `workflow` access (`gh auth login -h github.com`), or sign into GitHub in the in-app browser and confirm it is ready.
+- Why/options/recommendation: Git push succeeds through the credential manager, but `gh auth status` reports an invalid token and the in-app browser is signed out; the private repository returns 404 anonymously. CLI re-authentication is recommended because it also enables precise settings verification.
+- Evidence gathered: branch `codex/complete-queued-work` pushed successfully; CLI auth was invalid; user re-authenticated; `gh auth status` now succeeds for `david-rzepa` with `repo` and `workflow` scopes.
+- Continuation: `stop-affected-work`
+- Safe work remaining/recheck trigger: create PR and inspect live check/API state now.
+- Resolution/resolved/resolved by: `gh` re-authenticated / 2026-07-16 / user
+
+### B-006 - Choose an achievable main protection policy
+- Status/category/raised/owner: open / `technical-unknown` / 2026-07-16 / user
+- Blocks: configuring and verifying `main` protection exactly as requested.
+- Question or required action: choose between upgrading to GitHub Pro or making the repository public, then accept the closest enforceable policy: only owner `david-rzepa` is a bypass actor, while owner discipline—not GitHub—distinguishes force pushes from ordinary pushes/merges.
+- Why/options/recommendation: private protection/ruleset APIs return 403 on the current Free plan. GitHub has no force-push-only bypass; an owner bypass permits other owner updates too. Recommended: upgrade to Pro, keep the repo private, use owner-only update bypass plus separate no-deletion and `dev` PR/check rules, and retain root policy forbidding ordinary owner updates.
+- Evidence gathered: live branch/rules APIs, repository visibility/permissions, collaborator list, and official rule semantics.
+- Continuation: `stop-affected-work`
+- Safe work remaining/recheck trigger: CI file is complete; recheck after plan/policy choice.
+- Resolution/resolved/resolved by: pending
 
 ### Resolved
 
@@ -97,7 +115,7 @@ None.
 
 ## Progress and evidence
 
-Implementation checkpoint: `.github/workflows/validate.yml` targets every PR into `dev`, uses `contents: read`, and locally passes all four check categories. The branch is published; next evidence is a live run named `PR validation / dev-required-tests`. Automatic protection cannot be configured on the current private Free repository.
+Implementation checkpoint: `.github/workflows/validate.yml` targets every PR into `dev`, uses `contents: read`, and locally passes all four check categories. Branch `codex/complete-queued-work` is published. Live PR and settings work awaits restored authentication; automatic protection additionally requires Pro/public visibility and cannot express force-push-only owner bypass exactly.
 
 ## History
 
@@ -107,3 +125,5 @@ Implementation checkpoint: `.github/workflows/validate.yml` targets every PR int
 | 2026-07-16 | user/Codex | Resolved `B-004` | User specified owner-only force pushes as the sole `main` update path and required the CI job even when protection must be configured manually. |
 | 2026-07-16 | Codex/R-20260716-queued | Triaged `ready` | Protection semantics, fallback, smallest CI chunk, and observation surfaces are defined. |
 | 2026-07-16 | user/Codex | Reaffirmed PR CI requirement | Reconciled as this existing goal; no duplicate goal created. |
+| 2026-07-16 | Codex/R-20260716-queued | Set `blocked`; added `B-005`/`B-006` | CI implementation is published, but GitHub authentication is invalid and current plan/semantics cannot enforce the exact requested policy. |
+| 2026-07-16 | user/Codex | Resolved `B-005` | `gh auth status` confirms restored authenticated access. |
