@@ -29,11 +29,11 @@ GitHub enforces the repository workflow: `main` cannot change through ordinary w
 
 ## Success criteria
 
-- [ ] Inspect repository plan/features and current rules using GitHub CLI/API, then document whether classic branch protection or repository rulesets best express the requested policy.
+- [x] Inspect repository plan/features and current rules using GitHub CLI/API, then document whether classic branch protection or repository rulesets best express the requested policy. Evidence: repository is private on GitHub Free; protection and rulesets endpoints return 403 requiring Pro or public visibility; both branches report unprotected.
 - [ ] `main` rejects every update path except force pushes performed by repository owner `david-rzepa`; ordinary pushes, PR merges, deletions, bots, collaborators, and other bypass paths cannot change it.
 - [ ] `dev` requires a pull request and a passing, stable required check before merge; direct pushes and force pushes are rejected.
-- [ ] CI contains a deterministic PR validation job that runs for PRs targeting `dev`, uses read-only permissions, and exercises the relevant release-planner and repository checks.
-- [ ] Required-check names are stable and match the configured GitHub rule exactly, including the no-work/no-release path.
+- [ ] Every PR targeting `dev` runs a deterministic validation job with read-only permissions; it exercises prompt accounting, semantic-release behavior, prompt-budget consistency, and Python syntax.
+- [ ] Required-check name `dev-required-tests` is stable, unique, runs on every PR targeting `dev`, and matches the configured or manually documented GitHub rule exactly.
 - [ ] Controlled GitHub/API evidence shows the rules encode owner-only force-push access and reject every other `main` update path, without actually force-pushing, deleting branches, or publishing a release.
 - [ ] Maintainer documentation records the rules, bypass semantics, recovery path, and any GitHub-plan limitation.
 
@@ -47,10 +47,12 @@ GitHub enforces the repository workflow: `main` cannot change through ordinary w
 - User requested this goal on 2026-07-16: protect `main`, retain an owner-only emergency capability, and require PR plus passing CI for `dev`.
 - User clarified that they are repository owner `david-rzepa` and intend owner-only force-push permission on `main`; no PR merge, ordinary push, bot, collaborator, or alternative update path may change `main`.
 - Prefer GitHub CLI/API configuration if the repository plan and token authority support it. If protection cannot be configured programmatically, still create and verify the PR test job so the user can manually require that exact check.
+- User reaffirmed on 2026-07-16 that PRs must run CI; this is a required behavior independent of whether branch settings can be automated.
+- GitHub capability finding: private branch protection/rulesets are unavailable on the current Free plan. Exact owner-force-push-only semantics are not expressible even with rulesets because an owner bypass also permits ordinary pushes/merges. The closest future configuration requires Pro/public visibility and still relies on owner discipline for update mode.
 
 ## Approach and next action
 
-**Next action:** Read-only inspect current rulesets/branch protection, repository plan visibility, authenticated authority, branches, and workflow job names; determine whether GitHub can express owner-only force pushes with every other `main` update path denied, and design the minimally privileged PR validation job. Stop before changing GitHub settings.
+**Next action:** Open the published branch as a PR targeting `dev`, observe `dev-required-tests`, and record the result. Then preserve the GitHub-plan/semantic limitation as a blocker with exact manual upgrade configuration guidance.
 
 ### Fast feedback
 
@@ -59,7 +61,7 @@ GitHub enforces the repository workflow: `main` cannot change through ordinary w
 - Observation surface (test/harness/API/UI/log/MCP/etc.): `gh api` rule/branch endpoints, GitHub Actions PR run/check names, rejected-path API metadata, and repository docs.
 - Smallest chunk: Add and locally validate one read-only PR job with a stable job/check name before binding branch rules to it.
 - Probe/action and expected signal: A test PR to `dev` reports the required check and cannot merge until it passes; no release job runs and no tag/release is created.
-- Actual result/evidence: Not run.
+- Actual result/evidence: Local prompt accounting, six release tests, prompt-budget check, and Python compilation pass. GitHub API inspection found both branches unprotected and branch protection/rulesets unavailable for this private Free repository. Live PR evidence remains next.
 - Wider checks after local proof: Configure rules, query them back, verify direct-push/force-push/deletion flags and bypass actors, then document recovery.
 
 ### Execution constraints
@@ -95,7 +97,7 @@ None.
 
 ## Progress and evidence
 
-Triaged as actionable. Specification is complete. Next execution will inspect GitHub capability, implement the PR test job regardless, and configure protection only if supported and verifiable.
+Implementation checkpoint: `.github/workflows/validate.yml` targets every PR into `dev`, uses `contents: read`, and locally passes all four check categories. The branch is published; next evidence is a live run named `PR validation / dev-required-tests`. Automatic protection cannot be configured on the current private Free repository.
 
 ## History
 
@@ -104,3 +106,4 @@ Triaged as actionable. Specification is complete. Next execution will inspect Gi
 | 2026-07-16 | Codex | Created `new` with `B-004` | User requested protected `main`, PR/CI-gated `dev`, and a CLI-or-CI fallback whose final clause was truncated. |
 | 2026-07-16 | user/Codex | Resolved `B-004` | User specified owner-only force pushes as the sole `main` update path and required the CI job even when protection must be configured manually. |
 | 2026-07-16 | Codex/R-20260716-queued | Triaged `ready` | Protection semantics, fallback, smallest CI chunk, and observation surfaces are defined. |
+| 2026-07-16 | user/Codex | Reaffirmed PR CI requirement | Reconciled as this existing goal; no duplicate goal created. |
