@@ -1,12 +1,12 @@
 ---
 id: G-20260716-005-document-pr-workflow
 title: Document the dev-targeted pull request workflow
-status: ready
+status: done
 priority: P1
 value: high
 difficulty: S
 confidence: high
-owner: unassigned
+owner: Codex
 created: 2026-07-16
 updated: 2026-07-16
 target_date: null
@@ -29,12 +29,12 @@ Root `AGENTS.md` gives agents one complete contribution path: branch from `dev`,
 
 ## Success criteria
 
-- [ ] Root `AGENTS.md` requires every ordinary work branch to start from current `dev` and every ordinary PR to target `dev`, never `main`.
-- [ ] Guidance permits large features to contain smaller coherent commits when that aids review, testing, or partial integration.
-- [ ] Guidance prefers squashing changes that are only valid together into one atomic semantic commit so incomplete units are not independently merged or reverted.
-- [ ] Guidance explains that independently useful/revertible changes should remain separate commits, making partial rollback safer rather than mechanically squashing every PR.
-- [ ] The new wording is concise, consistent with actual branch protection/release CI, and does not alter installed projects' `AGENTS.md`.
-- [ ] README prompt-budget counts are regenerated and `.agents/prompt_stats.py --check` passes.
+- [x] Root `AGENTS.md` requires every ordinary work branch to start from current `dev` and every ordinary PR to target `dev`, never `main`. Evidence: `AGENTS.md:21`; branch ancestry probe passed.
+- [x] Guidance permits large features to contain smaller coherent commits when that aids review, testing, or partial rollback. Evidence: `AGENTS.md:21` exact-text probe.
+- [x] Guidance prefers squashing changes that are only valid together into one atomic semantic commit so incomplete units are not independently merged or reverted. Evidence: `AGENTS.md:21`.
+- [x] Guidance explains that independently useful/revertible changes should remain separate commits, making partial rollback safer rather than mechanically squashing every PR. Evidence: `AGENTS.md:21`.
+- [x] The new wording is concise, consistent with release CI and intended protection, and does not alter installed projects' `AGENTS.md`. Evidence: one root-only paragraph changed.
+- [x] README prompt-budget counts are regenerated and `.agents/prompt_stats.py --check` passes. Evidence: 22 prompts, 40,458 bytes, ~10,123 estimated tokens.
 
 ## Scope
 
@@ -58,7 +58,7 @@ Root `AGENTS.md` gives agents one complete contribution path: branch from `dev`,
 - Observation surface (test/harness/API/UI/log/MCP/etc.): Root `AGENTS.md`, representative workflow scenarios, prompt-budget check, and GitHub branch settings from the enforcement sibling.
 - Smallest chunk: Add only PR target and atomic-commit guidance to the existing paragraph.
 - Probe/action and expected signal: Six representative scenarios each yield one unambiguous branch/PR/commit action.
-- Actual result/evidence: Not run.
+- Actual result/evidence: Work branch descends from `dev`; all six policy phrases found at `AGENTS.md:21`; prompt-budget check passed.
 - Wider checks after local proof: Compare against live rulesets and CI triggers, then regenerate prompt counts.
 
 ### Execution constraints
@@ -86,7 +86,7 @@ None.
 
 ## Progress and evidence
 
-Triaged as an actionable small documentation goal. The existing `AGENTS.md:21` paragraph is the exact edit surface and the sibling enforcement goal supplies the consistency boundary.
+Completed. Root guidance now covers branch origin, PR target, coherent feature commits, atomic squashing, partial rollback, and owner-only release updates.
 
 ## History
 
@@ -94,3 +94,4 @@ Triaged as an actionable small documentation goal. The existing `AGENTS.md:21` p
 | --- | --- | --- | --- |
 | 2026-07-16 | Codex | Created `new` | User requested explicit `dev`-origin/target PR rules and atomic-but-reviewable commit guidance. |
 | 2026-07-16 | Codex/R-20260716-queued | Triaged `ready` | Scope, scenarios, edit surface, and verification are concrete. |
+| 2026-07-16 | Codex/R-20260716-queued | Completed `done` | Branch ancestry, exact policy text, and prompt-budget probes passed. |
