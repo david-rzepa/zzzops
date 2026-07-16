@@ -70,7 +70,7 @@ ZzzOps derives semantic versions from repository history and publishes reproduci
 ## Relationships
 
 - Parent: none
-- Children (required/optional + purpose/status): [G-20260716-003](G-20260716-003-document-dev-branch-workflow.md) (required; document the `dev`-first Git and `main` release workflow; `done`). Create further implementation sub-goals after investigation if the workflow and test harness are independently verifiable.
+- Children (required/optional + purpose/status): [G-20260716-003](G-20260716-003-document-dev-branch-workflow.md) (required; initial `dev`-first Git/release guidance; `done`); [G-20260716-005](G-20260716-005-document-pr-workflow.md) (required; document `dev`-targeted PR and atomic commit policy; `new`); [G-20260716-006](G-20260716-006-protect-main-and-dev.md) (required; enforce protected branches and PR validation; `new`).
 - Dependencies (status/reason): none recorded; repository settings or branch creation may become a human-action blocker during investigation.
 - Blocks (impact): none recorded.
 
@@ -106,3 +106,4 @@ Shared planner, tests, workflow, and docs are on `dev`. Live dry runs `295350363
 | 2026-07-16 | Codex/R-20260716-1500-root | Required child `G-20260716-003` completed | Root policy is documented; this parent must now implement its stated `main` behavior. |
 | 2026-07-16 | Codex/R-20260716-1500-root | Local implementation checkpoint | Six tests and real-history dry run passed; ready for live `dev` verification. |
 | 2026-07-16 | Codex/R-20260716-1500-root | `dev` verified; set `blocked` | Two live dry runs passed with no remote mutation; explicit approval is required before the first `main` release. |
+| 2026-07-16 | Codex | Added required children `G-20260716-005` and `G-20260716-006` | User expanded the release-safety workflow with PR/commit guidance and GitHub enforcement. |
