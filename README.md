@@ -157,29 +157,29 @@ python .agents/prompt_stats.py --check
 <!-- PROMPT_BUDGET_START -->
 | Prompt | Bytes | Est. tokens |
 | --- | ---: | ---: |
-| `.agents/skills/add-zzzops-todo/SKILL.md` | 737 | 185 |
+| `.agents/skills/add-zzzops-todo/SKILL.md` | 747 | 187 |
 | `.agents/skills/analyze-zzzops-usage/SKILL.md` | 2265 | 567 |
-| `.agents/skills/execute-zzzops/SKILL.md` | 1772 | 443 |
+| `.agents/skills/execute-zzzops/SKILL.md` | 1788 | 447 |
 | `.agents/skills/execute-zzzops/references/CREATE.md` | 2644 | 661 |
-| `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3285 | 822 |
+| `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3317 | 830 |
 | `.agents/skills/execute-zzzops/references/UNBLOCK.md` | 1532 | 383 |
-| `.agents/skills/install-zzzops/SKILL.md` | 1465 | 367 |
-| `.agents/skills/migrate-zzzops-todos/SKILL.md` | 1854 | 464 |
-| `.agents/skills/suggest-zzzops-work/SKILL.md` | 2497 | 625 |
+| `.agents/skills/install-zzzops/SKILL.md` | 1478 | 370 |
+| `.agents/skills/migrate-zzzops-todos/SKILL.md` | 1870 | 468 |
+| `.agents/skills/suggest-zzzops-work/SKILL.md` | 2519 | 630 |
 | `.agents/templates/project-goals/INDEX.md` | 1135 | 284 |
 | `.agents/templates/project-goals/MIGRATION_SUMMARY.md` | 222 | 56 |
 | `.agents/templates/project-goals/PROJECT.md` | 1295 | 324 |
-| `.agents/templates/project-goals/TEMPLATE_DIFF.md` | 352 | 88 |
+| `.agents/templates/project-goals/TEMPLATE_DIFF.md` | 359 | 90 |
 | `.agents/templates/project-goals/USAGE_LEDGER.md` | 1105 | 277 |
-| `.claude/skills/install-zzzops/SKILL.md` | 382 | 96 |
+| `.claude/skills/install-zzzops/SKILL.md` | 388 | 97 |
 | `.zzzops/rules/BLOCKERS.md` | 2213 | 554 |
 | `.zzzops/rules/EXECUTION_STRATEGY.md` | 4861 | 1216 |
-| `.zzzops/rules/GOAL_SYSTEM.md` | 3641 | 911 |
+| `.zzzops/rules/GOAL_SYSTEM.md` | 3691 | 923 |
 | `.zzzops/rules/USAGE_ACCOUNTING.md` | 2355 | 589 |
-| `AGENTS.md` | 2506 | 627 |
+| `AGENTS.md` | 2529 | 633 |
 | `CLAUDE.md` | 217 | 55 |
 | `goals/TEMPLATE.md` | 1648 | 412 |
-| **Total** | **39983** | **10006** |
+| **Total** | **40178** | **10053** |
 <!-- PROMPT_BUDGET_END -->
 
 </details>

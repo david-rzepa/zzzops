@@ -11,6 +11,7 @@ Append only; corrections identify superseded rows. Follow `.zzzops/rules/USAGE_A
 | R-20260716-1500-root | root/goal-work | 2026-07-16 | G-20260716-002 | Renamed and verified all repository skill surfaces | - | - | - | - | unavailable | n/a | Fresh install/update preview passed; final UI grouping requires checkout rename/reopen. |
 | R-20260716-1500-root | root/goal-work | 2026-07-16 | G-20260716-001 | Implemented and locally verified semantic release automation | - | - | - | - | unavailable | n/a | Six synthetic/history tests and real-repository dry run passed; live CI pending. |
 | R-20260716-1500-root | root/goal-work | 2026-07-16 | G-20260716-001 | Verified two live `dev` dry runs with no remote release mutation | - | - | - | - | unavailable | n/a | Runs 29535036331 and 29535149186 passed; production release requires explicit approval. |
+| R-20260716-1500-root | root/goal-management | 2026-07-16 | G-20260716-004 | Captured test-discovered prompt-count portability bug | - | - | - | - | unavailable | n/a | No fix attempted; decision blocker queued per project policy. |
 
 ## Limit snapshots
 | Run ID | Date/time | Source | Context | Rate/credit state | Notes |
