@@ -1,7 +1,7 @@
 ---
 id: G-20260716-007-squash-v1-main-history
 title: Publish v1.0.0 as the single main root commit
-status: new
+status: triaged
 priority: P1
 value: high
 difficulty: M
@@ -12,8 +12,8 @@ updated: 2026-07-16
 target_date: null
 last_reviewed: 2026-07-16
 review_after: null
-parent: null
-depends_on: [G-20260716-001-automate-semantic-releases, G-20260716-002-brand-skills-as-zzzops, G-20260716-006-protect-main-and-dev]
+parent: G-20260716-001-automate-semantic-releases
+depends_on: [G-20260716-002-brand-skills-as-zzzops, G-20260716-006-protect-main-and-dev]
 blocks: []
 needs_human: false
 tags: [git, history-rewrite, release, v1, main]
@@ -46,7 +46,7 @@ After every earlier queued goal is complete, `main` contains exactly one root co
 ## Context and decisions
 
 - User explicitly requested this terminal goal on 2026-07-16 and authorized squashing all work into a single `main` commit.
-- This goal is deliberately behind every previously queued item; it must not be selected while `G-001`, `G-002`, or `G-006` is incomplete.
+- This required child is the operation that completes parent `G-001`; it is deliberately behind every other previously queued item and must not execute while `G-002` or `G-006` is incomplete.
 - The root commit must trigger semantic release as `v1.0.0`; use a real breaking Conventional Commit marker rather than manually falsifying the calculated version.
 - History rewriting is destructive externally, so use `--force-with-lease` against a freshly observed `origin/main` SHA and retain a verified local recovery artifact through final audit.
 - Durable state finalization must be designed before the rewrite so completing this goal does not require a second commit on `main` or move `v1.0.0` away from the sole root commit.
@@ -73,9 +73,9 @@ After every earlier queued goal is complete, `main` contains exactly one root co
 
 ## Relationships
 
-- Parent: none
+- Parent: [G-20260716-001](G-20260716-001-automate-semantic-releases.md)
 - Children (required/optional + purpose/status): none
-- Dependencies (status/reason): `G-001`, `G-002`, and `G-006` collectively cover all earlier unfinished work and must be `done` first.
+- Dependencies (status/reason): `G-002` must complete its renamed-checkout UI verification; `G-006` is done. Parent `G-001` completes from this child's release evidence rather than forming a dependency cycle.
 - Blocks (impact): none; this is the terminal release operation.
 
 ## Blockers
@@ -90,10 +90,11 @@ None.
 
 ## Progress and evidence
 
-Captured as the last queued goal. No history rewrite, tag, release, or `main` update has occurred.
+Triaged as the final required child of `G-001`. No history rewrite, tag, release, or `main` update has occurred. `C:\dev\zzzops` was cloned from `dev`; terminal execution awaits its Codex grouping check.
 
 ## History
 
 | Date | Actor/run | Change | Reason/evidence |
 | --- | --- | --- | --- |
 | 2026-07-16 | Codex | Created `new` as terminal goal | User requested a single-commit `main` history with `v1.0.0` on the initial/root commit after all earlier work completes. |
+| 2026-07-16 | Codex/R-20260716-queued | Triaged; linked as required child of `G-001` | Removed the release parent/child dependency cycle; `G-002` remains the only unfinished prerequisite besides this operation. |
