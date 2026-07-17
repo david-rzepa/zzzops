@@ -28,7 +28,7 @@ Claude Code:
 /install-zzzops preview and install ZzzOps into C:\path\to\your-project
 ```
 
-Review the preview and let the skill apply it. The installer copies discoverable skills, mechanics, and blank state—never itself, another project’s goals, or the target’s `AGENTS.md`/`CLAUDE.md`.
+Review the preview and let the skill apply it. The installer copies discoverable skills, mechanics, and blank templates—never itself, project state, another project’s goals, or the target’s `AGENTS.md`/`CLAUDE.md`.
 
 Open a new Codex task or Claude Code session in the target project so its ZzzOps skills are discovered.
 
@@ -159,10 +159,10 @@ Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required
 
 ## The files that remember things
 
-- `goals/PROJECT.md` — initialized backend, success, KPIs, acceptance criteria, and what “valuable” means.
+- `.zzzops/PROJECT.md` — tracked backend, success, KPIs, acceptance criteria, and what “valuable” means.
 - GitHub Issues — recommended canonical goals, blockers, evidence, relations, and history when selected.
-- `goals/items/` and `goals/INDEX.md` — canonical goals/derived queue when the local backend is selected.
-- `goals/USAGE_LEDGER.md` — work tokens, management overhead, and value efficiency.
+- `goals/items/` and derived `goals/INDEX.md` — created only when the local backend is selected.
+- `.zzzops/USAGE_LEDGER.md` — ignored, user-local work tokens, management overhead, and value efficiency; created on first write.
 - `.zzzops/rules/` — tracked ZzzOps operating rules; machinery, not project content.
 - `.zzzops/PREFERENCES.json` — local, ignored user opt-ins for bounded autonomous backlog refills.
 - Platform app data — opt-in per-user health preferences and minimal per-machine derived state; never repository state.
@@ -187,32 +187,31 @@ python .agents/prompt_stats.py --check
 <!-- PROMPT_BUDGET_START -->
 | Prompt | Bytes | Est. tokens |
 | --- | ---: | ---: |
-| `.agents/skills/add-zzzops-todo/SKILL.md` | 984 | 246 |
-| `.agents/skills/analyze-zzzops-usage/SKILL.md` | 2423 | 606 |
-| `.agents/skills/execute-zzzops/SKILL.md` | 2112 | 528 |
-| `.agents/skills/execute-zzzops/references/CREATE.md` | 2727 | 682 |
+| `.agents/skills/add-zzzops-todo/SKILL.md` | 1014 | 254 |
+| `.agents/skills/analyze-zzzops-usage/SKILL.md` | 2498 | 625 |
+| `.agents/skills/execute-zzzops/SKILL.md` | 2123 | 531 |
+| `.agents/skills/execute-zzzops/references/CREATE.md` | 2757 | 690 |
 | `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3394 | 849 |
 | `.agents/skills/execute-zzzops/references/UNBLOCK.md` | 1549 | 388 |
-| `.agents/skills/install-zzzops/SKILL.md` | 1465 | 367 |
-| `.agents/skills/migrate-zzzops-todos/SKILL.md` | 2074 | 519 |
+| `.agents/skills/install-zzzops/SKILL.md` | 1249 | 313 |
+| `.agents/skills/migrate-zzzops-todos/SKILL.md` | 1727 | 432 |
 | `.agents/skills/suggest-zzzops-work/SKILL.md` | 2672 | 668 |
+| `.agents/templates/project-goals/GOAL.md` | 1679 | 420 |
 | `.agents/templates/project-goals/INDEX.md` | 1135 | 284 |
-| `.agents/templates/project-goals/MIGRATION_SUMMARY.md` | 222 | 56 |
+| `.agents/templates/project-goals/MIGRATION_SUMMARY.md` | 194 | 49 |
 | `.agents/templates/project-goals/PROJECT.md` | 1485 | 372 |
-| `.agents/templates/project-goals/TEMPLATE_DIFF.md` | 352 | 88 |
 | `.agents/templates/project-goals/USAGE_LEDGER.md` | 1105 | 277 |
 | `.claude/skills/install-zzzops/SKILL.md` | 382 | 96 |
-| `.zzzops/rules/BACKENDS.md` | 1891 | 473 |
-| `.zzzops/rules/BLOCKERS.md` | 2213 | 554 |
+| `.zzzops/rules/BACKENDS.md` | 2004 | 501 |
+| `.zzzops/rules/BLOCKERS.md` | 2268 | 567 |
 | `.zzzops/rules/EXECUTION_STRATEGY.md` | 4861 | 1216 |
-| `.zzzops/rules/GOAL_SYSTEM.md` | 3816 | 954 |
+| `.zzzops/rules/GOAL_SYSTEM.md` | 3857 | 965 |
 | `.zzzops/rules/HEALTH.md` | 1598 | 400 |
 | `.zzzops/rules/INITIALIZATION.md` | 1217 | 305 |
-| `.zzzops/rules/USAGE_ACCOUNTING.md` | 2355 | 589 |
-| `AGENTS.md` | 2949 | 738 |
+| `.zzzops/rules/USAGE_ACCOUNTING.md` | 2553 | 639 |
+| `AGENTS.md` | 2963 | 741 |
 | `CLAUDE.md` | 217 | 55 |
-| `goals/TEMPLATE.md` | 1648 | 412 |
-| **Total** | **46846** | **11722** |
+| **Total** | **46501** | **11637** |
 <!-- PROMPT_BUDGET_END -->
 
 </details>

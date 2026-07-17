@@ -12,7 +12,7 @@ Inspect callable usage/limits at run start; before/after `L/XL` phases; after tw
 
 ## Ledger
 
-Append to `goals/USAGE_LEDGER.md` with `R-YYYYMMDD-HHMM-agent`; never log prompts/secrets/private content.
+Before the first append run `python .agents/zzzops.py --repo . usage ensure`; it idempotently creates ignored user-local `.zzzops/USAGE_LEDGER.md` from the installed blank template. Append `R-YYYYMMDD-HHMM-agent`; never log prompts/secrets/private content. Reading or installing never creates the ledger.
 
 - Goal work: investigation, implementation, tests, verification, domain reasoning.
 - Management: inventory, prioritization, claims, links/status/blocker/index/ledger work, delegation/review/reconciliation/handoff.

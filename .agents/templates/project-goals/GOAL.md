@@ -1,6 +1,6 @@
 # Goal template
 
-Copy to `goals/items/<id>.md`; replace placeholders.
+For the `local_files` backend, copy to `goals/items/<id>.md`; replace placeholders.
 
 ```markdown
 ---

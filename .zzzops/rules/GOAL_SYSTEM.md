@@ -2,15 +2,15 @@
 
 ## Authority and records
 
-Order: user/safety; project instructions; `goals/PROJECT.md`; goal; derived `goals/INDEX.md`; append-only ledger. Repair derived drift from goal truth.
+Order: user/safety; project instructions; `.zzzops/PROJECT.md`; goal; local derived `goals/INDEX.md`; ignored append-only ledger. Repair derived drift from goal truth.
 
 Before every non-install workflow follow `INITIALIZATION.md`, then route through the one backend in `BACKENDS.md`. Local goal-file details below apply only to `local_files`.
 
-- Stable goals: `goals/items/G-YYYYMMDD-NNN-slug.md`; follow `goals/TEMPLATE.md`. Use relative links; keep progress resumable and history append-only.
+- Stable local goals: `goals/items/G-YYYYMMDD-NNN-slug.md`; start from `.agents/templates/project-goals/GOAL.md`. Use relative links; keep progress resumable and history append-only. Do not create `goals/` for GitHub.
 - Never store secrets/raw sensitive data; link to approved systems and name authority/sync direction.
 - Project charter defines success/value. Preserve unknown KPI/target/tradeoff fields; ask rather than invent.
 - Ignored `.zzzops/PREFERENCES.json` is user-local: validate types/ranges, preserve unknown keys, never commit/enable options yourself.
-- Canonical blank shapes live in `.agents/templates/project-goals/`. Never overwrite state mechanically; `$migrate-zzzops-todos` processes pending `.zzzops/migration/template-diffs/` preservation-aware.
+- Canonical blank shapes live in `.agents/templates/project-goals/`. Installation copies mechanics/templates only and never creates or overwrites project state.
 
 ## Lifecycle
 

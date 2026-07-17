@@ -1,6 +1,6 @@
 # Goal backends
 
-`goals/PROJECT.md` selects exactly one authority.
+`.zzzops/PROJECT.md` selects exactly one authority.
 
 When initialization selects GitHub while local goals exist, shared state must set `migration_pending:true`. Until an approved migration clears it, local files remain transitional truth and other ordinary workflows stop; never read/write both as co-authorities.
 
@@ -16,7 +16,7 @@ Prefer when inspect plus a read-only `gh api repos/{owner}/{repo}` probe confirm
 
 ## Local files (`local_files`)
 
-Use `goals/items/` as truth and derive `goals/INDEX.md`; follow `GOAL_SYSTEM.md`. Backend switching/import is a separate reviewed migration.
+Use `goals/items/` as truth and derive `goals/INDEX.md` only for this backend; create neither for GitHub. Start records from `.agents/templates/project-goals/GOAL.md`; follow `GOAL_SYSTEM.md`. Backend switching/import is a separate reviewed operation.
 
 ## Git boundary
 

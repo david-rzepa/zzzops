@@ -5,7 +5,7 @@ description: Add one durable ZzzOps TODO/goal using the installed goal template.
 
 # Add ZzzOps TODO
 
-Run `.zzzops/rules/INITIALIZATION.md`, then `.zzzops/rules/BACKENDS.md`. Inspect context and the selected backend for duplicates. Ask promptly about consequential ambiguity. Create one canonical goal using the managed GitHub issue schema or, for `local_files`, `goals/TEMPLATE.md` plus index/backlinks.
+Run `.zzzops/rules/INITIALIZATION.md`, then `.zzzops/rules/BACKENDS.md`. Inspect context and the selected backend for duplicates. Ask promptly about consequential ambiguity. Create one canonical goal using the managed GitHub issue schema or, for `local_files`, `.agents/templates/project-goals/GOAL.md` plus derived index/backlinks.
 
 Run the entry/final hooks in `.zzzops/rules/HEALTH.md`; health remains opt-in and never blocks capture.
 

@@ -20,9 +20,11 @@ class InitializationTests(unittest.TestCase):
         template_dir = self.repo / ".agents" / "templates" / "project-goals"
         template_dir.mkdir(parents=True)
         (template_dir / "PREFERENCES.json").write_text("{}\n", encoding="utf-8")
+        ledger_template = MODULE_PATH.parent / "templates" / "project-goals" / "USAGE_LEDGER.md"
+        (template_dir / "USAGE_LEDGER.md").write_text(ledger_template.read_text(encoding="utf-8"), encoding="utf-8")
         source = MODULE_PATH.parent / "templates" / "project-goals" / "PROJECT.md"
-        (self.repo / "goals").mkdir()
-        (self.repo / "goals" / "PROJECT.md").write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+        (self.repo / ".zzzops").mkdir()
+        (self.repo / ".zzzops" / "PROJECT.md").write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
 
     def tearDown(self):
         self.temp.cleanup()
@@ -63,7 +65,7 @@ class InitializationTests(unittest.TestCase):
     @mock.patch.object(zzzops, "command_probe", return_value={"available": False, "ok": False, "detail": "test"})
     @mock.patch.object(zzzops, "github_repository_probe", return_value={"available": False, "usable": False})
     def test_inspect_is_read_only_and_reports_incomplete(self, _github, _probe):
-        project = self.repo / "goals" / "PROJECT.md"
+        project = self.repo / ".zzzops" / "PROJECT.md"
         before = project.read_bytes()
         result = zzzops.inspect_initialization(self.repo)
         self.assertFalse(result["initialized"])
@@ -83,7 +85,7 @@ class InitializationTests(unittest.TestCase):
         self.assertTrue(result["initialized"])
         self.assertEqual("local_files", result["state"]["backend"])
         self.assertEqual([], result["missing_charter_fields"])
-        self.assertIn("Agents complete durable", (self.repo / "goals" / "PROJECT.md").read_text(encoding="utf-8"))
+        self.assertIn("Agents complete durable", (self.repo / ".zzzops" / "PROJECT.md").read_text(encoding="utf-8"))
 
     def test_rejects_unconfirmed_unknown_and_stale_plans(self):
         plan = self.plan()
@@ -101,7 +103,7 @@ class InitializationTests(unittest.TestCase):
         self.assertIn("github.usable must be true for github_issues", zzzops.validate_plan(self.repo, plan))
 
     def test_invalid_project_state_is_reported(self):
-        project = self.repo / "goals" / "PROJECT.md"
+        project = self.repo / ".zzzops" / "PROJECT.md"
         project.write_text("<!-- zzzops-project-state\n{bad}\nzzzops-project-state -->\n", encoding="utf-8")
         with mock.patch.object(zzzops, "command_probe", return_value={}), mock.patch.object(zzzops, "github_repository_probe", return_value={}):
             result = zzzops.inspect_initialization(self.repo)
@@ -109,7 +111,7 @@ class InitializationTests(unittest.TestCase):
         self.assertIn("Invalid project state JSON", result["state_error"])
 
     def test_atomic_text_cleans_temporary_file_on_replace_failure(self):
-        path = self.repo / "goals" / "failure.md"
+        path = self.repo / ".zzzops" / "failure.md"
         with mock.patch.object(zzzops.os, "replace", side_effect=OSError("boom")):
             with self.assertRaises(OSError):
                 zzzops.atomic_text(path, "new\n")
@@ -124,7 +126,7 @@ class InitializationTests(unittest.TestCase):
         self.assertIn("unconfirmed proposals: E-002", errors)
 
     def test_rejects_unsupported_project_state_schema(self):
-        project = self.repo / "goals" / "PROJECT.md"
+        project = self.repo / ".zzzops" / "PROJECT.md"
         project.write_text(
             '<!-- zzzops-project-state\n{"schema_version": 99, "initialized": false, "backend": null, "repository": null, "revision": 0}\nzzzops-project-state -->\n',
             encoding="utf-8",
@@ -136,6 +138,38 @@ class InitializationTests(unittest.TestCase):
 
     def test_probe_output_redacts_url_userinfo(self):
         self.assertEqual("https://***@example.test/repo.git", zzzops.sanitize_output("https://secret@example.test/repo.git"))
+
+    def test_shared_and_user_local_state_paths_are_separate(self):
+        self.assertEqual(self.repo / ".zzzops" / "PROJECT.md", zzzops.project_path(self.repo))
+        self.assertEqual(self.repo / ".zzzops" / "USAGE_LEDGER.md", zzzops.usage_ledger_path(self.repo))
+
+    def test_usage_ledger_is_created_lazily_and_idempotently(self):
+        path = zzzops.usage_ledger_path(self.repo)
+        expected = (self.repo / ".agents" / "templates" / "project-goals" / "USAGE_LEDGER.md").read_text(encoding="utf-8")
+        self.assertFalse(path.exists())
+        self.assertTrue(zzzops.ensure_usage_ledger(self.repo)["created"])
+        self.assertEqual(expected, path.read_text(encoding="utf-8"))
+        self.assertFalse(zzzops.ensure_usage_ledger(self.repo)["created"])
+
+    def test_usage_ledger_storage_failure_has_no_tracked_fallback(self):
+        path = zzzops.usage_ledger_path(self.repo)
+        with mock.patch.object(zzzops, "atomic_text", side_effect=OSError("denied")):
+            result = zzzops.ensure_usage_ledger(self.repo)
+        self.assertFalse(result["ok"])
+        self.assertEqual("storage_unavailable", result["reason_code"])
+        self.assertEqual("none; grant write access to the repository-local .zzzops directory", result["fallback"])
+        self.assertFalse(path.exists())
+
+    @mock.patch.object(zzzops, "command_probe", return_value={"available": False, "ok": False, "detail": "test"})
+    @mock.patch.object(zzzops, "github_repository_probe", return_value={"available": False, "usable": False})
+    def test_missing_project_reports_final_path_without_creating_state(self, _github, _probe):
+        (self.repo / ".zzzops" / "PROJECT.md").unlink()
+        result = zzzops.inspect_initialization(self.repo)
+        self.assertEqual(str(self.repo / ".zzzops" / "PROJECT.md"), result["project_path"])
+        self.assertFalse(result["initialized"])
+        self.assertFalse(result["valid_state"])
+        self.assertFalse((self.repo / ".zzzops" / "PROJECT.md").exists())
+        self.assertFalse(zzzops.usage_ledger_path(self.repo).exists())
 
     @mock.patch.object(zzzops.shutil, "which", return_value="gh")
     @mock.patch.object(zzzops.subprocess, "run")

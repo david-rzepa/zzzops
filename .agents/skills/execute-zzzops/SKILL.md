@@ -9,7 +9,7 @@ First run `../../../.zzzops/rules/INITIALIZATION.md`, then route through `../../
 
 Run `../../../.zzzops/rules/HEALTH.md` at entry/final, after actual user responses, and at natural long-run checkpoints.
 
-- Create/triage/decompose: [CREATE.md](references/CREATE.md) and `../../../goals/TEMPLATE.md`.
+- Create/triage/decompose: [CREATE.md](references/CREATE.md) and `../../templates/project-goals/GOAL.md`.
 - Unblock/interview: [UNBLOCK.md](references/UNBLOCK.md) and `../../../.zzzops/rules/BLOCKERS.md`.
 - Select/execute/complete/handoff: [EXECUTE.md](references/EXECUTE.md).
 - Tests, delegation, parallelism, or long commands: `../../../.zzzops/rules/EXECUTION_STRATEGY.md`.

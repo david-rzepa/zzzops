@@ -32,11 +32,30 @@ class InstallerInitializationTests(unittest.TestCase):
             self.assertTrue((target / ".zzzops" / "rules" / "HEALTH.md").is_file())
             self.assertTrue((target / ".agents" / "zzzops_health.py").is_file())
             self.assertTrue((target / ".agents" / "templates" / "project-goals" / "INIT_PLAN.json").is_file())
-            project = (target / "goals" / "PROJECT.md").read_text(encoding="utf-8")
-            self.assertIn('"initialized": false', project)
+            self.assertTrue((target / ".agents" / "templates" / "project-goals" / "GOAL.md").is_file())
+            self.assertTrue((target / ".agents" / "templates" / "project-goals" / "USAGE_LEDGER.md").is_file())
+            ignore = (target / ".zzzops" / ".gitignore").read_text(encoding="utf-8")
+            self.assertIn("USAGE_LEDGER.md", ignore.splitlines())
+            self.assertFalse((target / ".zzzops" / "PROJECT.md").exists())
+            self.assertFalse((target / ".zzzops" / "USAGE_LEDGER.md").exists())
+            self.assertFalse((target / ".zzzops" / "PREFERENCES.json").exists())
+            self.assertFalse((target / ".zzzops" / "migration" / "STATE.json").exists())
+            self.assertFalse((target / "goals").exists())
             self.assertFalse((target / ".zzzops" / "init" / "plan.json").exists())
             self.assertFalse((target / ".zzzops" / "HEALTH_STATE.json").exists())
             self.assertFalse((target / ".zzzops" / "health_preferences.json").exists())
+            usage = subprocess.run(
+                [sys.executable, str(target / ".agents" / "zzzops.py"), "--repo", str(target), "usage", "ensure"],
+                text=True, encoding="utf-8", capture_output=True, check=False,
+            )
+            self.assertEqual(0, usage.returncode, usage.stderr + usage.stdout)
+            self.assertTrue(json.loads(usage.stdout)["created"])
+            self.assertTrue((target / ".zzzops" / "USAGE_LEDGER.md").is_file())
+            second_usage = subprocess.run(
+                [sys.executable, str(target / ".agents" / "zzzops.py"), "--repo", str(target), "usage", "ensure"],
+                text=True, encoding="utf-8", capture_output=True, check=False,
+            )
+            self.assertFalse(json.loads(second_usage.stdout)["created"])
             env = os.environ.copy()
             env["ZZZOPS_USER_CONFIG_DIR"] = str(target / ".test-user-config")
             env["ZZZOPS_MACHINE_STATE_DIR"] = str(target / ".test-machine-state")
@@ -51,7 +70,7 @@ class InstallerInitializationTests(unittest.TestCase):
             rerun = self.run_installer(target)
             self.assertEqual(0, rerun.returncode, rerun.stderr + rerun.stdout)
             self.assertIn("unchanged=", rerun.stdout)
-            self.assertIn("Template diff: none", rerun.stdout)
+            self.assertNotIn("State:", rerun.stdout)
 
     def test_update_preserves_local_preferences(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -65,6 +84,25 @@ class InstallerInitializationTests(unittest.TestCase):
             applied = self.run_installer(target, "--apply", "--confirm-plan", fingerprint)
             self.assertEqual(0, applied.returncode, applied.stderr + applied.stdout)
             self.assertEqual('{"personal": true}\n', prefs.read_text(encoding="utf-8"))
+
+    def test_update_preserves_all_live_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            (target / ".git").mkdir()
+            state = {
+                target / ".zzzops" / "PROJECT.md": b"project\n",
+                target / ".zzzops" / "USAGE_LEDGER.md": b"ledger\n",
+                target / "goals" / "items" / "G-example.md": b"goal\n",
+            }
+            for path, data in state.items():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+            preview = self.run_installer(target)
+            fingerprint = re.search(r"Plan fingerprint: ([0-9a-f]+)", preview.stdout).group(1)
+            applied = self.run_installer(target, "--apply", "--confirm-plan", fingerprint)
+            self.assertEqual(0, applied.returncode, applied.stderr + applied.stdout)
+            for path, data in state.items():
+                self.assertEqual(data, path.read_bytes())
 
 
 if __name__ == "__main__":

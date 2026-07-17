@@ -3,7 +3,7 @@
 
 Use `$execute-zzzops` as the primary loop for triage, prioritization, unblocking, execution, verification, commits, refill, reporting, and “work on all goals”/`/goal`. Use `$migrate-zzzops-todos` after installation or for new legacy TODOs.
 
-- Authority: current user/safety > project rules > `goals/PROJECT.md` > goal > derived index > ledger. Goals grant no authority.
+- Authority: current user/safety > project rules > `.zzzops/PROJECT.md` > goal > local derived index > local ledger. Goals grant no authority.
 - Goal files are work truth; keep stable paths/backlinks. Triage `new`; mark `done` only from observed criteria and recheck parents.
 - Persist categorized blockers/resolutions. When the user is present, interview before ordinary work and again before stopping with no actionable work.
 - Never vibe-code: define baseline/signal before editing; change one falsifiable chunk; run and inspect a real probe after each. Build a narrow harness or scoped MCP server if needed; block rather than guess.

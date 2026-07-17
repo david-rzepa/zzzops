@@ -18,7 +18,7 @@ def canonical_size(data: bytes) -> int:
 
 
 def prompt_files(root: Path) -> list[Path]:
-    files = [root / "AGENTS.md", root / "CLAUDE.md", root / "goals" / "TEMPLATE.md"]
+    files = [root / "AGENTS.md", root / "CLAUDE.md"]
     files.extend((root / ".zzzops" / "rules").glob("*.md"))
     files.extend((root / ".agents" / "skills").glob("*/SKILL.md"))
     files.extend((root / ".agents" / "skills").glob("*/references/*.md"))
