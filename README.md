@@ -140,6 +140,8 @@ Codex and Claude Code do not portably guarantee message-send timestamps. Exact t
 
 ```powershell
 python .agents/zzzops.py --repo . health status
+python .agents/zzzops.py --repo . health snooze
+python .agents/zzzops.py --repo . health resume
 python .agents/zzzops.py --repo . health reset
 ```
 

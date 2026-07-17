@@ -124,6 +124,25 @@ class HealthCliTests(unittest.TestCase):
         self.assertFalse((self.config / "health_preferences.json").exists())
         self.assertFalse((self.machine / "health_state.json").exists())
 
+    def test_snooze_uses_user_default_and_resume_clears_it(self):
+        preferences = zzzops.health.default_preferences()
+        preferences["enabled"] = True
+        preferences["delivery"]["snooze_minutes"] = 25
+        zzzops.private_atomic_json(self.config / "health_preferences.json", preferences)
+        result = zzzops.health_snooze(None, "2026-07-16T12:00:00Z")
+        self.assertEqual("2026-07-16T12:25:00Z", result["snoozed_until"])
+        decision = zzzops.health_check("2026-07-16T12:10:00Z", None, "current_only")
+        self.assertEqual("snoozed", decision["decision"]["reason_code"])
+        resumed = zzzops.health_resume()
+        self.assertTrue(resumed["changed"])
+        state = json.loads((self.machine / "health_state.json").read_text(encoding="utf-8"))
+        self.assertIsNone(state["snoozed_until"])
+
+    def test_snooze_storage_denial_is_explicit(self):
+        with mock.patch.object(zzzops, "private_atomic_json", side_effect=PermissionError("sandbox")):
+            result = zzzops.health_snooze(5, "2026-07-16T12:00:00Z")
+        self.assertEqual("storage_unavailable", result["reason_code"])
+
     def test_interactive_cancel_does_not_create_preferences(self):
         with mock.patch("builtins.input", side_effect=["q"]):
             zzzops.edit_health_preferences()

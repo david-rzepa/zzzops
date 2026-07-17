@@ -150,13 +150,11 @@ class HealthPolicyTests(unittest.TestCase):
         self.assertEqual("late_night", decision["reason_code"])
         self.assertIn("-05:00", decision["evidence"]["local_time"])
 
-    def test_invalid_values_and_blocking_are_rejected(self):
+    def test_invalid_values_are_rejected(self):
         prefs = self.prefs()
-        prefs["delivery"]["blocking"] = True
         prefs["schedule"]["work_days"] = [0, 0, 9]
         prefs["reminders"]["break"]["after_minutes"] = 0
         errors = health.validate_preferences(prefs)
-        self.assertIn("delivery.blocking is unsupported; health nudges are nonblocking", errors)
         self.assertTrue(any("work_days" in error for error in errors))
         self.assertTrue(any("break.after_minutes" in error for error in errors))
 

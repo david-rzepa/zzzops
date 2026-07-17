@@ -42,7 +42,6 @@ def default_preferences() -> dict[str, Any]:
             "snooze_minutes": 30,
             "inactivity_reset_minutes": 45,
             "tone": "gentle",
-            "blocking": False,
         },
         "privacy": {"retention_hours": 48},
     }
@@ -56,7 +55,6 @@ def default_state() -> dict[str, Any]:
         "activity_precision": None,
         "last_nudge_at": {},
         "snoozed_until": None,
-        "paused_until": None,
         "nudge_count": {},
     }
 
@@ -116,9 +114,6 @@ def validate_preferences(value: dict[str, Any]) -> list[str]:
         _integer(errors, delivery, f"delivery.{key}", key, low, high)
     if delivery.get("tone") not in {"gentle", "direct", "humorous"}:
         errors.append("delivery.tone must be gentle, direct, or humorous")
-    _boolean(errors, delivery, "delivery.blocking", "blocking")
-    if delivery.get("blocking") is True:
-        errors.append("delivery.blocking is unsupported; health nudges are nonblocking")
     _integer(errors, p.get("privacy", {}), "privacy.retention_hours", "retention_hours", 1, 720)
     return errors
 
@@ -128,7 +123,7 @@ def validate_state(value: dict[str, Any]) -> list[str]:
     errors = []
     if state.get("schema_version") != SCHEMA_VERSION:
         errors.append(f"state.schema_version must be {SCHEMA_VERSION}")
-    for key in ("session_started_at", "last_activity_at", "snoozed_until", "paused_until"):
+    for key in ("session_started_at", "last_activity_at", "snoozed_until"):
         if state.get(key) is not None and _parse_instant(state.get(key)) is None:
             errors.append(f"state.{key} must be an ISO-8601 instant or null")
     if state.get("activity_precision") not in PRECISIONS | {None}:
@@ -172,10 +167,9 @@ def evaluate(
         allowed = allowed or precision == "observed_receipt" and prefs["signals"]["allow_observed_receipt"]
         if allowed:
             current = _record_activity(current, stamp, precision, prefs)
-    for gate in ("paused_until", "snoozed_until"):
-        until = _parse_instant(current.get(gate))
-        if until and now < until:
-            return _decision(False, gate.removesuffix("_until"), evidence={"until": _iso(until)}), current
+    until = _parse_instant(current.get("snoozed_until"))
+    if until and now < until:
+        return _decision(False, "snoozed", evidence={"until": _iso(until)}), current
     last_any = _parse_instant(current["last_nudge_at"].get("any"))
     cooldown = timedelta(minutes=prefs["delivery"]["cooldown_minutes"])
     if last_any and now - last_any < cooldown:
@@ -230,7 +224,7 @@ def _select_reason(local: datetime, now: datetime, prefs: dict[str, Any], state:
 def _prune(state: dict[str, Any], now: datetime, retention_hours: int) -> dict[str, Any]:
     last = _parse_instant(state.get("last_activity_at"))
     if last and now - last > timedelta(hours=retention_hours):
-        kept = {"paused_until": state.get("paused_until"), "snoozed_until": state.get("snoozed_until")}
+        kept = {"snoozed_until": state.get("snoozed_until")}
         state = default_state()
         state.update(kept)
     cutoff = now - timedelta(hours=retention_hours)

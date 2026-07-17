@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -786,6 +786,7 @@ def health_status() -> dict[str, Any]:
         "state_exists": state_path.exists(),
         "activity_precision": state.get("activity_precision"),
         "last_activity_at": state.get("last_activity_at"),
+        "snoozed_until": state.get("snoozed_until"),
     }
 
 
@@ -825,6 +826,38 @@ def health_reset(include_preferences: bool) -> dict[str, Any]:
         except OSError as exc:
             return storage_error(exc, path)
     return {"ok": True, "removed": removed}
+
+
+def health_snooze(minutes: int | None, now_value: str | None) -> dict[str, Any]:
+    _preferences_path, preferences = load_user_health_preferences()
+    state_path, state = load_machine_health_state()
+    duration = preferences["delivery"]["snooze_minutes"] if minutes is None else minutes
+    if not 1 <= duration <= 1440:
+        raise ValueError("--minutes must be from 1 to 1440")
+    now = datetime.now(timezone.utc) if now_value is None else health._parse_instant(now_value)
+    if now is None:
+        raise ValueError("--now must be an ISO-8601 instant with an offset")
+    until = now + timedelta(minutes=duration)
+    state["snoozed_until"] = health._iso(until)
+    try:
+        private_atomic_json(state_path, state)
+    except OSError as exc:
+        return storage_error(exc, state_path)
+    return {"ok": True, "snoozed_until": health._iso(until), "state_path": str(state_path)}
+
+
+def health_resume() -> dict[str, Any]:
+    state_path, state = load_machine_health_state()
+    if not state_path.exists():
+        return {"ok": True, "changed": False, "state_path": str(state_path)}
+    changed = state.get("snoozed_until") is not None
+    state["snoozed_until"] = None
+    if changed:
+        try:
+            private_atomic_json(state_path, state)
+        except OSError as exc:
+            return storage_error(exc, state_path)
+    return {"ok": True, "changed": changed, "state_path": str(state_path)}
 
 
 def interactive(repo: Path) -> None:
@@ -872,6 +905,10 @@ def main() -> int:
     record_command.add_argument("--precision", choices=("exact_message", "observed_receipt"), required=True)
     reset_command = health_commands.add_parser("reset", help="Delete machine health state")
     reset_command.add_argument("--preferences", action="store_true", help="Also delete user health preferences")
+    snooze_command = health_commands.add_parser("snooze", help="Suppress health nudges temporarily")
+    snooze_command.add_argument("--minutes", type=int, help="Override the configured snooze duration")
+    snooze_command.add_argument("--now", help="Injected ISO-8601 current instant (tests/harnesses)")
+    health_commands.add_parser("resume", help="Clear the current snooze")
     args = parser.parse_args()
     repo = args.repo.resolve()
     if not (repo / ".agents" / "templates" / "project-goals" / "PREFERENCES.json").is_file():
@@ -895,8 +932,12 @@ def main() -> int:
                 result = health_status()
             elif args.health_command in {"check", "record"}:
                 result = health_check(args.now, args.activity_timestamp, args.precision)
-            else:
+            elif args.health_command == "reset":
                 result = health_reset(args.preferences)
+            elif args.health_command == "snooze":
+                result = health_snooze(args.minutes, args.now)
+            else:
+                result = health_resume()
             print(json.dumps(result, indent=2, ensure_ascii=False))
             return 0 if result.get("ok") else 2
         else:

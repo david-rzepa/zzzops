@@ -20,7 +20,7 @@ Never scrape transcript/session files or relabel receipt time as send time. With
 | Linux | `$XDG_CONFIG_HOME/zzzops/health_preferences.json` or `~/.config/...` | `$XDG_STATE_HOME/zzzops/health_state.json` or `~/.local/state/...` |
 | macOS | `~/Library/Application Support/ZzzOps/health_preferences.json` | `~/Library/Application Support/ZzzOps/health_state.json` |
 
-`ZZZOPS_USER_CONFIG_DIR` and `ZZZOPS_MACHINE_STATE_DIR` override directories without changing the schema. State is created lazily and contains only session/last-activity instants, precision, cooldown/snooze/pause instants, and per-reason counters. It never stores prompts, messages, or timestamp history. Reset deletes files; installers never create or overwrite them.
+`ZZZOPS_USER_CONFIG_DIR` and `ZZZOPS_MACHINE_STATE_DIR` override directories without changing the schema. State is created lazily and contains only session/last-activity instants, precision, cooldown/snooze instants, and per-reason counters. It never stores prompts, messages, or timestamp history. Reset deletes files; installers never create or overwrite them.
 
 ## Verification
 
