@@ -3,6 +3,7 @@
   "base_digest": "sha256:replace-from-init-inspect",
   "confirmed": false,
   "backend": "github_issues",
+  "migration_pending": false,
   "repository": {
     "identity": "owner/repository",
     "remote": "https://github.com/owner/repository.git"

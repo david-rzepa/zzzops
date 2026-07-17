@@ -2,6 +2,8 @@
 
 `goals/PROJECT.md` selects exactly one authority.
 
+When initialization selects GitHub while local goals exist, shared state must set `migration_pending:true`. Until an approved migration clears it, local files remain transitional truth and other ordinary workflows stop; never read/write both as co-authorities.
+
 ## GitHub Issues (`github_issues`)
 
 Prefer when inspect plus a read-only `gh api repos/{owner}/{repo}` probe confirms identity, authentication, Issues, and permission. Agents use native `gh issue`/`gh api`; the CLI only validates managed structures.

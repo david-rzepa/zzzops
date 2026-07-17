@@ -4,6 +4,7 @@
 {
   "backend": null,
   "initialized": false,
+  "migration_pending": false,
   "repository": null,
   "revision": 0,
   "schema_version": 1

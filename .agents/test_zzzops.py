@@ -34,6 +34,7 @@ class InitializationTests(unittest.TestCase):
             "base_digest": inspection["base_digest"],
             "confirmed": True,
             "backend": "local_files",
+            "migration_pending": False,
             "repository": {"identity": "example/repo", "remote": "local"},
             "charter": {
                 "outcome": "Agents complete durable project work autonomously.",

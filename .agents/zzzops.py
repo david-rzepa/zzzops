@@ -121,7 +121,7 @@ def parse_project_state(text: str) -> dict[str, Any] | None:
 def validate_project_state(state: Any) -> list[str]:
     if not isinstance(state, dict):
         return ["project state must be an object"]
-    allowed = {"schema_version", "initialized", "backend", "repository", "revision"}
+    allowed = {"schema_version", "initialized", "backend", "repository", "revision", "migration_pending"}
     errors = []
     unknown = sorted(set(state) - allowed)
     if unknown:
@@ -132,14 +132,16 @@ def validate_project_state(state: Any) -> list[str]:
         errors.append("initialized must be boolean")
     if not isinstance(state.get("revision"), int) or isinstance(state.get("revision"), bool) or state.get("revision", -1) < 0:
         errors.append("revision must be a non-negative integer")
+    if not isinstance(state.get("migration_pending"), bool):
+        errors.append("migration_pending must be boolean")
     if state.get("initialized") is True:
         if state.get("backend") not in BACKENDS:
             errors.append("initialized backend must be github_issues or local_files")
         repository = state.get("repository")
         if not isinstance(repository, dict) or not nonempty(repository.get("identity")):
             errors.append("initialized repository.identity is required")
-    elif state.get("backend") is not None or state.get("repository") is not None:
-        errors.append("uninitialized state cannot select a backend or repository")
+    elif state.get("backend") is not None or state.get("repository") is not None or state.get("migration_pending") is not False:
+        errors.append("uninitialized state cannot select a backend, repository, or migration")
     return errors
 
 
@@ -318,7 +320,7 @@ def validate_plan(repo: Path, plan: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     allowed = {
         "schema_version", "base_digest", "confirmed", "backend", "repository",
-        "charter", "evidence", "confirmations", "github",
+        "charter", "evidence", "confirmations", "github", "migration_pending",
     }
     unknown = sorted(set(plan) - allowed)
     if unknown:
@@ -333,6 +335,12 @@ def validate_plan(repo: Path, plan: dict[str, Any]) -> list[str]:
     backend = plan.get("backend")
     if backend not in BACKENDS:
         errors.append("backend must be github_issues or local_files")
+    if not isinstance(plan.get("migration_pending"), bool):
+        errors.append("migration_pending must be boolean")
+    local_goals = list((repo / "goals" / "items").glob("*.md"))
+    expected_migration = backend == "github_issues" and bool(local_goals)
+    if plan.get("migration_pending") is not expected_migration:
+        errors.append(f"migration_pending must be {str(expected_migration).lower()} for current local goal state")
     repository = plan.get("repository")
     if not isinstance(repository, dict) or not nonempty(repository.get("identity")):
         errors.append("repository.identity is required")
@@ -425,6 +433,7 @@ def render_project(plan: dict[str, Any], revision: int) -> str:
         "backend": plan["backend"],
         "repository": plan["repository"],
         "revision": revision,
+        "migration_pending": plan["migration_pending"],
     }
     block = json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True)
     kpis = "\n".join(

@@ -25,6 +25,7 @@ Append only; corrections identify superseded rows. Follow `.zzzops/rules/USAGE_A
 | R-20260716-execute-root | root/goal-work | 2026-07-16 | G-011 | Added canonical backend contract and workflow routing | - | - | - | - | unavailable | n/a | Ten focused issue/schema/static workflow tests passed; exact token usage unavailable. |
 | R-20260716-execute-root | root/goal-work | 2026-07-16 | G-012 | Proved installation, docs, CI discovery, and prompt accounting | - | - | - | - | unavailable | n/a | Clean/update installer tests and full local checks passed; exact token usage unavailable. |
 | R-20260716-execute-root | root/goal-management | 2026-07-16 | G-008 audit | Closed capability/schema/evidence verification gaps and persisted a resumable plan | - | - | - | - | unavailable | n/a | Live GitHub probe and 14 focused tests passed; only explicit charter confirmation remains. |
+| R-20260716-execute-root | root/goal-management | 2026-07-16 | G-008/G-009 | Resolved charter and health-policy blockers; applied initialized revision 1 | - | - | - | - | unavailable | n/a | User confirmed both decisions; GitHub migration explicitly approved. |
 
 ## Limit snapshots
 | Run ID | Date/time | Source | Context | Rate/credit state | Notes |

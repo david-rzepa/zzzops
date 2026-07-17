@@ -182,20 +182,20 @@ python .agents/prompt_stats.py --check
 | `.agents/skills/suggest-zzzops-work/SKILL.md` | 2577 | 645 |
 | `.agents/templates/project-goals/INDEX.md` | 1135 | 284 |
 | `.agents/templates/project-goals/MIGRATION_SUMMARY.md` | 222 | 56 |
-| `.agents/templates/project-goals/PROJECT.md` | 1455 | 364 |
+| `.agents/templates/project-goals/PROJECT.md` | 1485 | 372 |
 | `.agents/templates/project-goals/TEMPLATE_DIFF.md` | 352 | 88 |
 | `.agents/templates/project-goals/USAGE_LEDGER.md` | 1105 | 277 |
 | `.claude/skills/install-zzzops/SKILL.md` | 382 | 96 |
-| `.zzzops/rules/BACKENDS.md` | 1629 | 408 |
+| `.zzzops/rules/BACKENDS.md` | 1891 | 473 |
 | `.zzzops/rules/BLOCKERS.md` | 2213 | 554 |
 | `.zzzops/rules/EXECUTION_STRATEGY.md` | 4861 | 1216 |
 | `.zzzops/rules/GOAL_SYSTEM.md` | 3816 | 954 |
-| `.zzzops/rules/INITIALIZATION.md` | 1114 | 279 |
+| `.zzzops/rules/INITIALIZATION.md` | 1217 | 305 |
 | `.zzzops/rules/USAGE_ACCOUNTING.md` | 2355 | 589 |
 | `AGENTS.md` | 2949 | 738 |
 | `CLAUDE.md` | 217 | 55 |
 | `goals/TEMPLATE.md` | 1648 | 412 |
-| **Total** | **44332** | **11095** |
+| **Total** | **44727** | **11194** |
 <!-- PROMPT_BUDGET_END -->
 
 </details>
