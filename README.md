@@ -132,7 +132,7 @@ python .agents/zzzops.py
 
 It edits project preferences and optional user health settings. Tomorrow it may achieve sentience and add a “notify spouse that deployment is stable” menu item, so the command has room to grow.
 
-## Optional bedtime enforcement
+## Optional health reminders
 
 Health nudges are off until each user enables them in `python .agents/zzzops.py`. Preferences are per user; derived timestamps/counters are per machine. Windows uses roaming `%APPDATA%\ZzzOps\health_preferences.json` and local `%LOCALAPPDATA%\ZzzOps\health_state.json`; Linux uses XDG config/state; macOS uses `~/Library/Application Support/ZzzOps/`. `ZZZOPS_USER_CONFIG_DIR` and `ZZZOPS_MACHINE_STATE_DIR` provide explicit paths for sandboxes and harnesses. ZzzOps never bypasses denied storage or silently falls back into the repository.
 

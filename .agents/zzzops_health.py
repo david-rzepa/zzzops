@@ -236,7 +236,7 @@ def _prune(state: dict[str, Any], now: datetime, retention_hours: int) -> dict[s
 
 
 def _decision(nudge: bool, reason: str, **extra: Any) -> dict[str, Any]:
-    return {"nudge": nudge, "reason_code": reason, "blocking": False, **extra}
+    return {"nudge": nudge, "reason_code": reason, **extra}
 
 
 def _message(reason: str, tone: str) -> str:

@@ -46,7 +46,7 @@ class HealthPolicyTests(unittest.TestCase):
         self.assertTrue(decision["nudge"])
         self.assertEqual("break", decision["reason_code"])
         self.assertEqual("exact_message", decision["evidence"]["precision"])
-        self.assertFalse(decision["blocking"])
+        self.assertNotIn("blocking", decision)
         self.assertIn("break", state["last_nudge_at"])
 
     def test_observed_receipt_requires_explicit_opt_in(self):
