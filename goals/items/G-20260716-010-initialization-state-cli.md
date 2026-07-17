@@ -90,3 +90,4 @@ Completed. Added versioned PROJECT metadata, ignored init plan template/path, de
 | --- | --- | --- | --- |
 | 2026-07-16 | Codex/R-20260716-execute-root | Created `ready` | Required deterministic foundation isolated from semantic/backend integration. |
 | 2026-07-16 | Codex/R-20260716-execute-root | Completed `done` | Six focused tests plus live read-only inspect, syntax, and diff probes passed. |
+| 2026-07-16 | Codex/R-20260716-execute-root audit | Hardened completed contract | Added state-schema validation, GitHub Issues/permission probe, fact/proposal confirmation, URL redaction, exact preferences notice, and eight additional focused cases. |

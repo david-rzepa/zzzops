@@ -31,6 +31,10 @@ class InstallerInitializationTests(unittest.TestCase):
             project = (target / "goals" / "PROJECT.md").read_text(encoding="utf-8")
             self.assertIn('"initialized": false', project)
             self.assertFalse((target / ".zzzops" / "init" / "plan.json").exists())
+            rerun = self.run_installer(target)
+            self.assertEqual(0, rerun.returncode, rerun.stderr + rerun.stdout)
+            self.assertIn("unchanged=", rerun.stdout)
+            self.assertIn("Template diff: none", rerun.stdout)
 
     def test_update_preserves_local_preferences(self):
         with tempfile.TemporaryDirectory() as directory:

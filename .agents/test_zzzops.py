@@ -51,13 +51,17 @@ class InitializationTests(unittest.TestCase):
                 "non_goals": ["replace project management suites"],
                 "unacceptable_tradeoffs": ["inventing user decisions"],
             },
-            "evidence": [{"kind": "observed", "source": "README.md", "finding": "durable goals"}],
-            "confirmations": [{"field": "charter", "confirmed_by": "user", "date": "2026-07-16"}],
+            "evidence": [
+                {"id": "E-001", "kind": "observed", "source": "README.md", "finding": "durable goals"},
+                {"id": "E-002", "kind": "proposed", "source": "agent synthesis", "finding": "charter"},
+            ],
+            "confirmations": [{"evidence_id": "E-002", "confirmed_by": "user", "date": "2026-07-16"}],
             "github": {"usable": False, "evidence": "local selected"},
         }
 
     @mock.patch.object(zzzops, "command_probe", return_value={"available": False, "ok": False, "detail": "test"})
-    def test_inspect_is_read_only_and_reports_incomplete(self, _probe):
+    @mock.patch.object(zzzops, "github_repository_probe", return_value={"available": False, "usable": False})
+    def test_inspect_is_read_only_and_reports_incomplete(self, _github, _probe):
         project = self.repo / "goals" / "PROJECT.md"
         before = project.read_bytes()
         result = zzzops.inspect_initialization(self.repo)
@@ -67,11 +71,13 @@ class InitializationTests(unittest.TestCase):
         self.assertEqual(before, project.read_bytes())
 
     @mock.patch.object(zzzops, "command_probe", return_value={"available": False, "ok": False, "detail": "test"})
-    def test_validate_apply_and_reinspect(self, _probe):
+    @mock.patch.object(zzzops, "github_repository_probe", return_value={"available": False, "usable": False})
+    def test_validate_apply_and_reinspect(self, _github, _probe):
         plan = self.plan()
         self.assertEqual([], zzzops.validate_plan(self.repo, plan))
         applied = zzzops.apply_plan(self.repo, plan)
         self.assertTrue(applied["changed"])
+        self.assertEqual("python .agents/zzzops.py", applied["preferences_command"])
         result = zzzops.inspect_initialization(self.repo)
         self.assertTrue(result["initialized"])
         self.assertEqual("local_files", result["state"]["backend"])
@@ -96,7 +102,7 @@ class InitializationTests(unittest.TestCase):
     def test_invalid_project_state_is_reported(self):
         project = self.repo / "goals" / "PROJECT.md"
         project.write_text("<!-- zzzops-project-state\n{bad}\nzzzops-project-state -->\n", encoding="utf-8")
-        with mock.patch.object(zzzops, "command_probe", return_value={}):
+        with mock.patch.object(zzzops, "command_probe", return_value={}), mock.patch.object(zzzops, "github_repository_probe", return_value={}):
             result = zzzops.inspect_initialization(self.repo)
         self.assertFalse(result["valid_state"])
         self.assertIn("Invalid project state JSON", result["state_error"])
@@ -108,6 +114,46 @@ class InitializationTests(unittest.TestCase):
                 zzzops.atomic_text(path, "new\n")
         self.assertFalse(path.exists())
         self.assertEqual([], [p for p in path.parent.iterdir() if p.name != "PROJECT.md"])
+
+    def test_rejects_unconfirmed_proposal(self):
+        plan = self.plan()
+        plan["confirmations"] = []
+        errors = zzzops.validate_plan(self.repo, plan)
+        self.assertIn("confirmations must be a non-empty list", errors)
+        self.assertIn("unconfirmed proposals: E-002", errors)
+
+    def test_rejects_unsupported_project_state_schema(self):
+        project = self.repo / "goals" / "PROJECT.md"
+        project.write_text(
+            '<!-- zzzops-project-state\n{"schema_version": 99, "initialized": false, "backend": null, "repository": null, "revision": 0}\nzzzops-project-state -->\n',
+            encoding="utf-8",
+        )
+        with mock.patch.object(zzzops, "command_probe", return_value={}), mock.patch.object(zzzops, "github_repository_probe", return_value={}):
+            result = zzzops.inspect_initialization(self.repo)
+        self.assertFalse(result["valid_state"])
+        self.assertIn("schema_version must be 1", result["state_error"])
+
+    def test_probe_output_redacts_url_userinfo(self):
+        self.assertEqual("https://***@example.test/repo.git", zzzops.sanitize_output("https://secret@example.test/repo.git"))
+
+    @mock.patch.object(zzzops.shutil, "which", return_value="gh")
+    @mock.patch.object(zzzops.subprocess, "run")
+    def test_github_probe_requires_issues_and_management_permission(self, run, _which):
+        run.return_value = mock.Mock(
+            returncode=0, stderr="",
+            stdout=json.dumps({
+                "nameWithOwner": "owner/repo", "url": "https://github.com/owner/repo",
+                "hasIssuesEnabled": True, "viewerPermission": "TRIAGE",
+            }),
+        )
+        result = zzzops.github_repository_probe(self.repo)
+        self.assertTrue(result["usable"])
+        self.assertEqual("owner/repo", result["identity"])
+        run.return_value.stdout = json.dumps({
+            "nameWithOwner": "owner/repo", "url": "https://github.com/owner/repo",
+            "hasIssuesEnabled": False, "viewerPermission": "ADMIN",
+        })
+        self.assertFalse(zzzops.github_repository_probe(self.repo)["usable"])
 
 
 class ManagedGoalTests(unittest.TestCase):

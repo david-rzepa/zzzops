@@ -118,6 +118,31 @@ def parse_project_state(text: str) -> dict[str, Any] | None:
     return state
 
 
+def validate_project_state(state: Any) -> list[str]:
+    if not isinstance(state, dict):
+        return ["project state must be an object"]
+    allowed = {"schema_version", "initialized", "backend", "repository", "revision"}
+    errors = []
+    unknown = sorted(set(state) - allowed)
+    if unknown:
+        errors.append("unknown fields: " + ", ".join(unknown))
+    if state.get("schema_version") != PROJECT_SCHEMA_VERSION:
+        errors.append(f"schema_version must be {PROJECT_SCHEMA_VERSION}")
+    if not isinstance(state.get("initialized"), bool):
+        errors.append("initialized must be boolean")
+    if not isinstance(state.get("revision"), int) or isinstance(state.get("revision"), bool) or state.get("revision", -1) < 0:
+        errors.append("revision must be a non-negative integer")
+    if state.get("initialized") is True:
+        if state.get("backend") not in BACKENDS:
+            errors.append("initialized backend must be github_issues or local_files")
+        repository = state.get("repository")
+        if not isinstance(repository, dict) or not nonempty(repository.get("identity")):
+            errors.append("initialized repository.identity is required")
+    elif state.get("backend") is not None or state.get("repository") is not None:
+        errors.append("uninitialized state cannot select a backend or repository")
+    return errors
+
+
 def parse_managed_goal(text: str) -> dict[str, Any] | None:
     pattern = re.compile(
         re.escape(GOAL_BLOCK_START) + r"\s*\n(.*?)\n" + re.escape(GOAL_BLOCK_END),
@@ -187,7 +212,42 @@ def command_probe(command: list[str], repo: Path) -> dict[str, Any]:
     return {
         "available": True,
         "ok": result.returncode == 0,
-        "detail": detail[0][:300] if detail else "",
+        "detail": sanitize_output(detail[0][:300]) if detail else "",
+    }
+
+
+def sanitize_output(value: str) -> str:
+    return re.sub(r"(https?://)[^/@\s]+@", r"\1***@", value)
+
+
+def github_repository_probe(repo: Path) -> dict[str, Any]:
+    executable = shutil.which("gh")
+    if not executable:
+        return {"available": False, "usable": False, "detail": "executable not found"}
+    try:
+        result = subprocess.run(
+            [executable, "repo", "view", "--json", "nameWithOwner,url,hasIssuesEnabled,viewerPermission"],
+            cwd=repo, capture_output=True, text=True, timeout=8, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"available": True, "usable": False, "detail": type(exc).__name__}
+    if result.returncode:
+        detail = (result.stderr.strip() or "repository probe failed").splitlines()[0]
+        return {"available": True, "usable": False, "detail": sanitize_output(detail[:300])}
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return {"available": True, "usable": False, "detail": "invalid gh JSON"}
+    permission = data.get("viewerPermission")
+    issues = data.get("hasIssuesEnabled") is True
+    return {
+        "available": True,
+        "usable": issues and permission in {"TRIAGE", "WRITE", "MAINTAIN", "ADMIN"},
+        "identity": data.get("nameWithOwner"),
+        "url": data.get("url"),
+        "issues_enabled": issues,
+        "viewer_permission": permission,
+        "detail": "ok" if issues else "issues disabled",
     }
 
 
@@ -196,11 +256,15 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
     error = None
     try:
         state = parse_project_state(text)
+        state_errors = validate_project_state(state) if state is not None else ["project state block is missing"]
+        if state_errors:
+            error = "; ".join(state_errors)
     except ValueError as exc:
         state = None
         error = str(exc)
     git_remote = command_probe(["git", "remote", "get-url", "origin"], repo)
     github_auth = command_probe(["gh", "auth", "status"], repo)
+    github_repository = github_repository_probe(repo)
     return {
         "schema_version": PLAN_SCHEMA_VERSION,
         "project_path": str(path),
@@ -210,7 +274,15 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         "valid_state": error is None and state is not None,
         "state_error": error,
         "missing_charter_fields": charter_missing_fields(text),
-        "capabilities": {"git_origin": git_remote, "github_auth": github_auth},
+        "backend_constraints": {
+            "github_issues": "requires a usable GitHub repository probe",
+            "local_files": "explicit supported alternative; never automatic failover",
+        },
+        "capabilities": {
+            "git_origin": git_remote,
+            "github_auth": github_auth,
+            "github_repository": github_repository,
+        },
     }
 
 
@@ -289,9 +361,43 @@ def validate_plan(repo: Path, plan: dict[str, Any]) -> list[str]:
     evidence = plan.get("evidence")
     if not isinstance(evidence, list) or not evidence:
         errors.append("evidence must be a non-empty list")
+        evidence = []
+    evidence_ids = set()
+    proposal_ids = set()
+    for index, item in enumerate(evidence):
+        if not isinstance(item, dict):
+            errors.append(f"evidence[{index}] must be an object")
+            continue
+        evidence_id = item.get("id")
+        if not text_present(evidence_id) or evidence_id in evidence_ids:
+            errors.append(f"evidence[{index}].id must be unique and non-empty")
+        else:
+            evidence_ids.add(evidence_id)
+        if item.get("kind") not in {"observed", "proposed"}:
+            errors.append(f"evidence[{index}].kind must be observed or proposed")
+        if not text_present(item.get("source")) or not text_present(item.get("finding")):
+            errors.append(f"evidence[{index}] requires source and finding")
+        if item.get("kind") == "proposed" and text_present(evidence_id):
+            proposal_ids.add(evidence_id)
     confirmations = plan.get("confirmations")
     if not isinstance(confirmations, list) or not confirmations:
         errors.append("confirmations must be a non-empty list")
+        confirmations = []
+    confirmed_ids = set()
+    for index, item in enumerate(confirmations):
+        if not isinstance(item, dict):
+            errors.append(f"confirmations[{index}] must be an object")
+            continue
+        evidence_id = item.get("evidence_id")
+        if evidence_id not in evidence_ids:
+            errors.append(f"confirmations[{index}].evidence_id must reference evidence")
+        else:
+            confirmed_ids.add(evidence_id)
+        if not text_present(item.get("confirmed_by")) or not text_present(item.get("date")):
+            errors.append(f"confirmations[{index}] requires confirmed_by and date")
+    unconfirmed = sorted(proposal_ids - confirmed_ids)
+    if unconfirmed:
+        errors.append("unconfirmed proposals: " + ", ".join(unconfirmed))
     if backend == "github_issues":
         github = plan.get("github")
         if not isinstance(github, dict) or github.get("usable") is not True:
@@ -407,9 +513,15 @@ def apply_plan(repo: Path, plan: dict[str, Any]) -> dict[str, Any]:
     revision = int(old_state.get("revision", 0)) + 1 if old_state else 1
     rendered = render_project(plan, revision)
     if rendered == current:
-        return {"changed": False, "path": str(path), "revision": revision}
+        return {
+            "changed": False, "path": str(path), "revision": revision,
+            "preferences_command": "python .agents/zzzops.py",
+        }
     atomic_text(path, rendered)
-    return {"changed": True, "path": str(path), "revision": revision}
+    return {
+        "changed": True, "path": str(path), "revision": revision,
+        "preferences_command": "python .agents/zzzops.py",
+    }
 
 
 def edit_preferences(repo: Path) -> None:

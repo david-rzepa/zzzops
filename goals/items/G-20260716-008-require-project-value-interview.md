@@ -109,6 +109,8 @@ Provisional value is high because this establishes one project-wide source of tr
 - Safe work remaining/recheck trigger: Implement reversible schema, CLI, backend, and tests; recheck on user reply before final charter apply/completion.
 - Resolution/resolved/resolved by: pending
 
+The ignored `.zzzops/init/plan.json` now contains the evidence-backed proposal. A real `gh repo view` probe confirmed Issues enabled and `ADMIN` permission; validation intentionally returns only `confirmed must be true` and `unconfirmed proposals: E-004`.
+
 ### Resolved
 
 None.
@@ -129,3 +131,4 @@ Updated in place from a narrower project-value interview goal. The user selected
 | 2026-07-16 | Codex/R-20260716-execute-root | Triaged and decomposed | Three required children isolate deterministic state, backend/workflow semantics, and installation/regression proof. |
 | 2026-07-16 | Codex/R-20260716-execute-root | Raised `B-001` | Project charter targets require user confirmation; bounded implementation can continue. |
 | 2026-07-16 | Codex/R-20260716-execute-root | All children done; moved `blocked` | Only the explicit charter confirmation/apply gate remains. |
+| 2026-07-16 | Codex/R-20260716-execute-root audit | Persisted resumable unconfirmed plan | GitHub capability is proven; deterministic validation isolates the remaining charter confirmation exactly. |

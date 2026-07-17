@@ -87,3 +87,4 @@ Completed. Installer manifest, CI discovery, README quickstart, maintainer guide
 | 2026-07-16 | Codex/R-20260716-execute-root | Created `triaged` | Packaging/docs proof isolated as a terminal child. |
 | 2026-07-16 | Codex/R-20260716-execute-root | Dependencies satisfied; moved `ready` | Initialization and backend workflow children passed focused tests. |
 | 2026-07-16 | Codex/R-20260716-execute-root | Completed `done` | Clean/update installer, full local checks, docs, and prompt accounting passed. |
+| 2026-07-16 | Codex/R-20260716-execute-root audit | Strengthened rerun evidence | Clean-install test now explicitly re-previews the installed target and proves unchanged mechanics with no template diff. |

@@ -29,10 +29,11 @@
     "unacceptable_tradeoffs": ["replace with a confirmed unacceptable tradeoff"]
   },
   "evidence": [
-    {"kind": "observed", "source": "README.md", "finding": "replace"}
+    {"id": "E-001", "kind": "observed", "source": "README.md", "finding": "replace"},
+    {"id": "E-002", "kind": "proposed", "source": "agent synthesis", "finding": "replace"}
   ],
   "confirmations": [
-    {"field": "charter", "confirmed_by": "user", "date": "YYYY-MM-DD"}
+    {"evidence_id": "E-002", "confirmed_by": "user", "date": "YYYY-MM-DD"}
   ],
   "github": {
     "usable": false,
