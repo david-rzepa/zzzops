@@ -32,7 +32,19 @@ Review the preview and let the skill apply it. The installer copies discoverable
 
 Open a new Codex task or Claude Code session in the target project so its ZzzOps skills are discovered.
 
-### 3. Migrate existing work
+### 3. Initialize the project
+
+Start any non-install workflow in the target, for example:
+
+```text
+Use $add-zzzops-todo to capture our first piece of work.
+```
+
+The agent first inspects code, docs, config, history, Git, and GitHub; proposes the project outcome, KPIs, acceptance criteria, and backend; then asks you only to confirm consequential unknowns. Deterministic CLI primitives validate and atomically apply the confirmed plan. You do not fill a blank wizard.
+
+GitHub Issues is recommended when the repository and access probe succeed. Local `goals/items/` files are the supported alternative. One backend is authoritative; ZzzOps never silently switches or dual-writes. Initialization does not commit, branch, or mutate GitHub, and ends by mentioning the optional `python .agents/zzzops.py` preferences panel without opening it.
+
+### 4. Migrate existing work
 
 From the target project in Codex:
 
@@ -46,17 +58,17 @@ In Claude Code, invoke the same workflow as:
 /migrate-zzzops-todos inspect and migrate existing TODOs
 ```
 
-The agent inventories candidates, asks about project goals/KPIs and exclusions, presents a human-readable plan, then migrates only after approval. Inline TODO comments remain; dedicated backlog files retire only after verified coverage.
+The agent inventories candidates, presents a human-readable plan, then migrates only after approval into the selected backend. Inline TODO comments remain; dedicated backlog files retire only after verified coverage.
 
-### 4. Add new work
+### 5. Add new work
 
 ```text
 Use $add-zzzops-todo to capture <the thing we should eventually do>.
 ```
 
-ZzzOps checks duplicates, asks important questions, relates value to `goals/PROJECT.md`, and creates a durable goal with a resumable next action.
+ZzzOps checks duplicates, asks important questions, relates value to the charter, and creates a durable issue or local goal with a resumable next action. Capture never creates a branch, commit, push, or PR.
 
-### 5. Execute—and go to bed
+### 6. Execute—and go to bed
 
 For a normal Codex run:
 
@@ -132,15 +144,15 @@ Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required
 
 ## The files that remember things
 
-- `goals/PROJECT.md` — success, KPIs, acceptance criteria, and what “valuable” means.
-- `goals/items/` — goals, sub-goals, blockers, evidence, and next actions.
-- `goals/INDEX.md` — prioritized queue and human-input desk.
+- `goals/PROJECT.md` — initialized backend, success, KPIs, acceptance criteria, and what “valuable” means.
+- GitHub Issues — recommended canonical goals, blockers, evidence, relations, and history when selected.
+- `goals/items/` and `goals/INDEX.md` — canonical goals/derived queue when the local backend is selected.
 - `goals/USAGE_LEDGER.md` — work tokens, management overhead, and value efficiency.
 - `.zzzops/rules/` — tracked ZzzOps operating rules; machinery, not project content.
 - `.zzzops/PREFERENCES.json` — local, ignored user opt-ins for bounded autonomous backlog refills.
 - `.zzzops/migration/STATE.json` — keeps old TODOs from returning like a low-budget horror villain.
 
-Agents work sequentially by default, define the observable signal before editing, change one small falsifiable chunk at a time, and inspect real output after every chunk. If the project is opaque, they build a focused harness or scoped MCP observation server instead of vibe-coding and hoping. Each completed sub-goal gets its own commit on the current branch.
+Agents work sequentially by default, define the observable signal before editing, change one small falsifiable chunk at a time, and inspect real output after every chunk. If the project is opaque, they build a focused harness or scoped MCP observation server instead of vibe-coding and hoping. Execution defaults to the current branch, follows repository Git rules, and gives each completed sub-goal its own commit; capture itself is Git-free.
 
 If a new test discovers a real bug, ZzzOps files a separate TODO and asks you before fixing it. It does not smuggle a surprise product change into “just adding coverage,” because we have all reviewed that pull request before.
 
@@ -159,29 +171,31 @@ python .agents/prompt_stats.py --check
 <!-- PROMPT_BUDGET_START -->
 | Prompt | Bytes | Est. tokens |
 | --- | ---: | ---: |
-| `.agents/skills/add-zzzops-todo/SKILL.md` | 737 | 185 |
-| `.agents/skills/analyze-zzzops-usage/SKILL.md` | 2265 | 567 |
-| `.agents/skills/execute-zzzops/SKILL.md` | 1771 | 443 |
-| `.agents/skills/execute-zzzops/references/CREATE.md` | 2644 | 661 |
-| `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3285 | 822 |
-| `.agents/skills/execute-zzzops/references/UNBLOCK.md` | 1532 | 383 |
+| `.agents/skills/add-zzzops-todo/SKILL.md` | 879 | 220 |
+| `.agents/skills/analyze-zzzops-usage/SKILL.md` | 2321 | 581 |
+| `.agents/skills/execute-zzzops/SKILL.md` | 1990 | 498 |
+| `.agents/skills/execute-zzzops/references/CREATE.md` | 2727 | 682 |
+| `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3394 | 849 |
+| `.agents/skills/execute-zzzops/references/UNBLOCK.md` | 1549 | 388 |
 | `.agents/skills/install-zzzops/SKILL.md` | 1465 | 367 |
-| `.agents/skills/migrate-zzzops-todos/SKILL.md` | 1854 | 464 |
-| `.agents/skills/suggest-zzzops-work/SKILL.md` | 2497 | 625 |
+| `.agents/skills/migrate-zzzops-todos/SKILL.md` | 1977 | 495 |
+| `.agents/skills/suggest-zzzops-work/SKILL.md` | 2577 | 645 |
 | `.agents/templates/project-goals/INDEX.md` | 1135 | 284 |
 | `.agents/templates/project-goals/MIGRATION_SUMMARY.md` | 222 | 56 |
-| `.agents/templates/project-goals/PROJECT.md` | 1295 | 324 |
+| `.agents/templates/project-goals/PROJECT.md` | 1455 | 364 |
 | `.agents/templates/project-goals/TEMPLATE_DIFF.md` | 352 | 88 |
 | `.agents/templates/project-goals/USAGE_LEDGER.md` | 1105 | 277 |
 | `.claude/skills/install-zzzops/SKILL.md` | 382 | 96 |
+| `.zzzops/rules/BACKENDS.md` | 1629 | 408 |
 | `.zzzops/rules/BLOCKERS.md` | 2213 | 554 |
 | `.zzzops/rules/EXECUTION_STRATEGY.md` | 4861 | 1216 |
-| `.zzzops/rules/GOAL_SYSTEM.md` | 3641 | 911 |
+| `.zzzops/rules/GOAL_SYSTEM.md` | 3816 | 954 |
+| `.zzzops/rules/INITIALIZATION.md` | 1114 | 279 |
 | `.zzzops/rules/USAGE_ACCOUNTING.md` | 2355 | 589 |
-| `AGENTS.md` | 2787 | 697 |
+| `AGENTS.md` | 2949 | 738 |
 | `CLAUDE.md` | 217 | 55 |
 | `goals/TEMPLATE.md` | 1648 | 412 |
-| **Total** | **40263** | **10076** |
+| **Total** | **44332** | **11095** |
 <!-- PROMPT_BUDGET_END -->
 
 </details>

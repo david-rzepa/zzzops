@@ -1,7 +1,7 @@
 ---
 id: G-20260716-009-add-user-health-module
 title: Add a configurable user-health module
-status: triaged
+status: blocked
 priority: P1
 value: high
 difficulty: L
@@ -126,3 +126,4 @@ Captured as a new root goal. Repository search found no existing health/wellbein
 | 2026-07-16 | Codex alignment audit | Clarified preference ownership | Initialization advertises preferences; `G-009` defines and edits health-specific personal settings. |
 | 2026-07-16 | Codex/R-20260716-execute-root | Triaged and decomposed | Three required children isolate pure policy, local preference/state CLI, and workflow/install integration. |
 | 2026-07-16 | Codex/R-20260716-execute-root | Raised `B-001` | Privacy, timestamp, enablement, and timezone defaults require user confirmation before health implementation. |
+| 2026-07-16 | Codex/R-20260716-execute-root | Moved `blocked` | No safe health implementation remains until the policy decision and G-008 completion. |

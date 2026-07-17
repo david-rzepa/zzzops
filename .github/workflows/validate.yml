@@ -22,6 +22,10 @@ jobs:
           python-version: '3.12'
       - name: Test prompt accounting
         run: python .agents/test_prompt_stats.py
+      - name: Test ZzzOps initialization and workflows
+        run: python .agents/test_zzzops.py
+      - name: Test mechanics installer
+        run: python -m unittest discover -s .agents/skills/install-zzzops/scripts -p 'test_*.py'
       - name: Test semantic releases
         run: python -m unittest discover -s .github/scripts -p 'test_*.py'
       - name: Verify prompt budget

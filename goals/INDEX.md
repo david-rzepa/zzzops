@@ -21,12 +21,13 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 ## Ready queue
 | Goal | Parent | Priority | Value | Difficulty | Unlocks | Next action |
 | --- | --- | --- | --- | --- | --- | --- |
-| [G-20260716-012](items/G-20260716-012-initialization-install-docs-regression.md) | [G-008](items/G-20260716-008-require-project-value-interview.md) | P1 | high | M | G-008 | Prove clean/update installation, docs, CI discovery, and prompt accounting. |
+| None | - | - | - | - | - | - |
 
 ## Blocked goals
 | Goal | Priority | Blockers | Recheck trigger | Safe work? |
 | --- | --- | --- | --- | --- |
-| None | - | - | - | - |
+| [G-008](items/G-20260716-008-require-project-value-interview.md) | P1 | B-001 charter confirmation | User confirms/corrects proposed charter; then apply plan. | no |
+| [G-009](items/G-20260716-009-add-user-health-module.md) | P1 | G-008 and B-001 health policy | User confirms/corrects recommended health defaults. | no |
 
 ## Root goals
 | Goal | Status | Priority | Value | Difficulty | Progress summary |
@@ -34,11 +35,11 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 | [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | done | P1 | high | M | Semantic release and the single-root `v1.0.0` production path are verified. |
 | [G-20260716-002](items/G-20260716-002-brand-skills-as-zzzops.md) | done | P1 | high | M | Repository rename and ZzzOps-path Codex grouping verified. |
 | [G-20260716-004](items/G-20260716-004-stabilize-prompt-budget-line-endings.md) | done | P2 | medium | S | Canonical LF byte counting and regression test verified. |
-| [G-20260716-008](items/G-20260716-008-require-project-value-interview.md) | triaged | P1 | high | L | G-010 ready; charter confirmation remains open for completion. |
-| [G-20260716-009](items/G-20260716-009-add-user-health-module.md) | triaged | P1 | high | L | Depends on G-008 and confirmed health defaults. |
+| [G-20260716-008](items/G-20260716-008-require-project-value-interview.md) | blocked | P1 | high | L | All children done; awaits charter confirmation/apply. |
+| [G-20260716-009](items/G-20260716-009-add-user-health-module.md) | blocked | P1 | high | L | Awaits G-008 and confirmed health defaults. |
 | [G-20260716-010](items/G-20260716-010-initialization-state-cli.md) | done | P1 | high | M | Six focused initialization/atomicity tests pass. |
 | [G-20260716-011](items/G-20260716-011-goal-backends-workflow-routing.md) | done | P1 | high | M | Ten schema/round-trip/workflow contract tests pass. |
-| [G-20260716-012](items/G-20260716-012-initialization-install-docs-regression.md) | ready | P1 | high | M | Initialization/backend dependencies satisfied. |
+| [G-20260716-012](items/G-20260716-012-initialization-install-docs-regression.md) | done | P1 | high | M | Installer, docs, CI discovery, and prompt accounting pass. |
 | [G-20260716-013](items/G-20260716-013-health-policy-schema.md) | triaged | P1 | high | M | Depends on G-008 and health decision. |
 | [G-20260716-014](items/G-20260716-014-health-preferences-cli.md) | triaged | P1 | high | M | Depends on G-013. |
 | [G-20260716-015](items/G-20260716-015-health-workflow-integration.md) | triaged | P1 | high | M | Depends on G-014. |
@@ -55,4 +56,4 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 | [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | done | 2026-07-16 | Shared dry-run/publish planner is proven locally, on `dev`, and by the production `v1.0.0` release. |
 
 ## Portfolio notes
-- G-008/G-009 are decomposed into six sequential children. Execute G-010 first; charter confirmation does not block mechanics, while health decisions stop G-013 onward. All work stays on the current single branch.
+- Initialization/backend mechanics are complete. The user interview is now the only path to close G-008 and unlock health children G-013–G-015. All work remains on the current single branch.

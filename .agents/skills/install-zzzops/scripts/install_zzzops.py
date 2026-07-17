@@ -23,7 +23,12 @@ def source_root() -> Path:
 
 
 def files_to_copy(root: Path) -> list[str]:
-    paths = [".zzzops/rules/BLOCKERS.md", ".zzzops/rules/EXECUTION_STRATEGY.md", ".zzzops/rules/GOAL_SYSTEM.md", ".zzzops/rules/USAGE_ACCOUNTING.md", "goals/TEMPLATE.md", ".agents/.gitignore", ".agents/zzzops.py"]
+    paths = [
+        ".zzzops/rules/BACKENDS.md", ".zzzops/rules/BLOCKERS.md",
+        ".zzzops/rules/EXECUTION_STRATEGY.md", ".zzzops/rules/GOAL_SYSTEM.md",
+        ".zzzops/rules/INITIALIZATION.md", ".zzzops/rules/USAGE_ACCOUNTING.md",
+        "goals/TEMPLATE.md", ".agents/.gitignore", ".agents/zzzops.py",
+    ]
     for base in [root / ".agents" / "templates" / "project-goals", *(root / ".agents" / "skills" / name for name in TARGET_SKILLS)]:
         paths.extend(path.relative_to(root).as_posix() for path in base.rglob("*") if path.is_file() and "__pycache__" not in path.parts and not path.name.startswith("test_"))
     return sorted(set(paths))
@@ -216,7 +221,7 @@ def main() -> int:
             elif data is not None:
                 atomic_write(path, data)
         raise
-    print("Apply complete. Run $migrate-zzzops-todos from the target when ready.")
+    print("Apply complete. Start any non-install ZzzOps workflow; its agent will initialize the project before ordinary work.")
     return 0
 
 

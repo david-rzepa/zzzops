@@ -1,12 +1,12 @@
 ---
 id: G-20260716-012-initialization-install-docs-regression
 title: Prove initialization installation and user guidance
-status: ready
+status: done
 priority: P1
 value: high
 difficulty: M
 confidence: high
-owner: unassigned
+owner: Codex
 created: 2026-07-16
 updated: 2026-07-16
 target_date: null
@@ -29,10 +29,10 @@ Clean installs and updates deliver initialization/backend mechanics without runn
 
 ## Success criteria
 
-- [ ] Installer copies all new mechanics/templates/rules but never initializes, mutates GitHub, or overwrites state.
-- [ ] Clean/update/rerun tests prove preservation and initialization exemption.
-- [ ] README, maintainer docs, CLI help, Codex and Claude surfaces agree and prompt counts are current.
-- [ ] CI runs all new tests plus existing release/prompt checks.
+- [x] Installer copies all new mechanics/templates/rules but never initializes, mutates GitHub, or overwrites state.
+- [x] Clean/update/rerun tests prove preservation and initialization exemption.
+- [x] README, maintainer docs, CLI help, Codex and Claude surfaces agree and prompt counts are current.
+- [x] CI runs all new tests plus existing release/prompt checks.
 
 ## Scope
 
@@ -41,7 +41,7 @@ Clean installs and updates deliver initialization/backend mechanics without runn
 
 ## Approach and next action
 
-**Next action:** After G-010/G-011, run a fresh temp install and close every missing-file/contract gap until full CI passes.
+**Next action:** Completed; resolve parent charter blocker to initialize this repository and close G-008.
 
 ### Fast feedback
 
@@ -50,7 +50,7 @@ Clean installs and updates deliver initialization/backend mechanics without runn
 - Observation surface: installer preview/apply/rerun, filesystem assertions, prompt stats, CI command.
 - Smallest chunk: fresh install contains new artifacts and leaves PROJECT uninitialized.
 - Probe/action and expected signal: temp-target assertion passes with no external calls.
-- Actual result/evidence: pending.
+- Actual result/evidence: installer tests pass clean-install and preference-preservation paths; 10 core tests, prompt regression, compileall, diff check, and prompt-budget check pass. README reports 24 prompts, 44,332 bytes, ~11,095 tokens.
 - Wider checks: update preservation, Claude parity, full regression.
 
 ### Execution constraints
@@ -78,7 +78,7 @@ None.
 
 ## Progress and evidence
 
-Ready; G-010 and G-011 supplied all implementation artifacts and contracts.
+Completed. Installer manifest, CI discovery, README quickstart, maintainer guide, preservation tests, and prompt budget are current.
 
 ## History
 
@@ -86,3 +86,4 @@ Ready; G-010 and G-011 supplied all implementation artifacts and contracts.
 | --- | --- | --- | --- |
 | 2026-07-16 | Codex/R-20260716-execute-root | Created `triaged` | Packaging/docs proof isolated as a terminal child. |
 | 2026-07-16 | Codex/R-20260716-execute-root | Dependencies satisfied; moved `ready` | Initialization and backend workflow children passed focused tests. |
+| 2026-07-16 | Codex/R-20260716-execute-root | Completed `done` | Clean/update installer, full local checks, docs, and prompt accounting passed. |

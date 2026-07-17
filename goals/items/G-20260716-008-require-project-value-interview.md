@@ -1,7 +1,7 @@
 ---
 id: G-20260716-008-require-project-value-interview
 title: Add agent-driven deterministic project initialization and goal backends
-status: triaged
+status: blocked
 priority: P1
 value: high
 difficulty: L
@@ -70,7 +70,7 @@ Provisional value is high because this establishes one project-wide source of tr
 
 ## Approach and next action
 
-**Next action:** Execute `G-010`; meanwhile resolve `B-001` from the user's charter confirmation, then continue through `G-011` and `G-012`.
+**Next action:** Resolve `B-001`, apply the confirmed initialization plan to this repository, run the complete regression, and close the parent.
 
 ### Fast feedback
 
@@ -91,7 +91,7 @@ Provisional value is high because this establishes one project-wide source of tr
 ## Relationships
 
 - Parent: none
-- Children (required/optional + purpose/status): [G-010](G-20260716-010-initialization-state-cli.md) required/ready—state and deterministic CLI; [G-011](G-20260716-011-goal-backends-workflow-routing.md) required/triaged—backend contract and workflow routing; [G-012](G-20260716-012-initialization-install-docs-regression.md) required/triaged—installer/docs/regression proof.
+- Children (required/optional + purpose/status): [G-010](G-20260716-010-initialization-state-cli.md) required/done—state and deterministic CLI; [G-011](G-20260716-011-goal-backends-workflow-routing.md) required/done—backend contract and workflow routing; [G-012](G-20260716-012-initialization-install-docs-regression.md) required/done—installer/docs/regression proof.
 - Dependencies (status/reason): none identified.
 - Blocks (impact): [G-20260716-009](G-20260716-009-add-user-health-module.md) needs deterministic project initialization and value/backend configuration before selecting health-policy defaults.
 
@@ -128,3 +128,4 @@ Updated in place from a narrower project-value interview goal. The user selected
 | 2026-07-16 | user/Codex | Chose agent-driven backend operations | Native GitHub/file tools perform goal actions; CLI scope stays narrow and deterministic. |
 | 2026-07-16 | Codex/R-20260716-execute-root | Triaged and decomposed | Three required children isolate deterministic state, backend/workflow semantics, and installation/regression proof. |
 | 2026-07-16 | Codex/R-20260716-execute-root | Raised `B-001` | Project charter targets require user confirmation; bounded implementation can continue. |
+| 2026-07-16 | Codex/R-20260716-execute-root | All children done; moved `blocked` | Only the explicit charter confirmation/apply gate remains. |
