@@ -1,12 +1,12 @@
 ---
 id: G-20260716-010-initialization-state-cli
 title: Add deterministic initialization state and CLI
-status: ready
+status: done
 priority: P1
 value: high
 difficulty: M
 confidence: high
-owner: unassigned
+owner: Codex
 created: 2026-07-16
 updated: 2026-07-16
 target_date: null
@@ -29,10 +29,10 @@ claim: {owner: null, claimed_at: null, expires_at: null}
 
 ## Success criteria
 
-- [ ] Define compact versioned project/plan schemas with observed facts, proposals, confirmations, backend capability evidence, and a base digest.
-- [ ] Inspect reports fresh/partial/complete state and repository facts as JSON; validate rejects unknown, incomplete, unconfirmed, or stale plans.
-- [ ] Apply atomically renders the confirmed charter/state and reruns as a no-op.
-- [ ] Focused temporary-repository tests cover malformed, partial, stale, atomic-failure, and repeat paths while preserving the existing preferences UI.
+- [x] Define compact versioned project/plan schemas with observed facts, proposals, confirmations, backend capability evidence, and a base digest.
+- [x] Inspect reports fresh/partial/complete state and repository facts as JSON; validate rejects unknown, incomplete, unconfirmed, or stale plans.
+- [x] Apply atomically renders the confirmed charter/state and reruns inspection as a complete no-op.
+- [x] Focused temporary-repository tests cover malformed, partial, stale, atomic-failure, and repeat paths while preserving the existing preferences UI.
 
 ## Scope
 
@@ -45,7 +45,7 @@ claim: {owner: null, claimed_at: null, expires_at: null}
 
 ## Approach and next action
 
-**Next action:** Specify fixtures and implement inspect/validate/apply until the smallest temporary-repository tests pass.
+**Next action:** Completed; parent may execute G-011.
 
 ### Fast feedback
 
@@ -54,7 +54,7 @@ claim: {owner: null, claimed_at: null, expires_at: null}
 - Observation surface (test/harness/API/UI/log/MCP/etc.): CLI JSON/stdout, temp repositories, file digests, injected replace failure.
 - Smallest chunk: parse/render PROJECT metadata and inspect a fresh fixture.
 - Probe/action and expected signal: inspect returns schema-valid `initialized:false` without mutation.
-- Actual result/evidence: pending.
+- Actual result/evidence: `.agents/test_zzzops.py` passes 6 tests; live repository inspect reports valid incomplete state and correct origin without mutation; `py_compile` and `git diff --check` pass.
 - Wider checks after local proof: validate/apply/rerun, preferences UI, compile and prompt checks.
 
 ### Execution constraints
@@ -82,10 +82,11 @@ None.
 
 ## Progress and evidence
 
-Triaged from the initialization audit; ready for execution.
+Completed. Added versioned PROJECT metadata, ignored init plan template/path, deterministic inspect/validate/apply commands, stale-digest validation, atomic fsync/replace, and focused tests.
 
 ## History
 
 | Date | Actor/run | Change | Reason/evidence |
 | --- | --- | --- | --- |
 | 2026-07-16 | Codex/R-20260716-execute-root | Created `ready` | Required deterministic foundation isolated from semantic/backend integration. |
+| 2026-07-16 | Codex/R-20260716-execute-root | Completed `done` | Six focused tests plus live read-only inspect, syntax, and diff probes passed. |

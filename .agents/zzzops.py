@@ -4,11 +4,22 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
+import shutil
+import subprocess
 import tempfile
+from datetime import date
 from pathlib import Path
 from typing import Any
+
+PROJECT_SCHEMA_VERSION = 1
+PLAN_SCHEMA_VERSION = 1
+PROJECT_BLOCK_START = "<!-- zzzops-project-state"
+PROJECT_BLOCK_END = "zzzops-project-state -->"
+BACKENDS = {"github_issues", "local_files"}
 
 PREFERENCE_LABELS = (
     ("documentation", "Fill backlog with documentation work"),
@@ -56,10 +67,288 @@ def load_preferences(repo: Path) -> tuple[Path, dict[str, Any]]:
 def atomic_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     encoded = (json.dumps(data, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
-    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:
-        handle.write(encoded)
-        temporary = Path(handle.name)
-    os.replace(temporary, path)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+            temporary = Path(handle.name)
+        os.replace(temporary, path)
+    finally:
+        if temporary and temporary.exists():
+            temporary.unlink()
+
+
+def project_digest(text: str) -> str:
+    return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def read_project(repo: Path) -> tuple[Path, str]:
+    path = repo / "goals" / "PROJECT.md"
+    try:
+        return path, path.read_text(encoding="utf-8-sig")
+    except FileNotFoundError:
+        return path, ""
+    except (OSError, UnicodeError) as exc:
+        raise ValueError(f"Cannot read project charter from {path}: {exc}") from exc
+
+
+def parse_project_state(text: str) -> dict[str, Any] | None:
+    pattern = re.compile(
+        re.escape(PROJECT_BLOCK_START) + r"\s*\n(.*?)\n" + re.escape(PROJECT_BLOCK_END),
+        re.DOTALL,
+    )
+    match = pattern.search(text)
+    if not match:
+        return None
+    try:
+        state = json.loads(match.group(1))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid project state JSON: {exc}") from exc
+    if not isinstance(state, dict):
+        raise ValueError("Project state must be a JSON object")
+    return state
+
+
+def command_probe(command: list[str], repo: Path) -> dict[str, Any]:
+    executable = shutil.which(command[0])
+    if not executable:
+        return {"available": False, "ok": False, "detail": "executable not found"}
+    try:
+        result = subprocess.run(
+            [executable, *command[1:]], cwd=repo, capture_output=True, text=True,
+            timeout=5, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"available": True, "ok": False, "detail": type(exc).__name__}
+    detail = (result.stdout.strip() or result.stderr.strip()).splitlines()
+    return {
+        "available": True,
+        "ok": result.returncode == 0,
+        "detail": detail[0][:300] if detail else "",
+    }
+
+
+def inspect_initialization(repo: Path) -> dict[str, Any]:
+    path, text = read_project(repo)
+    error = None
+    try:
+        state = parse_project_state(text)
+    except ValueError as exc:
+        state = None
+        error = str(exc)
+    git_remote = command_probe(["git", "remote", "get-url", "origin"], repo)
+    github_auth = command_probe(["gh", "auth", "status"], repo)
+    return {
+        "schema_version": PLAN_SCHEMA_VERSION,
+        "project_path": str(path),
+        "base_digest": project_digest(text),
+        "state": state,
+        "initialized": bool(state and state.get("initialized") is True),
+        "valid_state": error is None and state is not None,
+        "state_error": error,
+        "missing_charter_fields": charter_missing_fields(text),
+        "capabilities": {"git_origin": git_remote, "github_auth": github_auth},
+    }
+
+
+def charter_missing_fields(text: str) -> list[str]:
+    fields = []
+    labels = {
+        "outcome": "Outcome",
+        "beneficiaries": "Primary beneficiaries",
+        "why_it_matters": "Why it matters",
+    }
+    for field, label in labels.items():
+        match = re.search(rf"^- {re.escape(label)}:\s*(.*)$", text, re.MULTILINE | re.IGNORECASE)
+        if not match or not nonempty(match.group(1)):
+            fields.append(field)
+    if not re.search(r"^- \[x\]\s+.+", text, re.MULTILINE | re.IGNORECASE):
+        fields.append("acceptance_criteria")
+    if "| Unknown |" in text or "## Success metrics" not in text:
+        fields.append("kpis")
+    return fields
+
+
+def load_plan(path: Path) -> dict[str, Any]:
+    try:
+        plan = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Cannot read initialization plan from {path}: {exc}") from exc
+    if not isinstance(plan, dict):
+        raise ValueError("Initialization plan must be a JSON object")
+    return plan
+
+
+def validate_plan(repo: Path, plan: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    allowed = {
+        "schema_version", "base_digest", "confirmed", "backend", "repository",
+        "charter", "evidence", "confirmations", "github",
+    }
+    unknown = sorted(set(plan) - allowed)
+    if unknown:
+        errors.append("unknown fields: " + ", ".join(unknown))
+    if plan.get("schema_version") != PLAN_SCHEMA_VERSION:
+        errors.append(f"schema_version must be {PLAN_SCHEMA_VERSION}")
+    _path, current = read_project(repo)
+    if plan.get("base_digest") != project_digest(current):
+        errors.append("base_digest is stale or missing")
+    if plan.get("confirmed") is not True:
+        errors.append("confirmed must be true")
+    backend = plan.get("backend")
+    if backend not in BACKENDS:
+        errors.append("backend must be github_issues or local_files")
+    repository = plan.get("repository")
+    if not isinstance(repository, dict) or not nonempty(repository.get("identity")):
+        errors.append("repository.identity is required")
+    charter = plan.get("charter")
+    if not isinstance(charter, dict):
+        errors.append("charter must be an object")
+    else:
+        required_text = ("outcome", "why_it_matters", "time_horizon", "precedence")
+        for field in required_text:
+            if not nonempty(charter.get(field)):
+                errors.append(f"charter.{field} is required")
+        required_lists = (
+            "beneficiaries", "acceptance_criteria", "constraints",
+            "non_goals", "unacceptable_tradeoffs",
+        )
+        for field in required_lists:
+            if not nonempty_list(charter.get(field)):
+                errors.append(f"charter.{field} must be a non-empty list")
+        kpis = charter.get("kpis")
+        if not isinstance(kpis, list) or not kpis:
+            errors.append("charter.kpis must be a non-empty list")
+        for index, kpi in enumerate(kpis if isinstance(kpis, list) else []):
+            required = ("name", "why", "baseline", "target", "evidence", "cadence")
+            if not isinstance(kpi, dict) or any(not text_present(kpi.get(key)) for key in required):
+                errors.append(f"charter.kpis[{index}] must define {', '.join(required)}")
+    evidence = plan.get("evidence")
+    if not isinstance(evidence, list) or not evidence:
+        errors.append("evidence must be a non-empty list")
+    confirmations = plan.get("confirmations")
+    if not isinstance(confirmations, list) or not confirmations:
+        errors.append("confirmations must be a non-empty list")
+    if backend == "github_issues":
+        github = plan.get("github")
+        if not isinstance(github, dict) or github.get("usable") is not True:
+            errors.append("github.usable must be true for github_issues")
+    return errors
+
+
+def nonempty(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip()) and value.strip().casefold() != "unknown"
+
+
+def text_present(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def nonempty_list(value: Any) -> bool:
+    return isinstance(value, list) and bool(value) and all(nonempty(item) for item in value)
+
+
+def render_project(plan: dict[str, Any], revision: int) -> str:
+    charter = plan["charter"]
+    state = {
+        "schema_version": PROJECT_SCHEMA_VERSION,
+        "initialized": True,
+        "backend": plan["backend"],
+        "repository": plan["repository"],
+        "revision": revision,
+    }
+    block = json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True)
+    kpis = "\n".join(
+        f"| {cell(k['name'])} | {cell(k['why'])} | {cell(k['baseline'])} | "
+        f"{cell(k['target'])} | {cell(k['evidence'])} | {cell(k['cadence'])} |"
+        for k in charter["kpis"]
+    )
+    bullets = lambda values: "\n".join(f"- {value}" for value in values)
+    checks = "\n".join(f"- [x] {value}" for value in charter["acceptance_criteria"])
+    return f"""# Project success charter
+
+{PROJECT_BLOCK_START}
+{block}
+{PROJECT_BLOCK_END}
+
+**Status:** complete
+**Last reviewed:** {date.today().isoformat()}
+
+## Overall goal
+- Outcome: {charter['outcome']}
+- Primary beneficiaries: {', '.join(charter['beneficiaries'])}
+- Why it matters: {charter['why_it_matters']}
+- Time horizon: {charter['time_horizon']}
+
+## Success metrics
+| KPI | Why it matters | Baseline | Target / threshold | Evidence source | Review cadence |
+| --- | --- | --- | --- | --- | --- |
+{kpis}
+
+## Project acceptance criteria
+{checks}
+
+## Value rubric
+- `critical`: required for project acceptance, safety, or a binding deadline.
+- `high`: materially moves a priority KPI or unlocks critical/high-value work.
+- `medium`: useful measurable contribution with limited leverage.
+- `low`: weak, speculative, cosmetic, or currently unmeasured contribution.
+
+When KPIs conflict, prefer: {charter['precedence']}
+
+## Constraints and non-goals
+### Constraints
+{bullets(charter['constraints'])}
+
+### Non-goals
+{bullets(charter['non_goals'])}
+
+### Unacceptable tradeoffs
+{bullets(charter['unacceptable_tradeoffs'])}
+
+## Assumptions and open questions
+- None recorded at initialization; add evidence-backed changes with history.
+
+## History
+| Date | Actor/run | Change | Reason/evidence |
+| --- | --- | --- | --- |
+| {date.today().isoformat()} | ZzzOps initialization | Initialized revision {revision} | Confirmed agent-generated plan; backend `{plan['backend']}`. |
+"""
+
+
+def cell(value: str) -> str:
+    return value.replace("|", "\\|").replace("\n", " ")
+
+
+def atomic_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="\n", dir=path.parent, delete=False) as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+            temporary = Path(handle.name)
+        os.replace(temporary, path)
+    finally:
+        if temporary and temporary.exists():
+            temporary.unlink()
+
+
+def apply_plan(repo: Path, plan: dict[str, Any]) -> dict[str, Any]:
+    errors = validate_plan(repo, plan)
+    if errors:
+        raise ValueError("Invalid initialization plan: " + "; ".join(errors))
+    path, current = read_project(repo)
+    old_state = parse_project_state(current)
+    revision = int(old_state.get("revision", 0)) + 1 if old_state else 1
+    rendered = render_project(plan, revision)
+    if rendered == current:
+        return {"changed": False, "path": str(path), "revision": revision}
+    atomic_text(path, rendered)
+    return {"changed": True, "path": str(path), "revision": revision}
 
 
 def edit_preferences(repo: Path) -> None:
@@ -143,13 +432,35 @@ def interactive(repo: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="ZzzOps control panel")
     parser.add_argument("--repo", type=Path, default=Path.cwd(), help="Project root (default: current directory)")
+    commands = parser.add_subparsers(dest="command")
+    init = commands.add_parser("init", help="Inspect, validate, or apply agent-driven project initialization")
+    init_commands = init.add_subparsers(dest="init_command", required=True)
+    inspect_command = init_commands.add_parser("inspect", help="Report initialization state and read-only capabilities")
+    inspect_command.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
+    validate_command = init_commands.add_parser("validate", help="Validate an agent-generated initialization plan")
+    validate_command.add_argument("--plan", type=Path, required=True)
+    apply_command = init_commands.add_parser("apply", help="Atomically apply a confirmed initialization plan")
+    apply_command.add_argument("--plan", type=Path, required=True)
     args = parser.parse_args()
     repo = args.repo.resolve()
     if not (repo / ".agents" / "templates" / "project-goals" / "PREFERENCES.json").is_file():
         print(f"ERROR: ZzzOps is not installed at {repo}")
         return 2
     try:
-        interactive(repo)
+        if args.command == "init":
+            if args.init_command == "inspect":
+                result = inspect_initialization(repo)
+                print(json.dumps(result, indent=2, ensure_ascii=False))
+            else:
+                plan = load_plan(args.plan.resolve())
+                if args.init_command == "validate":
+                    errors = validate_plan(repo, plan)
+                    print(json.dumps({"valid": not errors, "errors": errors}, indent=2))
+                    return 0 if not errors else 2
+                result = apply_plan(repo, plan)
+                print(json.dumps(result, indent=2))
+        else:
+            interactive(repo)
     except (EOFError, KeyboardInterrupt):
         print("\nNo further changes made.")
     except ValueError as exc:

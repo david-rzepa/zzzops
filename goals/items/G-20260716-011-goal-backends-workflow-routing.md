@@ -1,7 +1,7 @@
 ---
 id: G-20260716-011-goal-backends-workflow-routing
 title: Add canonical goal backends and workflow routing
-status: triaged
+status: ready
 priority: P1
 value: high
 difficulty: M
@@ -78,10 +78,11 @@ None.
 
 ## Progress and evidence
 
-Triaged; waits for the initialized-state contract.
+Ready; G-010 supplied the initialized-state contract and deterministic CLI boundary.
 
 ## History
 
 | Date | Actor/run | Change | Reason/evidence |
 | --- | --- | --- | --- |
 | 2026-07-16 | Codex/R-20260716-execute-root | Created `triaged` | Backend/workflow integration depends on G-010. |
+| 2026-07-16 | Codex/R-20260716-execute-root | Dependency satisfied; moved `ready` | G-010 tests and state contract passed. |

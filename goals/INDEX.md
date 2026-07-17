@@ -21,7 +21,7 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 ## Ready queue
 | Goal | Parent | Priority | Value | Difficulty | Unlocks | Next action |
 | --- | --- | --- | --- | --- | --- | --- |
-| [G-20260716-010](items/G-20260716-010-initialization-state-cli.md) | [G-008](items/G-20260716-008-require-project-value-interview.md) | P1 | high | M | G-011, G-012 | Implement schema and `init inspect|validate|apply`; stop when focused fixtures pass. |
+| [G-20260716-011](items/G-20260716-011-goal-backends-workflow-routing.md) | [G-008](items/G-20260716-008-require-project-value-interview.md) | P1 | high | M | G-012 | Implement managed issue round trips and shared workflow routing; stop when contract tests pass. |
 
 ## Blocked goals
 | Goal | Priority | Blockers | Recheck trigger | Safe work? |
@@ -36,8 +36,8 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 | [G-20260716-004](items/G-20260716-004-stabilize-prompt-budget-line-endings.md) | done | P2 | medium | S | Canonical LF byte counting and regression test verified. |
 | [G-20260716-008](items/G-20260716-008-require-project-value-interview.md) | triaged | P1 | high | L | G-010 ready; charter confirmation remains open for completion. |
 | [G-20260716-009](items/G-20260716-009-add-user-health-module.md) | triaged | P1 | high | L | Depends on G-008 and confirmed health defaults. |
-| [G-20260716-010](items/G-20260716-010-initialization-state-cli.md) | ready | P1 | high | M | Deterministic initialization foundation ready. |
-| [G-20260716-011](items/G-20260716-011-goal-backends-workflow-routing.md) | triaged | P1 | high | M | Depends on G-010. |
+| [G-20260716-010](items/G-20260716-010-initialization-state-cli.md) | done | P1 | high | M | Six focused initialization/atomicity tests pass. |
+| [G-20260716-011](items/G-20260716-011-goal-backends-workflow-routing.md) | ready | P1 | high | M | Initialization dependency satisfied. |
 | [G-20260716-012](items/G-20260716-012-initialization-install-docs-regression.md) | triaged | P1 | high | M | Depends on G-010/G-011. |
 | [G-20260716-013](items/G-20260716-013-health-policy-schema.md) | triaged | P1 | high | M | Depends on G-008 and health decision. |
 | [G-20260716-014](items/G-20260716-014-health-preferences-cli.md) | triaged | P1 | high | M | Depends on G-013. |
