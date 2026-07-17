@@ -85,6 +85,29 @@ class HealthPolicyTests(unittest.TestCase):
         decision, _ = health.evaluate(saturday, {"timestamp": health._iso(saturday), "precision": "exact_message"}, prefs, state)
         self.assertEqual("late_night", decision["reason_code"])
 
+    def test_work_wind_down_and_quiet_windows_are_observable(self):
+        prefs = self.prefs()
+        after_work = datetime(2026, 7, 15, 19, 0, tzinfo=timezone.utc)
+        decision, _ = health.evaluate(after_work, None, prefs, None)
+        self.assertEqual("outside_work_hours", decision["reason_code"])
+        wind_down = datetime(2026, 7, 15, 23, 0, tzinfo=timezone.utc)
+        decision, _ = health.evaluate(wind_down, None, prefs, None)
+        self.assertEqual("wind_down", decision["reason_code"])
+        prefs["reminders"]["wind_down"]["enabled"] = False
+        prefs["reminders"]["outside_work_hours"]["enabled"] = False
+        quiet = datetime(2026, 7, 15, 23, 50, tzinfo=timezone.utc)
+        decision, _ = health.evaluate(quiet, None, prefs, self.active_state(200))
+        self.assertEqual("not_due", decision["reason_code"])
+
+    def test_overnight_work_window_is_supported(self):
+        prefs = self.prefs()
+        prefs["schedule"]["work_start"] = "22:00"
+        prefs["schedule"]["work_end"] = "06:00"
+        prefs["reminders"]["wind_down"]["enabled"] = False
+        instant = datetime(2026, 7, 15, 2, 0, tzinfo=timezone.utc)
+        decision, _ = health.evaluate(instant, None, prefs, None)
+        self.assertEqual("not_due", decision["reason_code"])
+
     def test_global_cooldown_and_snooze_prevent_repeat(self):
         prefs = self.prefs()
         state = self.active_state(100)

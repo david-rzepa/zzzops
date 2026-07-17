@@ -31,6 +31,8 @@ def default_preferences() -> dict[str, Any]:
         "reminders": {
             "late_night": {"enabled": True},
             "weekend": {"enabled": True},
+            "wind_down": {"enabled": True},
+            "outside_work_hours": {"enabled": True},
             "long_session": {"enabled": True, "after_minutes": 180},
             "break": {"enabled": True, "after_minutes": 90},
             "hydration": {"enabled": True, "after_minutes": 60},
@@ -98,7 +100,7 @@ def validate_preferences(value: dict[str, Any]) -> list[str]:
         if not _parse_clock(schedule.get(key)):
             errors.append(f"schedule.{key} must be HH:MM")
     reminders = p.get("reminders", {})
-    for key in ("late_night", "weekend", "long_session", "break", "hydration"):
+    for key in ("late_night", "weekend", "wind_down", "outside_work_hours", "long_session", "break", "hydration"):
         group = reminders.get(key)
         if not isinstance(group, dict):
             errors.append(f"reminders.{key} must be an object")
@@ -206,6 +208,12 @@ def _select_reason(local: datetime, now: datetime, prefs: dict[str, Any], state:
         return "late_night"
     if reminders["weekend"]["enabled"] and local.weekday() not in schedule["work_days"]:
         return "weekend"
+    if reminders["wind_down"]["enabled"] and _in_window(clock, _parse_clock(schedule["wind_down"]), _parse_clock(schedule["bedtime"])):
+        return "wind_down"
+    if _in_window(clock, _parse_clock(schedule["quiet_start"]), _parse_clock(schedule["quiet_end"])):
+        return None
+    if reminders["outside_work_hours"]["enabled"] and not _in_window(clock, _parse_clock(schedule["work_start"]), _parse_clock(schedule["work_end"])):
+        return "outside_work_hours"
     session = _parse_instant(state.get("session_started_at"))
     if session is None:
         return None
@@ -241,6 +249,8 @@ def _message(reason: str, tone: str) -> str:
     messages = {
         "late_night": "It is after your configured bedtime. Consider wrapping up and sleeping.",
         "weekend": "It is outside your configured work days. Consider leaving this for your next work day.",
+        "wind_down": "Your configured wind-down time has started. Consider finishing this checkpoint and stepping away.",
+        "outside_work_hours": "It is outside your configured work window. Consider leaving this for your next work period.",
         "long_session": "This has been a long session. Consider stopping for a proper break.",
         "break": "You have been active for a while. Consider taking a short break.",
         "hydration": "Consider taking a water break.",
@@ -277,6 +287,10 @@ def _parse_clock(value: Any) -> time | None:
 
 def _in_overnight(value: time, start: time, end: time) -> bool:
     return value >= start or value < end if start > end else start <= value < end
+
+
+def _in_window(value: time, start: time, end: time) -> bool:
+    return _in_overnight(value, start, end)
 
 
 def _boolean(errors: list[str], group: dict[str, Any], label: str, key: str | None = None) -> None:
