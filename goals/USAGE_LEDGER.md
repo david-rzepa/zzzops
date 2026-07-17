@@ -22,6 +22,7 @@ Append only; corrections identify superseded rows. Follow `.zzzops/rules/USAGE_A
 | R-20260716-release-root | root/goal-management | 2026-07-16 | portfolio | Closed terminal child/parent and rebuilt the empty queue | - | - | - | - | unavailable | n/a | Goal/index/history consistency and final requirement audit completed; exact tokens unavailable. |
 | R-20260716-execute-root | root/goal-management | 2026-07-16 | G-008/G-009 | Audited, interviewed, and decomposed two large goals into six sequential children | - | - | - | - | unavailable | n/a | Two read-only audits reduced design risk; callable exact token usage remains unavailable. |
 | R-20260716-execute-root | root/goal-work | 2026-07-16 | G-010 | Implemented deterministic initialization state and CLI | - | - | - | - | unavailable | n/a | Six focused tests, live inspect, syntax, and diff checks passed; exact token usage unavailable. |
+| R-20260716-execute-root | root/goal-work | 2026-07-16 | G-011 | Added canonical backend contract and workflow routing | - | - | - | - | unavailable | n/a | Ten focused issue/schema/static workflow tests passed; exact token usage unavailable. |
 
 ## Limit snapshots
 | Run ID | Date/time | Source | Context | Rate/credit state | Notes |

@@ -110,5 +110,59 @@ class InitializationTests(unittest.TestCase):
         self.assertEqual([], [p for p in path.parent.iterdir() if p.name != "PROJECT.md"])
 
 
+class ManagedGoalTests(unittest.TestCase):
+    def goal(self):
+        return {
+            "id": "G-20260716-001-example", "title": "Example", "status": "ready",
+            "priority": "P1", "value": "high", "difficulty": "S", "confidence": "high",
+            "parent": None, "depends_on": [], "blocks": [], "needs_human": False,
+            "claim": {"owner": None}, "blockers": [], "evidence": [],
+            "next_action": "Run the focused probe.", "revision": 1,
+        }
+
+    def test_managed_goal_round_trip_preserves_unmanaged_text(self):
+        original = "Human context before.\n\nHuman context after.\n"
+        body = zzzops.render_managed_goal(self.goal(), original)
+        self.assertEqual(self.goal(), zzzops.parse_managed_goal(body))
+        changed = self.goal()
+        changed["status"] = "done"
+        updated = zzzops.render_managed_goal(changed, body)
+        self.assertTrue(updated.startswith(original.rstrip("\n")))
+        self.assertEqual("done", zzzops.parse_managed_goal(updated)["status"])
+        self.assertEqual(1, updated.count(zzzops.GOAL_BLOCK_START))
+
+    def test_managed_goal_rejects_unknown_or_partial_schema(self):
+        goal = self.goal()
+        goal["surprise"] = True
+        del goal["next_action"]
+        errors = zzzops.validate_managed_goal(goal)
+        self.assertTrue(any("unknown fields" in error for error in errors))
+        self.assertIn("next_action is required", errors)
+
+
+class WorkflowContractTests(unittest.TestCase):
+    def test_non_install_skills_share_preflight_and_backend_rules(self):
+        root = Path(__file__).parent
+        names = (
+            "add-zzzops-todo", "execute-zzzops", "migrate-zzzops-todos",
+            "suggest-zzzops-work", "analyze-zzzops-usage",
+        )
+        for name in names:
+            text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("INITIALIZATION.md", text, name)
+            self.assertIn("BACKENDS.md", text, name)
+        install = (root / "skills" / "install-zzzops" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertNotIn("INITIALIZATION.md", install)
+
+    def test_capture_and_execution_git_boundaries_are_explicit(self):
+        root = Path(__file__).parent
+        add = (root / "skills" / "add-zzzops-todo" / "SKILL.md").read_text(encoding="utf-8")
+        execute = (root / "skills" / "execute-zzzops" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("never creates a branch, commit, push, or PR", add)
+        self.assertIn("Default to the current branch", execute)
+        self.assertIn("never absorb unrelated changes", execute)
+        self.assertIn("empty GitHub-state commit", execute)
+
+
 if __name__ == "__main__":
     unittest.main()

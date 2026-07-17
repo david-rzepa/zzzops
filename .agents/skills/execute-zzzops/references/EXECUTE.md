@@ -5,7 +5,7 @@
 ## Select
 
 1. Create a run ID and inspect callable usage per `.zzzops/rules/USAGE_ACCOUNTING.md`.
-2. Read project charter, `.zzzops/PREFERENCES.json`, index, goals, and selection-critical relationships/claims/reviews. Repair only drift needed to select safely. If the user is present and the human queue is non-empty, run `UNBLOCK.md` first.
+2. Read project charter, `.zzzops/PREFERENCES.json`, the canonical backend portfolio, and selection-critical relationships/claims/reviews. Repair only derived drift needed to select safely. If the user is present and the human queue is non-empty, run `UNBLOCK.md` first.
 3. Triage every `new` goal via `CREATE.md` before steady execution.
 4. Actionable = `ready` or resumable `in_progress`, authorized concrete next action, gates satisfied, no invalidating blocker/live foreign claim. Recheck blocked work only on its trigger.
 5. Choose `P0`, then greatest evidenced project/KPI movement and unlock value. At run start allow at most two verified `XS/S` wins, then substantive work. Tie-break priority, value, justified date, unlocks, smaller difficulty, age; prefer valid resumed work.
@@ -21,7 +21,7 @@
 
 - On a blocker, follow `.zzzops/rules/BLOCKERS.md`: record continuation, ask when useful, do only bounded safe work, then keep active or block/release claim and switch.
 - Before `done`, cite observed before/after evidence for each criterion; verify required children, blockers, and relevant checks; state anything unobserved. Build/lint/types/code review do not prove runtime behavior unless that is the criterion. Update state/history/index/usage and clear claim.
-- Commit each completed sub-goal separately on the current branch, staging only its scope/state and using `type(scope): outcome` Conventional Commit syntax. Recheck parent criteria and unlocked dependents; repeat upward, then select again.
+- Commit each completed sub-goal separately on the current branch, staging only implementation and pending local ZzzOps state; a GitHub-only state change never causes an empty commit. Use `type(scope): outcome` Conventional Commit syntax. Recheck parent criteria and unlocked dependents; repeat upward, then select again.
 
 ## Exhaustion and handoff
 

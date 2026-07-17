@@ -1,7 +1,7 @@
 ---
 id: G-20260716-012-initialization-install-docs-regression
 title: Prove initialization installation and user guidance
-status: triaged
+status: ready
 priority: P1
 value: high
 difficulty: M
@@ -78,10 +78,11 @@ None.
 
 ## Progress and evidence
 
-Triaged; waits for implementation artifacts.
+Ready; G-010 and G-011 supplied all implementation artifacts and contracts.
 
 ## History
 
 | Date | Actor/run | Change | Reason/evidence |
 | --- | --- | --- | --- |
 | 2026-07-16 | Codex/R-20260716-execute-root | Created `triaged` | Packaging/docs proof isolated as a terminal child. |
+| 2026-07-16 | Codex/R-20260716-execute-root | Dependencies satisfied; moved `ready` | Initialization and backend workflow children passed focused tests. |

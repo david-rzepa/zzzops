@@ -5,7 +5,7 @@ description: Primary ZzzOps workflow: triage, prioritize, unblock, execute, veri
 
 # Execute ZzzOps
 
-Read `../../../.zzzops/rules/GOAL_SYSTEM.md`, `../../../goals/PROJECT.md`, and local `../../../.zzzops/PREFERENCES.json`, then load only what applies. Use `../../../goals/TEMPLATE.md` and installed state templates instead of restating artifact shapes.
+First run `../../../.zzzops/rules/INITIALIZATION.md`, then route through `../../../.zzzops/rules/BACKENDS.md`. Read `../../../.zzzops/rules/GOAL_SYSTEM.md`, the initialized charter, and local `../../../.zzzops/PREFERENCES.json`; load only what applies.
 
 - Create/triage/decompose: [CREATE.md](references/CREATE.md) and `../../../goals/TEMPLATE.md`.
 - Unblock/interview: [UNBLOCK.md](references/UNBLOCK.md) and `../../../.zzzops/rules/BLOCKERS.md`.
@@ -15,3 +15,5 @@ Read `../../../.zzzops/rules/GOAL_SYSTEM.md`, `../../../goals/PROJECT.md`, and l
 - Exhausted-queue backlog suggestions: `$suggest-zzzops-work` when enabled by preferences.
 
 This is the primary autonomous loop. On an interactive run, inspect the human-input queue before ordinary prioritization. If open human blockers exist, run the unblock interview immediately, persist answers, then continue. When execution exhausts actionable work, interview again before stopping if human input could restore progress. Treat local parallelization preferences as maximum permission, never a utilization target. User authority and project rules outrank goals. Persist resumable state before switching/stopping; continue across goals while safe useful work exists. Optimize verified value, not item count or limit consumption.
+
+Default to the current branch. Before source work, checkpoint only pending local ZzzOps state when required; never absorb unrelated changes or create an empty GitHub-state commit. Then follow repository Git/PR rules.

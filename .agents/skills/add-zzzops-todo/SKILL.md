@@ -5,6 +5,8 @@ description: Add one durable ZzzOps TODO/goal using the installed goal template.
 
 # Add ZzzOps TODO
 
-Inspect context and `goals/PROJECT.md`; search goal files and trackers for duplicates. Ask promptly about consequential ambiguity. Copy `goals/TEMPLATE.md` to the next stable `goals/items/G-YYYYMMDD-NNN-slug.md`, fill it from evidence, and update `goals/INDEX.md` plus backlinks atomically.
+Run `.zzzops/rules/INITIALIZATION.md`, then `.zzzops/rules/BACKENDS.md`. Inspect context and the selected backend for duplicates. Ask promptly about consequential ambiguity. Create one canonical goal using the managed GitHub issue schema or, for `local_files`, `goals/TEMPLATE.md` plus index/backlinks.
 
 Capture exact source path/line when applicable and explain value against project KPIs/acceptance. Preserve unknowns rather than inventing them. Use `$execute-zzzops` afterward for decomposition, triage, or execution.
+
+Capture never creates a branch, commit, push, or PR. Leave local goal edits uncommitted; a GitHub issue needs no Git checkpoint.
