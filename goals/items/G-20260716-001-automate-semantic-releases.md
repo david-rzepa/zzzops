@@ -1,11 +1,11 @@
 ---
 id: G-20260716-001-automate-semantic-releases
 title: Automate semantic GitHub releases
-status: triaged
+status: done
 priority: P1
 value: high
 difficulty: M
-confidence: medium
+confidence: high
 owner: Codex
 created: 2026-07-16
 updated: 2026-07-16
@@ -30,7 +30,7 @@ ZzzOps derives semantic versions from repository history and publishes reproduci
 ## Success criteria
 
 - [x] A CI workflow triggered by pushes to `main` calculates the next semantic version from an explicitly documented commit/tag convention. Evidence: `.github/workflows/release.yml`, local real-history plan `none -> v1.0.0 (major)`, and README release convention.
-- [ ] A qualifying `main` push creates the expected Git tag and GitHub Release with generated release notes; a non-qualifying push does not publish a release.
+- [x] A qualifying `main` push creates the expected Git tag and GitHub Release with generated release notes; a non-qualifying rerun does not publish another release. Evidence: the breaking root push published `v1.0.0`; a rerun after the tag reported no releasable commits and release/tag counts remained one.
 - [x] A workflow on `dev` runs the same release/version calculation in dry-run mode and cannot create tags, GitHub Releases, or other release-side effects. Evidence: runs `29535036331` and `29535149186` passed all dry-run steps, skipped `release`, and left remote releases/tags empty.
 - [x] Repository documentation explains the release convention, branch behavior, required permissions/secrets, and how to diagnose a failed release. Evidence: README “Releases” section.
 - [x] Tests or controlled workflow evidence demonstrate the first-release, patch/minor/major, no-release, rerun/idempotency, and dry-run paths. Evidence: six local tests include a temporary real Git history; two live `dev` runs passed.
@@ -49,7 +49,7 @@ ZzzOps derives semantic versions from repository history and publishes reproduci
 
 ## Approach and next action
 
-**Next action:** Inspect current branches, tags, repository permissions, and available CI/runtime surfaces; compare the smallest viable semantic-release approaches and stop after recording a recommended design plus an observable local or `dev` dry-run probe.
+**Next action:** Complete; develop future Conventional Commits through `dev` PRs and let intentional `main` release updates run the shared publisher.
 
 ### Fast feedback
 
@@ -58,7 +58,7 @@ ZzzOps derives semantic versions from repository history and publishes reproduci
 - Observation surface (test/harness/API/UI/log/MCP/etc.): GitHub Actions logs, calculated next version/release notes, repository tags, and GitHub Releases.
 - Smallest chunk: Calculate and print the next version/release notes from synthetic Conventional Commit histories without publishing.
 - Probe/action and expected signal: Run the selected engine in dry-run mode against patch, minor, major, and no-release fixtures; each reports the expected result and produces no remote mutation.
-- Actual result/evidence: Six unit/integration tests pass, including a temporary Git history from first release through patch/minor/major/no-release/idempotent paths. The real repository plans `none -> v1.0.0 (major)` with notes for breaking commit `c91e580`. GitHub's official workflow and CLI references confirm the branch filters, job-scoped `contents: write`, automatic tag creation, `--target`, `--notes-file`, and `--fail-on-no-commits` semantics. Live `dev` evidence remains next.
+- Actual result/evidence: Six unit/integration tests, two live `dev` dry runs, the final exact-tree planner/PR checks, the production `v1.0.0` publication, and a no-duplicate rerun all passed.
 - Wider checks after local proof: Exercise `dev`, inspect token/permission boundaries, merge a controlled qualifying change to `main`, verify tag/release contents, and verify a rerun is idempotent.
 
 ### Execution constraints
@@ -70,7 +70,7 @@ ZzzOps derives semantic versions from repository history and publishes reproduci
 ## Relationships
 
 - Parent: none
-- Children (required/optional + purpose/status): [G-20260716-003](G-20260716-003-document-dev-branch-workflow.md) (required; initial `dev`-first Git/release guidance; `done`); [G-20260716-005](G-20260716-005-document-pr-workflow.md) (required; document `dev`-targeted PR and atomic commit policy; `done`); [G-20260716-006](G-20260716-006-protect-main-and-dev.md) (required; PR CI plus protection/fallback; `done`); [G-20260716-007](G-20260716-007-squash-v1-main-history.md) (required; publish audited single-root `v1.0.0`; `triaged`).
+- Children (required/optional + purpose/status): [G-20260716-003](G-20260716-003-document-dev-branch-workflow.md) (required; initial `dev`-first Git/release guidance; `done`); [G-20260716-005](G-20260716-005-document-pr-workflow.md) (required; document `dev`-targeted PR and atomic commit policy; `done`); [G-20260716-006](G-20260716-006-protect-main-and-dev.md) (required; PR CI plus protection/fallback; `done`); [G-20260716-007](G-20260716-007-squash-v1-main-history.md) (required; published audited single-root `v1.0.0`; `done`).
 - Dependencies (status/reason): none recorded; repository settings or branch creation may become a human-action blocker during investigation.
 - Blocks (impact): none recorded.
 
@@ -94,7 +94,7 @@ None.
 
 ## Progress and evidence
 
-Shared planner, tests, workflow, and docs are on `dev`; live dry runs passed without mutation. Release authorization is resolved. Parent remains `triaged` until required terminal child `G-007` publishes and verifies the single-root `v1.0.0` after `G-002`.
+Shared planner, tests, workflows, and docs are verified. Live dry runs did not mutate releases; terminal child `G-007` published and audited the single-root `v1.0.0`, including no-release rerun behavior, so the parent is done.
 
 ## History
 
@@ -110,3 +110,4 @@ Shared planner, tests, workflow, and docs are on `dev`; live dry runs passed wit
 | 2026-07-16 | Codex/R-20260716-queued | Required child `G-20260716-005` completed | PR/commit policy is now explicit in root instructions. |
 | 2026-07-16 | Codex/R-20260716-queued | Required child `G-20260716-006` completed | Live PR CI passed; unavailable protection is covered by the user's documented manual fallback. |
 | 2026-07-16 | user/Codex | Resolved `B-002`; added required child `G-007` | User explicitly authorized the terminal single-root `v1.0.0` release operation. |
+| 2026-07-16 | Codex/R-20260716-release-root | Required child `G-007` completed; set `done` | Production `v1.0.0`, generated notes, no-duplicate rerun, and reconciled `dev` were verified. |

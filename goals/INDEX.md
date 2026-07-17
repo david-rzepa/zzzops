@@ -20,7 +20,7 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 ## Ready queue
 | Goal | Parent | Priority | Value | Difficulty | Unlocks | Next action |
 | --- | --- | --- | --- | --- | --- | --- |
-| [G-20260716-007](items/G-20260716-007-squash-v1-main-history.md) | G-20260716-001 | P1 | high | M | Completes semantic-release parent | Build and audit the exact root candidate before the leased `main` update. |
+| None | - | - | - | - | - | - |
 
 ## Blocked goals
 | Goal | Priority | Blockers | Recheck trigger | Safe work? |
@@ -30,7 +30,7 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 ## Root goals
 | Goal | Status | Priority | Value | Difficulty | Progress summary |
 | --- | --- | --- | --- | --- | --- |
-| [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | triaged | P1 | high | M | Release authorized; terminal child `G-007` is ready. |
+| [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | done | P1 | high | M | Semantic release and the single-root `v1.0.0` production path are verified. |
 | [G-20260716-002](items/G-20260716-002-brand-skills-as-zzzops.md) | done | P1 | high | M | Repository rename and ZzzOps-path Codex grouping verified. |
 | [G-20260716-004](items/G-20260716-004-stabilize-prompt-budget-line-endings.md) | done | P2 | medium | S | Canonical LF byte counting and regression test verified. |
 
@@ -42,6 +42,8 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 | [G-20260716-004](items/G-20260716-004-stabilize-prompt-budget-line-endings.md) | done | 2026-07-16 | LF/CRLF/CR estimates match; regenerated prompt budget passes. |
 | [G-20260716-006](items/G-20260716-006-protect-main-and-dev.md) | done | 2026-07-16 | PR #1 passed `dev-required-tests`; Free-plan limitation and exact manual fallback documented. |
 | [G-20260716-002](items/G-20260716-002-brand-skills-as-zzzops.md) | done | 2026-07-16 | Fresh install/update probes passed and the user confirmed Codex groups the renamed checkout under ZzzOps. |
+| [G-20260716-007](items/G-20260716-007-squash-v1-main-history.md) | done | 2026-07-16 | Exact-tree audit, backup, leased rewrite, `v1.0.0`, idempotent rerun, and `dev` reconciliation passed. |
+| [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | done | 2026-07-16 | Shared dry-run/publish planner is proven locally, on `dev`, and by the production `v1.0.0` release. |
 
 ## Portfolio notes
-- Terminal release `G-007` is the only actionable goal and is explicitly authorized to update `main` by leased owner force-push after its audit passes.
+- All queued goals are complete. Future ordinary work starts from `dev`; `main` is the clean single-root `v1.0.0` release line.

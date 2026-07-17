@@ -18,6 +18,8 @@ Append only; corrections identify superseded rows. Follow `.zzzops/rules/USAGE_A
 | R-20260716-queued-root | root/goal-work | 2026-07-16 | G-20260716-006 | Implemented/published PR CI; inspected GitHub protection capability | - | - | - | - | unavailable | n/a | Local checks pass; auth and private Free-plan limitations block live PR/settings completion. |
 | R-20260716-queued-root | root/goal-work | 2026-07-16 | G-20260716-006 | Verified live PR CI and documented protection fallback | - | - | - | - | unavailable | n/a | Run 29537194082 passed; API 403 and force-only semantic limitation documented. |
 | R-20260716-release-root | root/goal-management | 2026-07-16 | G-20260716-002 | Resolved UI blocker and unlocked terminal release | - | - | - | - | unavailable | n/a | Harness exposes no callable token counter; user confirmed Codex groups `C:\dev\zzzops` correctly. |
+| R-20260716-release-root | root/goal-work | 2026-07-16 | G-20260716-007 | Published and audited the single-root `v1.0.0` release | - | - | - | - | unavailable | n/a | Exact-tree checks, installer smoke, verified bundle, leased rewrite, release/rerun, and dev reconciliation passed. |
+| R-20260716-release-root | root/goal-management | 2026-07-16 | portfolio | Closed terminal child/parent and rebuilt the empty queue | - | - | - | - | unavailable | n/a | Goal/index/history consistency and final requirement audit completed; exact tokens unavailable. |
 
 ## Limit snapshots
 | Run ID | Date/time | Source | Context | Rate/credit state | Notes |
