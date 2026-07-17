@@ -1,7 +1,7 @@
 ---
 id: G-20260716-002-brand-skills-as-zzzops
 title: Brand all skills clearly as ZzzOps
-status: blocked
+status: done
 priority: P1
 value: high
 difficulty: M
@@ -15,7 +15,7 @@ review_after: null
 parent: null
 depends_on: []
 blocks: []
-needs_human: true
+needs_human: false
 tags: [skills, naming, branding, discovery, installer]
 external_refs: ["user-request:2026-07-16"]
 claim: {owner: null, claimed_at: null, expires_at: null}
@@ -36,7 +36,7 @@ Every installed and repository-local skill is unmistakably part of ZzzOps in age
 - [x] A clean install into a temporary repository makes the skills discoverable under clear ZzzOps names in supported harness layouts. Evidence: installer preview/apply succeeded with 46 mechanical files and exact Codex/Claude directory listings.
 - [x] The compatibility policy for repositories that already contain the first-release skill names is explicit and verified; stale aliases are intentionally retained and documented. Evidence: update preview reported `Legacy skill directories retained: add-project-todo`; README explains manual removal after verification.
 - [x] Prompt budget counts are regenerated and pass `.agents/prompt_stats.py --check`. Evidence: 22 prompts, 39,983 bytes, ~10,006 estimated tokens.
-- [ ] Reopen the checkout at `C:\dev\zzzops` and verify Codex groups its project-local skills under ZzzOps rather than `agent-goals`.
+- [x] Reopen the checkout at `C:\dev\zzzops` and verify Codex groups its project-local skills under ZzzOps rather than `agent-goals`. Evidence: user confirmed “the zzzops folder worked” after opening the renamed checkout in Codex.
 
 ## Scope
 
@@ -52,7 +52,7 @@ Every installed and repository-local skill is unmistakably part of ZzzOps in age
 
 ## Approach and next action
 
-**Next action:** Inventory every skill-facing identifier and path, propose the shortest consistent ZzzOps rename map plus first-release compatibility behavior, and stop after proving the mapping covers every repository reference.
+**Next action:** Complete; preserve the verified ZzzOps-named checkout and skill paths.
 
 ### Fast feedback
 
@@ -61,7 +61,7 @@ Every installed and repository-local skill is unmistakably part of ZzzOps in age
 - Observation surface (test/harness/API/UI/log/MCP/etc.): Repository search, installer dry run/apply output, installed `.agents/skills` and `.claude/skills` trees, and harness skill discovery lists.
 - Smallest chunk: Express the old-to-new naming map as a table and validate that each old identifier/path occurrence is assigned exactly one disposition.
 - Probe/action and expected signal: Scan all tracked files and a clean install; no unapproved old skill name remains and each renamed skill is discoverable once.
-- Actual result/evidence: Fresh install, legacy-update preview, old-name scan, Python parse, and prompt-budget probes passed. UI group remains tied to the current checkout path.
+- Actual result/evidence: Fresh install, legacy-update preview, old-name scan, Python parse, and prompt-budget probes passed. The user reopened `C:\dev\zzzops` and confirmed Codex displayed the expected ZzzOps grouping.
 - Wider checks after local proof: Fresh install, update over a first-release install, prompt-budget verification, Python parsing, and README quickstart command validation.
 
 ### Execution constraints
@@ -81,23 +81,23 @@ Every installed and repository-local skill is unmistakably part of ZzzOps in age
 
 ### Open
 
+None.
+
+### Resolved
+
 ### B-001 - Reopen from a ZzzOps-named checkout
-- Status/category/raised/owner: open / `human-action` / 2026-07-16 / user
+- Status/category/raised/owner: resolved / `human-action` / 2026-07-16 / user
 - Blocks: final UI grouping verification only
 - Question or required action: after this run, rename or clone the checkout to `C:\dev\zzzops`, reopen it in Codex, and confirm the group label is ZzzOps.
 - Why/options/recommendation: Codex groups project-local `.agents/skills` by workspace path; keep the canonical discovery folder and rename the checkout rather than moving skills out of `.agents/skills`.
 - Evidence gathered: current workspace and skill source paths are rooted at `C:\dev\agent-goals`; README already instructs cloning to `C:\dev\zzzops`.
 - Continuation: `continue-bounded`
 - Safe work remaining/recheck trigger: correctly named checkout now exists at `C:\dev\zzzops`; recheck after the user opens it in Codex.
-- Resolution/resolved/resolved by: pending
-
-### Resolved
-
-None.
+- Resolution/resolved/resolved by: user confirmed “the zzzops folder worked” / 2026-07-16 / user
 
 ## Progress and evidence
 
-Repository-side rename is complete. A fresh `dev` checkout now exists at `C:\dev\zzzops`; remaining work is the human UI verification after opening that folder in Codex.
+Repository-side rename and UI discovery are complete. A fresh `dev` checkout at `C:\dev\zzzops` exposes the project-local skills under ZzzOps, as confirmed by the user.
 
 ## History
 
@@ -107,3 +107,4 @@ Repository-side rename is complete. A fresh `dev` checkout now exists at `C:\dev
 | 2026-07-16 | Codex/R-20260716-zzzops | Triaged `ready`; difficulty `M` | Full rename surface and observable fresh/update-install probes are defined. |
 | 2026-07-16 | Codex/R-20260716-1500-root | Repository rename verified; set `blocked` | Fresh/update installs and scans pass; Codex group header requires reopening a ZzzOps-named checkout. |
 | 2026-07-16 | Codex/R-20260716-queued | Created `C:\dev\zzzops` checkout | Removed the filesystem action; user must reopen it once for UI evidence. |
+| 2026-07-16 | user/Codex/R-20260716-release-root | Confirmed UI grouping; set `done` | User reported that the ZzzOps-named folder worked, satisfying the final observable criterion and resolving B-001. |
