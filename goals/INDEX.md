@@ -16,6 +16,7 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 | Goal | Priority | Created | Provisional outcome |
 | --- | --- | --- | --- |
 | [G-20260716-008](items/G-20260716-008-require-project-value-interview.md) | P1 | 2026-07-16 | Gate every non-install workflow on a completed project-value interview. |
+| [G-20260716-009](items/G-20260716-009-add-user-health-module.md) | P1 | 2026-07-16 | Add configurable, privacy-safe health nudges based on available message times. |
 
 ## Ready queue
 | Goal | Parent | Priority | Value | Difficulty | Unlocks | Next action |
@@ -34,6 +35,7 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 | [G-20260716-002](items/G-20260716-002-brand-skills-as-zzzops.md) | done | P1 | high | M | Repository rename and ZzzOps-path Codex grouping verified. |
 | [G-20260716-004](items/G-20260716-004-stabilize-prompt-budget-line-endings.md) | done | P2 | medium | S | Canonical LF byte counting and regression test verified. |
 | [G-20260716-008](items/G-20260716-008-require-project-value-interview.md) | new | P1 | high | M | Awaiting triage; value confidence is low while this repository's charter remains incomplete. |
+| [G-20260716-009](items/G-20260716-009-add-user-health-module.md) | new | P1 | high | L | Awaiting value interview, timestamp-capability research, policy choices, and decomposition. |
 
 ## Recently completed or cancelled
 | Goal | Final status | Date | Evidence/rationale |
@@ -47,4 +49,4 @@ Derived from `goals/items/`; repair drift. **Reviewed:** 2026-07-16.
 | [G-20260716-001](items/G-20260716-001-automate-semantic-releases.md) | done | 2026-07-16 | Shared dry-run/publish planner is proven locally, on `dev`, and by the production `v1.0.0` release. |
 
 ## Portfolio notes
-- One new workflow-governance goal awaits triage. Future ordinary work starts from `dev`; `main` remains the clean `v1.0.0` release line.
+- Two new goals await triage; `G-009` should follow `G-008` so health-policy value/defaults are grounded in the project charter. Future ordinary work starts from `dev`; `main` remains the `v1.0.0` release line.

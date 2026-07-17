@@ -14,7 +14,7 @@ last_reviewed: 2026-07-16
 review_after: null
 parent: null
 depends_on: []
-blocks: []
+blocks: [G-20260716-009-add-user-health-module]
 needs_human: false
 tags: [project-charter, interviews, workflows, prioritization, value]
 external_refs: ["user-request:2026-07-16"]
@@ -76,7 +76,7 @@ Provisional value is high because this gate prevents every downstream prioritiza
 - Parent: none
 - Children (required/optional + purpose/status): none; decompose only if shared gate implementation and workflow integration become independently verifiable.
 - Dependencies (status/reason): none identified during capture.
-- Blocks (impact): none recorded; until implemented, workflows may make low-confidence value decisions from an incomplete charter.
+- Blocks (impact): [G-20260716-009](G-20260716-009-add-user-health-module.md) needs the project-value interview before selecting health-policy defaults and confidently assigning value.
 
 ## Blockers
 
@@ -97,3 +97,4 @@ Captured as a new root goal. Repository search found no existing goal covering a
 | Date | Actor/run | Change | Reason/evidence |
 | --- | --- | --- | --- |
 | 2026-07-16 | user/Codex | Created `new` | User required all workflows except installation to interview when the project-value charter is not set. |
+| 2026-07-16 | Codex | Added dependent `G-009` backlink | The health module must establish project value and interview semantics before choosing policy defaults. |
