@@ -1,7 +1,7 @@
 ---
 id: G-20260716-007-squash-v1-main-history
 title: Publish v1.0.0 as the single main root commit
-status: triaged
+status: ready
 priority: P1
 value: high
 difficulty: M
@@ -53,7 +53,7 @@ After every earlier queued goal is complete, `main` contains exactly one root co
 
 ## Approach and next action
 
-**Next action:** Wait until all dependencies are verified `done`, then design the state-finalization/release observation sequence and stop unless it proves the final `main` can remain one root commit with `v1.0.0` pointing to it.
+**Next action:** Build an exact-tree candidate root locally, run the complete release audit, and prove the root/version plan before touching remote refs.
 
 ### Fast feedback
 
@@ -62,7 +62,7 @@ After every earlier queued goal is complete, `main` contains exactly one root co
 - Observation surface (test/harness/API/UI/log/MCP/etc.): Git commit graph/tree hashes, local bundle verification, GitHub Actions, remote refs, tag target, and GitHub Release metadata.
 - Smallest chunk: In a disposable local ref, build the candidate root commit and prove its tree/parent count/version plan without touching remote refs.
 - Probe/action and expected signal: Candidate has zero parents, tree equals audited source, planner reports `v1.0.0`, and all checks pass.
-- Actual result/evidence: Not run.
+- Actual result/evidence: Dependency `G-002` is now verified `done`; candidate construction and release probes have not run yet.
 - Wider checks after local proof: Verify lease SHA, backup, force-push, Actions release, tag/release target, single-commit graph, and reconciled `dev`.
 
 ### Execution constraints
@@ -75,7 +75,7 @@ After every earlier queued goal is complete, `main` contains exactly one root co
 
 - Parent: [G-20260716-001](G-20260716-001-automate-semantic-releases.md)
 - Children (required/optional + purpose/status): none
-- Dependencies (status/reason): `G-002` must complete its renamed-checkout UI verification; `G-006` is done. Parent `G-001` completes from this child's release evidence rather than forming a dependency cycle.
+- Dependencies (status/reason): `G-002` and `G-006` are done. Parent `G-001` completes from this child's release evidence rather than forming a dependency cycle.
 - Blocks (impact): none; this is the terminal release operation.
 
 ## Blockers
@@ -90,7 +90,7 @@ None.
 
 ## Progress and evidence
 
-Triaged as the final required child of `G-001`. No history rewrite, tag, release, or `main` update has occurred. `C:\dev\zzzops` was cloned from `dev`; terminal execution awaits its Codex grouping check.
+Ready as the final required child of `G-001`. No history rewrite, tag, release, or `main` update has occurred. The user confirmed the renamed checkout's Codex grouping, clearing the final dependency gate.
 
 ## History
 
@@ -98,3 +98,4 @@ Triaged as the final required child of `G-001`. No history rewrite, tag, release
 | --- | --- | --- | --- |
 | 2026-07-16 | Codex | Created `new` as terminal goal | User requested a single-commit `main` history with `v1.0.0` on the initial/root commit after all earlier work completes. |
 | 2026-07-16 | Codex/R-20260716-queued | Triaged; linked as required child of `G-001` | Removed the release parent/child dependency cycle; `G-002` remains the only unfinished prerequisite besides this operation. |
+| 2026-07-16 | user/Codex/R-20260716-release-root | Set `ready` | User confirmed the ZzzOps UI grouping; both dependencies are now done. |

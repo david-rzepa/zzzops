@@ -17,12 +17,14 @@ Append only; corrections identify superseded rows. Follow `.zzzops/rules/USAGE_A
 | R-20260716-queued-root | root/goal-work | 2026-07-16 | G-20260716-004 | Fixed line-ending-dependent prompt counts | - | - | - | - | unavailable | n/a | Focused LF/CRLF/CR regression and repository check passed. |
 | R-20260716-queued-root | root/goal-work | 2026-07-16 | G-20260716-006 | Implemented/published PR CI; inspected GitHub protection capability | - | - | - | - | unavailable | n/a | Local checks pass; auth and private Free-plan limitations block live PR/settings completion. |
 | R-20260716-queued-root | root/goal-work | 2026-07-16 | G-20260716-006 | Verified live PR CI and documented protection fallback | - | - | - | - | unavailable | n/a | Run 29537194082 passed; API 403 and force-only semantic limitation documented. |
+| R-20260716-release-root | root/goal-management | 2026-07-16 | G-20260716-002 | Resolved UI blocker and unlocked terminal release | - | - | - | - | unavailable | n/a | Harness exposes no callable token counter; user confirmed Codex groups `C:\dev\zzzops` correctly. |
 
 ## Limit snapshots
 | Run ID | Date/time | Source | Context | Rate/credit state | Notes |
 | --- | --- | --- | --- | --- | --- |
 | None | - | - | - | - | - |
 | R-20260716-1500-root | 2026-07-16 15:00 -06:00 | unavailable | Codex desktop task | unavailable | No callable exact usage/limit surface. |
+| R-20260716-release-root | 2026-07-16 | unavailable | Codex desktop task | unavailable | No callable exact usage/limit surface. |
 
 ## Calibration summary
 | Work type | Difficulty | Samples | Median work tokens | Outcome | Confidence |
