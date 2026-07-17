@@ -26,6 +26,9 @@ Append only; corrections identify superseded rows. Follow `.zzzops/rules/USAGE_A
 | R-20260716-execute-root | root/goal-work | 2026-07-16 | G-012 | Proved installation, docs, CI discovery, and prompt accounting | - | - | - | - | unavailable | n/a | Clean/update installer tests and full local checks passed; exact token usage unavailable. |
 | R-20260716-execute-root | root/goal-management | 2026-07-16 | G-008 audit | Closed capability/schema/evidence verification gaps and persisted a resumable plan | - | - | - | - | unavailable | n/a | Live GitHub probe and 14 focused tests passed; only explicit charter confirmation remains. |
 | R-20260716-execute-root | root/goal-management | 2026-07-16 | G-008/G-009 | Resolved charter and health-policy blockers; applied initialized revision 1 | - | - | - | - | unavailable | n/a | User confirmed both decisions; GitHub migration explicitly approved. |
+| R-20260716-execute-root | root/goal-work | 2026-07-16 | G-008 | Migrated all 15 canonical goals to verified GitHub issues | - | - | - | - | unavailable | n/a | Managed blocks, labels, relationships, states, and removal of transitional local files were verified; exact token usage unavailable. |
+| R-20260716-execute-root | root/goal-work | 2026-07-16 | G-009/G-015 | Implemented the opt-in, nonblocking user-health reminder module | - | - | - | - | unavailable | n/a | Fifty local tests plus an isolated real-AppData probe passed; Windows, Linux, and macOS storage paths run in CI. |
+| R-20260716-execute-root | root/goal-management | 2026-07-16 | portfolio | Reconciled user decisions, canonical issue state, verification, and final handoff | - | - | - | - | unavailable | n/a | No callable exact token or usage-limit surface was available. |
 
 ## Limit snapshots
 | Run ID | Date/time | Source | Context | Rate/credit state | Notes |
