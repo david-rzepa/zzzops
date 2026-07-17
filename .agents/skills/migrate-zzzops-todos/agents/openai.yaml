@@ -1,0 +1,4 @@
+interface:
+  display_name: "Migrate ZzzOps TODOs"
+  short_description: "Discover and migrate repository TODOs safely"
+  default_prompt: "Use $migrate-zzzops-todos to preview and migrate this repository backlog into durable ZzzOps goals."

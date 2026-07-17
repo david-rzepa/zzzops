@@ -1,0 +1,30 @@
+name: PR validation
+
+on:
+  pull_request:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: dev-required-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test prompt accounting
+        run: python .agents/test_prompt_stats.py
+      - name: Test semantic releases
+        run: python -m unittest discover -s .github/scripts -p 'test_*.py'
+      - name: Verify prompt budget
+        run: python .agents/prompt_stats.py --check
+      - name: Check Python syntax
+        run: python -m compileall -q .agents .github/scripts
