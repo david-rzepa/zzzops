@@ -37,7 +37,7 @@ Open a new Codex task or Claude Code session in the target project so its ZzzOps
 Start any non-install workflow in the target, for example:
 
 ```text
-Use $add-zzzops-todo to capture our first piece of work.
+Use $add-zzzops-goal to capture our first piece of work.
 ```
 
 The agent first inspects code, docs, config, history, Git, and GitHub; proposes the project outcome, KPIs, acceptance criteria, and backend; then asks you only to confirm consequential unknowns. Deterministic CLI primitives validate and atomically apply the confirmed plan. You do not fill a blank wizard.
@@ -63,7 +63,7 @@ The agent inventories candidates, presents a human-readable plan, then migrates 
 ### 5. Add new work
 
 ```text
-Use $add-zzzops-todo to capture <the thing we should eventually do>.
+Use $add-zzzops-goal to capture <the thing we should eventually do>.
 ```
 
 ZzzOps checks duplicates, asks important questions, relates value to the charter, and creates a durable issue or local goal with a resumable next action. Capture never creates a branch, commit, push, or PR.
@@ -101,7 +101,7 @@ Use $suggest-zzzops-work in dry-run mode to audit the project and suggest valuab
 
 In Claude Code, replace `$name` with `/name`, for example `/analyze-zzzops-usage`.
 
-First-release installs may retain the old generic skill directories after an update so local customizations are never deleted automatically. Once the renamed skills are discovered and verified, remove the obsolete `add-project-todo`, `migrate-project-goals`, and `suggest-project-work` directories from `.agents/skills/` and `.claude/skills/`.
+Maintainers: see the [skill discovery and mode contract](docs/SKILLS.md).
 
 Usage analysis reports real KPI/outcome efficiency when measurable, plus a clearly labeled heuristic for cross-goal comparison. It also tracks management overhead, because spending 40,000 tokens organizing a 3,000-token fix is not “agentic”—it is a committee.
 
@@ -187,15 +187,15 @@ python .agents/prompt_stats.py --check
 <!-- PROMPT_BUDGET_START -->
 | Prompt | Bytes | Est. tokens |
 | --- | ---: | ---: |
-| `.agents/skills/add-zzzops-todo/SKILL.md` | 1014 | 254 |
-| `.agents/skills/analyze-zzzops-usage/SKILL.md` | 2498 | 625 |
-| `.agents/skills/execute-zzzops/SKILL.md` | 2123 | 531 |
+| `.agents/skills/add-zzzops-goal/SKILL.md` | 1043 | 261 |
+| `.agents/skills/analyze-zzzops-usage/SKILL.md` | 2509 | 628 |
+| `.agents/skills/execute-zzzops/SKILL.md` | 2409 | 603 |
 | `.agents/skills/execute-zzzops/references/CREATE.md` | 2757 | 690 |
 | `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3394 | 849 |
 | `.agents/skills/execute-zzzops/references/UNBLOCK.md` | 1549 | 388 |
-| `.agents/skills/install-zzzops/SKILL.md` | 1249 | 313 |
-| `.agents/skills/migrate-zzzops-todos/SKILL.md` | 1727 | 432 |
-| `.agents/skills/suggest-zzzops-work/SKILL.md` | 2672 | 668 |
+| `.agents/skills/install-zzzops/SKILL.md` | 1471 | 368 |
+| `.agents/skills/migrate-zzzops-todos/SKILL.md` | 2014 | 504 |
+| `.agents/skills/suggest-zzzops-work/SKILL.md` | 2682 | 671 |
 | `.agents/templates/project-goals/GOAL.md` | 1679 | 420 |
 | `.agents/templates/project-goals/INDEX.md` | 1135 | 284 |
 | `.agents/templates/project-goals/MIGRATION_SUMMARY.md` | 194 | 49 |
@@ -211,7 +211,7 @@ python .agents/prompt_stats.py --check
 | `.zzzops/rules/USAGE_ACCOUNTING.md` | 2553 | 639 |
 | `AGENTS.md` | 2963 | 741 |
 | `CLAUDE.md` | 217 | 55 |
-| **Total** | **46501** | **11637** |
+| **Total** | **47346** | **11849** |
 <!-- PROMPT_BUDGET_END -->
 
 </details>

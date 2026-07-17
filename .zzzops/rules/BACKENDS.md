@@ -20,5 +20,5 @@ Use `goals/items/` as truth and derive `goals/INDEX.md` only for this backend; c
 
 ## Git boundary
 
-- Capture (`$add-zzzops-todo`, migrate apply, suggest apply) never creates a branch, commit, push, or PR. Leave local goal edits uncommitted; GitHub issue writes need no empty commit.
+- Capture (`$add-zzzops-goal`, migrate apply, suggest apply) never creates a branch, commit, push, or PR. Leave local goal edits uncommitted; GitHub issue writes need no empty commit.
 - Execute defaults to the current branch. Before source work, checkpoint only pending local ZzzOps state if needed; never include unrelated changes. Then obey repository branch/PR rules and link implementation commits/PRs to the canonical goal.

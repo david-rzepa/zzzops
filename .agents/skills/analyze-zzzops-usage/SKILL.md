@@ -1,6 +1,6 @@
 ---
 name: analyze-zzzops-usage
-description: Analyze ZzzOps token usage, management overhead, delivered project value, and value-per-token efficiency. Use for usage reviews, cost calibration, efficiency comparisons, or evidence-based reprioritization; not goal execution.
+description: Analyze ZzzOps tokens, usage, cost, management overhead, delivered value, and value-per-token efficiency. Use for usage/cost reviews, efficiency comparisons, or evidence-based reprioritization; records a local review, not goal execution.
 ---
 
 # Analyze ZzzOps Usage

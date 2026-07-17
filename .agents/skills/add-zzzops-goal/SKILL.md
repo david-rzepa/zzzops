@@ -1,9 +1,9 @@
 ---
-name: add-zzzops-todo
-description: Add one durable ZzzOps TODO/goal using the installed goal template. Use when the user asks to capture new project work; not backlog migration, triage, or execution.
+name: add-zzzops-goal
+description: Capture, add, create, or record one durable ZzzOps goal/TODO. Use for new project work or backlog items; writes canonical goal state by default. Not migration, suggestion, triage, or execution.
 ---
 
-# Add ZzzOps TODO
+# Add ZzzOps Goal
 
 Run `.zzzops/rules/INITIALIZATION.md`, then `.zzzops/rules/BACKENDS.md`. Inspect context and the selected backend for duplicates. Ask promptly about consequential ambiguity. Create one canonical goal using the managed GitHub issue schema or, for `local_files`, `.agents/templates/project-goals/GOAL.md` plus derived index/backlinks.
 

@@ -1,9 +1,11 @@
 ---
 name: install-zzzops
-description: Preview, install, or update ZzzOps mechanics in another repository while preserving goal state. Use when copying or refreshing ZzzOps. Backlog discovery/import belongs to migrate-zzzops-todos after installation.
+description: Install, set up, copy, refresh, or update ZzzOps mechanics in another repository. "preview" or "dry run" guarantees no writes; "apply", "install", "setup", or "update" writes mechanics only after preview. Not backlog migration/import.
 ---
 
 # Install ZzzOps
+
+Mode: `preview` or `dry run` stops after step 1 with no writes. `apply`, `install`, `setup`, or `update` follows the full preview-confirm-apply workflow; this is the default when no mode is stated.
 
 1. Inspect target instructions and preview with `scripts/install_zzzops.py TARGET`.
 2. Review mechanical conflicts. Apply the identical plan with `--apply --confirm-plan FINGERPRINT`; use `--overwrite-mechanical` only after explicit conflict review.

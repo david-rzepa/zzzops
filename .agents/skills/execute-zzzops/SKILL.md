@@ -1,9 +1,11 @@
 ---
 name: execute-zzzops
-description: Primary ZzzOps workflow: triage, prioritize, unblock, execute, verify, commit, resume, refill, report, and account for durable project goals. Use to initiate ZzzOps, work on all goals, continue autonomous project work, reprioritize, or handle blockers; not untracked one-off work.
+description: Execute the primary ZzzOps goal loop: work all goals, continue, resume, triage, prioritize, reprioritize, unblock, verify, commit, refill, and report. Default executes authorized work. "dry run", "preview", or "plan" performs read-only queue analysis with no writes. Not one-off untracked work.
 ---
 
 # Execute ZzzOps
+
+Mode: `dry run`, `preview`, or `plan` means read-only inventory, triage simulation, ordering, and blocker reporting; do not initialize/apply, claim, update goals/ledger, edit source, run mutating commands, or change Git/external state. Otherwise run the live loop below.
 
 First run `../../../.zzzops/rules/INITIALIZATION.md`, then route through `../../../.zzzops/rules/BACKENDS.md`. Read `../../../.zzzops/rules/GOAL_SYSTEM.md`, the initialized charter, and local `../../../.zzzops/PREFERENCES.json`; load only what applies.
 

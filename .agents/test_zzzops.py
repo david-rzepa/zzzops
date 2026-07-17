@@ -222,10 +222,33 @@ class ManagedGoalTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_skill_names_descriptions_and_modes_are_discoverable(self):
+        root = Path(__file__).parent / "skills"
+        contracts = {
+            "add-zzzops-goal": ("capture", "add", "create", "record", "goal/todo", "writes canonical goal state by default"),
+            "execute-zzzops": ("execute", "work all goals", "continue", "resume", "triage", "prioritize", "reprioritize", "unblock", '"dry run"', '"preview"', '"plan"', "default executes"),
+            "install-zzzops": ("install", "set up", "copy", "refresh", "update", '"preview"', '"dry run"', '"apply"', '"setup"'),
+            "migrate-zzzops-todos": ("discover", "plan", "migrate", "import", "todos/backlogs", '"dry run"', '"preview"', '"apply"', "default builds review artifacts"),
+            "suggest-zzzops-work": ("suggest", "discover", "audit", '"dry run"', '"preview"', '"plan"', '"apply"', '"refill"'),
+            "analyze-zzzops-usage": ("tokens", "usage", "cost", "management overhead", "value-per-token"),
+        }
+        self.assertEqual(set(contracts), {path.name for path in root.iterdir() if (path / "SKILL.md").is_file()})
+        for name, phrases in contracts.items():
+            skill = (root / name / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn(f"name: {name}", skill, name)
+            description = skill.split("---", 2)[1].lower()
+            for phrase in phrases:
+                self.assertIn(phrase, description, f"{name}: {phrase}")
+
+    def test_first_release_has_no_obsolete_add_skill(self):
+        root = Path(__file__).parent / "skills"
+        obsolete = "-".join(("add", "zzzops", "todo"))
+        self.assertFalse((root / obsolete / "SKILL.md").exists())
+
     def test_non_install_skills_share_preflight_and_backend_rules(self):
         root = Path(__file__).parent
         names = (
-            "add-zzzops-todo", "execute-zzzops", "migrate-zzzops-todos",
+            "add-zzzops-goal", "execute-zzzops", "migrate-zzzops-todos",
             "suggest-zzzops-work", "analyze-zzzops-usage",
         )
         for name in names:
@@ -244,7 +267,7 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_capture_and_execution_git_boundaries_are_explicit(self):
         root = Path(__file__).parent
-        add = (root / "skills" / "add-zzzops-todo" / "SKILL.md").read_text(encoding="utf-8")
+        add = (root / "skills" / "add-zzzops-goal" / "SKILL.md").read_text(encoding="utf-8")
         execute = (root / "skills" / "execute-zzzops" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("never creates a branch, commit, push, or PR", add)
         self.assertIn("Default to the current branch", execute)
