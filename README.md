@@ -130,7 +130,7 @@ Or use the interactive control panel from your project root:
 python .agents/zzzops.py
 ```
 
-It edits project preferences and optional user health settings. Tomorrow it may achieve sentience and add a “notify spouse that deployment is stable” menu item, so the command has room to grow.
+It edits project preferences and optional user health settings.
 
 ## Optional health reminders
 
