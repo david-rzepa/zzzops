@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "base_digest": "sha256:replace-from-init-inspect",
+  "confirmed": false,
+  "backend": "github_issues",
+  "migration_pending": false,
+  "repository": {
+    "identity": "owner/repository",
+    "remote": "https://github.com/owner/repository.git"
+  },
+  "charter": {
+    "outcome": "replace with the confirmed observable project outcome",
+    "beneficiaries": ["replace with confirmed beneficiaries"],
+    "why_it_matters": "replace with confirmed value rationale",
+    "time_horizon": "replace with confirmed horizon",
+    "kpis": [
+      {
+        "name": "replace",
+        "why": "replace",
+        "baseline": "replace",
+        "target": "replace",
+        "evidence": "replace",
+        "cadence": "replace"
+      }
+    ],
+    "acceptance_criteria": ["replace with a confirmed observable condition"],
+    "precedence": "replace with confirmed priority when metrics conflict",
+    "constraints": ["replace with a confirmed constraint"],
+    "non_goals": ["replace with a confirmed non-goal"],
+    "unacceptable_tradeoffs": ["replace with a confirmed unacceptable tradeoff"]
+  },
+  "evidence": [
+    {"id": "E-001", "kind": "observed", "source": "README.md", "finding": "replace"},
+    {"id": "E-002", "kind": "proposed", "source": "agent synthesis", "finding": "replace"}
+  ],
+  "confirmations": [
+    {"evidence_id": "E-002", "confirmed_by": "user", "date": "YYYY-MM-DD"}
+  ],
+  "github": {
+    "usable": false,
+    "evidence": "replace with capability result or select local_files"
+  }
+}

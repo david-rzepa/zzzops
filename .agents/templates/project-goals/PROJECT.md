@@ -1,5 +1,16 @@
 # Project success charter
 
+<!-- zzzops-project-state
+{
+  "backend": null,
+  "initialized": false,
+  "migration_pending": false,
+  "repository": null,
+  "revision": 0,
+  "schema_version": 1
+}
+zzzops-project-state -->
+
 **Status:** incomplete
 **Last reviewed:** not yet
 

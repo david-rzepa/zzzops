@@ -1,6 +1,6 @@
 # Unblock goals
 
-1. Read `goals/INDEX.md` human-input queue, then each referenced goal's open blockers, evidence, continuation choice, dependencies, and recheck trigger. Repair missing queue rows before interviewing.
+1. Read the selected backend's human-input queue, then each referenced goal's open blockers, evidence, continuation choice, dependencies, and recheck trigger. Repair missing derived queue entries before interviewing.
 2. Consolidate duplicates and order questions by leverage: safety/access/human action; choices blocking many goals; specifications; technical unknowns. Do not ask questions already answered in project docs, history, or related goals.
 3. Immediately interview the user in one compact categorized batch. For each blocker give: goal(s), category, exact question/action, why it matters, options when applicable, recommended default with consequence, and what safe work can continue. Prefer a few high-leverage questions over a transcript dump.
 4. On each answer, resolve the old blocker without deleting it; record answer, resolver/date, changed assumptions/scope/criteria/next action, and any narrower successor blocker. Update `needs_human`, state, dependencies, history, backlinks, and queue rows atomically.
