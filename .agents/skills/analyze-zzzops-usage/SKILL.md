@@ -6,6 +6,7 @@ description: Analyze ZzzOps token usage, management overhead, delivered project 
 # Analyze ZzzOps Usage
 
 Run `../../../.zzzops/rules/INITIALIZATION.md`, then `../../../.zzzops/rules/BACKENDS.md`. Read the charter, usage ledger, canonical goals, and `../../../.zzzops/rules/USAGE_ACCOUNTING.md`.
+Run `../../../.zzzops/rules/HEALTH.md` entry/final hooks; do not count health state as project value.
 
 1. Validate comparability: separate exact/estimated/unavailable usage and token classes; exclude or label incompatible rows. Allocate shared management overhead consistently and show the method.
 2. Determine realized value from verified goal evidence against project KPIs and acceptance criteria—not priority labels alone. Prefer native measures such as KPI delta, acceptance criteria completed, risk removed, or a dependency unlocked.

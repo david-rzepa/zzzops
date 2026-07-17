@@ -6,6 +6,7 @@ description: Audit project code, tests, docs, config, and ZzzOps state to sugges
 # Suggest ZzzOps Work
 
 Run `.zzzops/rules/INITIALIZATION.md`, then `.zzzops/rules/BACKENDS.md`. Read project instructions, charter, local preferences, and canonical goals.
+Run `.zzzops/rules/HEALTH.md` entry/final hooks; health never changes dry-run/apply authority.
 
 1. Mode defaults to `dry-run`: no edits to source, Git, goals, index, or preferences. `apply` requires explicit user request or `$execute-zzzops` invocation under an enabled refill preference. Never edit/commit preferences.
 2. Inspect actual architecture/entry points and relevant active code, tests/coverage evidence, user/developer/operations docs, CI/build/config, errors/observability/security/performance/accessibility, and stale/dead paths. Use focused native commands; do not run expensive suites merely for ideas.

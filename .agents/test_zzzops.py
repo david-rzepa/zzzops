@@ -198,8 +198,15 @@ class WorkflowContractTests(unittest.TestCase):
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("INITIALIZATION.md", text, name)
             self.assertIn("BACKENDS.md", text, name)
+            self.assertIn("HEALTH.md", text, name)
         install = (root / "skills" / "install-zzzops" / "SKILL.md").read_text(encoding="utf-8")
         self.assertNotIn("INITIALIZATION.md", install)
+        self.assertNotIn("HEALTH.md", install)
+
+    def test_execute_declares_all_required_health_checkpoints(self):
+        text = (Path(__file__).parent / "skills" / "execute-zzzops" / "SKILL.md").read_text(encoding="utf-8")
+        for phrase in ("at entry/final", "after actual user responses", "natural long-run checkpoints"):
+            self.assertIn(phrase, text)
 
     def test_capture_and_execution_git_boundaries_are_explicit(self):
         root = Path(__file__).parent

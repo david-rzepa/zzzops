@@ -7,6 +7,8 @@ description: Primary ZzzOps workflow: triage, prioritize, unblock, execute, veri
 
 First run `../../../.zzzops/rules/INITIALIZATION.md`, then route through `../../../.zzzops/rules/BACKENDS.md`. Read `../../../.zzzops/rules/GOAL_SYSTEM.md`, the initialized charter, and local `../../../.zzzops/PREFERENCES.json`; load only what applies.
 
+Run `../../../.zzzops/rules/HEALTH.md` at entry/final, after actual user responses, and at natural long-run checkpoints.
+
 - Create/triage/decompose: [CREATE.md](references/CREATE.md) and `../../../goals/TEMPLATE.md`.
 - Unblock/interview: [UNBLOCK.md](references/UNBLOCK.md) and `../../../.zzzops/rules/BLOCKERS.md`.
 - Select/execute/complete/handoff: [EXECUTE.md](references/EXECUTE.md).

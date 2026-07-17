@@ -1,3 +1,5 @@
+import json
+import os
 import re
 import subprocess
 import sys
@@ -27,10 +29,25 @@ class InstallerInitializationTests(unittest.TestCase):
             self.assertEqual(0, applied.returncode, applied.stderr + applied.stdout)
             self.assertTrue((target / ".zzzops" / "rules" / "INITIALIZATION.md").is_file())
             self.assertTrue((target / ".zzzops" / "rules" / "BACKENDS.md").is_file())
+            self.assertTrue((target / ".zzzops" / "rules" / "HEALTH.md").is_file())
+            self.assertTrue((target / ".agents" / "zzzops_health.py").is_file())
             self.assertTrue((target / ".agents" / "templates" / "project-goals" / "INIT_PLAN.json").is_file())
             project = (target / "goals" / "PROJECT.md").read_text(encoding="utf-8")
             self.assertIn('"initialized": false', project)
             self.assertFalse((target / ".zzzops" / "init" / "plan.json").exists())
+            self.assertFalse((target / ".zzzops" / "HEALTH_STATE.json").exists())
+            self.assertFalse((target / ".zzzops" / "health_preferences.json").exists())
+            env = os.environ.copy()
+            env["ZZZOPS_USER_CONFIG_DIR"] = str(target / ".test-user-config")
+            env["ZZZOPS_MACHINE_STATE_DIR"] = str(target / ".test-machine-state")
+            status = subprocess.run(
+                [sys.executable, str(target / ".agents" / "zzzops.py"), "--repo", str(target), "health", "status"],
+                env=env, text=True, encoding="utf-8", capture_output=True, check=False,
+            )
+            self.assertEqual(0, status.returncode, status.stderr + status.stdout)
+            self.assertFalse(json.loads(status.stdout)["enabled"])
+            self.assertFalse((target / ".test-user-config").exists())
+            self.assertFalse((target / ".test-machine-state").exists())
             rerun = self.run_installer(target)
             self.assertEqual(0, rerun.returncode, rerun.stderr + rerun.stdout)
             self.assertIn("unchanged=", rerun.stdout)

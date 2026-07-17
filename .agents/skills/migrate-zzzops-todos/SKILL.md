@@ -6,6 +6,7 @@ description: Agent-led discovery and migration of repository TODOs into durable 
 # Migrate ZzzOps TODOs
 
 Run `.zzzops/rules/INITIALIZATION.md`, then `.zzzops/rules/BACKENDS.md`. Use `.agents/templates/project-goals/` for artifact shapes.
+Run `.zzzops/rules/HEALTH.md` entry/final hooks; nudges never substitute for migration approval.
 
 1. Run `scripts/inventory.py .`. Inspect candidate files and surrounding project context yourself. The inventory is advisory; do not treat syntax as intent.
 2. Process every `.zzzops/migration/template-diffs/*.md` in filename order. Determine which state edits each actually requires. Preserve goals, history, decisions, ledger rows, and user answers; ask only newly relevant questions.

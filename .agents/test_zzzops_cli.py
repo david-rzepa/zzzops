@@ -44,6 +44,23 @@ class HealthCliTests(unittest.TestCase):
             self.assertEqual(Path("C:/roaming/ZzzOps/health_preferences.json"), zzzops.user_health_preferences_path(env))
             self.assertEqual(Path("C:/local/ZzzOps/health_state.json"), zzzops.machine_health_state_path(env))
 
+    def test_linux_defaults_use_xdg_config_and_state(self):
+        env = {"XDG_CONFIG_HOME": "/home/test/.cfg", "XDG_STATE_HOME": "/home/test/.state"}
+        with mock.patch.object(zzzops.sys, "platform", "linux"):
+            self.assertEqual(Path("/home/test/.cfg/zzzops/health_preferences.json"), zzzops.user_health_preferences_path(env))
+            self.assertEqual(Path("/home/test/.state/zzzops/health_state.json"), zzzops.machine_health_state_path(env))
+
+    def test_macos_defaults_use_application_support(self):
+        with mock.patch.object(zzzops.sys, "platform", "darwin"), mock.patch.object(zzzops.Path, "home", return_value=Path("/Users/test")):
+            self.assertEqual(
+                Path("/Users/test/Library/Application Support/ZzzOps/health_preferences.json"),
+                zzzops.user_health_preferences_path({}),
+            )
+            self.assertEqual(
+                Path("/Users/test/Library/Application Support/ZzzOps/health_state.json"),
+                zzzops.machine_health_state_path({}),
+            )
+
     def test_missing_preferences_are_opt_in_disabled_and_do_not_write(self):
         status = zzzops.health_status()
         self.assertFalse(status["enabled"])
