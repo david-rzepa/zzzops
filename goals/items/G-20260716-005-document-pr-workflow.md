@@ -46,6 +46,7 @@ Root `AGENTS.md` gives agents one complete contribution path: branch from `dev`,
 - User requested this goal on 2026-07-16 after `G-20260716-003` documented the initial `dev`-first rule.
 - This extends rather than invalidates `G-20260716-003`: branches originate from `dev`, PRs target `dev`, and only intended releases advance to `main`.
 - User preference: large work may use smaller commits, but work that is all required together should ideally be squashed to preserve atomic rollback behavior.
+- Authorized successor `G-008` will narrow “ordinary work” so pure goal capture never branches, commits, pushes, or opens a PR. Once execution begins, this completed branch/PR/commit policy remains authoritative where repository guidance requires it; the refinement does not reopen this historical goal.
 
 ## Approach and next action
 
@@ -95,3 +96,4 @@ Completed. Root guidance now covers branch origin, PR target, coherent feature c
 | 2026-07-16 | Codex | Created `new` | User requested explicit `dev`-origin/target PR rules and atomic-but-reviewable commit guidance. |
 | 2026-07-16 | Codex/R-20260716-queued | Triaged `ready` | Scope, scenarios, edit surface, and verification are concrete. |
 | 2026-07-16 | Codex/R-20260716-queued | Completed `done` | Branch ancestry, exact policy text, and prompt-budget probes passed. |
+| 2026-07-16 | Codex alignment audit | Recorded `G-008` capture exception | Capture remains Git-free; execution continues to use repository-required `dev` branches/PRs and coherent commits. |

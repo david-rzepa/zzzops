@@ -20,6 +20,7 @@ Append only; corrections identify superseded rows. Follow `.zzzops/rules/USAGE_A
 | R-20260716-release-root | root/goal-management | 2026-07-16 | G-20260716-002 | Resolved UI blocker and unlocked terminal release | - | - | - | - | unavailable | n/a | Harness exposes no callable token counter; user confirmed Codex groups `C:\dev\zzzops` correctly. |
 | R-20260716-release-root | root/goal-work | 2026-07-16 | G-20260716-007 | Published and audited the single-root `v1.0.0` release | - | - | - | - | unavailable | n/a | Exact-tree checks, installer smoke, verified bundle, leased rewrite, release/rerun, and dev reconciliation passed. |
 | R-20260716-release-root | root/goal-management | 2026-07-16 | portfolio | Closed terminal child/parent and rebuilt the empty queue | - | - | - | - | unavailable | n/a | Goal/index/history consistency and final requirement audit completed; exact tokens unavailable. |
+| R-20260716-execute-root | root/goal-management | 2026-07-16 | G-008/G-009 | Audited, interviewed, and decomposed two large goals into six sequential children | - | - | - | - | unavailable | n/a | Two read-only audits reduced design risk; callable exact token usage remains unavailable. |
 
 ## Limit snapshots
 | Run ID | Date/time | Source | Context | Rate/credit state | Notes |

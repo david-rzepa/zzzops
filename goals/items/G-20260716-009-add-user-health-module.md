@@ -1,7 +1,7 @@
 ---
 id: G-20260716-009-add-user-health-module
 title: Add a configurable user-health module
-status: new
+status: triaged
 priority: P1
 value: high
 difficulty: L
@@ -13,9 +13,9 @@ target_date: null
 last_reviewed: 2026-07-16
 review_after: null
 parent: null
-depends_on: []
+depends_on: [G-20260716-008-require-project-value-interview]
 blocks: []
-needs_human: false
+needs_human: true
 tags: [health, wellbeing, breaks, hydration, sleep, weekends, preferences, timestamps]
 external_refs: ["user-request:2026-07-16"]
 claim: {owner: null, claimed_at: null, expires_at: null}
@@ -53,6 +53,7 @@ Provisional value is high because this directly addresses the user's stated late
 - The user explicitly requested break, water, sleep, and weekend-work encouragement based on when they send messages, with finely grained preferences.
 - Existing user-level configuration lives in ignored `.zzzops/PREFERENCES.json`; `.agents/templates/project-goals/PREFERENCES.json:1-12` currently covers only backlog refill and parallelization.
 - The interactive CLI in `.agents/zzzops.py:55-115` already edits existing preference groups and should be extended rather than creating a second settings command.
+- `G-008` initialization only advertises the preferences CLI at completion; it does not infer or edit personal settings. This health goal owns the future health preference schema/UI, and the user explicitly configures it later.
 - Existing `.zzzops/.gitignore` and installed ignore templates must cover any minimal health-state file so personal timing data cannot be committed accidentally.
 - Harnesses may expose current time, message times, or neither. Triage must inspect real Codex and Claude Code capabilities and define an honest capability matrix before implementation.
 - Preference groups to design and validate:
@@ -69,7 +70,7 @@ Provisional value is high because this directly addresses the user's stated late
 
 ## Approach and next action
 
-**Next action:** After the project-value interview required by `G-008`, triage timestamp capabilities and user-policy choices, then decompose this `L` goal into separately verifiable policy/preferences, workflow integration, CLI, and test/documentation children.
+**Next action:** Finish `G-008`, resolve `B-001`, then execute `G-013` through `G-015` sequentially.
 
 ### Fast feedback
 
@@ -90,15 +91,23 @@ Provisional value is high because this directly addresses the user's stated late
 ## Relationships
 
 - Parent: none
-- Children (required/optional + purpose/status): none yet; decomposition is expected because difficulty is `L`.
-- Dependencies (status/reason): [G-20260716-008](G-20260716-008-require-project-value-interview.md) should establish project value/KPIs and interview semantics before health-policy defaults are selected.
+- Children (required/optional + purpose/status): [G-013](G-20260716-013-health-policy-schema.md) required/triaged—pure policy/schema; [G-014](G-20260716-014-health-preferences-cli.md) required/triaged—ignored state and CLI; [G-015](G-20260716-015-health-workflow-integration.md) required/triaged—workflow hooks, install/docs, and regressions.
+- Dependencies (status/reason): [G-20260716-008](G-20260716-008-require-project-value-interview.md) must initialize project value/KPIs, backend, and workflow preflight before health-policy defaults are selected.
 - Blocks (impact): none recorded.
 
 ## Blockers
 
 ### Open
 
-None during capture. Triage must interview for desired defaults, timezone/schedule, reminder tone, escalation/blocking policy, privacy/retention, and exception behavior rather than guessing.
+### B-001 - Confirm health privacy and behavior defaults
+- Status/category/raised/owner: open / `decision` / 2026-07-16 / user
+- Blocks: health policy implementation and all health children.
+- Question or required action: Confirm or correct opt-in, nonblocking, per-repository reminders; derived timestamps only; exact message times when exposed; approximate workflow-receipt time only by explicit opt-in; clear unsupported-timezone warning instead of a dependency.
+- Why/options/recommendation: These defaults minimize surveillance, false claims, dependencies, and unwanted interruption while retaining configurable nudges.
+- Evidence gathered: Neither Codex nor Claude Code portably exposes send timestamps; Windows may lack IANA timezone data; current preferences are per-repository and ignored.
+- Continuation: `stop-affected-work`
+- Safe work remaining/recheck trigger: Complete `G-008`; recheck on user reply.
+- Resolution/resolved/resolved by: pending
 
 ### Resolved
 
@@ -113,3 +122,7 @@ Captured as a new root goal. Repository search found no existing health/wellbein
 | Date | Actor/run | Change | Reason/evidence |
 | --- | --- | --- | --- |
 | 2026-07-16 | user/Codex | Created `new` | User requested configurable health prompts based on message times for breaks, hydration, sleep, and weekend boundaries. |
+| 2026-07-16 | Codex | Corrected dependency metadata and initialization wording | `G-008` now owns deterministic project initialization rather than ad hoc per-workflow interviewing. |
+| 2026-07-16 | Codex alignment audit | Clarified preference ownership | Initialization advertises preferences; `G-009` defines and edits health-specific personal settings. |
+| 2026-07-16 | Codex/R-20260716-execute-root | Triaged and decomposed | Three required children isolate pure policy, local preference/state CLI, and workflow/install integration. |
+| 2026-07-16 | Codex/R-20260716-execute-root | Raised `B-001` | Privacy, timestamp, enablement, and timezone defaults require user confirmation before health implementation. |
