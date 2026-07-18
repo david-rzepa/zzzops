@@ -13,6 +13,12 @@ Create/resume the recorded branch before source edits. If dirty work cannot be p
 
 When PROJECT `pull_request_unit` is `per_goal`, each source-changing goal owns one branch and one PR when the repository supports PRs. Related/small goals or one execute run do not imply bundling. A repository rule or explicit user instruction may authorize a shared PR only under `shared_pull_request`; before combining work, record the override/rationale, shared branch/PR, target, and review effect in every affected goal. Reuse that identity after blockers—never open a duplicate. Parent and child goals keep distinct PRs targeting the resolved pseudo-trunk/dependency topology. One PR may retain multiple coherent semantic commits; commit/squash policy is separate. Capture stays Git-free, and repositories without PR capability follow reviewed PROJECT integration policy or block when required authority/capability is missing.
 
+## Canonical issue links
+
+Every implementation PR names its canonical GitHub goal. A PR whose base is the configured integration branch uses GitHub closing syntax in its body: `Closes #N`. Before merge, re-read that exact issue and later verify it closed.
+
+A stacked PR whose base is another goal branch must not close its issue early. Its body uses a visible non-closing link such as `Tracks #N`; the eventual PR into the configured integration branch uses `Closes #N`. Record the issue/PR pairing in the goal history and preserve explicit repository-policy exemptions.
+
 ## Review gate
 
 At each review checkpoint for a recorded PR, make one bounded provider read of review state, unresolved inline threads, and relevant top-level comments. Prefer thread-aware data; classify each as actionable, resolved/outdated, discussion-only, automated, ambiguous, or unauthorized. Record concise actionable file/line context on the canonical goal. Do not poll.
