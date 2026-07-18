@@ -28,7 +28,7 @@ Claude Code:
 /install-zzzops preview and install ZzzOps into C:\path\to\your-project
 ```
 
-Review the preview and let the skill apply it. The installer copies discoverable skills, mechanics, and blank state—never itself, another project’s goals, or the target’s `AGENTS.md`/`CLAUDE.md`.
+Review the preview and let the skill apply it. The installer copies discoverable skills, mechanics, and blank templates—never itself, project state, another project’s goals, or the target’s `AGENTS.md`/`CLAUDE.md`.
 
 Open a new Codex task or Claude Code session in the target project so its ZzzOps skills are discovered.
 
@@ -37,12 +37,16 @@ Open a new Codex task or Claude Code session in the target project so its ZzzOps
 Start any non-install workflow in the target, for example:
 
 ```text
-Use $add-zzzops-todo to capture our first piece of work.
+Use $add-zzzops-goal to capture our first piece of work.
 ```
 
-The agent first inspects code, docs, config, history, Git, and GitHub; proposes the project outcome, KPIs, acceptance criteria, and backend; then asks you only to confirm consequential unknowns. Deterministic CLI primitives validate and atomically apply the confirmed plan. You do not fill a blank wizard.
+The agent first inspects code, docs, config, history, Git, GitHub, and repository policy; proposes the outcome, KPIs, acceptance criteria, backend, and operating rules; then asks only consequential questions. Deterministic CLI primitives validate and atomically create a pending `.zzzops/PROJECT.md`. You do not fill a blank wizard.
 
-GitHub Issues is recommended when the repository and access probe succeed. Local `goals/items/` files are the supported alternative. One backend is authoritative; ZzzOps never silently switches or dual-writes. Initialization does not commit, branch, or mutate GitHub, and ends by mentioning the optional `python .agents/zzzops.py` preferences panel without opening it.
+The agent summarizes that exact file and tells you to read it in detail. Ordinary workflows remain blocked until you explicitly approve the current file digest; any edit invalidates the approval. Stable per-section checkboxes make backend, Git/review, continuation, testing, code quality, tooling, security, documentation, deployment/resources, and autonomy choices visible rather than hiding them in universal prompts.
+
+GitHub Issues is recommended when the repository and access probe succeed. Local `goals/items/` files are the supported alternative. One backend is authoritative; ZzzOps never silently switches or dual-writes. Initialization does not commit, branch, or mutate GitHub, and after approval mentions the optional `python .agents/zzzops.py` preferences panel without opening it.
+
+Maintainers: see the [initialization and policy contract](docs/INITIALIZATION.md).
 
 ### 4. Migrate existing work
 
@@ -63,7 +67,7 @@ The agent inventories candidates, presents a human-readable plan, then migrates 
 ### 5. Add new work
 
 ```text
-Use $add-zzzops-todo to capture <the thing we should eventually do>.
+Use $add-zzzops-goal to capture <the thing we should eventually do>.
 ```
 
 ZzzOps checks duplicates, asks important questions, relates value to the charter, and creates a durable issue or local goal with a resumable next action. Capture never creates a branch, commit, push, or PR.
@@ -90,6 +94,8 @@ For persistent Codex execution:
 
 `/goal` is Codex-specific. Claude Code invokes ZzzOps workflows directly as `/skill-name`; ZzzOps supplies the same queue and operating rules in either tool. When work runs dry, the agent interviews you about blockers before conceding defeat. This is your scheduled cameo. After that, please locate the bedroom.
 
+Source-changing goals follow the reviewed project branch/review policy and pause at a human review blocker after checks. Maintainers: see the [branch topology and review lifecycle](docs/EXECUTION.md).
+
 ## Useful maintenance
 
 ```text
@@ -101,7 +107,7 @@ Use $suggest-zzzops-work in dry-run mode to audit the project and suggest valuab
 
 In Claude Code, replace `$name` with `/name`, for example `/analyze-zzzops-usage`.
 
-First-release installs may retain the old generic skill directories after an update so local customizations are never deleted automatically. Once the renamed skills are discovered and verified, remove the obsolete `add-project-todo`, `migrate-project-goals`, and `suggest-project-work` directories from `.agents/skills/` and `.claude/skills/`.
+Maintainers: see the [skill discovery and mode contract](docs/SKILLS.md).
 
 Usage analysis reports real KPI/outcome efficiency when measurable, plus a clearly labeled heuristic for cross-goal comparison. It also tracks management overhead, because spending 40,000 tokens organizing a 3,000-token fix is not “agentic”—it is a committee.
 
@@ -130,7 +136,7 @@ Or use the interactive control panel from your project root:
 python .agents/zzzops.py
 ```
 
-It edits project preferences and optional user health settings. Tomorrow it may achieve sentience and add a “notify spouse that deployment is stable” menu item, so the command has room to grow.
+It edits project preferences and optional user health settings.
 
 ## Optional health reminders
 
@@ -159,10 +165,10 @@ Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required
 
 ## The files that remember things
 
-- `goals/PROJECT.md` — initialized backend, success, KPIs, acceptance criteria, and what “valuable” means.
+- `.zzzops/PROJECT.md` — tracked backend, success, KPIs, acceptance criteria, reviewed project policy, and what “valuable” means.
 - GitHub Issues — recommended canonical goals, blockers, evidence, relations, and history when selected.
-- `goals/items/` and `goals/INDEX.md` — canonical goals/derived queue when the local backend is selected.
-- `goals/USAGE_LEDGER.md` — work tokens, management overhead, and value efficiency.
+- `goals/items/` and derived `goals/INDEX.md` — created only when the local backend is selected.
+- `.zzzops/USAGE_LEDGER.md` — ignored, user-local work tokens, management overhead, and value efficiency; created on first write.
 - `.zzzops/rules/` — tracked ZzzOps operating rules; machinery, not project content.
 - `.zzzops/PREFERENCES.json` — local, ignored user opt-ins for bounded autonomous backlog refills.
 - Platform app data — opt-in per-user health preferences and minimal per-machine derived state; never repository state.
@@ -187,32 +193,34 @@ python .agents/prompt_stats.py --check
 <!-- PROMPT_BUDGET_START -->
 | Prompt | Bytes | Est. tokens |
 | --- | ---: | ---: |
-| `.agents/skills/add-zzzops-todo/SKILL.md` | 984 | 246 |
-| `.agents/skills/analyze-zzzops-usage/SKILL.md` | 2423 | 606 |
-| `.agents/skills/execute-zzzops/SKILL.md` | 2112 | 528 |
-| `.agents/skills/execute-zzzops/references/CREATE.md` | 2727 | 682 |
-| `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3394 | 849 |
-| `.agents/skills/execute-zzzops/references/UNBLOCK.md` | 1549 | 388 |
-| `.agents/skills/install-zzzops/SKILL.md` | 1465 | 367 |
-| `.agents/skills/migrate-zzzops-todos/SKILL.md` | 2074 | 519 |
-| `.agents/skills/suggest-zzzops-work/SKILL.md` | 2672 | 668 |
+| `.agents/skills/add-zzzops-goal/SKILL.md` | 1241 | 311 |
+| `.agents/skills/analyze-zzzops-usage/SKILL.md` | 2412 | 603 |
+| `.agents/skills/execute-zzzops/SKILL.md` | 2427 | 607 |
+| `.agents/skills/execute-zzzops/references/BRANCH_REVIEW.md` | 2618 | 655 |
+| `.agents/skills/execute-zzzops/references/CREATE.md` | 2746 | 687 |
+| `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3324 | 831 |
+| `.agents/skills/execute-zzzops/references/SELF_REVIEW.md` | 1345 | 337 |
+| `.agents/skills/execute-zzzops/references/UNBLOCK.md` | 1535 | 384 |
+| `.agents/skills/install-zzzops/SKILL.md` | 1471 | 368 |
+| `.agents/skills/migrate-zzzops-todos/SKILL.md` | 2062 | 516 |
+| `.agents/skills/suggest-zzzops-work/SKILL.md` | 2743 | 686 |
+| `.agents/templates/project-goals/GOAL.md` | 1992 | 498 |
 | `.agents/templates/project-goals/INDEX.md` | 1135 | 284 |
-| `.agents/templates/project-goals/MIGRATION_SUMMARY.md` | 222 | 56 |
-| `.agents/templates/project-goals/PROJECT.md` | 1485 | 372 |
-| `.agents/templates/project-goals/TEMPLATE_DIFF.md` | 352 | 88 |
+| `.agents/templates/project-goals/MIGRATION_SUMMARY.md` | 194 | 49 |
+| `.agents/templates/project-goals/PROJECT.md` | 2416 | 604 |
 | `.agents/templates/project-goals/USAGE_LEDGER.md` | 1105 | 277 |
 | `.claude/skills/install-zzzops/SKILL.md` | 382 | 96 |
-| `.zzzops/rules/BACKENDS.md` | 1891 | 473 |
-| `.zzzops/rules/BLOCKERS.md` | 2213 | 554 |
-| `.zzzops/rules/EXECUTION_STRATEGY.md` | 4861 | 1216 |
-| `.zzzops/rules/GOAL_SYSTEM.md` | 3816 | 954 |
-| `.zzzops/rules/HEALTH.md` | 1598 | 400 |
-| `.zzzops/rules/INITIALIZATION.md` | 1217 | 305 |
-| `.zzzops/rules/USAGE_ACCOUNTING.md` | 2355 | 589 |
-| `AGENTS.md` | 2949 | 738 |
+| `.zzzops/rules/BACKENDS.md` | 2016 | 504 |
+| `.zzzops/rules/BLOCKERS.md` | 2238 | 560 |
+| `.zzzops/rules/CONTINUATION.md` | 1505 | 377 |
+| `.zzzops/rules/EXECUTION_STRATEGY.md` | 3663 | 916 |
+| `.zzzops/rules/GOAL_SYSTEM.md` | 3873 | 969 |
+| `.zzzops/rules/HEALTH.md` | 1429 | 358 |
+| `.zzzops/rules/INITIALIZATION.md` | 1930 | 483 |
+| `.zzzops/rules/USAGE_ACCOUNTING.md` | 2505 | 627 |
+| `AGENTS.md` | 2963 | 741 |
 | `CLAUDE.md` | 217 | 55 |
-| `goals/TEMPLATE.md` | 1648 | 412 |
-| **Total** | **46846** | **11722** |
+| **Total** | **53487** | **13383** |
 <!-- PROMPT_BUDGET_END -->
 
 </details>

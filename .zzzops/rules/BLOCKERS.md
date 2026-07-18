@@ -28,6 +28,6 @@ Stop only the affected work. Mark the goal `blocked` only when nothing useful re
 
 ## Human interaction
 
-When the user is available, blocker review precedes normal prioritization: search project/related goals just enough to phrase useful questions, then interview immediately in one compact categorized batch with a recommended default/consequence and what continues. Do not spend the interactive window on speculative implementation first. Persist questions; do not repeat before their recheck trigger. Put every open human blocker in `goals/INDEX.md` with goal, category, request, impact, and date.
+Follow reviewed PROJECT interview timing/batching policy. When interviewing, search project/related goals just enough to phrase a compact categorized batch with recommendation, consequence, and safe continuation. Do not substitute speculative implementation for a policy-required available-user interview. Persist questions; do not repeat before their recheck trigger. For `local_files`, put every open human blocker in derived `goals/INDEX.md` with goal, category, request, impact, and date; GitHub uses managed issues.
 
 On input: resolve (never delete) the blocker; update affected assumptions/scope/criteria/next action/links; remove its queue row; move the goal to an actionable state if possible; append history; recheck dependents. If input only narrows the issue, resolve it and link a more precise successor.

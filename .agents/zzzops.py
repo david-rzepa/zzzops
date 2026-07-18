@@ -21,15 +21,28 @@ import zzzops_health as health
 
 PROJECT_SCHEMA_VERSION = 1
 PLAN_SCHEMA_VERSION = 1
+POLICY_SCHEMA_VERSION = 1
 PROJECT_BLOCK_START = "<!-- zzzops-project-state"
 PROJECT_BLOCK_END = "zzzops-project-state -->"
 GOAL_BLOCK_START = "<!-- zzzops-goal"
 GOAL_BLOCK_END = "zzzops-goal -->"
 BACKENDS = {"github_issues", "local_files"}
+POLICY_SECTION_IDS = (
+    "backend",
+    "git_review_release",
+    "execution_continuation",
+    "verification_testing",
+    "code_quality",
+    "dependencies_tooling",
+    "security_privacy_compliance",
+    "documentation_style",
+    "deployment_resources",
+    "autonomy_approval_parallelism",
+)
 GOAL_FIELDS = {
     "id", "title", "status", "priority", "value", "difficulty", "confidence",
     "parent", "depends_on", "blocks", "needs_human", "claim", "blockers",
-    "evidence", "next_action", "revision",
+    "evidence", "next_action", "revision", "implementation",
 }
 
 PREFERENCE_LABELS = (
@@ -195,8 +208,39 @@ def project_digest(text: str) -> str:
     return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def project_path(repo: Path) -> Path:
+    return repo / ".zzzops" / "PROJECT.md"
+
+
+def usage_ledger_path(repo: Path) -> Path:
+    return repo / ".zzzops" / "USAGE_LEDGER.md"
+
+
+def ensure_usage_ledger(repo: Path) -> dict[str, Any]:
+    path = usage_ledger_path(repo)
+    if path.exists():
+        return {"ok": True, "created": False, "path": str(path)}
+    template = repo / ".agents" / "templates" / "project-goals" / "USAGE_LEDGER.md"
+    try:
+        text = template.read_text(encoding="utf-8-sig")
+        atomic_text(path, text)
+    except FileNotFoundError:
+        raise ValueError(f"Usage ledger template is missing: {template}")
+    except UnicodeError as exc:
+        raise ValueError(f"Cannot read usage ledger template: {exc}") from exc
+    except OSError as exc:
+        return {
+            "ok": False,
+            "reason_code": "storage_unavailable",
+            "path": str(path),
+            "detail": type(exc).__name__,
+            "fallback": "none; grant write access to the repository-local .zzzops directory",
+        }
+    return {"ok": True, "created": True, "path": str(path)}
+
+
 def read_project(repo: Path) -> tuple[Path, str]:
-    path = repo / "goals" / "PROJECT.md"
+    path = project_path(repo)
     try:
         return path, path.read_text(encoding="utf-8-sig")
     except FileNotFoundError:
@@ -225,7 +269,7 @@ def parse_project_state(text: str) -> dict[str, Any] | None:
 def validate_project_state(state: Any) -> list[str]:
     if not isinstance(state, dict):
         return ["project state must be an object"]
-    allowed = {"schema_version", "initialized", "backend", "repository", "revision", "migration_pending"}
+    allowed = {"schema_version", "initialized", "backend", "repository", "revision", "migration_pending", "policy"}
     errors = []
     unknown = sorted(set(state) - allowed)
     if unknown:
@@ -238,15 +282,101 @@ def validate_project_state(state: Any) -> list[str]:
         errors.append("revision must be a non-negative integer")
     if not isinstance(state.get("migration_pending"), bool):
         errors.append("migration_pending must be boolean")
+    policy_errors = validate_policy(state.get("policy"), require_pending=False) if state.get("policy") is not None else []
+    errors.extend(f"policy.{error}" for error in policy_errors)
+    pending_policy = policy_blockers(state.get("policy")) if not policy_errors else []
     if state.get("initialized") is True:
         if state.get("backend") not in BACKENDS:
             errors.append("initialized backend must be github_issues or local_files")
         repository = state.get("repository")
         if not isinstance(repository, dict) or not nonempty(repository.get("identity")):
             errors.append("initialized repository.identity is required")
+        if pending_policy:
+            errors.append("initialized state cannot have unreviewed required policy: " + ", ".join(pending_policy))
     elif state.get("backend") is not None or state.get("repository") is not None or state.get("migration_pending") is not False:
-        errors.append("uninitialized state cannot select a backend, repository, or migration")
+        if state.get("backend") not in BACKENDS or not isinstance(state.get("repository"), dict) or not state.get("policy"):
+            errors.append("uninitialized state may select a backend only as a complete pending policy draft")
     return errors
+
+
+def validate_policy(policy: Any, require_pending: bool) -> list[str]:
+    if not isinstance(policy, dict):
+        return ["must be an object"]
+    errors = []
+    if policy.get("schema_version") != POLICY_SCHEMA_VERSION:
+        errors.append(f"schema_version must be {POLICY_SCHEMA_VERSION}")
+    sections = policy.get("sections")
+    if not isinstance(sections, list):
+        return errors + ["sections must be a list"]
+    evidence_ids = set()
+    if not require_pending:
+        evidence = policy.get("evidence")
+        if not isinstance(evidence, list) or not evidence:
+            errors.append("evidence must be a non-empty list")
+        else:
+            for index, item in enumerate(evidence):
+                if not isinstance(item, dict) or not text_present(item.get("id")) or not text_present(item.get("source")) or not text_present(item.get("finding")):
+                    errors.append(f"evidence[{index}] requires id, source, and finding")
+                elif item["id"] in evidence_ids:
+                    errors.append(f"evidence[{index}].id must be unique")
+                else:
+                    evidence_ids.add(item["id"])
+    seen = set()
+    for index, section in enumerate(sections):
+        prefix = f"sections[{index}]"
+        if not isinstance(section, dict):
+            errors.append(f"{prefix} must be an object")
+            continue
+        section_id = section.get("id")
+        if section_id not in POLICY_SECTION_IDS or section_id in seen:
+            errors.append(f"{prefix}.id must be unique and from the current taxonomy")
+        else:
+            seen.add(section_id)
+        for field in ("title", "decision", "rationale", "confidence", "default_origin", "default_disposition"):
+            if not text_present(section.get(field)):
+                errors.append(f"{prefix}.{field} is required")
+        if section.get("confidence") not in {"low", "medium", "high"}:
+            errors.append(f"{prefix}.confidence must be low, medium, or high")
+        if section.get("default_disposition") not in {"accepted", "changed", "rejected", "unknown"}:
+            errors.append(f"{prefix}.default_disposition must be accepted, changed, rejected, or unknown")
+        if not isinstance(section.get("required"), bool) or not isinstance(section.get("applicable"), bool):
+            errors.append(f"{prefix}.required and applicable must be booleans")
+        for field in ("source_ids", "exceptions", "unresolved"):
+            if not isinstance(section.get(field), list):
+                errors.append(f"{prefix}.{field} must be a list")
+        if not require_pending and isinstance(section.get("source_ids"), list):
+            missing_sources = sorted(set(section["source_ids"]) - evidence_ids)
+            if missing_sources:
+                errors.append(f"{prefix}.source_ids missing citations: {', '.join(missing_sources)}")
+        if not isinstance(section.get("settings"), dict):
+            errors.append(f"{prefix}.settings must be an object")
+        review = section.get("review")
+        if not isinstance(review, dict) or not isinstance(review.get("approved"), bool):
+            errors.append(f"{prefix}.review.approved must be boolean")
+        elif require_pending and review.get("approved") is not False:
+            errors.append(f"{prefix}.review must be pending in an agent-generated plan")
+        elif review.get("approved") is True and any(not text_present(review.get(field)) for field in ("reviewer", "date", "reviewed_digest")):
+            errors.append(f"{prefix}.review approval requires reviewer, date, and reviewed_digest")
+        elif review.get("approved") is True and section.get("unresolved"):
+            errors.append(f"{prefix}.review cannot approve unresolved choices")
+        if section.get("applicable") is False and not text_present(section.get("rationale")):
+            errors.append(f"{prefix}.rationale is required for not applicable")
+    missing = sorted(set(POLICY_SECTION_IDS) - seen)
+    if missing:
+        errors.append("missing sections: " + ", ".join(missing))
+    return errors
+
+
+def policy_blockers(policy: Any) -> list[str]:
+    if not isinstance(policy, dict) or not isinstance(policy.get("sections"), list):
+        return ["policy:missing"]
+    return [
+        f"policy:{section.get('id')}"
+        for section in policy["sections"]
+        if isinstance(section, dict)
+        and section.get("required") is True
+        and not (isinstance(section.get("review"), dict) and section["review"].get("approved") is True)
+    ]
 
 
 def parse_managed_goal(text: str) -> dict[str, Any] | None:
@@ -285,6 +415,19 @@ def validate_managed_goal(goal: Any) -> list[str]:
         errors.append("needs_human must be boolean")
     if not isinstance(goal.get("revision"), int) or isinstance(goal.get("revision"), bool) or goal.get("revision", 0) < 1:
         errors.append("revision must be a positive integer")
+    implementation = goal.get("implementation")
+    if implementation is not None:
+        if not isinstance(implementation, dict):
+            errors.append("implementation must be an object")
+        else:
+            for field in ("branch", "base", "target", "pr"):
+                if field not in implementation or (implementation[field] is not None and not text_present(implementation[field])):
+                    errors.append(f"implementation.{field} must be null or non-empty text")
+            review = implementation.get("review")
+            if not isinstance(review, dict) or review.get("status") not in {"not_started", "pending", "approved", "changes_requested"}:
+                errors.append("implementation.review.status is invalid")
+            elif "checkpoint" not in review or (review["checkpoint"] is not None and not text_present(review["checkpoint"])):
+                errors.append("implementation.review.checkpoint must be null or non-empty text")
     return errors
 
 
@@ -376,10 +519,11 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         "project_path": str(path),
         "base_digest": project_digest(text),
         "state": state,
-        "initialized": bool(state and state.get("initialized") is True),
+        "initialized": bool(state and state.get("initialized") is True and not policy_blockers(state.get("policy"))),
         "valid_state": error is None and state is not None,
         "state_error": error,
         "missing_charter_fields": charter_missing_fields(text),
+        "decision_blockers": policy_blockers(state.get("policy")) if state else ["policy:missing"],
         "backend_constraints": {
             "github_issues": "requires a usable GitHub repository probe",
             "local_files": "explicit supported alternative; never automatic failover",
@@ -424,7 +568,7 @@ def validate_plan(repo: Path, plan: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     allowed = {
         "schema_version", "base_digest", "confirmed", "backend", "repository",
-        "charter", "evidence", "confirmations", "github", "migration_pending",
+        "charter", "evidence", "confirmations", "github", "migration_pending", "policy",
     }
     unknown = sorted(set(plan) - allowed)
     if unknown:
@@ -514,6 +658,30 @@ def validate_plan(repo: Path, plan: dict[str, Any]) -> list[str]:
         github = plan.get("github")
         if not isinstance(github, dict) or github.get("usable") is not True:
             errors.append("github.usable must be true for github_issues")
+    policy_errors = validate_policy(plan.get("policy"), require_pending=True)
+    errors.extend(f"policy.{error}" for error in policy_errors)
+    policy = plan.get("policy")
+    if isinstance(policy, dict) and isinstance(policy.get("sections"), list):
+        for index, section in enumerate(policy["sections"]):
+            if not isinstance(section, dict):
+                continue
+            unknown_sources = sorted(set(section.get("source_ids", [])) - evidence_ids) if isinstance(section.get("source_ids"), list) else []
+            if unknown_sources:
+                errors.append(f"policy.sections[{index}].source_ids reference unknown evidence: {', '.join(unknown_sources)}")
+            if section.get("id") == "backend":
+                if section.get("decision") != backend:
+                    errors.append("policy backend decision must equal backend")
+                settings = section.get("settings")
+                tradeoffs = settings.get("tradeoffs") if isinstance(settings, dict) else None
+                if (
+                    not isinstance(settings, dict)
+                    or settings.get("fallback") != "forbidden"
+                    or settings.get("repository_identity") != (repository or {}).get("identity")
+                    or not text_present(settings.get("capability_evidence"))
+                    or not isinstance(tradeoffs, dict)
+                    or not all(text_present(tradeoffs.get(name)) for name in BACKENDS)
+                ):
+                    errors.append("policy backend settings must record capability evidence, both tradeoffs, repository identity, and forbidden fallback")
     return errors
 
 
@@ -531,13 +699,16 @@ def nonempty_list(value: Any) -> bool:
 
 def render_project(plan: dict[str, Any], revision: int) -> str:
     charter = plan["charter"]
+    policy_state = json.loads(json.dumps(plan["policy"]))
+    policy_state["evidence"] = plan["evidence"]
     state = {
         "schema_version": PROJECT_SCHEMA_VERSION,
-        "initialized": True,
+        "initialized": False,
         "backend": plan["backend"],
         "repository": plan["repository"],
         "revision": revision,
         "migration_pending": plan["migration_pending"],
+        "policy": policy_state,
     }
     block = json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True)
     kpis = "\n".join(
@@ -547,14 +718,15 @@ def render_project(plan: dict[str, Any], revision: int) -> str:
     )
     bullets = lambda values: "\n".join(f"- {value}" for value in values)
     checks = "\n".join(f"- [x] {value}" for value in charter["acceptance_criteria"])
+    policy = render_policy_sections(policy_state)
     return f"""# Project success charter
 
 {PROJECT_BLOCK_START}
 {block}
 {PROJECT_BLOCK_END}
 
-**Status:** complete
-**Last reviewed:** {date.today().isoformat()}
+**Status:** incomplete — policy review required
+**Last reviewed:** not yet
 
 ## Overall goal
 - Outcome: {charter['outcome']}
@@ -591,11 +763,40 @@ When KPIs conflict, prefer: {charter['precedence']}
 ## Assumptions and open questions
 - None recorded at initialization; add evidence-backed changes with history.
 
+## Operating policy review
+Read every section in this exact file. Each unchecked stable policy ID is a `decision` blocker. Only explicit user approval may check it; repository evidence or agent inference is not approval.
+
+{policy}
+
 ## History
 | Date | Actor/run | Change | Reason/evidence |
 | --- | --- | --- | --- |
-| {date.today().isoformat()} | ZzzOps initialization | Initialized revision {revision} | Confirmed agent-generated plan; backend `{plan['backend']}`. |
+| {date.today().isoformat()} | ZzzOps initialization | Created pending revision {revision} | Confirmed agent-generated draft; exact-file policy review still required. |
 """
+
+
+def render_policy_sections(policy: dict[str, Any]) -> str:
+    rendered = []
+    evidence = {
+        item["id"]: f"{item['source']} — {item['finding']}"
+        for item in policy.get("evidence", [])
+        if isinstance(item, dict) and text_present(item.get("id"))
+    }
+    for section in policy["sections"]:
+        approved = section["review"]["approved"] is True
+        applicable = "applicable" if section["applicable"] else "not applicable"
+        settings = json.dumps(section["settings"], ensure_ascii=False, sort_keys=True)
+        rendered.append(
+            f"- [{'x' if approved else ' '}] `[policy:{section['id']}]` **{section['title']}** ({applicable})\n"
+            f"  - Decision: {section['decision']}\n"
+            f"  - Rationale: {section['rationale']}\n"
+            f"  - Sources: {'; '.join(f'{source_id}: {evidence.get(source_id, "missing citation")}' for source_id in section['source_ids'])}\n"
+            f"  - Confidence/default: {section['confidence']}; {section['default_origin']} → {section['default_disposition']}\n"
+            f"  - Settings: `{settings}`\n"
+            f"  - Exceptions: {', '.join(section['exceptions']) or 'none'}\n"
+            f"  - Unresolved: {', '.join(section['unresolved']) or 'none'}"
+        )
+    return "\n".join(rendered)
 
 
 def cell(value: str) -> str:
@@ -633,7 +834,70 @@ def apply_plan(repo: Path, plan: dict[str, Any]) -> dict[str, Any]:
     atomic_text(path, rendered)
     return {
         "changed": True, "path": str(path), "revision": revision,
+        "initialized": False,
+        "decision_blockers": policy_blockers(plan["policy"]),
+        "project_digest": project_digest(rendered),
+        "review_required": "Read the exact PROJECT.md file, then explicitly approve its current digest.",
         "preferences_command": "python .agents/zzzops.py",
+    }
+
+
+def confirm_project(repo: Path, digest: str, reviewer: str, section_ids: list[str], approve_all: bool) -> dict[str, Any]:
+    path, text = read_project(repo)
+    if project_digest(text) != digest:
+        raise ValueError("PROJECT.md digest changed; read the exact current file before confirming")
+    state = parse_project_state(text)
+    errors = validate_project_state(state)
+    if errors:
+        raise ValueError("Invalid project state: " + "; ".join(errors))
+    if not text_present(reviewer):
+        raise ValueError("reviewer is required")
+    policy = state["policy"]
+    available = {section["id"]: section for section in policy["sections"]}
+    selected = list(available) if approve_all else section_ids
+    if not selected:
+        raise ValueError("select --all or at least one --section after explicit user approval")
+    unknown = sorted(set(selected) - set(available))
+    if unknown:
+        raise ValueError("unknown policy sections: " + ", ".join(unknown))
+    unresolved = [section_id for section_id in selected if available[section_id].get("unresolved")]
+    if unresolved:
+        raise ValueError("resolve policy choices before approval: " + ", ".join(unresolved))
+    today = date.today().isoformat()
+    for section_id in selected:
+        section = available[section_id]
+        section["review"] = {
+            "approved": True,
+            "reviewer": reviewer,
+            "date": today,
+            "reviewed_digest": digest,
+        }
+    blockers = policy_blockers(policy)
+    state["initialized"] = not blockers
+    state["revision"] += 1
+    block = f"{PROJECT_BLOCK_START}\n{json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True)}\n{PROJECT_BLOCK_END}"
+    updated = re.sub(
+        re.escape(PROJECT_BLOCK_START) + r"\s*\n.*?\n" + re.escape(PROJECT_BLOCK_END),
+        lambda _match: block,
+        text,
+        count=1,
+        flags=re.DOTALL,
+    )
+    for section_id in selected:
+        updated = re.sub(rf"^- \[ \](\s+`\[policy:{re.escape(section_id)}\]`)", r"- [x]\1", updated, flags=re.MULTILINE)
+    if not blockers:
+        updated = re.sub(r"^\*\*Status:\*\*.*$", "**Status:** complete", updated, flags=re.MULTILINE)
+        updated = re.sub(r"^\*\*Last reviewed:\*\*.*$", f"**Last reviewed:** {today}", updated, flags=re.MULTILINE)
+    history = f"| {today} | {reviewer} | Reviewed policy revision {state['revision']} | Approved: {', '.join(selected)}; source digest `{digest}`. |"
+    updated = updated.rstrip() + "\n" + history + "\n"
+    atomic_text(path, updated)
+    return {
+        "changed": True,
+        "path": str(path),
+        "revision": state["revision"],
+        "initialized": state["initialized"],
+        "decision_blockers": blockers,
+        "project_digest": project_digest(updated),
     }
 
 
@@ -892,6 +1156,14 @@ def main() -> int:
     validate_command.add_argument("--plan", type=Path, required=True)
     apply_command = init_commands.add_parser("apply", help="Atomically apply a confirmed initialization plan")
     apply_command.add_argument("--plan", type=Path, required=True)
+    confirm_command = init_commands.add_parser("confirm", help="Confirm explicit review of the exact current PROJECT.md")
+    confirm_command.add_argument("--project-digest", required=True)
+    confirm_command.add_argument("--reviewer", required=True)
+    confirm_command.add_argument("--section", action="append", default=[])
+    confirm_command.add_argument("--all", action="store_true", help="Approve every current policy section")
+    usage_parser = commands.add_parser("usage", help="Operate ignored local usage accounting")
+    usage_commands = usage_parser.add_subparsers(dest="usage_command", required=True)
+    usage_commands.add_parser("ensure", help="Create the local ledger from its template if absent")
     health_parser = commands.add_parser("health", help="Inspect or operate opt-in user health support")
     health_commands = health_parser.add_subparsers(dest="health_command", required=True)
     health_commands.add_parser("status", help="Show user preference and machine-state capability without writes")
@@ -919,7 +1191,7 @@ def main() -> int:
             if args.init_command == "inspect":
                 result = inspect_initialization(repo)
                 print(json.dumps(result, indent=2, ensure_ascii=False))
-            else:
+            elif args.init_command in {"validate", "apply"}:
                 plan = load_plan(args.plan.resolve())
                 if args.init_command == "validate":
                     errors = validate_plan(repo, plan)
@@ -927,6 +1199,13 @@ def main() -> int:
                     return 0 if not errors else 2
                 result = apply_plan(repo, plan)
                 print(json.dumps(result, indent=2))
+            else:
+                result = confirm_project(repo, args.project_digest, args.reviewer, args.section, args.all)
+                print(json.dumps(result, indent=2))
+        elif args.command == "usage":
+            result = ensure_usage_ledger(repo)
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return 0 if result.get("ok") else 2
         elif args.command == "health":
             if args.health_command == "status":
                 result = health_status()

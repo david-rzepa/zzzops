@@ -77,8 +77,7 @@ def main() -> int:
             counts[key] = counts.get(key, 0) + 1
             item_fingerprint = fingerprint(relative, text, counts[key])
             found.append({"path": relative, "line": number, "text": text, "dedicated_backlog": dedicated, "fingerprint": item_fingerprint, "already_migrated": item_fingerprint in migrated})
-    diffs = sorted(path.relative_to(root).as_posix() for path in (root / ".zzzops" / "migration" / "template-diffs").glob("*.md"))
-    print(json.dumps({"candidate_count": len(found), "new_count": sum(not item["already_migrated"] for item in found), "candidates": found, "pending_template_diffs": diffs}, indent=2, ensure_ascii=False))
+    print(json.dumps({"candidate_count": len(found), "new_count": sum(not item["already_migrated"] for item in found), "candidates": found}, indent=2, ensure_ascii=False))
     return 0
 
 

@@ -8,11 +8,11 @@ Label every number: `runtime-exact`, `api-exact`, `user-status`, `estimated` (ro
 
 ## Checkpoints
 
-Inspect callable usage/limits at run start; before/after `L/XL` phases; after two transitions or ~30 minutes; on warnings; and before compaction/handoff/stop. Do not interrupt the human for `/status` or poll wastefully; record `unavailable`.
+Inspect callable usage/limits at reviewed PROJECT checkpoints and before compaction/handoff/stop. Do not interrupt the human for `/status` or poll wastefully; record `unavailable`.
 
 ## Ledger
 
-Append to `goals/USAGE_LEDGER.md` with `R-YYYYMMDD-HHMM-agent`; never log prompts/secrets/private content.
+Before the first append run `python .agents/zzzops.py --repo . usage ensure`; it idempotently creates ignored user-local `.zzzops/USAGE_LEDGER.md` from the installed blank template. Append `R-YYYYMMDD-HHMM-agent`; never log prompts/secrets/private content. Reading or installing never creates the ledger.
 
 - Goal work: investigation, implementation, tests, verification, domain reasoning.
 - Management: inventory, prioritization, claims, links/status/blocker/index/ledger work, delegation/review/reconciliation/handoff.
@@ -22,7 +22,7 @@ For shared intervals, retain the exact total, allocate rounded estimated shares 
 
 ## Review
 
-For compatible measurements, management ratio = management / (management + goal work). After >=5 substantive runs, investigate ratios >25%: repeated rereads/rechecks, over-decomposition, broad index rewrites, verbose duplication, tiny goals, or low-value fan-out. Simplify without dropping safety/history/verification.
+For compatible measurements, management ratio = management / (management + goal work). Apply PROJECT sample/alert thresholds; investigate excess through repeated rereads/rechecks, over-decomposition, broad index rewrites, verbose duplication, tiny goals, or low-value fan-out. Simplify without dropping safety/history/verification.
 
 Periodically compare medians by work type/difficulty to re-estimate goals, expose recurring blockers, promote cheap unlocks, deprioritize poor value/effort with rationale, or split underestimated work. Cost alone does not override strategic priority or a human-set premise.
 

@@ -1,6 +1,6 @@
 # Goal template
 
-Copy to `goals/items/<id>.md`; replace placeholders.
+For the `local_files` backend, copy to `goals/items/<id>.md`; replace placeholders.
 
 ```markdown
 ---
@@ -24,6 +24,12 @@ needs_human: false
 tags: []
 external_refs: []
 claim: {owner: null, claimed_at: null, expires_at: null}
+implementation:
+  branch: null
+  base: null
+  target: null
+  pr: null
+  review: {status: not_started, checkpoint: null}
 ---
 
 # ID - Title
@@ -61,8 +67,8 @@ Observable end state, beneficiary, value, urgency evidence.
 
 ### Execution constraints
 
-- Mode: `sequential`
-- Parallel exception: `none`
+- Mode: resolve from reviewed PROJECT resource policy
+- Parallel exception: record only when PROJECT and user ceilings permit it
 - Resources/shared state: `none`
 
 ## Relationships
@@ -85,6 +91,11 @@ None.
 ## Progress and evidence
 
 Current resumable state and verification artifacts.
+
+## Implementation and review
+
+- Branch/base/target/PR: not started
+- Human review checkpoint/status: not started
 
 ## History
 

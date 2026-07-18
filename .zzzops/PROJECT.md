@@ -29,7 +29,7 @@ zzzops-project-state -->
 | Canonical goal integrity | Lost or duplicated goal truth defeats autonomous execution. | Local goal files are canonical; backend initialization is not yet applied. | Zero known lost or duplicated canonical goals. | Backend portfolio and migration/idempotency tests. | Each release |
 | Time to usable backlog | Setup friction increases babysitting. | Not yet measured. | Clean install to initialized, capturable backlog in under 10 minutes. | Timed clean-install and initialization acceptance run. | Each release |
 | Autonomous workflow transitions | Measures whether agents can continue without unscheduled intervention. | Not yet measured. | At least 80% of eligible workflow transitions need no unscheduled human input. | Goal histories and categorized blocker records. | Monthly after at least 20 transitions |
-| Management token overhead | Goal administration should not consume the value it enables. | Exact harness usage is currently unavailable. | Below 25% of compatible measured work plus management tokens. | goals/USAGE_LEDGER.md compatible-token reviews. | Monthly when sufficient comparable samples exist |
+| Management token overhead | Goal administration should not consume the value it enables. | Exact harness usage is currently unavailable. | Below 25% of compatible measured work plus management tokens. | Local `.zzzops/USAGE_LEDGER.md` compatible-token reviews. | Monthly when sufficient comparable samples exist |
 
 ## Project acceptance criteria
 - [x] A clean installation can be agent-initialized and capture a canonical goal without manual form filling.
