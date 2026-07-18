@@ -614,6 +614,14 @@ class WorkflowContractTests(unittest.TestCase):
         ):
             self.assertIn(phrase, rule)
 
+    def test_readme_exposes_github_goal_visibility_boundary(self):
+        readme = (Path(__file__).parent.parent / "README.md").read_text(encoding="utf-8")
+        migration = readme.index("### 4. Migrate existing work")
+        warning = readme.index("GitHub-backed goals inherit the repository's visibility")
+        self.assertLess(warning, migration)
+        self.assertIn("Never put secrets or raw sensitive data", readme)
+        self.assertIn("local-files backend", readme)
+
     def test_completion_review_policy_covers_scoped_cleanup_scenarios(self):
         root = Path(__file__).parent
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))

@@ -48,6 +48,8 @@ Once reviewed, these policies let the agent make routine decisions without wakin
 
 GitHub Issues is recommended when the repository and access probe succeed. Local `goals/items/` files are the supported alternative. One backend is authoritative; ZzzOps never silently switches or dual-writes. Initialization does not commit, branch, or mutate GitHub, and after approval mentions the optional `python .agents/zzzops.py` preferences panel without opening it.
 
+**Visibility:** GitHub-backed goals inherit the repository's visibility. Never put secrets or raw sensitive data in a goal; redact it, link to an approved private system, or select the local-files backend before capture or migration.
+
 Maintainers: see the [initialization and policy contract](docs/INITIALIZATION.md).
 
 ### 4. Migrate existing work
