@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run ZzzOps Acceptance"
+  short_description: "Guide one human acceptance test at a time"
+  default_prompt: "Use $run-zzzops-acceptance to guide me through the next manual acceptance test."
