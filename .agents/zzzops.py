@@ -224,33 +224,6 @@ def project_path(repo: Path) -> Path:
     return repo / ".zzzops" / "PROJECT.md"
 
 
-def usage_ledger_path(repo: Path) -> Path:
-    return repo / ".zzzops" / "USAGE_LEDGER.md"
-
-
-def ensure_usage_ledger(repo: Path) -> dict[str, Any]:
-    path = usage_ledger_path(repo)
-    if path.exists():
-        return {"ok": True, "created": False, "path": str(path)}
-    template = repo / ".agents" / "templates" / "project-goals" / "USAGE_LEDGER.md"
-    try:
-        text = template.read_text(encoding="utf-8-sig")
-        atomic_text(path, text)
-    except FileNotFoundError:
-        raise ValueError(f"Usage ledger template is missing: {template}")
-    except UnicodeError as exc:
-        raise ValueError(f"Cannot read usage ledger template: {exc}") from exc
-    except OSError as exc:
-        return {
-            "ok": False,
-            "reason_code": "storage_unavailable",
-            "path": str(path),
-            "detail": type(exc).__name__,
-            "fallback": "none; grant write access to the repository-local .zzzops directory",
-        }
-    return {"ok": True, "created": True, "path": str(path)}
-
-
 def read_project(repo: Path) -> tuple[Path, str]:
     path = project_path(repo)
     try:
@@ -1609,9 +1582,6 @@ def main() -> int:
     portfolio_parser.add_argument("--include-done", action="store_true", help="Include terminal goals in summary output")
     portfolio_parser.add_argument("--as-of", help="Injected ISO-8601 audit instant for deterministic claim checks")
     portfolio_parser.add_argument("--compare", type=Path, help="Prior JSON snapshot used only to report digest/revision drift")
-    usage_parser = commands.add_parser("usage", help="Operate ignored local usage accounting")
-    usage_commands = usage_parser.add_subparsers(dest="usage_command", required=True)
-    usage_commands.add_parser("ensure", help="Create the local ledger from its template if absent")
     health_parser = commands.add_parser("health", help="Inspect or operate opt-in user health support")
     health_commands = health_parser.add_subparsers(dest="health_command", required=True)
     health_commands.add_parser("status", help="Show user preference and machine-state capability without writes")
@@ -1671,10 +1641,6 @@ def main() -> int:
                 else:
                     print(f"ERROR: {exc}")
                 return 2
-        elif args.command == "usage":
-            result = ensure_usage_ledger(repo)
-            print(json.dumps(result, indent=2, ensure_ascii=False))
-            return 0 if result.get("ok") else 2
         elif args.command == "health":
             if args.health_command == "status":
                 result = health_status()

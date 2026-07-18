@@ -135,12 +135,7 @@
           "health_hooks": ["entry", "final", "after_user_response", "long_run_checkpoint"],
           "refill": {"allowed_categories": ["documentation", "tests", "code_quality_non_behavioral"], "max_per_run": 3},
           "capture_defaults": {"priority": "P2", "difficulty": "unknown", "confidence": "low"},
-          "planning": {"decompose_at": "L", "max_depth": 3},
-          "usage": {
-            "directional_samples": 3, "reprioritize_samples": 5, "management_ratio_alert": 0.25,
-            "value_weights": {"critical": 8, "high": 5, "medium": 2, "low": 1},
-            "confidence_weights": {"high": 1, "medium": 0.6, "low": 0.3}
-          }
+          "planning": {"decompose_at": "L", "max_depth": 3}
         },
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       }

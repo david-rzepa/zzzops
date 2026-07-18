@@ -13,7 +13,7 @@ Run applicable `.zzzops/rules/HEALTH.md` hooks from reviewed PROJECT policy; nud
 1. Run `scripts/inventory.py .`. Inspect candidate files and surrounding project context yourself. The inventory is advisory; do not treat syntax as intent.
 2. Ignore managed/dependency/build/generated areas. Compare candidates with `.zzzops/migration/STATE.json` and the complete BACKENDS portfolio snapshot; re-read only likely matches and investigate only new fingerprints. Ask about ownership/exclusions, project outcome/KPIs/acceptance, and consequential ambiguity according to PROJECT interview policy. Reuse existing charter answers.
 3. Copy the installed plan and summary templates into `.zzzops/migration/`. Fill every proposed goal, charter-based value rationale, source disposition, exclusion, and question. Present `SUMMARY.md` and wait for approval.
-4. Apply the approved plan to the selected backend: native GitHub issues/comments or local goal files/backlinks. Update charter, local ledger/history, and `STATE.json` consistently. Keep inline annotations. Delete a dedicated backlog only after all full-context content is represented. Verify results; remove resolved plan/summary.
+4. Apply the approved plan to the selected backend: native GitHub issues/comments or local goal files/backlinks. Update charter, history, and `STATE.json` consistently. Keep inline annotations. Delete a dedicated backlog only after all full-context content is represented. Verify results; remove resolved plan/summary.
 
 Only the main agent writes. Repeat runs act only on new fingerprints. Never expose secrets or infer ownership from paths.
 Migration capture performs no Git automation.

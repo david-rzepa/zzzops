@@ -29,12 +29,12 @@ Use only for Git-backed, independently verifiable sub-goals with disjoint files/
 1. Coordinator claims goals, reviews the base, and creates one worktree/branch per child without unrelated changes.
 2. Assign exact paths, criteria, baseline/probe, prohibited shared files, resource bound, and stop condition.
 3. Worker edits only its worktree, tests observable chunks, makes one scoped commit, and reports hash/evidence/risk/discoveries. It never edits goal/project state, root instructions, or shared systems.
-4. Coordinator reviews and integrates sequentially, probing each commit and combined behavior; coordinator alone updates ZzzOps state/usage and cleans worktrees safely.
+4. Coordinator reviews and integrates sequentially, probing each commit and combined behavior; coordinator alone updates ZzzOps state and cleans worktrees safely.
 
 Do not use writable worktrees for coupled work, broad shared-file changes, generated-output collisions, shared services/devices/data, or any policy-prohibited work.
 
-## Waits, commits, accounting
+## Waits, commits, resources
 
 Delegate wait-dominated commands at the PROJECT threshold before launch; keep the main thread on independent lightweight work. If an unexpected command runs long, poll boundedly and delegate comparable future waits rather than duplicate it.
 
-Follow PROJECT Git/commit policy and never absorb unrelated changes. Record agents separately when possible; charge coordination/reconciliation/conflict cleanup to management. Note fan-out, latency benefit, usage evidence, and contention; revert work types to sequential when parallel cost lacks value.
+Follow PROJECT Git/commit policy and never absorb unrelated changes. Note fan-out, latency benefit, resource evidence, and contention; revert work types to sequential when parallel cost lacks value.

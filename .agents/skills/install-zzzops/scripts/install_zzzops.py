@@ -9,7 +9,7 @@ import os
 import tempfile
 from pathlib import Path
 
-TARGET_SKILLS = ("add-zzzops-goal", "analyze-zzzops-usage", "execute-zzzops", "migrate-zzzops-todos", "suggest-zzzops-work")
+TARGET_SKILLS = ("add-zzzops-goal", "execute-zzzops", "migrate-zzzops-todos", "suggest-zzzops-work")
 
 
 def digest(data: bytes) -> str:
@@ -25,7 +25,6 @@ def files_to_copy(root: Path) -> list[str]:
         ".zzzops/rules/BACKENDS.md", ".zzzops/rules/BLOCKERS.md",
         ".zzzops/rules/CONTINUATION.md", ".zzzops/rules/EXECUTION_STRATEGY.md", ".zzzops/rules/GOAL_SYSTEM.md",
         ".zzzops/rules/HEALTH.md", ".zzzops/rules/INITIALIZATION.md",
-        ".zzzops/rules/USAGE_ACCOUNTING.md",
         ".agents/.gitignore", ".agents/zzzops.py", ".agents/zzzops_health.py",
     ]
     for base in [root / ".agents" / "templates" / "project-goals", *(root / ".agents" / "skills" / name for name in TARGET_SKILLS)]:

@@ -2,7 +2,7 @@
 
 ## Authority and records
 
-Order: user/safety; project instructions; `.zzzops/PROJECT.md`; goal; local derived `goals/INDEX.md`; ignored append-only ledger. Repair derived drift from goal truth.
+Order: user/safety; project instructions; `.zzzops/PROJECT.md`; goal; local derived `goals/INDEX.md`. Repair derived drift from goal truth.
 
 Before every non-install workflow follow `INITIALIZATION.md`, then route through the one backend in `BACKENDS.md`. Local goal-file details below apply only to `local_files`.
 
@@ -43,11 +43,11 @@ Claim before substantial work with owner, timestamp/offset, policy-defined expir
 
 ## Update invariants
 
-One logical update: re-read affected records/premise; perform and observe work; update state, next action, evidence, blockers, history, backlinks/index, and usage. Prefer a smaller consistent update if interrupted.
+One logical update: re-read affected records/premise; perform and observe work; update state, next action, evidence, blockers, history, and backlinks/index. Prefer a smaller consistent update if interrupted.
 
 - Apply the PROJECT policy's triage/continuation order; every active goal has an action or gate.
 - Human blockers appear in the index; resolutions retain request/answer/resolver/date.
 - Checked criteria cite observed evidence. Reassess due reviews.
 - Follow `.zzzops/rules/EXECUTION_STRATEGY.md`: baseline and observable probe before implementation; coordinator reconciles parallel work.
-- Every run gets a usage row, even `unavailable`. Usage/preferences never justify invented work, priority distortion, or busywork.
+- Preferences never justify invented work, priority distortion, or busywork.
 - Exhausted-queue refill requires user opt-in and stays within both user and PROJECT policy ceilings.
