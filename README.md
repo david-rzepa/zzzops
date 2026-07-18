@@ -185,46 +185,11 @@ If a new test discovers a real bug, ZzzOps files a separate TODO and asks you be
 
 ## Prompt budget
 
-Counts below are a stable cross-harness estimate: `ceil(canonical UTF-8 bytes / 4)`, with line endings normalized to LF. They are useful for prompt-budget regression, not billing; Codex and Claude Code tokenize differently. Regenerate after any prompt change:
+`python .agents/prompt_stats.py` prints a stable cross-harness estimate: `ceil(canonical UTF-8 bytes / 4)`, with line endings normalized to LF. It is useful for prompt-budget regression, not billing; Codex and Claude Code tokenize differently. CI enforces the committed ceiling; inspect it after any prompt change:
 
 ```powershell
 python .agents/prompt_stats.py
 python .agents/prompt_stats.py --check
 ```
-
-<details>
-<summary>Per-prompt counts</summary>
-
-<!-- PROMPT_BUDGET_START -->
-| Prompt | Bytes | Est. tokens |
-| --- | ---: | ---: |
-| `.agents/skills/add-zzzops-goal/SKILL.md` | 1304 | 326 |
-| `.agents/skills/execute-zzzops/SKILL.md` | 2342 | 586 |
-| `.agents/skills/execute-zzzops/references/BRANCH_REVIEW.md` | 5190 | 1298 |
-| `.agents/skills/execute-zzzops/references/CREATE.md` | 2921 | 731 |
-| `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3344 | 836 |
-| `.agents/skills/execute-zzzops/references/SELF_REVIEW.md` | 1345 | 337 |
-| `.agents/skills/execute-zzzops/references/UNBLOCK.md` | 1564 | 391 |
-| `.agents/skills/install-zzzops/SKILL.md` | 1464 | 366 |
-| `.agents/skills/migrate-zzzops-todos/SKILL.md` | 2385 | 597 |
-| `.agents/skills/suggest-zzzops-work/SKILL.md` | 2793 | 699 |
-| `.agents/templates/project-goals/GOAL.md` | 1992 | 498 |
-| `.agents/templates/project-goals/INDEX.md` | 1135 | 284 |
-| `.agents/templates/project-goals/MIGRATION_SUMMARY.md` | 194 | 49 |
-| `.agents/templates/project-goals/PROJECT.md` | 2416 | 604 |
-| `.claude/skills/install-zzzops/SKILL.md` | 382 | 96 |
-| `.zzzops/rules/BACKENDS.md` | 2787 | 697 |
-| `.zzzops/rules/BLOCKERS.md` | 2238 | 560 |
-| `.zzzops/rules/CONTINUATION.md` | 1708 | 427 |
-| `.zzzops/rules/EXECUTION_STRATEGY.md` | 3552 | 888 |
-| `.zzzops/rules/GOAL_SYSTEM.md` | 4040 | 1010 |
-| `.zzzops/rules/HEALTH.md` | 1429 | 358 |
-| `.zzzops/rules/INITIALIZATION.md` | 1930 | 483 |
-| `AGENTS.md` | 2896 | 724 |
-| `CLAUDE.md` | 217 | 55 |
-| **Total** | **51568** | **12900** |
-<!-- PROMPT_BUDGET_END -->
-
-</details>
 
 Go to bed. The backlog knows what to do.
