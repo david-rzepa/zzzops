@@ -1,8 +1,8 @@
 # ZzzOps
 
-**Infinite backlog for agents. Finite bedtime for humans.**
+**Infinite backlog for agents. Finite bedtime for token-addicted humans.**
 
-ZzzOps keeps agents supplied with prioritized, resumable work after “one more run” has become a domestic incident.
+ZzzOps gives agents an infinite, prioritized backlog so token FOMO stops at bedtime—before another 3:57 a.m. run causes a domestic incident.
 
 ## Quickstart
 
@@ -44,6 +44,8 @@ The agent first inspects code, docs, config, history, Git, GitHub, and repositor
 
 The agent summarizes that exact file and tells you to read it in detail. Ordinary workflows remain blocked until you explicitly approve the current file digest; any edit invalidates the approval. Stable per-section checkboxes make backend, Git/review, continuation, testing, code quality, tooling, security, documentation, deployment/resources, and autonomy choices visible rather than hiding them in universal prompts.
 
+Once reviewed, these policies let the agent make routine decisions without waking you for every tiny choice.
+
 GitHub Issues is recommended when the repository and access probe succeed. Local `goals/items/` files are the supported alternative. One backend is authoritative; ZzzOps never silently switches or dual-writes. Initialization does not commit, branch, or mutate GitHub, and after approval mentions the optional `python .agents/zzzops.py` preferences panel without opening it.
 
 Maintainers: see the [initialization and policy contract](docs/INITIALIZATION.md).
@@ -72,6 +74,8 @@ Use $add-zzzops-goal to capture <the thing we should eventually do>.
 
 ZzzOps checks duplicates, asks important questions, relates value to the charter, and creates a durable issue or local goal with a resumable next action. Capture never creates a branch, commit, push, or PR.
 
+When you remember “one last thing,” capture it instead of opening six files and seeing sunrise.
+
 ### 6. Execute—and go to bed
 
 For a normal Codex run:
@@ -92,7 +96,7 @@ For persistent Codex execution:
 /goal Use $execute-zzzops to work through all actionable project goals until complete or genuinely blocked.
 ```
 
-`/goal` is Codex-specific. Claude Code invokes ZzzOps workflows directly as `/skill-name`; ZzzOps supplies the same queue and operating rules in either tool. When work runs dry, the agent interviews you about blockers before conceding defeat. This is your scheduled cameo. After that, please locate the bedroom.
+`/goal` is Codex-specific. Claude Code invokes ZzzOps workflows directly as `/skill-name`; ZzzOps supplies the same queue and operating rules in either tool. This is the point of ZzzOps: stop babysitting agents. When work runs dry, the agent interviews you about blockers before conceding defeat. This is your scheduled cameo. After that, please locate the bedroom; staying awake does not make the remaining tokens more valuable.
 
 Source-changing goals follow the reviewed project branch/review policy and pause at a human review blocker after checks. Maintainers: see the [branch topology and review lifecycle](docs/EXECUTION.md).
 
