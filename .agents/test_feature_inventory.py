@@ -9,7 +9,6 @@ END = "<!-- /zzzops-feature-inventory -->"
 REPO_MACHINERY_SKILLS = {"run-zzzops-acceptance"}
 USER_FEATURE_SURFACES = {
     ".agents/zzzops.py",
-    ".agents/templates/project-goals/PREFERENCES.json",
     ".github/workflows",
     ".zzzops/rules/BACKENDS.md",
 }
