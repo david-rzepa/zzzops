@@ -614,6 +614,7 @@ class WorkflowContractTests(unittest.TestCase):
             "required-authority or blocking boundary", "never nest/duplicate execute", "standalone adjacent capture",
             "re-enter `$execute-zzzops` once", "no priority shortcut", "steer and ordinary follow-up",
             "Compacted context", "Separate tasks/threads", "Capture itself remains Git-free",
+            "user answer that resolves a surfaced blocker", "rebuild the actionable set and resume once",
         ):
             self.assertIn(phrase, rule)
 

@@ -215,14 +215,14 @@ python .agents/prompt_stats.py --check
 | `.claude/skills/install-zzzops/SKILL.md` | 382 | 96 |
 | `.zzzops/rules/BACKENDS.md` | 2787 | 697 |
 | `.zzzops/rules/BLOCKERS.md` | 2238 | 560 |
-| `.zzzops/rules/CONTINUATION.md` | 1505 | 377 |
+| `.zzzops/rules/CONTINUATION.md` | 1708 | 427 |
 | `.zzzops/rules/EXECUTION_STRATEGY.md` | 3552 | 888 |
 | `.zzzops/rules/GOAL_SYSTEM.md` | 4040 | 1010 |
 | `.zzzops/rules/HEALTH.md` | 1429 | 358 |
 | `.zzzops/rules/INITIALIZATION.md` | 1930 | 483 |
 | `AGENTS.md` | 2896 | 724 |
 | `CLAUDE.md` | 217 | 55 |
-| **Total** | **50793** | **12707** |
+| **Total** | **50996** | **12757** |
 <!-- PROMPT_BUDGET_END -->
 
 </details>
