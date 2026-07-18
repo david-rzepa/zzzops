@@ -6,6 +6,7 @@ ROOT = Path(__file__).parent.parent
 README = ROOT / "README.md"
 START = "<!-- zzzops-feature-inventory -->"
 END = "<!-- /zzzops-feature-inventory -->"
+REPO_MACHINERY_SKILLS = {"run-zzzops-acceptance"}
 
 
 def inventory_paths() -> list[str]:
@@ -17,7 +18,11 @@ def inventory_paths() -> list[str]:
 class FeatureInventoryTests(unittest.TestCase):
     def test_every_discoverable_skill_is_listed_once(self):
         paths = inventory_paths()
-        skills = sorted(path.relative_to(ROOT).as_posix() for path in (ROOT / ".agents" / "skills").glob("*/SKILL.md"))
+        skills = sorted(
+            path.relative_to(ROOT).as_posix()
+            for path in (ROOT / ".agents" / "skills").glob("*/SKILL.md")
+            if path.parent.name not in REPO_MACHINERY_SKILLS
+        )
         self.assertEqual(skills, sorted(path for path in paths if path.startswith(".agents/skills/")))
 
     def test_every_listed_surface_exists(self):

@@ -106,7 +106,7 @@ Source-changing goals follow the reviewed project branch/review policy and pause
 
 ## Feature inventory
 
-This is the review list for first-run scopeâ€”it describes shipped behavior, not a promise to keep every item. Add or update an entry in the same change as any listed surface; `.agents/test_feature_inventory.py` rejects missing skills or paths.
+This is the review list for first-run scope. It describes shipped behavior, not a promise to keep every item. Add or update an entry in the same change as any listed surface; `.agents/test_feature_inventory.py` rejects missing skills or paths.
 
 <!-- zzzops-feature-inventory -->
 | Feature | Surface | First-run review |
@@ -115,11 +115,8 @@ This is the review list for first-run scopeâ€”it describes shipped behavior
 | Execute and unblock goals | `.agents/skills/execute-zzzops/SKILL.md` | Keep |
 | Install ZzzOps mechanics | `.agents/skills/install-zzzops/SKILL.md` | Keep |
 | Migrate legacy TODOs | `.agents/skills/migrate-to-zzzops/SKILL.md` | Review |
-| Run acceptance items | `.agents/skills/run-zzzops-acceptance/SKILL.md` | Review |
 | Suggest backlog work | `.agents/skills/suggest-zzzops-work/SKILL.md` | Review |
 | Initialization, goals, and portfolio CLI | `.agents/zzzops.py` | Keep |
-| Private opt-in health reminders | `.agents/zzzops_health.py` | Review |
-| Acceptance ledger shim | `.agents/manual_acceptance.py` | Review |
 | Dev PR checks and release boundary | `.github/workflows` | Keep |
 <!-- /zzzops-feature-inventory -->
 
