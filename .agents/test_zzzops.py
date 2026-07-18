@@ -337,12 +337,17 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("nearest_authorized_trunk", git_policy["branch_base"])
         self.assertEqual("dependency_branch", git_policy["dependency_base"])
         self.assertTrue(git_policy["parent_pseudo_trunk"])
+        self.assertEqual("per_goal", git_policy["pull_request_unit"])
+        self.assertEqual("explicit_reviewed_override", git_policy["shared_pull_request"])
         self.assertEqual("human_after_checks", git_policy["review_gate"])
         workflow = (root / "skills" / "execute-zzzops" / "references" / "BRANCH_REVIEW.md").read_text(encoding="utf-8")
         for phrase in (
             "one stable `implementation` identity per goal", "multiple_dependency_base", "parent pseudo-trunk",
             "recursively", "dependency order", "human-action", "PR UI approval",
             "explicit conversational approval", "Changes requested", "Missing merge authority",
+            "each source-changing goal owns one branch and one PR", "Related/small goals",
+            "explicit user instruction", "record the override/rationale", "Parent and child goals keep distinct PRs",
+            "commit/squash policy is separate", "Capture stays Git-free", "without PR capability",
         ):
             self.assertIn(phrase, workflow)
 

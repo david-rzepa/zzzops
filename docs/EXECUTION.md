@@ -2,6 +2,8 @@
 
 Branch/review behavior is project policy, proposed during initialization from repository evidence. The first-release fallback uses one branch per source-changing goal, bases independent goals on the nearest authorized trunk, and stacks dependent goals from dependency branches. A parent with children owns a pseudo-trunk; children integrate there in dependency order before combined parent verification.
 
+Where pull requests are supported, the fallback also uses one PR per source-changing goal. Being small, related, or selected in one run is not enough to bundle goals. Repository policy or an explicit user instruction may permit a shared PR, but every affected goal records the override, rationale, shared branch/PR, target, and review consequence before work is combined. Parent and child goals retain separate PRs targeting their resolved pseudo-trunks. PR granularity is independent of commit/squash policy, and capture-only goal creation remains Git-free.
+
 | Scenario | Base | Integration target |
 | --- | --- | --- |
 | Independent root goal | Nearest authorized trunk | Repository-policy target |

@@ -61,6 +61,7 @@
         "settings": {
           "execution_branch": "per_goal", "branch_base": "nearest_authorized_trunk", "dependency_base": "dependency_branch",
           "multiple_dependency_base": "reviewed_base_containing_all", "parent_pseudo_trunk": true, "child_target": "nearest_parent_branch",
+          "pull_request_unit": "per_goal", "shared_pull_request": "explicit_reviewed_override",
           "commit_unit": "verified_subgoal", "commit_style": "conventional", "review_gate": "human_after_checks",
           "pr_approval": "required_when_repository_requires_pr", "conversational_approval": "allowed_otherwise", "merge_after_approval": "when_authorized"
         },

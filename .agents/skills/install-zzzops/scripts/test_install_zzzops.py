@@ -39,6 +39,10 @@ class InstallerInitializationTests(unittest.TestCase):
             self.assertTrue((target / ".claude" / "skills" / "add-zzzops-goal" / "SKILL.md").is_file())
             self.assertTrue((target / ".agents" / "skills" / "execute-zzzops" / "references" / "BRANCH_REVIEW.md").is_file())
             self.assertTrue((target / ".claude" / "skills" / "execute-zzzops" / "references" / "BRANCH_REVIEW.md").is_file())
+            for harness in (".agents", ".claude"):
+                branch_review = (target / harness / "skills" / "execute-zzzops" / "references" / "BRANCH_REVIEW.md").read_text(encoding="utf-8")
+                self.assertIn("each source-changing goal owns one branch and one PR", branch_review)
+                self.assertIn("explicit user instruction may authorize a shared PR", branch_review)
             self.assertTrue((target / ".agents" / "skills" / "execute-zzzops" / "references" / "SELF_REVIEW.md").is_file())
             self.assertTrue((target / ".claude" / "skills" / "execute-zzzops" / "references" / "SELF_REVIEW.md").is_file())
             obsolete = "-".join(("add", "zzzops", "todo"))
