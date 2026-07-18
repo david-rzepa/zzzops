@@ -2,7 +2,7 @@
 
 **Infinite backlog for agents. Finite bedtime for token-addicted humans.**
 
-ZzzOps is the antidote to token FOMO: give agents a durable supply of prioritized, resumable work, close the laptop, and let tomorrow happen tomorrow. When “one more run” becomes 3:57 a.m., the usage limit is no longer the problem; the sleep loss and domestic friction are. ZzzOps keeps the backlog moving without requiring you to supervise every turn.
+ZzzOps gives agents an infinite, prioritized backlog so token FOMO stops at bedtime—before another 3:57 a.m. run causes a domestic incident.
 
 ## Quickstart
 
@@ -13,8 +13,6 @@ git clone https://github.com/david-rzepa/zzzops.git C:\dev\zzzops
 ```
 
 Open `C:\dev\zzzops` in Codex or Claude Code.
-
-Congratulations: your responsible bedtime routine is now a Git repository.
 
 ### 2. Install it into your project
 
@@ -33,8 +31,6 @@ Claude Code:
 Review the preview and let the skill apply it. The installer copies discoverable skills, mechanics, and blank templates—never itself, project state, another project’s goals, or the target’s `AGENTS.md`/`CLAUDE.md`.
 
 Open a new Codex task or Claude Code session in the target project so its ZzzOps skills are discovered.
-
-This installs the night shift; initialization tells it what work is actually valuable.
 
 ### 3. Initialize the project
 
@@ -69,8 +65,6 @@ In Claude Code, invoke the same workflow as:
 ```
 
 The agent inventories candidates, presents a human-readable plan, then migrates only after approval into the selected backend. Inline TODO comments remain; dedicated backlog files retire only after verified coverage.
-
-Your scattered guilt is now a machine-readable queue.
 
 ### 5. Add new work
 
@@ -235,4 +229,4 @@ python .agents/prompt_stats.py --check
 
 </details>
 
-Close the laptop and go to bed. The backlog knows what to do, and household goodwill rarely improves after a 4 a.m. “quick check.”
+Go to bed. The backlog knows what to do.
