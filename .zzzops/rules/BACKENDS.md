@@ -2,6 +2,8 @@
 
 `.zzzops/PROJECT.md` selects exactly one authority.
 
+At each decision checkpoint run `python .agents/zzzops.py --repo . portfolio --format json` once. Require `complete:true` and `valid:true`; use its compact inventory/graph/human queue. It omits criteria/history, so re-read only the selected canonical goal before writing and match revision/digest. Refresh after relevant mutation or drift.
+
 When initialization selects GitHub while local goals exist, shared state must set `migration_pending:true`. Until an approved migration clears it, local files remain transitional truth and other ordinary workflows stop; never read/write both as co-authorities.
 
 ## GitHub Issues (`github_issues`)
@@ -12,7 +14,7 @@ Prefer when inspect plus a read-only `gh api repos/{owner}/{repo}` probe confirm
 - Append one compact hidden `<!-- zzzops-goal ... zzzops-goal -->` JSON block using `.agents/zzzops.py`. It stores state only: GitHub supplies identity/title; inverse `blocks`, human-queue membership, labels, and open/closed are derived. Preserve human/unmanaged text.
 - Same-repository parent/dependency relations are positive issue numbers. Derive children/blocking edges portfolio-wide. Put resolutions/history in append-only comments; old comments remain immutable provenance.
 - Use label `zzzops`, one `zzzops:status:*`, and one `zzzops:priority:*` as derived indexes.
-- Before update, re-read issue plus `updated_at`; parse/validate the block and abort/reconcile if the observed digest/revision changed. Paginate portfolio reads.
+- Before update, re-read issue plus `updated_at`; parse/validate the block and abort/reconcile if the snapshot digest/revision changed. The batch command paginates once and reports incomplete reads instead of guessing.
 - Capability/auth/permission/disabled-Issues/label drift is an explicit blocker. Never fall back to local files automatically.
 
 ## Local files (`local_files`)

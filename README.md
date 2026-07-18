@@ -103,11 +103,14 @@ Use $execute-zzzops to interview me about and unblock blocked goals.
 Use $execute-zzzops to reprioritize all goals against project KPIs.
 Use $analyze-zzzops-usage to analyze value-per-token efficiency and recommend changes.
 Use $suggest-zzzops-work in dry-run mode to audit the project and suggest valuable goals.
+python .agents/zzzops.py --repo . portfolio --format summary  # compact read-only queue/DAG audit
 ```
 
 In Claude Code, replace `$name` with `/name`, for example `/analyze-zzzops-usage`.
 
 Maintainers: see the [skill discovery and mode contract](docs/SKILLS.md).
+
+Portfolio batching benchmarks and the machine contract are documented in [portfolio performance](docs/PERFORMANCE.md).
 
 Usage analysis reports real KPI/outcome efficiency when measurable, plus a clearly labeled heuristic for cross-goal comparison. It also tracks management overhead, because spending 40,000 tokens organizing a 3,000-token fix is not “agentic”—it is a committee.
 
@@ -193,24 +196,24 @@ python .agents/prompt_stats.py --check
 <!-- PROMPT_BUDGET_START -->
 | Prompt | Bytes | Est. tokens |
 | --- | ---: | ---: |
-| `.agents/skills/add-zzzops-goal/SKILL.md` | 1265 | 317 |
-| `.agents/skills/analyze-zzzops-usage/SKILL.md` | 2412 | 603 |
+| `.agents/skills/add-zzzops-goal/SKILL.md` | 1304 | 326 |
+| `.agents/skills/analyze-zzzops-usage/SKILL.md` | 2491 | 623 |
 | `.agents/skills/execute-zzzops/SKILL.md` | 2427 | 607 |
 | `.agents/skills/execute-zzzops/references/BRANCH_REVIEW.md` | 3454 | 864 |
-| `.agents/skills/execute-zzzops/references/CREATE.md` | 2893 | 724 |
-| `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3324 | 831 |
+| `.agents/skills/execute-zzzops/references/CREATE.md` | 2925 | 732 |
+| `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3448 | 862 |
 | `.agents/skills/execute-zzzops/references/SELF_REVIEW.md` | 1345 | 337 |
-| `.agents/skills/execute-zzzops/references/UNBLOCK.md` | 1563 | 391 |
+| `.agents/skills/execute-zzzops/references/UNBLOCK.md` | 1564 | 391 |
 | `.agents/skills/install-zzzops/SKILL.md` | 1471 | 368 |
-| `.agents/skills/migrate-zzzops-todos/SKILL.md` | 2062 | 516 |
-| `.agents/skills/suggest-zzzops-work/SKILL.md` | 2743 | 686 |
+| `.agents/skills/migrate-zzzops-todos/SKILL.md` | 2119 | 530 |
+| `.agents/skills/suggest-zzzops-work/SKILL.md` | 2793 | 699 |
 | `.agents/templates/project-goals/GOAL.md` | 1992 | 498 |
 | `.agents/templates/project-goals/INDEX.md` | 1135 | 284 |
 | `.agents/templates/project-goals/MIGRATION_SUMMARY.md` | 194 | 49 |
 | `.agents/templates/project-goals/PROJECT.md` | 2416 | 604 |
 | `.agents/templates/project-goals/USAGE_LEDGER.md` | 1105 | 277 |
 | `.claude/skills/install-zzzops/SKILL.md` | 382 | 96 |
-| `.zzzops/rules/BACKENDS.md` | 2389 | 598 |
+| `.zzzops/rules/BACKENDS.md` | 2787 | 697 |
 | `.zzzops/rules/BLOCKERS.md` | 2238 | 560 |
 | `.zzzops/rules/CONTINUATION.md` | 1505 | 377 |
 | `.zzzops/rules/EXECUTION_STRATEGY.md` | 3663 | 916 |
@@ -220,7 +223,7 @@ python .agents/prompt_stats.py --check
 | `.zzzops/rules/USAGE_ACCOUNTING.md` | 2505 | 627 |
 | `AGENTS.md` | 2963 | 741 |
 | `CLAUDE.md` | 217 | 55 |
-| **Total** | **55151** | **13800** |
+| **Total** | **55931** | **13994** |
 <!-- PROMPT_BUDGET_END -->
 
 </details>
