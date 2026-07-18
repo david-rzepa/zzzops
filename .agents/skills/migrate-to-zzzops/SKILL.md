@@ -1,9 +1,9 @@
 ---
-name: migrate-zzzops-todos
+name: migrate-to-zzzops
 description: Discover, plan, migrate, or import repository TODOs/backlogs into durable ZzzOps goals. "dry run", "preview", or "plan" gives a no-write report. Default builds review artifacts and applies only after approval; "apply", "migrate", or "import" requests that workflow. Not installation or goal execution.
 ---
 
-# Migrate ZzzOps TODOs
+# Migrate to ZzzOps
 
 Mode: `dry run`, `preview`, or `plan` reports candidates and a proposed plan in chat without creating plan/summary files or changing state. Otherwise build the review artifacts below; apply only after explicit approval.
 
