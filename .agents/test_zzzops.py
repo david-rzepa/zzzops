@@ -543,7 +543,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("re-read only the selected canonical goal", backend.casefold())
         for relative in (
             "skills/add-zzzops-goal/SKILL.md",
-            "skills/migrate-zzzops-todos/SKILL.md", "skills/suggest-zzzops-work/SKILL.md",
+            "skills/migrate-to-zzzops/SKILL.md", "skills/suggest-zzzops-work/SKILL.md",
             "skills/execute-zzzops/references/CREATE.md", "skills/execute-zzzops/references/EXECUTE.md",
             "skills/execute-zzzops/references/UNBLOCK.md",
         ):
@@ -648,7 +648,7 @@ class WorkflowContractTests(unittest.TestCase):
             "add-zzzops-goal": ("capture", "add", "create", "record", "goal/todo", "writes canonical goal state by default"),
             "execute-zzzops": ("execute", "work all goals", "continue", "resume", "triage", "prioritize", "reprioritize", "unblock", '"dry run"', '"preview"', '"plan"', "default executes"),
             "install-zzzops": ("install", "set up", "copy", "refresh", "update", '"preview"', '"dry run"', '"apply"', '"setup"'),
-            "migrate-zzzops-todos": ("discover", "plan", "migrate", "import", "todos/backlogs", '"dry run"', '"preview"', '"apply"', "default builds review artifacts"),
+            "migrate-to-zzzops": ("discover", "plan", "migrate", "import", "todos/backlogs", '"dry run"', '"preview"', '"apply"', "default builds review artifacts"),
             "suggest-zzzops-work": ("suggest", "discover", "audit", '"dry run"', '"preview"', '"plan"', '"apply"', '"refill"'),
         }
         self.assertEqual(set(contracts), {path.name for path in root.iterdir() if (path / "SKILL.md").is_file()})
@@ -667,7 +667,7 @@ class WorkflowContractTests(unittest.TestCase):
     def test_non_install_skills_share_preflight_and_backend_rules(self):
         root = Path(__file__).parent
         names = (
-            "add-zzzops-goal", "execute-zzzops", "migrate-zzzops-todos",
+            "add-zzzops-goal", "execute-zzzops", "migrate-to-zzzops",
             "suggest-zzzops-work",
         )
         for name in names:
@@ -681,7 +681,7 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_non_install_health_hooks_are_project_policy_driven(self):
         root = Path(__file__).parent / "skills"
-        for name in ("add-zzzops-goal", "execute-zzzops", "migrate-zzzops-todos", "suggest-zzzops-work"):
+        for name in ("add-zzzops-goal", "execute-zzzops", "migrate-to-zzzops", "suggest-zzzops-work"):
             text = (root / name / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("HEALTH.md", text, name)
             self.assertIn("reviewed PROJECT policy", text, name)

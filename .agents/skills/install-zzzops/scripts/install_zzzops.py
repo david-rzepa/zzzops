@@ -9,7 +9,7 @@ import os
 import tempfile
 from pathlib import Path
 
-TARGET_SKILLS = ("add-zzzops-goal", "execute-zzzops", "migrate-zzzops-todos", "suggest-zzzops-work")
+TARGET_SKILLS = ("add-zzzops-goal", "execute-zzzops", "migrate-to-zzzops", "suggest-zzzops-work")
 
 
 def digest(data: bytes) -> str:
