@@ -502,7 +502,7 @@ class WorkflowContractTests(unittest.TestCase):
             text = (root / relative).read_text(encoding="utf-8")
             self.assertIn("snapshot", text.casefold(), relative)
 
-    def test_github_schema_is_issue_native_while_local_ids_remain(self):
+    def test_github_schema_is_issue_native(self):
         self.assertIn("schema_version", zzzops.GOAL_FIELDS)
         for derived in ("id", "title", "blocks", "needs_human"):
             self.assertNotIn(derived, zzzops.GOAL_FIELDS)
@@ -514,8 +514,6 @@ class WorkflowContractTests(unittest.TestCase):
             "Derive children/blocking edges", "old comments remain immutable provenance",
         ):
             self.assertIn(phrase, backend)
-        local_template = (root / "templates" / "project-goals" / "GOAL.md").read_text(encoding="utf-8")
-        self.assertIn("id: G-YYYYMMDD-NNN-slug", local_template)
 
     def test_policy_taxonomy_is_stable_across_templates(self):
         templates = Path(__file__).parent / "templates" / "project-goals"
