@@ -36,7 +36,7 @@ def save(plan_path: Path, text: str, data: dict, start: int, end: int) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("next", "check", "audit"))
+    parser.add_argument("command", choices=("next", "check", "audit", "coverage"))
     parser.add_argument("item", nargs="?")
     parser.add_argument("--repo", type=Path, default=Path("."))
     parser.add_argument("--plan", type=Path, default=Path("docs/ACCEPTANCE_TEST_PLAN.md"))
@@ -45,6 +45,17 @@ def main() -> int:
     plan = (repo / args.plan).resolve()
     text, data, start, end = load(plan)
     items = data["items"]
+    if args.command == "coverage":
+        required = [
+            ".agents/skills/install-zzzops", ".agents/zzzops.py", ".zzzops/rules/BACKENDS.md",
+            ".agents/skills/add-zzzops-goal", ".agents/skills/migrate-zzzops-todos",
+            ".agents/skills/suggest-zzzops-work", ".agents/skills/execute-zzzops",
+            ".agents/zzzops_health.py", ".github/workflows", ".agents/prompt_stats.py",
+        ]
+        mapped = {path for item in items for path in item["paths"]}
+        missing = [path for path in required if not any(entry == path or entry.startswith(path + "/") for entry in mapped)]
+        print(json.dumps({"unmapped_required_surfaces": missing}))
+        return 1 if missing else 0
     if args.command == "audit":
         changed = []
         for item in items:
