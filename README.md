@@ -118,7 +118,7 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 | Migrate legacy TODOs | `.agents/skills/migrate-to-zzzops/SKILL.md` |
 | Suggest evidence-backed backlog work | `.agents/skills/suggest-zzzops-work/SKILL.md` |
 | Execute, prioritize, unblock, verify, and hand off goals | `.agents/skills/execute-zzzops/SKILL.md` |
-| Configure backlog refill and parallelization preferences | `.agents/templates/project-goals/PREFERENCES.json` |
+| Configure backlog refill and parallelization preferences | `.agents/zzzops.py` |
 | Inspect the canonical portfolio from the CLI | `.agents/zzzops.py` |
 | Enforce per-goal dev branches, PR review, and release boundaries | `.github/workflows` |
 <!-- /zzzops-feature-inventory -->
