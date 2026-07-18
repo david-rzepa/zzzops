@@ -193,14 +193,14 @@ python .agents/prompt_stats.py --check
 <!-- PROMPT_BUDGET_START -->
 | Prompt | Bytes | Est. tokens |
 | --- | ---: | ---: |
-| `.agents/skills/add-zzzops-goal/SKILL.md` | 1241 | 311 |
+| `.agents/skills/add-zzzops-goal/SKILL.md` | 1265 | 317 |
 | `.agents/skills/analyze-zzzops-usage/SKILL.md` | 2412 | 603 |
 | `.agents/skills/execute-zzzops/SKILL.md` | 2427 | 607 |
 | `.agents/skills/execute-zzzops/references/BRANCH_REVIEW.md` | 3454 | 864 |
-| `.agents/skills/execute-zzzops/references/CREATE.md` | 2746 | 687 |
+| `.agents/skills/execute-zzzops/references/CREATE.md` | 2893 | 724 |
 | `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3324 | 831 |
 | `.agents/skills/execute-zzzops/references/SELF_REVIEW.md` | 1345 | 337 |
-| `.agents/skills/execute-zzzops/references/UNBLOCK.md` | 1535 | 384 |
+| `.agents/skills/execute-zzzops/references/UNBLOCK.md` | 1563 | 391 |
 | `.agents/skills/install-zzzops/SKILL.md` | 1471 | 368 |
 | `.agents/skills/migrate-zzzops-todos/SKILL.md` | 2062 | 516 |
 | `.agents/skills/suggest-zzzops-work/SKILL.md` | 2743 | 686 |
@@ -210,17 +210,17 @@ python .agents/prompt_stats.py --check
 | `.agents/templates/project-goals/PROJECT.md` | 2416 | 604 |
 | `.agents/templates/project-goals/USAGE_LEDGER.md` | 1105 | 277 |
 | `.claude/skills/install-zzzops/SKILL.md` | 382 | 96 |
-| `.zzzops/rules/BACKENDS.md` | 2016 | 504 |
+| `.zzzops/rules/BACKENDS.md` | 2389 | 598 |
 | `.zzzops/rules/BLOCKERS.md` | 2238 | 560 |
 | `.zzzops/rules/CONTINUATION.md` | 1505 | 377 |
 | `.zzzops/rules/EXECUTION_STRATEGY.md` | 3663 | 916 |
-| `.zzzops/rules/GOAL_SYSTEM.md` | 3873 | 969 |
+| `.zzzops/rules/GOAL_SYSTEM.md` | 4129 | 1033 |
 | `.zzzops/rules/HEALTH.md` | 1429 | 358 |
 | `.zzzops/rules/INITIALIZATION.md` | 1930 | 483 |
 | `.zzzops/rules/USAGE_ACCOUNTING.md` | 2505 | 627 |
 | `AGENTS.md` | 2963 | 741 |
 | `CLAUDE.md` | 217 | 55 |
-| **Total** | **54323** | **13592** |
+| **Total** | **55151** | **13800** |
 <!-- PROMPT_BUDGET_END -->
 
 </details>

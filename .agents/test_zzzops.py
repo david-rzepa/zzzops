@@ -281,27 +281,63 @@ class InitializationTests(unittest.TestCase):
 class ManagedGoalTests(unittest.TestCase):
     def goal(self):
         return {
-            "id": "G-20260716-001-example", "title": "Example", "status": "ready",
+            "schema_version": 1, "status": "ready",
             "priority": "P1", "value": "high", "difficulty": "S", "confidence": "high",
-            "parent": None, "depends_on": [], "blocks": [], "needs_human": False,
+            "parent": None, "depends_on": [],
             "claim": {"owner": None}, "blockers": [], "evidence": [],
             "next_action": "Run the focused probe.", "revision": 1,
         }
 
     def test_managed_goal_round_trip_preserves_unmanaged_text(self):
-        original = "Human context before.\n\nHuman context after.\n"
-        body = zzzops.render_managed_goal(self.goal(), original)
-        self.assertEqual(self.goal(), zzzops.parse_managed_goal(body))
+        original = "## Outcome / Why\n\nHuman context before.\n\n## Next action\n\nHuman context after.\n"
+        body = zzzops.render_managed_goal(self.goal(), original, 42)
+        self.assertEqual(self.goal(), zzzops.parse_managed_goal(body, 42))
         changed = self.goal()
         changed["status"] = "done"
-        updated = zzzops.render_managed_goal(changed, body)
+        updated = zzzops.render_managed_goal(changed, body, 42)
         self.assertTrue(updated.startswith(original.rstrip("\n")))
-        self.assertEqual("done", zzzops.parse_managed_goal(updated)["status"])
+        self.assertEqual("done", zzzops.parse_managed_goal(updated, 42)["status"])
         self.assertEqual(1, updated.count(zzzops.GOAL_BLOCK_START))
+        managed_line = updated.split(zzzops.GOAL_BLOCK_START + "\n", 1)[1].split("\n", 1)[0]
+        self.assertNotIn("\n", managed_line)
+
+    def test_github_issue_envelope_is_human_first_and_issue_native(self):
+        body = zzzops.render_managed_goal(self.goal(), "## Outcome / Why\n\nObservable value.\n", 42)
+        self.assertEqual([], zzzops.validate_github_issue_goal(42, "Plain human title", body))
+        self.assertTrue(any("redundant ZzzOps goal ID" in error for error in zzzops.validate_github_issue_goal(42, "[G-20260716-001-example] Plain human title", body)))
+        self.assertTrue(any("rendered frontmatter" in error for error in zzzops.validate_github_issue_goal(42, "Plain", "---\nid: old\n---\n" + body)))
+
+    def test_github_relationships_use_issue_numbers(self):
+        goal = self.goal()
+        goal["parent"] = 7
+        goal["depends_on"] = [8, 9]
+        self.assertEqual([], zzzops.validate_managed_goal(goal, 42))
+        goal["depends_on"] = [8, 8, 42]
+        errors = zzzops.validate_managed_goal(goal, 42)
+        self.assertIn("depends_on entries must be unique", errors)
+        self.assertIn("depends_on cannot contain the current issue", errors)
+
+    def test_human_queue_is_derived_from_open_blockers(self):
+        goal = self.goal()
+        goal["blockers"] = [{"id": "B-001", "status": "open", "category": "human-action"}]
+        self.assertTrue(zzzops.goal_needs_human(goal))
+        goal["blockers"][0]["status"] = "resolved"
+        self.assertFalse(zzzops.goal_needs_human(goal))
+        goal["blockers"] = [{"id": "B-002", "status": "open", "category": "technical-unknown"}]
+        self.assertTrue(zzzops.goal_needs_human(goal))
+
+    def test_open_blocker_requires_known_category(self):
+        goal = self.goal()
+        goal["blockers"] = [{"id": "B-001", "status": "open"}]
+        self.assertIn("blockers[0].category is invalid or missing", zzzops.validate_managed_goal(goal, 42))
 
     def test_managed_goal_rejects_unknown_or_partial_schema(self):
         goal = self.goal()
         goal["surprise"] = True
+        goal["id"] = "G-redundant"
+        goal["title"] = "Duplicated"
+        goal["blocks"] = []
+        goal["needs_human"] = False
         del goal["next_action"]
         errors = zzzops.validate_managed_goal(goal)
         self.assertTrue(any("unknown fields" in error for error in errors))
@@ -319,6 +355,21 @@ class ManagedGoalTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_github_schema_is_issue_native_while_local_ids_remain(self):
+        self.assertIn("schema_version", zzzops.GOAL_FIELDS)
+        for derived in ("id", "title", "blocks", "needs_human"):
+            self.assertNotIn(derived, zzzops.GOAL_FIELDS)
+        root = Path(__file__).parent
+        backend = (root.parent / ".zzzops" / "rules" / "BACKENDS.md").read_text(encoding="utf-8")
+        for phrase in (
+            "Repository plus issue number/URL is identity", "plain human title", "no rendered metadata/frontmatter",
+            "compact hidden", "Same-repository parent/dependency relations are positive issue numbers",
+            "Derive children/blocking edges", "old comments remain immutable provenance",
+        ):
+            self.assertIn(phrase, backend)
+        local_template = (root / "templates" / "project-goals" / "GOAL.md").read_text(encoding="utf-8")
+        self.assertIn("id: G-YYYYMMDD-NNN-slug", local_template)
+
     def test_policy_taxonomy_is_stable_across_templates(self):
         templates = Path(__file__).parent / "templates" / "project-goals"
         plan = json.loads((templates / "INIT_PLAN.json").read_text(encoding="utf-8"))
