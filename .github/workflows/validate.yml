@@ -30,6 +30,8 @@ jobs:
           python .agents/test_zzzops_cli.py
       - name: Test mechanics installer
         run: python -m unittest discover -s .agents/skills/install-zzzops/scripts -p 'test_*.py'
+      - name: Test TODO migration inventory
+        run: python -m unittest discover -s .agents/skills/migrate-zzzops-todos/scripts -p 'test_*.py'
       - name: Test semantic releases
         run: python -m unittest discover -s .github/scripts -p 'test_*.py'
       - name: Verify prompt budget
@@ -53,3 +55,5 @@ jobs:
         run: python .agents/test_zzzops_appdata.py
       - name: Test mechanics-only layout
         run: python -m unittest discover -s .agents/skills/install-zzzops/scripts -p 'test_*.py'
+      - name: Test TODO migration inventory
+        run: python -m unittest discover -s .agents/skills/migrate-zzzops-todos/scripts -p 'test_*.py'
