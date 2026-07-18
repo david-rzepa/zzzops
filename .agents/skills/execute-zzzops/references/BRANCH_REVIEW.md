@@ -15,10 +15,14 @@ When PROJECT `pull_request_unit` is `per_goal`, each source-changing goal owns o
 
 ## Review gate
 
-After implementation, automated checks, and required self-review pass, apply PROJECT `review_gate`. `human_after_checks` creates a `human-action` blocker containing branch/commit/PR links, checks, material risks, and the exact approval/change request needed; do not merge or mark done and surface it through the normal human queue.
+At each review checkpoint for a recorded PR, make one bounded provider read of review state, unresolved inline threads, and relevant top-level comments. Prefer thread-aware data; classify each as actionable, resolved/outdated, discussion-only, automated, ambiguous, or unauthorized. Record concise actionable file/line context on the canonical goal. Do not poll.
+
+Address authorized actionable feedback only on the recorded branch/PR. Re-read the PR head and threads before mutation; after each small verified change, repeat self-review and required checks, record the new exact head/checkpoint, and invalidate prior approval. Ambiguous, scope-expanding, policy-conflicting, or unauthorized feedback is a categorized blocker; code changes never imply a provider thread was resolved.
+
+After implementation, automated checks, comment handling, and required self-review pass, apply PROJECT `review_gate`. `human_after_checks` creates a `human-action` blocker containing branch/commit/PR links, checks, material risks, and the exact approval/change request needed; do not merge or mark done and surface it through the normal human queue.
 
 - Apply PROJECT `pr_approval` and `conversational_approval`: where PR UI approval is required, open/update the correct PR and accept only valid approval with required checks; never self-approve or bypass policy. Otherwise explicit conversational approval may resolve the gate when policy permits it.
 - Changes requested: keep the branch, implement/reverify, and create a new review checkpoint.
-- Approved: retain the blocker resolution and apply PROJECT `merge_after_approval`; merge only when authorized, verify target/checks, then mark done and cycle. Missing merge authority becomes `access-approval`.
+- Approved: retain the blocker resolution and apply PROJECT `merge_after_approval`; before merging, re-read the exact PR head, actionable feedback, checks, target, mergeability, and permission. Merge only when every policy gate and authority is present; `mergeable` is not authorization. Verify the target contains the reviewed head and required post-merge checks, then record merge evidence and cycle. Missing approval, clean checks, conflict resolution, or merge authority becomes the precise categorized blocker; Missing merge authority is an `access-approval` blocker.
 
 The parent receives its own review gate only after required children are integrated, combined regression passes, parent criteria pass, and parent self-review completes.
