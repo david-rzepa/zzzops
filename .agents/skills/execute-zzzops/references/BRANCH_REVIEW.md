@@ -15,9 +15,7 @@ When PROJECT `pull_request_unit` is `per_goal`, each source-changing goal owns o
 
 ## Canonical issue links
 
-Every implementation PR names its canonical GitHub goal. A PR whose base is the configured integration branch uses GitHub closing syntax in its body: `Closes #N`. Before merge, re-read that exact issue and later verify it closed.
-
-A stacked PR whose base is another goal branch must not close its issue early. Its body uses a visible non-closing link such as `Tracks #N`; the eventual PR into the configured integration branch uses `Closes #N`. Record the issue/PR pairing in the goal history and preserve explicit repository-policy exemptions.
+Every implementation PR uses `Tracks #N`. Do not rely on closing keywords: GitHub applies them only on default-branch merges. After verifying the exact head is in the integration target, re-read the issue, record `done`/merge evidence, run `gh issue close N --reason completed`, and verify closure. Stacked or incomplete PRs never close an issue.
 
 ## Review gate
 
