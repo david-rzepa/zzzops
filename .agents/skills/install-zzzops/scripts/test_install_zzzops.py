@@ -39,9 +39,7 @@ class InstallerInitializationTests(unittest.TestCase):
             backend_rules = (target / ".zzzops" / "rules" / "BACKENDS.md").read_text(encoding="utf-8")
             self.assertIn("Repository plus issue number/URL is identity", backend_rules)
             self.assertIn("compact hidden", backend_rules)
-            self.assertTrue((target / ".zzzops" / "rules" / "HEALTH.md").is_file())
             self.assertTrue((target / ".zzzops" / "rules" / "CONTINUATION.md").is_file())
-            self.assertTrue((target / ".agents" / "zzzops_health.py").is_file())
             self.assertTrue((target / ".agents" / "templates" / "project-goals" / "INIT_PLAN.json").is_file())
             self.assertTrue((target / ".agents" / "templates" / "project-goals" / "GOAL.md").is_file())
             self.assertFalse((target / ".agents" / "templates" / "project-goals" / "USAGE_LEDGER.md").exists())
@@ -69,8 +67,6 @@ class InstallerInitializationTests(unittest.TestCase):
             self.assertFalse((target / ".zzzops" / "migration" / "STATE.json").exists())
             self.assertFalse((target / "goals").exists())
             self.assertFalse((target / ".zzzops" / "init" / "plan.json").exists())
-            self.assertFalse((target / ".zzzops" / "HEALTH_STATE.json").exists())
-            self.assertFalse((target / ".zzzops" / "health_preferences.json").exists())
             portfolio_help = subprocess.run(
                 [sys.executable, str(target / ".agents" / "zzzops.py"), "--repo", str(target), "portfolio", "--help"],
                 text=True, encoding="utf-8", capture_output=True, check=False,
@@ -84,17 +80,6 @@ class InstallerInitializationTests(unittest.TestCase):
             )
             self.assertEqual(2, retired_usage.returncode)
             self.assertIn("invalid choice", retired_usage.stderr)
-            env = os.environ.copy()
-            env["ZZZOPS_USER_CONFIG_DIR"] = str(target / ".test-user-config")
-            env["ZZZOPS_MACHINE_STATE_DIR"] = str(target / ".test-machine-state")
-            status = subprocess.run(
-                [sys.executable, str(target / ".agents" / "zzzops.py"), "--repo", str(target), "health", "status"],
-                env=env, text=True, encoding="utf-8", capture_output=True, check=False,
-            )
-            self.assertEqual(0, status.returncode, status.stderr + status.stdout)
-            self.assertFalse(json.loads(status.stdout)["enabled"])
-            self.assertFalse((target / ".test-user-config").exists())
-            self.assertFalse((target / ".test-machine-state").exists())
             rerun = self.run_installer(target)
             self.assertEqual(0, rerun.returncode, rerun.stderr + rerun.stdout)
             self.assertIn("unchanged=", rerun.stdout)
@@ -159,7 +144,6 @@ class InstallerInitializationTests(unittest.TestCase):
                     INSTALLER.main()
             self.assertEqual(original, existing.read_bytes())
             self.assertEqual(b"untouched\n", unrelated.read_bytes())
-            self.assertFalse((target / ".agents" / "zzzops_health.py").exists())
 
     def test_stale_apply_rejects_without_writing_any_planned_file(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -12,12 +12,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import zzzops_health as health
 
 PROJECT_SCHEMA_VERSION = 1
 PLAN_SCHEMA_VERSION = 1
@@ -67,34 +64,6 @@ PARALLEL_MODES = (
     ("read_only", "Read-only parallel work"),
     ("worktrees", "Writable parallel work in Git worktrees"),
 )
-HEALTH_FIELDS = (
-    (("enabled",), "Enable health nudges", "bool", None),
-    (("timezone",), "IANA timezone", "text", None),
-    (("signals", "allow_exact_message"), "Use exact harness message times", "bool", None),
-    (("signals", "allow_observed_receipt"), "Use approximate workflow receipt times", "bool", None),
-    (("schedule", "work_days"), "Work days (0=Mon..6=Sun)", "days", None),
-    (("schedule", "work_start"), "Work start", "text", None),
-    (("schedule", "work_end"), "Work end", "text", None),
-    (("schedule", "wind_down"), "Wind-down time", "text", None),
-    (("schedule", "bedtime"), "Bedtime", "text", None),
-    (("schedule", "wake"), "Wake time", "text", None),
-    (("schedule", "quiet_start"), "Quiet start", "text", None),
-    (("schedule", "quiet_end"), "Quiet end", "text", None),
-    (("reminders", "late_night", "enabled"), "Late-night reminder", "bool", None),
-    (("reminders", "weekend", "enabled"), "Weekend reminder", "bool", None),
-    (("reminders", "wind_down", "enabled"), "Wind-down reminder", "bool", None),
-    (("reminders", "outside_work_hours", "enabled"), "Outside-work-window reminder", "bool", None),
-    (("reminders", "long_session", "after_minutes"), "Long-session minutes", "int", (1, 1440)),
-    (("reminders", "break", "after_minutes"), "Break minutes", "int", (1, 1440)),
-    (("reminders", "hydration", "after_minutes"), "Water-break minutes", "int", (1, 1440)),
-    (("delivery", "cooldown_minutes"), "Nudge cooldown minutes", "int", (1, 1440)),
-    (("delivery", "snooze_minutes"), "Default snooze minutes", "int", (1, 1440)),
-    (("delivery", "inactivity_reset_minutes"), "Session reset minutes", "int", (1, 1440)),
-    (("delivery", "tone"), "Tone", "choice", ("gentle", "direct", "humorous")),
-    (("privacy", "retention_hours"), "Derived timestamp retention hours", "int", (1, 720)),
-)
-
-
 def load_preferences(repo: Path) -> tuple[Path, dict[str, Any]]:
     path = repo / ".zzzops" / "PREFERENCES.json"
     template = repo / ".agents" / "templates" / "project-goals" / "PREFERENCES.json"
@@ -140,80 +109,6 @@ def atomic_json(path: Path, data: dict[str, Any]) -> None:
     finally:
         if temporary and temporary.exists():
             temporary.unlink()
-
-
-def user_health_preferences_path(env: dict[str, str] | None = None) -> Path:
-    env = os.environ if env is None else env
-    if env.get("ZZZOPS_USER_CONFIG_DIR"):
-        return Path(env["ZZZOPS_USER_CONFIG_DIR"]) / "health_preferences.json"
-    if sys.platform == "win32":
-        root = env.get("APPDATA")
-        return Path(root) / "ZzzOps" / "health_preferences.json" if root else Path.home() / ".config" / "zzzops" / "health_preferences.json"
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "ZzzOps" / "health_preferences.json"
-    return Path(env.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "zzzops" / "health_preferences.json"
-
-
-def machine_health_state_path(env: dict[str, str] | None = None) -> Path:
-    env = os.environ if env is None else env
-    if env.get("ZZZOPS_MACHINE_STATE_DIR"):
-        return Path(env["ZZZOPS_MACHINE_STATE_DIR"]) / "health_state.json"
-    if sys.platform == "win32":
-        root = env.get("LOCALAPPDATA")
-        return Path(root) / "ZzzOps" / "health_state.json" if root else Path.home() / ".local" / "state" / "zzzops" / "health_state.json"
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "ZzzOps" / "health_state.json"
-    return Path(env.get("XDG_STATE_HOME", Path.home() / ".local" / "state")) / "zzzops" / "health_state.json"
-
-
-def load_json_object(path: Path, default: dict[str, Any]) -> dict[str, Any]:
-    if not path.exists():
-        return deepcopy_json(default)
-    try:
-        data = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"Cannot read {path}: {exc}") from exc
-    if not isinstance(data, dict):
-        raise ValueError(f"{path} must contain a JSON object")
-    return data
-
-
-def deepcopy_json(value: dict[str, Any]) -> dict[str, Any]:
-    return json.loads(json.dumps(value))
-
-
-def load_user_health_preferences() -> tuple[Path, dict[str, Any]]:
-    path = user_health_preferences_path()
-    data = health.merged_preferences(load_json_object(path, health.default_preferences()))
-    errors = health.validate_preferences(data)
-    if errors:
-        raise ValueError("Invalid user health preferences: " + "; ".join(errors))
-    return path, data
-
-
-def load_machine_health_state() -> tuple[Path, dict[str, Any]]:
-    path = machine_health_state_path()
-    data = health.merged_state(load_json_object(path, health.default_state()))
-    errors = health.validate_state(data)
-    if errors:
-        raise ValueError("Invalid machine health state: " + "; ".join(errors))
-    return path, data
-
-
-def private_atomic_json(path: Path, data: dict[str, Any]) -> None:
-    atomic_json(path, data)
-    if os.name != "nt":
-        path.chmod(0o600)
-
-
-def storage_error(exc: OSError, path: Path) -> dict[str, Any]:
-    return {
-        "ok": False,
-        "reason_code": "storage_unavailable",
-        "path": str(path),
-        "detail": type(exc).__name__,
-        "fallback": "none; grant access or set the documented ZzzOps path override",
-    }
 
 
 def project_digest(text: str) -> str:
@@ -1378,186 +1273,21 @@ def edit_parallelization(repo: Path) -> None:
             print("Choose 1-4, s, or q.")
 
 
-def nested_get(data: dict[str, Any], path: tuple[str, ...]) -> Any:
-    current: Any = data
-    for key in path:
-        current = current[key]
-    return current
-
-
-def nested_set(data: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
-    current = data
-    for key in path[:-1]:
-        current = current[key]
-    current[path[-1]] = value
-
-
-def edit_health_preferences() -> None:
-    path, preferences = load_user_health_preferences()
-    while True:
-        print(f"\nUser health preferences ({path})")
-        print("Disabled by default; timestamps/state are machine-local and no sandbox is bypassed.")
-        for number, (field, label, _kind, _options) in enumerate(HEALTH_FIELDS, 1):
-            print(f"  {number}. {label}: {nested_get(preferences, field)}")
-        print("  s. Save and return")
-        print("  r. Reset to opt-in defaults")
-        print("  q. Discard and return")
-        choice = input("> ").strip().casefold()
-        if choice == "q":
-            print("No changes saved.")
-            return
-        if choice == "r":
-            preferences = health.default_preferences()
-            continue
-        if choice == "s":
-            errors = health.validate_preferences(preferences)
-            if errors:
-                print("Cannot save: " + "; ".join(errors))
-                continue
-            try:
-                private_atomic_json(path, preferences)
-            except OSError as exc:
-                print(json.dumps(storage_error(exc, path), indent=2))
-                return
-            print(f"Saved user health preferences to {path}")
-            return
-        if not choice.isdigit() or not 1 <= int(choice) <= len(HEALTH_FIELDS):
-            print(f"Choose 1-{len(HEALTH_FIELDS)}, s, r, or q.")
-            continue
-        field, label, kind, options = HEALTH_FIELDS[int(choice) - 1]
-        current = nested_get(preferences, field)
-        if kind == "bool":
-            nested_set(preferences, field, not current)
-            continue
-        raw = input(f"{label} [{current}]: ").strip()
-        if not raw:
-            continue
-        if kind == "int":
-            low, high = options
-            if not raw.isdigit() or not low <= int(raw) <= high:
-                print(f"Enter an integer from {low} to {high}.")
-                continue
-            value: Any = int(raw)
-        elif kind == "days":
-            try:
-                value = [int(item.strip()) for item in raw.split(",")]
-            except ValueError:
-                print("Enter comma-separated integers from 0 to 6.")
-                continue
-        elif kind == "choice":
-            if raw not in options:
-                print("Choose " + ", ".join(options) + ".")
-                continue
-            value = raw
-        else:
-            value = raw
-        nested_set(preferences, field, value)
-
-
-def health_status() -> dict[str, Any]:
-    preferences_path, preferences = load_user_health_preferences()
-    state_path, state = load_machine_health_state()
-    return {
-        "ok": True,
-        "enabled": preferences["enabled"],
-        "preferences_path": str(preferences_path),
-        "preferences_exists": preferences_path.exists(),
-        "state_path": str(state_path),
-        "state_exists": state_path.exists(),
-        "activity_precision": state.get("activity_precision"),
-        "last_activity_at": state.get("last_activity_at"),
-        "snoozed_until": state.get("snoozed_until"),
-    }
-
-
-def health_check(now_value: str | None, activity_timestamp: str | None, precision: str) -> dict[str, Any]:
-    preferences_path, preferences = load_user_health_preferences()
-    state_path, state = load_machine_health_state()
-    now = datetime.now(timezone.utc) if now_value is None else health._parse_instant(now_value)
-    if now is None:
-        raise ValueError("--now must be an ISO-8601 instant with an offset")
-    activity = None
-    if activity_timestamp is not None:
-        activity = {"timestamp": activity_timestamp, "precision": precision}
-    decision, updated = health.evaluate(now, activity, preferences, state)
-    if updated != state:
-        try:
-            private_atomic_json(state_path, updated)
-        except OSError as exc:
-            return storage_error(exc, state_path)
-    return {
-        "ok": True,
-        "decision": decision,
-        "preferences_path": str(preferences_path),
-        "state_path": str(state_path),
-    }
-
-
-def health_reset(include_preferences: bool) -> dict[str, Any]:
-    paths = [machine_health_state_path()]
-    if include_preferences:
-        paths.append(user_health_preferences_path())
-    removed = []
-    for path in paths:
-        try:
-            if path.exists():
-                path.unlink()
-                removed.append(str(path))
-        except OSError as exc:
-            return storage_error(exc, path)
-    return {"ok": True, "removed": removed}
-
-
-def health_snooze(minutes: int | None, now_value: str | None) -> dict[str, Any]:
-    _preferences_path, preferences = load_user_health_preferences()
-    state_path, state = load_machine_health_state()
-    duration = preferences["delivery"]["snooze_minutes"] if minutes is None else minutes
-    if not 1 <= duration <= 1440:
-        raise ValueError("--minutes must be from 1 to 1440")
-    now = datetime.now(timezone.utc) if now_value is None else health._parse_instant(now_value)
-    if now is None:
-        raise ValueError("--now must be an ISO-8601 instant with an offset")
-    until = now + timedelta(minutes=duration)
-    state["snoozed_until"] = health._iso(until)
-    try:
-        private_atomic_json(state_path, state)
-    except OSError as exc:
-        return storage_error(exc, state_path)
-    return {"ok": True, "snoozed_until": health._iso(until), "state_path": str(state_path)}
-
-
-def health_resume() -> dict[str, Any]:
-    state_path, state = load_machine_health_state()
-    if not state_path.exists():
-        return {"ok": True, "changed": False, "state_path": str(state_path)}
-    changed = state.get("snoozed_until") is not None
-    state["snoozed_until"] = None
-    if changed:
-        try:
-            private_atomic_json(state_path, state)
-        except OSError as exc:
-            return storage_error(exc, state_path)
-    return {"ok": True, "changed": changed, "state_path": str(state_path)}
-
-
 def interactive(repo: Path) -> None:
     while True:
         print("\nZzzOps control panel")
         print("  1. Edit preferences")
         print("  2. Edit parallelization")
-        print("  3. Edit user health preferences")
         print("  q. Exit")
         choice = input("> ").strip().casefold()
         if choice == "1":
             edit_preferences(repo)
         elif choice == "2":
             edit_parallelization(repo)
-        elif choice == "3":
-            edit_health_preferences()
         elif choice == "q":
             return
         else:
-            print("Choose 1, 2, 3, or q.")
+            print("Choose 1, 2, or q.")
 
 
 def main() -> int:
@@ -1582,23 +1312,6 @@ def main() -> int:
     portfolio_parser.add_argument("--include-done", action="store_true", help="Include terminal goals in summary output")
     portfolio_parser.add_argument("--as-of", help="Injected ISO-8601 audit instant for deterministic claim checks")
     portfolio_parser.add_argument("--compare", type=Path, help="Prior JSON snapshot used only to report digest/revision drift")
-    health_parser = commands.add_parser("health", help="Inspect or operate opt-in user health support")
-    health_commands = health_parser.add_subparsers(dest="health_command", required=True)
-    health_commands.add_parser("status", help="Show user preference and machine-state capability without writes")
-    check_command = health_commands.add_parser("check", help="Evaluate one health hook")
-    check_command.add_argument("--now", help="Injected ISO-8601 current instant (default: system UTC)")
-    check_command.add_argument("--activity-timestamp", help="Optional ISO-8601 activity instant")
-    check_command.add_argument("--precision", choices=sorted(health.PRECISIONS), default="current_only")
-    record_command = health_commands.add_parser("record", help="Record qualified activity and evaluate one hook")
-    record_command.add_argument("--now", help="Injected ISO-8601 current instant (default: system UTC)")
-    record_command.add_argument("--activity-timestamp", required=True, help="ISO-8601 activity instant")
-    record_command.add_argument("--precision", choices=("exact_message", "observed_receipt"), required=True)
-    reset_command = health_commands.add_parser("reset", help="Delete machine health state")
-    reset_command.add_argument("--preferences", action="store_true", help="Also delete user health preferences")
-    snooze_command = health_commands.add_parser("snooze", help="Suppress health nudges temporarily")
-    snooze_command.add_argument("--minutes", type=int, help="Override the configured snooze duration")
-    snooze_command.add_argument("--now", help="Injected ISO-8601 current instant (tests/harnesses)")
-    health_commands.add_parser("resume", help="Clear the current snooze")
     args = parser.parse_args()
     repo = args.repo.resolve()
     if not (repo / ".agents" / "templates" / "project-goals" / "PREFERENCES.json").is_file():
@@ -1641,19 +1354,6 @@ def main() -> int:
                 else:
                     print(f"ERROR: {exc}")
                 return 2
-        elif args.command == "health":
-            if args.health_command == "status":
-                result = health_status()
-            elif args.health_command in {"check", "record"}:
-                result = health_check(args.now, args.activity_timestamp, args.precision)
-            elif args.health_command == "reset":
-                result = health_reset(args.preferences)
-            elif args.health_command == "snooze":
-                result = health_snooze(args.minutes, args.now)
-            else:
-                result = health_resume()
-            print(json.dumps(result, indent=2, ensure_ascii=False))
-            return 0 if result.get("ok") else 2
         else:
             interactive(repo)
     except (EOFError, KeyboardInterrupt):

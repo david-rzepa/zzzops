@@ -24,8 +24,8 @@ def files_to_copy(root: Path) -> list[str]:
     paths = [
         ".zzzops/rules/BACKENDS.md", ".zzzops/rules/BLOCKERS.md",
         ".zzzops/rules/CONTINUATION.md", ".zzzops/rules/EXECUTION_STRATEGY.md", ".zzzops/rules/GOAL_SYSTEM.md",
-        ".zzzops/rules/HEALTH.md", ".zzzops/rules/INITIALIZATION.md",
-        ".agents/.gitignore", ".agents/zzzops.py", ".agents/zzzops_health.py",
+        ".zzzops/rules/INITIALIZATION.md",
+        ".agents/.gitignore", ".agents/zzzops.py",
     ]
     for base in [root / ".agents" / "templates" / "project-goals", *(root / ".agents" / "skills" / name for name in TARGET_SKILLS)]:
         paths.extend(path.relative_to(root).as_posix() for path in base.rglob("*") if path.is_file() and "__pycache__" not in path.parts and not path.name.startswith("test_"))
