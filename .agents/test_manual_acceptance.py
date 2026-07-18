@@ -28,6 +28,18 @@ class ManualAcceptanceTests(unittest.TestCase):
             (repo / "a.txt").write_text("changed")
             self.assertEqual(["A-1"], json.loads(run("audit").stdout)["stale"])
 
+    def test_coverage_reports_missing_required_surfaces_without_writing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            (repo / "docs").mkdir()
+            plan = {"version": 1, "items": [{"id":"A-1","status":"unchecked","paths":[".agents/skills/install-zzzops"],"fingerprint":None,"notes":""}]}
+            path = repo / "docs" / "ACCEPTANCE_TEST_PLAN.md"
+            path.write_text("<!-- zzzops-acceptance-plan\n" + json.dumps(plan) + "\nzzzops-acceptance-plan -->\n")
+            result = subprocess.run([sys.executable, str(SCRIPT), "coverage", "--repo", str(repo)], text=True, capture_output=True)
+            self.assertEqual(1, result.returncode)
+            self.assertIn(".agents/zzzops.py", json.loads(result.stdout)["unmapped_required_surfaces"])
+            self.assertEqual(path.read_text(encoding="utf-8"), "<!-- zzzops-acceptance-plan\n" + json.dumps(plan) + "\nzzzops-acceptance-plan -->\n")
+
 
 if __name__ == "__main__":
     unittest.main()
