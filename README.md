@@ -200,7 +200,7 @@ python .agents/prompt_stats.py --check
 | --- | ---: | ---: |
 | `.agents/skills/add-zzzops-goal/SKILL.md` | 1304 | 326 |
 | `.agents/skills/execute-zzzops/SKILL.md` | 2342 | 586 |
-| `.agents/skills/execute-zzzops/references/BRANCH_REVIEW.md` | 4618 | 1155 |
+| `.agents/skills/execute-zzzops/references/BRANCH_REVIEW.md` | 5190 | 1298 |
 | `.agents/skills/execute-zzzops/references/CREATE.md` | 2921 | 731 |
 | `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3344 | 836 |
 | `.agents/skills/execute-zzzops/references/SELF_REVIEW.md` | 1345 | 337 |
@@ -222,7 +222,7 @@ python .agents/prompt_stats.py --check
 | `.zzzops/rules/INITIALIZATION.md` | 1930 | 483 |
 | `AGENTS.md` | 2896 | 724 |
 | `CLAUDE.md` | 217 | 55 |
-| **Total** | **50996** | **12757** |
+| **Total** | **51568** | **12900** |
 <!-- PROMPT_BUDGET_END -->
 
 </details>
