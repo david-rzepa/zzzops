@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -353,8 +354,223 @@ class ManagedGoalTests(unittest.TestCase):
         goal["implementation"]["review"]["status"] = "self_approved"
         self.assertIn("implementation.review.status is invalid", zzzops.validate_managed_goal(goal))
 
+    def test_managed_goal_rejects_invented_lifecycle_enums(self):
+        goal = self.goal()
+        for field, value in (("status", "almost-done"), ("priority", "urgent"), ("value", "priceless"), ("difficulty", "heroic"), ("confidence", "vibes")):
+            candidate = dict(goal)
+            candidate[field] = value
+            self.assertIn(f"{field} is invalid", zzzops.validate_managed_goal(candidate))
+
+
+class PortfolioTests(unittest.TestCase):
+    def goal(self, **overrides):
+        goal = {
+            "schema_version": 1, "status": "ready", "priority": "P2", "value": "medium",
+            "difficulty": "S", "confidence": "high", "parent": None, "depends_on": [],
+            "claim": {"owner": None}, "blockers": [], "evidence": [],
+            "next_action": "Run the next observable probe.", "revision": 1,
+            "implementation": {"branch": None, "base": None, "target": None, "pr": None,
+                               "review": {"status": "not_started", "checkpoint": None}},
+        }
+        goal.update(overrides)
+        return goal
+
+    def issue(self, number, **goal_overrides):
+        goal = self.goal(**goal_overrides)
+        title = f"Goal {number}"
+        body = zzzops.render_managed_goal(goal, "## Outcome / Why\n\nUseful work.\n", number)
+        return {
+            "number": number, "title": title, "body": body, "state": "closed" if goal["status"] == "done" else "open",
+            "updated_at": f"2026-07-{number:02d}T00:00:00Z", "html_url": f"https://example.test/issues/{number}",
+            "labels": [{"name": "zzzops"}, {"name": f"zzzops:status:{goal['status']}"}, {"name": f"zzzops:priority:{goal['priority']}"}],
+        }
+
+    def test_empty_snapshot_is_complete_and_deterministic(self):
+        first = zzzops.build_portfolio_snapshot("local_files", [], reads=1, raw_bytes=0)
+        second = zzzops.build_portfolio_snapshot("local_files", [], reads=1, raw_bytes=0)
+        self.assertTrue(first["complete"])
+        self.assertEqual(first["portfolio_digest"], second["portfolio_digest"])
+        self.assertEqual(0, first["summary"]["total"])
+        self.assertEqual([], first["findings"])
+
+    def test_snapshot_derives_graph_actionability_and_compact_summary(self):
+        records = [
+            zzzops.github_goal_record(self.issue(1, status="done")),
+            zzzops.github_goal_record(self.issue(2, depends_on=[1])),
+            zzzops.github_goal_record(self.issue(3, parent=2, status="blocked", blockers=[{"id": "B-1", "status": "open", "category": "decision"}])),
+        ]
+        snapshot = zzzops.build_portfolio_snapshot(
+            "github_issues", records, reads=1, raw_bytes=20000,
+            as_of=zzzops.datetime(2026, 7, 17, tzinfo=zzzops.timezone.utc),
+        )
+        by_key = {goal["key"]: goal for goal in snapshot["goals"]}
+        self.assertEqual([2], by_key[1]["blocks"])
+        self.assertEqual([3], by_key[2]["children"])
+        self.assertEqual({"total": 3, "actionable": 1, "blocked": 1, "done": 1, "findings": 0, "reads": 1, "raw_bytes": 20000, "ignored": 0}, snapshot["summary"])
+        self.assertTrue(snapshot["valid"])
+        summary = zzzops.render_portfolio_summary(snapshot)
+        self.assertIn("goals=3 actionable=1 blocked=1 done=1", summary)
+        self.assertNotIn("Goal 1", summary)
+        self.assertLess(len(summary.encode("utf-8")), snapshot["summary"]["raw_bytes"] // 10)
+
+    def test_audit_reports_graph_state_claim_review_and_label_drift(self):
+        stale = {"owner": "Codex", "expires_at": "2026-07-16T00:00:00Z"}
+        pending = {"branch": "goal/x", "base": "dev", "target": "dev", "pr": "url", "review": {"status": "pending", "checkpoint": "abc"}}
+        records = [
+            zzzops.github_goal_record(self.issue(1, depends_on=[2], claim=stale, implementation=pending)),
+            zzzops.github_goal_record(self.issue(2, depends_on=[1], status="done")),
+        ]
+        records[0]["depends_on"].append(2)
+        records[0]["implementation"]["review"]["checkpoint"] = None
+        records[1]["claim"] = {"owner": "Codex", "expires_at": "2026-07-16T00:00:00"}
+        records[0]["labels"] = ["zzzops", "zzzops:status:new"]
+        findings = zzzops.audit_portfolio(records, "github_issues", zzzops.datetime(2026, 7, 17, tzinfo=zzzops.timezone.utc))
+        codes = {finding["code"] for finding in findings}
+        self.assertTrue({"duplicate_dependency", "depends_on_cycle", "done_with_unfinished_dependency", "stale_claim", "invalid_claim_expiry", "pending_review_without_checkpoint", "label_drift"}.issubset(codes))
+
+    @mock.patch.object(zzzops.shutil, "which", return_value="gh")
+    @mock.patch.object(zzzops.subprocess, "run")
+    @mock.patch.object(zzzops, "validate_project_state", return_value=[])
+    @mock.patch.object(zzzops, "parse_project_state", return_value={"initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"}})
+    def test_github_adapter_uses_one_paginated_read_and_filters_prs(self, _parse, _validate, run, _which):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            (repo / ".zzzops").mkdir()
+            (repo / ".zzzops" / "PROJECT.md").write_text("state", encoding="utf-8")
+            payload = [[self.issue(1), {**self.issue(2), "pull_request": {}}], [self.issue(3)]]
+            run.return_value = SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
+            snapshot = zzzops.portfolio_snapshot(repo, zzzops.datetime(2026, 7, 17, tzinfo=zzzops.timezone.utc))
+        self.assertEqual([1, 3], [goal["key"] for goal in snapshot["goals"]])
+        self.assertEqual(2, snapshot["summary"]["reads"])
+        self.assertEqual(1, snapshot["summary"]["processes"])
+        self.assertEqual(0, snapshot["summary"]["ignored"])
+        command = run.call_args.args[0]
+        self.assertIn("--paginate", command)
+        self.assertIn("--slurp", command)
+        self.assertEqual(1, run.call_count)
+
+    @mock.patch.object(zzzops.shutil, "which", return_value="gh")
+    @mock.patch.object(zzzops.subprocess, "run", return_value=SimpleNamespace(returncode=1, stdout="", stderr="API rate limit exceeded; partial page rejected"))
+    @mock.patch.object(zzzops, "validate_project_state", return_value=[])
+    @mock.patch.object(zzzops, "parse_project_state", return_value={"initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"}})
+    def test_github_adapter_reports_partial_or_rate_limit_failure(self, _parse, _validate, _run, _which):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            (repo / ".zzzops").mkdir()
+            (repo / ".zzzops" / "PROJECT.md").write_text("state", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "rate limit.*partial page"):
+                zzzops.portfolio_snapshot(repo)
+
+    @mock.patch.object(zzzops, "validate_project_state", return_value=[])
+    @mock.patch.object(zzzops, "parse_project_state", return_value={"initialized": True, "backend": "local_files", "repository": None})
+    def test_local_adapter_scans_once_and_retains_malformed_findings(self, _parse, _validate):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            (repo / ".zzzops").mkdir()
+            (repo / ".zzzops" / "PROJECT.md").write_text("state", encoding="utf-8")
+            items = repo / "goals" / "items"
+            items.mkdir(parents=True)
+            (items / "G-1.md").write_text(
+                "---\nid: G-1\ntitle: First\nstatus: ready\npriority: P1\nvalue: high\ndifficulty: S\nconfidence: high\n"
+                "parent: null\ndepends_on: []\nblocks: []\nneeds_human: false\nclaim: {owner: null}\n---\n\n"
+                "## Approach and next action\n\n**Next action:** Prove it.\n",
+                encoding="utf-8",
+            )
+            (items / "broken.md").write_text("not a goal", encoding="utf-8")
+            (repo / "goals" / "INDEX.md").write_text("[G-1](items/G-1.md)\n[broken](items/broken.md)\n", encoding="utf-8")
+            snapshot = zzzops.portfolio_snapshot(repo)
+        self.assertFalse(snapshot["complete"])
+        self.assertEqual(1, snapshot["summary"]["total"])
+        self.assertEqual(1, snapshot["summary"]["reads"])
+        self.assertEqual("goals/items/G-1.md", snapshot["goals"][0]["path"])
+        self.assertEqual("malformed_record", snapshot["findings"][0]["code"])
+
+    @mock.patch.object(zzzops, "validate_project_state", return_value=[])
+    @mock.patch.object(zzzops, "parse_project_state", return_value={"initialized": True, "backend": "local_files", "repository": None})
+    def test_local_adapter_detects_duplicate_identity_and_cycles(self, _parse, _validate):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            (repo / ".zzzops").mkdir()
+            (repo / ".zzzops" / "PROJECT.md").write_text("state", encoding="utf-8")
+            items = repo / "goals" / "items"
+            items.mkdir(parents=True)
+            template = (
+                "---\nid: {id}\ntitle: {id}\nstatus: ready\npriority: P2\nvalue: medium\ndifficulty: S\nconfidence: high\n"
+                "parent: null\ndepends_on: [{dependency}]\nblocks: [{block}]\nneeds_human: false\nclaim: {{owner: null}}\n---\n\n"
+                "## Approach and next action\n\n**Next action:** Probe.\n"
+            )
+            (items / "G-A.md").write_text(template.format(id="G-A", dependency="G-B", block="G-B"), encoding="utf-8")
+            (items / "G-B.md").write_text(template.format(id="G-B", dependency="G-A", block="G-A"), encoding="utf-8")
+            (items / "duplicate.md").write_text(template.format(id="G-A", dependency="G-B", block="G-B"), encoding="utf-8")
+            (repo / "goals" / "INDEX.md").write_text(
+                "[A](items/G-A.md)\n[B](items/G-B.md)\n[duplicate](items/duplicate.md)\n", encoding="utf-8",
+            )
+            snapshot = zzzops.portfolio_snapshot(repo)
+        codes = {finding["code"] for finding in snapshot["findings"]}
+        self.assertTrue({"duplicate_identity", "depends_on_cycle", "filename_identity_mismatch"}.issubset(codes))
+
+    def test_large_graph_is_iterative_and_invalid_states_are_not_actionable(self):
+        chain = [{"key": index, "parent": None, "depends_on": [] if index == 0 else [index - 1]} for index in range(1500)]
+        self.assertEqual(set(), zzzops._cycle_nodes(chain, "depends_on"))
+        chain[0]["depends_on"] = [1499]
+        self.assertEqual(1500, len(zzzops._cycle_nodes(chain, "depends_on")))
+        records = [
+            zzzops.github_goal_record(self.issue(1, status="new")),
+            zzzops.github_goal_record(self.issue(2, status="triaged")),
+            zzzops.github_goal_record(self.issue(3, status="cancelled")),
+            zzzops.github_goal_record(self.issue(4, depends_on=[3])),
+        ]
+        snapshot = zzzops.build_portfolio_snapshot("github_issues", records, reads=1, raw_bytes=100)
+        self.assertEqual(0, snapshot["summary"]["actionable"])
+        self.assertFalse(snapshot["valid"])
+        self.assertIn("cancelled_dependency", {finding["code"] for finding in snapshot["findings"]})
+
+    def test_projection_benchmark_fixture_is_repeatable(self):
+        context = ("Observable outcome, acceptance evidence, scope, decisions, and resumable history. " * 18).strip()
+        issues = []
+        for number in range(1, 121):
+            issue = self.issue(number)
+            goal = zzzops.parse_managed_goal(issue["body"], number)
+            issue["body"] = zzzops.render_managed_goal(goal, f"## Outcome / Why\n\n{context}\n", number)
+            issues.append(issue)
+        raw_bytes = sum(len((issue["title"] + issue["body"]).encode("utf-8")) for issue in issues)
+        snapshot = zzzops.build_portfolio_snapshot(
+            "github_issues", [zzzops.github_goal_record(issue) for issue in issues], reads=2, raw_bytes=raw_bytes,
+        )
+        json_bytes = len(json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+        summary_bytes = len(zzzops.render_portfolio_summary(snapshot).encode("utf-8"))
+        self.assertEqual(2, snapshot["summary"]["reads"])
+        self.assertLess(json_bytes, raw_bytes)
+        self.assertLess(summary_bytes, json_bytes)
+
+    def test_compare_reports_added_removed_and_changed_goals(self):
+        current = zzzops.build_portfolio_snapshot("local_files", [
+            {"key": "A", "title": "A", "status": "ready", "priority": "P1", "value": "high", "difficulty": "S", "confidence": "high", "parent": None, "depends_on": [], "claim": None, "needs_human": False, "blocker_categories": [], "next_action": "A", "revision": 2, "digest": "new", "updated_at": None, "implementation": None, "labels": []},
+            {"key": "C", "title": "C", "status": "ready", "priority": "P2", "value": "medium", "difficulty": "S", "confidence": "high", "parent": None, "depends_on": [], "claim": None, "needs_human": False, "blocker_categories": [], "next_action": "C", "revision": 1, "digest": "c", "updated_at": None, "implementation": None, "labels": []},
+        ], reads=1, raw_bytes=10)
+        prior = {"schema_version": 1, "goals": [{"key": "A", "revision": 1, "digest": "old"}, {"key": "B", "revision": 1, "digest": "b"}]}
+        self.assertEqual(["goal_changed", "goal_removed", "goal_added"], [finding["code"] for finding in zzzops.compare_portfolios(current, prior)])
+        with self.assertRaisesRegex(ValueError, "malformed goal"):
+            zzzops.compare_portfolios(current, {"schema_version": 1, "goals": [None]})
+
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_management_workflows_use_one_complete_portfolio_snapshot(self):
+        root = Path(__file__).parent
+        backend = (root.parent / ".zzzops" / "rules" / "BACKENDS.md").read_text(encoding="utf-8")
+        self.assertIn("portfolio --format json", backend)
+        self.assertIn("complete:true", backend)
+        self.assertIn("valid:true", backend)
+        self.assertIn("re-read only the selected canonical goal", backend.casefold())
+        for relative in (
+            "skills/add-zzzops-goal/SKILL.md", "skills/analyze-zzzops-usage/SKILL.md",
+            "skills/migrate-zzzops-todos/SKILL.md", "skills/suggest-zzzops-work/SKILL.md",
+            "skills/execute-zzzops/references/CREATE.md", "skills/execute-zzzops/references/EXECUTE.md",
+            "skills/execute-zzzops/references/UNBLOCK.md",
+        ):
+            text = (root / relative).read_text(encoding="utf-8")
+            self.assertIn("snapshot", text.casefold(), relative)
+
     def test_github_schema_is_issue_native_while_local_ids_remain(self):
         self.assertIn("schema_version", zzzops.GOAL_FIELDS)
         for derived in ("id", "title", "blocks", "needs_human"):

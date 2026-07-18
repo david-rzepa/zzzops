@@ -5,7 +5,7 @@ description: Suggest, discover, or audit valuable ZzzOps work from project code,
 
 # Suggest ZzzOps Work
 
-Run `.zzzops/rules/INITIALIZATION.md`, then `.zzzops/rules/BACKENDS.md`. Read project instructions, charter, local preferences, and canonical goals.
+Run `.zzzops/rules/INITIALIZATION.md`, then `.zzzops/rules/BACKENDS.md`. Read project instructions, charter, preferences, and the complete compact portfolio snapshot; re-read only likely duplicates.
 Run applicable `.zzzops/rules/HEALTH.md` hooks from reviewed PROJECT policy; health never changes dry-run/apply authority.
 
 1. Mode defaults to `dry-run`: no edits to source, Git, goals, index, or preferences. `apply` requires explicit user request or `$execute-zzzops` invocation allowed by both PROJECT refill policy and local preference. Never edit/commit preferences.

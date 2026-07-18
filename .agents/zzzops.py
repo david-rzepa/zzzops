@@ -23,6 +23,7 @@ PROJECT_SCHEMA_VERSION = 1
 PLAN_SCHEMA_VERSION = 1
 POLICY_SCHEMA_VERSION = 1
 GOAL_SCHEMA_VERSION = 1
+PORTFOLIO_SCHEMA_VERSION = 1
 PROJECT_BLOCK_START = "<!-- zzzops-project-state"
 PROJECT_BLOCK_END = "zzzops-project-state -->"
 GOAL_BLOCK_START = "<!-- zzzops-goal"
@@ -49,6 +50,11 @@ BLOCKER_CATEGORIES = {
     "specification", "decision", "access-approval", "human-action",
     "external-dependency", "technical-unknown", "safety-compliance",
 }
+GOAL_STATUSES = {"new", "triaged", "ready", "in_progress", "blocked", "done", "cancelled"}
+GOAL_PRIORITIES = {"P0", "P1", "P2", "P3"}
+GOAL_VALUES = {"critical", "high", "medium", "low"}
+GOAL_DIFFICULTIES = {"unknown", "XS", "S", "M", "L", "XL"}
+GOAL_CONFIDENCES = {"low", "medium", "high"}
 REDUNDANT_GOAL_TITLE_PREFIX = re.compile(r"^\[G-\d{8}-\d{3}-[^\]]+\]\s*")
 
 PREFERENCE_LABELS = (
@@ -416,6 +422,12 @@ def validate_managed_goal(goal: Any, issue_number: int | None = None) -> list[st
     for field in required_text:
         if not text_present(goal.get(field)):
             errors.append(f"{field} is required")
+    for field, allowed in (
+        ("status", GOAL_STATUSES), ("priority", GOAL_PRIORITIES), ("value", GOAL_VALUES),
+        ("difficulty", GOAL_DIFFICULTIES), ("confidence", GOAL_CONFIDENCES),
+    ):
+        if text_present(goal.get(field)) and goal[field] not in allowed:
+            errors.append(f"{field} is invalid")
     for field in ("depends_on", "blockers", "evidence"):
         if not isinstance(goal.get(field), list):
             errors.append(f"{field} must be a list")
@@ -506,6 +518,375 @@ def validate_github_issue_goal(issue_number: Any, title: Any, body: Any) -> list
         if goal is None:
             errors.append("managed goal block is required")
     return errors
+
+
+def _inline_yaml_value(value: str) -> Any:
+    value = value.strip()
+    if value in {"", "null", "~"}:
+        return None
+    if value.casefold() in {"true", "false"}:
+        return value.casefold() == "true"
+    if value.startswith("[") and value.endswith("]"):
+        inner = value[1:-1].strip()
+        return [] if not inner else [item.strip().strip('"\'') for item in inner.split(",")]
+    if value.startswith("{") and value.endswith("}"):
+        result = {}
+        for item in value[1:-1].split(","):
+            key, separator, nested = item.partition(":")
+            if not separator:
+                raise ValueError(f"invalid inline mapping: {value}")
+            result[key.strip()] = _inline_yaml_value(nested)
+        return result
+    return value.strip('"\'')
+
+
+def parse_local_goal(path: Path, repo: Path | None = None) -> dict[str, Any]:
+    text = path.read_text(encoding="utf-8-sig")
+    match = re.match(r"---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
+    if not match:
+        raise ValueError("missing YAML frontmatter")
+    frontmatter = match.group(1)
+    fields: dict[str, Any] = {}
+    implementation: dict[str, Any] = {}
+    in_implementation = False
+    for line in frontmatter.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        key, separator, value = line.strip().partition(":")
+        if not separator:
+            raise ValueError(f"invalid frontmatter line: {line}")
+        if indent == 0:
+            in_implementation = key == "implementation"
+            if not in_implementation:
+                fields[key] = _inline_yaml_value(value)
+        elif in_implementation and indent == 2:
+            implementation[key] = _inline_yaml_value(value)
+    if implementation:
+        fields["implementation"] = implementation
+    for required in ("id", "title", "status", "priority", "value", "difficulty", "confidence"):
+        if not text_present(fields.get(required)):
+            raise ValueError(f"{required} is required")
+    for field, allowed in (
+        ("status", GOAL_STATUSES), ("priority", GOAL_PRIORITIES), ("value", GOAL_VALUES),
+        ("difficulty", GOAL_DIFFICULTIES), ("confidence", GOAL_CONFIDENCES),
+    ):
+        if fields[field] not in allowed:
+            raise ValueError(f"{field} is invalid")
+    for relation in ("depends_on", "blocks"):
+        if not isinstance(fields.get(relation, []), list):
+            raise ValueError(f"{relation} must be an inline list")
+    blocker_categories = re.findall(
+        r"Status/category/raised/owner:\s*open\s*/\s*`?([a-z-]+)`?", text[match.end():], re.IGNORECASE,
+    )
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return {
+        "key": fields["id"], "title": fields["title"], "status": fields["status"],
+        "priority": fields["priority"], "value": fields["value"], "difficulty": fields["difficulty"],
+        "confidence": fields["confidence"], "parent": fields.get("parent"),
+        "depends_on": fields.get("depends_on", []), "claim": fields.get("claim"),
+        "needs_human": bool(fields.get("needs_human")) or bool(blocker_categories),
+        "blocker_categories": blocker_categories, "next_action": _extract_next_action(text),
+        "revision": None, "digest": digest, "updated_at": fields.get("updated"),
+        "implementation": fields.get("implementation"), "labels": [],
+        "path": path.relative_to(repo).as_posix() if repo is not None else path.name,
+        "declared_blocks": fields.get("blocks", []), "filename": path.stem,
+    }
+
+
+def _extract_next_action(text: str) -> str:
+    match = re.search(r"\*\*Next action:\*\*\s*(.+)", text)
+    return match.group(1).strip() if match else ""
+
+
+def github_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
+    number = issue.get("number")
+    body = issue.get("body") or ""
+    goal = parse_managed_goal(body, number)
+    if goal is None:
+        raise ValueError("managed goal block is required")
+    errors = validate_github_issue_goal(number, issue.get("title"), body)
+    if errors:
+        raise ValueError("; ".join(errors))
+    digest_source = "\0".join((issue.get("title") or "", body, issue.get("updated_at") or ""))
+    return {
+        "key": number, "title": issue["title"], "status": goal["status"],
+        "priority": goal["priority"], "value": goal["value"], "difficulty": goal["difficulty"],
+        "confidence": goal["confidence"], "parent": goal["parent"],
+        "depends_on": goal["depends_on"], "claim": goal["claim"],
+        "needs_human": goal_needs_human(goal),
+        "blocker_categories": sorted({blocker["category"] for blocker in goal["blockers"] if blocker.get("status") == "open"}),
+        "next_action": goal["next_action"], "revision": goal["revision"],
+        "digest": hashlib.sha256(digest_source.encode("utf-8")).hexdigest(),
+        "updated_at": issue.get("updated_at"), "implementation": goal.get("implementation"),
+        "labels": sorted(label["name"] for label in issue.get("labels", []) if isinstance(label, dict) and text_present(label.get("name"))),
+        "state": issue.get("state"), "url": issue.get("html_url"),
+    }
+
+
+def _cycle_nodes(records: list[dict[str, Any]], relation: str) -> set[Any]:
+    graph = {}
+    for record in records:
+        values = record.get(relation)
+        graph[record["key"]] = ([values] if relation == "parent" and values is not None else values or [])
+    state: dict[Any, int] = {}
+    cycles: set[Any] = set()
+    for start in graph:
+        if state.get(start):
+            continue
+        path: list[Any] = [start]
+        positions = {start: 0}
+        state[start] = 1
+        stack = [(start, iter(graph[start]))]
+        while stack:
+            node, targets = stack[-1]
+            try:
+                target = next(targets)
+            except StopIteration:
+                stack.pop()
+                state[node] = 2
+                positions.pop(node, None)
+                path.pop()
+                continue
+            if target not in graph or state.get(target) == 2:
+                continue
+            if state.get(target) == 1:
+                cycles.update(path[positions[target]:])
+                continue
+            state[target] = 1
+            positions[target] = len(path)
+            path.append(target)
+            stack.append((target, iter(graph[target])))
+    return cycles
+
+
+def _portfolio_key(value: Any) -> tuple[int, Any]:
+    return (0, value) if isinstance(value, int) and not isinstance(value, bool) else (1, str(value))
+
+
+def audit_portfolio(records: list[dict[str, Any]], backend: str, as_of: datetime | None = None) -> list[dict[str, Any]]:
+    as_of = datetime.now(timezone.utc) if as_of is None else as_of
+    findings: list[dict[str, Any]] = []
+    grouped: dict[Any, list[dict[str, Any]]] = {}
+    for record in records:
+        grouped.setdefault(record["key"], []).append(record)
+    for key, matches in grouped.items():
+        if len(matches) > 1:
+            findings.append({"code": "duplicate_identity", "goal": key, "detail": f"{len(matches)} records"})
+    goals = {key: matches[0] for key, matches in grouped.items()}
+    for record in records:
+        key = record["key"]
+        relations = ([record["parent"]] if record.get("parent") is not None else []) + list(record.get("depends_on", []))
+        if len(record.get("depends_on", [])) != len(set(record.get("depends_on", []))):
+            findings.append({"code": "duplicate_dependency", "goal": key, "detail": "dependency repeated"})
+        for target in relations:
+            if target == key:
+                findings.append({"code": "self_relation", "goal": key, "detail": str(target)})
+            elif target not in goals:
+                findings.append({"code": "missing_relation", "goal": key, "detail": str(target)})
+        if record["status"] == "done":
+            unfinished = [str(target) for target in record.get("depends_on", []) if target in goals and goals[target]["status"] != "done"]
+            if unfinished:
+                findings.append({"code": "done_with_unfinished_dependency", "goal": key, "detail": ",".join(unfinished)})
+        cancelled = [str(target) for target in record.get("depends_on", []) if target in goals and goals[target]["status"] == "cancelled"]
+        if cancelled:
+            findings.append({"code": "cancelled_dependency", "goal": key, "detail": ",".join(cancelled)})
+        claim = record.get("claim")
+        if isinstance(claim, dict) and claim.get("owner") and claim.get("expires_at"):
+            try:
+                expires = datetime.fromisoformat(str(claim["expires_at"]).replace("Z", "+00:00"))
+                if expires.tzinfo is None:
+                    raise ValueError("timezone missing")
+                if expires < as_of:
+                    findings.append({"code": "stale_claim", "goal": key, "detail": str(claim["expires_at"])})
+            except ValueError:
+                findings.append({"code": "invalid_claim_expiry", "goal": key, "detail": str(claim["expires_at"])})
+        review = (record.get("implementation") or {}).get("review") if isinstance(record.get("implementation"), dict) else None
+        if isinstance(review, dict) and review.get("status") == "pending" and not review.get("checkpoint"):
+            findings.append({"code": "pending_review_without_checkpoint", "goal": key, "detail": "checkpoint missing"})
+        if backend == "github_issues":
+            if isinstance(review, dict) and review.get("status") == "approved" and not (record.get("implementation") or {}).get("pr"):
+                findings.append({"code": "approved_review_without_pr", "goal": key, "detail": "PR missing"})
+            expected = {"zzzops", f"zzzops:status:{record['status']}", f"zzzops:priority:{record['priority']}"}
+            actual = set(record.get("labels", []))
+            drift = sorted(expected - actual)
+            stale = sorted(label for label in actual if (label.startswith("zzzops:status:") or label.startswith("zzzops:priority:")) and label not in expected)
+            if drift or stale:
+                findings.append({"code": "label_drift", "goal": key, "detail": f"missing={drift}; stale={stale}"})
+            terminal = record["status"] in {"done", "cancelled"}
+            if terminal != (record.get("state") == "closed"):
+                findings.append({"code": "issue_state_drift", "goal": key, "detail": f"goal={record['status']}; issue={record.get('state')}"})
+        elif backend == "local_files":
+            if record.get("filename") != key:
+                findings.append({"code": "filename_identity_mismatch", "goal": key, "detail": str(record.get("filename"))})
+            if set(record.get("declared_blocks", [])) != set(record.get("blocks", [])):
+                findings.append({"code": "local_backlink_drift", "goal": key, "detail": f"declared={record.get('declared_blocks', [])}; derived={record.get('blocks', [])}"})
+    for relation in ("depends_on", "parent"):
+        for key in sorted(_cycle_nodes(records, relation), key=_portfolio_key):
+            findings.append({"code": f"{relation}_cycle", "goal": key, "detail": "cycle member"})
+    return sorted(findings, key=lambda finding: (finding["code"], str(finding["goal"]), finding["detail"]))
+
+
+def build_portfolio_snapshot(
+    backend: str, records: list[dict[str, Any]], *, reads: int, raw_bytes: int,
+    ignored: int = 0, as_of: datetime | None = None,
+) -> dict[str, Any]:
+    for record in records:
+        record["children"] = []
+        record["blocks"] = []
+    by_key = {record["key"]: record for record in records}
+    for record in records:
+        if record.get("parent") in by_key:
+            by_key[record["parent"]]["children"].append(record["key"])
+        for dependency in record.get("depends_on", []):
+            if dependency in by_key:
+                by_key[dependency]["blocks"].append(record["key"])
+    for record in records:
+        record["children"].sort(key=_portfolio_key)
+        record["blocks"].sort(key=_portfolio_key)
+    findings = audit_portfolio(records, backend, as_of)
+    terminal = {"done", "cancelled"}
+    blocked = {record["key"] for record in records if record["status"] == "blocked" or record["needs_human"]}
+    terminal_keys = {record["key"] for record in records if record["status"] in terminal}
+    done = {record["key"] for record in records if record["status"] == "done"}
+    actionable = [
+        record["key"] for record in records
+        if record["status"] in {"ready", "in_progress"} and record["key"] not in blocked
+        and all(dependency in done for dependency in record.get("depends_on", []))
+    ]
+    portfolio_digest = hashlib.sha256(
+        "\n".join(f"{record['key']}:{record['revision']}:{record['digest']}" for record in sorted(records, key=lambda item: _portfolio_key(item["key"]))).encode("utf-8")
+    ).hexdigest()
+    return {
+        "schema_version": PORTFOLIO_SCHEMA_VERSION, "backend": backend, "complete": True,
+        "valid": not findings,
+        "portfolio_digest": portfolio_digest, "goals": sorted(records, key=lambda record: _portfolio_key(record["key"])),
+        "findings": findings, "summary": {
+            "total": len(records), "actionable": len(actionable), "blocked": len(blocked),
+            "done": len(terminal_keys), "findings": len(findings), "reads": reads,
+            "raw_bytes": raw_bytes, "ignored": ignored,
+        },
+    }
+
+
+def portfolio_snapshot(repo: Path, as_of: datetime | None = None) -> dict[str, Any]:
+    project_path = repo / ".zzzops" / "PROJECT.md"
+    if not project_path.is_file():
+        raise ValueError("PROJECT.md is missing; run agent-driven initialization")
+    project = parse_project_state(project_path.read_text(encoding="utf-8-sig"))
+    errors = validate_project_state(project)
+    if errors or not project or not project.get("initialized"):
+        raise ValueError("PROJECT.md is not initialized: " + "; ".join(errors or ["initialization pending"]))
+    backend = project["backend"]
+    if backend == "local_files":
+        item_root = repo / "goals" / "items"
+        paths = sorted(item_root.glob("*.md")) if item_root.is_dir() else []
+        records = []
+        findings = []
+        raw_bytes = 0
+        for path in paths:
+            try:
+                if path.is_symlink():
+                    raise ValueError("symbolic-link goal files are not supported")
+                raw_bytes += path.stat().st_size
+                records.append(parse_local_goal(path, repo))
+            except (OSError, UnicodeError, ValueError) as exc:
+                findings.append({"code": "malformed_record", "goal": path.name, "detail": str(exc)})
+        index_path = repo / "goals" / "INDEX.md"
+        expected_links = {path.name for path in paths}
+        if expected_links and not index_path.is_file():
+            findings.append({"code": "local_index_drift", "goal": "goals/INDEX.md", "detail": "derived index missing"})
+        elif index_path.is_file():
+            try:
+                index_text = index_path.read_text(encoding="utf-8-sig")
+                actual_links = set(re.findall(r"items/([^\s)>]+\.md)", index_text))
+                if actual_links != expected_links:
+                    findings.append({"code": "local_index_drift", "goal": "goals/INDEX.md", "detail": f"missing={sorted(expected_links - actual_links)}; stale={sorted(actual_links - expected_links)}"})
+            except (OSError, UnicodeError) as exc:
+                findings.append({"code": "local_index_drift", "goal": "goals/INDEX.md", "detail": str(exc)})
+        snapshot = build_portfolio_snapshot(backend, records, reads=1, raw_bytes=raw_bytes, as_of=as_of)
+        snapshot["findings"] = sorted(snapshot["findings"] + findings, key=lambda item: (item["code"], str(item["goal"])))
+        snapshot["summary"]["findings"] = len(snapshot["findings"])
+        snapshot["complete"] = not findings
+        snapshot["valid"] = not snapshot["findings"]
+        snapshot["summary"]["processes"] = 0
+        return snapshot
+    identity = ((project.get("repository") or {}).get("identity") if isinstance(project.get("repository"), dict) else None)
+    if not text_present(identity):
+        raise ValueError("PROJECT.md repository.identity is required for GitHub Issues")
+    executable = shutil.which("gh")
+    if not executable:
+        raise ValueError("GitHub CLI is unavailable")
+    command = [executable, "api", "--paginate", "--slurp", f"repos/{identity}/issues?state=all&labels=zzzops&per_page=100"]
+    try:
+        result = subprocess.run(command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError(f"GitHub portfolio read failed: {type(exc).__name__}") from exc
+    if result.returncode:
+        raise ValueError("GitHub portfolio read failed: " + (result.stderr.strip() or "unknown gh error"))
+    try:
+        pages = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"GitHub portfolio read returned invalid JSON: {exc}") from exc
+    if not isinstance(pages, list) or any(not isinstance(page, list) for page in pages):
+        raise ValueError("GitHub portfolio pagination result is incomplete or malformed")
+    issues = [issue for page in pages for issue in page if isinstance(issue, dict) and "pull_request" not in issue]
+    managed = [issue for issue in issues if GOAL_BLOCK_START in (issue.get("body") or "")]
+    records = []
+    findings = []
+    for issue in managed:
+        try:
+            records.append(github_goal_record(issue))
+        except (KeyError, TypeError, ValueError) as exc:
+            findings.append({"code": "malformed_record", "goal": issue.get("number", "unknown"), "detail": str(exc)})
+    snapshot = build_portfolio_snapshot(
+        backend, records, reads=len(pages), raw_bytes=len(result.stdout.encode("utf-8")),
+        ignored=len(issues) - len(managed), as_of=as_of,
+    )
+    snapshot["findings"] = sorted(snapshot["findings"] + findings, key=lambda item: (item["code"], str(item["goal"])))
+    snapshot["summary"]["findings"] = len(snapshot["findings"])
+    snapshot["complete"] = not findings
+    snapshot["valid"] = not snapshot["findings"]
+    snapshot["summary"]["processes"] = 1
+    return snapshot
+
+
+def render_portfolio_summary(snapshot: dict[str, Any], include_done: bool = False) -> str:
+    summary = snapshot["summary"]
+    lines = [
+        f"ZzzOps portfolio: {snapshot['backend']} | goals={summary['total']} actionable={summary['actionable']} "
+        f"blocked={summary['blocked']} done={summary['done']} findings={summary['findings']} reads={summary['reads']} "
+        f"complete={str(snapshot['complete']).lower()} valid={str(snapshot['valid']).lower()}",
+        f"digest={snapshot['portfolio_digest']}",
+    ]
+    for goal in snapshot["goals"]:
+        if not include_done and goal["status"] in {"done", "cancelled"}:
+            continue
+        human = " human" if goal["needs_human"] else ""
+        title = re.sub(r"\s+", " ", str(goal["title"])).strip()[:240]
+        next_action = re.sub(r"\s+", " ", str(goal["next_action"])).strip()[:240]
+        lines.append(f"{goal['key']} [{goal['status']} {goal['priority']}/{goal['value']}/{goal['difficulty']}{human}] {title} — {next_action}")
+    for finding in snapshot["findings"]:
+        lines.append(f"! {finding['code']} {finding['goal']}: {finding['detail']}")
+    return "\n".join(lines)
+
+
+def compare_portfolios(snapshot: dict[str, Any], prior: dict[str, Any]) -> list[dict[str, Any]]:
+    if prior.get("schema_version") != PORTFOLIO_SCHEMA_VERSION or not isinstance(prior.get("goals"), list):
+        raise ValueError("comparison snapshot has an unsupported schema")
+    if any(not isinstance(goal, dict) or "key" not in goal or "digest" not in goal or "revision" not in goal for goal in prior["goals"]):
+        raise ValueError("comparison snapshot contains a malformed goal")
+    current = {goal["key"]: goal for goal in snapshot["goals"]}
+    previous = {goal["key"]: goal for goal in prior["goals"]}
+    findings = []
+    for key in sorted(current.keys() | previous.keys(), key=_portfolio_key):
+        if key not in previous:
+            findings.append({"code": "goal_added", "goal": key, "detail": "absent from comparison snapshot"})
+        elif key not in current:
+            findings.append({"code": "goal_removed", "goal": key, "detail": "absent from current snapshot"})
+        elif current[key].get("digest") != previous[key].get("digest") or current[key].get("revision") != previous[key].get("revision"):
+            findings.append({"code": "goal_changed", "goal": key, "detail": "digest or revision changed"})
+    return findings
 
 
 def command_probe(command: list[str], repo: Path) -> dict[str, Any]:
@@ -1223,6 +1604,11 @@ def main() -> int:
     confirm_command.add_argument("--reviewer", required=True)
     confirm_command.add_argument("--section", action="append", default=[])
     confirm_command.add_argument("--all", action="store_true", help="Approve every current policy section")
+    portfolio_parser = commands.add_parser("portfolio", help="Read and audit the canonical goal portfolio once")
+    portfolio_parser.add_argument("--format", dest="output_format", choices=("summary", "json"), default="summary")
+    portfolio_parser.add_argument("--include-done", action="store_true", help="Include terminal goals in summary output")
+    portfolio_parser.add_argument("--as-of", help="Injected ISO-8601 audit instant for deterministic claim checks")
+    portfolio_parser.add_argument("--compare", type=Path, help="Prior JSON snapshot used only to report digest/revision drift")
     usage_parser = commands.add_parser("usage", help="Operate ignored local usage accounting")
     usage_commands = usage_parser.add_subparsers(dest="usage_command", required=True)
     usage_commands.add_parser("ensure", help="Create the local ledger from its template if absent")
@@ -1264,6 +1650,27 @@ def main() -> int:
             else:
                 result = confirm_project(repo, args.project_digest, args.reviewer, args.section, args.all)
                 print(json.dumps(result, indent=2))
+        elif args.command == "portfolio":
+            try:
+                as_of = None
+                if args.as_of:
+                    as_of = datetime.fromisoformat(args.as_of.replace("Z", "+00:00"))
+                    if as_of.tzinfo is None:
+                        raise ValueError("--as-of must include a timezone")
+                result = portfolio_snapshot(repo, as_of)
+                if args.compare:
+                    prior = json.loads(args.compare.resolve().read_text(encoding="utf-8-sig"))
+                    result["changes"] = compare_portfolios(result, prior)
+                if args.output_format == "json":
+                    print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+                else:
+                    print(render_portfolio_summary(result, args.include_done))
+            except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+                if args.output_format == "json":
+                    print(json.dumps({"schema_version": PORTFOLIO_SCHEMA_VERSION, "complete": False, "valid": False, "error": str(exc)}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+                else:
+                    print(f"ERROR: {exc}")
+                return 2
         elif args.command == "usage":
             result = ensure_usage_ledger(repo)
             print(json.dumps(result, indent=2, ensure_ascii=False))

@@ -5,7 +5,7 @@ description: Analyze ZzzOps tokens, usage, cost, management overhead, delivered 
 
 # Analyze ZzzOps Usage
 
-Run `../../../.zzzops/rules/INITIALIZATION.md`, then `../../../.zzzops/rules/BACKENDS.md`. Read the charter, usage ledger, canonical goals, and `../../../.zzzops/rules/USAGE_ACCOUNTING.md`.
+Run `../../../.zzzops/rules/INITIALIZATION.md`, then `../../../.zzzops/rules/BACKENDS.md`. Read the charter, usage ledger, its complete compact portfolio snapshot, and `../../../.zzzops/rules/USAGE_ACCOUNTING.md`; re-read only goals whose evidence enters the analysis.
 Run applicable `../../../.zzzops/rules/HEALTH.md` hooks from reviewed PROJECT policy; do not count health state as project value.
 
 1. Validate comparability: separate exact/estimated/unavailable usage and token classes; exclude or label incompatible rows. Allocate shared management overhead consistently and show the method.

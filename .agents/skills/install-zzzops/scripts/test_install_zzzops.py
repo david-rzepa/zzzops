@@ -61,6 +61,13 @@ class InstallerInitializationTests(unittest.TestCase):
             self.assertFalse((target / ".zzzops" / "init" / "plan.json").exists())
             self.assertFalse((target / ".zzzops" / "HEALTH_STATE.json").exists())
             self.assertFalse((target / ".zzzops" / "health_preferences.json").exists())
+            portfolio_help = subprocess.run(
+                [sys.executable, str(target / ".agents" / "zzzops.py"), "--repo", str(target), "portfolio", "--help"],
+                text=True, encoding="utf-8", capture_output=True, check=False,
+            )
+            self.assertEqual(0, portfolio_help.returncode, portfolio_help.stderr + portfolio_help.stdout)
+            self.assertIn("--format {summary,json}", portfolio_help.stdout)
+            self.assertIn("--compare", portfolio_help.stdout)
             usage = subprocess.run(
                 [sys.executable, str(target / ".agents" / "zzzops.py"), "--repo", str(target), "usage", "ensure"],
                 text=True, encoding="utf-8", capture_output=True, check=False,

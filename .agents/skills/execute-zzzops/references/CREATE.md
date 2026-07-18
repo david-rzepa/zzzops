@@ -1,6 +1,6 @@
 # Create and triage
 
-1. Search goals/project/trackers for duplicates and authoritative facts. Capture outcome, value, constraints, owner, dates, evidence, and non-goals. Link/refine existing work rather than duplicate it.
+1. Use the complete BACKENDS portfolio snapshot plus project/trackers for duplicates and authoritative facts. Capture outcome, value, constraints, owner, dates, evidence, and non-goals; refine existing work rather than duplicate it.
 2. Promptly create a provisional canonical goal using `BACKENDS.md`: one human-first managed issue with GitHub-assigned identity, or a local file from `.agents/templates/project-goals/GOAL.md`; use PROJECT capture defaults and override them only with evidence.
 3. Investigate boundedly: observable end state/beneficiary; completion evidence; scope; relevant components/decisions; dependencies/risks/authority; and whether this is a goal, checklist item, duplicate, or child. Persist findings, not raw logs.
 4. If consequential ambiguity remains, follow `.zzzops/rules/BLOCKERS.md`: record it, expose the backend-derived human queue (or local `needs_human`), and interview per PROJECT policy with recommendations and continuation boundaries. Proceed on reversible cosmetic assumptions; never speculate across foundational choices.
