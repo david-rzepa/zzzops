@@ -90,7 +90,11 @@
         "id": "code_quality", "title": "Code-quality and refactoring boundaries", "required": true, "applicable": true,
         "decision": "Preserve behavior unless a goal explicitly authorizes a behavior change.", "rationale": "separates cleanup from product decisions",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps conservative fallback", "default_disposition": "accepted",
-        "settings": {"non_behavioral_only_without_feature_goal": true, "dead_code_review": true},
+        "settings": {
+          "non_behavioral_only_without_feature_goal": true, "completion_self_review": "required_before_review_or_done",
+          "review_scope": "goal_diff_tests_and_relevant_surroundings", "dead_code": "remove_only_if_evidenced_and_in_scope",
+          "dynamic_generated_vendor": "retain_without_proof", "record_clean_review": true, "reverify_after_changes": true
+        },
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {

@@ -39,6 +39,8 @@ class InstallerInitializationTests(unittest.TestCase):
             self.assertTrue((target / ".claude" / "skills" / "add-zzzops-goal" / "SKILL.md").is_file())
             self.assertTrue((target / ".agents" / "skills" / "execute-zzzops" / "references" / "BRANCH_REVIEW.md").is_file())
             self.assertTrue((target / ".claude" / "skills" / "execute-zzzops" / "references" / "BRANCH_REVIEW.md").is_file())
+            self.assertTrue((target / ".agents" / "skills" / "execute-zzzops" / "references" / "SELF_REVIEW.md").is_file())
+            self.assertTrue((target / ".claude" / "skills" / "execute-zzzops" / "references" / "SELF_REVIEW.md").is_file())
             obsolete = "-".join(("add", "zzzops", "todo"))
             self.assertFalse((target / ".agents" / "skills" / obsolete).exists())
             self.assertFalse((target / ".claude" / "skills" / obsolete).exists())

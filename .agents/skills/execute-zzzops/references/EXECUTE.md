@@ -20,7 +20,7 @@
 ## Block, complete, cycle
 
 - On a blocker, follow `.zzzops/rules/BLOCKERS.md`: record continuation, ask when useful, do only bounded safe work, then keep active or block/release claim and switch.
-- Before `done`, cite observed before/after evidence for each criterion; verify required children, blockers, and relevant checks; state anything unobserved. Build/lint/types/code review do not prove runtime behavior unless that is the criterion. Source-changing work then enters the `BRANCH_REVIEW.md` human gate; technical completion alone is not `done`.
+- Before `done`, cite observed before/after evidence for each criterion; verify required children, blockers, and relevant checks; state anything unobserved. Build/lint/types/code review do not prove runtime behavior unless that is the criterion. Run `SELF_REVIEW.md`, fix/reverify in-scope findings, and record even a clean result. Source-changing work then enters the `BRANCH_REVIEW.md` human gate; technical completion alone is not `done`.
 - Follow PROJECT Git/review/commit policy, staging only authorized implementation and pending local ZzzOps state; a GitHub-only state change never causes an empty commit. Recheck parent criteria and unlocked dependents; repeat upward, then select again.
 
 ## Exhaustion and handoff

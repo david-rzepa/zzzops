@@ -363,6 +363,21 @@ class WorkflowContractTests(unittest.TestCase):
         ):
             self.assertIn(phrase, rule)
 
+    def test_completion_review_policy_covers_scoped_cleanup_scenarios(self):
+        root = Path(__file__).parent
+        plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        settings = next(section for section in plan["policy"]["sections"] if section["id"] == "code_quality")["settings"]
+        self.assertEqual("required_before_review_or_done", settings["completion_self_review"])
+        self.assertEqual("remove_only_if_evidenced_and_in_scope", settings["dead_code"])
+        self.assertEqual("retain_without_proof", settings["dynamic_generated_vendor"])
+        review = (root / "skills" / "execute-zzzops" / "references" / "SELF_REVIEW.md").read_text(encoding="utf-8")
+        for phrase in (
+            "actual implementation", "goal criteria, diff, tests", "compatibility paths", "demonstrably unused/superseded",
+            "Dynamic/reflection use", "generated/vendor", "Out-of-scope cleanup", "test-discovered product bugs",
+            "one observable chunk", "relevant wider regression", "idempotent", "clean result", "Never invent findings",
+        ):
+            self.assertIn(phrase, review)
+
     def test_skill_names_descriptions_and_modes_are_discoverable(self):
         root = Path(__file__).parent / "skills"
         contracts = {

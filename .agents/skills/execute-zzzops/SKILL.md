@@ -16,6 +16,7 @@ Run applicable `../../../.zzzops/rules/HEALTH.md` hooks from reviewed PROJECT po
 - Unblock/interview: [UNBLOCK.md](references/UNBLOCK.md) and `../../../.zzzops/rules/BLOCKERS.md`.
 - Select/execute/complete/handoff: [EXECUTE.md](references/EXECUTE.md).
 - Source-changing branch topology/review: [BRANCH_REVIEW.md](references/BRANCH_REVIEW.md).
+- Pre-handoff diff/dead-code review: [SELF_REVIEW.md](references/SELF_REVIEW.md).
 - Tests, delegation, parallelism, or long commands: `../../../.zzzops/rules/EXECUTION_STRATEGY.md`.
 - Usage records/interpretation: `../../../.zzzops/rules/USAGE_ACCOUNTING.md`.
 - Exhausted-queue backlog suggestions: `$suggest-zzzops-work` when enabled by preferences.

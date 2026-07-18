@@ -195,10 +195,11 @@ python .agents/prompt_stats.py --check
 | --- | ---: | ---: |
 | `.agents/skills/add-zzzops-goal/SKILL.md` | 1241 | 311 |
 | `.agents/skills/analyze-zzzops-usage/SKILL.md` | 2412 | 603 |
-| `.agents/skills/execute-zzzops/SKILL.md` | 2345 | 587 |
+| `.agents/skills/execute-zzzops/SKILL.md` | 2427 | 607 |
 | `.agents/skills/execute-zzzops/references/BRANCH_REVIEW.md` | 2618 | 655 |
 | `.agents/skills/execute-zzzops/references/CREATE.md` | 2746 | 687 |
-| `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3238 | 810 |
+| `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3324 | 831 |
+| `.agents/skills/execute-zzzops/references/SELF_REVIEW.md` | 1345 | 337 |
 | `.agents/skills/execute-zzzops/references/UNBLOCK.md` | 1535 | 384 |
 | `.agents/skills/install-zzzops/SKILL.md` | 1471 | 368 |
 | `.agents/skills/migrate-zzzops-todos/SKILL.md` | 2062 | 516 |
@@ -219,7 +220,7 @@ python .agents/prompt_stats.py --check
 | `.zzzops/rules/USAGE_ACCOUNTING.md` | 2505 | 627 |
 | `AGENTS.md` | 2963 | 741 |
 | `CLAUDE.md` | 217 | 55 |
-| **Total** | **51974** | **13005** |
+| **Total** | **53487** | **13383** |
 <!-- PROMPT_BUDGET_END -->
 
 </details>
