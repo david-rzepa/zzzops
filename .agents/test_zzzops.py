@@ -596,7 +596,8 @@ class WorkflowContractTests(unittest.TestCase):
             "commit/squash policy is separate", "Capture stays Git-free", "without PR capability",
             "bounded provider read", "thread-aware data", "resolved/outdated", "discussion-only", "automated",
             "Re-read the PR head and threads", "invalidate prior approval", "mergeable` is not authorization",
-            "Verify the target contains the reviewed head",
+            "Verify the target contains the reviewed head", "technically ready dependency awaiting review",
+            "stack the child branch/PR on it", "rebase and retest as its parent advances",
         ):
             self.assertIn(phrase, workflow)
 
