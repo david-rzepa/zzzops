@@ -3,7 +3,7 @@
 Run this plan conversationally: ask for the next item, perform its human action, then explicitly say `check A-001`. A checked item becomes stale when one of its mapped paths changes.
 
 <!-- zzzops-acceptance-plan
-{"version":1,"items":[{"id":"A-001","title":"Install preview is non-mutating","status":"unchecked","paths":[".agents/skills/install-zzzops/scripts/install_zzzops.py"],"fingerprint":null,"notes":""},{"id":"A-002","title":"Execute workflow is discoverable","status":"unchecked","paths":[".agents/skills/execute-zzzops/SKILL.md"],"fingerprint":null,"notes":""}]}
+{"version":1,"items":[{"id":"A-001","title":"Install preview is non-mutating","status":"unchecked","paths":[".agents/skills/install-zzzops/scripts/install_zzzops.py"],"fingerprint":null,"notes":""},{"id":"A-002","title":"Execute workflow is discoverable","status":"unchecked","paths":[".agents/skills/execute-zzzops/SKILL.md"],"fingerprint":null,"notes":""},{"id":"A-003","title":"Preferences CLI preserves local choices","status":"unchecked","paths":[".agents/zzzops.py",".agents/templates/project-goals/PREFERENCES.json"],"fingerprint":null,"notes":""}]}
 zzzops-acceptance-plan -->
 
 ## A-001 — Install preview is non-mutating
@@ -21,3 +21,11 @@ Prerequisite: mechanics installed in a disposable repository.
 Human action: open a fresh Codex or Claude Code session and invoke `execute-zzzops` in dry-run mode.
 
 Expected: it reports the durable queue without source or Git changes.
+
+## A-003 — Preferences CLI preserves local choices
+
+Prerequisite: initialized disposable repository with ZzzOps mechanics installed.
+
+Human action: run `python .agents/zzzops.py`, change one refill preference, exit, then reopen the panel.
+
+Expected: the selected preference remains user-local in `.zzzops/PREFERENCES.json`; it is not staged or committed.
