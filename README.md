@@ -1,8 +1,8 @@
 # ZzzOps
 
-**Infinite backlog for agents. Finite bedtime for humans.**
+**Infinite backlog for agents. Finite bedtime for token-addicted humans.**
 
-ZzzOps keeps agents supplied with prioritized, resumable work after “one more run” has become a domestic incident.
+ZzzOps is the antidote to token FOMO: give agents a durable supply of prioritized, resumable work, close the laptop, and let tomorrow happen tomorrow. When “one more run” becomes 3:57 a.m., the usage limit is no longer the problem; the sleep loss and domestic friction are. ZzzOps keeps the backlog moving without requiring you to supervise every turn.
 
 ## Quickstart
 
@@ -13,6 +13,8 @@ git clone https://github.com/david-rzepa/zzzops.git C:\dev\zzzops
 ```
 
 Open `C:\dev\zzzops` in Codex or Claude Code.
+
+Congratulations: your responsible bedtime routine is now a Git repository.
 
 ### 2. Install it into your project
 
@@ -32,6 +34,8 @@ Review the preview and let the skill apply it. The installer copies discoverable
 
 Open a new Codex task or Claude Code session in the target project so its ZzzOps skills are discovered.
 
+This installs the night shift; initialization tells it what work is actually valuable.
+
 ### 3. Initialize the project
 
 Start any non-install workflow in the target, for example:
@@ -43,6 +47,8 @@ Use $add-zzzops-goal to capture our first piece of work.
 The agent first inspects code, docs, config, history, Git, GitHub, and repository policy; proposes the outcome, KPIs, acceptance criteria, backend, and operating rules; then asks only consequential questions. Deterministic CLI primitives validate and atomically create a pending `.zzzops/PROJECT.md`. You do not fill a blank wizard.
 
 The agent summarizes that exact file and tells you to read it in detail. Ordinary workflows remain blocked until you explicitly approve the current file digest; any edit invalidates the approval. Stable per-section checkboxes make backend, Git/review, continuation, testing, code quality, tooling, security, documentation, deployment/resources, and autonomy choices visible rather than hiding them in universal prompts.
+
+Once reviewed, these policies let the agent make routine decisions without waking you for every tiny choice.
 
 GitHub Issues is recommended when the repository and access probe succeed. Local `goals/items/` files are the supported alternative. One backend is authoritative; ZzzOps never silently switches or dual-writes. Initialization does not commit, branch, or mutate GitHub, and after approval mentions the optional `python .agents/zzzops.py` preferences panel without opening it.
 
@@ -64,6 +70,8 @@ In Claude Code, invoke the same workflow as:
 
 The agent inventories candidates, presents a human-readable plan, then migrates only after approval into the selected backend. Inline TODO comments remain; dedicated backlog files retire only after verified coverage.
 
+Your scattered guilt is now a machine-readable queue.
+
 ### 5. Add new work
 
 ```text
@@ -71,6 +79,8 @@ Use $add-zzzops-goal to capture <the thing we should eventually do>.
 ```
 
 ZzzOps checks duplicates, asks important questions, relates value to the charter, and creates a durable issue or local goal with a resumable next action. Capture never creates a branch, commit, push, or PR.
+
+When you remember “one last thing,” capture it instead of opening six files and seeing sunrise.
 
 ### 6. Execute—and go to bed
 
@@ -92,7 +102,7 @@ For persistent Codex execution:
 /goal Use $execute-zzzops to work through all actionable project goals until complete or genuinely blocked.
 ```
 
-`/goal` is Codex-specific. Claude Code invokes ZzzOps workflows directly as `/skill-name`; ZzzOps supplies the same queue and operating rules in either tool. When work runs dry, the agent interviews you about blockers before conceding defeat. This is your scheduled cameo. After that, please locate the bedroom.
+`/goal` is Codex-specific. Claude Code invokes ZzzOps workflows directly as `/skill-name`; ZzzOps supplies the same queue and operating rules in either tool. This is the point of ZzzOps: stop babysitting agents. When work runs dry, the agent interviews you about blockers before conceding defeat. This is your scheduled cameo. After that, please locate the bedroom; staying awake does not make the remaining tokens more valuable.
 
 Source-changing goals follow the reviewed project branch/review policy and pause at a human review blocker after checks. Maintainers: see the [branch topology and review lifecycle](docs/EXECUTION.md).
 
@@ -225,4 +235,4 @@ python .agents/prompt_stats.py --check
 
 </details>
 
-Go to bed. The backlog knows what to do.
+Close the laptop and go to bed. The backlog knows what to do, and household goodwill rarely improves after a 4 a.m. “quick check.”

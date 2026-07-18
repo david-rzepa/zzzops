@@ -370,6 +370,20 @@ class WorkflowContractTests(unittest.TestCase):
         local_template = (root / "templates" / "project-goals" / "GOAL.md").read_text(encoding="utf-8")
         self.assertIn("id: G-YYYYMMDD-NNN-slug", local_template)
 
+    def test_readme_keeps_the_bedtime_quickstart_theme(self):
+        readme = (Path(__file__).parent.parent / "README.md").read_text(encoding="utf-8")
+        for phrase in (
+            "token FOMO", "3:57 a.m.", "domestic friction", "night shift",
+            "scattered guilt", "seeing sunrise", "stop babysitting agents",
+            "staying awake does not make the remaining tokens more valuable",
+            "Close the laptop and go to bed",
+        ):
+            self.assertIn(phrase, readme)
+        headings = [f"### {index}." for index in range(1, 7)]
+        positions = [readme.index(heading) for heading in headings]
+        self.assertEqual(sorted(positions), positions)
+        self.assertNotIn("notify spouse that deployment is stable", readme)
+
     def test_policy_taxonomy_is_stable_across_templates(self):
         templates = Path(__file__).parent / "templates" / "project-goals"
         plan = json.loads((templates / "INIT_PLAN.json").read_text(encoding="utf-8"))
