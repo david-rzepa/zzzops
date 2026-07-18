@@ -25,7 +25,7 @@ PROJECT_BLOCK_START = "<!-- zzzops-project-state"
 PROJECT_BLOCK_END = "zzzops-project-state -->"
 GOAL_BLOCK_START = "<!-- zzzops-goal"
 GOAL_BLOCK_END = "zzzops-goal -->"
-BACKENDS = {"github_issues", "local_files"}
+BACKENDS = {"github_issues"}
 POLICY_SECTION_IDS = (
     "backend",
     "git_review_release",
@@ -167,7 +167,7 @@ def validate_project_state(state: Any) -> list[str]:
     pending_policy = policy_blockers(state.get("policy")) if not policy_errors else []
     if state.get("initialized") is True:
         if state.get("backend") not in BACKENDS:
-            errors.append("initialized backend must be github_issues or local_files")
+            errors.append("initialized backend must be github_issues")
         repository = state.get("repository")
         if not isinstance(repository, dict) or not nonempty(repository.get("identity")):
             errors.append("initialized repository.identity is required")
@@ -584,11 +584,6 @@ def audit_portfolio(records: list[dict[str, Any]], backend: str, as_of: datetime
             terminal = record["status"] in {"done", "cancelled"}
             if terminal != (record.get("state") == "closed"):
                 findings.append({"code": "issue_state_drift", "goal": key, "detail": f"goal={record['status']}; issue={record.get('state')}"})
-        elif backend == "local_files":
-            if record.get("filename") != key:
-                findings.append({"code": "filename_identity_mismatch", "goal": key, "detail": str(record.get("filename"))})
-            if set(record.get("declared_blocks", [])) != set(record.get("blocks", [])):
-                findings.append({"code": "local_backlink_drift", "goal": key, "detail": f"declared={record.get('declared_blocks', [])}; derived={record.get('blocks', [])}"})
     for relation in ("depends_on", "parent"):
         for key in sorted(_cycle_nodes(records, relation), key=_portfolio_key):
             findings.append({"code": f"{relation}_cycle", "goal": key, "detail": "cycle member"})
@@ -646,39 +641,6 @@ def portfolio_snapshot(repo: Path, as_of: datetime | None = None) -> dict[str, A
     if errors or not project or not project.get("initialized"):
         raise ValueError("PROJECT.md is not initialized: " + "; ".join(errors or ["initialization pending"]))
     backend = project["backend"]
-    if backend == "local_files":
-        item_root = repo / "goals" / "items"
-        paths = sorted(item_root.glob("*.md")) if item_root.is_dir() else []
-        records = []
-        findings = []
-        raw_bytes = 0
-        for path in paths:
-            try:
-                if path.is_symlink():
-                    raise ValueError("symbolic-link goal files are not supported")
-                raw_bytes += path.stat().st_size
-                records.append(parse_local_goal(path, repo))
-            except (OSError, UnicodeError, ValueError) as exc:
-                findings.append({"code": "malformed_record", "goal": path.name, "detail": str(exc)})
-        index_path = repo / "goals" / "INDEX.md"
-        expected_links = {path.name for path in paths}
-        if expected_links and not index_path.is_file():
-            findings.append({"code": "local_index_drift", "goal": "goals/INDEX.md", "detail": "derived index missing"})
-        elif index_path.is_file():
-            try:
-                index_text = index_path.read_text(encoding="utf-8-sig")
-                actual_links = set(re.findall(r"items/([^\s)>]+\.md)", index_text))
-                if actual_links != expected_links:
-                    findings.append({"code": "local_index_drift", "goal": "goals/INDEX.md", "detail": f"missing={sorted(expected_links - actual_links)}; stale={sorted(actual_links - expected_links)}"})
-            except (OSError, UnicodeError) as exc:
-                findings.append({"code": "local_index_drift", "goal": "goals/INDEX.md", "detail": str(exc)})
-        snapshot = build_portfolio_snapshot(backend, records, reads=1, raw_bytes=raw_bytes, as_of=as_of)
-        snapshot["findings"] = sorted(snapshot["findings"] + findings, key=lambda item: (item["code"], str(item["goal"])))
-        snapshot["summary"]["findings"] = len(snapshot["findings"])
-        snapshot["complete"] = not findings
-        snapshot["valid"] = not snapshot["findings"]
-        snapshot["summary"]["processes"] = 0
-        return snapshot
     identity = ((project.get("repository") or {}).get("identity") if isinstance(project.get("repository"), dict) else None)
     if not text_present(identity):
         raise ValueError("PROJECT.md repository.identity is required for GitHub Issues")
@@ -837,7 +799,6 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         "decision_blockers": policy_blockers(state.get("policy")) if state else ["policy:missing"],
         "backend_constraints": {
             "github_issues": "requires a usable GitHub repository probe",
-            "local_files": "explicit supported alternative; never automatic failover",
         },
         "capabilities": {
             "git_origin": git_remote,
@@ -893,13 +854,11 @@ def validate_plan(repo: Path, plan: dict[str, Any]) -> list[str]:
         errors.append("confirmed must be true")
     backend = plan.get("backend")
     if backend not in BACKENDS:
-        errors.append("backend must be github_issues or local_files")
+        errors.append("backend must be github_issues")
     if not isinstance(plan.get("migration_pending"), bool):
         errors.append("migration_pending must be boolean")
-    local_goals = list((repo / "goals" / "items").glob("*.md"))
-    expected_migration = backend == "github_issues" and bool(local_goals)
-    if plan.get("migration_pending") is not expected_migration:
-        errors.append(f"migration_pending must be {str(expected_migration).lower()} for current local goal state")
+    if plan.get("migration_pending") is not False:
+        errors.append("migration_pending must be false for the GitHub-only backend")
     repository = plan.get("repository")
     if not isinstance(repository, dict) or not nonempty(repository.get("identity")):
         errors.append("repository.identity is required")

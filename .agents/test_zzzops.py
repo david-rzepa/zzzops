@@ -35,13 +35,13 @@ class InitializationTests(unittest.TestCase):
         init_template = MODULE_PATH.parent / "templates" / "project-goals" / "INIT_PLAN.json"
         policy = json.loads(init_template.read_text(encoding="utf-8"))["policy"]
         policy["sections"][0]["settings"]["repository_identity"] = "example/repo"
-        policy["sections"][0]["decision"] = "local_files"
-        policy["sections"][0]["settings"]["authority"] = "local_files"
+        policy["sections"][0]["decision"] = "github_issues"
+        policy["sections"][0]["settings"]["authority"] = "github_issues"
         return {
             "schema_version": 1,
             "base_digest": inspection["base_digest"],
             "confirmed": True,
-            "backend": "local_files",
+            "backend": "github_issues",
             "migration_pending": False,
             "repository": {"identity": "example/repo", "remote": "local"},
             "charter": {
@@ -65,7 +65,7 @@ class InitializationTests(unittest.TestCase):
                 {"id": "E-002", "kind": "proposed", "source": "agent synthesis", "finding": "charter"},
             ],
             "confirmations": [{"evidence_id": "E-002", "confirmed_by": "user", "date": "2026-07-16"}],
-            "github": {"usable": False, "evidence": "local selected"},
+            "github": {"usable": True, "evidence": "test capability probe"},
             "policy": policy,
         }
 
@@ -90,7 +90,7 @@ class InitializationTests(unittest.TestCase):
         self.assertEqual("python .agents/zzzops.py", applied["preferences_command"])
         result = zzzops.inspect_initialization(self.repo)
         self.assertFalse(result["initialized"])
-        self.assertEqual("local_files", result["state"]["backend"])
+        self.assertEqual("github_issues", result["state"]["backend"])
         self.assertEqual([], result["missing_charter_fields"])
         self.assertEqual(len(zzzops.POLICY_SECTION_IDS), len(result["decision_blockers"]))
         project_text = (self.repo / ".zzzops" / "PROJECT.md").read_text(encoding="utf-8")
@@ -185,7 +185,7 @@ class InitializationTests(unittest.TestCase):
 
     def test_github_backend_requires_observed_capability(self):
         plan = self.plan()
-        plan["backend"] = "github_issues"
+        plan["github"]["usable"] = False
         self.assertIn("github.usable must be true for github_issues", zzzops.validate_plan(self.repo, plan))
 
     def test_invalid_project_state_is_reported(self):
@@ -365,8 +365,8 @@ class PortfolioTests(unittest.TestCase):
         }
 
     def test_empty_snapshot_is_complete_and_deterministic(self):
-        first = zzzops.build_portfolio_snapshot("local_files", [], reads=1, raw_bytes=0)
-        second = zzzops.build_portfolio_snapshot("local_files", [], reads=1, raw_bytes=0)
+        first = zzzops.build_portfolio_snapshot("github_issues", [], reads=1, raw_bytes=0)
+        second = zzzops.build_portfolio_snapshot("github_issues", [], reads=1, raw_bytes=0)
         self.assertTrue(first["complete"])
         self.assertEqual(first["portfolio_digest"], second["portfolio_digest"])
         self.assertEqual(0, first["summary"]["total"])
@@ -440,54 +440,6 @@ class PortfolioTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "rate limit.*partial page"):
                 zzzops.portfolio_snapshot(repo)
 
-    @mock.patch.object(zzzops, "validate_project_state", return_value=[])
-    @mock.patch.object(zzzops, "parse_project_state", return_value={"initialized": True, "backend": "local_files", "repository": None})
-    def test_local_adapter_scans_once_and_retains_malformed_findings(self, _parse, _validate):
-        with tempfile.TemporaryDirectory() as temporary:
-            repo = Path(temporary)
-            (repo / ".zzzops").mkdir()
-            (repo / ".zzzops" / "PROJECT.md").write_text("state", encoding="utf-8")
-            items = repo / "goals" / "items"
-            items.mkdir(parents=True)
-            (items / "G-1.md").write_text(
-                "---\nid: G-1\ntitle: First\nstatus: ready\npriority: P1\nvalue: high\ndifficulty: S\nconfidence: high\n"
-                "parent: null\ndepends_on: []\nblocks: []\nneeds_human: false\nclaim: {owner: null}\n---\n\n"
-                "## Approach and next action\n\n**Next action:** Prove it.\n",
-                encoding="utf-8",
-            )
-            (items / "broken.md").write_text("not a goal", encoding="utf-8")
-            (repo / "goals" / "INDEX.md").write_text("[G-1](items/G-1.md)\n[broken](items/broken.md)\n", encoding="utf-8")
-            snapshot = zzzops.portfolio_snapshot(repo)
-        self.assertFalse(snapshot["complete"])
-        self.assertEqual(1, snapshot["summary"]["total"])
-        self.assertEqual(1, snapshot["summary"]["reads"])
-        self.assertEqual("goals/items/G-1.md", snapshot["goals"][0]["path"])
-        self.assertEqual("malformed_record", snapshot["findings"][0]["code"])
-
-    @mock.patch.object(zzzops, "validate_project_state", return_value=[])
-    @mock.patch.object(zzzops, "parse_project_state", return_value={"initialized": True, "backend": "local_files", "repository": None})
-    def test_local_adapter_detects_duplicate_identity_and_cycles(self, _parse, _validate):
-        with tempfile.TemporaryDirectory() as temporary:
-            repo = Path(temporary)
-            (repo / ".zzzops").mkdir()
-            (repo / ".zzzops" / "PROJECT.md").write_text("state", encoding="utf-8")
-            items = repo / "goals" / "items"
-            items.mkdir(parents=True)
-            template = (
-                "---\nid: {id}\ntitle: {id}\nstatus: ready\npriority: P2\nvalue: medium\ndifficulty: S\nconfidence: high\n"
-                "parent: null\ndepends_on: [{dependency}]\nblocks: [{block}]\nneeds_human: false\nclaim: {{owner: null}}\n---\n\n"
-                "## Approach and next action\n\n**Next action:** Probe.\n"
-            )
-            (items / "G-A.md").write_text(template.format(id="G-A", dependency="G-B", block="G-B"), encoding="utf-8")
-            (items / "G-B.md").write_text(template.format(id="G-B", dependency="G-A", block="G-A"), encoding="utf-8")
-            (items / "duplicate.md").write_text(template.format(id="G-A", dependency="G-B", block="G-B"), encoding="utf-8")
-            (repo / "goals" / "INDEX.md").write_text(
-                "[A](items/G-A.md)\n[B](items/G-B.md)\n[duplicate](items/duplicate.md)\n", encoding="utf-8",
-            )
-            snapshot = zzzops.portfolio_snapshot(repo)
-        codes = {finding["code"] for finding in snapshot["findings"]}
-        self.assertTrue({"duplicate_identity", "depends_on_cycle", "filename_identity_mismatch"}.issubset(codes))
-
     def test_large_graph_is_iterative_and_invalid_states_are_not_actionable(self):
         chain = [{"key": index, "parent": None, "depends_on": [] if index == 0 else [index - 1]} for index in range(1500)]
         self.assertEqual(set(), zzzops._cycle_nodes(chain, "depends_on"))
@@ -523,7 +475,7 @@ class PortfolioTests(unittest.TestCase):
         self.assertLess(summary_bytes, json_bytes)
 
     def test_compare_reports_added_removed_and_changed_goals(self):
-        current = zzzops.build_portfolio_snapshot("local_files", [
+        current = zzzops.build_portfolio_snapshot("github_issues", [
             {"key": "A", "title": "A", "status": "ready", "priority": "P1", "value": "high", "difficulty": "S", "confidence": "high", "parent": None, "depends_on": [], "claim": None, "needs_human": False, "blocker_categories": [], "next_action": "A", "revision": 2, "digest": "new", "updated_at": None, "implementation": None, "labels": []},
             {"key": "C", "title": "C", "status": "ready", "priority": "P2", "value": "medium", "difficulty": "S", "confidence": "high", "parent": None, "depends_on": [], "claim": None, "needs_human": False, "blocker_categories": [], "next_action": "C", "revision": 1, "digest": "c", "updated_at": None, "implementation": None, "labels": []},
         ], reads=1, raw_bytes=10)
