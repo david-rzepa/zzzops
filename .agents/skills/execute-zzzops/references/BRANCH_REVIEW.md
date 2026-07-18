@@ -11,6 +11,8 @@ Use this only for source-changing goals and apply reviewed PROJECT Git/review po
 
 Create/resume the recorded branch before source edits. If dirty work cannot be proven to belong to this goal, stop and ask. Repository rules or explicit instructions may justify a different topology or no branch; record the evidence and decision.
 
+When PROJECT `pull_request_unit` is `per_goal`, each source-changing goal owns one branch and one PR when the repository supports PRs. Related/small goals or one execute run do not imply bundling. A repository rule or explicit user instruction may authorize a shared PR only under `shared_pull_request`; before combining work, record the override/rationale, shared branch/PR, target, and review effect in every affected goal. Reuse that identity after blockers—never open a duplicate. Parent and child goals keep distinct PRs targeting the resolved pseudo-trunk/dependency topology. One PR may retain multiple coherent semantic commits; commit/squash policy is separate. Capture stays Git-free, and repositories without PR capability follow reviewed PROJECT integration policy or block when required authority/capability is missing.
+
 ## Review gate
 
 After implementation, automated checks, and required self-review pass, apply PROJECT `review_gate`. `human_after_checks` creates a `human-action` blocker containing branch/commit/PR links, checks, material risks, and the exact approval/change request needed; do not merge or mark done and surface it through the normal human queue.
