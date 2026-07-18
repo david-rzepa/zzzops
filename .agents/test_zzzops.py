@@ -594,6 +594,9 @@ class WorkflowContractTests(unittest.TestCase):
             "each source-changing goal owns one branch and one PR", "Related/small goals",
             "explicit user instruction", "record the override/rationale", "Parent and child goals keep distinct PRs",
             "commit/squash policy is separate", "Capture stays Git-free", "without PR capability",
+            "bounded provider read", "thread-aware data", "resolved/outdated", "discussion-only", "automated",
+            "Re-read the PR head and threads", "invalidate prior approval", "mergeable` is not authorization",
+            "Verify the target contains the reviewed head",
         ):
             self.assertIn(phrase, workflow)
 
