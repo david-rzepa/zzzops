@@ -104,20 +104,23 @@ Source-changing goals follow the reviewed project branch/review policy and pause
 
 ## Useful maintenance
 
-## Feature inventory
+## Full feature list
 
-This is the review list for first-run scope. It describes shipped behavior, not a promise to keep every item. Add or update an entry in the same change as any listed surface; `.agents/test_feature_inventory.py` rejects missing skills or paths.
+This is the complete list of shipped user-facing ZzzOps features. It is a catalogue, not exhaustive documentation. Add or update an entry in the same change as any listed surface; `.agents/test_feature_inventory.py` rejects missing skills or feature surfaces.
 
 <!-- zzzops-feature-inventory -->
-| Feature | Surface | First-run review |
-| --- | --- | --- |
-| Capture durable work | `.agents/skills/add-zzzops-goal/SKILL.md` | Keep |
-| Execute and unblock goals | `.agents/skills/execute-zzzops/SKILL.md` | Keep |
-| Install ZzzOps mechanics | `.agents/skills/install-zzzops/SKILL.md` | Keep |
-| Migrate legacy TODOs | `.agents/skills/migrate-to-zzzops/SKILL.md` | Review |
-| Suggest backlog work | `.agents/skills/suggest-zzzops-work/SKILL.md` | Review |
-| Initialization, goals, and portfolio CLI | `.agents/zzzops.py` | Keep |
-| Dev PR checks and release boundary | `.github/workflows` | Keep |
+| Feature | Primary surface |
+| --- | --- |
+| Install ZzzOps mechanics into another repository | `.agents/skills/install-zzzops/SKILL.md` |
+| Initialize a project with reviewed operating policies | `.agents/zzzops.py` |
+| Select GitHub Issues or local files as the canonical goal backend | `.zzzops/rules/BACKENDS.md` |
+| Capture durable work | `.agents/skills/add-zzzops-goal/SKILL.md` |
+| Migrate legacy TODOs | `.agents/skills/migrate-to-zzzops/SKILL.md` |
+| Suggest evidence-backed backlog work | `.agents/skills/suggest-zzzops-work/SKILL.md` |
+| Execute, prioritize, unblock, verify, and hand off goals | `.agents/skills/execute-zzzops/SKILL.md` |
+| Configure backlog refill and parallelization preferences | `.agents/templates/project-goals/PREFERENCES.json` |
+| Inspect the canonical portfolio from the CLI | `.agents/zzzops.py` |
+| Enforce per-goal dev branches, PR review, and release boundaries | `.github/workflows` |
 <!-- /zzzops-feature-inventory -->
 
 ```text
