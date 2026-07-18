@@ -2,8 +2,10 @@
 
 import importlib.util
 import os
-import tempfile
+import shutil
 import unittest
+import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
@@ -27,15 +29,25 @@ def appdata_roots() -> tuple[Path, Path]:
     )
 
 
+@contextmanager
+def appdata_test_directory(root: Path, prefix: str):
+    path = root / f"{prefix}{uuid.uuid4().hex}"
+    path.mkdir(mode=0o700)
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
+
+
 class LiveAppDataTests(unittest.TestCase):
     def test_atomic_round_trip_in_real_appdata_roots(self):
         config_root, state_root = appdata_roots()
         config_root.mkdir(parents=True, exist_ok=True)
         state_root.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix="zzzops-pref-test-", dir=config_root) as config_dir, tempfile.TemporaryDirectory(prefix="zzzops-state-test-", dir=state_root) as state_dir:
+        with appdata_test_directory(config_root, "zzzops-pref-test-") as config_dir, appdata_test_directory(state_root, "zzzops-state-test-") as state_dir:
             env = {
-                "ZZZOPS_USER_CONFIG_DIR": config_dir,
-                "ZZZOPS_MACHINE_STATE_DIR": state_dir,
+                "ZZZOPS_USER_CONFIG_DIR": str(config_dir),
+                "ZZZOPS_MACHINE_STATE_DIR": str(state_dir),
             }
             with mock.patch.dict(os.environ, env, clear=False):
                 preferences = zzzops.health.default_preferences()
