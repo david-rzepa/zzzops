@@ -9,7 +9,7 @@ Mode: `dry run`, `preview`, or `plan` means read-only inventory, triage simulati
 
 First run `../../../.zzzops/rules/INITIALIZATION.md`, then route through `../../../.zzzops/rules/BACKENDS.md`. Read `../../../.zzzops/rules/GOAL_SYSTEM.md`, the initialized charter, and local `../../../.zzzops/PREFERENCES.json`; load only what applies.
 
-Run `../../../.zzzops/rules/HEALTH.md` at entry/final, after actual user responses, and at natural long-run checkpoints.
+Run applicable `../../../.zzzops/rules/HEALTH.md` hooks from reviewed PROJECT policy.
 
 - Create/triage/decompose: [CREATE.md](references/CREATE.md) and `../../templates/project-goals/GOAL.md`.
 - Unblock/interview: [UNBLOCK.md](references/UNBLOCK.md) and `../../../.zzzops/rules/BLOCKERS.md`.
@@ -18,6 +18,6 @@ Run `../../../.zzzops/rules/HEALTH.md` at entry/final, after actual user respons
 - Usage records/interpretation: `../../../.zzzops/rules/USAGE_ACCOUNTING.md`.
 - Exhausted-queue backlog suggestions: `$suggest-zzzops-work` when enabled by preferences.
 
-This is the primary autonomous loop. On an interactive run, inspect the human-input queue before ordinary prioritization. If open human blockers exist, run the unblock interview immediately, persist answers, then continue. When execution exhausts actionable work, interview again before stopping if human input could restore progress. Treat local parallelization preferences as maximum permission, never a utilization target. User authority and project rules outrank goals. Persist resumable state before switching/stopping; continue across goals while safe useful work exists. Optimize verified value, not item count or limit consumption.
+This is the primary autonomous loop. Apply reviewed PROJECT selection, continuation, blocker-interview, refill, Git, verification, and resource policy. Effective local preferences may only tighten it. User authority and project rules outrank goals. Persist resumable state before switching/stopping; continue while policy permits safe useful work. Optimize verified value, not item count or limit consumption.
 
-Default to the current branch. Before source work, checkpoint only pending local ZzzOps state when required; never absorb unrelated changes or create an empty GitHub-state commit. Then follow repository Git/PR rules.
+Before source work, read PROJECT Git/review/continuation policy and checkpoint only pending local ZzzOps state when required; never absorb unrelated changes or create an empty GitHub-state commit.

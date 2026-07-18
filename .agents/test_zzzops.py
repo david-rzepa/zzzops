@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import re
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -31,6 +33,11 @@ class InitializationTests(unittest.TestCase):
 
     def plan(self):
         inspection = zzzops.inspect_initialization(self.repo)
+        init_template = MODULE_PATH.parent / "templates" / "project-goals" / "INIT_PLAN.json"
+        policy = json.loads(init_template.read_text(encoding="utf-8"))["policy"]
+        policy["sections"][0]["settings"]["repository_identity"] = "example/repo"
+        policy["sections"][0]["decision"] = "local_files"
+        policy["sections"][0]["settings"]["authority"] = "local_files"
         return {
             "schema_version": 1,
             "base_digest": inspection["base_digest"],
@@ -60,6 +67,7 @@ class InitializationTests(unittest.TestCase):
             ],
             "confirmations": [{"evidence_id": "E-002", "confirmed_by": "user", "date": "2026-07-16"}],
             "github": {"usable": False, "evidence": "local selected"},
+            "policy": policy,
         }
 
     @mock.patch.object(zzzops, "command_probe", return_value={"available": False, "ok": False, "detail": "test"})
@@ -82,10 +90,89 @@ class InitializationTests(unittest.TestCase):
         self.assertTrue(applied["changed"])
         self.assertEqual("python .agents/zzzops.py", applied["preferences_command"])
         result = zzzops.inspect_initialization(self.repo)
-        self.assertTrue(result["initialized"])
+        self.assertFalse(result["initialized"])
         self.assertEqual("local_files", result["state"]["backend"])
         self.assertEqual([], result["missing_charter_fields"])
-        self.assertIn("Agents complete durable", (self.repo / ".zzzops" / "PROJECT.md").read_text(encoding="utf-8"))
+        self.assertEqual(len(zzzops.POLICY_SECTION_IDS), len(result["decision_blockers"]))
+        project_text = (self.repo / ".zzzops" / "PROJECT.md").read_text(encoding="utf-8")
+        self.assertIn("Agents complete durable", project_text)
+        self.assertIn("E-002: agent synthesis — charter", project_text)
+        reviewed = zzzops.confirm_project(
+            self.repo, result["base_digest"], "test-user", [], True,
+        )
+        self.assertTrue(reviewed["initialized"])
+        self.assertEqual([], reviewed["decision_blockers"])
+        self.assertTrue(zzzops.inspect_initialization(self.repo)["initialized"])
+
+    def test_review_is_exact_digest_explicit_and_incremental(self):
+        applied = zzzops.apply_plan(self.repo, self.plan())
+        with self.assertRaisesRegex(ValueError, "digest changed"):
+            zzzops.confirm_project(self.repo, "sha256:stale", "test-user", [], True)
+        first = zzzops.confirm_project(
+            self.repo, applied["project_digest"], "test-user", ["backend"], False,
+        )
+        self.assertFalse(first["initialized"])
+        self.assertNotIn("policy:backend", first["decision_blockers"])
+        self.assertIn("policy:verification_testing", first["decision_blockers"])
+        final = zzzops.confirm_project(self.repo, first["project_digest"], "test-user", [], True)
+        self.assertTrue(final["initialized"])
+
+    def test_policy_preserves_unknown_settings_and_agents_cannot_preapprove(self):
+        plan = self.plan()
+        section = plan["policy"]["sections"][4]
+        section["settings"]["project_extension"] = {"custom": True}
+        section["review"]["approved"] = True
+        self.assertTrue(any("review must be pending" in error for error in zzzops.validate_plan(self.repo, plan)))
+        section["review"]["approved"] = False
+        applied = zzzops.apply_plan(self.repo, plan)
+        zzzops.confirm_project(self.repo, applied["project_digest"], "test-user", [], True)
+        state = zzzops.parse_project_state((self.repo / ".zzzops" / "PROJECT.md").read_text(encoding="utf-8"))
+        self.assertEqual({"custom": True}, state["policy"]["sections"][4]["settings"]["project_extension"])
+
+    def test_project_policy_requires_resolvable_source_citations(self):
+        applied = zzzops.apply_plan(self.repo, self.plan())
+        path = self.repo / ".zzzops" / "PROJECT.md"
+        state = zzzops.parse_project_state(path.read_text(encoding="utf-8"))
+        state["policy"]["evidence"] = []
+        self.assertIn("policy.evidence must be a non-empty list", zzzops.validate_project_state(state))
+
+    def test_not_applicable_policy_requires_explicit_review(self):
+        plan = self.plan()
+        section = plan["policy"]["sections"][7]
+        section["applicable"] = False
+        section["decision"] = "not applicable"
+        section["rationale"] = "No user or developer documentation exists in this repository."
+        applied = zzzops.apply_plan(self.repo, plan)
+        self.assertIn("policy:documentation_style", applied["decision_blockers"])
+        reviewed = zzzops.confirm_project(
+            self.repo, applied["project_digest"], "test-user", ["documentation_style"], False,
+        )
+        self.assertNotIn("policy:documentation_style", reviewed["decision_blockers"])
+
+    def test_policy_conflict_remains_a_decision_blocker(self):
+        plan = self.plan()
+        plan["policy"]["sections"][1]["unresolved"] = [
+            "AGENTS.md requires PRs but repository settings allow direct pushes."
+        ]
+        applied = zzzops.apply_plan(self.repo, plan)
+        with self.assertRaisesRegex(ValueError, "resolve policy choices"):
+            zzzops.confirm_project(
+                self.repo, applied["project_digest"], "test-user", ["git_review_release"], False,
+            )
+        self.assertIn("policy:git_review_release", zzzops.inspect_initialization(self.repo)["decision_blockers"])
+
+    def test_cli_confirm_requires_and_uses_current_digest(self):
+        applied = zzzops.apply_plan(self.repo, self.plan())
+        result = subprocess.run(
+            [
+                zzzops.sys.executable, str(MODULE_PATH), "--repo", str(self.repo),
+                "init", "confirm", "--project-digest", applied["project_digest"],
+                "--reviewer", "test-user", "--all",
+            ],
+            text=True, encoding="utf-8", capture_output=True, check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr + result.stdout)
+        self.assertTrue(json.loads(result.stdout)["initialized"])
 
     def test_rejects_unconfirmed_unknown_and_stale_plans(self):
         plan = self.plan()
@@ -222,6 +309,16 @@ class ManagedGoalTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_policy_taxonomy_is_stable_across_templates(self):
+        templates = Path(__file__).parent / "templates" / "project-goals"
+        plan = json.loads((templates / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        plan_ids = [section["id"] for section in plan["policy"]["sections"]]
+        project = (templates / "PROJECT.md").read_text(encoding="utf-8")
+        project_ids = re.findall(r"\[policy:([^\]]+)\]", project)
+        self.assertEqual(list(zzzops.POLICY_SECTION_IDS), plan_ids)
+        self.assertEqual(list(zzzops.POLICY_SECTION_IDS), project_ids)
+        self.assertTrue(all(section["required"] and not section["review"]["approved"] for section in plan["policy"]["sections"]))
+
     def test_skill_names_descriptions_and_modes_are_discoverable(self):
         root = Path(__file__).parent / "skills"
         contracts = {
@@ -260,19 +357,32 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("INITIALIZATION.md", install)
         self.assertNotIn("HEALTH.md", install)
 
-    def test_execute_declares_all_required_health_checkpoints(self):
-        text = (Path(__file__).parent / "skills" / "execute-zzzops" / "SKILL.md").read_text(encoding="utf-8")
-        for phrase in ("at entry/final", "after actual user responses", "natural long-run checkpoints"):
-            self.assertIn(phrase, text)
+    def test_non_install_health_hooks_are_project_policy_driven(self):
+        root = Path(__file__).parent / "skills"
+        for name in ("add-zzzops-goal", "analyze-zzzops-usage", "execute-zzzops", "migrate-zzzops-todos", "suggest-zzzops-work"):
+            text = (root / name / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("HEALTH.md", text, name)
+            self.assertIn("reviewed PROJECT policy", text, name)
 
     def test_capture_and_execution_git_boundaries_are_explicit(self):
         root = Path(__file__).parent
         add = (root / "skills" / "add-zzzops-goal" / "SKILL.md").read_text(encoding="utf-8")
         execute = (root / "skills" / "execute-zzzops" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("never creates a branch, commit, push, or PR", add)
-        self.assertIn("Default to the current branch", execute)
+        self.assertIn("read PROJECT Git/review/continuation policy", execute)
         self.assertIn("never absorb unrelated changes", execute)
         self.assertIn("empty GitHub-state commit", execute)
+
+    def test_static_prompts_do_not_hardcode_customizable_policy_defaults(self):
+        root = Path(__file__).parent.parent
+        prompt_roots = (root / ".zzzops" / "rules", root / ".agents" / "skills")
+        text = "\n".join(
+            path.read_text(encoding="utf-8")
+            for prompt_root in prompt_roots
+            for path in prompt_root.rglob("*.md")
+        )
+        for phrase in ("default four hours", "at most two verified", "prefer depth <=3", "execute defaults to the current branch"):
+            self.assertNotIn(phrase, text.casefold())
 
 
 if __name__ == "__main__":

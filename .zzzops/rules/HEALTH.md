@@ -2,7 +2,7 @@
 
 Health is user-level, opt-in, nonblocking, and privacy-bounded. Never infer enablement, bypass a sandbox, scrape transcripts/session files, or call receipt time “sent time.” The CLI stores preferences per user and only derived timestamps/counters in machine-local state; inaccessible storage returns `storage_unavailable` with no fallback.
 
-After initialization, each non-install workflow runs `python .agents/zzzops.py --repo . health check` at entry and before its final request/report. `$execute-zzzops` also checks after an actual user response and at natural long-run checkpoints (about hourly, never by blocking the main thread). Emit at most the one returned `decision.message` when `nudge:true`; otherwise say nothing. A nudge never blocks authorized work or overrides the user.
+After initialization, run `python .agents/zzzops.py --repo . health check` only at reviewed PROJECT hook points. Emit at most the returned `decision.message` when `nudge:true`; otherwise say nothing. Hooks never enable health, block the main thread/work, or override the user.
 
 Record activity only when evidence exists:
 

@@ -5,9 +5,9 @@ description: Capture, add, create, or record one durable ZzzOps goal/TODO. Use f
 
 # Add ZzzOps Goal
 
-Run `.zzzops/rules/INITIALIZATION.md`, then `.zzzops/rules/BACKENDS.md`. Inspect context and the selected backend for duplicates. Ask promptly about consequential ambiguity. Create one canonical goal using the managed GitHub issue schema or, for `local_files`, `.agents/templates/project-goals/GOAL.md` plus derived index/backlinks.
+Run `.zzzops/rules/INITIALIZATION.md`, then `.zzzops/rules/BACKENDS.md`. Inspect context and the selected backend for duplicates. Handle consequential ambiguity using reviewed PROJECT interview policy. Create one canonical goal using the managed GitHub issue schema or, for `local_files`, `.agents/templates/project-goals/GOAL.md` plus derived index/backlinks.
 
-Run the entry/final hooks in `.zzzops/rules/HEALTH.md`; health remains opt-in and never blocks capture.
+Run applicable `.zzzops/rules/HEALTH.md` hooks from reviewed PROJECT policy; health remains user opt-in and nonblocking.
 
 Capture exact source path/line when applicable and explain value against project KPIs/acceptance. Preserve unknowns rather than inventing them. Use `$execute-zzzops` afterward for decomposition, triage, or execution.
 
