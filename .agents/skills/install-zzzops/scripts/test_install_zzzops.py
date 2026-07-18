@@ -37,7 +37,10 @@ class InstallerInitializationTests(unittest.TestCase):
             self.assertTrue((target / ".agents" / "zzzops_health.py").is_file())
             self.assertTrue((target / ".agents" / "templates" / "project-goals" / "INIT_PLAN.json").is_file())
             self.assertTrue((target / ".agents" / "templates" / "project-goals" / "GOAL.md").is_file())
-            self.assertTrue((target / ".agents" / "templates" / "project-goals" / "USAGE_LEDGER.md").is_file())
+            self.assertFalse((target / ".agents" / "templates" / "project-goals" / "USAGE_LEDGER.md").exists())
+            self.assertFalse((target / ".zzzops" / "rules" / "USAGE_ACCOUNTING.md").exists())
+            self.assertFalse((target / ".agents" / "skills" / "analyze-zzzops-usage").exists())
+            self.assertFalse((target / ".claude" / "skills" / "analyze-zzzops-usage").exists())
             self.assertTrue((target / ".agents" / "skills" / "add-zzzops-goal" / "SKILL.md").is_file())
             self.assertTrue((target / ".claude" / "skills" / "add-zzzops-goal" / "SKILL.md").is_file())
             self.assertTrue((target / ".agents" / "skills" / "execute-zzzops" / "references" / "BRANCH_REVIEW.md").is_file())
@@ -52,7 +55,7 @@ class InstallerInitializationTests(unittest.TestCase):
             self.assertFalse((target / ".agents" / "skills" / obsolete).exists())
             self.assertFalse((target / ".claude" / "skills" / obsolete).exists())
             ignore = (target / ".zzzops" / ".gitignore").read_text(encoding="utf-8")
-            self.assertIn("USAGE_LEDGER.md", ignore.splitlines())
+            self.assertNotIn("USAGE_LEDGER.md", ignore.splitlines())
             self.assertFalse((target / ".zzzops" / "PROJECT.md").exists())
             self.assertFalse((target / ".zzzops" / "USAGE_LEDGER.md").exists())
             self.assertFalse((target / ".zzzops" / "PREFERENCES.json").exists())
@@ -68,18 +71,12 @@ class InstallerInitializationTests(unittest.TestCase):
             self.assertEqual(0, portfolio_help.returncode, portfolio_help.stderr + portfolio_help.stdout)
             self.assertIn("--format {summary,json}", portfolio_help.stdout)
             self.assertIn("--compare", portfolio_help.stdout)
-            usage = subprocess.run(
+            retired_usage = subprocess.run(
                 [sys.executable, str(target / ".agents" / "zzzops.py"), "--repo", str(target), "usage", "ensure"],
                 text=True, encoding="utf-8", capture_output=True, check=False,
             )
-            self.assertEqual(0, usage.returncode, usage.stderr + usage.stdout)
-            self.assertTrue(json.loads(usage.stdout)["created"])
-            self.assertTrue((target / ".zzzops" / "USAGE_LEDGER.md").is_file())
-            second_usage = subprocess.run(
-                [sys.executable, str(target / ".agents" / "zzzops.py"), "--repo", str(target), "usage", "ensure"],
-                text=True, encoding="utf-8", capture_output=True, check=False,
-            )
-            self.assertFalse(json.loads(second_usage.stdout)["created"])
+            self.assertEqual(2, retired_usage.returncode)
+            self.assertIn("invalid choice", retired_usage.stderr)
             env = os.environ.copy()
             env["ZZZOPS_USER_CONFIG_DIR"] = str(target / ".test-user-config")
             env["ZZZOPS_MACHINE_STATE_DIR"] = str(target / ".test-machine-state")
@@ -115,7 +112,6 @@ class InstallerInitializationTests(unittest.TestCase):
             (target / ".git").mkdir()
             state = {
                 target / ".zzzops" / "PROJECT.md": b"project\n",
-                target / ".zzzops" / "USAGE_LEDGER.md": b"ledger\n",
                 target / "goals" / "items" / "G-example.md": b"goal\n",
             }
             for path, data in state.items():

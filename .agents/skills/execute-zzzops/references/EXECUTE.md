@@ -4,18 +4,17 @@
 
 ## Select
 
-1. Create a run ID and inspect callable usage per `.zzzops/rules/USAGE_ACCOUNTING.md`.
-2. Read charter/preferences, then run the BACKENDS portfolio command once. Require `complete:true` and `valid:true`; resolve findings instead of selecting from an invalid graph, and use its compact relationships/claims/reviews rather than rereading every goal. If the user is present and its human queue is non-empty, run `UNBLOCK.md` first.
-3. Route `new` goals through `CREATE.md` according to PROJECT triage/continuation policy.
-4. Actionable = `ready` or resumable `in_progress`, authorized concrete next action, gates satisfied, no invalidating blocker/live foreign claim. Recheck blocked work only on its trigger.
-5. Rank by evidenced charter/KPI movement and unlock value, then apply PROJECT priority, easy-win, tie-break, and resume policy.
+1. Read charter/preferences, then run the BACKENDS portfolio command once. Require `complete:true` and `valid:true`; resolve findings instead of selecting from an invalid graph, and use its compact relationships/claims/reviews rather than rereading every goal. If the user is present and its human queue is non-empty, run `UNBLOCK.md` first.
+2. Route `new` goals through `CREATE.md` according to PROJECT triage/continuation policy.
+3. Actionable = `ready` or resumable `in_progress`, authorized concrete next action, gates satisfied, no invalidating blocker/live foreign claim. Recheck blocked work only on its trigger.
+4. Rank by evidenced charter/KPI movement and unlock value, then apply PROJECT priority, easy-win, tie-break, and resume policy.
 
 ## Execute
 
 1. Re-read only the selected goal and selection-critical parent/dependencies; compare snapshot revision/digest, then claim with expiry/checkpoint.
 2. For source changes, establish/resume the policy-selected topology from `BRANCH_REVIEW.md` and persist branch/base/target before editing. Then follow `.zzzops/rules/EXECUTION_STRATEGY.md`: capture baseline; implement one smallest falsifiable chunk; run/inspect/record the real probe before continuing; widen only after proof.
 3. Work to a verified checkpoint without silent scope expansion. Classify discoveries as scope, checklist, child, dependency, or root. Apply PROJECT test-bug policy; never hide a failure, weaken the test, or expand authority silently.
-4. Persist evidence and usage at natural checkpoints. Follow preference-limited parallel/worktree rules; coordinator owns ZzzOps state and integration.
+4. Persist evidence at natural checkpoints. Follow preference-limited parallel/worktree rules; coordinator owns ZzzOps state and integration.
 
 ## Block, complete, cycle
 
@@ -29,4 +28,4 @@ When no work is actionable, rebuild the human queue and apply PROJECT blocker-in
 
 If still empty, invoke `$suggest-zzzops-work` in apply mode only when both PROJECT policy and `.zzzops/PREFERENCES.json` authorize it. Use the lower cap; never loop-refill or enable preferences.
 
-Stop only for user stop, runtime boundary, required authority/risk, unavailable/unresolved human/external blocker, or no qualifying refill. First make touched goals resumable (next action, evidence, blockers, claim, links, index, history, usage). Report outcomes, human interview/refill results, queue, and stop reason.
+Stop only for user stop, runtime boundary, required authority/risk, unavailable/unresolved human/external blocker, or no qualifying refill. First make touched goals resumable (next action, evidence, blockers, claim, links, index, history). Report outcomes, human interview/refill results, queue, and stop reason.

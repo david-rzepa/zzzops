@@ -5,7 +5,7 @@ description: Execute the primary ZzzOps goal loop: work all goals, continue, res
 
 # Execute ZzzOps
 
-Mode: `dry run`, `preview`, or `plan` means read-only inventory, triage simulation, ordering, and blocker reporting; do not initialize/apply, claim, update goals/ledger, edit source, run mutating commands, or change Git/external state. Otherwise run the live loop below.
+Mode: `dry run`, `preview`, or `plan` means read-only inventory, triage simulation, ordering, and blocker reporting; do not initialize/apply, claim, update goals, edit source, run mutating commands, or change Git/external state. Otherwise run the live loop below.
 
 First run `../../../.zzzops/rules/INITIALIZATION.md`, then route through `../../../.zzzops/rules/BACKENDS.md`. Read `../../../.zzzops/rules/GOAL_SYSTEM.md`, the initialized charter, and local `../../../.zzzops/PREFERENCES.json`; load only what applies.
 Track execute intent through `../../../.zzzops/rules/CONTINUATION.md` so additive capture can safely resume without nested loops.
@@ -18,7 +18,6 @@ Run applicable `../../../.zzzops/rules/HEALTH.md` hooks from reviewed PROJECT po
 - Source-changing branch topology/review: [BRANCH_REVIEW.md](references/BRANCH_REVIEW.md).
 - Pre-handoff diff/dead-code review: [SELF_REVIEW.md](references/SELF_REVIEW.md).
 - Tests, delegation, parallelism, or long commands: `../../../.zzzops/rules/EXECUTION_STRATEGY.md`.
-- Usage records/interpretation: `../../../.zzzops/rules/USAGE_ACCOUNTING.md`.
 - Exhausted-queue backlog suggestions: `$suggest-zzzops-work` when enabled by preferences.
 
 This is the primary autonomous loop. Apply reviewed PROJECT selection, continuation, blocker-interview, refill, Git, verification, and resource policy. Effective local preferences may only tighten it. User authority and project rules outrank goals. Persist resumable state before switching/stopping; continue while policy permits safe useful work. Optimize verified value, not item count or limit consumption.

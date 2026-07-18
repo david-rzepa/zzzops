@@ -23,8 +23,6 @@ class InitializationTests(unittest.TestCase):
         template_dir = self.repo / ".agents" / "templates" / "project-goals"
         template_dir.mkdir(parents=True)
         (template_dir / "PREFERENCES.json").write_text("{}\n", encoding="utf-8")
-        ledger_template = MODULE_PATH.parent / "templates" / "project-goals" / "USAGE_LEDGER.md"
-        (template_dir / "USAGE_LEDGER.md").write_text(ledger_template.read_text(encoding="utf-8"), encoding="utf-8")
         source = MODULE_PATH.parent / "templates" / "project-goals" / "PROJECT.md"
         (self.repo / ".zzzops").mkdir()
         (self.repo / ".zzzops" / "PROJECT.md").write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
@@ -227,26 +225,8 @@ class InitializationTests(unittest.TestCase):
     def test_probe_output_redacts_url_userinfo(self):
         self.assertEqual("https://***@example.test/repo.git", zzzops.sanitize_output("https://secret@example.test/repo.git"))
 
-    def test_shared_and_user_local_state_paths_are_separate(self):
+    def test_project_state_path_is_stable(self):
         self.assertEqual(self.repo / ".zzzops" / "PROJECT.md", zzzops.project_path(self.repo))
-        self.assertEqual(self.repo / ".zzzops" / "USAGE_LEDGER.md", zzzops.usage_ledger_path(self.repo))
-
-    def test_usage_ledger_is_created_lazily_and_idempotently(self):
-        path = zzzops.usage_ledger_path(self.repo)
-        expected = (self.repo / ".agents" / "templates" / "project-goals" / "USAGE_LEDGER.md").read_text(encoding="utf-8")
-        self.assertFalse(path.exists())
-        self.assertTrue(zzzops.ensure_usage_ledger(self.repo)["created"])
-        self.assertEqual(expected, path.read_text(encoding="utf-8"))
-        self.assertFalse(zzzops.ensure_usage_ledger(self.repo)["created"])
-
-    def test_usage_ledger_storage_failure_has_no_tracked_fallback(self):
-        path = zzzops.usage_ledger_path(self.repo)
-        with mock.patch.object(zzzops, "atomic_text", side_effect=OSError("denied")):
-            result = zzzops.ensure_usage_ledger(self.repo)
-        self.assertFalse(result["ok"])
-        self.assertEqual("storage_unavailable", result["reason_code"])
-        self.assertEqual("none; grant write access to the repository-local .zzzops directory", result["fallback"])
-        self.assertFalse(path.exists())
 
     @mock.patch.object(zzzops, "command_probe", return_value={"available": False, "ok": False, "detail": "test"})
     @mock.patch.object(zzzops, "github_repository_probe", return_value={"available": False, "usable": False})
@@ -257,7 +237,6 @@ class InitializationTests(unittest.TestCase):
         self.assertFalse(result["initialized"])
         self.assertFalse(result["valid_state"])
         self.assertFalse((self.repo / ".zzzops" / "PROJECT.md").exists())
-        self.assertFalse(zzzops.usage_ledger_path(self.repo).exists())
 
     @mock.patch.object(zzzops.shutil, "which", return_value="gh")
     @mock.patch.object(zzzops.subprocess, "run")
@@ -563,7 +542,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("valid:true", backend)
         self.assertIn("re-read only the selected canonical goal", backend.casefold())
         for relative in (
-            "skills/add-zzzops-goal/SKILL.md", "skills/analyze-zzzops-usage/SKILL.md",
+            "skills/add-zzzops-goal/SKILL.md",
             "skills/migrate-zzzops-todos/SKILL.md", "skills/suggest-zzzops-work/SKILL.md",
             "skills/execute-zzzops/references/CREATE.md", "skills/execute-zzzops/references/EXECUTE.md",
             "skills/execute-zzzops/references/UNBLOCK.md",
@@ -658,7 +637,6 @@ class WorkflowContractTests(unittest.TestCase):
             "install-zzzops": ("install", "set up", "copy", "refresh", "update", '"preview"', '"dry run"', '"apply"', '"setup"'),
             "migrate-zzzops-todos": ("discover", "plan", "migrate", "import", "todos/backlogs", '"dry run"', '"preview"', '"apply"', "default builds review artifacts"),
             "suggest-zzzops-work": ("suggest", "discover", "audit", '"dry run"', '"preview"', '"plan"', '"apply"', '"refill"'),
-            "analyze-zzzops-usage": ("tokens", "usage", "cost", "management overhead", "value-per-token"),
         }
         self.assertEqual(set(contracts), {path.name for path in root.iterdir() if (path / "SKILL.md").is_file()})
         for name, phrases in contracts.items():
@@ -677,7 +655,7 @@ class WorkflowContractTests(unittest.TestCase):
         root = Path(__file__).parent
         names = (
             "add-zzzops-goal", "execute-zzzops", "migrate-zzzops-todos",
-            "suggest-zzzops-work", "analyze-zzzops-usage",
+            "suggest-zzzops-work",
         )
         for name in names:
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
@@ -690,10 +668,45 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_non_install_health_hooks_are_project_policy_driven(self):
         root = Path(__file__).parent / "skills"
-        for name in ("add-zzzops-goal", "analyze-zzzops-usage", "execute-zzzops", "migrate-zzzops-todos", "suggest-zzzops-work"):
+        for name in ("add-zzzops-goal", "execute-zzzops", "migrate-zzzops-todos", "suggest-zzzops-work"):
             text = (root / name / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("HEALTH.md", text, name)
             self.assertIn("reviewed PROJECT policy", text, name)
+
+    def test_runtime_token_accounting_surface_is_retired(self):
+        root = Path(__file__).parent.parent
+        retired_skill = "analyze" + "-zzzops-usage"
+        retired_ledger = "USAGE" + "_LEDGER"
+        retired_rule = "USAGE" + "_ACCOUNTING"
+        retired_phrases = (
+            retired_skill,
+            retired_ledger,
+            retired_rule,
+            "usage ensure",
+            "value-per-token",
+            "work/management tokens",
+        )
+        self.assertFalse((root / ".agents" / "skills" / retired_skill / "SKILL.md").exists())
+        self.assertFalse((root / ".agents" / "templates" / "project-goals" / f"{retired_ledger}.md").exists())
+        self.assertFalse((root / ".zzzops" / "rules" / f"{retired_rule}.md").exists())
+        for path in (
+            root / ".agents" / "zzzops.py",
+            root / ".agents" / "skills" / "install-zzzops" / "scripts" / "install_zzzops.py",
+            root / ".agents" / "templates" / "project-goals" / "INIT_PLAN.json",
+        ):
+            text = path.read_text(encoding="utf-8")
+            for phrase in (retired_skill, retired_ledger, retired_rule, "management_ratio_alert", "value_weights", "confidence_weights"):
+                self.assertNotIn(phrase, text, f"{path}: {phrase}")
+        prompt_paths = [root / "AGENTS.md", root / "README.md", root / ".zzzops" / "PROJECT.md"]
+        for directory in (root / "docs", root / ".agents" / "skills", root / ".agents" / "templates", root / ".zzzops" / "rules"):
+            prompt_paths.extend(
+                path for path in directory.rglob("*")
+                if path.is_file() and path.suffix.casefold() in {".md", ".json", ".yaml", ".yml"}
+            )
+        for path in prompt_paths:
+            text = path.read_text(encoding="utf-8")
+            for phrase in retired_phrases:
+                self.assertNotIn(phrase, text, f"{path}: {phrase}")
 
     def test_capture_and_execution_git_boundaries_are_explicit(self):
         root = Path(__file__).parent

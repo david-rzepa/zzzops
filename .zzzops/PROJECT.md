@@ -9,13 +9,13 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 2,
+  "revision": 3,
   "schema_version": 1
 }
 zzzops-project-state -->
 
 **Status:** complete
-**Last reviewed:** 2026-07-16
+**Last reviewed:** 2026-07-17
 
 ## Overall goal
 - Outcome: ZzzOps lets Codex and Claude Code manage long-term project work autonomously with durable state, minimal babysitting, and explicit human control.
@@ -29,7 +29,6 @@ zzzops-project-state -->
 | Canonical goal integrity | Lost or duplicated goal truth defeats autonomous execution. | Local goal files are canonical; backend initialization is not yet applied. | Zero known lost or duplicated canonical goals. | Backend portfolio and migration/idempotency tests. | Each release |
 | Time to usable backlog | Setup friction increases babysitting. | Not yet measured. | Clean install to initialized, capturable backlog in under 10 minutes. | Timed clean-install and initialization acceptance run. | Each release |
 | Autonomous workflow transitions | Measures whether agents can continue without unscheduled intervention. | Not yet measured. | At least 80% of eligible workflow transitions need no unscheduled human input. | Goal histories and categorized blocker records. | Monthly after at least 20 transitions |
-| Management token overhead | Goal administration should not consume the value it enables. | Exact harness usage is currently unavailable. | Below 25% of compatible measured work plus management tokens. | Local `.zzzops/USAGE_LEDGER.md` compatible-token reviews. | Monthly when sufficient comparable samples exist |
 
 ## Project acceptance criteria
 - [x] A clean installation can be agent-initialized and capture a canonical goal without manual form filling.
@@ -69,3 +68,4 @@ When KPIs conflict, prefer: user authority and safety, correctness, privacy, ver
 | --- | --- | --- | --- |
 | 2026-07-16 | ZzzOps initialization | Initialized revision 1 | Confirmed agent-generated plan; backend `github_issues`. |
 | 2026-07-16 | ZzzOps migration | Migrated revision 2 | All 15 local goals verified as managed GitHub issues #7–#21; transitional files retired. |
+| 2026-07-17 | Codex/goal #40 | Removed runtime token-accounting KPI | Portable runtime/work token counts are unavailable; prompt-size estimates remain the supported regression metric. |
