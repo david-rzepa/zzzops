@@ -70,7 +70,13 @@
         "id": "execution_continuation", "title": "Execution and work continuation", "required": true, "applicable": true,
         "decision": "Continue sequentially across actionable goals and incorporate newly captured goals at the next safe checkpoint.", "rationale": "reduces babysitting without interrupting active work",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps first-release fallback", "default_disposition": "accepted",
-        "settings": {"continue_while_actionable": true, "new_goal_checkpoint": "next_safe_checkpoint", "triage_new_first": true, "max_easy_wins": 2},
+        "settings": {
+          "continue_while_actionable": true, "triage_new_first": true, "max_easy_wins": 2,
+          "execute_intent": "same_task_until_superseded", "new_goal_checkpoint": "next_safe_checkpoint",
+          "after_additive_capture": "resume_once_and_reprioritize", "exhausted_handoff_retains_intent": true,
+          "stop_reasons_clear_intent": ["user_stop", "pause", "replacement_request", "capture_only", "required_authority", "blocking_boundary"],
+          "cross_task": "require_explicit_harness_signal"
+        },
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {

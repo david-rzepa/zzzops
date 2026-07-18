@@ -13,3 +13,7 @@ Branch/review behavior is project policy, proposed during initialization from re
 Canonical goal state records branch/base/target/PR and review checkpoint. After implementation, automated checks, and self-review, source work gets a `human-action` blocker rather than `done`. PR-required repositories need valid UI approval and required checks; otherwise explicit conversational approval is allowed. Requested changes reuse the branch and create a new verified checkpoint. After approval, the agent merges only with authority, verifies the target, resolves the blocker, and completes the goal.
 
 The workflow remains agent-driven. ZzzOps deliberately has no universal branch-management script: repository instructions, hosting rules, dependency ancestry, dirty state, and merge authority require contextual inspection.
+
+## Continuation after capture
+
+Execute-all intent may remain active across a same-task yield or queue-exhausted handoff. If the next turn merely captures unrelated work, ZzzOps completes that capture and re-enters ordinary inventory once, so the new goal joins the queue without jumping it. Explicit stop, pause, replacement, capture-only wording, authority/blocker boundaries, or loss of a trustworthy same-task signal wins. Time proximity alone is never evidence; separate tasks and unsupported harnesses do not share intent.

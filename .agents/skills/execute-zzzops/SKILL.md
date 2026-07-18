@@ -8,6 +8,7 @@ description: Execute the primary ZzzOps goal loop: work all goals, continue, res
 Mode: `dry run`, `preview`, or `plan` means read-only inventory, triage simulation, ordering, and blocker reporting; do not initialize/apply, claim, update goals/ledger, edit source, run mutating commands, or change Git/external state. Otherwise run the live loop below.
 
 First run `../../../.zzzops/rules/INITIALIZATION.md`, then route through `../../../.zzzops/rules/BACKENDS.md`. Read `../../../.zzzops/rules/GOAL_SYSTEM.md`, the initialized charter, and local `../../../.zzzops/PREFERENCES.json`; load only what applies.
+Track execute intent through `../../../.zzzops/rules/CONTINUATION.md` so additive capture can safely resume without nested loops.
 
 Run applicable `../../../.zzzops/rules/HEALTH.md` hooks from reviewed PROJECT policy.
 

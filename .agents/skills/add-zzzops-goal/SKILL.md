@@ -12,3 +12,5 @@ Run applicable `.zzzops/rules/HEALTH.md` hooks from reviewed PROJECT policy; hea
 Capture exact source path/line when applicable and explain value against project KPIs/acceptance. Preserve unknowns rather than inventing them. Use `$execute-zzzops` afterward for decomposition, triage, or execution.
 
 Capture never creates a branch, commit, push, or PR. Leave local goal edits uncommitted; a GitHub issue needs no Git checkpoint.
+
+After capture, apply `.zzzops/rules/CONTINUATION.md`; active same-task execute intent may resume once, while capture-only/replacement/stop intent wins.

@@ -23,7 +23,7 @@ def source_root() -> Path:
 def files_to_copy(root: Path) -> list[str]:
     paths = [
         ".zzzops/rules/BACKENDS.md", ".zzzops/rules/BLOCKERS.md",
-        ".zzzops/rules/EXECUTION_STRATEGY.md", ".zzzops/rules/GOAL_SYSTEM.md",
+        ".zzzops/rules/CONTINUATION.md", ".zzzops/rules/EXECUTION_STRATEGY.md", ".zzzops/rules/GOAL_SYSTEM.md",
         ".zzzops/rules/HEALTH.md", ".zzzops/rules/INITIALIZATION.md",
         ".zzzops/rules/USAGE_ACCOUNTING.md",
         ".agents/.gitignore", ".agents/zzzops.py", ".agents/zzzops_health.py",

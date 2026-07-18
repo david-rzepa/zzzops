@@ -30,6 +30,7 @@ class InstallerInitializationTests(unittest.TestCase):
             self.assertTrue((target / ".zzzops" / "rules" / "INITIALIZATION.md").is_file())
             self.assertTrue((target / ".zzzops" / "rules" / "BACKENDS.md").is_file())
             self.assertTrue((target / ".zzzops" / "rules" / "HEALTH.md").is_file())
+            self.assertTrue((target / ".zzzops" / "rules" / "CONTINUATION.md").is_file())
             self.assertTrue((target / ".agents" / "zzzops_health.py").is_file())
             self.assertTrue((target / ".agents" / "templates" / "project-goals" / "INIT_PLAN.json").is_file())
             self.assertTrue((target / ".agents" / "templates" / "project-goals" / "GOAL.md").is_file())

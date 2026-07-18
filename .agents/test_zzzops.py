@@ -346,6 +346,23 @@ class WorkflowContractTests(unittest.TestCase):
         ):
             self.assertIn(phrase, workflow)
 
+    def test_continuation_policy_and_prompt_cover_turn_scenarios(self):
+        root = Path(__file__).parent
+        plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        settings = next(section for section in plan["policy"]["sections"] if section["id"] == "execution_continuation")["settings"]
+        self.assertEqual("same_task_until_superseded", settings["execute_intent"])
+        self.assertEqual("resume_once_and_reprioritize", settings["after_additive_capture"])
+        self.assertTrue(settings["exhausted_handoff_retains_intent"])
+        self.assertEqual("require_explicit_harness_signal", settings["cross_task"])
+        rule = (root.parent / ".zzzops" / "rules" / "CONTINUATION.md").read_text(encoding="utf-8")
+        for phrase in (
+            "not elapsed-time inference", "queue exhaustion/yield", "explicit stop/pause/replacement/capture-only",
+            "required-authority or blocking boundary", "never nest/duplicate execute", "standalone adjacent capture",
+            "re-enter `$execute-zzzops` once", "no priority shortcut", "steer and ordinary follow-up",
+            "Compacted context", "Separate tasks/threads", "Capture itself remains Git-free",
+        ):
+            self.assertIn(phrase, rule)
+
     def test_skill_names_descriptions_and_modes_are_discoverable(self):
         root = Path(__file__).parent / "skills"
         contracts = {
