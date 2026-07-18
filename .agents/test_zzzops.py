@@ -307,6 +307,16 @@ class ManagedGoalTests(unittest.TestCase):
         self.assertTrue(any("unknown fields" in error for error in errors))
         self.assertIn("next_action is required", errors)
 
+    def test_managed_goal_validates_branch_review_identity(self):
+        goal = self.goal()
+        goal["implementation"] = {
+            "branch": "goal/example", "base": "dev", "target": "dev", "pr": None,
+            "review": {"status": "pending", "checkpoint": "abc123"},
+        }
+        self.assertEqual([], zzzops.validate_managed_goal(goal))
+        goal["implementation"]["review"]["status"] = "self_approved"
+        self.assertIn("implementation.review.status is invalid", zzzops.validate_managed_goal(goal))
+
 
 class WorkflowContractTests(unittest.TestCase):
     def test_policy_taxonomy_is_stable_across_templates(self):
@@ -318,6 +328,23 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(list(zzzops.POLICY_SECTION_IDS), plan_ids)
         self.assertEqual(list(zzzops.POLICY_SECTION_IDS), project_ids)
         self.assertTrue(all(section["required"] and not section["review"]["approved"] for section in plan["policy"]["sections"]))
+
+    def test_branch_policy_and_workflow_cover_reviewed_topologies(self):
+        root = Path(__file__).parent
+        plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        git_policy = next(section for section in plan["policy"]["sections"] if section["id"] == "git_review_release")["settings"]
+        self.assertEqual("per_goal", git_policy["execution_branch"])
+        self.assertEqual("nearest_authorized_trunk", git_policy["branch_base"])
+        self.assertEqual("dependency_branch", git_policy["dependency_base"])
+        self.assertTrue(git_policy["parent_pseudo_trunk"])
+        self.assertEqual("human_after_checks", git_policy["review_gate"])
+        workflow = (root / "skills" / "execute-zzzops" / "references" / "BRANCH_REVIEW.md").read_text(encoding="utf-8")
+        for phrase in (
+            "one stable `implementation` identity per goal", "multiple_dependency_base", "parent pseudo-trunk",
+            "recursively", "dependency order", "human-action", "PR UI approval",
+            "explicit conversational approval", "Changes requested", "Missing merge authority",
+        ):
+            self.assertIn(phrase, workflow)
 
     def test_skill_names_descriptions_and_modes_are_discoverable(self):
         root = Path(__file__).parent / "skills"

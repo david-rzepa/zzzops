@@ -13,14 +13,14 @@
 ## Execute
 
 1. Re-read goal, parent, dependencies, rules, and artifacts; claim it with expiry/checkpoint.
-2. Follow `.zzzops/rules/EXECUTION_STRATEGY.md`: capture baseline; implement one smallest falsifiable chunk; run/inspect/record the real probe before continuing; widen only after proof. Build a narrow harness/debug adapter/scoped MCP server when needed rather than infer behavior from code.
+2. For source changes, establish/resume the policy-selected topology from `BRANCH_REVIEW.md` and persist branch/base/target before editing. Then follow `.zzzops/rules/EXECUTION_STRATEGY.md`: capture baseline; implement one smallest falsifiable chunk; run/inspect/record the real probe before continuing; widen only after proof.
 3. Work to a verified checkpoint without silent scope expansion. Classify discoveries as scope, checklist, child, dependency, or root. Apply PROJECT test-bug policy; never hide a failure, weaken the test, or expand authority silently.
 4. Persist evidence and usage at natural checkpoints. Follow preference-limited parallel/worktree rules; coordinator owns ZzzOps state and integration.
 
 ## Block, complete, cycle
 
 - On a blocker, follow `.zzzops/rules/BLOCKERS.md`: record continuation, ask when useful, do only bounded safe work, then keep active or block/release claim and switch.
-- Before `done`, cite observed before/after evidence for each criterion; verify required children, blockers, and relevant checks; state anything unobserved. Build/lint/types/code review do not prove runtime behavior unless that is the criterion. Update state/history/index/usage and clear claim.
+- Before `done`, cite observed before/after evidence for each criterion; verify required children, blockers, and relevant checks; state anything unobserved. Build/lint/types/code review do not prove runtime behavior unless that is the criterion. Source-changing work then enters the `BRANCH_REVIEW.md` human gate; technical completion alone is not `done`.
 - Follow PROJECT Git/review/commit policy, staging only authorized implementation and pending local ZzzOps state; a GitHub-only state change never causes an empty commit. Recheck parent criteria and unlocked dependents; repeat upward, then select again.
 
 ## Exhaustion and handoff

@@ -94,6 +94,8 @@ For persistent Codex execution:
 
 `/goal` is Codex-specific. Claude Code invokes ZzzOps workflows directly as `/skill-name`; ZzzOps supplies the same queue and operating rules in either tool. When work runs dry, the agent interviews you about blockers before conceding defeat. This is your scheduled cameo. After that, please locate the bedroom.
 
+Source-changing goals follow the reviewed project branch/review policy and pause at a human review blocker after checks. Maintainers: see the [branch topology and review lifecycle](docs/EXECUTION.md).
+
 ## Useful maintenance
 
 ```text
@@ -193,14 +195,15 @@ python .agents/prompt_stats.py --check
 | --- | ---: | ---: |
 | `.agents/skills/add-zzzops-goal/SKILL.md` | 1088 | 272 |
 | `.agents/skills/analyze-zzzops-usage/SKILL.md` | 2412 | 603 |
-| `.agents/skills/execute-zzzops/SKILL.md` | 2124 | 531 |
+| `.agents/skills/execute-zzzops/SKILL.md` | 2215 | 554 |
+| `.agents/skills/execute-zzzops/references/BRANCH_REVIEW.md` | 2618 | 655 |
 | `.agents/skills/execute-zzzops/references/CREATE.md` | 2746 | 687 |
-| `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3141 | 786 |
+| `.agents/skills/execute-zzzops/references/EXECUTE.md` | 3238 | 810 |
 | `.agents/skills/execute-zzzops/references/UNBLOCK.md` | 1535 | 384 |
 | `.agents/skills/install-zzzops/SKILL.md` | 1471 | 368 |
 | `.agents/skills/migrate-zzzops-todos/SKILL.md` | 2062 | 516 |
 | `.agents/skills/suggest-zzzops-work/SKILL.md` | 2743 | 686 |
-| `.agents/templates/project-goals/GOAL.md` | 1679 | 420 |
+| `.agents/templates/project-goals/GOAL.md` | 1992 | 498 |
 | `.agents/templates/project-goals/INDEX.md` | 1135 | 284 |
 | `.agents/templates/project-goals/MIGRATION_SUMMARY.md` | 194 | 49 |
 | `.agents/templates/project-goals/PROJECT.md` | 2416 | 604 |
@@ -215,7 +218,7 @@ python .agents/prompt_stats.py --check
 | `.zzzops/rules/USAGE_ACCOUNTING.md` | 2505 | 627 |
 | `AGENTS.md` | 2963 | 741 |
 | `CLAUDE.md` | 217 | 55 |
-| **Total** | **47067** | **11776** |
+| **Total** | **50186** | **12556** |
 <!-- PROMPT_BUDGET_END -->
 
 </details>

@@ -42,7 +42,7 @@ POLICY_SECTION_IDS = (
 GOAL_FIELDS = {
     "id", "title", "status", "priority", "value", "difficulty", "confidence",
     "parent", "depends_on", "blocks", "needs_human", "claim", "blockers",
-    "evidence", "next_action", "revision",
+    "evidence", "next_action", "revision", "implementation",
 }
 
 PREFERENCE_LABELS = (
@@ -415,6 +415,19 @@ def validate_managed_goal(goal: Any) -> list[str]:
         errors.append("needs_human must be boolean")
     if not isinstance(goal.get("revision"), int) or isinstance(goal.get("revision"), bool) or goal.get("revision", 0) < 1:
         errors.append("revision must be a positive integer")
+    implementation = goal.get("implementation")
+    if implementation is not None:
+        if not isinstance(implementation, dict):
+            errors.append("implementation must be an object")
+        else:
+            for field in ("branch", "base", "target", "pr"):
+                if field not in implementation or (implementation[field] is not None and not text_present(implementation[field])):
+                    errors.append(f"implementation.{field} must be null or non-empty text")
+            review = implementation.get("review")
+            if not isinstance(review, dict) or review.get("status") not in {"not_started", "pending", "approved", "changes_requested"}:
+                errors.append("implementation.review.status is invalid")
+            elif "checkpoint" not in review or (review["checkpoint"] is not None and not text_present(review["checkpoint"])):
+                errors.append("implementation.review.checkpoint must be null or non-empty text")
     return errors
 
 
