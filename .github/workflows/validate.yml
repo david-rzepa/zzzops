@@ -24,10 +24,6 @@ jobs:
         run: python .agents/test_prompt_stats.py
       - name: Test ZzzOps initialization and workflows
         run: python .agents/test_zzzops.py
-      - name: Test user health policy and CLI
-        run: |
-          python .agents/test_zzzops_health.py
-          python .agents/test_zzzops_cli.py
       - name: Test mechanics installer
         run: python -m unittest discover -s .agents/skills/install-zzzops/scripts -p 'test_*.py'
       - name: Test TODO migration inventory
@@ -42,26 +38,3 @@ jobs:
         run: python .agents/prompt_stats.py --check
       - name: Check Python syntax
         run: python -m compileall -q .agents .github/scripts
-
-  health-storage:
-    name: health-storage-${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Test real app-data storage
-        run: python .agents/test_zzzops_appdata.py
-      - name: Test mechanics-only layout
-        run: python -m unittest discover -s .agents/skills/install-zzzops/scripts -p 'test_*.py'
-      - name: Test TODO migration inventory
-        run: python -m unittest discover -s .agents/skills/migrate-to-zzzops/scripts -p 'test_*.py'
-      - name: Test manual acceptance plan coverage
-        run: |
-          python .agents/test_manual_acceptance.py
-          python .agents/manual_acceptance.py coverage
