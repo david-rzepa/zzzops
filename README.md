@@ -204,7 +204,7 @@ python .agents/prompt_stats.py --check
 | `.agents/skills/execute-zzzops/references/SELF_REVIEW.md` | 1345 | 337 |
 | `.agents/skills/execute-zzzops/references/UNBLOCK.md` | 1564 | 391 |
 | `.agents/skills/install-zzzops/SKILL.md` | 1464 | 366 |
-| `.agents/skills/migrate-zzzops-todos/SKILL.md` | 2106 | 527 |
+| `.agents/skills/migrate-zzzops-todos/SKILL.md` | 2385 | 597 |
 | `.agents/skills/suggest-zzzops-work/SKILL.md` | 2793 | 699 |
 | `.agents/templates/project-goals/GOAL.md` | 1992 | 498 |
 | `.agents/templates/project-goals/INDEX.md` | 1135 | 284 |
@@ -220,7 +220,7 @@ python .agents/prompt_stats.py --check
 | `.zzzops/rules/INITIALIZATION.md` | 1930 | 483 |
 | `AGENTS.md` | 2896 | 724 |
 | `CLAUDE.md` | 217 | 55 |
-| **Total** | **49350** | **12346** |
+| **Total** | **49629** | **12416** |
 <!-- PROMPT_BUDGET_END -->
 
 </details>

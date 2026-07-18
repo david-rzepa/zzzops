@@ -40,7 +40,11 @@ class InventoryTests(unittest.TestCase):
                 'print("ready")\n# TODO: Parse quoted values\n# TODO: Parse quoted values\n',
             )
             self.write(root, "README.md", "# Guide\n- [ ] Document setup\n- ordinary bullet\n")
-            self.write(root, "TODO.md", "# Backlog\n- Ship CLI help\n- [ ] Add smoke probe\n")
+            self.write(
+                root,
+                "TODO.md",
+                "# Backlog\n- Ship CLI help\n- [ ] Add smoke probe\n- [x] Already shipped\n- [X] Also shipped\n- DONE Legacy completion marker\n",
+            )
             self.write(root, "notes.md", "- ordinary note\n")
             self.write(root, ".zzzops/rules/private.md", "# TODO: machinery must be excluded\n")
             self.write(root, "goals/items/old.md", "# TODO: canonical goals must be excluded\n")
@@ -48,8 +52,8 @@ class InventoryTests(unittest.TestCase):
             (root / "image.png").write_bytes(b"TODO: binary-ish bytes")
 
             first = self.run_inventory(root)
-            self.assertEqual(first["candidate_count"], 5)
-            self.assertEqual(first["new_count"], 5)
+            self.assertEqual(first["candidate_count"], 8)
+            self.assertEqual(first["new_count"], 8)
             candidates = {(item["path"], item["line"]): item for item in first["candidates"]}
             expected = {
                 ("src/app.py", 2): ("Parse quoted values", False),
@@ -57,6 +61,9 @@ class InventoryTests(unittest.TestCase):
                 ("README.md", 2): ("Document setup", False),
                 ("TODO.md", 2): ("Ship CLI help", True),
                 ("TODO.md", 3): ("Add smoke probe", True),
+                ("TODO.md", 4): ("[x] Already shipped", True),
+                ("TODO.md", 5): ("[X] Also shipped", True),
+                ("TODO.md", 6): ("DONE Legacy completion marker", True),
             }
             self.assertEqual(
                 {key: (item["text"], item["dedicated_backlog"]) for key, item in candidates.items()},
@@ -75,7 +82,7 @@ class InventoryTests(unittest.TestCase):
                 encoding="utf-8",
             )
             second = self.run_inventory(root)
-            self.assertEqual(second["candidate_count"], 5)
+            self.assertEqual(second["candidate_count"], 8)
             self.assertEqual(second["new_count"], 0)
             self.assertEqual(
                 [
