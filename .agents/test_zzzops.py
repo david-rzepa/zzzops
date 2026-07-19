@@ -104,7 +104,24 @@ class InitializationTests(unittest.TestCase):
         )
         self.assertTrue(reviewed["initialized"])
         self.assertEqual([], reviewed["decision_blockers"])
+        compact = (self.repo / ".zzzops" / "PROJECT.md").read_text(encoding="utf-8")
+        audit = (self.repo / ".zzzops" / "PROJECT_AUDIT.md").read_text(encoding="utf-8")
+        self.assertIn("PROJECT_AUDIT.md", compact)
+        self.assertNotIn("E-002: agent synthesis", compact)
+        self.assertIn("E-002: agent synthesis", audit)
+        self.assertLess(len(compact), len(audit))
         self.assertTrue(zzzops.inspect_initialization(self.repo)["initialized"])
+
+        altered_audit = audit.replace('"decision": "github_issues"', '"decision": "changed"', 1)
+        (self.repo / ".zzzops" / "PROJECT_AUDIT.md").write_text(altered_audit, encoding="utf-8")
+        compact_state = zzzops.parse_project_state(compact)
+        compact_state["audit"]["digest"] = zzzops.project_digest(altered_audit)
+        self.assertIn("project audit policy does not match PROJECT.md", zzzops.validate_project_audit(self.repo, compact_state))
+
+        (self.repo / ".zzzops" / "PROJECT_AUDIT.md").write_text(audit + "tampered\n", encoding="utf-8")
+        changed = zzzops.inspect_initialization(self.repo)
+        self.assertFalse(changed["initialized"])
+        self.assertIn("project audit digest changed", changed["state_error"])
 
     def test_review_is_exact_digest_explicit_and_incremental(self):
         applied = zzzops.apply_plan(self.repo, self.plan())
@@ -137,6 +154,13 @@ class InitializationTests(unittest.TestCase):
         state = zzzops.parse_project_state(path.read_text(encoding="utf-8"))
         state["policy"]["evidence"] = []
         self.assertIn("policy.evidence must be a non-empty list", zzzops.validate_project_state(state))
+
+    def test_runtime_projection_rejects_audit_only_policy_fields(self):
+        applied = zzzops.apply_plan(self.repo, self.plan())
+        zzzops.confirm_project(self.repo, applied["project_digest"], "test-user", [], True)
+        state = zzzops.parse_project_state((self.repo / ".zzzops" / "PROJECT.md").read_text(encoding="utf-8"))
+        state["policy"]["evidence"] = [{"id": "duplicated-audit-state"}]
+        self.assertIn("policy.unknown fields: evidence", zzzops.validate_project_state(state))
 
     def test_not_applicable_policy_requires_explicit_review(self):
         plan = self.plan()
@@ -529,11 +553,12 @@ class PortfolioTests(unittest.TestCase):
     @mock.patch.object(zzzops.subprocess, "run")
     @mock.patch.object(zzzops, "charter_missing_fields", return_value=[])
     @mock.patch.object(zzzops, "policy_blockers", return_value=[])
+    @mock.patch.object(zzzops, "validate_project_audit", return_value=[])
     @mock.patch.object(zzzops, "validate_project_state", return_value=[])
     @mock.patch.object(zzzops, "parse_project_state")
     @mock.patch.object(zzzops, "read_project", return_value=(Path("PROJECT.md"), "project"))
     def test_decision_checkpoint_embeds_portfolio_with_two_subprocesses(
-        self, _read, parse, _validate, _blockers, _missing, run, _which,
+        self, _read, parse, _validate, _audit, _blockers, _missing, run, _which,
     ):
         parse.return_value = {
             "initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"},
