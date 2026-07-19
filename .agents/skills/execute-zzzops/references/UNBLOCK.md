@@ -6,4 +6,12 @@
 4. On each answer, resolve the old blocker without deleting it; record answer, resolver/date, changed assumptions/scope/criteria/next action, and any narrower successor blocker. Update state, dependencies, history, and the portfolio-derived human queue atomically.
 5. Rebuild the actionable set and continue with `EXECUTE.md` when execution was requested. If nothing becomes actionable, follow PROJECT continuation/interview policy for another high-leverage batch or handoff. Preserve unanswered requests/recheck triggers and switch to independent safe work when allowed.
 
+## Bounded human-unblock watch
+
+Only at total actionable-queue exhaustion, select one highest-leverage human blocker whose completion has a safe read-only recheck. Send one notification naming the goal/category, exact action and consequence, link/checkpoint, and polled completion signal. If the harness/provider has no safe wait/recheck surface, preserve the blocker and hand off immediately.
+
+Default contract: `poll cadence: 30 seconds; maximum window: 180 seconds`. This allows at most six provider reads, catches brief review/merge actions within 30 seconds, and delegates the wait after the PROJECT 60-second threshold when a monitor is available. Do not notify again or watch multiple blockers.
+
+Stop immediately on the observed unblock, changes requested, state drift, authorization/capability loss, provider failure, user interruption/stop/pause/replacement, or timeout. On unblock, refresh the portfolio once and resume the existing execute loop once; never approve, merge, duplicate work, or bypass authority. Otherwise preserve the unchanged blocker and precise recheck trigger, record the stop reason, and hand off.
+
 Do not postpone a policy-required available-user interview for speculative implementation. Brief read-only inspection needed to phrase questions is allowed; stop once it no longer improves them.

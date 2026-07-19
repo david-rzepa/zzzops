@@ -24,7 +24,7 @@
 
 ## Exhaustion and handoff
 
-When no work is actionable, rebuild the human queue and apply PROJECT blocker-interview/continuation policy through `UNBLOCK.md`; persist answers and retry when policy restores work.
+When no work is actionable, rebuild the human queue and apply PROJECT blocker-interview/continuation policy through `UNBLOCK.md`; persist answers and retry when policy restores work. At true exhaustion, use its single bounded human-unblock watch only when completion is safely observable.
 
 If still empty, invoke `$suggest-zzzops-work` in apply mode only when both PROJECT policy and `.zzzops/PREFERENCES.json` authorize it. Use the lower cap; never loop-refill or enable preferences.
 
