@@ -48,7 +48,7 @@ def main() -> int:
     if args.command == "coverage":
         required = [
             ".agents/skills/install-zzzops", ".agents/zzzops.py", ".zzzops/rules/BACKENDS.md",
-            ".agents/skills/add-zzzops-goal", ".agents/skills/migrate-zzzops-todos",
+            ".agents/skills/add-zzzops-goal", ".agents/skills/migrate-to-zzzops",
             ".agents/skills/suggest-zzzops-work", ".agents/skills/execute-zzzops",
             ".github/workflows", ".agents/prompt_stats.py",
         ]

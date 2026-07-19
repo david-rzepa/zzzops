@@ -575,7 +575,19 @@ class WorkflowContractTests(unittest.TestCase):
         warning = readme.index("GitHub-backed goals inherit the repository's visibility")
         self.assertLess(warning, migration)
         self.assertIn("Never put secrets or raw sensitive data", readme)
-        self.assertIn("local-files backend", readme)
+        self.assertIn("GitHub Issues is the canonical goal authority", readme)
+        self.assertNotIn("local-files backend", readme)
+
+    def test_installed_user_surfaces_are_github_only(self):
+        root = Path(__file__).parent.parent
+        paths = [root / "README.md"]
+        for relative in (".agents/skills", ".agents/templates/project-goals", ".zzzops/rules", "docs"):
+            paths.extend(path for path in (root / relative).rglob("*") if path.suffix in {".md", ".json"})
+        forbidden = ("local_files", "goals/items", "goals/INDEX", "local-files backend", "local backend")
+        for path in paths:
+            text = path.read_text(encoding="utf-8")
+            for phrase in forbidden:
+                self.assertNotIn(phrase, text, f"{path.relative_to(root)}: {phrase}")
 
     def test_completion_review_policy_covers_scoped_cleanup_scenarios(self):
         root = Path(__file__).parent

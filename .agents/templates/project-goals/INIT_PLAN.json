@@ -45,11 +45,11 @@
     "sections": [
       {
         "id": "backend", "title": "Canonical goal backend", "required": true, "applicable": true,
-        "decision": "github_issues", "rationale": "replace with capability evidence and confirmed tradeoff",
-        "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps recommends GitHub Issues when usable", "default_disposition": "accepted",
+        "decision": "github_issues", "rationale": "replace with capability evidence and repository identity",
+        "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps GitHub-only authority", "default_disposition": "accepted",
         "settings": {
           "authority": "github_issues", "repository_identity": "owner/repository", "fallback": "forbidden",
-          "capability_evidence": "replace with the GitHub or local capability probe result",
+          "capability_evidence": "replace with the GitHub capability probe result",
           "tradeoffs": {"github_issues": "shared native issue queue requiring GitHub access"}
         },
         "exceptions": [], "unresolved": [], "review": {"approved": false}
