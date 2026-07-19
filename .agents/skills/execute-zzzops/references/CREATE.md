@@ -11,4 +11,4 @@
 9. Set state: `ready` if actionable/no gate; `triaged` if understood but preparation/children/expected dependency remain; `blocked` only if a specific blocker leaves no useful work; `cancelled` with rationale/replacement.
 10. Update the canonical goal, relations, blocker-derived human queue, and history consistently. If execution was requested, continue with `EXECUTE.md`.
 
-For independent child breakdowns, `.zzzops/rules/EXECUTION_STRATEGY.md` permits up to two read-only proposal sub-agents; main agent resolves overlap/cycles and performs every write.
+For independent child breakdowns, apply PROJECT and local preference parallel settings through `.zzzops/rules/EXECUTION_STRATEGY.md`. Read-only proposal sub-agents stay within the lower worker cap; main agent resolves overlap/cycles and performs every write unless reviewed policy explicitly permits isolated writable worktrees.

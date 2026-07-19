@@ -450,6 +450,48 @@ def _portfolio_key(value: Any) -> tuple[int, Any]:
     return (0, value) if isinstance(value, int) and not isinstance(value, bool) else (1, str(value))
 
 
+def _review_ready_dependency(record: dict[str, Any]) -> bool:
+    """Return whether a dependency has a reviewable checkpoint safe to stack on."""
+    if record.get("status") != "blocked":
+        return False
+    blocker_categories = set(record.get("blocker_categories", []))
+    if not blocker_categories or not blocker_categories <= {"human-action", "access-approval"}:
+        return False
+    implementation = record.get("implementation")
+    if not isinstance(implementation, dict):
+        return False
+    review = implementation.get("review")
+    return (
+        text_present(implementation.get("branch"))
+        and text_present(implementation.get("base"))
+        and text_present(implementation.get("target"))
+        and text_present(implementation.get("pr"))
+        and isinstance(review, dict)
+        and review.get("status") in {"pending", "approved"}
+        and text_present(review.get("checkpoint"))
+    )
+
+
+def _dependencies_allow_action(
+    record: dict[str, Any], by_key: dict[Any, dict[str, Any]], git_policy: dict[str, Any],
+) -> bool:
+    dependencies = record.get("depends_on", [])
+    unfinished = [
+        by_key.get(dependency)
+        for dependency in dependencies
+        if by_key.get(dependency, {}).get("status") != "done"
+    ]
+    if not unfinished:
+        return True
+    if any(dependency is None or not _review_ready_dependency(dependency) for dependency in unfinished):
+        return False
+    if git_policy.get("review_pending_dependency") != "stack_from_reviewed_checkpoint":
+        return False
+    if len(unfinished) == 1:
+        return git_policy.get("dependency_base") == "dependency_branch"
+    return git_policy.get("multiple_dependency_base") == "reviewed_base_containing_all"
+
+
 def audit_portfolio(records: list[dict[str, Any]], backend: str, as_of: datetime | None = None) -> list[dict[str, Any]]:
     as_of = datetime.now(timezone.utc) if as_of is None else as_of
     findings: list[dict[str, Any]] = []
@@ -510,7 +552,7 @@ def audit_portfolio(records: list[dict[str, Any]], backend: str, as_of: datetime
 
 def build_portfolio_snapshot(
     backend: str, records: list[dict[str, Any]], *, reads: int, raw_bytes: int,
-    ignored: int = 0, as_of: datetime | None = None,
+    ignored: int = 0, as_of: datetime | None = None, git_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     for record in records:
         record["children"] = []
@@ -529,14 +571,23 @@ def build_portfolio_snapshot(
     terminal = {"done", "cancelled"}
     blocked = {record["key"] for record in records if record["status"] == "blocked" or record["needs_human"]}
     terminal_keys = {record["key"] for record in records if record["status"] in terminal}
-    done = {record["key"] for record in records if record["status"] == "done"}
+    git_policy = git_policy or {}
     actionable = [
         record["key"] for record in records
         if record["status"] in {"ready", "in_progress"} and record["key"] not in blocked
-        and all(dependency in done for dependency in record.get("depends_on", []))
+        and _dependencies_allow_action(record, by_key, git_policy)
     ]
+    actionable_keys = set(actionable)
+    for record in records:
+        record["actionable"] = record["key"] in actionable_keys
     portfolio_digest = hashlib.sha256(
-        "\n".join(f"{record['key']}:{record['revision']}:{record['digest']}" for record in sorted(records, key=lambda item: _portfolio_key(item["key"]))).encode("utf-8")
+        (
+            "git_policy:" + json.dumps(git_policy, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+            + "\n".join(
+                f"{record['key']}:{record['revision']}:{record['digest']}"
+                for record in sorted(records, key=lambda item: _portfolio_key(item["key"]))
+            )
+        ).encode("utf-8")
     ).hexdigest()
     return {
         "schema_version": PORTFOLIO_SCHEMA_VERSION, "backend": backend, "complete": True,
@@ -590,6 +641,13 @@ def portfolio_snapshot(repo: Path) -> dict[str, Any]:
     snapshot = build_portfolio_snapshot(
         backend, records, reads=len(pages), raw_bytes=len(result.stdout.encode("utf-8")),
         ignored=len(issues) - len(managed),
+        git_policy=next(
+            (
+                section["settings"] for section in ((project.get("policy") or {}).get("sections") or [])
+                if isinstance(section, dict) and section.get("id") == "git_review_release"
+            ),
+            {},
+        ),
     )
     snapshot["findings"] = sorted(snapshot["findings"] + findings, key=lambda item: (item["code"], str(item["goal"])))
     snapshot["summary"]["findings"] = len(snapshot["findings"])
@@ -611,9 +669,10 @@ def render_portfolio_summary(snapshot: dict[str, Any], include_done: bool = Fals
         if not include_done and goal["status"] in {"done", "cancelled"}:
             continue
         human = " human" if goal["needs_human"] else ""
+        actionable = " actionable" if goal.get("actionable") else ""
         title = re.sub(r"\s+", " ", str(goal["title"])).strip()[:240]
         next_action = re.sub(r"\s+", " ", str(goal["next_action"])).strip()[:240]
-        lines.append(f"{goal['key']} [{goal['status']} {goal['priority']}/{goal['value']}/{goal['difficulty']}{human}] {title} — {next_action}")
+        lines.append(f"{goal['key']} [{goal['status']}{actionable} {goal['priority']}/{goal['value']}/{goal['difficulty']}{human}] {title} — {next_action}")
     for finding in snapshot["findings"]:
         lines.append(f"! {finding['code']} {finding['goal']}: {finding['detail']}")
     return "\n".join(lines)

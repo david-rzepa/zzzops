@@ -6,7 +6,7 @@
 
 1. Read charter/preferences, then run the BACKENDS portfolio command once. Require `complete:true` and `valid:true`; resolve findings instead of selecting from an invalid graph, and use its compact relationships/claims/reviews rather than rereading every goal. If the user is present and its human queue is non-empty, run `UNBLOCK.md` first.
 2. Route `new` goals through `CREATE.md` according to PROJECT triage/continuation policy.
-3. Actionable = `ready` or resumable `in_progress`, authorized concrete next action, gates satisfied, no invalidating blocker/live foreign claim. Recheck blocked work only on its trigger.
+3. Use the portfolio's PROJECT-derived `actionable` field: ordinarily this is `ready` or resumable `in_progress` with an authorized concrete next action, satisfied gates, and no invalidating blocker/live foreign claim. Reviewed `review_pending_dependency` policy may also satisfy a dependency gate through an exact review checkpoint; preserve the dependency and stack its child as `BRANCH_REVIEW.md` requires. Recheck blocked work only on its trigger.
 4. Rank by evidenced charter/KPI movement and unlock value, then apply PROJECT priority, easy-win, tie-break, and resume policy.
 
 ## Execute
@@ -19,12 +19,12 @@
 ## Block, complete, cycle
 
 - On a blocker, follow `.zzzops/rules/BLOCKERS.md`: record continuation, ask when useful, do only bounded safe work, then keep active or block/release claim and switch.
-- Before `done`, cite observed before/after evidence for each criterion; verify required children, blockers, and relevant checks; state anything unobserved. Build/lint/types/code review do not prove runtime behavior unless that is the criterion. Run `SELF_REVIEW.md`, fix/reverify in-scope findings, and record even a clean result. Source-changing work then enters the `BRANCH_REVIEW.md` human gate; technical completion alone is not `done`.
+- Before `done`, cite observed before/after evidence for each criterion; verify required children, blockers, and relevant checks; state anything unobserved. Build/lint/types/code review do not prove runtime behavior unless that is the criterion. Apply PROJECT completion-review policy through `SELF_REVIEW.md`; when required, fix/reverify in-scope findings and record even a clean result. Source-changing work then applies the reviewed gate in `BRANCH_REVIEW.md`; under the installed `human_after_checks` fallback, technical completion alone is not `done`.
 - Follow PROJECT Git/review/commit policy, staging only authorized implementation and pending local ZzzOps state; a GitHub-only state change never causes an empty commit. Refresh the batch after state mutation, recheck parent/unlocks, then select again.
 
 ## Exhaustion and handoff
 
-When no work is actionable, rebuild the human queue and apply PROJECT blocker-interview/continuation policy through `UNBLOCK.md`; persist answers and retry when policy restores work. At true exhaustion, use its single bounded human-unblock watch only when completion is safely observable.
+When no work is actionable, rebuild the human queue and apply PROJECT blocker-interview/continuation policy through `UNBLOCK.md`; persist answers and retry when policy restores work. At true exhaustion, apply PROJECT `human_unblock_watch` only when completion is safely observable.
 
 If still empty, invoke `$suggest-zzzops-work` in apply mode only when both PROJECT policy and `.zzzops/PREFERENCES.json` authorize it. Use the lower cap; never loop-refill or enable preferences.
 
