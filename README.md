@@ -40,15 +40,15 @@ Start any non-install workflow in the target, for example:
 Use $add-zzzops-goal to capture our first piece of work.
 ```
 
-The agent first inspects code, docs, config, history, Git, GitHub, and repository policy; proposes the outcome, KPIs, acceptance criteria, backend, and operating rules; then asks only consequential questions. Deterministic CLI primitives validate and atomically create a pending `.zzzops/PROJECT.md`. You do not fill a blank wizard.
+The agent first inspects code, docs, config, history, Git, GitHub, and repository policy; proposes the outcome, KPIs, acceptance criteria, GitHub authority, and operating rules; then asks only consequential questions. Deterministic CLI primitives validate and atomically create a pending `.zzzops/PROJECT.md`. You do not fill a blank wizard.
 
-The agent summarizes that exact file and tells you to read it in detail. Ordinary workflows remain blocked until you explicitly approve the current file digest; any edit invalidates the approval. Stable per-section checkboxes make backend, Git/review, continuation, testing, code quality, tooling, security, documentation, deployment/resources, and autonomy choices visible rather than hiding them in universal prompts.
+The agent summarizes that exact file and tells you to read it in detail. Ordinary workflows remain blocked until you explicitly approve the current file digest; any edit invalidates the approval. Stable per-section checkboxes make GitHub authority, Git/review, continuation, testing, code quality, tooling, security, documentation, deployment/resources, and autonomy decisions visible rather than hiding them in universal prompts.
 
 Once reviewed, these policies let the agent make routine decisions without waking you for every tiny choice.
 
-GitHub Issues is recommended when the repository and access probe succeed. Local `goals/items/` files are the supported alternative. One backend is authoritative; ZzzOps never silently switches or dual-writes. Initialization does not commit, branch, or mutate GitHub, and after approval mentions the optional `python .agents/zzzops.py` preferences panel without opening it.
+GitHub Issues is the canonical goal authority. Initialization requires a successful repository and access probe; unavailable authentication, permission, or Issues support becomes an explicit blocker. Initialization does not commit, branch, or mutate GitHub, and after approval mentions the optional `python .agents/zzzops.py` preferences panel without opening it.
 
-**Visibility:** GitHub-backed goals inherit the repository's visibility. Never put secrets or raw sensitive data in a goal; redact it, link to an approved private system, or select the local-files backend before capture or migration.
+**Visibility:** GitHub-backed goals inherit the repository's visibility. Never put secrets or raw sensitive data in a goal; redact it or link to an approved private system before capture or migration.
 
 Maintainers: see the [initialization and policy contract](docs/INITIALIZATION.md).
 
@@ -57,16 +57,16 @@ Maintainers: see the [initialization and policy contract](docs/INITIALIZATION.md
 From the target project in Codex:
 
 ```text
-Use $migrate-zzzops-todos to inspect and migrate existing TODOs.
+Use $migrate-to-zzzops to inspect and migrate existing TODOs.
 ```
 
 In Claude Code, invoke the same workflow as:
 
 ```text
-/migrate-zzzops-todos inspect and migrate existing TODOs
+/migrate-to-zzzops inspect and migrate existing TODOs
 ```
 
-The agent inventories candidates, presents a human-readable plan, then migrates only after approval into the selected backend. Inline TODO comments remain; dedicated backlog files retire only after verified coverage.
+The agent inventories candidates, presents a human-readable plan, then migrates only after approval into GitHub Issues. Inline TODO comments remain; dedicated backlog files retire only after verified coverage.
 
 ### 5. Add new work
 
@@ -74,7 +74,7 @@ The agent inventories candidates, presents a human-readable plan, then migrates 
 Use $add-zzzops-goal to capture <the thing we should eventually do>.
 ```
 
-ZzzOps checks duplicates, asks important questions, relates value to the charter, and creates a durable issue or local goal with a resumable next action. Capture never creates a branch, commit, push, or PR.
+ZzzOps checks duplicates, asks important questions, relates value to the charter, and creates a durable GitHub issue with a resumable next action. Capture never creates a branch, commit, push, or PR.
 
 When you remember “one last thing,” capture it instead of opening six files and seeing sunrise.
 
@@ -113,7 +113,7 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 | --- | --- |
 | Install ZzzOps mechanics into another repository | `.agents/skills/install-zzzops/SKILL.md` |
 | Initialize a project with reviewed operating policies | `.agents/zzzops.py` |
-| Select GitHub Issues or local files as the canonical goal backend | `.zzzops/rules/BACKENDS.md` |
+| Use GitHub Issues as the canonical goal backend | `.zzzops/rules/BACKENDS.md` |
 | Capture durable work | `.agents/skills/add-zzzops-goal/SKILL.md` |
 | Migrate legacy TODOs | `.agents/skills/migrate-to-zzzops/SKILL.md` |
 | Suggest evidence-backed backlog work | `.agents/skills/suggest-zzzops-work/SKILL.md` |
@@ -176,8 +176,7 @@ Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required
 ## The files that remember things
 
 - `.zzzops/PROJECT.md` — tracked backend, success, KPIs, acceptance criteria, reviewed project policy, and what “valuable” means.
-- GitHub Issues — recommended canonical goals, blockers, evidence, relations, and history when selected.
-- `goals/items/` and derived `goals/INDEX.md` — created only when the local backend is selected.
+- GitHub Issues — canonical goals, blockers, evidence, relations, and history.
 - `.zzzops/rules/` — tracked ZzzOps operating rules; machinery, not project content.
 - `.zzzops/PREFERENCES.json` — local, ignored user opt-ins for bounded autonomous backlog refills.
 - `.zzzops/migration/STATE.json` — keeps old TODOs from returning like a low-budget horror villain.
