@@ -4,7 +4,7 @@
 
 ## Select
 
-1. Read charter/preferences, then run the BACKENDS portfolio command once. Require `complete:true` and `valid:true`; resolve findings instead of selecting from an invalid graph, and use its compact relationships/claims/reviews rather than rereading every goal. If the user is present and its human queue is non-empty, run `UNBLOCK.md` first.
+1. Read charter/preferences and use the current BACKENDS checkpoint portfolio; never reread it. Require `complete:true` and `valid:true`; resolve findings instead of selecting from an invalid graph, and use its compact relationships/claims/reviews rather than rereading goals. If the present user's human queue is non-empty, run `UNBLOCK.md` first.
 2. Route `new` goals through `CREATE.md` according to PROJECT triage/continuation policy.
 3. Use the portfolio's PROJECT-derived `actionable` field; do not replace it with an “all dependencies must be `done`/merged” rule. Ordinarily actionable means `ready` or resumable `in_progress` with an authorized concrete next action, satisfied gates, and no invalidating blocker/live foreign claim. With reviewed `review_pending_dependency: stack_from_reviewed_checkpoint`, the dependency remains blocked for its own review/merge while its child is actionable from the exact checkpoint. Preserve the dependency edge and stack the child as `BRANCH_REVIEW.md` requires. “Not merged” is not “not actionable.” Recheck blocked work only on its trigger.
 4. Rank by evidenced charter/KPI movement and unlock value, then apply PROJECT priority, easy-win, tie-break, and resume policy.

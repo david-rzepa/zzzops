@@ -12,6 +12,6 @@ Apply PROJECT `human_unblock_watch`. Under the installed fallback, only at total
 
 Read cadence, maximum window, blocker count, and notification limit from that reviewed setting. The installed fallback is `poll_seconds: 30`, `max_seconds: 180`, `max_blockers: 1`, and `notify_once: true`; it allows at most six provider reads and delegates the wait after PROJECT `delegate_wait_after_seconds` when a monitor is available. Never exceed the reviewed bounds.
 
-Stop immediately on the observed unblock, changes requested, state drift, authorization/capability loss, provider failure, user interruption/stop/pause/replacement, or timeout. On unblock, refresh the portfolio once and resume the existing execute loop once; never approve, merge, duplicate work, or bypass authority. Otherwise preserve the unchanged blocker and precise recheck trigger, record the stop reason, and hand off.
+Stop immediately on the observed unblock, changes requested, state drift, authorization/capability loss, provider failure, user interruption/stop/pause/replacement, or timeout. On unblock, refresh the combined checkpoint once and resume the existing execute loop once; never approve, merge, duplicate work, or bypass authority. Otherwise preserve the unchanged blocker and precise recheck trigger, record the stop reason, and hand off.
 
 Do not postpone a policy-required available-user interview for speculative implementation. Brief read-only inspection needed to phrase questions is allowed; stop once it no longer improves them.

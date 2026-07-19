@@ -2,11 +2,13 @@
 
 `.zzzops/PROJECT.md` records GitHub Issues as the canonical goal authority.
 
-At each decision checkpoint run `python .agents/zzzops.py --repo . portfolio --format json` once. Require `complete:true` and `valid:true`; use its compact inventory/graph/human queue. It omits criteria/history, so re-read only the selected canonical goal before writing and match revision/digest. Refresh after relevant mutation or drift.
+Use the portfolio embedded by `INITIALIZATION.md`'s single checkpoint; never run a second portfolio command there. Require `complete:true` and `valid:true`; use its compact inventory/graph/human queue. It omits criteria/history, so re-read only the selected goal before writing and match revision/digest. Refresh the checkpoint once after mutation/drift. Standalone `portfolio` is for explicit CLI inspection/comparison.
+
+Closed goals are fully validated, then emitted as minimal archived projections. Re-read only likely duplicates, selection-critical relations, or explicit user targets.
 
 ## GitHub Issues (`github_issues`)
 
-Require inspect plus a read-only `gh api repos/{owner}/{repo}` probe to confirm identity, authentication, Issues, and permission. Agents use native `gh issue`/`gh api`; the CLI only validates managed structures.
+The checkpoint's single paginated GitHub process must confirm identity, authentication, Issues, and management permission while fetching managed issues. Agents use native `gh issue`/`gh api` only for targeted reads/writes; the CLI validates managed structures.
 
 - Repository plus issue number/URL is identity. Use a plain human title: never add a ZzzOps/date ID. Begin the body with concise human sections; no rendered metadata/frontmatter or duplicated title.
 - When introducing this backend, explain that goals inherit the repository's visibility and must not contain secrets or raw sensitive data.

@@ -85,7 +85,7 @@ class InitializationTests(unittest.TestCase):
         self.assertEqual([], zzzops.validate_plan(self.repo, plan))
         applied = zzzops.apply_plan(self.repo, plan)
         self.assertTrue(applied["changed"])
-        self.assertEqual("python .agents/zzzops.py", applied["preferences_command"])
+        self.assertEqual("<python> .agents/zzzops.py", applied["preferences_command"])
         result = zzzops.inspect_initialization(self.repo)
         self.assertFalse(result["initialized"])
         self.assertEqual("github_issues", result["state"]["backend"])
@@ -271,7 +271,16 @@ class InitializationTests(unittest.TestCase):
             "nameWithOwner": "owner/repo", "url": "https://github.com/owner/repo",
             "hasIssuesEnabled": False, "viewerPermission": "ADMIN",
         })
-        self.assertFalse(zzzops.github_repository_probe(self.repo)["usable"])
+        disabled = zzzops.github_repository_probe(self.repo)
+        self.assertFalse(disabled["usable"])
+        self.assertEqual("issues disabled", disabled["detail"])
+        run.return_value.stdout = json.dumps({
+            "nameWithOwner": "owner/repo", "url": "https://github.com/owner/repo",
+            "hasIssuesEnabled": True, "viewerPermission": "READ",
+        })
+        insufficient = zzzops.github_repository_probe(self.repo)
+        self.assertFalse(insufficient["usable"])
+        self.assertEqual("insufficient permission", insufficient["detail"])
 
 
 class ManagedGoalTests(unittest.TestCase):
@@ -474,7 +483,27 @@ class PortfolioTests(unittest.TestCase):
             repo = Path(temporary)
             (repo / ".zzzops").mkdir()
             (repo / ".zzzops" / "PROJECT.md").write_text("state", encoding="utf-8")
-            payload = [[self.issue(1), {**self.issue(2), "pull_request": {}}], [self.issue(3)]]
+            def graphql_issue(issue):
+                return {
+                    "number": issue["number"], "title": issue["title"], "body": issue["body"],
+                    "state": issue["state"].upper(), "updatedAt": issue["updated_at"], "url": issue["html_url"],
+                    "labels": {"nodes": issue["labels"]},
+                }
+
+            payload = [
+                {"data": {"repository": {
+                    "nameWithOwner": "owner/repo", "url": "https://example.test/owner/repo",
+                    "hasIssuesEnabled": True, "viewerPermission": "ADMIN",
+                    "issues": {"nodes": [graphql_issue(self.issue(1))],
+                               "pageInfo": {"hasNextPage": True, "endCursor": "page-1"}},
+                }}},
+                {"data": {"repository": {
+                    "nameWithOwner": "owner/repo", "url": "https://example.test/owner/repo",
+                    "hasIssuesEnabled": True, "viewerPermission": "ADMIN",
+                    "issues": {"nodes": [graphql_issue(self.issue(3))],
+                               "pageInfo": {"hasNextPage": False, "endCursor": "page-2"}},
+                }}},
+            ]
             run.return_value = SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
             snapshot = zzzops.portfolio_snapshot(repo)
         self.assertEqual([1, 3], [goal["key"] for goal in snapshot["goals"]])
@@ -482,9 +511,53 @@ class PortfolioTests(unittest.TestCase):
         self.assertEqual(1, snapshot["summary"]["processes"])
         self.assertEqual(0, snapshot["summary"]["ignored"])
         command = run.call_args.args[0]
+        self.assertIn("graphql", command)
         self.assertIn("--paginate", command)
         self.assertIn("--slurp", command)
         self.assertEqual(1, run.call_count)
+
+    @mock.patch.object(zzzops.shutil, "which", side_effect=lambda command: command)
+    @mock.patch.object(zzzops.subprocess, "run")
+    @mock.patch.object(zzzops, "charter_missing_fields", return_value=[])
+    @mock.patch.object(zzzops, "policy_blockers", return_value=[])
+    @mock.patch.object(zzzops, "validate_project_state", return_value=[])
+    @mock.patch.object(zzzops, "parse_project_state")
+    @mock.patch.object(zzzops, "read_project", return_value=(Path("PROJECT.md"), "project"))
+    def test_decision_checkpoint_embeds_portfolio_with_two_subprocesses(
+        self, _read, parse, _validate, _blockers, _missing, run, _which,
+    ):
+        parse.return_value = {
+            "initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"},
+            "policy": {"sections": []},
+        }
+        issue = self.issue(1)
+        graphql_issue = {
+            "number": issue["number"], "title": issue["title"], "body": issue["body"],
+            "state": issue["state"].upper(), "updatedAt": issue["updated_at"], "url": issue["html_url"],
+            "labels": {"nodes": issue["labels"]},
+        }
+        run.side_effect = [
+            SimpleNamespace(returncode=0, stdout="https://github.com/owner/repo.git\n", stderr=""),
+            SimpleNamespace(returncode=0, stdout=json.dumps([{"data": {"repository": {
+                "nameWithOwner": "owner/repo", "url": "https://example.test/owner/repo",
+                "hasIssuesEnabled": True, "viewerPermission": "ADMIN",
+                "issues": {"nodes": [graphql_issue],
+                           "pageInfo": {"hasNextPage": False, "endCursor": "page-1"}},
+            }}}]), stderr=""),
+        ]
+
+        result = zzzops.decision_checkpoint(Path("."))
+
+        self.assertTrue(result["ready"])
+        self.assertTrue(result["initialized"])
+        self.assertTrue(result["capabilities"]["github_auth"]["ok"])
+        self.assertTrue(result["capabilities"]["github_repository"]["usable"])
+        self.assertTrue(result["portfolio"]["complete"])
+        self.assertEqual([1], [goal["key"] for goal in result["portfolio"]["goals"]])
+        self.assertEqual({"total": 2, "github": 1}, result["processes"])
+        self.assertEqual(2, run.call_count)
+        self.assertEqual("git", run.call_args_list[0].args[0][0])
+        self.assertIn("graphql", run.call_args_list[1].args[0])
 
     @mock.patch.object(zzzops.shutil, "which", return_value="gh")
     @mock.patch.object(zzzops.subprocess, "run", return_value=SimpleNamespace(returncode=1, stdout="", stderr="API rate limit exceeded; partial page rejected"))
@@ -497,6 +570,20 @@ class PortfolioTests(unittest.TestCase):
             (repo / ".zzzops" / "PROJECT.md").write_text("state", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "rate limit.*partial page"):
                 zzzops.portfolio_snapshot(repo)
+
+    @mock.patch.object(zzzops.shutil, "which", return_value="gh")
+    @mock.patch.object(zzzops.subprocess, "run")
+    def test_github_adapter_rejects_repository_identity_drift(self, run, _which):
+        run.return_value = SimpleNamespace(returncode=0, stdout=json.dumps([{"data": {"repository": {
+            "nameWithOwner": "owner/renamed", "url": "https://example.test/owner/renamed",
+            "hasIssuesEnabled": True, "viewerPermission": "ADMIN",
+            "issues": {"nodes": [], "pageInfo": {"hasNextPage": False, "endCursor": None}},
+        }}}]), stderr="")
+
+        with self.assertRaisesRegex(ValueError, "identity drift.*owner/repo.*owner/renamed"):
+            zzzops.github_repository_portfolio_snapshot(
+                Path("."), {"backend": "github_issues", "repository": {"identity": "owner/repo"}},
+            )
 
     def test_large_graph_is_iterative_and_invalid_states_are_not_actionable(self):
         chain = [{"key": index, "parent": None, "depends_on": [] if index == 0 else [index - 1]} for index in range(1500)]
@@ -531,6 +618,25 @@ class PortfolioTests(unittest.TestCase):
         self.assertEqual(2, snapshot["summary"]["reads"])
         self.assertLess(json_bytes, raw_bytes)
         self.assertLess(summary_bytes, json_bytes)
+
+    def test_terminal_output_is_archived_after_full_validation(self):
+        records = [zzzops.github_goal_record(self.issue(number, status="done")) for number in range(1, 121)]
+        records.append(zzzops.github_goal_record(self.issue(121, status="ready")))
+        full = zzzops.build_portfolio_snapshot("github_issues", records, reads=2, raw_bytes=200000)
+        compact = zzzops.compact_portfolio_output(full)
+        full_bytes = len(json.dumps(full, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+        compact_bytes = len(json.dumps(compact, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+
+        archived = next(goal for goal in compact["goals"] if goal["key"] == 1)
+        active = next(goal for goal in compact["goals"] if goal["key"] == 121)
+        self.assertEqual(120, compact["summary"]["archived"])
+        self.assertEqual(
+            {"archived", "depends_on", "digest", "key", "parent", "revision", "status", "title", "updated_at", "url"},
+            set(archived),
+        )
+        self.assertNotIn("archived", active)
+        self.assertLess(compact_bytes, full_bytes // 2)
+        self.assertIn("1 [done archived]", zzzops.render_portfolio_summary(compact, include_done=True))
 
     def test_compare_reports_added_removed_and_changed_goals(self):
         current = zzzops.build_portfolio_snapshot("github_issues", [
