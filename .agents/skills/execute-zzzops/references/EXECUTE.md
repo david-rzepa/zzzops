@@ -11,14 +11,14 @@
 
 ## Execute
 
-1. Re-read only the selected goal and selection-critical parent/dependencies; compare snapshot revision/digest, then claim with expiry/checkpoint.
+1. Re-read only the selected goal and selection-critical parent/dependencies; compare revision/digest, then reserve per `GOAL_SYSTEM.md`. On contention refresh once and choose other work; only the winner claims or begins work.
 2. For source changes, establish/resume the policy-selected topology from `BRANCH_REVIEW.md` and persist branch/base/target before editing. Then follow `.zzzops/rules/EXECUTION_STRATEGY.md`: capture baseline; implement one smallest falsifiable chunk; run/inspect/record the real probe before continuing; widen only after proof.
 3. Work to a verified checkpoint without silent scope expansion. Classify discoveries as scope, checklist, child, dependency, or root. Apply PROJECT test-bug policy; never hide a failure, weaken the test, or expand authority silently.
 4. Persist evidence at natural checkpoints. Follow preference-limited parallel/worktree rules; coordinator owns ZzzOps state and integration.
 
 ## Block, complete, cycle
 
-- On a blocker, follow `.zzzops/rules/BLOCKERS.md`: record continuation, ask when useful, do only bounded safe work, then keep active or block/release claim and switch.
+- On a blocker, follow `.zzzops/rules/BLOCKERS.md`: record continuation, ask when useful, do only bounded safe work, then keep active or block/release claim and reservation before switching.
 - Before `done`, cite observed before/after evidence for each criterion; verify required children, blockers, and relevant checks; state anything unobserved. Build/lint/types/code review do not prove runtime behavior unless that is the criterion. Apply PROJECT completion-review policy through `SELF_REVIEW.md`; when required, fix/reverify in-scope findings and record even a clean result. Source-changing work then applies the reviewed gate in `BRANCH_REVIEW.md`; under the installed `human_after_checks` fallback, technical completion alone is not `done`.
 - Follow PROJECT Git/review/commit policy, staging only authorized implementation and pending local ZzzOps state; a GitHub-only state change never causes an empty commit. Refresh the batch after state mutation, recheck parent/unlocks, then select again.
 
