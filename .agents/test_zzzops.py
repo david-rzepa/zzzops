@@ -408,6 +408,48 @@ class PortfolioTests(unittest.TestCase):
         self.assertNotIn("Goal 1", summary)
         self.assertLess(len(summary.encode("utf-8")), snapshot["summary"]["raw_bytes"] // 10)
 
+    def test_review_ready_dependency_is_actionable_only_when_project_policy_allows_stacking(self):
+        review_ready = {
+            "branch": "goal/parent", "base": "dev", "target": "dev", "pr": "https://example.test/pull/1",
+            "review": {"status": "pending", "checkpoint": "abc123"},
+        }
+        records = [
+            zzzops.github_goal_record(self.issue(
+                1, status="blocked", implementation=review_ready,
+                blockers=[{"id": "B-1", "status": "open", "category": "human-action"}],
+            )),
+            zzzops.github_goal_record(self.issue(2, depends_on=[1], status="in_progress")),
+        ]
+        stacked = zzzops.build_portfolio_snapshot(
+            "github_issues", records, reads=1, raw_bytes=100,
+            git_policy={
+                "dependency_base": "dependency_branch",
+                "review_pending_dependency": "stack_from_reviewed_checkpoint",
+            },
+        )
+        by_key = {goal["key"]: goal for goal in stacked["goals"]}
+        self.assertEqual(1, stacked["summary"]["actionable"])
+        self.assertTrue(by_key[2]["actionable"])
+        self.assertIn("2 [in_progress actionable", zzzops.render_portfolio_summary(stacked))
+
+        completed_only = zzzops.build_portfolio_snapshot(
+            "github_issues", records, reads=1, raw_bytes=100,
+            git_policy={"dependency_base": "completed_goal"},
+        )
+        self.assertEqual(0, completed_only["summary"]["actionable"])
+        self.assertNotEqual(stacked["portfolio_digest"], completed_only["portfolio_digest"])
+        self.assertFalse(next(goal for goal in completed_only["goals"] if goal["key"] == 2)["actionable"])
+
+        records[0]["blocker_categories"] = ["technical-unknown"]
+        unsafe = zzzops.build_portfolio_snapshot(
+            "github_issues", records, reads=1, raw_bytes=100,
+            git_policy={
+                "dependency_base": "dependency_branch",
+                "review_pending_dependency": "stack_from_reviewed_checkpoint",
+            },
+        )
+        self.assertEqual(0, unsafe["summary"]["actionable"])
+
     def test_audit_reports_graph_state_claim_review_and_label_drift(self):
         stale = {"owner": "Codex", "expires_at": "2026-07-16T00:00:00Z"}
         pending = {"branch": "goal/x", "base": "dev", "target": "dev", "pr": "url", "review": {"status": "pending", "checkpoint": "abc"}}
@@ -524,10 +566,12 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("per_goal", git_policy["execution_branch"])
         self.assertEqual("nearest_authorized_trunk", git_policy["branch_base"])
         self.assertEqual("dependency_branch", git_policy["dependency_base"])
+        self.assertEqual("stack_from_reviewed_checkpoint", git_policy["review_pending_dependency"])
         self.assertTrue(git_policy["parent_pseudo_trunk"])
         self.assertEqual("per_goal", git_policy["pull_request_unit"])
         self.assertEqual("explicit_reviewed_override", git_policy["shared_pull_request"])
         self.assertEqual("human_after_checks", git_policy["review_gate"])
+        self.assertEqual(1, git_policy["review_state_reads_per_checkpoint"])
     def test_continuation_policy_defaults_are_structured(self):
         root = Path(__file__).parent
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
@@ -536,6 +580,13 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("resume_once_and_reprioritize", settings["after_additive_capture"])
         self.assertTrue(settings["exhausted_handoff_retains_intent"])
         self.assertEqual("require_explicit_harness_signal", settings["cross_task"])
+        self.assertEqual(
+            {
+                "enabled": True, "trigger": "total_actionable_exhaustion", "max_blockers": 1,
+                "notify_once": True, "poll_seconds": 30, "max_seconds": 180,
+            },
+            settings["human_unblock_watch"],
+        )
     def test_completion_review_policy_defaults_are_structured(self):
         root = Path(__file__).parent
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
@@ -574,15 +625,6 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn("BACKENDS.md", text, name)
         install = (root / "skills" / "install-zzzops" / "SKILL.md").read_text(encoding="utf-8")
         self.assertNotIn("INITIALIZATION.md", install)
-
-    def test_capture_and_execution_git_boundaries_are_explicit(self):
-        root = Path(__file__).parent
-        add = (root / "skills" / "add-zzzops-goal" / "SKILL.md").read_text(encoding="utf-8")
-        execute = (root / "skills" / "execute-zzzops" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("never creates a branch, commit, push, or PR", add)
-        self.assertIn("read PROJECT Git/review/continuation policy", execute)
-        self.assertIn("never absorb unrelated changes", execute)
-        self.assertIn("empty GitHub-state commit", execute)
 
 if __name__ == "__main__":
     unittest.main()

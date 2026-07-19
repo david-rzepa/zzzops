@@ -7,7 +7,7 @@ python .agents/zzzops.py --repo . portfolio --format summary
 python .agents/zzzops.py --repo . portfolio --format json
 ```
 
-The stable JSON projection contains selection, graph, blocker, claim, review, revision, and digest fields—not full criteria, evidence, comments, or history. Agents re-read only the selected goal before mutation. `complete:false`, `valid:false`, or a nonzero exit forbids selection from partial or structurally unsafe state. `--compare prior.json` reports added, removed, or changed digests/revisions without repairing state.
+The stable JSON projection contains selection, graph, blocker, claim, review, revision, and digest fields—not full criteria, evidence, comments, or history. Each goal receives a derived `actionable` flag using reviewed PROJECT dependency topology, including review-ready stacking only when policy permits it; the portfolio digest includes those selection settings. Agents re-read only the selected goal before mutation. `complete:false`, `valid:false`, or a nonzero exit forbids selection from partial or structurally unsafe state. `--compare prior.json` reports added, removed, or changed digests/revisions without repairing state.
 
 ## Regression contract
 

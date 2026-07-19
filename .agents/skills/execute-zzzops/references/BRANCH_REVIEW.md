@@ -5,7 +5,7 @@ Use this only for source-changing goals and apply reviewed PROJECT Git/review po
 ## Resolve topology
 
 1. Record one stable `implementation` identity per goal: branch, base, integration target, PR, and review status/checkpoint. Reuse it on resume.
-2. Resolve root base from PROJECT `branch_base`; dependent ancestry from `dependency_base` and `multiple_dependency_base`. For the installed fallback values, use the nearest authorized trunk, dependency branch, or a reviewed base containing every required ancestor. A technically ready dependency awaiting review may be its child’s recorded base: stack the child branch/PR on it and preserve ancestry/review order. Do not bypass an unresolved technical dependency, merge gate, or conflicting parent change; rebase and retest as its parent advances. Block rather than omit an ancestor or guess order.
+2. Resolve root base from PROJECT `branch_base`; dependent ancestry from `dependency_base`, `multiple_dependency_base`, and `review_pending_dependency`. Under the installed fallback, use the nearest authorized trunk, dependency branch, or a reviewed base containing every required ancestor; `stack_from_reviewed_checkpoint` makes a technically ready dependency awaiting review an actionable child base. Stack the child branch/PR while preserving ancestry/review order. Do not bypass an unresolved technical dependency, merge gate, or conflicting parent change; rebase and retest as its parent advances. Block rather than omit an ancestor or guess order.
 3. Apply PROJECT `parent_pseudo_trunk` and `child_target` recursively. Under the installed fallback, a goal with children owns their pseudo-trunk even without a direct commit; a child targets the nearest parent pseudo-trunk and may base on a sibling dependency branch.
 4. Follow policy integration order. Under the installed fallback, integrate reviewed children into their parent pseudo-trunk in dependency order and run combined checks/parent criteria before presenting the parent upstream.
 
@@ -19,7 +19,7 @@ Every implementation PR uses `Tracks #N`. Do not rely on closing keywords: GitHu
 
 ## Review gate
 
-At each review checkpoint for a recorded PR, make one bounded provider read of review state, unresolved inline threads, and relevant top-level comments. Prefer thread-aware data; classify each as actionable, resolved/outdated, discussion-only, automated, ambiguous, or unauthorized. Record concise actionable file/line context on the canonical goal. Do not poll.
+At each review checkpoint for a recorded PR, apply PROJECT `review_state_reads_per_checkpoint`; the installed fallback makes one bounded provider read of review state, unresolved inline threads, and relevant top-level comments. Prefer thread-aware data; classify each as actionable, resolved/outdated, discussion-only, automated, ambiguous, or unauthorized. Record concise actionable file/line context on the canonical goal. Do not poll outside an enabled PROJECT human-unblock watch.
 
 Address authorized actionable feedback only on the recorded branch/PR. Re-read the PR head and threads before mutation; after each small verified change, repeat self-review and required checks, record the new exact head/checkpoint, and invalidate prior approval. Ambiguous, scope-expanding, policy-conflicting, or unauthorized feedback is a categorized blocker; code changes never imply a provider thread was resolved.
 

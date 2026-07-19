@@ -2,7 +2,7 @@
 
 ## Authority and records
 
-Order: user/safety; project instructions; `.zzzops/PROJECT.md`; canonical GitHub issue.
+Order: user/safety; project instructions; `.zzzops/PROJECT.md`; canonical GitHub issue. Project instructions outrank stale derived policy, but a repository-specific conflict with reviewed PROJECT state invalidates the affected assumption: stop and reconcile it instead of silently choosing either operational rule.
 
 Before every non-install workflow follow `INITIALIZATION.md`, then use the GitHub Issues authority in `BACKENDS.md`.
 

@@ -58,9 +58,11 @@
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps first-release fallback", "default_disposition": "accepted",
         "settings": {
           "execution_branch": "per_goal", "branch_base": "nearest_authorized_trunk", "dependency_base": "dependency_branch",
+          "review_pending_dependency": "stack_from_reviewed_checkpoint",
           "multiple_dependency_base": "reviewed_base_containing_all", "parent_pseudo_trunk": true, "child_target": "nearest_parent_branch",
           "pull_request_unit": "per_goal", "shared_pull_request": "explicit_reviewed_override",
           "commit_unit": "verified_subgoal", "commit_style": "conventional", "review_gate": "human_after_checks",
+          "review_state_reads_per_checkpoint": 1,
           "pr_approval": "required_when_repository_requires_pr", "conversational_approval": "allowed_otherwise", "merge_after_approval": "when_authorized"
         },
         "exceptions": [], "unresolved": [], "review": {"approved": false}
@@ -73,6 +75,10 @@
           "continue_while_actionable": true, "triage_new_first": true, "max_easy_wins": 2,
           "execute_intent": "same_task_until_superseded", "new_goal_checkpoint": "next_safe_checkpoint",
           "after_additive_capture": "resume_once_and_reprioritize", "exhausted_handoff_retains_intent": true,
+          "human_unblock_watch": {
+            "enabled": true, "trigger": "total_actionable_exhaustion", "max_blockers": 1,
+            "notify_once": true, "poll_seconds": 30, "max_seconds": 180
+          },
           "stop_reasons_clear_intent": ["user_stop", "pause", "replacement_request", "capture_only", "required_authority", "blocking_boundary"],
           "cross_task": "require_explicit_harness_signal"
         },
@@ -137,7 +143,9 @@
         "decision": "Maximize safe autonomous progress; interview on consequential blockers; project and user ceilings both limit parallel work.", "rationale": "balances autonomy with authority and resource control",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps conservative fallback", "default_disposition": "accepted",
         "settings": {
-          "blocker_interview": "immediate_batch", "project_parallel_ceiling": "sequential", "max_workers": 1, "claim_ttl_hours": 4,
+          "blocker_interview": "immediate_batch",
+          "blocker_order": ["safety_access_human", "cross_goal_decisions", "specification", "technical_unknown"],
+          "project_parallel_ceiling": "sequential", "max_workers": 1, "claim_ttl_hours": 4,
           "refill": {"allowed_categories": ["documentation", "tests", "code_quality_non_behavioral"], "max_per_run": 3},
           "capture_defaults": {"priority": "P2", "difficulty": "unknown", "confidence": "low"},
           "planning": {"decompose_at": "L", "max_depth": 3}

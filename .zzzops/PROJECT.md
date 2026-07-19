@@ -13,7 +13,7 @@
         "source": ".zzzops/PROJECT.md"
       },
       {
-        "finding": "Repository guidance requires dev-based per-goal implementation, Conventional Commits, human review, observable work, and user-local preferences.",
+        "finding": "Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and user-local preferences.",
         "id": "E-002",
         "kind": "observed",
         "source": "AGENTS.md"
@@ -29,6 +29,12 @@
         "id": "E-004",
         "kind": "observed",
         "source": "user decisions and completed issues #77/#81"
+      },
+      {
+        "finding": "User decisions require review-ready dependency stacking, a brief bounded human-unblock watch, and artifact-specific verification without recursive documentation or test meta-tests.",
+        "id": "E-005",
+        "kind": "observed",
+        "source": "user decisions and goals #59/#88/#94/#95"
       }
     ],
     "schema_version": 1,
@@ -68,7 +74,7 @@
       {
         "applicable": true,
         "confidence": "high",
-        "decision": "Per-goal branches from dev, PRs to dev, Conventional Commits, and human review after checks.",
+        "decision": "Per-goal branches from dev, PRs to dev, review-ready dependency stacking, Conventional Commits, human review after checks, and owner-only main releases.",
         "default_disposition": "accepted",
         "default_origin": "repository policy",
         "exceptions": [],
@@ -93,12 +99,20 @@
           "multiple_dependency_base": "reviewed_base_containing_all",
           "parent_pseudo_trunk": true,
           "pr_approval": "required_when_repository_requires_pr",
+          "pull_request_target": "dev",
           "pull_request_unit": "per_goal",
+          "release_actor": "david-rzepa",
+          "release_branch": "main",
+          "release_update": "explicit_owner_force_push",
+          "release_workflow": "main_update_runs_release_ci",
+          "review_pending_dependency": "stack_from_reviewed_checkpoint",
           "review_gate": "human_after_checks",
+          "review_state_reads_per_checkpoint": 1,
           "shared_pull_request": "explicit_reviewed_override"
         },
         "source_ids": [
-          "E-002"
+          "E-002",
+          "E-005"
         ],
         "title": "Git, review, and release",
         "unresolved": []
@@ -125,6 +139,14 @@
           "cross_task": "require_explicit_harness_signal",
           "execute_intent": "same_task_until_superseded",
           "exhausted_handoff_retains_intent": true,
+          "human_unblock_watch": {
+            "enabled": true,
+            "max_blockers": 1,
+            "max_seconds": 180,
+            "notify_once": true,
+            "poll_seconds": 30,
+            "trigger": "total_actionable_exhaustion"
+          },
           "max_easy_wins": 2,
           "new_goal_checkpoint": "next_safe_checkpoint",
           "stop_reasons_clear_intent": [
@@ -138,7 +160,8 @@
           "triage_new_first": true
         },
         "source_ids": [
-          "E-001"
+          "E-001",
+          "E-005"
         ],
         "title": "Execution and work continuation",
         "unresolved": []
@@ -146,7 +169,7 @@
       {
         "applicable": true,
         "confidence": "high",
-        "decision": "Require observable evidence in small chunks; capture test-discovered product bugs and ask before expanding scope.",
+        "decision": "Require artifact-appropriate observable evidence in small chunks; documentation and test cases need no recursive tests, while product behavior and reusable test infrastructure require direct verification.",
         "default_disposition": "accepted",
         "default_origin": "repository policy",
         "exceptions": [],
@@ -160,12 +183,19 @@
           "reviewer": "user"
         },
         "settings": {
+          "artifact_verification": {
+            "documentation": "inspect_artifact_no_feature_test",
+            "product_runtime": "risk_proportionate_behavioral_probe",
+            "test_cases": "run_changed_tests_no_recursive_meta_test",
+            "test_harness": "focused_behavioral_regression"
+          },
           "mode": "chunk_probe",
           "test_bug": "capture_and_ask",
           "widen": "as_relevant"
         },
         "source_ids": [
-          "E-002"
+          "E-002",
+          "E-005"
         ],
         "title": "Verification and testing",
         "unresolved": []
@@ -273,6 +303,9 @@
         },
         "settings": {
           "documentation": "repository_conventions",
+          "installed_prompt_markdown_check": ".agents/prompt_stats.py --check",
+          "prompt_budget_ceiling": "explicit_value_justification",
+          "prompt_counts": "do_not_commit",
           "style": "repository_conventions"
         },
         "source_ids": [
@@ -326,6 +359,12 @@
         },
         "settings": {
           "blocker_interview": "immediate_batch",
+          "blocker_order": [
+            "safety_access_human",
+            "cross_goal_decisions",
+            "specification",
+            "technical_unknown"
+          ],
           "capture_defaults": {
             "confidence": "low",
             "difficulty": "unknown",
@@ -361,7 +400,7 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 8,
+  "revision": 9,
   "schema_version": 1
 }
 zzzops-project-state -->
@@ -428,33 +467,33 @@ Read every section in this exact file. Each unchecked stable policy ID is a `dec
   - Exceptions: none
   - Unresolved: none
 - [x] `[policy:git_review_release]` **Git, review, and release** (applicable)
-  - Decision: Per-goal branches from dev, PRs to dev, Conventional Commits, and human review after checks.
+  - Decision: Per-goal branches from dev, PRs to dev, review-ready dependency stacking, Conventional Commits, human review after checks, and owner-only main releases.
   - Rationale: Root repository instructions define the integration and release boundary.
-  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation, Conventional Commits, human review, observable work, and user-local preferences.
+  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and user-local preferences.; E-005: user decisions and goals #59/#88/#94/#95 — User decisions require review-ready dependency stacking, a brief bounded human-unblock watch, and artifact-specific verification without recursive documentation or test meta-tests.
   - Confidence/default: high; repository policy → accepted
-  - Settings: `{"branch_base": "dev", "child_target": "nearest_parent_branch", "commit_style": "conventional", "commit_unit": "verified_subgoal", "conversational_approval": "allowed_otherwise", "dependency_base": "dependency_branch", "execution_branch": "per_goal", "merge_after_approval": "when_authorized", "multiple_dependency_base": "reviewed_base_containing_all", "parent_pseudo_trunk": true, "pr_approval": "required_when_repository_requires_pr", "pull_request_unit": "per_goal", "review_gate": "human_after_checks", "shared_pull_request": "explicit_reviewed_override"}`
+  - Settings: `{"branch_base": "dev", "child_target": "nearest_parent_branch", "commit_style": "conventional", "commit_unit": "verified_subgoal", "conversational_approval": "allowed_otherwise", "dependency_base": "dependency_branch", "execution_branch": "per_goal", "merge_after_approval": "when_authorized", "multiple_dependency_base": "reviewed_base_containing_all", "parent_pseudo_trunk": true, "pr_approval": "required_when_repository_requires_pr", "pull_request_target": "dev", "pull_request_unit": "per_goal", "release_actor": "david-rzepa", "release_branch": "main", "release_update": "explicit_owner_force_push", "release_workflow": "main_update_runs_release_ci", "review_gate": "human_after_checks", "review_pending_dependency": "stack_from_reviewed_checkpoint", "review_state_reads_per_checkpoint": 1, "shared_pull_request": "explicit_reviewed_override"}`
   - Exceptions: none
   - Unresolved: none
 - [x] `[policy:execution_continuation]` **Execution and work continuation** (applicable)
   - Decision: Continue sequentially across actionable goals and incorporate newly captured goals at the next safe checkpoint.
   - Rationale: The charter prioritizes reducing babysitting while preserving explicit boundaries.
-  - Sources: E-001: .zzzops/PROJECT.md — The existing confirmed charter defines the outcome, KPIs, acceptance criteria, and value constraints.
+  - Sources: E-001: .zzzops/PROJECT.md — The existing confirmed charter defines the outcome, KPIs, acceptance criteria, and value constraints.; E-005: user decisions and goals #59/#88/#94/#95 — User decisions require review-ready dependency stacking, a brief bounded human-unblock watch, and artifact-specific verification without recursive documentation or test meta-tests.
   - Confidence/default: high; ZzzOps default → accepted
-  - Settings: `{"after_additive_capture": "resume_once_and_reprioritize", "continue_while_actionable": true, "cross_task": "require_explicit_harness_signal", "execute_intent": "same_task_until_superseded", "exhausted_handoff_retains_intent": true, "max_easy_wins": 2, "new_goal_checkpoint": "next_safe_checkpoint", "stop_reasons_clear_intent": ["user_stop", "pause", "replacement_request", "capture_only", "required_authority", "blocking_boundary"], "triage_new_first": true}`
+  - Settings: `{"after_additive_capture": "resume_once_and_reprioritize", "continue_while_actionable": true, "cross_task": "require_explicit_harness_signal", "execute_intent": "same_task_until_superseded", "exhausted_handoff_retains_intent": true, "human_unblock_watch": {"enabled": true, "max_blockers": 1, "max_seconds": 180, "notify_once": true, "poll_seconds": 30, "trigger": "total_actionable_exhaustion"}, "max_easy_wins": 2, "new_goal_checkpoint": "next_safe_checkpoint", "stop_reasons_clear_intent": ["user_stop", "pause", "replacement_request", "capture_only", "required_authority", "blocking_boundary"], "triage_new_first": true}`
   - Exceptions: none
   - Unresolved: none
 - [x] `[policy:verification_testing]` **Verification and testing** (applicable)
-  - Decision: Require observable evidence in small chunks; capture test-discovered product bugs and ask before expanding scope.
+  - Decision: Require artifact-appropriate observable evidence in small chunks; documentation and test cases need no recursive tests, while product behavior and reusable test infrastructure require direct verification.
   - Rationale: Root instructions forbid unobservable implementation and unsanctioned test-bug fixes.
-  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation, Conventional Commits, human review, observable work, and user-local preferences.
+  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and user-local preferences.; E-005: user decisions and goals #59/#88/#94/#95 — User decisions require review-ready dependency stacking, a brief bounded human-unblock watch, and artifact-specific verification without recursive documentation or test meta-tests.
   - Confidence/default: high; repository policy → accepted
-  - Settings: `{"mode": "chunk_probe", "test_bug": "capture_and_ask", "widen": "as_relevant"}`
+  - Settings: `{"artifact_verification": {"documentation": "inspect_artifact_no_feature_test", "product_runtime": "risk_proportionate_behavioral_probe", "test_cases": "run_changed_tests_no_recursive_meta_test", "test_harness": "focused_behavioral_regression"}, "mode": "chunk_probe", "test_bug": "capture_and_ask", "widen": "as_relevant"}`
   - Exceptions: none
   - Unresolved: none
 - [x] `[policy:code_quality]` **Code-quality and refactoring boundaries** (applicable)
   - Decision: Preserve behavior unless a goal explicitly authorizes a behavior change.
   - Rationale: A bounded self-review prevents unrelated cleanup from expanding work.
-  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation, Conventional Commits, human review, observable work, and user-local preferences.
+  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and user-local preferences.
   - Confidence/default: medium; ZzzOps default → accepted
   - Settings: `{"completion_self_review": "required_before_review_or_done", "dead_code": "remove_only_if_evidenced_and_in_scope", "dynamic_generated_vendor": "retain_without_proof", "non_behavioral_only_without_feature_goal": true, "record_clean_review": true, "reverify_after_changes": true, "review_scope": "goal_diff_tests_and_relevant_surroundings"}`
   - Exceptions: none
@@ -478,15 +517,15 @@ Read every section in this exact file. Each unchecked stable policy ID is a `dec
 - [x] `[policy:documentation_style]` **Documentation and style** (applicable)
   - Decision: Follow evidenced repository documentation and style conventions.
   - Rationale: Repository instructions require prompt-budget updates for instruction/template Markdown.
-  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation, Conventional Commits, human review, observable work, and user-local preferences.
+  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and user-local preferences.
   - Confidence/default: high; repository policy → accepted
-  - Settings: `{"documentation": "repository_conventions", "style": "repository_conventions"}`
+  - Settings: `{"documentation": "repository_conventions", "installed_prompt_markdown_check": ".agents/prompt_stats.py --check", "prompt_budget_ceiling": "explicit_value_justification", "prompt_counts": "do_not_commit", "style": "repository_conventions"}`
   - Exceptions: none
   - Unresolved: none
 - [x] `[policy:deployment_resources]` **Deployment, environment, and resources** (applicable)
   - Decision: Do not deploy without authority; default to sequential execution except bounded read-only delegation.
   - Rationale: Repository release policy restricts main updates and user preferences only allow read-only parallelism.
-  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation, Conventional Commits, human review, observable work, and user-local preferences.
+  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and user-local preferences.
   - Confidence/default: high; repository policy → accepted
   - Settings: `{"delegate_wait_after_seconds": 60, "deployment": "explicit_authority", "resource_mode": "read_only"}`
   - Exceptions: none
@@ -494,9 +533,9 @@ Read every section in this exact file. Each unchecked stable policy ID is a `dec
 - [x] `[policy:autonomy_approval_parallelism]` **Autonomy, approvals, and parallelism** (applicable)
   - Decision: Maximize safe autonomous progress; interview on consequential blockers; use at most two read-only workers.
   - Rationale: The charter values autonomy, completed issue #77 removed health reminders, and user-local preferences set a read-only two-worker ceiling.
-  - Sources: E-001: .zzzops/PROJECT.md — The existing confirmed charter defines the outcome, KPIs, acceptance criteria, and value constraints.; E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation, Conventional Commits, human review, observable work, and user-local preferences.; E-004: user decisions and completed issues #77/#81 — Health reminders were removed and GitHub Issues is now the only supported canonical goal backend.
+  - Sources: E-001: .zzzops/PROJECT.md — The existing confirmed charter defines the outcome, KPIs, acceptance criteria, and value constraints.; E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and user-local preferences.; E-004: user decisions and completed issues #77/#81 — Health reminders were removed and GitHub Issues is now the only supported canonical goal backend.
   - Confidence/default: high; project and user policy → accepted
-  - Settings: `{"blocker_interview": "immediate_batch", "capture_defaults": {"confidence": "low", "difficulty": "unknown", "priority": "P2"}, "claim_ttl_hours": 4, "max_workers": 2, "planning": {"decompose_at": "L", "max_depth": 3}, "project_parallel_ceiling": "read_only", "refill": {"allowed_categories": ["documentation", "tests", "code_quality_non_behavioral"], "max_per_run": 3}}`
+  - Settings: `{"blocker_interview": "immediate_batch", "blocker_order": ["safety_access_human", "cross_goal_decisions", "specification", "technical_unknown"], "capture_defaults": {"confidence": "low", "difficulty": "unknown", "priority": "P2"}, "claim_ttl_hours": 4, "max_workers": 2, "planning": {"decompose_at": "L", "max_depth": 3}, "project_parallel_ceiling": "read_only", "refill": {"allowed_categories": ["documentation", "tests", "code_quality_non_behavioral"], "max_per_run": 3}}`
   - Exceptions: none
   - Unresolved: none
 
@@ -508,3 +547,4 @@ Read every section in this exact file. Each unchecked stable policy ID is a `dec
 | 2026-07-18 | ZzzOps initialization | Created pending revision 6 | Confirmed agent-generated draft; exact-file policy review still required. |
 | 2026-07-18 | user | Reviewed policy revision 7 | Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, autonomy_approval_parallelism; source digest `sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7`. |
 | 2026-07-19 | ZzzOps maintenance | Removed inert transition state in revision 8 | The field was permanently false and contradicted the final v1 no-prior-schema-migration contract; reviewed policy decisions are unchanged. |
+| 2026-07-19 | ZzzOps execute #95 | Encoded policy/default conformance in revision 9 | Added source-cited review-ready stacking, bounded human-watch defaults, artifact verification, release boundaries, and prompt-budget settings; PR review is the exact-file policy checkpoint. |

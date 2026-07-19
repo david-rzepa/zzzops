@@ -16,7 +16,7 @@ Run `.zzzops/rules/INITIALIZATION.md`, then `.zzzops/rules/BACKENDS.md`. Read pr
 Exhausted-queue apply honors independent opt-ins:
 
 - `documentation`: missing/stale/misleading/inaccessible user, developer, or operations docs.
-- `tests`: evidenced untested behavior, regression, boundary, or missing fast feedback—not percentage theater. A discovered bug becomes a separate human-blocked TODO and is not fixed before input.
+- `tests`: evidenced untested behavior, regression, boundary, or missing fast feedback—not percentage theater. Apply PROJECT `test_bug`; under the installed `capture_and_ask` fallback, a discovered bug becomes a separate human-blocked TODO and is not fixed before input.
 - `code_quality_non_behavioral`: behavior-preserving naming, extraction/decomposition, dead/duplicate code cleanup, or monolith splitting. Require unchanged-behavior evidence; exclude features, architecture rewrites, and style churn.
 
 Use the intersection of PROJECT-allowed and user-enabled categories and the lower cap, then return to `$execute-zzzops`. Ask about material ambiguity; never manufacture utilization work.
