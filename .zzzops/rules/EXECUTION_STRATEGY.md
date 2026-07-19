@@ -6,6 +6,15 @@ Never implement from intuition alone. Before editing, record baseline, falsifiab
 
 Prefer public interfaces and native hooks. When behavior is hidden, build the smallest least-privileged observation adapter (headless harness, debug endpoint, probe command, or scoped MCP server). Avoid secrets/production mutation; document lifecycle and retain only regression value. Build/lint/types prove only those properties. If required behavior cannot be observed within authority, block rather than guess.
 
+Apply reviewed PROJECT verification policy first. When it does not specify artifact handling, classify the changed surface and use this fallback:
+
+- Product/runtime behavior: prove the affected behavior with a risk-proportionate real probe or test.
+- Documentation/examples: inspect the artifact itself and render, check links/examples, or lint only when relevant. Do not add automated or human feature tests solely to test prose.
+- Test cases: run the changed tests and inspect their expected failure/pass signal. Do not add recursive meta-tests whose only subject is test wording, layout, ordering, counts, or internal paths.
+- Reusable test infrastructure: directly probe shared harnesses, runners, adapters, fixtures, assertion helpers, utilities, and CI test plumbing because a defect can invalidate many tests.
+
+The artifact label never excuses unverified shipped behavior: documentation or test changes that also alter product/runtime behavior use the product/runtime rule. Record why the selected check is sufficient.
+
 ## Test-discovered bugs
 
 Preserve the smallest reproduction and distinguish product failure from test/environment failure. Never hide the bug, weaken/delete the test, silently expand scope, or encode broken behavior as correct. Then follow PROJECT test-bug policy; absent explicit authorization, capture a linked human-blocked goal and ask before fixing. Correct test-only defects normally and record the distinction.

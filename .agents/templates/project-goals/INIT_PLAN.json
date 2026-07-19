@@ -80,9 +80,17 @@
       },
       {
         "id": "verification_testing", "title": "Verification and testing", "required": true, "applicable": true,
-        "decision": "Require observable evidence in small chunks; capture test-discovered product bugs and ask before expanding scope.", "rationale": "prevents unobservable vibe coding and hidden behavior changes",
+        "decision": "Require artifact-appropriate observable evidence in small chunks; documentation and test cases need no recursive tests, while product behavior and reusable test infrastructure require direct verification.", "rationale": "prevents unobservable product changes and false confidence without manufacturing documentation or test meta-tests",
         "source_ids": ["E-002"], "confidence": "high", "default_origin": "ZzzOps observable-work fallback", "default_disposition": "accepted",
-        "settings": {"mode": "chunk_probe", "widen": "as_relevant", "test_bug": "capture_and_ask"},
+        "settings": {
+          "mode": "chunk_probe", "widen": "as_relevant", "test_bug": "capture_and_ask",
+          "artifact_verification": {
+            "product_runtime": "risk_proportionate_behavioral_probe",
+            "documentation": "inspect_artifact_no_feature_test",
+            "test_cases": "run_changed_tests_no_recursive_meta_test",
+            "test_harness": "focused_behavioral_regression"
+          }
+        },
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {

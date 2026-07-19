@@ -189,7 +189,7 @@ Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required
 - `.zzzops/PREFERENCES.json` — local, ignored user opt-ins for bounded autonomous backlog refills.
 - `.zzzops/migration/STATE.json` — records reviewed import fingerprints so repeat migrations propose only new work.
 
-Agents follow the reviewed project resource policy, define the observable signal before editing, change one small falsifiable chunk at a time, and inspect real output after every chunk. If the project is opaque, they build a focused harness or scoped MCP observation server instead of vibe-coding and hoping. Execution follows the reviewed project branch, review, and commit policy; capture itself is Git-free.
+Agents follow the reviewed project resource policy, define the observable signal before editing, change one small falsifiable chunk at a time, and inspect real output after every chunk. Verification is proportional: documentation is inspected, changed tests are run, and product/runtime behavior plus reusable test infrastructure receive direct behavioral coverage—ZzzOps does not recursively add tests for prose or test cases. If the project is opaque, agents build a focused harness or scoped MCP observation server instead of vibe-coding and hoping. Execution follows the reviewed project branch, review, and commit policy; capture itself is Git-free.
 
 If a new test discovers a real bug, ZzzOps files a separate TODO and asks you before fixing it. It does not smuggle a surprise product change into “just adding coverage,” because we have all reviewed that pull request before.
 
