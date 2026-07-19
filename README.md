@@ -98,7 +98,7 @@ For persistent Codex execution:
 /goal Use $execute-zzzops to work through all actionable project goals until complete or genuinely blocked.
 ```
 
-`/goal` is Codex-specific. Claude Code invokes ZzzOps workflows directly as `/skill-name`; ZzzOps supplies the same queue and operating rules in either tool. This is the point of ZzzOps: stop babysitting agents. When work runs dry, the agent interviews you about blockers before conceding defeat. This is your scheduled cameo. After that, please locate the bedroom; staying awake does not make the remaining tokens more valuable.
+`/goal` is Codex-specific. Claude Code invokes ZzzOps workflows directly as `/skill-name`; ZzzOps supplies the same queue and operating rules in either tool. This is the point of ZzzOps: stop babysitting agents. When work runs dry, the agent interviews you about blockers before conceding defeat. If one safely observable human action is all that remains, it notifies you and briefly watches for completion before handing off. This is your scheduled cameo. After that, please locate the bedroom; staying awake does not make the remaining tokens more valuable.
 
 Source-changing goals follow the reviewed project branch/review policy and pause at a human review blocker after checks. Maintainers: see the [branch topology and review lifecycle](docs/EXECUTION.md).
 
@@ -117,7 +117,7 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 | Capture durable work | `.agents/skills/add-zzzops-goal/SKILL.md` |
 | Migrate legacy TODOs | `.agents/skills/migrate-to-zzzops/SKILL.md` |
 | Suggest evidence-backed backlog work | `.agents/skills/suggest-zzzops-work/SKILL.md` |
-| Execute, prioritize, unblock, verify, and hand off goals | `.agents/skills/execute-zzzops/SKILL.md` |
+| Execute, prioritize, unblock, briefly watch human gates, verify, and hand off goals | `.agents/skills/execute-zzzops/SKILL.md` |
 | Configure backlog refill and parallelization preferences | `.agents/zzzops.py` |
 | Inspect the canonical portfolio from the CLI | `.agents/zzzops.py` |
 | Enforce per-goal dev branches, PR review, and release boundaries | `.github/workflows` |

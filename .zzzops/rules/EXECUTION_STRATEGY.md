@@ -35,6 +35,6 @@ Do not use writable worktrees for coupled work, broad shared-file changes, gener
 
 ## Waits, commits, resources
 
-Delegate wait-dominated commands at the PROJECT threshold before launch; keep the main thread on independent lightweight work. If an unexpected command runs long, poll boundedly and delegate comparable future waits rather than duplicate it.
+Delegate wait-dominated commands and human-unblock watches at the PROJECT threshold before launch; keep the main thread on independent lightweight work. If an unexpected command runs long, poll boundedly and delegate comparable future waits rather than duplicate it. A wait monitor remains read-only and must stop on user input or state drift.
 
 Follow PROJECT Git/commit policy and never absorb unrelated changes. Note fan-out, latency benefit, resource evidence, and contention; revert work types to sequential when parallel cost lacks value.
