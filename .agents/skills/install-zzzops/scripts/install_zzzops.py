@@ -54,13 +54,12 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--confirm-plan")
     parser.add_argument("--overwrite-mechanical", action="store_true")
-    parser.add_argument("--allow-non-git", action="store_true")
     args = parser.parse_args()
     root, target = source_root(), args.target.resolve()
     errors: list[str] = []
     if not target.is_dir():
         errors.append("Target is not a directory")
-    elif not args.allow_non_git and not (target / ".git").exists():
+    elif not (target / ".git").exists():
         errors.append("Target has no .git entry")
     try:
         manifest = files_to_copy(root)

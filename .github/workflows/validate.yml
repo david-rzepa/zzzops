@@ -20,18 +20,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Test prompt accounting
-        run: python .agents/test_prompt_stats.py
-      - name: Test ZzzOps initialization and workflows
-        run: python .agents/test_zzzops.py
+      - name: Test ZzzOps core and repository contracts
+        run: python -m unittest discover -s .agents -p 'test_*.py'
       - name: Test mechanics installer
         run: python -m unittest discover -s .agents/skills/install-zzzops/scripts -p 'test_*.py'
       - name: Test TODO migration inventory
         run: python -m unittest discover -s .agents/skills/migrate-to-zzzops/scripts -p 'test_*.py'
       - name: Test manual acceptance plan coverage
-        run: |
-          python .agents/test_manual_acceptance.py
-          python .agents/manual_acceptance.py coverage
+        run: python .agents/manual_acceptance.py coverage
       - name: Test semantic releases
         run: python -m unittest discover -s .github/scripts -p 'test_*.py'
       - name: Verify prompt budget

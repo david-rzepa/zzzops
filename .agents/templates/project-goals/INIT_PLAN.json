@@ -3,7 +3,6 @@
   "base_digest": "sha256:replace-from-init-inspect",
   "confirmed": false,
   "backend": "github_issues",
-  "migration_pending": false,
   "repository": {
     "identity": "owner/repository",
     "remote": "https://github.com/owner/repository.git"
@@ -37,8 +36,7 @@
     {"evidence_id": "E-002", "confirmed_by": "user", "date": "YYYY-MM-DD"}
   ],
   "github": {
-    "usable": false,
-    "evidence": "replace with GitHub capability result"
+    "usable": false
   },
   "policy": {
     "schema_version": 1,
@@ -56,7 +54,7 @@
       },
       {
         "id": "git_review_release", "title": "Git, review, and release", "required": true, "applicable": true,
-        "decision": "Follow repository rules; otherwise use the current branch and one Conventional Commit per verified sub-goal.", "rationale": "replace with repository evidence or retain the labeled fallback",
+        "decision": "Follow repository rules; otherwise use one branch per source-changing goal from the nearest authorized trunk and one Conventional Commit per verified sub-goal.", "rationale": "replace with repository evidence or retain the labeled fallback",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps first-release fallback", "default_disposition": "accepted",
         "settings": {
           "execution_branch": "per_goal", "branch_base": "nearest_authorized_trunk", "dependency_base": "dependency_branch",

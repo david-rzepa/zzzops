@@ -11,7 +11,7 @@ First run `../../../.zzzops/rules/INITIALIZATION.md`, then route through `../../
 Track execute intent through `../../../.zzzops/rules/CONTINUATION.md` so additive capture can safely resume without nested loops.
 
 
-- Create/triage/decompose: [CREATE.md](references/CREATE.md) and `../../templates/project-goals/GOAL.md`.
+- Create/triage/decompose: [CREATE.md](references/CREATE.md).
 - Unblock/interview: [UNBLOCK.md](references/UNBLOCK.md) and `../../../.zzzops/rules/BLOCKERS.md`.
 - Select/execute/complete/handoff: [EXECUTE.md](references/EXECUTE.md).
 - Source-changing branch topology/review: [BRANCH_REVIEW.md](references/BRANCH_REVIEW.md).

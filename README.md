@@ -102,26 +102,22 @@ For persistent Codex execution:
 
 Source-changing goals follow the reviewed project branch/review policy and pause at a human review blocker after checks. Maintainers: see the [branch topology and review lifecycle](docs/EXECUTION.md).
 
-## Useful maintenance
-
 ## Full feature list
 
-This is the complete list of shipped user-facing ZzzOps features. It is a catalogue, not exhaustive documentation. Add or update an entry in the same change as any listed surface; `.agents/test_feature_inventory.py` rejects missing skills or feature surfaces.
+This is the complete list of shipped user-facing ZzzOps features. It is a catalogue, not exhaustive documentation. Keep it current whenever a user-facing surface changes.
 
-<!-- zzzops-feature-inventory -->
 | Feature | Primary surface |
 | --- | --- |
 | Install ZzzOps mechanics into another repository | `.agents/skills/install-zzzops/SKILL.md` |
 | Initialize a project with reviewed operating policies | `.agents/zzzops.py` |
 | Use GitHub Issues as the canonical goal backend | `.zzzops/rules/BACKENDS.md` |
 | Capture durable work | `.agents/skills/add-zzzops-goal/SKILL.md` |
-| Migrate legacy TODOs | `.agents/skills/migrate-to-zzzops/SKILL.md` |
+| Migrate repository TODOs and backlogs | `.agents/skills/migrate-to-zzzops/SKILL.md` |
 | Suggest evidence-backed backlog work | `.agents/skills/suggest-zzzops-work/SKILL.md` |
 | Execute, prioritize, unblock, briefly watch human gates, verify, and hand off goals | `.agents/skills/execute-zzzops/SKILL.md` |
 | Configure backlog refill and parallelization preferences | `.agents/zzzops.py` |
 | Inspect the canonical portfolio from the CLI | `.agents/zzzops.py` |
-| Enforce per-goal dev branches, PR review, and release boundaries | `.github/workflows` |
-<!-- /zzzops-feature-inventory -->
+| Validate dev PRs and preview or publish semantic releases | `.github/workflows` |
 
 ```text
 Use $execute-zzzops to interview me about and unblock blocked goals.
@@ -169,7 +165,19 @@ Develop on branches created from `dev` and open ordinary PRs against `dev`. The 
 
 Versions follow Conventional Commits since the latest `vMAJOR.MINOR.PATCH` tag: `!`, `BREAKING CHANGE:`, or `BREAKING-CHANGE:` bumps major, `feat` bumps minor, and `fix`/`perf` bumps patch. Other types do not release. The first release applies those rules from `0.0.0`; reruns with no new releasable commits are no-ops. No repository secret is required beyond GitHub's job token.
 
-To diagnose a PR or release, inspect **PR validation / dev-required-tests** or the **Semantic release** run and its failing step. Reproduce checks locally with `python .agents/test_prompt_stats.py`, `python .agents/test_zzzops.py`, `python -m unittest discover -s .github/scripts -p 'test_*.py'`, and `python .agents/prompt_stats.py --check`. `python .github/scripts/semantic_release.py` only writes a local notes file.
+To diagnose a PR or release, inspect **PR validation / dev-required-tests** or the **Semantic release** run and its failing step. Reproduce the same checks locally with:
+
+```powershell
+python -m unittest discover -s .agents -p 'test_*.py'
+python -m unittest discover -s .agents/skills/install-zzzops/scripts -p 'test_*.py'
+python -m unittest discover -s .agents/skills/migrate-to-zzzops/scripts -p 'test_*.py'
+python -m unittest discover -s .github/scripts -p 'test_*.py'
+python .agents/manual_acceptance.py coverage
+python .agents/prompt_stats.py --check
+python -m compileall -q .agents .github/scripts
+```
+
+`python .github/scripts/semantic_release.py` only writes a local notes file.
 
 Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required `dev` check, current GitHub Free limitation, closest enforceable `main` policy, and recovery procedure.
 
@@ -179,9 +187,9 @@ Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required
 - GitHub Issues — canonical goals, blockers, evidence, relations, and history.
 - `.zzzops/rules/` — tracked ZzzOps operating rules; machinery, not project content.
 - `.zzzops/PREFERENCES.json` — local, ignored user opt-ins for bounded autonomous backlog refills.
-- `.zzzops/migration/STATE.json` — keeps old TODOs from returning like a low-budget horror villain.
+- `.zzzops/migration/STATE.json` — records reviewed import fingerprints so repeat migrations propose only new work.
 
-Agents work sequentially by default, define the observable signal before editing, change one small falsifiable chunk at a time, and inspect real output after every chunk. If the project is opaque, they build a focused harness or scoped MCP observation server instead of vibe-coding and hoping. Execution defaults to the current branch, follows repository Git rules, and gives each completed sub-goal its own commit; capture itself is Git-free.
+Agents follow the reviewed project resource policy, define the observable signal before editing, change one small falsifiable chunk at a time, and inspect real output after every chunk. If the project is opaque, they build a focused harness or scoped MCP observation server instead of vibe-coding and hoping. Execution follows the reviewed project branch, review, and commit policy; capture itself is Git-free.
 
 If a new test discovers a real bug, ZzzOps files a separate TODO and asks you before fixing it. It does not smuggle a surprise product change into “just adding coverage,” because we have all reviewed that pull request before.
 
