@@ -14,6 +14,7 @@ import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 PROJECT_SCHEMA_VERSION = 1
 PLAN_SCHEMA_VERSION = 1
@@ -68,6 +69,272 @@ query($owner:String!,$name:String!,$labels:[String!],$endCursor:String){
 """.strip()
 PREFERENCES_COMMAND = "<python> .agents/zzzops.py"
 GITHUB_MANAGEMENT_PERMISSIONS = {"TRIAGE", "WRITE", "MAINTAIN", "ADMIN"}
+RESERVATION_COLOR = "5319E7"
+RESERVATION_ID = re.compile(r"^[A-Za-z0-9._-]+$")
+RESERVATION_EXPIRY_GRACE_SECONDS = 60
+
+
+class ReservationProviderError(ValueError):
+    """The provider did not produce a safe, confirmed reservation result."""
+
+
+def _reservation_actor(value: str, field: str, limit: int) -> str:
+    if not isinstance(value, str) or not value or len(value) > limit or not RESERVATION_ID.fullmatch(value):
+        raise ValueError(f"{field} must be 1-{limit} characters using letters, numbers, dot, underscore, or hyphen")
+    return value
+
+
+def reservation_label_name(goal: int) -> str:
+    if not isinstance(goal, int) or isinstance(goal, bool) or goal < 1:
+        raise ValueError("goal must be a positive issue number")
+    return f"zzzops:reserve:{goal}"
+
+
+def reservation_repository_key(repository: str) -> str:
+    return hashlib.sha256(repository.casefold().encode("utf-8")).hexdigest()[:12]
+
+
+def reservation_description(repository: str, goal: int, revision: int, owner: str, run_id: str, expires_at: int) -> str:
+    owner = _reservation_actor(owner, "owner", 20)
+    run_id = _reservation_actor(run_id, "run-id", 32)
+    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+        raise ValueError("revision must be a positive integer")
+    repository_key = reservation_repository_key(repository)
+    description = f"z1|r={repository_key}|g={goal}|v={revision}|o={owner}|u={run_id}|x={expires_at}"
+    if len(description) > 100:
+        raise ValueError("reservation metadata exceeds GitHub's label-description limit")
+    return description
+
+
+def parse_reservation_description(value: Any) -> dict[str, Any]:
+    if not isinstance(value, str):
+        raise ReservationProviderError("Reservation metadata is missing; no ownership assumed.")
+    parts = value.split("|")
+    if not parts or parts[0] != "z1":
+        raise ReservationProviderError("Reservation metadata is invalid; no ownership assumed.")
+    fields = {}
+    for part in parts[1:]:
+        key, separator, item = part.partition("=")
+        if not separator or key in fields:
+            raise ReservationProviderError("Reservation metadata is invalid; no ownership assumed.")
+        fields[key] = item
+    if set(fields) != {"r", "g", "v", "o", "u", "x"}:
+        raise ReservationProviderError("Reservation metadata is incomplete; no ownership assumed.")
+    try:
+        return {
+            "repository_key": fields["r"], "goal": int(fields["g"]), "revision": int(fields["v"]),
+            "owner": fields["o"], "run_id": fields["u"], "expires_at": int(fields["x"]),
+        }
+    except ValueError as exc:
+        raise ReservationProviderError("Reservation metadata is invalid; no ownership assumed.") from exc
+
+
+class GitHubReservationAdapter:
+    def __init__(self, repo: Path, repository: str):
+        self.repo = repo
+        self.repository = repository
+        self.executable = shutil.which("gh")
+        if not self.executable:
+            raise ReservationProviderError("GitHub CLI is unavailable; no reservation was made.")
+        self._identity_checked = False
+
+    def _run(self, arguments: list[str], timeout: int = 30) -> subprocess.CompletedProcess[str]:
+        try:
+            return subprocess.run(
+                [self.executable, *arguments], cwd=self.repo, capture_output=True, text=True,
+                encoding="utf-8", timeout=timeout, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ReservationProviderError(f"GitHub did not confirm the reservation request ({type(exc).__name__}); no ownership assumed.") from exc
+
+    def _provider_error(self, result: subprocess.CompletedProcess[str]) -> ReservationProviderError:
+        detail = sanitize_output((result.stderr.strip() or result.stdout.strip() or "unknown GitHub error").splitlines()[0][:300])
+        return ReservationProviderError(f"GitHub did not confirm the reservation request: {detail}")
+
+    def ensure_identity(self) -> None:
+        if self._identity_checked:
+            return
+        result = self._run(["repo", "view", self.repository, "--json", "nameWithOwner,hasIssuesEnabled,viewerPermission"])
+        if result.returncode:
+            raise self._provider_error(result)
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise ReservationProviderError("GitHub returned invalid repository metadata; no reservation was made.") from exc
+        if data.get("nameWithOwner", "").casefold() != self.repository.casefold():
+            raise ReservationProviderError("GitHub repository identity changed; no reservation was made.")
+        if not data.get("hasIssuesEnabled") or data.get("viewerPermission") not in GITHUB_MANAGEMENT_PERMISSIONS:
+            raise ReservationProviderError("GitHub Issues management permission is required; no reservation was made.")
+        self._identity_checked = True
+
+    def goal_revision(self, goal: int) -> int:
+        self.ensure_identity()
+        result = self._run(["api", f"repos/{self.repository}/issues/{goal}"])
+        if result.returncode:
+            raise self._provider_error(result)
+        try:
+            issue = json.loads(result.stdout)
+            parsed = parse_managed_goal(issue.get("body"), goal)
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise ReservationProviderError("The goal could not be validated; no reservation was made.") from exc
+        if parsed is None:
+            raise ReservationProviderError("The goal could not be validated; no reservation was made.")
+        return parsed["revision"]
+
+    def get_label(self, name: str) -> dict[str, Any] | None:
+        result = self._run(["api", f"repos/{self.repository}/labels/{quote(name, safe='')}"])
+        if result.returncode:
+            if "404" in result.stderr or "Not Found" in result.stderr:
+                return None
+            raise self._provider_error(result)
+        try:
+            label = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise ReservationProviderError("GitHub returned invalid reservation metadata; no ownership assumed.") from exc
+        if not isinstance(label, dict) or not label.get("node_id"):
+            raise ReservationProviderError("GitHub returned incomplete reservation metadata; no ownership assumed.")
+        return label
+
+    def create_label(self, name: str, description: str) -> dict[str, Any] | None:
+        result = self._run([
+            "api", "--method", "POST", f"repos/{self.repository}/labels",
+            "-f", f"name={name}", "-f", f"color={RESERVATION_COLOR}", "-f", f"description={description}",
+        ])
+        if result.returncode:
+            existing = self.get_label(name)
+            if existing is not None:
+                return None
+            raise self._provider_error(result)
+        try:
+            return json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            confirmed = self.get_label(name)
+            if confirmed and confirmed.get("description") == description:
+                return confirmed
+            raise ReservationProviderError("GitHub did not confirm the created reservation; no ownership assumed.") from exc
+
+    def delete_label(self, node_id: str) -> None:
+        query = "mutation($id:ID!){deleteLabel(input:{id:$id}){clientMutationId}}"
+        result = self._run(["api", "graphql", "-F", f"id={node_id}", "-f", f"query={query}"])
+        if result.returncode:
+            raise self._provider_error(result)
+
+    def update_label(self, node_id: str, description: str) -> None:
+        query = "mutation($id:ID!,$description:String!){updateLabel(input:{id:$id,description:$description}){label{id description}}}"
+        result = self._run([
+            "api", "graphql", "-F", f"id={node_id}", "-F", f"description={description}", "-f", f"query={query}",
+        ])
+        if result.returncode:
+            raise self._provider_error(result)
+
+
+def _validate_reservation_goal(adapter: Any, repository: str, goal: int, revision: int) -> None:
+    if adapter.repository.casefold() != repository.casefold():
+        raise ReservationProviderError("Repository identity changed; no reservation was made.")
+    observed_revision = adapter.goal_revision(goal)
+    if observed_revision != revision:
+        raise ReservationProviderError(
+            f"Goal #{goal} changed from revision {revision} to {observed_revision}; refresh before reserving it."
+        )
+
+
+def _reservation_matches(label: dict[str, Any], description: str) -> bool:
+    return label.get("description") == description and bool(label.get("node_id"))
+
+
+def _validate_reservation_metadata(metadata: dict[str, Any], repository: str, goal: int) -> None:
+    if metadata["repository_key"] != reservation_repository_key(repository) or metadata["goal"] != goal:
+        raise ReservationProviderError("Reservation identity is invalid; no ownership assumed.")
+
+
+def acquire_reservation(
+    adapter: Any, repository: str, goal: int, revision: int, owner: str, run_id: str,
+    ttl_seconds: int = 900, now: datetime | None = None,
+) -> dict[str, Any]:
+    if not isinstance(ttl_seconds, int) or isinstance(ttl_seconds, bool) or not 60 <= ttl_seconds <= 86400:
+        raise ValueError("ttl-seconds must be from 60 to 86400")
+    now = now or datetime.now(timezone.utc)
+    now_epoch = int(now.timestamp())
+    expires_at = now_epoch + ttl_seconds
+    name = reservation_label_name(goal)
+    description = reservation_description(repository, goal, revision, owner, run_id, expires_at)
+    _validate_reservation_goal(adapter, repository, goal, revision)
+    existing = adapter.get_label(name)
+    if existing is not None:
+        current = parse_reservation_description(existing.get("description"))
+        _validate_reservation_metadata(current, repository, goal)
+        if current["owner"] == owner and current["run_id"] == run_id and current["revision"] <= revision and current["expires_at"] > now_epoch:
+            return {"acquired": True, "outcome": "already_owned", "goal": goal, "expires_at": current["expires_at"]}
+        if current["expires_at"] + RESERVATION_EXPIRY_GRACE_SECONDS > now_epoch:
+            return {"acquired": False, "outcome": "contended", "goal": goal}
+        try:
+            adapter.delete_label(existing["node_id"])
+        except ReservationProviderError:
+            pass
+    created = adapter.create_label(name, description)
+    if created is None:
+        return {"acquired": False, "outcome": "contended", "goal": goal}
+    if not _reservation_matches(created, description):
+        confirmed = adapter.get_label(name)
+        if confirmed is None or not _reservation_matches(confirmed, description):
+            raise ReservationProviderError("GitHub did not confirm reservation ownership; no ownership assumed.")
+    return {"acquired": True, "outcome": "acquired", "goal": goal, "expires_at": expires_at}
+
+
+def renew_reservation(
+    adapter: Any, repository: str, goal: int, revision: int, owner: str, run_id: str,
+    ttl_seconds: int = 900, now: datetime | None = None,
+) -> dict[str, Any]:
+    if not isinstance(ttl_seconds, int) or isinstance(ttl_seconds, bool) or not 60 <= ttl_seconds <= 86400:
+        raise ValueError("ttl-seconds must be from 60 to 86400")
+    now = now or datetime.now(timezone.utc)
+    now_epoch = int(now.timestamp())
+    name = reservation_label_name(goal)
+    _validate_reservation_goal(adapter, repository, goal, revision)
+    existing = adapter.get_label(name)
+    if existing is None:
+        return {"acquired": False, "outcome": "missing", "goal": goal}
+    current = parse_reservation_description(existing.get("description"))
+    _validate_reservation_metadata(current, repository, goal)
+    if current["owner"] != owner or current["run_id"] != run_id or current["revision"] > revision or current["expires_at"] <= now_epoch:
+        return {"acquired": False, "outcome": "not_owned", "goal": goal}
+    expires_at = now_epoch + ttl_seconds
+    description = reservation_description(repository, goal, revision, owner, run_id, expires_at)
+    try:
+        adapter.update_label(existing["node_id"], description)
+    except ReservationProviderError:
+        confirmed = adapter.get_label(name)
+        if confirmed is None or confirmed.get("node_id") != existing["node_id"] or not _reservation_matches(confirmed, description):
+            raise ReservationProviderError("GitHub did not confirm reservation renewal; no ownership assumed.")
+    return {"acquired": True, "outcome": "renewed", "goal": goal, "expires_at": expires_at}
+
+
+def release_reservation(adapter: Any, repository: str, goal: int, revision: int, owner: str, run_id: str) -> dict[str, Any]:
+    name = reservation_label_name(goal)
+    _validate_reservation_goal(adapter, repository, goal, revision)
+    existing = adapter.get_label(name)
+    if existing is None:
+        return {"released": True, "outcome": "already_released", "goal": goal}
+    current = parse_reservation_description(existing.get("description"))
+    _validate_reservation_metadata(current, repository, goal)
+    if current["owner"] != owner or current["run_id"] != run_id or current["revision"] > revision:
+        return {"released": False, "outcome": "not_owned", "goal": goal}
+    try:
+        adapter.delete_label(existing["node_id"])
+    except ReservationProviderError:
+        confirmed = adapter.get_label(name)
+        if confirmed is not None and confirmed.get("node_id") == existing["node_id"]:
+            raise ReservationProviderError("GitHub did not confirm reservation release; it will expire safely.")
+    return {"released": True, "outcome": "released", "goal": goal}
+
+
+def project_claim_ttl_seconds(project: dict[str, Any]) -> int:
+    sections = ((project.get("policy") or {}).get("sections") if isinstance(project.get("policy"), dict) else None)
+    section = next((item for item in sections or [] if isinstance(item, dict) and item.get("id") == "autonomy_approval_parallelism"), None)
+    hours = ((section.get("settings") or {}).get("claim_ttl_hours") if isinstance(section, dict) else None)
+    if not isinstance(hours, int) or isinstance(hours, bool) or not 1 <= hours <= 24:
+        raise ValueError("Reviewed project policy must set claim_ttl_hours from 1 to 24")
+    return hours * 3600
 
 PREFERENCE_LABELS = (
     ("documentation", "Fill backlog with documentation work"),
@@ -1426,6 +1693,17 @@ def main() -> int:
     portfolio_parser.add_argument("--format", dest="output_format", choices=("summary", "json"), default="summary")
     portfolio_parser.add_argument("--include-done", action="store_true", help="Include terminal goals in summary output")
     portfolio_parser.add_argument("--compare", type=Path, help="Prior JSON snapshot used only to report digest/revision drift")
+    reserve = commands.add_parser("reserve", help="Atomically reserve a GitHub-backed goal")
+    reserve_commands = reserve.add_subparsers(dest="reserve_command", required=True)
+    for name in ("acquire", "renew", "release"):
+        reserve_command = reserve_commands.add_parser(name)
+        reserve_command.add_argument("--goal", type=int, required=True)
+        reserve_command.add_argument("--revision", type=int, required=True)
+        reserve_command.add_argument("--owner", required=True)
+        reserve_command.add_argument("--run-id", required=True)
+        reserve_command.add_argument("--format", dest="output_format", choices=("summary", "json"), default="summary")
+        if name != "release":
+            reserve_command.add_argument("--ttl-seconds", type=int, help="Override reviewed claim_ttl_hours")
     args = parser.parse_args()
     repo = args.repo.resolve()
     if not (repo / ".agents" / "templates" / "project-goals" / "PREFERENCES.json").is_file():
@@ -1467,6 +1745,38 @@ def main() -> int:
                 else:
                     print(f"Could not load goals: {exc}")
                 return 2
+        elif args.command == "reserve":
+            _path, project_text = read_project(repo)
+            project = parse_project_state(project_text)
+            errors = validate_project_state(project) if project is not None else ["project state block is missing"]
+            if errors or project.get("initialized") is not True or policy_blockers(project.get("policy")):
+                raise ValueError("Project policy is not ready; no reservation was made.")
+            repository = _project_repository_identity(project)
+            adapter = GitHubReservationAdapter(repo, repository)
+            ttl_seconds = None
+            if args.reserve_command != "release":
+                ttl_seconds = args.ttl_seconds if args.ttl_seconds is not None else project_claim_ttl_seconds(project)
+            if args.reserve_command == "acquire":
+                result = acquire_reservation(
+                    adapter, repository, args.goal, args.revision, args.owner, args.run_id, ttl_seconds,
+                )
+            elif args.reserve_command == "renew":
+                result = renew_reservation(
+                    adapter, repository, args.goal, args.revision, args.owner, args.run_id, ttl_seconds,
+                )
+            else:
+                result = release_reservation(adapter, repository, args.goal, args.revision, args.owner, args.run_id)
+            if args.output_format == "json":
+                print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+            elif result.get("acquired") is True:
+                print(f"Reserved goal #{args.goal}.")
+            elif result.get("released") is True:
+                print(f"Released goal #{args.goal}.")
+            elif result.get("outcome") == "contended":
+                print(f"Another agent reserved goal #{args.goal}. Refresh and choose different work.")
+            else:
+                print(f"Goal #{args.goal} is not reserved by this run. Refresh before continuing.")
+            return 0 if result.get("acquired") is True or result.get("released") is True else 3
         else:
             interactive(repo)
     except (EOFError, KeyboardInterrupt):

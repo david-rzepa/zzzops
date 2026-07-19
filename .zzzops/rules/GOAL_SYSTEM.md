@@ -40,7 +40,7 @@ One parent maximum; any children/dependencies; reject self-links/cycles. GitHub 
 
 A dependency edge preserves required ancestry and final integration order; it does not necessarily serialize implementation. When reviewed PROJECT `review_pending_dependency` is `stack_from_reviewed_checkpoint`, an unfinished dependency blocked only on its human review/merge gate satisfies its child's selection gate at the exact recorded checkpoint. Keep the dependency blocked for its own gate and keep the child's `depends_on` edge, but select and stack the child. Never treat `status != done` or “not merged” alone as evidence that the child is non-actionable.
 
-Claim before substantial work with owner, timestamp/offset, policy-defined expiry, and checkpoint. Claims are advisory and goal-scoped; refresh at checkpoints, clear on release/block/terminal/handoff, and do not take a live claim. Record expired-claim replacement.
+Before substantial GitHub work, atomically reserve the exact revision with `<python> .agents/zzzops.py reserve acquire --goal N --revision R --owner OWNER --run-id RUN`. Only the winner records the durable claim. On contention refresh once and choose other work. Renew at checkpoints; release before blocking, terminal state, or handoff. Claims are audit; reservations are exclusion. Never fall back when ownership is unconfirmed; record expiry recovery.
 
 ## Update invariants
 

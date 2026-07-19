@@ -4,7 +4,10 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -653,6 +656,177 @@ class PortfolioTests(unittest.TestCase):
         self.assertEqual(["goal_changed", "goal_removed", "goal_added"], [finding["code"] for finding in zzzops.compare_portfolios(current, prior)])
         with self.assertRaisesRegex(ValueError, "malformed goal"):
             zzzops.compare_portfolios(current, {"schema_version": 1, "goals": [None]})
+
+
+class FakeReservationAdapter:
+    def __init__(self, revision=4, repository="owner/repo", barrier=None):
+        self.revision = revision
+        self.repository = repository
+        self.barrier = barrier
+        self.label = None
+        self.next_id = 1
+        self.lock = threading.Lock()
+        self.delete_error = None
+        self.update_error = None
+        self.create_error = None
+
+    def goal_revision(self, _goal):
+        return self.revision
+
+    def get_label(self, _name):
+        with self.lock:
+            return dict(self.label) if self.label else None
+
+    def create_label(self, name, description):
+        if self.barrier:
+            self.barrier.wait(timeout=2)
+        if self.create_error:
+            raise zzzops.ReservationProviderError(self.create_error)
+        with self.lock:
+            if self.label:
+                return None
+            self.label = {"name": name, "description": description, "node_id": f"L{self.next_id}"}
+            self.next_id += 1
+            return dict(self.label)
+
+    def delete_label(self, node_id):
+        with self.lock:
+            if self.delete_error == "before":
+                raise zzzops.ReservationProviderError("delete failed")
+            if self.label and self.label["node_id"] == node_id:
+                self.label = None
+            if self.delete_error == "after":
+                raise zzzops.ReservationProviderError("delete response lost")
+
+    def update_label(self, node_id, description):
+        with self.lock:
+            if self.label and self.label["node_id"] == node_id:
+                self.label["description"] = description
+            if self.update_error:
+                raise zzzops.ReservationProviderError("update response lost")
+
+
+class ReservationTests(unittest.TestCase):
+    def setUp(self):
+        self.now = datetime(2026, 7, 19, 21, 0, tzinfo=timezone.utc)
+
+    def acquire(self, adapter, owner="agent-a", run_id="run-a", revision=4, now=None):
+        return zzzops.acquire_reservation(
+            adapter, "owner/repo", 12, revision, owner, run_id, ttl_seconds=120, now=now or self.now,
+        )
+
+    def test_simultaneous_acquisition_has_one_winner(self):
+        adapter = FakeReservationAdapter(barrier=threading.Barrier(2))
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [
+                pool.submit(self.acquire, adapter, "agent-a", "run-a"),
+                pool.submit(self.acquire, adapter, "agent-b", "run-b"),
+            ]
+        results = [future.result() for future in futures]
+        self.assertEqual(1, sum(result["acquired"] for result in results))
+        self.assertEqual({"acquired", "contended"}, {result["outcome"] for result in results})
+
+    def test_renew_and_release_require_the_same_owner(self):
+        adapter = FakeReservationAdapter()
+        self.assertTrue(self.acquire(adapter)["acquired"])
+        other = zzzops.renew_reservation(
+            adapter, "owner/repo", 12, 4, "agent-b", "run-b", 120, self.now,
+        )
+        self.assertEqual("not_owned", other["outcome"])
+        adapter.revision = 5  # Recording the durable claim advances canonical state.
+        renewed = zzzops.renew_reservation(
+            adapter, "owner/repo", 12, 5, "agent-a", "run-a", 180, self.now,
+        )
+        self.assertEqual("renewed", renewed["outcome"])
+        self.assertEqual(5, zzzops.parse_reservation_description(adapter.label["description"])["revision"])
+        released = zzzops.release_reservation(adapter, "owner/repo", 12, 5, "agent-a", "run-a")
+        self.assertTrue(released["released"])
+        self.assertIsNone(adapter.label)
+
+    def test_expired_reservation_recovers_by_immutable_label_id(self):
+        adapter = FakeReservationAdapter()
+        self.acquire(adapter)
+        skew_window = datetime.fromtimestamp(int(self.now.timestamp()) + 121, timezone.utc)
+        self.assertEqual("contended", self.acquire(adapter, "agent-b", "run-b", now=skew_window)["outcome"])
+        adapter.delete_error = "after"
+        later = datetime.fromtimestamp(int(self.now.timestamp()) + 181, timezone.utc)
+        result = self.acquire(adapter, "agent-b", "run-b", now=later)
+        self.assertTrue(result["acquired"])
+        self.assertEqual("L2", adapter.label["node_id"])
+        metadata = zzzops.parse_reservation_description(adapter.label["description"])
+        self.assertEqual("agent-b", metadata["owner"])
+
+    def test_interrupted_cleanup_never_deletes_or_overwrites_a_live_owner(self):
+        adapter = FakeReservationAdapter()
+        self.acquire(adapter)
+        adapter.delete_error = "before"
+        with self.assertRaisesRegex(zzzops.ReservationProviderError, "expire safely"):
+            zzzops.release_reservation(adapter, "owner/repo", 12, 4, "agent-a", "run-a")
+        self.assertEqual("agent-a", zzzops.parse_reservation_description(adapter.label["description"])["owner"])
+        later = datetime.fromtimestamp(int(self.now.timestamp()) + 181, timezone.utc)
+        result = self.acquire(adapter, "agent-b", "run-b", now=later)
+        self.assertFalse(result["acquired"])
+
+    def test_stale_revision_and_repository_drift_fail_without_writing(self):
+        adapter = FakeReservationAdapter(revision=5)
+        with self.assertRaisesRegex(zzzops.ReservationProviderError, "changed from revision 4 to 5"):
+            self.acquire(adapter)
+        self.assertIsNone(adapter.label)
+        adapter = FakeReservationAdapter(repository="other/repo")
+        with self.assertRaisesRegex(zzzops.ReservationProviderError, "Repository identity changed"):
+            self.acquire(adapter)
+        self.assertIsNone(adapter.label)
+
+    def test_ambiguous_renewal_is_confirmed_by_exact_readback(self):
+        adapter = FakeReservationAdapter()
+        self.acquire(adapter)
+        adapter.update_error = True
+        result = zzzops.renew_reservation(
+            adapter, "owner/repo", 12, 4, "agent-a", "run-a", 180, self.now,
+        )
+        self.assertTrue(result["acquired"])
+        adapter.label["description"] = "invalid"
+        with self.assertRaisesRegex(zzzops.ReservationProviderError, "metadata is invalid"):
+            self.acquire(adapter, "agent-b", "run-b")
+
+    def test_permission_loss_and_rate_limit_never_grant_ownership(self):
+        for message in ("permission denied", "rate limit exceeded"):
+            with self.subTest(message=message):
+                adapter = FakeReservationAdapter()
+                adapter.create_error = message
+                with self.assertRaisesRegex(zzzops.ReservationProviderError, message):
+                    self.acquire(adapter)
+                self.assertIsNone(adapter.label)
+
+    def test_provider_metadata_is_bound_to_repository_and_goal(self):
+        adapter = FakeReservationAdapter()
+        adapter.label = {
+            "name": zzzops.reservation_label_name(12), "node_id": "L1",
+            "description": zzzops.reservation_description("other/repo", 12, 4, "agent-a", "run-a", int(self.now.timestamp()) + 120),
+        }
+        with self.assertRaisesRegex(zzzops.ReservationProviderError, "identity is invalid"):
+            self.acquire(adapter)
+
+    def test_github_adapter_reads_and_validates_exact_goal_revision(self):
+        goal = {
+            "schema_version": 1, "status": "ready", "priority": "P1", "value": "high",
+            "difficulty": "S", "confidence": "high", "parent": None, "depends_on": [],
+            "claim": {"owner": None}, "blockers": [], "evidence": [], "next_action": "Reserve it.",
+            "revision": 7, "implementation": None,
+        }
+        body = f"Human goal\n\n{zzzops.GOAL_BLOCK_START}\n{json.dumps(goal)}\n{zzzops.GOAL_BLOCK_END}\n"
+        adapter = object.__new__(zzzops.GitHubReservationAdapter)
+        adapter.repository = "owner/repo"
+        adapter.ensure_identity = mock.Mock()
+        adapter._run = mock.Mock(return_value=SimpleNamespace(returncode=0, stdout=json.dumps({"body": body}), stderr=""))
+        self.assertEqual(7, adapter.goal_revision(12))
+        adapter.ensure_identity.assert_called_once_with()
+
+    def test_reservation_ttl_uses_reviewed_claim_policy(self):
+        project = {"policy": {"sections": [{
+            "id": "autonomy_approval_parallelism", "settings": {"claim_ttl_hours": 4},
+        }]}}
+        self.assertEqual(14400, zzzops.project_claim_ttl_seconds(project))
 
 
 class WorkflowContractTests(unittest.TestCase):
