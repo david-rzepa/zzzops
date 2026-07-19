@@ -52,6 +52,22 @@ GOAL_VALUES = {"critical", "high", "medium", "low"}
 GOAL_DIFFICULTIES = {"unknown", "XS", "S", "M", "L", "XL"}
 GOAL_CONFIDENCES = {"low", "medium", "high"}
 REDUNDANT_GOAL_TITLE_PREFIX = re.compile(r"^\[G-\d{8}-\d{3}-[^\]]+\]\s*")
+GITHUB_PORTFOLIO_QUERY = """
+query($owner:String!,$name:String!,$labels:[String!],$endCursor:String){
+  repository(owner:$owner,name:$name){
+    nameWithOwner url hasIssuesEnabled viewerPermission
+    issues(first:100,after:$endCursor,states:[OPEN,CLOSED],labels:$labels,orderBy:{field:CREATED_AT,direction:ASC}){
+      nodes{
+        number title body state updatedAt url
+        labels(first:100){nodes{name}}
+      }
+      pageInfo{hasNextPage endCursor}
+    }
+  }
+}
+""".strip()
+PREFERENCES_COMMAND = "<python> .agents/zzzops.py"
+GITHUB_MANAGEMENT_PERMISSIONS = {"TRIAGE", "WRITE", "MAINTAIN", "ADMIN"}
 
 PREFERENCE_LABELS = (
     ("documentation", "Fill backlog with documentation work"),
@@ -601,45 +617,127 @@ def build_portfolio_snapshot(
     }
 
 
-def portfolio_snapshot(repo: Path) -> dict[str, Any]:
-    project_path = repo / ".zzzops" / "PROJECT.md"
-    if not project_path.is_file():
-        raise ValueError("PROJECT.md is missing; run agent-driven initialization")
-    project = parse_project_state(project_path.read_text(encoding="utf-8-sig"))
-    errors = validate_project_state(project)
-    if errors or not project or not project.get("initialized"):
-        raise ValueError("PROJECT.md is not initialized: " + "; ".join(errors or ["initialization pending"]))
-    backend = project["backend"]
+def compact_portfolio_output(snapshot: dict[str, Any]) -> dict[str, Any]:
+    terminal_fields = (
+        "key", "title", "status", "parent", "depends_on",
+        "revision", "digest", "updated_at", "url",
+    )
+    goals = []
+    archived = 0
+    for goal in snapshot["goals"]:
+        if goal["status"] in {"done", "cancelled"}:
+            goals.append({"archived": True, **{field: goal.get(field) for field in terminal_fields}})
+            archived += 1
+        else:
+            goals.append(goal)
+    return {**snapshot, "goals": goals, "summary": {**snapshot["summary"], "archived": archived}}
+
+
+def _project_repository_identity(project: dict[str, Any]) -> str:
     identity = ((project.get("repository") or {}).get("identity") if isinstance(project.get("repository"), dict) else None)
-    if not text_present(identity):
-        raise ValueError("PROJECT.md repository.identity is required for GitHub Issues")
+    if project.get("backend") != "github_issues" or not text_present(identity) or identity.count("/") != 1:
+        raise ValueError("PROJECT.md repository.identity must be owner/repository for GitHub Issues")
+    return identity
+
+
+def _graphql_issue(issue: dict[str, Any]) -> dict[str, Any]:
+    labels = issue.get("labels")
+    nodes = labels.get("nodes") if isinstance(labels, dict) else None
+    if not isinstance(nodes, list):
+        raise ValueError("issue labels are incomplete or malformed")
+    return {
+        "number": issue["number"], "title": issue["title"], "body": issue.get("body") or "",
+        "state": str(issue["state"]).lower(), "updated_at": issue["updatedAt"], "html_url": issue["url"],
+        "labels": [{"name": node.get("name")} for node in nodes if isinstance(node, dict)],
+    }
+
+
+def _github_repository_capability(data: dict[str, Any]) -> dict[str, Any]:
+    permission = data.get("viewerPermission")
+    issues_enabled = data.get("hasIssuesEnabled") is True
+    usable = issues_enabled and permission in GITHUB_MANAGEMENT_PERMISSIONS
+    return {
+        "available": True,
+        "usable": usable,
+        "identity": data.get("nameWithOwner"),
+        "url": data.get("url"),
+        "issues_enabled": issues_enabled,
+        "viewer_permission": permission,
+        "detail": "ok" if usable else ("issues disabled" if not issues_enabled else "insufficient permission"),
+    }
+
+
+def github_repository_portfolio_snapshot(repo: Path, project: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    identity = _project_repository_identity(project)
+    owner, name = identity.split("/", 1)
     executable = shutil.which("gh")
     if not executable:
         raise ValueError("GitHub CLI is unavailable")
-    command = [executable, "api", "--paginate", "--slurp", f"repos/{identity}/issues?state=all&labels=zzzops&per_page=100"]
+    command = [
+        executable, "api", "graphql", "--paginate", "--slurp",
+        "-f", f"query={GITHUB_PORTFOLIO_QUERY}",
+        "-F", f"owner={owner}", "-F", f"name={name}", "-F", "labels[]=zzzops",
+    ]
     try:
         result = subprocess.run(command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise ValueError(f"GitHub portfolio read failed: {type(exc).__name__}") from exc
+        raise ValueError(f"GitHub repository/portfolio read failed: {type(exc).__name__}") from exc
     if result.returncode:
-        raise ValueError("GitHub portfolio read failed: " + (result.stderr.strip() or "unknown gh error"))
+        raise ValueError("GitHub repository/portfolio read failed: " + (result.stderr.strip() or "unknown gh error"))
     try:
         pages = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"GitHub portfolio read returned invalid JSON: {exc}") from exc
-    if not isinstance(pages, list) or any(not isinstance(page, list) for page in pages):
+        raise ValueError(f"GitHub repository/portfolio read returned invalid JSON: {exc}") from exc
+    if not isinstance(pages, list) or not pages or any(not isinstance(page, dict) for page in pages):
         raise ValueError("GitHub portfolio pagination result is incomplete or malformed")
-    issues = [issue for page in pages for issue in page if isinstance(issue, dict) and "pull_request" not in issue]
-    managed = [issue for issue in issues if GOAL_BLOCK_START in (issue.get("body") or "")]
-    records = []
+
+    repositories = []
+    issue_nodes = []
+    for index, page in enumerate(pages):
+        data = page.get("data")
+        repository = data.get("repository") if isinstance(data, dict) else None
+        issue_connection = repository.get("issues") if isinstance(repository, dict) else None
+        nodes = issue_connection.get("nodes") if isinstance(issue_connection, dict) else None
+        page_info = issue_connection.get("pageInfo") if isinstance(issue_connection, dict) else None
+        if not isinstance(repository, dict) or not isinstance(nodes, list) or not isinstance(page_info, dict):
+            raise ValueError("GitHub portfolio pagination result is incomplete or malformed")
+        if index < len(pages) - 1 and page_info.get("hasNextPage") is not True:
+            raise ValueError("GitHub portfolio pagination stopped before the final page")
+        if index == len(pages) - 1 and page_info.get("hasNextPage") is not False:
+            raise ValueError("GitHub portfolio pagination result is incomplete")
+        repositories.append(repository)
+        issue_nodes.extend(nodes)
+
+    first = repositories[0]
+    metadata = (first.get("nameWithOwner"), first.get("url"), first.get("hasIssuesEnabled"), first.get("viewerPermission"))
+    if any((item.get("nameWithOwner"), item.get("url"), item.get("hasIssuesEnabled"), item.get("viewerPermission")) != metadata for item in repositories[1:]):
+        raise ValueError("GitHub repository metadata drifted during pagination")
+    if first.get("nameWithOwner") != identity:
+        raise ValueError(
+            f"GitHub repository identity drift: PROJECT.md records {identity}, "
+            f"but GitHub returned {first.get('nameWithOwner') or 'unknown'}"
+        )
+    repository_probe = _github_repository_capability(first)
+
+    issues = []
     findings = []
+    for issue in issue_nodes:
+        try:
+            if not isinstance(issue, dict):
+                raise ValueError("issue must be an object")
+            issues.append(_graphql_issue(issue))
+        except (KeyError, TypeError, ValueError) as exc:
+            goal = issue.get("number", "unknown") if isinstance(issue, dict) else "unknown"
+            findings.append({"code": "malformed_record", "goal": goal, "detail": str(exc)})
+    managed = [issue for issue in issues if GOAL_BLOCK_START in issue["body"]]
+    records = []
     for issue in managed:
         try:
             records.append(github_goal_record(issue))
         except (KeyError, TypeError, ValueError) as exc:
             findings.append({"code": "malformed_record", "goal": issue.get("number", "unknown"), "detail": str(exc)})
     snapshot = build_portfolio_snapshot(
-        backend, records, reads=len(pages), raw_bytes=len(result.stdout.encode("utf-8")),
+        project["backend"], records, reads=len(pages), raw_bytes=len(result.stdout.encode("utf-8")),
         ignored=len(issues) - len(managed),
         git_policy=next(
             (
@@ -654,6 +752,18 @@ def portfolio_snapshot(repo: Path) -> dict[str, Any]:
     snapshot["complete"] = not findings
     snapshot["valid"] = not snapshot["findings"]
     snapshot["summary"]["processes"] = 1
+    return repository_probe, compact_portfolio_output(snapshot)
+
+
+def portfolio_snapshot(repo: Path) -> dict[str, Any]:
+    project_path = repo / ".zzzops" / "PROJECT.md"
+    if not project_path.is_file():
+        raise ValueError("PROJECT.md is missing; run agent-driven initialization")
+    project = parse_project_state(project_path.read_text(encoding="utf-8-sig"))
+    errors = validate_project_state(project)
+    if errors or not project or not project.get("initialized"):
+        raise ValueError("PROJECT.md is not initialized: " + "; ".join(errors or ["initialization pending"]))
+    _repository, snapshot = github_repository_portfolio_snapshot(repo, project)
     return snapshot
 
 
@@ -661,12 +771,17 @@ def render_portfolio_summary(snapshot: dict[str, Any], include_done: bool = Fals
     summary = snapshot["summary"]
     lines = [
         f"ZzzOps portfolio: {snapshot['backend']} | goals={summary['total']} actionable={summary['actionable']} "
-        f"blocked={summary['blocked']} done={summary['done']} findings={summary['findings']} reads={summary['reads']} "
+        f"blocked={summary['blocked']} done={summary['done']} archived={summary.get('archived', 0)} "
+        f"findings={summary['findings']} reads={summary['reads']} "
         f"complete={str(snapshot['complete']).lower()} valid={str(snapshot['valid']).lower()}",
         f"digest={snapshot['portfolio_digest']}",
     ]
     for goal in snapshot["goals"]:
         if not include_done and goal["status"] in {"done", "cancelled"}:
+            continue
+        if goal.get("archived"):
+            title = re.sub(r"\s+", " ", str(goal["title"])).strip()[:240]
+            lines.append(f"{goal['key']} [{goal['status']} archived] {title}")
             continue
         human = " human" if goal["needs_human"] else ""
         actionable = " actionable" if goal.get("actionable") else ""
@@ -737,17 +852,7 @@ def github_repository_probe(repo: Path) -> dict[str, Any]:
         data = json.loads(result.stdout)
     except json.JSONDecodeError:
         return {"available": True, "usable": False, "detail": "invalid gh JSON"}
-    permission = data.get("viewerPermission")
-    issues = data.get("hasIssuesEnabled") is True
-    return {
-        "available": True,
-        "usable": issues and permission in {"TRIAGE", "WRITE", "MAINTAIN", "ADMIN"},
-        "identity": data.get("nameWithOwner"),
-        "url": data.get("url"),
-        "issues_enabled": issues,
-        "viewer_permission": permission,
-        "detail": "ok" if issues else "issues disabled",
-    }
+    return _github_repository_capability(data)
 
 
 def inspect_initialization(repo: Path) -> dict[str, Any]:
@@ -781,6 +886,83 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
             "git_origin": git_remote,
             "github_auth": github_auth,
             "github_repository": github_repository,
+        },
+    }
+
+
+def decision_checkpoint(repo: Path) -> dict[str, Any]:
+    path, text = read_project(repo)
+    error = None
+    try:
+        state = parse_project_state(text)
+        state_errors = validate_project_state(state) if state is not None else ["project state block is missing"]
+        if state_errors:
+            error = "; ".join(state_errors)
+    except ValueError as exc:
+        state = None
+        error = str(exc)
+    blockers = policy_blockers(state.get("policy")) if state else ["policy:missing"]
+    initialized = bool(state and state.get("initialized") is True and not blockers and error is None)
+    git_remote = command_probe(["git", "remote", "get-url", "origin"], repo)
+    github_available = shutil.which("gh") is not None
+    github_processes = 0
+    portfolio = {
+        "schema_version": PORTFOLIO_SCHEMA_VERSION,
+        "complete": False,
+        "valid": False,
+        "error": "PROJECT.md is not initialized; run init inspect",
+    }
+    github_auth = {
+        "available": github_available,
+        "ok": False,
+        "detail": "initialization required",
+    }
+    github_repository = {
+        "available": github_available,
+        "usable": False,
+        "detail": "initialization required",
+    }
+    if initialized and state:
+        github_processes = 1 if github_available else 0
+        try:
+            github_repository, portfolio = github_repository_portfolio_snapshot(repo, state)
+            github_auth = {"available": True, "ok": True, "detail": "github.com"}
+        except ValueError as exc:
+            detail = sanitize_output(str(exc))
+            github_auth = {"available": github_available, "ok": False, "detail": detail}
+            github_repository = {"available": github_available, "usable": False, "detail": detail}
+            portfolio = {
+                "schema_version": PORTFOLIO_SCHEMA_VERSION,
+                "complete": False,
+                "valid": False,
+                "error": detail,
+            }
+    ready = bool(
+        initialized
+        and git_remote.get("ok") is True
+        and github_auth.get("ok") is True
+        and github_repository.get("usable") is True
+        and portfolio.get("complete") is True
+        and portfolio.get("valid") is True
+    )
+    return {
+        "schema_version": PLAN_SCHEMA_VERSION,
+        "project_path": str(path),
+        "project_digest": project_digest(text),
+        "initialized": initialized,
+        "valid_state": error is None and state is not None,
+        "state_error": error,
+        "decision_blockers": blockers,
+        "ready": ready,
+        "capabilities": {
+            "git_origin": git_remote,
+            "github_auth": github_auth,
+            "github_repository": github_repository,
+        },
+        "portfolio": portfolio,
+        "processes": {
+            "total": (1 if git_remote.get("available") else 0) + github_processes,
+            "github": github_processes,
         },
     }
 
@@ -1071,7 +1253,7 @@ def apply_plan(repo: Path, plan: dict[str, Any]) -> dict[str, Any]:
     if rendered == current:
         return {
             "changed": False, "path": str(path), "revision": revision,
-            "preferences_command": "python .agents/zzzops.py",
+            "preferences_command": PREFERENCES_COMMAND,
         }
     atomic_text(path, rendered)
     return {
@@ -1080,7 +1262,7 @@ def apply_plan(repo: Path, plan: dict[str, Any]) -> dict[str, Any]:
         "decision_blockers": policy_blockers(plan["policy"]),
         "project_digest": project_digest(rendered),
         "review_required": "Read the exact PROJECT.md file, then explicitly approve its current digest.",
-        "preferences_command": "python .agents/zzzops.py",
+        "preferences_command": PREFERENCES_COMMAND,
     }
 
 
@@ -1237,6 +1419,7 @@ def main() -> int:
     confirm_command.add_argument("--reviewer", required=True)
     confirm_command.add_argument("--section", action="append", default=[])
     confirm_command.add_argument("--all", action="store_true", help="Approve every current policy section")
+    commands.add_parser("checkpoint", help="Validate initialized state, GitHub capability, and the goal portfolio once")
     portfolio_parser = commands.add_parser("portfolio", help="Read and audit the canonical goal portfolio once")
     portfolio_parser.add_argument("--format", dest="output_format", choices=("summary", "json"), default="summary")
     portfolio_parser.add_argument("--include-done", action="store_true", help="Include terminal goals in summary output")
@@ -1247,6 +1430,10 @@ def main() -> int:
         print(f"ERROR: ZzzOps is not installed at {repo}")
         return 2
     try:
+        if args.command == "checkpoint":
+            result = decision_checkpoint(repo)
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+            return 0 if result["ready"] else 2
         if args.command == "init":
             if args.init_command == "inspect":
                 result = inspect_initialization(repo)

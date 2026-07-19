@@ -1,4 +1,5 @@
 import re
+import json
 import subprocess
 import sys
 import tempfile
@@ -54,6 +55,12 @@ class InstallerInitializationTests(unittest.TestCase):
             self.assertEqual(0, portfolio_help.returncode, portfolio_help.stderr + portfolio_help.stdout)
             self.assertIn("--format {summary,json}", portfolio_help.stdout)
             self.assertIn("--compare", portfolio_help.stdout)
+            checkpoint = subprocess.run(
+                [sys.executable, str(target / ".agents" / "zzzops.py"), "--repo", str(target), "checkpoint"],
+                text=True, encoding="utf-8", capture_output=True, check=False,
+            )
+            self.assertEqual(2, checkpoint.returncode, checkpoint.stderr + checkpoint.stdout)
+            self.assertFalse(json.loads(checkpoint.stdout)["ready"])
             rerun = self.run_installer(target)
             self.assertEqual(0, rerun.returncode, rerun.stderr + rerun.stdout)
             self.assertIn("unchanged=", rerun.stdout)

@@ -46,7 +46,9 @@ The agent summarizes that exact file and tells you to read it in detail. Ordinar
 
 Once reviewed, these policies let the agent make routine decisions without waking you for every tiny choice.
 
-GitHub Issues is the canonical goal authority. Initialization requires a successful repository and access probe; unavailable authentication, permission, or Issues support becomes an explicit blocker. Initialization does not commit, branch, or mutate GitHub, and after approval mentions the optional `python .agents/zzzops.py` preferences panel without opening it.
+GitHub Issues is the canonical goal authority. Initialization requires a successful repository and access probe; unavailable authentication, permission, or Issues support becomes an explicit blocker. Initialization does not commit, branch, or mutate GitHub, and after approval mentions the optional preferences panel without opening it.
+
+CLI examples use `<python>` for one Python 3 interpreter resolved once (`python3`, `python`, Windows `py -3`, or a harness-provided runtime). Agents must discover it before launching instead of first trying an assumed executable.
 
 **Visibility:** GitHub-backed goals inherit the repository's visibility. Never put secrets or raw sensitive data in a goal; redact it or link to an approved private system before capture or migration.
 
@@ -116,14 +118,14 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 | Suggest evidence-backed backlog work | `.agents/skills/suggest-zzzops-work/SKILL.md` |
 | Execute, prioritize, unblock, briefly watch human gates, verify, and hand off goals | `.agents/skills/execute-zzzops/SKILL.md` |
 | Configure backlog refill and parallelization preferences | `.agents/zzzops.py` |
-| Inspect the canonical portfolio from the CLI | `.agents/zzzops.py` |
+| Inspect initialized capability and the canonical portfolio in one CLI checkpoint | `.agents/zzzops.py` |
 | Validate dev PRs and preview or publish semantic releases | `.github/workflows` |
 
 ```text
 Use $execute-zzzops to interview me about and unblock blocked goals.
 Use $execute-zzzops to reprioritize all goals against project KPIs.
 Use $suggest-zzzops-work in dry-run mode to audit the project and suggest valuable goals.
-python .agents/zzzops.py --repo . portfolio --format summary  # compact read-only queue/DAG audit
+<python> .agents/zzzops.py --repo . checkpoint  # one initialized capability/queue/DAG read
 ```
 
 In Claude Code, replace `$name` with `/name`, for example `/suggest-zzzops-work`.
@@ -154,7 +156,7 @@ Parallel modes are `sequential`, `read_only`, and `worktrees`. `worktrees` permi
 Or use the interactive control panel from your project root:
 
 ```powershell
-python .agents/zzzops.py
+<python> .agents/zzzops.py
 ```
 
 It edits project preferences and parallelization settings.
@@ -168,16 +170,16 @@ Versions follow Conventional Commits since the latest `vMAJOR.MINOR.PATCH` tag: 
 To diagnose a PR or release, inspect **PR validation / dev-required-tests** or the **Semantic release** run and its failing step. Reproduce the same checks locally with:
 
 ```powershell
-python -m unittest discover -s .agents -p 'test_*.py'
-python -m unittest discover -s .agents/skills/install-zzzops/scripts -p 'test_*.py'
-python -m unittest discover -s .agents/skills/migrate-to-zzzops/scripts -p 'test_*.py'
-python -m unittest discover -s .github/scripts -p 'test_*.py'
-python .agents/manual_acceptance.py coverage
-python .agents/prompt_stats.py --check
-python -m compileall -q .agents .github/scripts
+<python> -m unittest discover -s .agents -p 'test_*.py'
+<python> -m unittest discover -s .agents/skills/install-zzzops/scripts -p 'test_*.py'
+<python> -m unittest discover -s .agents/skills/migrate-to-zzzops/scripts -p 'test_*.py'
+<python> -m unittest discover -s .github/scripts -p 'test_*.py'
+<python> .agents/manual_acceptance.py coverage
+<python> .agents/prompt_stats.py --check
+<python> -m compileall -q .agents .github/scripts
 ```
 
-`python .github/scripts/semantic_release.py` only writes a local notes file.
+`<python> .github/scripts/semantic_release.py` only writes a local notes file.
 
 Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required `dev` check, current GitHub Free limitation, closest enforceable `main` policy, and recovery procedure.
 
@@ -195,11 +197,11 @@ If a new test discovers a real bug, ZzzOps files a separate TODO and asks you be
 
 ## Prompt budget
 
-`python .agents/prompt_stats.py` prints a stable cross-harness estimate: `ceil(canonical UTF-8 bytes / 4)`, with line endings normalized to LF. It is useful for prompt-budget regression, not billing; Codex and Claude Code tokenize differently. CI enforces the committed ceiling; inspect it after any prompt change:
+`<python> .agents/prompt_stats.py` prints a stable cross-harness estimate: `ceil(canonical UTF-8 bytes / 4)`, with line endings normalized to LF. It is useful for prompt-budget regression, not billing; Codex and Claude Code tokenize differently. CI enforces the committed ceiling; inspect it after any prompt change:
 
 ```powershell
-python .agents/prompt_stats.py
-python .agents/prompt_stats.py --check
+<python> .agents/prompt_stats.py
+<python> .agents/prompt_stats.py --check
 ```
 
 Go to bed. The backlog knows what to do.
