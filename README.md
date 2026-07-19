@@ -120,7 +120,7 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 | Give project-policy-driven updates, defaulting to concise outcomes and clear user actions | `.zzzops/rules/INITIALIZATION.md` |
 | Configure backlog refill and parallelization preferences | `.agents/zzzops.py` |
 | Inspect initialized capability and the canonical portfolio in one CLI checkpoint | `.agents/zzzops.py` |
-| Atomically reserve a goal so concurrent agents choose one winner and abandoned work expires safely | `.agents/zzzops.py` |
+| Atomically reserve goals and known shared resources so concurrent agents avoid duplicate or colliding work | `.agents/zzzops.py` |
 | Validate dev PRs and preview or publish semantic releases | `.github/workflows` |
 
 ```text

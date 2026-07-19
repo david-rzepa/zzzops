@@ -18,4 +18,4 @@ Apply reviewed PROJECT `documentation_style.settings.communication`. During init
 
 The fallback makes default updates help the user decide or act while canonical goals/logs hold the audit trail. Lead with the outcome. If action is needed, ask for one clear action, why it matters, and what follows. Otherwise state what changed and remains in a few plain-language sentences.
 
-Keep claims, revisions, digests, process/poll mechanics, state transitions, and exhaustive file/test lists internal. Surface technical detail only to enable action, explain risk/failure, or answer a request. Summarize successful verification; name material failures and uncertainty. Never hide safety, destructive effects, authority boundaries, or consequential tradeoffs.
+Keep claims, digests, mechanics, state transitions, and exhaustive lists internal. Show detail only for action, risk/failure, or a request. Summarize success; name material failures and uncertainty. Never hide safety, destructive effects, authority boundaries, or consequential tradeoffs.

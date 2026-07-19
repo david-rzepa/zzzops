@@ -657,51 +657,80 @@ class PortfolioTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "malformed goal"):
             zzzops.compare_portfolios(current, {"schema_version": 1, "goals": [None]})
 
+    def test_portfolio_rejects_two_live_claims_on_one_declared_resource(self):
+        common = {
+            "status": "in_progress", "priority": "P1", "value": "high", "difficulty": "S",
+            "confidence": "high", "parent": None, "depends_on": [], "needs_human": False,
+            "blocker_categories": [], "next_action": "Work.", "revision": 1, "updated_at": None,
+            "implementation": None, "labels": [], "resources": ["path:shared.txt"],
+        }
+        records = [
+            {**common, "key": 1, "title": "One", "claim": {"owner": "a"}, "digest": "a"},
+            {**common, "key": 2, "title": "Two", "claim": {"owner": "b"}, "digest": "b"},
+        ]
+        snapshot = zzzops.build_portfolio_snapshot("github_issues", records, reads=1, raw_bytes=10)
+        self.assertIn("resource_collision", [finding["code"] for finding in snapshot["findings"]])
+
 
 class FakeReservationAdapter:
-    def __init__(self, revision=4, repository="owner/repo", barrier=None):
+    def __init__(self, revision=4, repository="owner/repo", barrier=None, barrier_prefix=None):
         self.revision = revision
         self.repository = repository
         self.barrier = barrier
-        self.label = None
+        self.barrier_prefix = barrier_prefix
+        self.labels = {}
         self.next_id = 1
         self.lock = threading.Lock()
         self.delete_error = None
         self.update_error = None
         self.create_error = None
 
-    def goal_revision(self, _goal):
+    @property
+    def label(self):
+        return self.labels.get(zzzops.reservation_label_name(12))
+
+    @label.setter
+    def label(self, value):
+        name = zzzops.reservation_label_name(12)
+        if value is None:
+            self.labels.pop(name, None)
+        else:
+            self.labels[name] = value
+
+    def goal_revision(self, _goal, require_actionable=False):
         return self.revision
 
-    def get_label(self, _name):
+    def get_label(self, name):
         with self.lock:
-            return dict(self.label) if self.label else None
+            return dict(self.labels[name]) if name in self.labels else None
 
     def create_label(self, name, description):
-        if self.barrier:
+        if self.barrier and (self.barrier_prefix is None or name.startswith(self.barrier_prefix)):
             self.barrier.wait(timeout=2)
         if self.create_error:
             raise zzzops.ReservationProviderError(self.create_error)
         with self.lock:
-            if self.label:
+            if name in self.labels:
                 return None
-            self.label = {"name": name, "description": description, "node_id": f"L{self.next_id}"}
+            self.labels[name] = {"name": name, "description": description, "node_id": f"L{self.next_id}"}
             self.next_id += 1
-            return dict(self.label)
+            return dict(self.labels[name])
 
     def delete_label(self, node_id):
         with self.lock:
             if self.delete_error == "before":
                 raise zzzops.ReservationProviderError("delete failed")
-            if self.label and self.label["node_id"] == node_id:
-                self.label = None
+            match = next((name for name, label in self.labels.items() if label["node_id"] == node_id), None)
+            if match:
+                del self.labels[match]
             if self.delete_error == "after":
                 raise zzzops.ReservationProviderError("delete response lost")
 
     def update_label(self, node_id, description):
         with self.lock:
-            if self.label and self.label["node_id"] == node_id:
-                self.label["description"] = description
+            match = next((label for label in self.labels.values() if label["node_id"] == node_id), None)
+            if match:
+                match["description"] = description
             if self.update_error:
                 raise zzzops.ReservationProviderError("update response lost")
 
@@ -738,7 +767,9 @@ class ReservationTests(unittest.TestCase):
             adapter, "owner/repo", 12, 5, "agent-a", "run-a", 180, self.now,
         )
         self.assertEqual("renewed", renewed["outcome"])
-        self.assertEqual(5, zzzops.parse_reservation_description(adapter.label["description"])["revision"])
+        metadata = zzzops.parse_reservation_description(adapter.label["description"])
+        self.assertEqual(5, metadata["revision"])
+        self.assertEqual(int(self.now.timestamp()), metadata["acquired_at"])
         released = zzzops.release_reservation(adapter, "owner/repo", 12, 5, "agent-a", "run-a")
         self.assertTrue(released["released"])
         self.assertIsNone(adapter.label)
@@ -821,12 +852,61 @@ class ReservationTests(unittest.TestCase):
         adapter._run = mock.Mock(return_value=SimpleNamespace(returncode=0, stdout=json.dumps({"body": body}), stderr=""))
         self.assertEqual(7, adapter.goal_revision(12))
         adapter.ensure_identity.assert_called_once_with()
+        goal["status"] = "done"
+        body = f"Human goal\n\n{zzzops.GOAL_BLOCK_START}\n{json.dumps(goal)}\n{zzzops.GOAL_BLOCK_END}\n"
+        adapter._run.return_value = SimpleNamespace(returncode=0, stdout=json.dumps({"body": body}), stderr="")
+        with self.assertRaisesRegex(zzzops.ReservationProviderError, "not available"):
+            adapter.goal_revision(12, require_actionable=True)
 
     def test_reservation_ttl_uses_reviewed_claim_policy(self):
         project = {"policy": {"sections": [{
             "id": "autonomy_approval_parallelism", "settings": {"claim_ttl_hours": 4},
         }]}}
         self.assertEqual(14400, zzzops.project_claim_ttl_seconds(project))
+
+    def test_overlapping_resources_choose_one_goal_and_release_the_loser(self):
+        adapter = FakeReservationAdapter(barrier=threading.Barrier(2), barrier_prefix="zzzops:resource:")
+        shared = ["path:.agents/zzzops.py"]
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [
+                pool.submit(
+                    zzzops.acquire_reservation_bundle, adapter, "owner/repo", goal, 4,
+                    f"agent-{goal}", f"run-{goal}", shared, 120, self.now,
+                )
+                for goal in (12, 13)
+            ]
+        results = [future.result() for future in futures]
+        winner = next(result for result in results if result["acquired"])
+        loser = next(result for result in results if not result["acquired"])
+        self.assertEqual("resource_contended", loser["outcome"])
+        self.assertIsNone(adapter.get_label(zzzops.reservation_label_name(loser["goal"])))
+        self.assertIsNotNone(adapter.get_label(zzzops.reservation_label_name(winner["goal"])))
+
+    def test_distinct_resources_preserve_parallelism_and_bundle_lifecycle(self):
+        adapter = FakeReservationAdapter()
+        first = zzzops.acquire_reservation_bundle(
+            adapter, "owner/repo", 12, 4, "agent-a", "run-a", ["path:src/a.py"], 120, self.now,
+        )
+        second = zzzops.acquire_reservation_bundle(
+            adapter, "owner/repo", 13, 4, "agent-b", "run-b", ["path:src/b.py"], 120, self.now,
+        )
+        self.assertTrue(first["acquired"] and second["acquired"])
+        adapter.revision = 5
+        renewed = zzzops.renew_reservation_bundle(
+            adapter, "owner/repo", 12, 5, "agent-a", "run-a", ["path:src/a.py"], 180, self.now,
+        )
+        self.assertTrue(renewed["acquired"])
+        released = zzzops.release_reservation_bundle(
+            adapter, "owner/repo", 12, 5, "agent-a", "run-a", ["path:src/a.py"],
+        )
+        self.assertTrue(released["released"])
+        self.assertIsNone(adapter.get_label(zzzops.resource_label_name("path:src/a.py")))
+        self.assertIsNotNone(adapter.get_label(zzzops.resource_label_name("path:src/b.py")))
+
+    def test_resource_keys_are_normalized_and_bounded(self):
+        self.assertEqual(["path:src/file.py"], zzzops.normalize_resources(["PATH:src\\File.py"]))
+        with self.assertRaisesRegex(ValueError, "prefixes"):
+            zzzops.normalize_resources(["unknown:value"])
 
 
 class WorkflowContractTests(unittest.TestCase):
