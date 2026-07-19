@@ -54,7 +54,7 @@
       },
       {
         "id": "git_review_release", "title": "Git, review, and release", "required": true, "applicable": true,
-        "decision": "Follow repository rules; otherwise use one branch per source-changing goal from the nearest authorized trunk and one Conventional Commit per verified sub-goal.", "rationale": "replace with repository evidence or retain the labeled fallback",
+        "decision": "Follow repository rules; otherwise use one branch per source-changing goal from the nearest authorized trunk and one Conventional Commit per verified sub-goal. A dependency awaiting only human review/merge may make its child actionable from the exact review-ready checkpoint while still merging first.", "rationale": "replace with repository evidence or retain the labeled fallback",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps first-release fallback", "default_disposition": "accepted",
         "settings": {
           "execution_branch": "per_goal", "branch_base": "nearest_authorized_trunk", "dependency_base": "dependency_branch",

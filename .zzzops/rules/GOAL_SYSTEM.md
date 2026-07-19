@@ -38,6 +38,8 @@ Open blockers may coexist with active states while useful work remains. Reopen t
 
 One parent maximum; any children/dependencies; reject self-links/cycles. GitHub stores only parent/dependency issue numbers and derives inverse edges portfolio-wide. Create a child only for a separately verifiable/prioritized/blocked/claimed outcome or distinct risk; use checklists otherwise. Obey PROJECT depth/required-child policy. Required children finishing does not replace parent criteria.
 
+A dependency edge preserves required ancestry and final integration order; it does not necessarily serialize implementation. When reviewed PROJECT `review_pending_dependency` is `stack_from_reviewed_checkpoint`, an unfinished dependency blocked only on its human review/merge gate satisfies its child's selection gate at the exact recorded checkpoint. Keep the dependency blocked for its own gate and keep the child's `depends_on` edge, but select and stack the child. Never treat `status != done` or “not merged” alone as evidence that the child is non-actionable.
+
 Claim before substantial work with owner, timestamp/offset, policy-defined expiry, and checkpoint. Claims are advisory and goal-scoped; refresh at checkpoints, clear on release/block/terminal/handoff, and do not take a live claim. Record expired-claim replacement.
 
 ## Update invariants
