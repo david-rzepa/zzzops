@@ -42,7 +42,7 @@ Use $add-zzzops-goal to capture our first piece of work.
 
 The agent first inspects code, docs, config, history, Git, GitHub, and repository policy; proposes the outcome, KPIs, acceptance criteria, GitHub authority, and operating rules; then asks only consequential questions. Deterministic CLI primitives validate and atomically create a pending `.zzzops/PROJECT.md`. You do not fill a blank wizard.
 
-The agent summarizes that exact file and tells you to read it in detail. Ordinary workflows remain blocked until you explicitly approve the current file digest; any edit invalidates the approval. Stable per-section checkboxes make GitHub authority, Git/review, continuation, testing, code quality, tooling, security, documentation, deployment/resources, and autonomy decisions visible rather than hiding them in universal prompts.
+The agent summarizes that exact file and tells you to read it in detail. Ordinary workflows remain blocked until you explicitly approve the current file digest; any edit invalidates the approval. Stable per-section checkboxes make GitHub authority, Git/review, continuation, testing, code quality, tooling, security, documentation, deployment/resources, and autonomy decisions visible rather than hiding them in universal prompts. After approval, `PROJECT.md` keeps only the charter and runtime decisions; digest-bound `PROJECT_AUDIT.md` preserves the full review record on demand.
 
 Once reviewed, these policies let the agent make routine decisions without waking you for every tiny choice.
 
@@ -189,7 +189,8 @@ Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required
 
 ## The files that remember things
 
-- `.zzzops/PROJECT.md` — tracked backend, success, KPIs, acceptance criteria, reviewed project policy, and what “valuable” means.
+- `.zzzops/PROJECT.md` — compact authoritative charter and reviewed runtime policy.
+- `.zzzops/PROJECT_AUDIT.md` — digest-bound evidence, rationales, review metadata, and history for initialization or reconciliation.
 - GitHub Issues — canonical goals, blockers, evidence, relations, and history.
 - `.zzzops/rules/` — tracked ZzzOps operating rules; machinery, not project content.
 - `.zzzops/PREFERENCES.json` — local, ignored user opt-ins for bounded autonomous backlog refills.
