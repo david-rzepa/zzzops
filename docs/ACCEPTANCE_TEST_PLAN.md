@@ -14,7 +14,7 @@ Prerequisite: use a disposable Git repository.
 
 Human action: ask the installed `install-zzzops` skill for a dry run, then inspect Git status.
 
-Expected: it reports a plan and does not create mechanics or alter project state.
+Expected: it plainly says this is a preview, gives the approval code needed to apply, and does not create mechanics or alter project state.
 
 ## A-002 — Execute workflow is discoverable
 
@@ -38,12 +38,12 @@ Run each in a disposable repository and record the result in the matching ledger
 
 | ID | Human action | Expected observable result |
 | --- | --- | --- |
-| A-004 | Start a non-install workflow and review the generated `PROJECT.md`. | The agent interviews consequential unknowns; ordinary work waits for explicit policy review. |
+| A-004 | Start a non-install workflow and review the generated `PROJECT.md`. | The agent interviews consequential unknowns, proposes outcome-first communication as an overridable default, and waits for explicit policy review. |
 | A-005 | Initialize with GitHub Issues selected. | A human-first issue is the canonical goal; repository visibility is explained. |
 | A-007 | Capture a small goal. | It is durable but creates no branch, commit, or PR. |
 | A-008 | Preview a TODO migration, then inspect the plan. | Existing TODOs are summarized; no goal is created before approval. |
 | A-009 | Run work suggestion in dry-run mode. | Evidence-backed suggestions are shown without changing the backlog. |
-| A-010 | Exhaust the queue on one merge-ready PR, merge it during the announced watch, and repeat once without a wait-capable surface. | The agent notifies once, observes and resumes once within three minutes; unsupported waiting hands off with the blocker intact. |
-| A-011 | Complete a source-changing test goal. | A branch/PR/check/review gate is presented; no merge occurs without authority. |
+| A-010 | Exhaust the queue on one merge-ready PR, merge it during the announced watch, and repeat once without a wait-capable surface. | The agent asks for one clear action without narrating polling mechanics, observes and resumes once; unsupported waiting hands off plainly with the blocker intact. |
+| A-011 | Complete a source-changing test goal. | The agent says the change is ready, provides the review action/link, and does not expose internal hashes or merge without authority. |
 | A-013 | Run prompt statistics and its check mode. | The byte/token estimate is deterministic and check mode succeeds. |
 | A-014 | Open a PR and inspect its validation/release behavior. | PR checks are read-only; `main` release behavior remains restricted. |

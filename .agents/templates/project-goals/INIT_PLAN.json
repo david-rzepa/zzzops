@@ -126,9 +126,9 @@
       },
       {
         "id": "documentation_style", "title": "Documentation and style", "required": true, "applicable": true,
-        "decision": "Follow evidenced repository documentation and style conventions.", "rationale": "avoid imposing framework formatting on the target project",
-        "source_ids": ["E-002"], "confidence": "medium", "default_origin": "repository-evidence fallback", "default_disposition": "accepted",
-        "settings": {"documentation": "repository_conventions", "style": "repository_conventions"},
+        "decision": "Follow evidenced repository documentation, style, and user-communication conventions.", "rationale": "keep communication project-appropriate while providing a concise ZzzOps fallback",
+        "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps fallback overridden by repository or user evidence", "default_disposition": "accepted",
+        "settings": {"documentation": "repository_conventions", "style": "repository_conventions", "communication": {"style": "outcome_first", "technical_detail": "decision_risk_failure_or_request", "user_action": "one_clear_action_with_reason_and_next_step"}},
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {

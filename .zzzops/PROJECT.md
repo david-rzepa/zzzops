@@ -35,6 +35,12 @@
         "id": "E-005",
         "kind": "observed",
         "source": "user decisions and goals #59/#88/#94/#95"
+      },
+      {
+        "finding": "Communication style is reviewed project policy; outcome-first, low-technical-detail updates are the user's preferred ZzzOps default and may be overridden by explicit project policy.",
+        "id": "E-006",
+        "kind": "observed",
+        "source": "user decision and goal #102"
       }
     ],
     "schema_version": 1,
@@ -288,20 +294,25 @@
       {
         "applicable": true,
         "confidence": "high",
-        "decision": "Follow evidenced repository documentation and style conventions.",
+        "decision": "Follow evidenced repository documentation and style conventions; use outcome-first, low-technical-detail user updates by default while allowing explicit project policy to override the style.",
         "default_disposition": "accepted",
-        "default_origin": "repository policy",
+        "default_origin": "repository policy and user-preferred ZzzOps default",
         "exceptions": [],
         "id": "documentation_style",
-        "rationale": "Repository instructions require prompt-budget updates for instruction/template Markdown.",
+        "rationale": "Repository instructions require prompt-budget updates, and the user selected concise actionable communication as this project's default without making it universal policy.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-07-18",
-          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
+          "date": "2026-07-19",
+          "reviewed_digest": "sha256:04f16f9531f4174ae4b937c0f66b6b70f068eb272ec40e1afc239f67a7884f7c",
           "reviewer": "user"
         },
         "settings": {
+          "communication": {
+            "style": "outcome_first",
+            "technical_detail": "decision_risk_failure_or_request",
+            "user_action": "one_clear_action_with_reason_and_next_step"
+          },
           "documentation": "repository_conventions",
           "installed_prompt_markdown_check": ".agents/prompt_stats.py --check",
           "prompt_budget_ceiling": "explicit_value_justification",
@@ -309,7 +320,8 @@
           "style": "repository_conventions"
         },
         "source_ids": [
-          "E-002"
+          "E-002",
+          "E-006"
         ],
         "title": "Documentation and style",
         "unresolved": []
@@ -400,7 +412,7 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 10,
+  "revision": 11,
   "schema_version": 1
 }
 zzzops-project-state -->
@@ -515,11 +527,11 @@ Read every section in this exact file. Each unchecked stable policy ID is a `dec
   - Exceptions: none
   - Unresolved: none
 - [x] `[policy:documentation_style]` **Documentation and style** (applicable)
-  - Decision: Follow evidenced repository documentation and style conventions.
-  - Rationale: Repository instructions require prompt-budget updates for instruction/template Markdown.
-  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and user-local preferences.
-  - Confidence/default: high; repository policy → accepted
-  - Settings: `{"documentation": "repository_conventions", "installed_prompt_markdown_check": ".agents/prompt_stats.py --check", "prompt_budget_ceiling": "explicit_value_justification", "prompt_counts": "do_not_commit", "style": "repository_conventions"}`
+  - Decision: Follow evidenced repository documentation and style conventions; use outcome-first, low-technical-detail user updates by default while allowing explicit project policy to override the style.
+  - Rationale: Repository instructions require prompt-budget updates, and the user selected concise actionable communication as this project's default without making it universal policy.
+  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and user-local preferences.; E-006: user decision and goal #102 — Communication style is reviewed project policy; outcome-first, low-technical-detail updates are the user's preferred ZzzOps default and may be overridden by explicit project policy.
+  - Confidence/default: high; repository policy and user-preferred ZzzOps default → accepted
+  - Settings: `{"communication": {"style": "outcome_first", "technical_detail": "decision_risk_failure_or_request", "user_action": "one_clear_action_with_reason_and_next_step"}, "documentation": "repository_conventions", "installed_prompt_markdown_check": ".agents/prompt_stats.py --check", "prompt_budget_ceiling": "explicit_value_justification", "prompt_counts": "do_not_commit", "style": "repository_conventions"}`
   - Exceptions: none
   - Unresolved: none
 - [x] `[policy:deployment_resources]` **Deployment, environment, and resources** (applicable)
@@ -549,3 +561,4 @@ Read every section in this exact file. Each unchecked stable policy ID is a `dec
 | 2026-07-19 | ZzzOps maintenance | Removed inert transition state in revision 8 | The field was permanently false and contradicted the final v1 no-prior-schema-migration contract; reviewed policy decisions are unchanged. |
 | 2026-07-19 | ZzzOps execute #95 | Encoded policy/default conformance in revision 9 | Added source-cited review-ready stacking, bounded human-watch defaults, artifact verification, release boundaries, and prompt-budget settings; PR review is the exact-file policy checkpoint. |
 | 2026-07-19 | ZzzOps execute #95 review | Clarified stacked actionability in revision 10 | Made explicit that a review-blocked dependency can still make its child actionable; dependency status and merge order do not serialize implementation when the exact checkpoint satisfies reviewed policy. |
+| 2026-07-19 | user/ZzzOps execute #102 | Added communication policy in revision 11 | User selected outcome-first, low-technical-detail communication as the default while requiring explicit project policy to remain able to override it. |

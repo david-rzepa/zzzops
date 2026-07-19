@@ -23,7 +23,7 @@ At each review checkpoint for a recorded PR, apply PROJECT `review_state_reads_p
 
 Address authorized actionable feedback only on the recorded branch/PR. Re-read the PR head and threads before mutation; after each small verified change, repeat self-review and required checks, record the new exact head/checkpoint, and invalidate prior approval. Ambiguous, scope-expanding, policy-conflicting, or unauthorized feedback is a categorized blocker; code changes never imply a provider thread was resolved.
 
-After implementation, automated checks, comment handling, and required self-review pass, apply PROJECT `review_gate`. `human_after_checks` creates a `human-action` blocker containing branch/commit/PR links, checks, material risks, and the exact approval/change request needed; do not merge or mark done and surface it through the normal human queue.
+After implementation, checks, comments, and self-review pass, apply PROJECT `review_gate`. `human_after_checks` records full links/checks/risks internally; do not merge or mark done. Tell the user the change is ready, give the review link/action, and say what resumes. Omit hashes and review mechanics unless decision-relevant, diagnostic, or requested.
 
 - Apply PROJECT `pr_approval` and `conversational_approval`: where PR UI approval is required, open/update the correct PR and accept only valid approval with required checks; never self-approve or bypass policy. Otherwise explicit conversational approval may resolve the gate when policy permits it.
 - Changes requested: keep the branch, implement/reverify, and create a new review checkpoint.

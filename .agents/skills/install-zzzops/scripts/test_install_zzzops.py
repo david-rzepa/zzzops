@@ -30,9 +30,12 @@ class InstallerInitializationTests(unittest.TestCase):
             (target / ".git").mkdir()
             preview = self.run_installer(target)
             self.assertEqual(0, preview.returncode, preview.stderr + preview.stdout)
-            fingerprint = re.search(r"Plan fingerprint: ([0-9a-f]+)", preview.stdout).group(1)
+            self.assertIn("Preview only; no files changed.", preview.stdout)
+            self.assertNotIn("Mechanical files", preview.stdout)
+            fingerprint = re.search(r"Approval code: ([0-9a-f]+)", preview.stdout).group(1)
             applied = self.run_installer(target, "--apply", "--confirm-plan", fingerprint)
             self.assertEqual(0, applied.returncode, applied.stderr + applied.stdout)
+            self.assertIn("ZzzOps is installed.", applied.stdout)
             self.assertTrue((target / ".zzzops" / "rules" / "INITIALIZATION.md").is_file())
             self.assertTrue((target / ".zzzops" / "rules" / "BACKENDS.md").is_file())
             self.assertTrue((target / ".zzzops" / "rules" / "CONTINUATION.md").is_file())
@@ -63,7 +66,7 @@ class InstallerInitializationTests(unittest.TestCase):
             self.assertFalse(json.loads(checkpoint.stdout)["ready"])
             rerun = self.run_installer(target)
             self.assertEqual(0, rerun.returncode, rerun.stderr + rerun.stdout)
-            self.assertIn("unchanged=", rerun.stdout)
+            self.assertIn("unchanged.", rerun.stdout)
 
     def test_update_preserves_local_preferences(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -73,7 +76,7 @@ class InstallerInitializationTests(unittest.TestCase):
             prefs.parent.mkdir()
             prefs.write_text('{"personal": true}\n', encoding="utf-8")
             preview = self.run_installer(target)
-            fingerprint = re.search(r"Plan fingerprint: ([0-9a-f]+)", preview.stdout).group(1)
+            fingerprint = re.search(r"Approval code: ([0-9a-f]+)", preview.stdout).group(1)
             applied = self.run_installer(target, "--apply", "--confirm-plan", fingerprint)
             self.assertEqual(0, applied.returncode, applied.stderr + applied.stdout)
             self.assertEqual('{"personal": true}\n', prefs.read_text(encoding="utf-8"))
@@ -90,7 +93,7 @@ class InstallerInitializationTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(data)
             preview = self.run_installer(target)
-            fingerprint = re.search(r"Plan fingerprint: ([0-9a-f]+)", preview.stdout).group(1)
+            fingerprint = re.search(r"Approval code: ([0-9a-f]+)", preview.stdout).group(1)
             applied = self.run_installer(target, "--apply", "--confirm-plan", fingerprint)
             self.assertEqual(0, applied.returncode, applied.stderr + applied.stdout)
             for path, data in state.items():
@@ -107,7 +110,7 @@ class InstallerInitializationTests(unittest.TestCase):
             unrelated = target / "keep.txt"
             unrelated.write_bytes(b"untouched\n")
             preview = self.run_installer(target, "--overwrite-mechanical")
-            fingerprint = re.search(r"Plan fingerprint: ([0-9a-f]+)", preview.stdout).group(1)
+            fingerprint = re.search(r"Approval code: ([0-9a-f]+)", preview.stdout).group(1)
             real_write = INSTALLER.atomic_write
             calls = 0
 
@@ -130,13 +133,13 @@ class InstallerInitializationTests(unittest.TestCase):
             target = Path(directory)
             (target / ".git").mkdir()
             preview = self.run_installer(target)
-            fingerprint = re.search(r"Plan fingerprint: ([0-9a-f]+)", preview.stdout).group(1)
+            fingerprint = re.search(r"Approval code: ([0-9a-f]+)", preview.stdout).group(1)
             changed = target / ".agents" / "zzzops.py"
             changed.parent.mkdir()
             changed.write_bytes(b"changed after preview\n")
             applied = self.run_installer(target, "--apply", "--confirm-plan", fingerprint)
             self.assertNotEqual(0, applied.returncode)
-            self.assertIn("Mechanical file differs", applied.stdout)
+            self.assertIn("already manages", applied.stdout)
             self.assertEqual(b"changed after preview\n", changed.read_bytes())
             self.assertFalse((target / ".zzzops" / "rules" / "INITIALIZATION.md").exists())
 

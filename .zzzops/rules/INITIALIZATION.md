@@ -11,3 +11,11 @@ All workflows except `$install-zzzops` do this before ordinary work:
 7. Run `checkpoint` before ordinary work. Initialization makes no Git/GitHub writes. After success mention—but do not open—`<python> .agents/zzzops.py` for optional preferences.
 
 Unsupported/partial state, repository-identity drift, or policy-evidence conflict stops affected work. This first release has no prior-schema migration path. Never reset or invent a fallback authority.
+
+## User-facing communication
+
+Apply reviewed PROJECT `documentation_style.settings.communication`. During initialization, propose the ZzzOps fallback below unless repository/user evidence supports another style; it is operational policy, not a universal rule.
+
+The fallback makes default updates help the user decide or act while canonical goals/logs hold the audit trail. Lead with the outcome. If action is needed, ask for one clear action, why it matters, and what follows. Otherwise state what changed and remains in a few plain-language sentences.
+
+Keep claims, revisions, digests, process/poll mechanics, state transitions, and exhaustive file/test lists internal. Surface technical detail only to enable action, explain risk/failure, or answer a request. Summarize successful verification; name material failures and uncertainty. Never hide safety, destructive effects, authority boundaries, or consequential tradeoffs.

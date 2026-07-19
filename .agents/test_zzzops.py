@@ -82,6 +82,8 @@ class InitializationTests(unittest.TestCase):
     @mock.patch.object(zzzops, "github_repository_probe", return_value={"available": False, "usable": False})
     def test_validate_apply_and_reinspect(self, _github, _probe):
         plan = self.plan()
+        documentation = next(section for section in plan["policy"]["sections"] if section["id"] == "documentation_style")
+        self.assertEqual("outcome_first", documentation["settings"]["communication"]["style"])
         self.assertEqual([], zzzops.validate_plan(self.repo, plan))
         applied = zzzops.apply_plan(self.repo, plan)
         self.assertTrue(applied["changed"])
@@ -413,8 +415,12 @@ class PortfolioTests(unittest.TestCase):
         self.assertEqual({"total": 3, "actionable": 1, "blocked": 1, "done": 1, "findings": 0, "reads": 1, "raw_bytes": 20000, "ignored": 0}, snapshot["summary"])
         self.assertTrue(snapshot["valid"])
         summary = zzzops.render_portfolio_summary(snapshot)
-        self.assertIn("goals=3 actionable=1 blocked=1 done=1", summary)
+        self.assertIn("Goals: 1 ready to work, 1 blocked, 1 closed (3 total).", summary)
+        self.assertIn("#2 Ready: Goal 2", summary)
         self.assertNotIn("Goal 1", summary)
+        self.assertNotIn("digest", summary)
+        self.assertNotIn("reads", summary)
+        self.assertNotIn("P1", summary)
         self.assertLess(len(summary.encode("utf-8")), snapshot["summary"]["raw_bytes"] // 10)
 
     def test_review_ready_dependency_is_actionable_only_when_project_policy_allows_stacking(self):
@@ -439,7 +445,7 @@ class PortfolioTests(unittest.TestCase):
         by_key = {goal["key"]: goal for goal in stacked["goals"]}
         self.assertEqual(1, stacked["summary"]["actionable"])
         self.assertTrue(by_key[2]["actionable"])
-        self.assertIn("2 [in_progress actionable", zzzops.render_portfolio_summary(stacked))
+        self.assertIn("#2 In progress: Goal 2", zzzops.render_portfolio_summary(stacked))
 
         completed_only = zzzops.build_portfolio_snapshot(
             "github_issues", records, reads=1, raw_bytes=100,
@@ -636,7 +642,7 @@ class PortfolioTests(unittest.TestCase):
         )
         self.assertNotIn("archived", active)
         self.assertLess(compact_bytes, full_bytes // 2)
-        self.assertIn("1 [done archived]", zzzops.render_portfolio_summary(compact, include_done=True))
+        self.assertIn("#1 Done: Goal 1", zzzops.render_portfolio_summary(compact, include_done=True))
 
     def test_compare_reports_added_removed_and_changed_goals(self):
         current = zzzops.build_portfolio_snapshot("github_issues", [

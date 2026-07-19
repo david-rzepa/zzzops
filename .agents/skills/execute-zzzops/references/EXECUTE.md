@@ -28,4 +28,4 @@ When no work is actionable, rebuild the human queue and apply PROJECT blocker-in
 
 If still empty, invoke `$suggest-zzzops-work` in apply mode only when both PROJECT policy and `.zzzops/PREFERENCES.json` authorize it. Use the lower cap; never loop-refill or enable preferences.
 
-Stop only for user stop, runtime boundary, required authority/risk, unavailable/unresolved human/external blocker, or no qualifying refill. First make touched goals resumable (next action, evidence, blockers, claim, links, index, history). Report outcomes, human interview/refill results, queue, and stop reason.
+Stop only for user stop, runtime boundary, required authority/risk, unavailable/unresolved human/external blocker, or no qualifying refill. First make touched goals resumable (next action, evidence, blockers, claim, links, index, history). Apply INITIALIZATION's user-facing contract: report outcome, any one required action, and what remains; summarize checks and keep resume mechanics internal.
