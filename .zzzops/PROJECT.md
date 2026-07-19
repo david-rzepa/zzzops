@@ -74,7 +74,7 @@
       {
         "applicable": true,
         "confidence": "high",
-        "decision": "Per-goal branches from dev, PRs to dev, review-ready dependency stacking, Conventional Commits, human review after checks, and owner-only main releases.",
+        "decision": "Per-goal branches from dev and PRs to dev. A dependency awaiting only human review/merge remains blocked itself but makes its child actionable from the exact review-ready checkpoint; preserve ancestry and merge the dependency first. Use Conventional Commits, human review after checks, and owner-only main releases.",
         "default_disposition": "accepted",
         "default_origin": "repository policy",
         "exceptions": [],
@@ -400,7 +400,7 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 9,
+  "revision": 10,
   "schema_version": 1
 }
 zzzops-project-state -->
@@ -467,7 +467,7 @@ Read every section in this exact file. Each unchecked stable policy ID is a `dec
   - Exceptions: none
   - Unresolved: none
 - [x] `[policy:git_review_release]` **Git, review, and release** (applicable)
-  - Decision: Per-goal branches from dev, PRs to dev, review-ready dependency stacking, Conventional Commits, human review after checks, and owner-only main releases.
+  - Decision: Per-goal branches from dev and PRs to dev. A dependency awaiting only human review/merge remains blocked itself but makes its child actionable from the exact review-ready checkpoint; preserve ancestry and merge the dependency first. Use Conventional Commits, human review after checks, and owner-only main releases.
   - Rationale: Root repository instructions define the integration and release boundary.
   - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and user-local preferences.; E-005: user decisions and goals #59/#88/#94/#95 — User decisions require review-ready dependency stacking, a brief bounded human-unblock watch, and artifact-specific verification without recursive documentation or test meta-tests.
   - Confidence/default: high; repository policy → accepted
@@ -548,3 +548,4 @@ Read every section in this exact file. Each unchecked stable policy ID is a `dec
 | 2026-07-18 | user | Reviewed policy revision 7 | Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, autonomy_approval_parallelism; source digest `sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7`. |
 | 2026-07-19 | ZzzOps maintenance | Removed inert transition state in revision 8 | The field was permanently false and contradicted the final v1 no-prior-schema-migration contract; reviewed policy decisions are unchanged. |
 | 2026-07-19 | ZzzOps execute #95 | Encoded policy/default conformance in revision 9 | Added source-cited review-ready stacking, bounded human-watch defaults, artifact verification, release boundaries, and prompt-budget settings; PR review is the exact-file policy checkpoint. |
+| 2026-07-19 | ZzzOps execute #95 review | Clarified stacked actionability in revision 10 | Made explicit that a review-blocked dependency can still make its child actionable; dependency status and merge order do not serialize implementation when the exact checkpoint satisfies reviewed policy. |
