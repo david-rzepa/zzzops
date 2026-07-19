@@ -24,6 +24,12 @@
         "id": "E-003",
         "kind": "observed",
         "source": "init inspect 2026-07-18"
+      },
+      {
+        "finding": "Health reminders were removed and GitHub Issues is now the only supported canonical goal backend.",
+        "id": "E-004",
+        "kind": "observed",
+        "source": "user decisions and completed issues #77/#81"
       }
     ],
     "schema_version": 1,
@@ -33,15 +39,15 @@
         "confidence": "high",
         "decision": "github_issues",
         "default_disposition": "accepted",
-        "default_origin": "existing project state",
+        "default_origin": "user decision and current product scope",
         "exceptions": [],
         "id": "backend",
-        "rationale": "GitHub capability probe is usable and the established queue is issue-based.",
+        "rationale": "GitHub capability is usable and completed issue #81 made it the only supported authority.",
         "required": true,
         "review": {
           "approved": true,
           "date": "2026-07-18",
-          "reviewed_digest": "sha256:2144f007236745e92fc6b43f863f8ae8ecc5273bc2311113165aa1d59fdbeb8b",
+          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
           "reviewer": "user"
         },
         "settings": {
@@ -50,12 +56,12 @@
           "fallback": "forbidden",
           "repository_identity": "david-rzepa/zzzops",
           "tradeoffs": {
-            "github_issues": "shared native issue queue requiring GitHub access",
-            "local_files": "portable repository files requiring Git coordination"
+            "github_issues": "shared native issue queue requiring GitHub access"
           }
         },
         "source_ids": [
-          "E-003"
+          "E-003",
+          "E-004"
         ],
         "title": "Canonical goal backend",
         "unresolved": []
@@ -73,7 +79,7 @@
         "review": {
           "approved": true,
           "date": "2026-07-18",
-          "reviewed_digest": "sha256:2144f007236745e92fc6b43f863f8ae8ecc5273bc2311113165aa1d59fdbeb8b",
+          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
           "reviewer": "user"
         },
         "settings": {
@@ -111,7 +117,7 @@
         "review": {
           "approved": true,
           "date": "2026-07-18",
-          "reviewed_digest": "sha256:2144f007236745e92fc6b43f863f8ae8ecc5273bc2311113165aa1d59fdbeb8b",
+          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
           "reviewer": "user"
         },
         "settings": {
@@ -151,7 +157,7 @@
         "review": {
           "approved": true,
           "date": "2026-07-18",
-          "reviewed_digest": "sha256:2144f007236745e92fc6b43f863f8ae8ecc5273bc2311113165aa1d59fdbeb8b",
+          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
           "reviewer": "user"
         },
         "settings": {
@@ -178,7 +184,7 @@
         "review": {
           "approved": true,
           "date": "2026-07-18",
-          "reviewed_digest": "sha256:2144f007236745e92fc6b43f863f8ae8ecc5273bc2311113165aa1d59fdbeb8b",
+          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
           "reviewer": "user"
         },
         "settings": {
@@ -209,7 +215,7 @@
         "review": {
           "approved": true,
           "date": "2026-07-18",
-          "reviewed_digest": "sha256:2144f007236745e92fc6b43f863f8ae8ecc5273bc2311113165aa1d59fdbeb8b",
+          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
           "reviewer": "user"
         },
         "settings": {
@@ -236,7 +242,7 @@
         "review": {
           "approved": true,
           "date": "2026-07-18",
-          "reviewed_digest": "sha256:2144f007236745e92fc6b43f863f8ae8ecc5273bc2311113165aa1d59fdbeb8b",
+          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
           "reviewer": "user"
         },
         "settings": {
@@ -263,7 +269,7 @@
         "review": {
           "approved": true,
           "date": "2026-07-18",
-          "reviewed_digest": "sha256:2144f007236745e92fc6b43f863f8ae8ecc5273bc2311113165aa1d59fdbeb8b",
+          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
           "reviewer": "user"
         },
         "settings": {
@@ -289,7 +295,7 @@
         "review": {
           "approved": true,
           "date": "2026-07-18",
-          "reviewed_digest": "sha256:2144f007236745e92fc6b43f863f8ae8ecc5273bc2311113165aa1d59fdbeb8b",
+          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
           "reviewer": "user"
         },
         "settings": {
@@ -311,12 +317,12 @@
         "default_origin": "project and user policy",
         "exceptions": [],
         "id": "autonomy_approval_parallelism",
-        "rationale": "The charter values autonomy while user-local preferences set a read-only two-worker ceiling.",
+        "rationale": "The charter values autonomy, completed issue #77 removed health reminders, and user-local preferences set a read-only two-worker ceiling.",
         "required": true,
         "review": {
           "approved": true,
           "date": "2026-07-18",
-          "reviewed_digest": "sha256:2144f007236745e92fc6b43f863f8ae8ecc5273bc2311113165aa1d59fdbeb8b",
+          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
           "reviewer": "user"
         },
         "settings": {
@@ -327,12 +333,6 @@
             "priority": "P2"
           },
           "claim_ttl_hours": 4,
-          "health_hooks": [
-            "entry",
-            "final",
-            "after_user_response",
-            "long_run_checkpoint"
-          ],
           "max_workers": 2,
           "planning": {
             "decompose_at": "L",
@@ -350,7 +350,8 @@
         },
         "source_ids": [
           "E-001",
-          "E-002"
+          "E-002",
+          "E-004"
         ],
         "title": "Autonomy, approvals, and parallelism",
         "unresolved": []
@@ -361,7 +362,7 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 5,
+  "revision": 7,
   "schema_version": 1
 }
 zzzops-project-state -->
@@ -421,10 +422,10 @@ Read every section in this exact file. Each unchecked stable policy ID is a `dec
 
 - [x] `[policy:backend]` **Canonical goal backend** (applicable)
   - Decision: github_issues
-  - Rationale: GitHub capability probe is usable and the established queue is issue-based.
-  - Sources: E-003: init inspect 2026-07-18 — GitHub Issues are enabled for david-rzepa/zzzops and the authenticated user has ADMIN permission.
-  - Confidence/default: high; existing project state → accepted
-  - Settings: `{"authority": "github_issues", "capability_evidence": "init inspect 2026-07-18", "fallback": "forbidden", "repository_identity": "david-rzepa/zzzops", "tradeoffs": {"github_issues": "shared native issue queue requiring GitHub access", "local_files": "portable repository files requiring Git coordination"}}`
+  - Rationale: GitHub capability is usable and completed issue #81 made it the only supported authority.
+  - Sources: E-003: init inspect 2026-07-18 — GitHub Issues are enabled for david-rzepa/zzzops and the authenticated user has ADMIN permission.; E-004: user decisions and completed issues #77/#81 — Health reminders were removed and GitHub Issues is now the only supported canonical goal backend.
+  - Confidence/default: high; user decision and current product scope → accepted
+  - Settings: `{"authority": "github_issues", "capability_evidence": "init inspect 2026-07-18", "fallback": "forbidden", "repository_identity": "david-rzepa/zzzops", "tradeoffs": {"github_issues": "shared native issue queue requiring GitHub access"}}`
   - Exceptions: none
   - Unresolved: none
 - [x] `[policy:git_review_release]` **Git, review, and release** (applicable)
@@ -493,10 +494,10 @@ Read every section in this exact file. Each unchecked stable policy ID is a `dec
   - Unresolved: none
 - [x] `[policy:autonomy_approval_parallelism]` **Autonomy, approvals, and parallelism** (applicable)
   - Decision: Maximize safe autonomous progress; interview on consequential blockers; use at most two read-only workers.
-  - Rationale: The charter values autonomy while user-local preferences set a read-only two-worker ceiling.
-  - Sources: E-001: .zzzops/PROJECT.md — The existing confirmed charter defines the outcome, KPIs, acceptance criteria, and value constraints.; E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation, Conventional Commits, human review, observable work, and user-local preferences.
+  - Rationale: The charter values autonomy, completed issue #77 removed health reminders, and user-local preferences set a read-only two-worker ceiling.
+  - Sources: E-001: .zzzops/PROJECT.md — The existing confirmed charter defines the outcome, KPIs, acceptance criteria, and value constraints.; E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation, Conventional Commits, human review, observable work, and user-local preferences.; E-004: user decisions and completed issues #77/#81 — Health reminders were removed and GitHub Issues is now the only supported canonical goal backend.
   - Confidence/default: high; project and user policy → accepted
-  - Settings: `{"blocker_interview": "immediate_batch", "capture_defaults": {"confidence": "low", "difficulty": "unknown", "priority": "P2"}, "claim_ttl_hours": 4, "health_hooks": ["entry", "final", "after_user_response", "long_run_checkpoint"], "max_workers": 2, "planning": {"decompose_at": "L", "max_depth": 3}, "project_parallel_ceiling": "read_only", "refill": {"allowed_categories": ["documentation", "tests", "code_quality_non_behavioral"], "max_per_run": 3}}`
+  - Settings: `{"blocker_interview": "immediate_batch", "capture_defaults": {"confidence": "low", "difficulty": "unknown", "priority": "P2"}, "claim_ttl_hours": 4, "max_workers": 2, "planning": {"decompose_at": "L", "max_depth": 3}, "project_parallel_ceiling": "read_only", "refill": {"allowed_categories": ["documentation", "tests", "code_quality_non_behavioral"], "max_per_run": 3}}`
   - Exceptions: none
   - Unresolved: none
 
@@ -505,3 +506,5 @@ Read every section in this exact file. Each unchecked stable policy ID is a `dec
 | --- | --- | --- | --- |
 | 2026-07-18 | ZzzOps initialization | Created pending revision 4 | Confirmed agent-generated draft; exact-file policy review still required. |
 | 2026-07-18 | user | Reviewed policy revision 5 | Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, autonomy_approval_parallelism; source digest `sha256:2144f007236745e92fc6b43f863f8ae8ecc5273bc2311113165aa1d59fdbeb8b`. |
+| 2026-07-18 | ZzzOps initialization | Created pending revision 6 | Confirmed agent-generated draft; exact-file policy review still required. |
+| 2026-07-18 | user | Reviewed policy revision 7 | Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, autonomy_approval_parallelism; source digest `sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7`. |
