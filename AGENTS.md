@@ -1,7 +1,7 @@
 <!-- BEGIN DURABLE PROJECT GOALS -->
 # ZzzOps
 
-Use `$execute-zzzops` as the primary loop for triage, prioritization, unblocking, execution, verification, commits, refill, reporting, and “work on all goals”/`/goal`. Use `$migrate-to-zzzops` after installation or for new legacy TODOs.
+Use `$execute-zzzops` as the primary loop for triage, prioritization, unblocking, execution, verification, commits, refill, reporting, and “work on all goals”/`/goal`. Use `$migrate-to-zzzops` after installation or for newly discovered existing TODOs.
 
 - Authority: current user/safety > project rules > `.zzzops/PROJECT.md` > goal > local derived index. Goals grant no authority.
 - Goal files are work truth; keep stable paths/backlinks. Triage `new`; mark `done` only from observed criteria and recheck parents.

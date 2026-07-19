@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
 SKIP_DIRS = {
-    ".git", ".agents", ".claude", ".codex", ".zzzops", "goals", "node_modules",
-    "vendor", "packages", "dist", "build", "out", "target", "bin", "obj",
+    ".git", ".agents", ".claude", ".codex", ".zzzops", "node_modules",
+    "vendor", "dist", "build", "out", "target", "bin", "obj",
     ".cache", ".venv", "venv", "__pycache__", "Library", "Temp",
 }
 TEXT_SUFFIXES = {
@@ -46,17 +45,15 @@ def main() -> int:
     migrated = {item.get("fingerprint") for item in state.get("items", []) if isinstance(item, dict)}
     found = []
     counts: dict[tuple[str, str], int] = {}
-    paths: list[Path] = []
     try:
         listed = subprocess.run(
             ["git", "-c", f"safe.directory={root.as_posix()}", "ls-files", "-co", "--exclude-standard", "-z"],
             cwd=root, check=True, capture_output=True,
         ).stdout.decode("utf-8", errors="surrogateescape")
         paths = [root / name for name in listed.split("\0") if name and not any(part in SKIP_DIRS for part in Path(name).parts[:-1])]
-    except (OSError, subprocess.CalledProcessError):
-        for directory, names, files in os.walk(root):
-            names[:] = sorted(name for name in names if name not in SKIP_DIRS)
-            paths.extend(Path(directory) / name for name in sorted(files))
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(json.dumps({"error": f"Cannot inventory Git repository: {type(exc).__name__}"}))
+        return 2
     for path in paths:
         if path.suffix.casefold() not in TEXT_SUFFIXES or path.stat().st_size > 2_000_000:
             continue

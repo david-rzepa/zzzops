@@ -3,7 +3,7 @@
 Installation copies mechanics and blank templates only. The first non-install workflow is agent-driven: it inspects repository evidence, proposes the charter/GitHub authority/operating policy, and interviews only consequential gaps.
 
 ```text
-python .agents/zzzops.py --repo . init inspect --json
+python .agents/zzzops.py --repo . init inspect
 python .agents/zzzops.py --repo . init validate --plan .zzzops/init/plan.json
 python .agents/zzzops.py --repo . init apply --plan .zzzops/init/plan.json
 python .agents/zzzops.py --repo . init confirm --project-digest DIGEST --reviewer NAME --all
@@ -15,4 +15,4 @@ The bounded policy audit covers backend; Git/review/release; execution/continuat
 
 PROJECT state preserves extension settings inside policy sections. GitHub Issues is authoritative only after identity, authentication, Issues, and permission probes pass; a failed probe is an explicit blocker with no fallback authority. This first release intentionally contains no prior-schema migration machinery.
 
-Maintain the contract with `.agents/test_zzzops.py`, installer tests, clean target probes, static-policy scans, and README prompt-budget regeneration.
+Maintain the contract with initialization tests, installer tests, clean target probes, and the prompt-budget check.

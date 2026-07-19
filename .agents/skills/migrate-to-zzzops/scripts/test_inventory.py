@@ -46,13 +46,15 @@ class InventoryTests(unittest.TestCase):
                 "# Backlog\n- Ship CLI help\n- [ ] Add smoke probe\n- [x] Already shipped\n- [X] Also shipped\n- DONE Legacy completion marker\n",
             )
             self.write(root, "notes.md", "- ordinary note\n")
+            self.write(root, "packages/app/TODO.md", "- [ ] Ship package feature\n")
+            self.write(root, "goals/TODO.md", "- [ ] Review repository goals\n")
             self.write(root, ".zzzops/rules/private.md", "# TODO: machinery must be excluded\n")
             self.write(root, "ignored.md", "# TODO: ignored work must be excluded\n")
             (root / "image.png").write_bytes(b"TODO: binary-ish bytes")
 
             first = self.run_inventory(root)
-            self.assertEqual(first["candidate_count"], 8)
-            self.assertEqual(first["new_count"], 8)
+            self.assertEqual(first["candidate_count"], 10)
+            self.assertEqual(first["new_count"], 10)
             candidates = {(item["path"], item["line"]): item for item in first["candidates"]}
             expected = {
                 ("src/app.py", 2): ("Parse quoted values", False),
@@ -63,6 +65,8 @@ class InventoryTests(unittest.TestCase):
                 ("TODO.md", 4): ("[x] Already shipped", True),
                 ("TODO.md", 5): ("[X] Also shipped", True),
                 ("TODO.md", 6): ("DONE Legacy completion marker", True),
+                ("packages/app/TODO.md", 1): ("Ship package feature", True),
+                ("goals/TODO.md", 1): ("Review repository goals", True),
             }
             self.assertEqual(
                 {key: (item["text"], item["dedicated_backlog"]) for key, item in candidates.items()},
@@ -81,7 +85,7 @@ class InventoryTests(unittest.TestCase):
                 encoding="utf-8",
             )
             second = self.run_inventory(root)
-            self.assertEqual(second["candidate_count"], 8)
+            self.assertEqual(second["candidate_count"], 10)
             self.assertEqual(second["new_count"], 0)
             self.assertEqual(
                 [
@@ -95,20 +99,18 @@ class InventoryTests(unittest.TestCase):
             )
             self.assertTrue(all(item["already_migrated"] for item in second["candidates"]))
 
-    def test_non_git_fallback_skips_machinery(self):
+    def test_non_git_repository_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            self.write(root, "src/app.py", "# TODO: Keep fallback useful\n")
-            self.write(root, ".zzzops/rules/private.md", "# TODO: exclude machinery\n")
-            self.write(root, "vendor/dependency.py", "# TODO: exclude vendor\n")
-
-            result = self.run_inventory(root)
-            self.assertEqual(result["candidate_count"], 1)
-            self.assertEqual(result["new_count"], 1)
-            self.assertEqual(
-                (result["candidates"][0]["path"], result["candidates"][0]["line"], result["candidates"][0]["text"]),
-                ("src/app.py", 1, "Keep fallback useful"),
+            self.write(root, "src/app.py", "# TODO: Repository required\n")
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), str(root)],
+                text=True,
+                encoding="utf-8",
+                capture_output=True,
             )
+            self.assertEqual(2, result.returncode)
+            self.assertIn("Cannot inventory Git repository", json.loads(result.stdout)["error"])
 
 
 if __name__ == "__main__":

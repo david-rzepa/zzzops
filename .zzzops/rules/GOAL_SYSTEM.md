@@ -10,7 +10,7 @@ Before every non-install workflow follow `INITIALIZATION.md`, then use the GitHu
 - Never store secrets/raw sensitive data; link to approved systems and name authority/sync direction.
 - Project charter defines success/value. Preserve unknown KPI/target/tradeoff fields; ask rather than invent.
 - Ignored `.zzzops/PREFERENCES.json` is user-local: validate types/ranges, preserve unknown keys, never commit/enable options yourself.
-- Canonical project and migration artifact shapes live in `.agents/templates/project-goals/`. Installation copies mechanics/templates only and never creates or overwrites project state.
+- Initialization plans, preferences, and migration artifact shapes live in `.agents/templates/project-goals/`; `init apply` renders project state. Installation copies mechanics/templates only and never creates or overwrites project state.
 
 ## Lifecycle
 

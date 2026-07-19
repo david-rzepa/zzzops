@@ -4,7 +4,6 @@
 {
   "backend": "github_issues",
   "initialized": true,
-  "migration_pending": false,
   "policy": {
     "evidence": [
       {
@@ -362,7 +361,7 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 7,
+  "revision": 8,
   "schema_version": 1
 }
 zzzops-project-state -->
@@ -508,3 +507,4 @@ Read every section in this exact file. Each unchecked stable policy ID is a `dec
 | 2026-07-18 | user | Reviewed policy revision 5 | Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, autonomy_approval_parallelism; source digest `sha256:2144f007236745e92fc6b43f863f8ae8ecc5273bc2311113165aa1d59fdbeb8b`. |
 | 2026-07-18 | ZzzOps initialization | Created pending revision 6 | Confirmed agent-generated draft; exact-file policy review still required. |
 | 2026-07-18 | user | Reviewed policy revision 7 | Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, autonomy_approval_parallelism; source digest `sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7`. |
+| 2026-07-19 | ZzzOps maintenance | Removed inert transition state in revision 8 | The field was permanently false and contradicted the final v1 no-prior-schema-migration contract; reviewed policy decisions are unchanged. |

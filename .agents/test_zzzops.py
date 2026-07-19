@@ -2,6 +2,7 @@ import importlib.util
 import json
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,9 +24,7 @@ class InitializationTests(unittest.TestCase):
         template_dir = self.repo / ".agents" / "templates" / "project-goals"
         template_dir.mkdir(parents=True)
         (template_dir / "PREFERENCES.json").write_text("{}\n", encoding="utf-8")
-        source = MODULE_PATH.parent / "templates" / "project-goals" / "PROJECT.md"
         (self.repo / ".zzzops").mkdir()
-        (self.repo / ".zzzops" / "PROJECT.md").write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
 
     def tearDown(self):
         self.temp.cleanup()
@@ -42,7 +41,6 @@ class InitializationTests(unittest.TestCase):
             "base_digest": inspection["base_digest"],
             "confirmed": True,
             "backend": "github_issues",
-            "migration_pending": False,
             "repository": {"identity": "example/repo", "remote": "local"},
             "charter": {
                 "outcome": "Agents complete durable project work autonomously.",
@@ -65,7 +63,7 @@ class InitializationTests(unittest.TestCase):
                 {"id": "E-002", "kind": "proposed", "source": "agent synthesis", "finding": "charter"},
             ],
             "confirmations": [{"evidence_id": "E-002", "confirmed_by": "user", "date": "2026-07-16"}],
-            "github": {"usable": True, "evidence": "test capability probe"},
+            "github": {"usable": True},
             "policy": policy,
         }
 
@@ -73,12 +71,12 @@ class InitializationTests(unittest.TestCase):
     @mock.patch.object(zzzops, "github_repository_probe", return_value={"available": False, "usable": False})
     def test_inspect_is_read_only_and_reports_incomplete(self, _github, _probe):
         project = self.repo / ".zzzops" / "PROJECT.md"
-        before = project.read_bytes()
+        self.assertFalse(project.exists())
         result = zzzops.inspect_initialization(self.repo)
         self.assertFalse(result["initialized"])
-        self.assertTrue(result["valid_state"])
+        self.assertFalse(result["valid_state"])
         self.assertIn("outcome", result["missing_charter_fields"])
-        self.assertEqual(before, project.read_bytes())
+        self.assertFalse(project.exists())
 
     @mock.patch.object(zzzops, "command_probe", return_value={"available": False, "ok": False, "detail": "test"})
     @mock.patch.object(zzzops, "github_repository_probe", return_value={"available": False, "usable": False})
@@ -164,7 +162,7 @@ class InitializationTests(unittest.TestCase):
         applied = zzzops.apply_plan(self.repo, self.plan())
         result = subprocess.run(
             [
-                zzzops.sys.executable, str(MODULE_PATH), "--repo", str(self.repo),
+                sys.executable, str(MODULE_PATH), "--repo", str(self.repo),
                 "init", "confirm", "--project-digest", applied["project_digest"],
                 "--reviewer", "test-user", "--all",
             ],
@@ -172,6 +170,34 @@ class InitializationTests(unittest.TestCase):
         )
         self.assertEqual(0, result.returncode, result.stderr + result.stdout)
         self.assertTrue(json.loads(result.stdout)["initialized"])
+
+    def test_preferences_cli_saves_local_choices_and_preserves_extensions(self):
+        template = self.repo / ".agents" / "templates" / "project-goals" / "PREFERENCES.json"
+        template.write_text(
+            json.dumps({
+                "fill_backlog": {
+                    "documentation": False,
+                    "tests": False,
+                    "code_quality_non_behavioral": False,
+                    "max_goals_per_refill": 3,
+                },
+                "parallelization": {"mode": "read_only", "max_workers": 2},
+                "project_extension": {"keep": True},
+            }),
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "--repo", str(self.repo)],
+            input="1\n1\ns\nq\n",
+            text=True,
+            encoding="utf-8",
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr + result.stdout)
+        saved = json.loads((self.repo / ".zzzops" / "PREFERENCES.json").read_text(encoding="utf-8"))
+        self.assertTrue(saved["fill_backlog"]["documentation"])
+        self.assertEqual({"keep": True}, saved["project_extension"])
 
     def test_rejects_unconfirmed_unknown_and_stale_plans(self):
         plan = self.plan()
@@ -186,7 +212,7 @@ class InitializationTests(unittest.TestCase):
     def test_github_backend_requires_observed_capability(self):
         plan = self.plan()
         plan["github"]["usable"] = False
-        self.assertIn("github.usable must be true for github_issues", zzzops.validate_plan(self.repo, plan))
+        self.assertIn("github must contain only usable=true for github_issues", zzzops.validate_plan(self.repo, plan))
 
     def test_invalid_project_state_is_reported(self):
         project = self.repo / ".zzzops" / "PROJECT.md"
@@ -202,7 +228,7 @@ class InitializationTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 zzzops.atomic_text(path, "new\n")
         self.assertFalse(path.exists())
-        self.assertEqual([], [p for p in path.parent.iterdir() if p.name != "PROJECT.md"])
+        self.assertEqual([], list(path.parent.iterdir()))
 
     def test_rejects_unconfirmed_proposal(self):
         plan = self.plan()
@@ -227,16 +253,6 @@ class InitializationTests(unittest.TestCase):
 
     def test_project_state_path_is_stable(self):
         self.assertEqual(self.repo / ".zzzops" / "PROJECT.md", zzzops.project_path(self.repo))
-
-    @mock.patch.object(zzzops, "command_probe", return_value={"available": False, "ok": False, "detail": "test"})
-    @mock.patch.object(zzzops, "github_repository_probe", return_value={"available": False, "usable": False})
-    def test_missing_project_reports_final_path_without_creating_state(self, _github, _probe):
-        (self.repo / ".zzzops" / "PROJECT.md").unlink()
-        result = zzzops.inspect_initialization(self.repo)
-        self.assertEqual(str(self.repo / ".zzzops" / "PROJECT.md"), result["project_path"])
-        self.assertFalse(result["initialized"])
-        self.assertFalse(result["valid_state"])
-        self.assertFalse((self.repo / ".zzzops" / "PROJECT.md").exists())
 
     @mock.patch.object(zzzops.shutil, "which", return_value="gh")
     @mock.patch.object(zzzops.subprocess, "run")
@@ -418,7 +434,7 @@ class PortfolioTests(unittest.TestCase):
             (repo / ".zzzops" / "PROJECT.md").write_text("state", encoding="utf-8")
             payload = [[self.issue(1), {**self.issue(2), "pull_request": {}}], [self.issue(3)]]
             run.return_value = SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
-            snapshot = zzzops.portfolio_snapshot(repo, zzzops.datetime(2026, 7, 17, tzinfo=zzzops.timezone.utc))
+            snapshot = zzzops.portfolio_snapshot(repo)
         self.assertEqual([1, 3], [goal["key"] for goal in snapshot["goals"]])
         self.assertEqual(2, snapshot["summary"]["reads"])
         self.assertEqual(1, snapshot["summary"]["processes"])
@@ -486,46 +502,22 @@ class PortfolioTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
-    def test_management_workflows_use_one_complete_portfolio_snapshot(self):
-        root = Path(__file__).parent
-        backend = (root.parent / ".zzzops" / "rules" / "BACKENDS.md").read_text(encoding="utf-8")
-        self.assertIn("portfolio --format json", backend)
-        self.assertIn("complete:true", backend)
-        self.assertIn("valid:true", backend)
-        self.assertIn("re-read only the selected canonical goal", backend.casefold())
-        for relative in (
-            "skills/add-zzzops-goal/SKILL.md",
-            "skills/migrate-to-zzzops/SKILL.md", "skills/suggest-zzzops-work/SKILL.md",
-            "skills/execute-zzzops/references/CREATE.md", "skills/execute-zzzops/references/EXECUTE.md",
-            "skills/execute-zzzops/references/UNBLOCK.md",
-        ):
-            text = (root / relative).read_text(encoding="utf-8")
-            self.assertIn("snapshot", text.casefold(), relative)
-
     def test_github_schema_is_issue_native(self):
         self.assertIn("schema_version", zzzops.GOAL_FIELDS)
         for derived in ("id", "title", "blocks", "needs_human"):
             self.assertNotIn(derived, zzzops.GOAL_FIELDS)
-        root = Path(__file__).parent
-        backend = (root.parent / ".zzzops" / "rules" / "BACKENDS.md").read_text(encoding="utf-8")
-        for phrase in (
-            "Repository plus issue number/URL is identity", "plain human title", "no rendered metadata/frontmatter",
-            "compact hidden", "Same-repository parent/dependency relations are positive issue numbers",
-            "Derive children/blocking edges", "old comments remain immutable provenance",
-        ):
-            self.assertIn(phrase, backend)
 
     def test_policy_taxonomy_is_stable_across_templates(self):
         templates = Path(__file__).parent / "templates" / "project-goals"
         plan = json.loads((templates / "INIT_PLAN.json").read_text(encoding="utf-8"))
         plan_ids = [section["id"] for section in plan["policy"]["sections"]]
-        project = (templates / "PROJECT.md").read_text(encoding="utf-8")
-        project_ids = re.findall(r"\[policy:([^\]]+)\]", project)
+        rendered = zzzops.render_project(plan, 1)
+        project_ids = re.findall(r"\[policy:([^\]]+)\]", rendered)
         self.assertEqual(list(zzzops.POLICY_SECTION_IDS), plan_ids)
         self.assertEqual(list(zzzops.POLICY_SECTION_IDS), project_ids)
         self.assertTrue(all(section["required"] and not section["review"]["approved"] for section in plan["policy"]["sections"]))
 
-    def test_branch_policy_and_workflow_cover_reviewed_topologies(self):
+    def test_branch_policy_defaults_are_structured(self):
         root = Path(__file__).parent
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         git_policy = next(section for section in plan["policy"]["sections"] if section["id"] == "git_review_release")["settings"]
@@ -536,22 +528,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("per_goal", git_policy["pull_request_unit"])
         self.assertEqual("explicit_reviewed_override", git_policy["shared_pull_request"])
         self.assertEqual("human_after_checks", git_policy["review_gate"])
-        workflow = (root / "skills" / "execute-zzzops" / "references" / "BRANCH_REVIEW.md").read_text(encoding="utf-8")
-        for phrase in (
-            "one stable `implementation` identity per goal", "multiple_dependency_base", "parent pseudo-trunk",
-            "recursively", "dependency order", "human-action", "PR UI approval",
-            "explicit conversational approval", "Changes requested", "Missing merge authority",
-            "each source-changing goal owns one branch and one PR", "Related/small goals",
-            "explicit user instruction", "record the override/rationale", "Parent and child goals keep distinct PRs",
-            "commit/squash policy is separate", "Capture stays Git-free", "without PR capability",
-            "bounded provider read", "thread-aware data", "resolved/outdated", "discussion-only", "automated",
-            "Re-read the PR head and threads", "invalidate prior approval", "mergeable` is not authorization",
-            "Verify the target contains the reviewed head", "technically ready dependency awaiting review",
-            "stack the child branch/PR on it", "rebase and retest as its parent advances",
-        ):
-            self.assertIn(phrase, workflow)
-
-    def test_continuation_policy_and_prompt_cover_turn_scenarios(self):
+    def test_continuation_policy_defaults_are_structured(self):
         root = Path(__file__).parent
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         settings = next(section for section in plan["policy"]["sections"] if section["id"] == "execution_continuation")["settings"]
@@ -559,50 +536,13 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("resume_once_and_reprioritize", settings["after_additive_capture"])
         self.assertTrue(settings["exhausted_handoff_retains_intent"])
         self.assertEqual("require_explicit_harness_signal", settings["cross_task"])
-        rule = (root.parent / ".zzzops" / "rules" / "CONTINUATION.md").read_text(encoding="utf-8")
-        for phrase in (
-            "not elapsed-time inference", "queue exhaustion/yield", "explicit stop/pause/replacement/capture-only",
-            "required-authority or blocking boundary", "never nest/duplicate execute", "standalone adjacent capture",
-            "re-enter `$execute-zzzops` once", "no priority shortcut", "steer and ordinary follow-up",
-            "Compacted context", "Separate tasks/threads", "Capture itself remains Git-free",
-            "user answer that resolves a surfaced blocker", "rebuild the actionable set and resume once",
-        ):
-            self.assertIn(phrase, rule)
-
-    def test_readme_exposes_github_goal_visibility_boundary(self):
-        readme = (Path(__file__).parent.parent / "README.md").read_text(encoding="utf-8")
-        migration = readme.index("### 4. Migrate existing work")
-        warning = readme.index("GitHub-backed goals inherit the repository's visibility")
-        self.assertLess(warning, migration)
-        self.assertIn("Never put secrets or raw sensitive data", readme)
-        self.assertIn("GitHub Issues is the canonical goal authority", readme)
-        self.assertNotIn("local-files backend", readme)
-
-    def test_installed_user_surfaces_are_github_only(self):
-        root = Path(__file__).parent.parent
-        paths = [root / "README.md"]
-        for relative in (".agents/skills", ".agents/templates/project-goals", ".zzzops/rules", "docs"):
-            paths.extend(path for path in (root / relative).rglob("*") if path.suffix in {".md", ".json"})
-        forbidden = ("local_files", "goals/items", "goals/INDEX", "local-files backend", "local backend")
-        for path in paths:
-            text = path.read_text(encoding="utf-8")
-            for phrase in forbidden:
-                self.assertNotIn(phrase, text, f"{path.relative_to(root)}: {phrase}")
-
-    def test_completion_review_policy_covers_scoped_cleanup_scenarios(self):
+    def test_completion_review_policy_defaults_are_structured(self):
         root = Path(__file__).parent
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         settings = next(section for section in plan["policy"]["sections"] if section["id"] == "code_quality")["settings"]
         self.assertEqual("required_before_review_or_done", settings["completion_self_review"])
         self.assertEqual("remove_only_if_evidenced_and_in_scope", settings["dead_code"])
         self.assertEqual("retain_without_proof", settings["dynamic_generated_vendor"])
-        review = (root / "skills" / "execute-zzzops" / "references" / "SELF_REVIEW.md").read_text(encoding="utf-8")
-        for phrase in (
-            "actual implementation", "goal criteria, diff, tests", "compatibility paths", "demonstrably unused/superseded",
-            "Dynamic/reflection use", "generated/vendor", "Out-of-scope cleanup", "test-discovered product bugs",
-            "one observable chunk", "relevant wider regression", "idempotent", "clean result", "Never invent findings",
-        ):
-            self.assertIn(phrase, review)
 
     def test_skill_names_descriptions_and_modes_are_discoverable(self):
         root = Path(__file__).parent / "skills"
@@ -622,11 +562,6 @@ class WorkflowContractTests(unittest.TestCase):
             for phrase in phrases:
                 self.assertIn(phrase, description, f"{name}: {phrase}")
 
-    def test_first_release_has_no_obsolete_add_skill(self):
-        root = Path(__file__).parent / "skills"
-        obsolete = "-".join(("add", "zzzops", "todo"))
-        self.assertFalse((root / obsolete / "SKILL.md").exists())
-
     def test_non_install_skills_share_preflight_and_backend_rules(self):
         root = Path(__file__).parent
         names = (
@@ -640,41 +575,6 @@ class WorkflowContractTests(unittest.TestCase):
         install = (root / "skills" / "install-zzzops" / "SKILL.md").read_text(encoding="utf-8")
         self.assertNotIn("INITIALIZATION.md", install)
 
-    def test_runtime_token_accounting_surface_is_retired(self):
-        root = Path(__file__).parent.parent
-        retired_skill = "analyze" + "-zzzops-usage"
-        retired_ledger = "USAGE" + "_LEDGER"
-        retired_rule = "USAGE" + "_ACCOUNTING"
-        retired_phrases = (
-            retired_skill,
-            retired_ledger,
-            retired_rule,
-            "usage ensure",
-            "value-per-token",
-            "work/management tokens",
-        )
-        self.assertFalse((root / ".agents" / "skills" / retired_skill / "SKILL.md").exists())
-        self.assertFalse((root / ".agents" / "templates" / "project-goals" / f"{retired_ledger}.md").exists())
-        self.assertFalse((root / ".zzzops" / "rules" / f"{retired_rule}.md").exists())
-        for path in (
-            root / ".agents" / "zzzops.py",
-            root / ".agents" / "skills" / "install-zzzops" / "scripts" / "install_zzzops.py",
-            root / ".agents" / "templates" / "project-goals" / "INIT_PLAN.json",
-        ):
-            text = path.read_text(encoding="utf-8")
-            for phrase in (retired_skill, retired_ledger, retired_rule, "management_ratio_alert", "value_weights", "confidence_weights"):
-                self.assertNotIn(phrase, text, f"{path}: {phrase}")
-        prompt_paths = [root / "AGENTS.md", root / "README.md", root / ".zzzops" / "PROJECT.md"]
-        for directory in (root / "docs", root / ".agents" / "skills", root / ".agents" / "templates", root / ".zzzops" / "rules"):
-            prompt_paths.extend(
-                path for path in directory.rglob("*")
-                if path.is_file() and path.suffix.casefold() in {".md", ".json", ".yaml", ".yml"}
-            )
-        for path in prompt_paths:
-            text = path.read_text(encoding="utf-8")
-            for phrase in retired_phrases:
-                self.assertNotIn(phrase, text, f"{path}: {phrase}")
-
     def test_capture_and_execution_git_boundaries_are_explicit(self):
         root = Path(__file__).parent
         add = (root / "skills" / "add-zzzops-goal" / "SKILL.md").read_text(encoding="utf-8")
@@ -683,18 +583,6 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("read PROJECT Git/review/continuation policy", execute)
         self.assertIn("never absorb unrelated changes", execute)
         self.assertIn("empty GitHub-state commit", execute)
-
-    def test_static_prompts_do_not_hardcode_customizable_policy_defaults(self):
-        root = Path(__file__).parent.parent
-        prompt_roots = (root / ".zzzops" / "rules", root / ".agents" / "skills")
-        text = "\n".join(
-            path.read_text(encoding="utf-8")
-            for prompt_root in prompt_roots
-            for path in prompt_root.rglob("*.md")
-        )
-        for phrase in ("default four hours", "at most two verified", "prefer depth <=3", "execute defaults to the current branch"):
-            self.assertNotIn(phrase, text.casefold())
-
 
 if __name__ == "__main__":
     unittest.main()

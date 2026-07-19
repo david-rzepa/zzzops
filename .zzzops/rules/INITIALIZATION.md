@@ -2,7 +2,7 @@
 
 All workflows except `$install-zzzops` do this before ordinary work:
 
-1. Run `python .agents/zzzops.py --repo . init inspect --json`. Continue only when `initialized:true`, state is valid, the GitHub repository probe is usable, and no `decision_blockers` remain. Use the reviewed operating policy.
+1. Run `python .agents/zzzops.py --repo . init inspect`. Continue only when `initialized:true`, state is valid, the GitHub repository probe is usable, and no `decision_blockers` remain. Use the reviewed operating policy.
 2. Otherwise inspect applicable root/nested instructions, docs/config/history, CI/repository settings, tooling, code conventions, and capability evidence. Copy `INIT_PLAN.json` to ignored `.zzzops/init/plan.json`; replace placeholders with sourced observations or labeled ZzzOps fallbacks. Audit only relevant policy domains. Never ask the user to fill a blank form or treat safety/user preferences as project choices.
 3. Summarize evidence, conflicts, defaults, GitHub capability, and consequential unknowns; interview in one compact batch. Repository/user evidence explicitly overrides defaults. Record unavailable decisions as categorized blockers; never infer approval.
 4. After proposal confirmation, run `init validate`, then `init apply`. Apply atomically creates the complete pending `.zzzops/PROJECT.md` but does not initialize. Show a concise charter/GitHub/policy/conflict summary, print the exact path and digest, and tell the user to read that exact file in detail.

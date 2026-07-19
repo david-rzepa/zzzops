@@ -10,7 +10,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -149,7 +148,7 @@ def parse_project_state(text: str) -> dict[str, Any] | None:
 def validate_project_state(state: Any) -> list[str]:
     if not isinstance(state, dict):
         return ["project state must be an object"]
-    allowed = {"schema_version", "initialized", "backend", "repository", "revision", "migration_pending", "policy"}
+    allowed = {"schema_version", "initialized", "backend", "repository", "revision", "policy"}
     errors = []
     unknown = sorted(set(state) - allowed)
     if unknown:
@@ -160,8 +159,6 @@ def validate_project_state(state: Any) -> list[str]:
         errors.append("initialized must be boolean")
     if not isinstance(state.get("revision"), int) or isinstance(state.get("revision"), bool) or state.get("revision", -1) < 0:
         errors.append("revision must be a non-negative integer")
-    if not isinstance(state.get("migration_pending"), bool):
-        errors.append("migration_pending must be boolean")
     policy_errors = validate_policy(state.get("policy"), require_pending=False) if state.get("policy") is not None else []
     errors.extend(f"policy.{error}" for error in policy_errors)
     pending_policy = policy_blockers(state.get("policy")) if not policy_errors else []
@@ -173,7 +170,7 @@ def validate_project_state(state: Any) -> list[str]:
             errors.append("initialized repository.identity is required")
         if pending_policy:
             errors.append("initialized state cannot have unreviewed required policy: " + ", ".join(pending_policy))
-    elif state.get("backend") is not None or state.get("repository") is not None or state.get("migration_pending") is not False:
+    elif state.get("backend") is not None or state.get("repository") is not None or state.get("policy") is not None:
         if state.get("backend") not in BACKENDS or not isinstance(state.get("repository"), dict) or not state.get("policy"):
             errors.append("uninitialized state may select a backend only as a complete pending policy draft")
     return errors
@@ -553,7 +550,7 @@ def build_portfolio_snapshot(
     }
 
 
-def portfolio_snapshot(repo: Path, as_of: datetime | None = None) -> dict[str, Any]:
+def portfolio_snapshot(repo: Path) -> dict[str, Any]:
     project_path = repo / ".zzzops" / "PROJECT.md"
     if not project_path.is_file():
         raise ValueError("PROJECT.md is missing; run agent-driven initialization")
@@ -592,7 +589,7 @@ def portfolio_snapshot(repo: Path, as_of: datetime | None = None) -> dict[str, A
             findings.append({"code": "malformed_record", "goal": issue.get("number", "unknown"), "detail": str(exc)})
     snapshot = build_portfolio_snapshot(
         backend, records, reads=len(pages), raw_bytes=len(result.stdout.encode("utf-8")),
-        ignored=len(issues) - len(managed), as_of=as_of,
+        ignored=len(issues) - len(managed),
     )
     snapshot["findings"] = sorted(snapshot["findings"] + findings, key=lambda item: (item["code"], str(item["goal"])))
     snapshot["summary"]["findings"] = len(snapshot["findings"])
@@ -761,7 +758,7 @@ def validate_plan(repo: Path, plan: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     allowed = {
         "schema_version", "base_digest", "confirmed", "backend", "repository",
-        "charter", "evidence", "confirmations", "github", "migration_pending", "policy",
+        "charter", "evidence", "confirmations", "github", "policy",
     }
     unknown = sorted(set(plan) - allowed)
     if unknown:
@@ -776,10 +773,6 @@ def validate_plan(repo: Path, plan: dict[str, Any]) -> list[str]:
     backend = plan.get("backend")
     if backend not in BACKENDS:
         errors.append("backend must be github_issues")
-    if not isinstance(plan.get("migration_pending"), bool):
-        errors.append("migration_pending must be boolean")
-    if plan.get("migration_pending") is not False:
-        errors.append("migration_pending must be false for the GitHub-only backend")
     repository = plan.get("repository")
     if not isinstance(repository, dict) or not nonempty(repository.get("identity")):
         errors.append("repository.identity is required")
@@ -847,8 +840,8 @@ def validate_plan(repo: Path, plan: dict[str, Any]) -> list[str]:
         errors.append("unconfirmed proposals: " + ", ".join(unconfirmed))
     if backend == "github_issues":
         github = plan.get("github")
-        if not isinstance(github, dict) or github.get("usable") is not True:
-            errors.append("github.usable must be true for github_issues")
+        if not isinstance(github, dict) or set(github) != {"usable"} or github.get("usable") is not True:
+            errors.append("github must contain only usable=true for github_issues")
     policy_errors = validate_policy(plan.get("policy"), require_pending=True)
     errors.extend(f"policy.{error}" for error in policy_errors)
     policy = plan.get("policy")
@@ -872,7 +865,7 @@ def validate_plan(repo: Path, plan: dict[str, Any]) -> list[str]:
                     or not isinstance(tradeoffs, dict)
                     or not all(text_present(tradeoffs.get(name)) for name in BACKENDS)
                 ):
-                    errors.append("policy backend settings must record capability evidence, both tradeoffs, repository identity, and forbidden fallback")
+                    errors.append("policy backend settings must record capability evidence, supported-backend tradeoffs, repository identity, and forbidden fallback")
     return errors
 
 
@@ -898,7 +891,6 @@ def render_project(plan: dict[str, Any], revision: int) -> str:
         "backend": plan["backend"],
         "repository": plan["repository"],
         "revision": revision,
-        "migration_pending": plan["migration_pending"],
         "policy": policy_state,
     }
     block = json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True)
@@ -1176,8 +1168,7 @@ def main() -> int:
     commands = parser.add_subparsers(dest="command")
     init = commands.add_parser("init", help="Inspect, validate, or apply agent-driven project initialization")
     init_commands = init.add_subparsers(dest="init_command", required=True)
-    inspect_command = init_commands.add_parser("inspect", help="Report initialization state and read-only capabilities")
-    inspect_command.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
+    init_commands.add_parser("inspect", help="Report initialization state and read-only capabilities as JSON")
     validate_command = init_commands.add_parser("validate", help="Validate an agent-generated initialization plan")
     validate_command.add_argument("--plan", type=Path, required=True)
     apply_command = init_commands.add_parser("apply", help="Atomically apply a confirmed initialization plan")
@@ -1190,7 +1181,6 @@ def main() -> int:
     portfolio_parser = commands.add_parser("portfolio", help="Read and audit the canonical goal portfolio once")
     portfolio_parser.add_argument("--format", dest="output_format", choices=("summary", "json"), default="summary")
     portfolio_parser.add_argument("--include-done", action="store_true", help="Include terminal goals in summary output")
-    portfolio_parser.add_argument("--as-of", help="Injected ISO-8601 audit instant for deterministic claim checks")
     portfolio_parser.add_argument("--compare", type=Path, help="Prior JSON snapshot used only to report digest/revision drift")
     args = parser.parse_args()
     repo = args.repo.resolve()
@@ -1215,12 +1205,7 @@ def main() -> int:
                 print(json.dumps(result, indent=2))
         elif args.command == "portfolio":
             try:
-                as_of = None
-                if args.as_of:
-                    as_of = datetime.fromisoformat(args.as_of.replace("Z", "+00:00"))
-                    if as_of.tzinfo is None:
-                        raise ValueError("--as-of must include a timezone")
-                result = portfolio_snapshot(repo, as_of)
+                result = portfolio_snapshot(repo)
                 if args.compare:
                     prior = json.loads(args.compare.resolve().read_text(encoding="utf-8-sig"))
                     result["changes"] = compare_portfolios(result, prior)

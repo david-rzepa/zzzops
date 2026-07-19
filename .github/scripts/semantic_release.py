@@ -124,7 +124,6 @@ def main() -> int:
     args.notes.write_text(release_notes(tag, changes), encoding="utf-8", newline="\n")
     print(f"Release planned: {previous_tag or 'none'} -> {tag} ({bump})")
     set_output("release_needed", "true")
-    set_output("version", ".".join(map(str, version)))
     set_output("tag", tag)
     set_output("notes", str(args.notes))
     return 0
