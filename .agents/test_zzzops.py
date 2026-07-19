@@ -625,17 +625,8 @@ class WorkflowContractTests(unittest.TestCase):
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("INITIALIZATION.md", text, name)
             self.assertIn("BACKENDS.md", text, name)
-            self.assertIn("HEALTH.md", text, name)
         install = (root / "skills" / "install-zzzops" / "SKILL.md").read_text(encoding="utf-8")
         self.assertNotIn("INITIALIZATION.md", install)
-        self.assertNotIn("HEALTH.md", install)
-
-    def test_non_install_health_hooks_are_project_policy_driven(self):
-        root = Path(__file__).parent / "skills"
-        for name in ("add-zzzops-goal", "execute-zzzops", "migrate-to-zzzops", "suggest-zzzops-work"):
-            text = (root / name / "SKILL.md").read_text(encoding="utf-8")
-            self.assertIn("HEALTH.md", text, name)
-            self.assertIn("reviewed PROJECT policy", text, name)
 
     def test_runtime_token_accounting_surface_is_retired(self):
         root = Path(__file__).parent.parent

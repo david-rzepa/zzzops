@@ -50,7 +50,7 @@ def main() -> int:
             ".agents/skills/install-zzzops", ".agents/zzzops.py", ".zzzops/rules/BACKENDS.md",
             ".agents/skills/add-zzzops-goal", ".agents/skills/migrate-zzzops-todos",
             ".agents/skills/suggest-zzzops-work", ".agents/skills/execute-zzzops",
-            ".agents/zzzops_health.py", ".github/workflows", ".agents/prompt_stats.py",
+            ".github/workflows", ".agents/prompt_stats.py",
         ]
         mapped = {path for item in items for path in item["paths"]}
         missing = [path for path in required if not any(entry == path or entry.startswith(path + "/") for entry in mapped)]
