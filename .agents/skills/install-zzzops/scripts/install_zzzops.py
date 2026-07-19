@@ -64,7 +64,7 @@ def main() -> int:
     try:
         manifest = files_to_copy(root)
     except (OSError, UnicodeError, ValueError) as exc:
-        print(f"ERROR: {exc}")
+        print(f"Could not prepare installation: {exc}")
         return 2
     actions: list[tuple[str, str, bytes, str | None]] = []
     for relative in manifest:
@@ -79,7 +79,7 @@ def main() -> int:
             action = "overwrite"
         else:
             action = "conflict"
-            errors.append(f"Mechanical file differs: {relative}; review and pass --overwrite-mechanical")
+            errors.append(f"ZzzOps already manages {relative}, but its contents differ. Review it before using --overwrite-mechanical.")
         actions.append((relative, action, data, digest(before) if before is not None else None))
     for skill_name in TARGET_SKILLS:
         skill_root = root / ".agents" / "skills" / skill_name
@@ -99,7 +99,7 @@ def main() -> int:
                 action = "overwrite"
             else:
                 action = "conflict"
-                errors.append(f"Mechanical file differs: {relative}; review and pass --overwrite-mechanical")
+                errors.append(f"ZzzOps already manages {relative}, but its contents differ. Review it before using --overwrite-mechanical.")
             actions.append((relative, action, data, digest(before) if before is not None else None))
     claude_ignore = (root / ".agents" / ".gitignore").read_bytes()
     destination = target / ".claude" / ".gitignore"
@@ -112,7 +112,7 @@ def main() -> int:
         action = "overwrite"
     else:
         action = "conflict"
-        errors.append("Mechanical file differs: .claude/.gitignore; review and pass --overwrite-mechanical")
+        errors.append("ZzzOps already manages .claude/.gitignore, but its contents differ. Review it before using --overwrite-mechanical.")
     actions.append((".claude/.gitignore", action, claude_ignore, digest(before) if before is not None else None))
     zzzops_ignore = (root / ".agents" / "templates" / "project-goals" / "ZZZOPS_GITIGNORE").read_bytes()
     destination = target / ".zzzops" / ".gitignore"
@@ -125,7 +125,7 @@ def main() -> int:
         action = "overwrite"
     else:
         action = "conflict"
-        errors.append("Mechanical file differs: .zzzops/.gitignore; review and pass --overwrite-mechanical")
+        errors.append("ZzzOps already manages .zzzops/.gitignore, but its contents differ. Review it before using --overwrite-mechanical.")
     actions.append((".zzzops/.gitignore", action, zzzops_ignore, digest(before) if before is not None else None))
     planned_paths = [target / relative for relative, _action, _data, _expected in actions]
     if any(not safe_target(target, path) for path in planned_paths):
@@ -135,18 +135,22 @@ def main() -> int:
     counts: dict[str, int] = {}
     for _path, action, _data, _expected in actions:
         counts[action] = counts.get(action, 0) + 1
-    print(f"Mode: {'APPLY' if args.apply else 'PREVIEW (no writes)'}")
+    print("ZzzOps installation")
+    print("Applying the approved preview." if args.apply else "Preview only; no files changed.")
     print(f"Target: {target}")
-    print("Mechanical files: " + ", ".join(f"{key}={value}" for key, value in sorted(counts.items())))
+    print(
+        f"Files: {counts.get('create', 0)} to add, {counts.get('overwrite', 0)} to update, "
+        f"{counts.get('unchanged', 0)} unchanged."
+    )
     for error in errors:
-        print(f"ERROR: {error}")
+        print(f"Action needed: {error}")
     if errors:
         return 2
-    print(f"Plan fingerprint: {fingerprint}")
+    print(f"Approval code: {fingerprint}")
     if not args.apply:
         return 0
     if args.confirm_plan != fingerprint:
-        print("ERROR: --confirm-plan does not match; no writes made")
+        print("The approval code does not match this preview. No files were changed.")
         return 2
     backups: dict[Path, bytes | None] = {}
     writes: list[tuple[Path, bytes, str | None]] = []
@@ -166,7 +170,7 @@ def main() -> int:
             elif data is not None:
                 atomic_write(path, data)
         raise
-    print("Apply complete. Start any non-install ZzzOps workflow; its agent will initialize the project before ordinary work.")
+    print("ZzzOps is installed. Next: start any non-install ZzzOps workflow to initialize the project.")
     return 0
 
 

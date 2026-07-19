@@ -770,26 +770,28 @@ def portfolio_snapshot(repo: Path) -> dict[str, Any]:
 def render_portfolio_summary(snapshot: dict[str, Any], include_done: bool = False) -> str:
     summary = snapshot["summary"]
     lines = [
-        f"ZzzOps portfolio: {snapshot['backend']} | goals={summary['total']} actionable={summary['actionable']} "
-        f"blocked={summary['blocked']} done={summary['done']} archived={summary.get('archived', 0)} "
-        f"findings={summary['findings']} reads={summary['reads']} "
-        f"complete={str(snapshot['complete']).lower()} valid={str(snapshot['valid']).lower()}",
-        f"digest={snapshot['portfolio_digest']}",
+        f"Goals: {summary['actionable']} ready to work, {summary['blocked']} blocked, "
+        f"{summary['done']} closed ({summary['total']} total)."
     ]
+    if not snapshot["complete"] or not snapshot["valid"]:
+        lines.append("This goal list needs attention before work can continue.")
+    status_labels = {
+        "new": "New", "triaged": "Planned", "ready": "Ready", "in_progress": "In progress",
+        "blocked": "Blocked", "done": "Done", "cancelled": "Cancelled",
+    }
     for goal in snapshot["goals"]:
         if not include_done and goal["status"] in {"done", "cancelled"}:
             continue
-        if goal.get("archived"):
-            title = re.sub(r"\s+", " ", str(goal["title"])).strip()[:240]
-            lines.append(f"{goal['key']} [{goal['status']} archived] {title}")
-            continue
-        human = " human" if goal["needs_human"] else ""
-        actionable = " actionable" if goal.get("actionable") else ""
         title = re.sub(r"\s+", " ", str(goal["title"])).strip()[:240]
-        next_action = re.sub(r"\s+", " ", str(goal["next_action"])).strip()[:240]
-        lines.append(f"{goal['key']} [{goal['status']}{actionable} {goal['priority']}/{goal['value']}/{goal['difficulty']}{human}] {title} — {next_action}")
+        label = status_labels.get(goal["status"], goal["status"])
+        if goal["status"] in {"ready", "in_progress"} and not goal.get("actionable"):
+            label = "Waiting"
+        line = f"#{goal['key']} {label}: {title}"
+        if goal.get("needs_human"):
+            line += " — action needed"
+        lines.append(line)
     for finding in snapshot["findings"]:
-        lines.append(f"! {finding['code']} {finding['goal']}: {finding['detail']}")
+        lines.append(f"Needs attention on goal #{finding['goal']}: {finding['detail']}")
     return "\n".join(lines)
 
 
@@ -1427,7 +1429,7 @@ def main() -> int:
     args = parser.parse_args()
     repo = args.repo.resolve()
     if not (repo / ".agents" / "templates" / "project-goals" / "PREFERENCES.json").is_file():
-        print(f"ERROR: ZzzOps is not installed at {repo}")
+        print(f"ZzzOps is not installed at {repo}.")
         return 2
     try:
         if args.command == "checkpoint":
@@ -1463,14 +1465,14 @@ def main() -> int:
                 if args.output_format == "json":
                     print(json.dumps({"schema_version": PORTFOLIO_SCHEMA_VERSION, "complete": False, "valid": False, "error": str(exc)}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
                 else:
-                    print(f"ERROR: {exc}")
+                    print(f"Could not load goals: {exc}")
                 return 2
         else:
             interactive(repo)
     except (EOFError, KeyboardInterrupt):
         print("\nNo further changes made.")
     except ValueError as exc:
-        print(f"ERROR: {exc}")
+        print(f"Could not continue: {exc}")
         return 2
     return 0
 

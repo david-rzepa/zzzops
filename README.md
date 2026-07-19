@@ -117,6 +117,7 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 | Migrate repository TODOs and backlogs | `.agents/skills/migrate-to-zzzops/SKILL.md` |
 | Suggest evidence-backed backlog work | `.agents/skills/suggest-zzzops-work/SKILL.md` |
 | Execute, prioritize, unblock, briefly watch human gates, verify, and hand off goals | `.agents/skills/execute-zzzops/SKILL.md` |
+| Give project-policy-driven updates, defaulting to concise outcomes and clear user actions | `.zzzops/rules/INITIALIZATION.md` |
 | Configure backlog refill and parallelization preferences | `.agents/zzzops.py` |
 | Inspect initialized capability and the canonical portfolio in one CLI checkpoint | `.agents/zzzops.py` |
 | Validate dev PRs and preview or publish semantic releases | `.github/workflows` |
@@ -129,6 +130,8 @@ Use $suggest-zzzops-work in dry-run mode to audit the project and suggest valuab
 ```
 
 In Claude Code, replace `$name` with `/name`, for example `/suggest-zzzops-work`.
+
+ZzzOps keeps its detailed audit trail in canonical goals and logs. Its installed communication default leads with what changed, whether you need to act, and what happens next; reviewed project policy can choose another style. Technical diagnostics remain available when they affect a decision or you ask for them.
 
 Maintainers: see the [skill discovery and mode contract](docs/SKILLS.md).
 
