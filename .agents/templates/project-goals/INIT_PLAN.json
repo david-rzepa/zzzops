@@ -132,7 +132,6 @@
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps conservative fallback", "default_disposition": "accepted",
         "settings": {
           "blocker_interview": "immediate_batch", "project_parallel_ceiling": "sequential", "max_workers": 1, "claim_ttl_hours": 4,
-          "health_hooks": ["entry", "final", "after_user_response", "long_run_checkpoint"],
           "refill": {"allowed_categories": ["documentation", "tests", "code_quality_non_behavioral"], "max_per_run": 3},
           "capture_defaults": {"priority": "P2", "difficulty": "unknown", "confidence": "low"},
           "planning": {"decompose_at": "L", "max_depth": 3}

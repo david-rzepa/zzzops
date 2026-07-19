@@ -10,7 +10,6 @@ Mode: `dry run`, `preview`, or `plan` means read-only inventory, triage simulati
 First run `../../../.zzzops/rules/INITIALIZATION.md`, then route through `../../../.zzzops/rules/BACKENDS.md`. Read `../../../.zzzops/rules/GOAL_SYSTEM.md`, the initialized charter, and local `../../../.zzzops/PREFERENCES.json`; load only what applies.
 Track execute intent through `../../../.zzzops/rules/CONTINUATION.md` so additive capture can safely resume without nested loops.
 
-Run applicable `../../../.zzzops/rules/HEALTH.md` hooks from reviewed PROJECT policy.
 
 - Create/triage/decompose: [CREATE.md](references/CREATE.md) and `../../templates/project-goals/GOAL.md`.
 - Unblock/interview: [UNBLOCK.md](references/UNBLOCK.md) and `../../../.zzzops/rules/BLOCKERS.md`.

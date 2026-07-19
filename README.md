@@ -161,22 +161,7 @@ Or use the interactive control panel from your project root:
 python .agents/zzzops.py
 ```
 
-It edits project preferences and optional user health settings.
-
-## Optional health reminders
-
-Health nudges are off until each user enables them in `python .agents/zzzops.py`. Preferences are per user; derived timestamps/counters are per machine. Windows uses roaming `%APPDATA%\ZzzOps\health_preferences.json` and local `%LOCALAPPDATA%\ZzzOps\health_state.json`; Linux uses XDG config/state; macOS uses `~/Library/Application Support/ZzzOps/`. `ZZZOPS_USER_CONFIG_DIR` and `ZZZOPS_MACHINE_STATE_DIR` provide explicit paths for sandboxes and harnesses. ZzzOps never bypasses denied storage or silently falls back into the repository.
-
-Codex and Claude Code do not portably guarantee message-send timestamps. Exact times are used only when a harness supplies them; approximate workflow receipt time requires a separate opt-in and remains labeled approximate. Otherwise only current-time schedule rules run. State contains no prompts, messages, or event history and is retention-pruned. Nudges are non-medical, nonblocking, cooldown-limited, and active only during ZzzOps workflows.
-
-```powershell
-python .agents/zzzops.py --repo . health status
-python .agents/zzzops.py --repo . health snooze
-python .agents/zzzops.py --repo . health resume
-python .agents/zzzops.py --repo . health reset
-```
-
-Maintainers: see [health architecture and capability matrix](docs/HEALTH.md).
+It edits project preferences and parallelization settings.
 
 ## Releases
 
@@ -184,7 +169,7 @@ Develop on branches created from `dev` and open ordinary PRs against `dev`. The 
 
 Versions follow Conventional Commits since the latest `vMAJOR.MINOR.PATCH` tag: `!`, `BREAKING CHANGE:`, or `BREAKING-CHANGE:` bumps major, `feat` bumps minor, and `fix`/`perf` bumps patch. Other types do not release. The first release applies those rules from `0.0.0`; reruns with no new releasable commits are no-ops. No repository secret is required beyond GitHub's job token.
 
-To diagnose a PR or release, inspect **PR validation / dev-required-tests**, the three **health-storage** platform checks, or the **Semantic release** run and its failing step. Reproduce checks locally with `python .agents/test_prompt_stats.py`, `python .agents/test_zzzops.py`, `python .agents/test_zzzops_health.py`, `python .agents/test_zzzops_cli.py`, `python .agents/test_zzzops_appdata.py`, `python -m unittest discover -s .github/scripts -p 'test_*.py'`, and `python .agents/prompt_stats.py --check`. The app-data test writes only isolated temporary directories in the real platform roots and removes them. `python .github/scripts/semantic_release.py` only writes a local notes file.
+To diagnose a PR or release, inspect **PR validation / dev-required-tests** or the **Semantic release** run and its failing step. Reproduce checks locally with `python .agents/test_prompt_stats.py`, `python .agents/test_zzzops.py`, `python -m unittest discover -s .github/scripts -p 'test_*.py'`, and `python .agents/prompt_stats.py --check`. `python .github/scripts/semantic_release.py` only writes a local notes file.
 
 Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required `dev` check, current GitHub Free limitation, closest enforceable `main` policy, and recovery procedure.
 
@@ -195,7 +180,6 @@ Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required
 - `goals/items/` and derived `goals/INDEX.md` — created only when the local backend is selected.
 - `.zzzops/rules/` — tracked ZzzOps operating rules; machinery, not project content.
 - `.zzzops/PREFERENCES.json` — local, ignored user opt-ins for bounded autonomous backlog refills.
-- Platform app data — opt-in per-user health preferences and minimal per-machine derived state; never repository state.
 - `.zzzops/migration/STATE.json` — keeps old TODOs from returning like a low-budget horror villain.
 
 Agents work sequentially by default, define the observable signal before editing, change one small falsifiable chunk at a time, and inspect real output after every chunk. If the project is opaque, they build a focused harness or scoped MCP observation server instead of vibe-coding and hoping. Execution defaults to the current branch, follows repository Git rules, and gives each completed sub-goal its own commit; capture itself is Git-free.

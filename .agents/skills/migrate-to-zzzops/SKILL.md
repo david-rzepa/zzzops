@@ -8,7 +8,6 @@ description: Discover, plan, migrate, or import repository TODOs/backlogs into d
 Mode: `dry run`, `preview`, or `plan` reports candidates and a proposed plan in chat without creating plan/summary files or changing state. Otherwise build the review artifacts below; apply only after explicit approval.
 
 Run `.zzzops/rules/INITIALIZATION.md`, then `.zzzops/rules/BACKENDS.md`. Use `.agents/templates/project-goals/` for artifact shapes.
-Run applicable `.zzzops/rules/HEALTH.md` hooks from reviewed PROJECT policy; nudges never substitute for migration approval.
 
 1. Run `scripts/inventory.py .`. Inspect candidate files and surrounding project context yourself. The inventory preserves source text; it is advisory, so do not treat syntax as intent or hard-code a universal completion vocabulary.
 2. Ignore managed/dependency/build/generated areas. Compare candidates with `.zzzops/migration/STATE.json` and the complete BACKENDS portfolio snapshot; re-read only likely matches and investigate only new fingerprints. Ask about ownership/exclusions, project outcome/KPIs/acceptance, and consequential ambiguity according to PROJECT interview policy. Reuse existing charter answers.
