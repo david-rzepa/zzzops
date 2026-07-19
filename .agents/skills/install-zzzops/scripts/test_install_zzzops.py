@@ -41,7 +41,6 @@ class InstallerInitializationTests(unittest.TestCase):
             self.assertIn("compact hidden", backend_rules)
             self.assertTrue((target / ".zzzops" / "rules" / "CONTINUATION.md").is_file())
             self.assertTrue((target / ".agents" / "templates" / "project-goals" / "INIT_PLAN.json").is_file())
-            self.assertTrue((target / ".agents" / "templates" / "project-goals" / "GOAL.md").is_file())
             self.assertFalse((target / ".agents" / "templates" / "project-goals" / "USAGE_LEDGER.md").exists())
             self.assertFalse((target / ".zzzops" / "rules" / "USAGE_ACCOUNTING.md").exists())
             self.assertFalse((target / ".agents" / "skills" / "analyze-zzzops-usage").exists())

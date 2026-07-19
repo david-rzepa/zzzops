@@ -38,7 +38,7 @@
   ],
   "github": {
     "usable": false,
-    "evidence": "replace with capability result or select local_files"
+    "evidence": "replace with GitHub capability result"
   },
   "policy": {
     "schema_version": 1,
@@ -50,7 +50,7 @@
         "settings": {
           "authority": "github_issues", "repository_identity": "owner/repository", "fallback": "forbidden",
           "capability_evidence": "replace with the GitHub or local capability probe result",
-          "tradeoffs": {"github_issues": "shared native issue queue requiring GitHub access", "local_files": "portable repository files requiring Git coordination"}
+          "tradeoffs": {"github_issues": "shared native issue queue requiring GitHub access"}
         },
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },

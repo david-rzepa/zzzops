@@ -47,7 +47,6 @@ class InventoryTests(unittest.TestCase):
             )
             self.write(root, "notes.md", "- ordinary note\n")
             self.write(root, ".zzzops/rules/private.md", "# TODO: machinery must be excluded\n")
-            self.write(root, "goals/items/old.md", "# TODO: canonical goals must be excluded\n")
             self.write(root, "ignored.md", "# TODO: ignored work must be excluded\n")
             (root / "image.png").write_bytes(b"TODO: binary-ish bytes")
 
