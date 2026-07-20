@@ -20,9 +20,9 @@ Expected: it explains the tracked project skills, rules/control CLI, and blank s
 
 Prerequisite: complete A-001, then remove the `.agents/` and `.claude/` ignore rules.
 
-Human action: run the platform installer without its dry-run option, inspect its preview, answer yes at the default-no prompt, inspect the installed files and target Git status, then repeat a dry run.
+Human action: run the platform installer without its dry-run option, inspect its preview, answer yes at the default-no prompt, inspect the installed files and target Git status, then run the normal installer again.
 
-Expected: the same invocation rechecks and applies the preview; installation succeeds concisely; `.agents/skills/` and `.claude/skills/` contain the discoverable skills, all other harness support is grouped under `.agents/zzzops/`, shared rules stay under `.zzzops/`, and no ZzzOps file sits directly under `.agents/` or `.claude/`. Git shows only the previewed mechanics, project state is not initialized, and the repeated preview reports that ZzzOps is already up to date.
+Expected: the same invocation rechecks and applies the preview; installation succeeds concisely and directs you to open the target in Codex or Claude Code, restart/reopen the harness if skills are not discovered, and begin with `review-zzzops-policy`. `.agents/skills/` and `.claude/skills/` contain the discoverable skills, all other harness support is grouped under `.agents/zzzops/`, shared rules stay under `.zzzops/`, and no ZzzOps file sits directly under `.agents/` or `.claude/`. Git shows only the previewed mechanics and project state is not initialized. A repeated normal install reports that ZzzOps is already up to date, says no further action is necessary, and exits without asking for confirmation.
 
 ## A-003 - Review and initialize project policy
 

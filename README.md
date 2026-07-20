@@ -26,7 +26,7 @@ On macOS or Linux:
 /path/to/zzzops/install.sh /path/to/your-project
 ```
 
-The installer previews the tracked project mechanics, warns if Git ignores required `.agents/` or `.claude/` content, and asks once before writing. The default answer is no. Use `-DryRun` on Windows or `--dry-run` on macOS/Linux for a non-interactive preview.
+The installer previews the tracked project mechanics, warns if Git ignores required `.agents/` or `.claude/` content, and asks once before real writes. The default answer is no. If everything is current, it exits without prompting and says no further action is necessary. Use `-DryRun` on Windows or `--dry-run` on macOS/Linux for a non-interactive preview.
 
 The CLI copies discoverable skills, mechanics, and blank templates—never itself, project state, another project’s goals, or the target’s `AGENTS.md`/`CLAUDE.md`.
 
