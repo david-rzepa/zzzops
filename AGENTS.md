@@ -16,7 +16,7 @@ Without skill discovery read [rules](.zzzops/rules/GOAL_SYSTEM.md), then the app
 
 ## Base repository
 
-Use `$install-zzzops` only here. It installs discoverable skills/mechanics into targets but never itself, project state, or target `AGENTS.md`/`CLAUDE.md`.
+Run the root `zzzops.py install` CLI only from this base repository. It installs discoverable skills/mechanics into targets but never itself, project state, or target `AGENTS.md`/`CLAUDE.md`.
 
 Git workflow: pure ZzzOps goal capture is the sole exception and never automates Git. When execution begins, branch implementation work from current `dev` and open ordinary PRs against `dev`, never `main` (unless the user explicitly keeps one existing execution branch). Large work may use smaller coherent semantic commits when they aid review, testing, or independent rollback; squash changes valid only together into one atomic commit, while keeping independently useful/revertible changes separate. Only repository owner `david-rzepa` may update `main`, by an explicitly intended release force-push after preconditions pass; any `main` update runs release CI.
 

@@ -22,8 +22,6 @@ jobs:
           python-version: '3.12'
       - name: Test ZzzOps core and repository contracts
         run: python -m unittest discover -s .agents -p 'test_*.py'
-      - name: Test mechanics installer
-        run: python -m unittest discover -s .agents/skills/install-zzzops/scripts -p 'test_*.py'
       - name: Test TODO migration inventory
         run: python -m unittest discover -s .agents/skills/migrate-to-zzzops/scripts -p 'test_*.py'
       - name: Test manual acceptance plan coverage
@@ -33,4 +31,4 @@ jobs:
       - name: Verify prompt budget
         run: python .agents/prompt_stats.py --check
       - name: Check Python syntax
-        run: python -m compileall -q .agents .github/scripts
+        run: python -m compileall -q .agents .github/scripts && python -m py_compile zzzops.py

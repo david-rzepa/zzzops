@@ -991,7 +991,6 @@ class WorkflowContractTests(unittest.TestCase):
         contracts = {
             "add-zzzops-goal": ("capture", "add", "create", "record", "goal/todo", "writes canonical goal state by default"),
             "execute-zzzops": ("execute", "work all goals", "continue", "resume", "triage", "prioritize", "reprioritize", "unblock", '"dry run"', '"preview"', '"plan"', "default executes"),
-            "install-zzzops": ("install", "set up", "copy", "refresh", "update", '"preview"', '"dry run"', '"apply"', '"setup"'),
             "migrate-to-zzzops": ("discover", "plan", "migrate", "import", "todos/backlogs", '"dry run"', '"preview"', '"apply"', "default builds review artifacts"),
             "suggest-zzzops-work": ("suggest", "discover", "audit", '"dry run"', '"preview"', '"plan"', '"apply"', '"refill"'),
             "run-zzzops-acceptance": ("run", "guide", "check", "resume", "manual test", "acceptance test", "run the test plan", "next test"),
@@ -1004,7 +1003,7 @@ class WorkflowContractTests(unittest.TestCase):
             for phrase in phrases:
                 self.assertIn(phrase, description, f"{name}: {phrase}")
 
-    def test_non_install_skills_share_preflight_and_backend_rules(self):
+    def test_installed_skills_share_preflight_and_backend_rules(self):
         root = Path(__file__).parent
         names = (
             "add-zzzops-goal", "execute-zzzops", "migrate-to-zzzops",
@@ -1014,8 +1013,6 @@ class WorkflowContractTests(unittest.TestCase):
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("INITIALIZATION.md", text, name)
             self.assertIn("BACKENDS.md", text, name)
-        install = (root / "skills" / "install-zzzops" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertNotIn("INITIALIZATION.md", install)
 
 if __name__ == "__main__":
     unittest.main()

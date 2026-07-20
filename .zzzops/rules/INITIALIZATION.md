@@ -1,6 +1,6 @@
 # Initialization preflight
 
-All workflows except `$install-zzzops` do this before ordinary work:
+All installed agent workflows do this before ordinary work. The external root `zzzops.py install` CLI does not:
 
 1. Before first CLI use, resolve Python 3 once without trying an assumed name: prefer harness runtime discovery; otherwise probe `python3`, `python`, and Windows `py -3` together. Reuse the exact command (`<python>` below), never hard-code a harness path, and block once with actionable detail if absent.
 2. For ordinary reviewed projects run `<python> .agents/zzzops.py --repo . checkpoint` once. Continue only on `ready:true`; use its complete/valid embedded portfolio and never run a second portfolio command at that checkpoint.

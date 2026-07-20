@@ -32,7 +32,7 @@ class ManualAcceptanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)
             (repo / "docs").mkdir()
-            plan = {"version": 1, "items": [{"id":"A-1","status":"unchecked","paths":[".agents/skills/install-zzzops"],"fingerprint":None,"notes":""}]}
+            plan = {"version": 1, "items": [{"id":"A-1","status":"unchecked","paths":["zzzops.py"],"fingerprint":None,"notes":""}]}
             path = repo / "docs" / "ACCEPTANCE_TEST_PLAN.md"
             path.write_text("<!-- zzzops-acceptance-plan\n" + json.dumps(plan) + "\nzzzops-acceptance-plan -->\n")
             result = subprocess.run([sys.executable, str(SCRIPT), "coverage", "--repo", str(repo)], text=True, capture_output=True)
