@@ -41,12 +41,13 @@ function Get-InstallPairs {
     $fixed = @(
         '.zzzops/rules/BACKENDS.md', '.zzzops/rules/BLOCKERS.md', '.zzzops/rules/CONTINUATION.md',
         '.zzzops/rules/EXECUTION_STRATEGY.md', '.zzzops/rules/GOAL_SYSTEM.md', '.zzzops/rules/INITIALIZATION.md',
-        '.agents/.gitignore', '.agents/zzzops.py'
+        '.agents/zzzops/zzzops.py'
     )
     foreach ($relative in $fixed) {
         Add-InstallPair $pairs (Join-Path $SourceRoot ($relative.Replace('/', [IO.Path]::DirectorySeparatorChar))) $relative
     }
-    $roots = @((Join-Path $SourceRoot '.agents/templates/project-goals'))
+    Add-InstallPair $pairs (Join-Path $SourceRoot '.agents/.gitignore') '.agents/zzzops/.gitignore'
+    $roots = @((Join-Path $SourceRoot '.agents/zzzops/templates/project-goals'))
     foreach ($name in $TargetSkills) { $roots += Join-Path $SourceRoot ".agents/skills/$name" }
     foreach ($root in $roots) {
         foreach ($file in Get-ChildItem -LiteralPath $root -Recurse -File -Force) {
@@ -63,8 +64,7 @@ function Get-InstallPairs {
             Add-InstallPair $pairs $file.FullName ".claude/skills/$name/$suffix"
         }
     }
-    Add-InstallPair $pairs (Join-Path $SourceRoot '.agents/.gitignore') '.claude/.gitignore'
-    Add-InstallPair $pairs (Join-Path $SourceRoot '.agents/templates/project-goals/ZZZOPS_GITIGNORE') '.zzzops/.gitignore'
+    Add-InstallPair $pairs (Join-Path $SourceRoot '.agents/zzzops/templates/project-goals/ZZZOPS_GITIGNORE') '.zzzops/.gitignore'
     return @($pairs | Sort-Object Relative -Unique)
 }
 
@@ -85,7 +85,7 @@ function Get-IgnoredMechanicRoots {
     $ignored = [System.Collections.ArrayList]::new()
     $warning = $null
     $probes = [ordered]@{
-        '.agents' = @('.agents/zzzops.py', '.agents/skills/execute-zzzops/SKILL.md')
+        '.agents' = @('.agents/zzzops/zzzops.py', '.agents/skills/execute-zzzops/SKILL.md')
         '.claude' = @('.claude/skills/execute-zzzops/SKILL.md')
     }
     try {

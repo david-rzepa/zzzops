@@ -32,10 +32,11 @@ build_pairs() {
     local fixed=(
         .zzzops/rules/BACKENDS.md .zzzops/rules/BLOCKERS.md .zzzops/rules/CONTINUATION.md
         .zzzops/rules/EXECUTION_STRATEGY.md .zzzops/rules/GOAL_SYSTEM.md .zzzops/rules/INITIALIZATION.md
-        .agents/.gitignore .agents/zzzops.py
+        .agents/zzzops/zzzops.py
     )
     for relative in "${fixed[@]}"; do add_pair "$SOURCE_ROOT/$relative" "$relative"; done
-    local roots=("$SOURCE_ROOT/.agents/templates/project-goals")
+    add_pair "$SOURCE_ROOT/.agents/.gitignore" '.agents/zzzops/.gitignore'
+    local roots=("$SOURCE_ROOT/.agents/zzzops/templates/project-goals")
     for name in "${TARGET_SKILLS[@]}"; do roots+=("$SOURCE_ROOT/.agents/skills/$name"); done
     for root in "${roots[@]}"; do
         while IFS= read -r -d '' file; do
@@ -52,8 +53,7 @@ build_pairs() {
             add_pair "$file" ".claude/skills/$name/$suffix"
         done < <(find "$root" -type f -print0)
     done
-    add_pair "$SOURCE_ROOT/.agents/.gitignore" '.claude/.gitignore'
-    add_pair "$SOURCE_ROOT/.agents/templates/project-goals/ZZZOPS_GITIGNORE" '.zzzops/.gitignore'
+    add_pair "$SOURCE_ROOT/.agents/zzzops/templates/project-goals/ZZZOPS_GITIGNORE" '.zzzops/.gitignore'
 }
 
 file_digest() {
@@ -81,7 +81,7 @@ probe_ignored_roots() {
     local roots=(.agents .claude)
     for root in "${roots[@]}"; do
         local probes=()
-        if [[ "$root" == .agents ]]; then probes=(.agents/zzzops.py .agents/skills/execute-zzzops/SKILL.md)
+        if [[ "$root" == .agents ]]; then probes=(.agents/zzzops/zzzops.py .agents/skills/execute-zzzops/SKILL.md)
         else probes=(.claude/skills/execute-zzzops/SKILL.md)
         fi
         for probe in "${probes[@]}"; do

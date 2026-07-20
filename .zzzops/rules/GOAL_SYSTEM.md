@@ -10,7 +10,7 @@ Before every non-install workflow follow `INITIALIZATION.md`, then use the GitHu
 - Never store secrets/raw sensitive data; link to approved systems and name authority/sync direction.
 - Project charter defines success/value. Preserve unknown KPI/target/tradeoff fields; ask rather than invent.
 - Reviewed PROJECT policy contains repository operational choices; installed rules provide overridable defaults, never a second local policy layer.
-- Initialization plans and migration artifact shapes live in `.agents/templates/project-goals/`; `init apply` renders project state. Installation copies mechanics/templates only and never creates or overwrites project state.
+- Initialization plans and migration artifact shapes live in `.agents/zzzops/templates/project-goals/`; `init apply` renders project state. Installation copies mechanics/templates only and never creates or overwrites project state.
 
 ## Lifecycle
 
@@ -40,7 +40,7 @@ One parent maximum; any children/dependencies; reject self-links/cycles. GitHub 
 
 A dependency edge preserves required ancestry and final integration order. The installed default requires every dependency to be `done` before writable implementation begins. Reviewed PROJECT policy may override actionability; for example, `stack_from_reviewed_checkpoint` may permit a child to stack from an unfinished dependency's exact technically ready checkpoint while preserving merge order. Read-only investigation may prepare dependent work when policy allows, but it does not claim, edit, branch, or mark that implementation started.
 
-Before substantial GitHub work, declare known `path:`, `branch:`, `integration:`, `generated:`, and `external:` resources, then atomically reserve the exact revision plus repeated `--resource` values with `<python> .agents/zzzops.py reserve acquire --goal N --revision R --owner OWNER --run-id RUN`. Only the bundle winner claims/works. On contention refresh once and choose other work. Renew at checkpoints; release before blocking, terminal state, or handoff. Claims audit; reservations exclude. Never fall back on uncertainty; record expiry recovery.
+Before substantial GitHub work, declare known `path:`, `branch:`, `integration:`, `generated:`, and `external:` resources, then atomically reserve the exact revision plus repeated `--resource` values with `<python> .agents/zzzops/zzzops.py reserve acquire --goal N --revision R --owner OWNER --run-id RUN`. Only the bundle winner claims/works. On contention refresh once and choose other work. Renew at checkpoints; release before blocking, terminal state, or handoff. Claims audit; reservations exclude. Never fall back on uncertainty; record expiry recovery.
 
 ## Update invariants
 

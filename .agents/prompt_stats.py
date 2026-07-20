@@ -20,7 +20,7 @@ def prompt_files(root: Path) -> list[Path]:
     files.extend((root / ".zzzops" / "rules").glob("*.md"))
     files.extend((root / ".agents" / "skills").glob("*/SKILL.md"))
     files.extend((root / ".agents" / "skills").glob("*/references/*.md"))
-    files.extend((root / ".agents" / "templates" / "project-goals").glob("*.md"))
+    files.extend((root / ".agents" / "zzzops" / "templates" / "project-goals").glob("*.md"))
     files.extend((root / ".claude" / "skills").glob("*/SKILL.md"))
     return sorted({path for path in files if path.is_file()}, key=lambda path: path.relative_to(root).as_posix())
 

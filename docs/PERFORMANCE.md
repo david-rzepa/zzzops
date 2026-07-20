@@ -3,7 +3,7 @@
 Agents resolve one Python 3 interpreter once per task, then use one combined initialized decision checkpoint:
 
 ```powershell
-<python> .agents/zzzops.py --repo . checkpoint
+<python> .agents/zzzops/zzzops.py --repo . checkpoint
 ```
 
 The command validates initialized project state and Git origin, then one paginated GitHub process returns repository capability and every managed issue. Its embedded stable portfolio contains selection, graph, blocker, claim, review, revision, and digest fields—not full criteria, evidence, comments, or history. Closed goals are fully validated first, then emitted as minimal archived projections for duplicate/relationship checks instead of repeating dead execution detail in agent context.

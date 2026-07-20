@@ -1928,7 +1928,7 @@ def main() -> int:
             reserve_command.add_argument("--ttl-seconds", type=int, help="Override reviewed claim_ttl_hours")
     args = parser.parse_args()
     repo = args.repo.resolve()
-    if not (repo / ".agents" / "templates" / "project-goals" / "INIT_PLAN.json").is_file():
+    if not (repo / ".agents" / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").is_file():
         print(f"ZzzOps is not installed at {repo}.")
         return 2
     try:

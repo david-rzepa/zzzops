@@ -5,11 +5,11 @@ Installation copies mechanics and blank templates only. The first non-install wo
 Resolve one Python 3 interpreter first (`python3`, `python`, Windows `py -3`, or a harness-provided runtime), then reuse it below as `<python>` without speculative launcher attempts:
 
 ```text
-<python> .agents/zzzops.py --repo . init inspect
-<python> .agents/zzzops.py --repo . init validate --plan .zzzops/init/plan.json
-<python> .agents/zzzops.py --repo . init apply --plan .zzzops/init/plan.json
-<python> .agents/zzzops.py --repo . init confirm --project-digest DIGEST --reviewer NAME --all
-<python> .agents/zzzops.py --repo . checkpoint
+<python> .agents/zzzops/zzzops.py --repo . init inspect
+<python> .agents/zzzops/zzzops.py --repo . init validate --plan .zzzops/init/plan.json
+<python> .agents/zzzops/zzzops.py --repo . init apply --plan .zzzops/init/plan.json
+<python> .agents/zzzops/zzzops.py --repo . init confirm --project-digest DIGEST --reviewer NAME --all
+<python> .agents/zzzops/zzzops.py --repo . checkpoint
 ```
 
 Apply atomically creates a pending `.zzzops/PROJECT.md`. The agent summarizes it and tells the user to read that exact path; it cannot check policy sections or continue ordinary work. Explicit user approval of the current digest may confirm all sections or selected stable IDs. Any edit invalidates the digest, and every required unchecked section remains a categorized `decision` blocker.

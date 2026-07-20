@@ -87,23 +87,29 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertEqual(0, applied.returncode, applied.stderr + applied.stdout)
                 self.assertIn("ZzzOps is installed.", applied.stdout)
                 self.assertTrue((target / ".zzzops" / "rules" / "INITIALIZATION.md").is_file())
-                self.assertTrue((target / ".agents" / "templates" / "project-goals" / "INIT_PLAN.json").is_file())
+                self.assertTrue((target / ".agents" / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").is_file())
+                self.assertTrue((target / ".agents" / "zzzops" / ".gitignore").is_file())
                 self.assertTrue((target / ".agents" / "skills" / "add-zzzops-goal" / "SKILL.md").is_file())
                 self.assertTrue((target / ".claude" / "skills" / "add-zzzops-goal" / "SKILL.md").is_file())
+                self.assertEqual({"skills", "zzzops"}, {path.name for path in (target / ".agents").iterdir()})
+                self.assertEqual({"skills"}, {path.name for path in (target / ".claude").iterdir()})
                 self.assertFalse((target / ".gitignore").exists())
                 self.assertFalse((target / ".zzzops" / "PROJECT.md").exists())
                 help_result = subprocess.run(
-                    [sys.executable, str(target / ".agents" / "zzzops.py"), "--repo", str(target), "portfolio", "--help"],
+                    [sys.executable, str(target / ".agents" / "zzzops" / "zzzops.py"), "--repo", str(target), "portfolio", "--help"],
                     text=True, encoding="utf-8", capture_output=True, check=False,
                 )
                 self.assertEqual(0, help_result.returncode, help_result.stderr + help_result.stdout)
                 self.assertIn("--format {summary,json}", help_result.stdout)
                 checkpoint = subprocess.run(
-                    [sys.executable, str(target / ".agents" / "zzzops.py"), "--repo", str(target), "checkpoint"],
+                    [sys.executable, str(target / ".agents" / "zzzops" / "zzzops.py"), "--repo", str(target), "checkpoint"],
                     text=True, encoding="utf-8", capture_output=True, check=False,
                 )
                 self.assertEqual(2, checkpoint.returncode, checkpoint.stderr + checkpoint.stdout)
                 self.assertFalse(json.loads(checkpoint.stdout)["ready"])
+                repeated = self.run_installer(installer, target, "--dry-run")
+                self.assertEqual(0, repeated.returncode, repeated.stderr + repeated.stdout)
+                self.assertIn("already up to date", repeated.stdout)
 
     def test_ignore_warning_and_local_state_preservation(self):
         for name, installer in self.installers.items():
@@ -155,7 +161,7 @@ class NativeInstallerTests(unittest.TestCase):
                 reader = threading.Thread(target=read_output, daemon=True)
                 reader.start()
                 self.assertTrue(prompted.wait(15), "installer did not prompt: " + "".join(output))
-                changed = target / ".agents" / "zzzops.py"
+                changed = target / ".agents" / "zzzops" / "zzzops.py"
                 changed.parent.mkdir(parents=True)
                 changed.write_bytes(b"changed after preview\n")
                 assert process.stdin is not None
