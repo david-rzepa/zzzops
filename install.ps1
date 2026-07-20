@@ -8,7 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $SourceRoot = $PSScriptRoot
-$TargetSkills = @('add-zzzops-goal', 'execute-zzzops', 'migrate-to-zzzops', 'suggest-zzzops-work')
+$TargetSkills = @('add-zzzops-goal', 'execute-zzzops', 'migrate-to-zzzops', 'review-zzzops-policy', 'suggest-zzzops-work')
 
 function Stop-Install([string]$Message) {
     Write-Host "Cannot install yet: $Message"

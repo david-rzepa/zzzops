@@ -91,6 +91,8 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertTrue((target / ".agents" / "zzzops" / ".gitignore").is_file())
                 self.assertTrue((target / ".agents" / "skills" / "add-zzzops-goal" / "SKILL.md").is_file())
                 self.assertTrue((target / ".claude" / "skills" / "add-zzzops-goal" / "SKILL.md").is_file())
+                self.assertTrue((target / ".agents" / "skills" / "review-zzzops-policy" / "SKILL.md").is_file())
+                self.assertTrue((target / ".claude" / "skills" / "review-zzzops-policy" / "SKILL.md").is_file())
                 self.assertEqual({"skills", "zzzops"}, {path.name for path in (target / ".agents").iterdir()})
                 self.assertEqual({"skills"}, {path.name for path in (target / ".claude").iterdir()})
                 self.assertFalse((target / ".gitignore").exists())

@@ -97,9 +97,10 @@ class InitializationTests(unittest.TestCase):
         self.assertEqual(len(zzzops.POLICY_SECTION_IDS), len(result["decision_blockers"]))
         project_text = (self.repo / ".zzzops" / "PROJECT.md").read_text(encoding="utf-8")
         self.assertIn("Agents complete durable", project_text)
-        self.assertIn("E-002: agent synthesis — charter", project_text)
+        self.assertNotIn("E-002: agent synthesis — charter", project_text)
+        self.assertIn("E-002: agent synthesis — charter", (self.repo / ".zzzops" / "PROJECT_AUDIT.md").read_text(encoding="utf-8"))
         reviewed = zzzops.confirm_project(
-            self.repo, result["base_digest"], "test-user", [], True,
+            self.repo, applied["policy_digest"], "test-user", [], True,
         )
         self.assertTrue(reviewed["initialized"])
         self.assertEqual([], reviewed["decision_blockers"])
@@ -109,31 +110,56 @@ class InitializationTests(unittest.TestCase):
         self.assertNotIn("E-002: agent synthesis", compact)
         self.assertIn("E-002: agent synthesis", audit)
         self.assertLess(len(compact), len(audit))
+        self.assertNotIn("zzzops-project-state", compact)
+        self.assertTrue((self.repo / ".zzzops" / "POLICY.json").is_file())
         self.assertTrue(zzzops.inspect_initialization(self.repo)["initialized"])
 
-        altered_audit = audit.replace('"decision": "github_issues"', '"decision": "changed"', 1)
+        altered_audit = audit.replace("Decision: github_issues", "Decision: changed", 1)
         (self.repo / ".zzzops" / "PROJECT_AUDIT.md").write_text(altered_audit, encoding="utf-8")
-        compact_state = zzzops.parse_project_state(compact)
-        compact_state["audit"]["digest"] = zzzops.project_digest(altered_audit)
-        self.assertIn("project audit policy does not match PROJECT.md", zzzops.validate_project_audit(self.repo, compact_state))
+        compact_state = zzzops.read_project_state(self.repo)[2]
+        self.assertIn("audit policy artifact digest changed", zzzops.validate_project_artifacts(self.repo, compact_state))
 
         (self.repo / ".zzzops" / "PROJECT_AUDIT.md").write_text(audit + "tampered\n", encoding="utf-8")
         changed = zzzops.inspect_initialization(self.repo)
         self.assertFalse(changed["initialized"])
-        self.assertIn("project audit digest changed", changed["state_error"])
+        self.assertIn("audit policy artifact digest changed", changed["state_error"])
 
     def test_review_is_exact_digest_explicit_and_incremental(self):
         applied = zzzops.apply_plan(self.repo, self.plan())
         with self.assertRaisesRegex(ValueError, "digest changed"):
             zzzops.confirm_project(self.repo, "sha256:stale", "test-user", [], True)
         first = zzzops.confirm_project(
-            self.repo, applied["project_digest"], "test-user", ["backend"], False,
+            self.repo, applied["policy_digest"], "test-user", ["backend"], False,
         )
         self.assertFalse(first["initialized"])
         self.assertNotIn("policy:backend", first["decision_blockers"])
         self.assertIn("policy:verification_testing", first["decision_blockers"])
-        final = zzzops.confirm_project(self.repo, first["project_digest"], "test-user", [], True)
+        final = zzzops.confirm_project(self.repo, first["policy_digest"], "test-user", [], True)
         self.assertTrue(final["initialized"])
+
+    def test_bound_charter_and_canonical_policy_changes_invalidate_review(self):
+        applied = zzzops.apply_plan(self.repo, self.plan())
+        zzzops.confirm_project(self.repo, applied["policy_digest"], "test-user", [], True)
+        project = self.repo / ".zzzops" / "PROJECT.md"
+        original = project.read_text(encoding="utf-8")
+        project.write_text(original + "changed\n", encoding="utf-8")
+        self.assertIn("project policy artifact digest changed", zzzops.inspect_initialization(self.repo)["state_error"])
+        project.write_text(original, encoding="utf-8")
+        policy = self.repo / ".zzzops" / "POLICY.json"
+        state = json.loads(policy.read_text(encoding="utf-8"))
+        state["policy"]["sections"][0]["decision"] = "changed"
+        policy.write_text(json.dumps(state), encoding="utf-8")
+        self.assertIn("policy approval digest changed", zzzops.inspect_initialization(self.repo)["state_error"])
+
+    def test_initialization_plan_digest_binds_existing_policy_state(self):
+        plan = self.plan()
+        zzzops.apply_plan(self.repo, plan)
+        plan = self.plan()
+        state_path = self.repo / ".zzzops" / "POLICY.json"
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["revision"] += 1
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+        self.assertIn("base_digest is stale or missing", zzzops.validate_plan(self.repo, plan))
 
     def test_policy_preserves_unknown_settings_and_agents_cannot_preapprove(self):
         plan = self.plan()
@@ -143,23 +169,22 @@ class InitializationTests(unittest.TestCase):
         self.assertTrue(any("review must be pending" in error for error in zzzops.validate_plan(self.repo, plan)))
         section["review"]["approved"] = False
         applied = zzzops.apply_plan(self.repo, plan)
-        zzzops.confirm_project(self.repo, applied["project_digest"], "test-user", [], True)
-        state = zzzops.parse_project_state((self.repo / ".zzzops" / "PROJECT.md").read_text(encoding="utf-8"))
+        zzzops.confirm_project(self.repo, applied["policy_digest"], "test-user", [], True)
+        state = zzzops.read_project_state(self.repo)[2]
         self.assertEqual({"custom": True}, state["policy"]["sections"][4]["settings"]["project_extension"])
 
     def test_project_policy_requires_resolvable_source_citations(self):
         applied = zzzops.apply_plan(self.repo, self.plan())
-        path = self.repo / ".zzzops" / "PROJECT.md"
-        state = zzzops.parse_project_state(path.read_text(encoding="utf-8"))
+        state = zzzops.read_project_state(self.repo)[2]
         state["policy"]["evidence"] = []
         self.assertIn("policy.evidence must be a non-empty list", zzzops.validate_project_state(state))
 
-    def test_runtime_projection_rejects_audit_only_policy_fields(self):
+    def test_approval_digest_rejects_machine_policy_tampering(self):
         applied = zzzops.apply_plan(self.repo, self.plan())
-        zzzops.confirm_project(self.repo, applied["project_digest"], "test-user", [], True)
-        state = zzzops.parse_project_state((self.repo / ".zzzops" / "PROJECT.md").read_text(encoding="utf-8"))
-        state["policy"]["evidence"] = [{"id": "duplicated-audit-state"}]
-        self.assertIn("policy.unknown fields: evidence", zzzops.validate_project_state(state))
+        zzzops.confirm_project(self.repo, applied["policy_digest"], "test-user", [], True)
+        state = zzzops.read_project_state(self.repo)[2]
+        state["policy"]["sections"][0]["decision"] = "changed"
+        self.assertIn("policy approval digest changed", zzzops.validate_project_state(state))
 
     def test_not_applicable_policy_requires_explicit_review(self):
         plan = self.plan()
@@ -170,7 +195,7 @@ class InitializationTests(unittest.TestCase):
         applied = zzzops.apply_plan(self.repo, plan)
         self.assertIn("policy:documentation_style", applied["decision_blockers"])
         reviewed = zzzops.confirm_project(
-            self.repo, applied["project_digest"], "test-user", ["documentation_style"], False,
+            self.repo, applied["policy_digest"], "test-user", ["documentation_style"], False,
         )
         self.assertNotIn("policy:documentation_style", reviewed["decision_blockers"])
 
@@ -182,7 +207,7 @@ class InitializationTests(unittest.TestCase):
         applied = zzzops.apply_plan(self.repo, plan)
         with self.assertRaisesRegex(ValueError, "resolve policy choices"):
             zzzops.confirm_project(
-                self.repo, applied["project_digest"], "test-user", ["git_review_release"], False,
+                self.repo, applied["policy_digest"], "test-user", ["git_review_release"], False,
             )
         self.assertIn("policy:git_review_release", zzzops.inspect_initialization(self.repo)["decision_blockers"])
 
@@ -191,7 +216,7 @@ class InitializationTests(unittest.TestCase):
         result = subprocess.run(
             [
                 sys.executable, str(MODULE_PATH), "--repo", str(self.repo),
-                "init", "confirm", "--project-digest", applied["project_digest"],
+                "init", "confirm", "--policy-digest", applied["policy_digest"],
                 "--reviewer", "test-user", "--all",
             ],
             text=True, encoding="utf-8", capture_output=True, check=False,
@@ -226,12 +251,12 @@ class InitializationTests(unittest.TestCase):
         self.assertIn("github must contain only usable=true for github_issues", zzzops.validate_plan(self.repo, plan))
 
     def test_invalid_project_state_is_reported(self):
-        project = self.repo / ".zzzops" / "PROJECT.md"
-        project.write_text("<!-- zzzops-project-state\n{bad}\nzzzops-project-state -->\n", encoding="utf-8")
+        project = self.repo / ".zzzops" / "POLICY.json"
+        project.write_text("{bad}\n", encoding="utf-8")
         with mock.patch.object(zzzops, "command_probe", return_value={}), mock.patch.object(zzzops, "github_repository_probe", return_value={}):
             result = zzzops.inspect_initialization(self.repo)
         self.assertFalse(result["valid_state"])
-        self.assertIn("Invalid project state JSON", result["state_error"])
+        self.assertIn("Invalid canonical policy JSON", result["state_error"])
 
     def test_atomic_text_cleans_temporary_file_on_replace_failure(self):
         path = self.repo / ".zzzops" / "failure.md"
@@ -275,9 +300,9 @@ class InitializationTests(unittest.TestCase):
         self.assertIn("unconfirmed proposals: E-002", errors)
 
     def test_rejects_unsupported_project_state_schema(self):
-        project = self.repo / ".zzzops" / "PROJECT.md"
+        project = self.repo / ".zzzops" / "POLICY.json"
         project.write_text(
-            '<!-- zzzops-project-state\n{"schema_version": 99, "initialized": false, "backend": null, "repository": null, "revision": 0}\nzzzops-project-state -->\n',
+            '{"schema_version": 99, "initialized": false, "backend": null, "repository": null, "revision": 0}\n',
             encoding="utf-8",
         )
         with mock.patch.object(zzzops, "command_probe", return_value={}), mock.patch.object(zzzops, "github_repository_probe", return_value={}):
@@ -290,6 +315,7 @@ class InitializationTests(unittest.TestCase):
 
     def test_project_state_path_is_stable(self):
         self.assertEqual(self.repo / ".zzzops" / "PROJECT.md", zzzops.project_path(self.repo))
+        self.assertEqual(self.repo / ".zzzops" / "POLICY.json", zzzops.project_policy_path(self.repo))
 
     @mock.patch.object(zzzops.shutil, "which", return_value="gh")
     @mock.patch.object(zzzops.subprocess, "run")
@@ -517,9 +543,10 @@ class PortfolioTests(unittest.TestCase):
 
     @mock.patch.object(zzzops.shutil, "which", return_value="gh")
     @mock.patch.object(zzzops.subprocess, "run")
+    @mock.patch.object(zzzops, "validate_project_artifacts", return_value=[])
     @mock.patch.object(zzzops, "validate_project_state", return_value=[])
-    @mock.patch.object(zzzops, "parse_project_state", return_value={"initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"}})
-    def test_github_adapter_uses_one_paginated_read_and_filters_prs(self, _parse, _validate, run, _which):
+    @mock.patch.object(zzzops, "read_project_state", return_value=(Path("POLICY.json"), "state", {"initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"}}))
+    def test_github_adapter_uses_one_paginated_read_and_filters_prs(self, _read_state, _validate, _artifacts, run, _which):
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary)
             (repo / ".zzzops").mkdir()
@@ -561,18 +588,19 @@ class PortfolioTests(unittest.TestCase):
     @mock.patch.object(zzzops.subprocess, "run")
     @mock.patch.object(zzzops, "charter_missing_fields", return_value=[])
     @mock.patch.object(zzzops, "policy_blockers", return_value=[])
-    @mock.patch.object(zzzops, "validate_project_audit", return_value=[])
+    @mock.patch.object(zzzops, "validate_project_artifacts", return_value=[])
     @mock.patch.object(zzzops, "validate_project_state", return_value=[])
-    @mock.patch.object(zzzops, "parse_project_state")
+    @mock.patch.object(zzzops, "read_project_state")
     @mock.patch.object(zzzops, "read_project", return_value=(Path("PROJECT.md"), "project"))
     @mock.patch.object(zzzops, "repository_size_profile", return_value={"mode": "worktrees", "max_workers": 3})
     def test_decision_checkpoint_embeds_portfolio_with_two_subprocesses(
-        self, _size, _read, parse, _validate, _audit, _blockers, _missing, run, _which,
+        self, _size, _read, read_state, _validate, _artifacts, _blockers, _missing, run, _which,
     ):
-        parse.return_value = {
+        state = {
             "initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"},
             "policy": {"sections": []},
         }
+        read_state.return_value = (Path("POLICY.json"), "state", state)
         issue = self.issue(1)
         graphql_issue = {
             "number": issue["number"], "title": issue["title"], "body": issue["body"],
@@ -604,9 +632,10 @@ class PortfolioTests(unittest.TestCase):
 
     @mock.patch.object(zzzops.shutil, "which", return_value="gh")
     @mock.patch.object(zzzops.subprocess, "run", return_value=SimpleNamespace(returncode=1, stdout="", stderr="API rate limit exceeded; partial page rejected"))
+    @mock.patch.object(zzzops, "validate_project_artifacts", return_value=[])
     @mock.patch.object(zzzops, "validate_project_state", return_value=[])
-    @mock.patch.object(zzzops, "parse_project_state", return_value={"initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"}})
-    def test_github_adapter_reports_partial_or_rate_limit_failure(self, _parse, _validate, _run, _which):
+    @mock.patch.object(zzzops, "read_project_state", return_value=(Path("POLICY.json"), "state", {"initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"}}))
+    def test_github_adapter_reports_partial_or_rate_limit_failure(self, _read_state, _validate, _artifacts, _run, _which):
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary)
             (repo / ".zzzops").mkdir()
@@ -953,7 +982,10 @@ class WorkflowContractTests(unittest.TestCase):
         templates = Path(__file__).parent / "zzzops" / "templates" / "project-goals"
         plan = json.loads((templates / "INIT_PLAN.json").read_text(encoding="utf-8"))
         plan_ids = [section["id"] for section in plan["policy"]["sections"]]
-        rendered = zzzops.render_project(plan, 1)
+        rendered = zzzops.render_project({
+            "initialized": False, "approval": None, "charter": plan["charter"],
+            "policy": plan["policy"],
+        })
         project_ids = re.findall(r"\[policy:([^\]]+)\]", rendered)
         self.assertEqual(list(zzzops.POLICY_SECTION_IDS), plan_ids)
         self.assertEqual(list(zzzops.POLICY_SECTION_IDS), project_ids)
@@ -1026,6 +1058,7 @@ class WorkflowContractTests(unittest.TestCase):
             "add-zzzops-goal": ("capture", "add", "create", "record", "goal/todo", "writes canonical goal state by default"),
             "execute-zzzops": ("execute", "work all goals", "continue", "resume", "triage", "prioritize", "reprioritize", "unblock", '"dry run"', '"preview"', '"plan"', "default executes"),
             "migrate-to-zzzops": ("discover", "plan", "migrate", "import", "todos/backlogs", '"dry run"', '"preview"', '"apply"', "default builds review artifacts"),
+            "review-zzzops-policy": ("review", "initialize", "summarize", "reconcile", "adjust", "policy", "preferred first workflow", "always re-summarizes"),
             "suggest-zzzops-work": ("suggest", "discover", "audit", '"dry run"', '"preview"', '"plan"', '"apply"', '"refill"'),
             "run-zzzops-acceptance": ("run", "guide", "check", "resume", "manual test", "acceptance test", "run the test plan", "next test"),
         }
@@ -1041,12 +1074,13 @@ class WorkflowContractTests(unittest.TestCase):
         root = Path(__file__).parent
         names = (
             "add-zzzops-goal", "execute-zzzops", "migrate-to-zzzops",
-            "suggest-zzzops-work",
+            "review-zzzops-policy", "suggest-zzzops-work",
         )
         for name in names:
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("INITIALIZATION.md", text, name)
-            self.assertIn("BACKENDS.md", text, name)
+            if name != "review-zzzops-policy":
+                self.assertIn("BACKENDS.md", text, name)
 
 if __name__ == "__main__":
     unittest.main()

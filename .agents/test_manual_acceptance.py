@@ -48,7 +48,8 @@ class ManualAcceptanceTests(unittest.TestCase):
             surfaces = [
                 "install.ps1", "install.sh",
                 ".agents/skills/add-zzzops-goal", ".agents/skills/migrate-to-zzzops",
-                ".agents/skills/suggest-zzzops-work", ".agents/skills/execute-zzzops",
+                ".agents/skills/review-zzzops-policy", ".agents/skills/suggest-zzzops-work",
+                ".agents/skills/execute-zzzops",
             ]
             plan = {
                 "version": 1,

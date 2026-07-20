@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review ZzzOps Policy"
+  short_description: "Initialize or review project operating policy"
+  default_prompt: "Use $review-zzzops-policy to summarize and review this project's ZzzOps policy."

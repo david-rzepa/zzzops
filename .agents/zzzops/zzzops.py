@@ -21,8 +21,7 @@ PLAN_SCHEMA_VERSION = 1
 POLICY_SCHEMA_VERSION = 1
 GOAL_SCHEMA_VERSION = 1
 PORTFOLIO_SCHEMA_VERSION = 1
-PROJECT_BLOCK_START = "<!-- zzzops-project-state"
-PROJECT_BLOCK_END = "zzzops-project-state -->"
+PROJECT_POLICY_RELATIVE = ".zzzops/POLICY.json"
 PROJECT_AUDIT_RELATIVE = ".zzzops/PROJECT_AUDIT.md"
 GOAL_BLOCK_START = "<!-- zzzops-goal"
 GOAL_BLOCK_END = "zzzops-goal -->"
@@ -524,6 +523,10 @@ def project_audit_path(repo: Path) -> Path:
     return repo / PROJECT_AUDIT_RELATIVE
 
 
+def project_policy_path(repo: Path) -> Path:
+    return repo / PROJECT_POLICY_RELATIVE
+
+
 def read_project(repo: Path) -> tuple[Path, str]:
     path = project_path(repo)
     try:
@@ -534,27 +537,53 @@ def read_project(repo: Path) -> tuple[Path, str]:
         raise ValueError(f"Cannot read project charter from {path}: {exc}") from exc
 
 
-def parse_project_state(text: str) -> dict[str, Any] | None:
-    pattern = re.compile(
-        re.escape(PROJECT_BLOCK_START) + r"\s*\n(.*?)\n" + re.escape(PROJECT_BLOCK_END),
-        re.DOTALL,
-    )
-    match = pattern.search(text)
-    if not match:
-        return None
+def parse_policy_state(text: str) -> dict[str, Any]:
     try:
-        state = json.loads(match.group(1))
+        state = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid project state JSON: {exc}") from exc
+        raise ValueError(f"Invalid canonical policy JSON: {exc}") from exc
     if not isinstance(state, dict):
-        raise ValueError("Project state must be a JSON object")
+        raise ValueError("Canonical policy state must be a JSON object")
     return state
+
+
+def read_policy_text(repo: Path) -> tuple[Path, str]:
+    path = project_policy_path(repo)
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except FileNotFoundError:
+        return path, ""
+    except (OSError, UnicodeError) as exc:
+        raise ValueError(f"Cannot read canonical policy from {path}: {exc}") from exc
+    return path, text
+
+
+def read_project_state(repo: Path) -> tuple[Path, str, dict[str, Any] | None]:
+    path, text = read_policy_text(repo)
+    if not text:
+        return path, text, None
+    return path, text, parse_policy_state(text)
+
+
+def initialization_base_digest(repo: Path) -> str:
+    _project_path, project_text = read_project(repo)
+    _policy_path, policy_text = read_policy_text(repo)
+    return project_digest(project_text + "\0" + policy_text)
+
+
+def policy_review_digest(state: dict[str, Any]) -> str:
+    reviewable = {key: value for key, value in state.items() if key != "approval"}
+    payload = json.dumps(reviewable, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return project_digest(payload)
 
 
 def validate_project_state(state: Any) -> list[str]:
     if not isinstance(state, dict):
         return ["project state must be an object"]
-    allowed = {"schema_version", "initialized", "backend", "repository", "revision", "policy", "audit"}
+    allowed = {
+        "schema_version", "initialized", "backend", "repository", "revision",
+        "charter", "policy", "history", "bindings", "approval",
+    }
     errors = []
     unknown = sorted(set(state) - allowed)
     if unknown:
@@ -566,10 +595,7 @@ def validate_project_state(state: Any) -> list[str]:
     if not isinstance(state.get("revision"), int) or isinstance(state.get("revision"), bool) or state.get("revision", -1) < 0:
         errors.append("revision must be a non-negative integer")
     initialized = state.get("initialized") is True
-    policy_errors = (
-        validate_runtime_policy(state.get("policy")) if initialized
-        else validate_policy(state.get("policy"), require_pending=False)
-    ) if state.get("policy") is not None else []
+    policy_errors = validate_policy(state.get("policy"), require_pending=False) if state.get("policy") is not None else []
     errors.extend(f"policy.{error}" for error in policy_errors)
     pending_policy = policy_blockers(state.get("policy")) if not policy_errors else []
     if state.get("initialized") is True:
@@ -580,115 +606,51 @@ def validate_project_state(state: Any) -> list[str]:
             errors.append("initialized repository.identity is required")
         if pending_policy:
             errors.append("initialized state cannot have unreviewed required policy: " + ", ".join(pending_policy))
-        audit = state.get("audit")
-        if not isinstance(audit, dict) or audit.get("path") != PROJECT_AUDIT_RELATIVE or not text_present(audit.get("digest")):
-            errors.append("initialized state requires the canonical PROJECT_AUDIT.md digest")
+        approval = state.get("approval")
+        if not isinstance(approval, dict) or not text_present(approval.get("reviewer")) or not text_present(approval.get("date")):
+            errors.append("initialized state requires explicit approval metadata")
+        elif approval.get("digest") != policy_review_digest(state):
+            errors.append("policy approval digest changed")
     elif state.get("backend") is not None or state.get("repository") is not None or state.get("policy") is not None:
         if state.get("backend") not in BACKENDS or not isinstance(state.get("repository"), dict) or not state.get("policy"):
             errors.append("uninitialized state may select a backend only as a complete pending policy draft")
+    bindings = state.get("bindings")
+    if not isinstance(bindings, dict):
+        errors.append("bindings must be an object")
+    else:
+        for name, expected_path in (("project", ".zzzops/PROJECT.md"), ("audit", PROJECT_AUDIT_RELATIVE)):
+            binding = bindings.get(name)
+            if not isinstance(binding, dict) or binding.get("path") != expected_path or not text_present(binding.get("digest")):
+                errors.append(f"bindings.{name} must contain the canonical path and digest")
+    history = state.get("history")
+    if not isinstance(history, list) or not history:
+        errors.append("history must be a non-empty list")
+    else:
+        for index, entry in enumerate(history):
+            if not isinstance(entry, dict) or any(not text_present(entry.get(key)) for key in ("date", "actor", "change", "reason")):
+                errors.append(f"history[{index}] requires date, actor, change, and reason")
     return errors
 
 
-def validate_runtime_policy(policy: Any) -> list[str]:
-    if not isinstance(policy, dict) or policy.get("schema_version") != POLICY_SCHEMA_VERSION:
-        return [f"schema_version must be {POLICY_SCHEMA_VERSION}"]
-    unknown_policy = sorted(set(policy) - {"schema_version", "sections"})
-    if unknown_policy:
-        return ["unknown fields: " + ", ".join(unknown_policy)]
-    sections = policy.get("sections")
-    if not isinstance(sections, list):
-        return ["sections must be a list"]
-    errors = []
-    seen = set()
-    allowed = {"id", "decision", "settings"}
-    for index, section in enumerate(sections):
-        prefix = f"sections[{index}]"
-        if not isinstance(section, dict):
-            errors.append(f"{prefix} must be an object")
-            continue
-        unknown = sorted(set(section) - allowed)
-        if unknown:
-            errors.append(f"{prefix} unknown fields: {', '.join(unknown)}")
-        section_id = section.get("id")
-        if section_id not in POLICY_SECTION_IDS or section_id in seen:
-            errors.append(f"{prefix}.id must be unique and from the current taxonomy")
-        else:
-            seen.add(section_id)
-        if not text_present(section.get("decision")):
-            errors.append(f"{prefix}.decision is required")
-        if not isinstance(section.get("settings"), dict):
-            errors.append(f"{prefix}.settings must be an object")
-    missing = sorted(set(POLICY_SECTION_IDS) - seen)
-    if missing:
-        errors.append("missing sections: " + ", ".join(missing))
-    return errors
-
-
-def validate_project_audit(repo: Path, state: dict[str, Any] | None) -> list[str]:
-    if not isinstance(state, dict) or state.get("initialized") is not True:
+def validate_project_artifacts(repo: Path, state: dict[str, Any] | None) -> list[str]:
+    if not isinstance(state, dict):
         return []
-    audit = state.get("audit")
-    if not isinstance(audit, dict) or audit.get("path") != PROJECT_AUDIT_RELATIVE or not text_present(audit.get("digest")):
-        return ["project audit reference is missing or invalid"]
-    path = project_audit_path(repo)
-    try:
-        text = path.read_text(encoding="utf-8-sig")
-    except (OSError, UnicodeError) as exc:
-        return [f"project audit is unavailable: {type(exc).__name__}"]
-    if project_digest(text) != audit["digest"]:
-        return ["project audit digest changed"]
-    try:
-        audit_state = parse_project_state(text)
-    except ValueError as exc:
-        return [f"project audit state is invalid: {exc}"]
-    audit_errors = validate_policy(audit_state.get("policy"), require_pending=False) if isinstance(audit_state, dict) else ["state is missing"]
-    if audit_errors or audit_state.get("initialized") is not True:
-        return ["project audit does not contain fully reviewed policy"]
-    compared = ("schema_version", "initialized", "backend", "repository")
-    if any(audit_state.get(key) != state.get(key) for key in compared):
-        return ["project audit metadata does not match PROJECT.md"]
-    if runtime_policy_projection(audit_state["policy"]) != state.get("policy"):
-        return ["project audit policy does not match PROJECT.md"]
-    return []
-
-
-def runtime_policy_projection(policy: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "schema_version": POLICY_SCHEMA_VERSION,
-        "sections": [
-            {
-                "id": section["id"], "decision": section["decision"], "settings": section["settings"],
-            }
-            for section in policy["sections"]
-        ],
-    }
-
-
-def compact_project_text(text: str, audit_digest: str) -> str:
-    state = parse_project_state(text)
-    if not isinstance(state, dict) or state.get("initialized") is not True:
-        raise ValueError("Only a fully reviewed PROJECT.md can be compacted")
-    errors = validate_policy(state.get("policy"), require_pending=False)
-    if errors:
-        raise ValueError("Invalid reviewed policy: " + "; ".join(errors))
-    compact = json.loads(json.dumps(state))
-    compact["policy"] = runtime_policy_projection(state["policy"])
-    compact["audit"] = {"path": PROJECT_AUDIT_RELATIVE, "digest": audit_digest}
-    block = f"{PROJECT_BLOCK_START}\n{json.dumps(compact, ensure_ascii=False, sort_keys=True, separators=(',', ':'))}\n{PROJECT_BLOCK_END}"
-    without_block = re.sub(
-        re.escape(PROJECT_BLOCK_START) + r"\s*\n.*?\n" + re.escape(PROJECT_BLOCK_END),
-        "", text, count=1, flags=re.DOTALL,
-    )
-    charter = without_block.split("## Operating policy review", 1)[0].rstrip()
-    title, _, remainder = charter.partition("\n")
-    policy_lines = "\n".join(
-        f"- [policy:{section['id']}] {section['title']}"
-        for section in state["policy"]["sections"]
-    )
-    return (
-        f"{title}\n\n{block}\n{remainder.rstrip()}\n\n## Operating policy\n\n{policy_lines}\n\n"
-        f"Full reviewed evidence and history: [PROJECT_AUDIT.md](PROJECT_AUDIT.md) (`{audit_digest}`).\n"
-    )
+    bindings = state.get("bindings")
+    if not isinstance(bindings, dict):
+        return []
+    errors = []
+    for name, path in (("project", project_path(repo)), ("audit", project_audit_path(repo))):
+        binding = bindings.get(name)
+        if not isinstance(binding, dict) or not text_present(binding.get("digest")):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeError):
+            errors.append(f"{name} policy artifact is unavailable")
+            continue
+        if project_digest(text) != binding["digest"]:
+            errors.append(f"{name} policy artifact digest changed")
+    return errors
 
 
 def validate_policy(policy: Any, require_pending: bool) -> list[str]:
@@ -1148,7 +1110,7 @@ def compact_portfolio_output(snapshot: dict[str, Any]) -> dict[str, Any]:
 def _project_repository_identity(project: dict[str, Any]) -> str:
     identity = ((project.get("repository") or {}).get("identity") if isinstance(project.get("repository"), dict) else None)
     if project.get("backend") != "github_issues" or not text_present(identity) or identity.count("/") != 1:
-        raise ValueError("PROJECT.md repository.identity must be owner/repository for GitHub Issues")
+        raise ValueError("Canonical policy repository.identity must be owner/repository for GitHub Issues")
     return identity
 
 
@@ -1226,7 +1188,7 @@ def github_repository_portfolio_snapshot(repo: Path, project: dict[str, Any]) ->
         raise ValueError("GitHub repository metadata drifted during pagination")
     if first.get("nameWithOwner") != identity:
         raise ValueError(
-            f"GitHub repository identity drift: PROJECT.md records {identity}, "
+            f"GitHub repository identity drift: canonical policy records {identity}, "
             f"but GitHub returned {first.get('nameWithOwner') or 'unknown'}"
         )
     repository_probe = _github_repository_capability(first)
@@ -1268,13 +1230,13 @@ def github_repository_portfolio_snapshot(repo: Path, project: dict[str, Any]) ->
 
 
 def portfolio_snapshot(repo: Path) -> dict[str, Any]:
-    project_path = repo / ".zzzops" / "PROJECT.md"
-    if not project_path.is_file():
-        raise ValueError("PROJECT.md is missing; run agent-driven initialization")
-    project = parse_project_state(project_path.read_text(encoding="utf-8-sig"))
+    _path, _text, project = read_project_state(repo)
+    if project is None:
+        raise ValueError("Project policy is missing; run the review-zzzops-policy skill")
     errors = validate_project_state(project)
+    errors.extend(validate_project_artifacts(repo, project))
     if errors or not project or not project.get("initialized"):
-        raise ValueError("PROJECT.md is not initialized: " + "; ".join(errors or ["initialization pending"]))
+        raise ValueError("Project policy is not initialized: " + "; ".join(errors or ["review pending"]))
     _repository, snapshot = github_repository_portfolio_snapshot(repo, project)
     return snapshot
 
@@ -1421,9 +1383,9 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
     path, text = read_project(repo)
     error = None
     try:
-        state = parse_project_state(text)
-        state_errors = validate_project_state(state) if state is not None else ["project state block is missing"]
-        state_errors.extend(validate_project_audit(repo, state))
+        _policy_path, _policy_text, state = read_project_state(repo)
+        state_errors = validate_project_state(state) if state is not None else ["canonical policy is missing"]
+        state_errors.extend(validate_project_artifacts(repo, state))
         if state_errors:
             error = "; ".join(state_errors)
     except ValueError as exc:
@@ -1435,7 +1397,7 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
     return {
         "schema_version": PLAN_SCHEMA_VERSION,
         "project_path": str(path),
-        "base_digest": project_digest(text),
+        "base_digest": initialization_base_digest(repo),
         "state": state,
         "initialized": bool(state and state.get("initialized") is True and not policy_blockers(state.get("policy")) and error is None),
         "valid_state": error is None and state is not None,
@@ -1458,9 +1420,9 @@ def decision_checkpoint(repo: Path) -> dict[str, Any]:
     path, text = read_project(repo)
     error = None
     try:
-        state = parse_project_state(text)
-        state_errors = validate_project_state(state) if state is not None else ["project state block is missing"]
-        state_errors.extend(validate_project_audit(repo, state))
+        _policy_path, _policy_text, state = read_project_state(repo)
+        state_errors = validate_project_state(state) if state is not None else ["canonical policy is missing"]
+        state_errors.extend(validate_project_artifacts(repo, state))
         if state_errors:
             error = "; ".join(state_errors)
     except ValueError as exc:
@@ -1475,7 +1437,7 @@ def decision_checkpoint(repo: Path) -> dict[str, Any]:
         "schema_version": PORTFOLIO_SCHEMA_VERSION,
         "complete": False,
         "valid": False,
-        "error": "PROJECT.md is not initialized; run init inspect",
+        "error": "Project policy is not initialized; run the review-zzzops-policy skill",
     }
     github_auth = {
         "available": github_available,
@@ -1572,8 +1534,7 @@ def validate_plan(repo: Path, plan: dict[str, Any]) -> list[str]:
         errors.append("unknown fields: " + ", ".join(unknown))
     if plan.get("schema_version") != PLAN_SCHEMA_VERSION:
         errors.append(f"schema_version must be {PLAN_SCHEMA_VERSION}")
-    _path, current = read_project(repo)
-    if plan.get("base_digest") != project_digest(current):
+    if plan.get("base_digest") != initialization_base_digest(repo):
         errors.append("base_digest is stale or missing")
     if plan.get("confirmed") is not True:
         errors.append("confirmed must be true")
@@ -1688,19 +1649,10 @@ def nonempty_list(value: Any) -> bool:
     return isinstance(value, list) and bool(value) and all(nonempty(item) for item in value)
 
 
-def render_project(plan: dict[str, Any], revision: int) -> str:
-    charter = plan["charter"]
-    policy_state = json.loads(json.dumps(plan["policy"]))
-    policy_state["evidence"] = plan["evidence"]
-    state = {
-        "schema_version": PROJECT_SCHEMA_VERSION,
-        "initialized": False,
-        "backend": plan["backend"],
-        "repository": plan["repository"],
-        "revision": revision,
-        "policy": policy_state,
-    }
-    block = json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True)
+def render_project(state: dict[str, Any]) -> str:
+    charter = state["charter"]
+    status = "complete" if state["initialized"] else "incomplete — policy review required"
+    reviewed = (state.get("approval") or {}).get("date", "not yet")
     kpis = "\n".join(
         f"| {cell(k['name'])} | {cell(k['why'])} | {cell(k['baseline'])} | "
         f"{cell(k['target'])} | {cell(k['evidence'])} | {cell(k['cadence'])} |"
@@ -1708,15 +1660,14 @@ def render_project(plan: dict[str, Any], revision: int) -> str:
     )
     bullets = lambda values: "\n".join(f"- {value}" for value in values)
     checks = "\n".join(f"- [x] {value}" for value in charter["acceptance_criteria"])
-    policy = render_policy_sections(policy_state)
+    policy = "\n".join(
+        f"- `[policy:{section['id']}]` **{section['title']}**: {section['decision']}"
+        for section in state["policy"]["sections"]
+    )
     return f"""# Project success charter
 
-{PROJECT_BLOCK_START}
-{block}
-{PROJECT_BLOCK_END}
-
-**Status:** incomplete — policy review required
-**Last reviewed:** not yet
+**Status:** {status}
+**Last reviewed:** {reviewed}
 
 ## Overall goal
 - Outcome: {charter['outcome']}
@@ -1753,15 +1704,11 @@ When KPIs conflict, prefer: {charter['precedence']}
 ## Assumptions and open questions
 - None recorded at initialization; add evidence-backed changes with history.
 
-## Operating policy review
-Read every section in this exact file. Each unchecked stable policy ID is a `decision` blocker. Only explicit user approval may check it; repository evidence or agent inference is not approval.
+## Operating policy
 
 {policy}
 
-## History
-| Date | Actor/run | Change | Reason/evidence |
-| --- | --- | --- | --- |
-| {date.today().isoformat()} | ZzzOps initialization | Created pending revision {revision} | Confirmed agent-generated draft; exact-file policy review still required. |
+Detailed rationale and review history: [PROJECT_AUDIT.md](PROJECT_AUDIT.md). Canonical policy state: [POLICY.json](POLICY.json).
 """
 
 
@@ -1789,6 +1736,26 @@ def render_policy_sections(policy: dict[str, Any]) -> str:
     return "\n".join(rendered)
 
 
+def render_project_audit(state: dict[str, Any]) -> str:
+    status = "complete" if state["initialized"] else "pending explicit review"
+    reviewer = (state.get("approval") or {}).get("reviewer", "not yet approved")
+    history = "\n".join(
+        f"| {cell(entry['date'])} | {cell(entry['actor'])} | {cell(entry['change'])} | {cell(entry['reason'])} |"
+        for entry in state["history"]
+    )
+    return (
+        "# ZzzOps project policy audit\n\n"
+        f"Status: {status}. Reviewer: {reviewer}. Revision: {state['revision']}.\n\n"
+        "## Evidence and decisions\n\n"
+        f"{render_policy_sections(state['policy'])}\n\n"
+        "## Review record\n\n"
+        "| Date | Actor/run | Change | Reason/evidence |\n"
+        "| --- | --- | --- | --- |\n"
+        f"{history}\n\n"
+        "The machine-readable authority is [POLICY.json](POLICY.json); this file is its human audit view.\n"
+    )
+
+
 def cell(value: str) -> str:
     return value.replace("|", "\\|").replace("\n", " ")
 
@@ -1813,29 +1780,55 @@ def apply_plan(repo: Path, plan: dict[str, Any]) -> dict[str, Any]:
     if errors:
         raise ValueError("Invalid initialization plan: " + "; ".join(errors))
     path, current = read_project(repo)
-    old_state = parse_project_state(current)
+    _policy_path, policy_text, old_state = read_project_state(repo)
     revision = int(old_state.get("revision", 0)) + 1 if old_state else 1
-    rendered = render_project(plan, revision)
-    if rendered == current:
-        return {
-            "changed": False, "path": str(path), "revision": revision,
-        }
-    atomic_text(path, rendered)
+    policy = json.loads(json.dumps(plan["policy"]))
+    policy["evidence"] = plan["evidence"]
+    state = {
+        "schema_version": PROJECT_SCHEMA_VERSION,
+        "initialized": False,
+        "backend": plan["backend"],
+        "repository": plan["repository"],
+        "revision": revision,
+        "charter": plan["charter"],
+        "policy": policy,
+        "history": [{
+            "date": date.today().isoformat(), "actor": "ZzzOps initialization",
+            "change": f"Created pending revision {revision}",
+            "reason": "Confirmed agent-generated draft; explicit policy review still required.",
+        }],
+        "bindings": {},
+        "approval": None,
+    }
+    rendered = render_project(state)
+    audit = render_project_audit(state)
+    state["bindings"] = {
+        "project": {"path": ".zzzops/PROJECT.md", "digest": project_digest(rendered)},
+        "audit": {"path": PROJECT_AUDIT_RELATIVE, "digest": project_digest(audit)},
+    }
+    canonical = json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+    changed = rendered != current or canonical != policy_text
+    if changed:
+        atomic_text(path, rendered)
+        atomic_text(project_audit_path(repo), audit)
+        atomic_text(project_policy_path(repo), canonical)
     return {
-        "changed": True, "path": str(path), "revision": revision,
+        "changed": changed, "path": str(path), "policy_path": str(project_policy_path(repo)), "revision": revision,
         "initialized": False,
         "decision_blockers": policy_blockers(plan["policy"]),
-        "project_digest": project_digest(rendered),
-        "review_required": "Read the exact PROJECT.md file, then explicitly approve its current digest.",
+        "policy_digest": policy_review_digest(state),
+        "review_required": "Review the summarized policy, then explicitly approve its current policy digest.",
     }
 
 
 def confirm_project(repo: Path, digest: str, reviewer: str, section_ids: list[str], approve_all: bool) -> dict[str, Any]:
-    path, text = read_project(repo)
-    if project_digest(text) != digest:
-        raise ValueError("PROJECT.md digest changed; read the exact current file before confirming")
-    state = parse_project_state(text)
+    path, _text, state = read_project_state(repo)
+    if state is None:
+        raise ValueError("Canonical policy is missing; run policy review first")
+    if policy_review_digest(state) != digest:
+        raise ValueError("Policy digest changed; review the exact current policy before confirming")
     errors = validate_project_state(state)
+    errors.extend(validate_project_artifacts(repo, state))
     if errors:
         raise ValueError("Invalid project state: " + "; ".join(errors))
     if not text_present(reviewer):
@@ -1863,33 +1856,38 @@ def confirm_project(repo: Path, digest: str, reviewer: str, section_ids: list[st
     blockers = policy_blockers(policy)
     state["initialized"] = not blockers
     state["revision"] += 1
-    block = f"{PROJECT_BLOCK_START}\n{json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True)}\n{PROJECT_BLOCK_END}"
-    updated = re.sub(
-        re.escape(PROJECT_BLOCK_START) + r"\s*\n.*?\n" + re.escape(PROJECT_BLOCK_END),
-        lambda _match: block,
-        text,
-        count=1,
-        flags=re.DOTALL,
-    )
-    for section_id in selected:
-        updated = re.sub(rf"^- \[ \](\s+`\[policy:{re.escape(section_id)}\]`)", r"- [x]\1", updated, flags=re.MULTILINE)
+    state["history"].append({
+        "date": today,
+        "actor": reviewer,
+        "change": f"Reviewed policy revision {state['revision']}",
+        "reason": f"Approved: {', '.join(selected)}; source digest {digest}.",
+    })
+    state["approval"] = None
+    updated = render_project(state)
+    audit_text = render_project_audit(state)
+    state["bindings"] = {
+        "project": {"path": ".zzzops/PROJECT.md", "digest": project_digest(updated)},
+        "audit": {"path": PROJECT_AUDIT_RELATIVE, "digest": project_digest(audit_text)},
+    }
     if not blockers:
-        updated = re.sub(r"^\*\*Status:\*\*.*$", "**Status:** complete", updated, flags=re.MULTILINE)
-        updated = re.sub(r"^\*\*Last reviewed:\*\*.*$", f"**Last reviewed:** {today}", updated, flags=re.MULTILINE)
-    history = f"| {today} | {reviewer} | Reviewed policy revision {state['revision']} | Approved: {', '.join(selected)}; source digest `{digest}`. |"
-    updated = updated.rstrip() + "\n" + history + "\n"
-    if not blockers:
-        audit_text = updated
-        updated = compact_project_text(audit_text, project_digest(audit_text))
-        atomic_text(project_audit_path(repo), audit_text)
-    atomic_text(path, updated)
+        state["approval"] = {"reviewer": reviewer, "date": today, "digest": "pending"}
+        updated = render_project(state)
+        audit_text = render_project_audit(state)
+        state["bindings"] = {
+            "project": {"path": ".zzzops/PROJECT.md", "digest": project_digest(updated)},
+            "audit": {"path": PROJECT_AUDIT_RELATIVE, "digest": project_digest(audit_text)},
+        }
+        state["approval"]["digest"] = policy_review_digest(state)
+    atomic_text(project_path(repo), updated)
+    atomic_text(project_audit_path(repo), audit_text)
+    atomic_text(path, json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
     return {
         "changed": True,
-        "path": str(path),
+        "path": str(project_path(repo)),
         "revision": state["revision"],
         "initialized": state["initialized"],
         "decision_blockers": blockers,
-        "project_digest": project_digest(updated),
+        "policy_digest": policy_review_digest(state),
     }
 
 
@@ -1904,8 +1902,8 @@ def main() -> int:
     validate_command.add_argument("--plan", type=Path, required=True)
     apply_command = init_commands.add_parser("apply", help="Atomically apply a confirmed initialization plan")
     apply_command.add_argument("--plan", type=Path, required=True)
-    confirm_command = init_commands.add_parser("confirm", help="Confirm explicit review of the exact current PROJECT.md")
-    confirm_command.add_argument("--project-digest", required=True)
+    confirm_command = init_commands.add_parser("confirm", help="Confirm explicit review of the exact current policy")
+    confirm_command.add_argument("--policy-digest", required=True)
     confirm_command.add_argument("--reviewer", required=True)
     confirm_command.add_argument("--section", action="append", default=[])
     confirm_command.add_argument("--all", action="store_true", help="Approve every current policy section")
@@ -1949,7 +1947,7 @@ def main() -> int:
                 result = apply_plan(repo, plan)
                 print(json.dumps(result, indent=2))
             else:
-                result = confirm_project(repo, args.project_digest, args.reviewer, args.section, args.all)
+                result = confirm_project(repo, args.policy_digest, args.reviewer, args.section, args.all)
                 print(json.dumps(result, indent=2))
         elif args.command == "portfolio":
             try:
@@ -1968,10 +1966,9 @@ def main() -> int:
                     print(f"Could not load goals: {exc}")
                 return 2
         elif args.command == "reserve":
-            _path, project_text = read_project(repo)
-            project = parse_project_state(project_text)
-            errors = validate_project_state(project) if project is not None else ["project state block is missing"]
-            errors.extend(validate_project_audit(repo, project))
+            _path, _policy_text, project = read_project_state(repo)
+            errors = validate_project_state(project) if project is not None else ["canonical policy is missing"]
+            errors.extend(validate_project_artifacts(repo, project))
             if errors or project.get("initialized") is not True or policy_blockers(project.get("policy")):
                 raise ValueError("Project policy is not ready; no reservation was made.")
             repository = _project_repository_identity(project)

@@ -2,7 +2,7 @@
 set -u
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-TARGET_SKILLS=(add-zzzops-goal execute-zzzops migrate-to-zzzops suggest-zzzops-work)
+TARGET_SKILLS=(add-zzzops-goal execute-zzzops migrate-to-zzzops review-zzzops-policy suggest-zzzops-work)
 DRY_RUN=0
 OVERWRITE=0
 
