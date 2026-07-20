@@ -135,22 +135,28 @@ def main() -> int:
     counts: dict[str, int] = {}
     for _path, action, _data, _expected in actions:
         counts[action] = counts.get(action, 0) + 1
-    print("ZzzOps installation")
-    print("Applying the approved preview." if args.apply else "Preview only; no files changed.")
-    print(f"Target: {target}")
-    print(
-        f"Files: {counts.get('create', 0)} to add, {counts.get('overwrite', 0)} to update, "
-        f"{counts.get('unchanged', 0)} unchanged."
-    )
+    if not args.apply:
+        print("ZzzOps installation preview")
+        print(f"Target: {target}")
+        print("This will install:")
+        print("- goal-management skills for Codex and Claude Code")
+        print("- shared workflow rules and the ZzzOps control CLI")
+        print("- blank templates for project setup, preferences, and TODO migration")
+        if counts.get("create", 0) or counts.get("overwrite", 0):
+            print(f"Planned changes: {counts.get('create', 0)} new, {counts.get('overwrite', 0)} updated.")
+        else:
+            print("Planned changes: ZzzOps is already up to date.")
     for error in errors:
-        print(f"Action needed: {error}")
+        print(f"Cannot install yet: {error}")
     if errors:
         return 2
-    print(f"Approval code: {fingerprint}")
     if not args.apply:
+        print("No files were changed.")
+        print("Use this code to apply exactly what was previewed:")
+        print(f"Approval code: {fingerprint}")
         return 0
     if args.confirm_plan != fingerprint:
-        print("The approval code does not match this preview. No files were changed.")
+        print("The target changed or this approval is for another preview. Run the preview again; no files were changed.")
         return 2
     backups: dict[Path, bytes | None] = {}
     writes: list[tuple[Path, bytes, str | None]] = []
@@ -170,7 +176,7 @@ def main() -> int:
             elif data is not None:
                 atomic_write(path, data)
         raise
-    print("ZzzOps is installed. Next: start any non-install ZzzOps workflow to initialize the project.")
+    print("ZzzOps is installed. Start any ZzzOps workflow to set up the project.")
     return 0
 
 
