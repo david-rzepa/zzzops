@@ -38,8 +38,34 @@ class ManualAcceptanceTests(unittest.TestCase):
             result = subprocess.run([sys.executable, str(SCRIPT), "coverage", "--repo", str(repo)], text=True, capture_output=True)
             self.assertEqual(1, result.returncode)
             self.assertIn("install.sh", json.loads(result.stdout)["unmapped_required_surfaces"])
-            self.assertIn(".agents/zzzops/zzzops.py", json.loads(result.stdout)["unmapped_required_surfaces"])
+            self.assertIn(".agents/skills/add-zzzops-goal", json.loads(result.stdout)["unmapped_required_surfaces"])
             self.assertEqual(path.read_text(encoding="utf-8"), "<!-- zzzops-acceptance-plan\n" + json.dumps(plan) + "\nzzzops-acceptance-plan -->\n")
+
+    def test_coverage_accepts_only_native_installers_and_installed_skills(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            (repo / "docs").mkdir()
+            surfaces = [
+                "install.ps1", "install.sh",
+                ".agents/skills/add-zzzops-goal", ".agents/skills/migrate-to-zzzops",
+                ".agents/skills/suggest-zzzops-work", ".agents/skills/execute-zzzops",
+            ]
+            plan = {
+                "version": 1,
+                "items": [{"id": "A-1", "status": "unchecked", "paths": surfaces, "fingerprint": None, "notes": ""}],
+            }
+            path = repo / "docs" / "ACCEPTANCE_TEST_PLAN.md"
+            path.write_text(
+                "<!-- zzzops-acceptance-plan\n" + json.dumps(plan) + "\nzzzops-acceptance-plan -->\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), "coverage", "--repo", str(repo)],
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertEqual([], json.loads(result.stdout)["unmapped_required_surfaces"])
 
 
 if __name__ == "__main__":
