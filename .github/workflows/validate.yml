@@ -30,5 +30,9 @@ jobs:
         run: python -m unittest discover -s .github/scripts -p 'test_*.py'
       - name: Verify prompt budget
         run: python .agents/prompt_stats.py --check
-      - name: Check Python syntax
-        run: python -m compileall -q .agents .github/scripts && python -m py_compile zzzops.py
+      - name: Check script syntax
+        shell: pwsh
+        run: |
+          python -m compileall -q .agents .github/scripts
+          bash -n install.sh
+          [void][scriptblock]::Create((Get-Content -Raw ./install.ps1))

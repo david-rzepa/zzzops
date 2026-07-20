@@ -9,6 +9,6 @@ ZzzOps uses the portable skill contract shared by Codex and Claude Code: the `na
 | `migrate-to-zzzops` | discover, plan, migrate, import; TODOs, backlog | Build review artifacts; apply only after approval | `dry run`, `preview`, `plan`: report only; `apply`, `migrate`, `import`: approved write |
 | `suggest-zzzops-work` | suggest, discover, audit, refill | Dry run | `dry run`, `preview`, `plan`: read-only; `apply`: approved write; `refill`: preference-authorized write |
 
-Generic mode words are contextual: combine them with the task noun, such as “dry run TODO migration.” Installation is a standalone root CLI rather than an agent skill. Keep descriptions concise and update contract tests when names, modes, or defaults change.
+Generic mode words are contextual: combine them with the task noun, such as “dry run TODO migration.” Installation uses the native root `install.ps1` and `install.sh` scripts rather than an agent skill. Keep descriptions concise and update contract tests when names, modes, or defaults change.
 
 References: [Codex skills](https://developers.openai.com/codex/skills), [Claude Code skills](https://code.claude.com/docs/en/slash-commands).

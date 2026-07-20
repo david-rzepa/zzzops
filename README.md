@@ -14,19 +14,19 @@ git clone https://github.com/david-rzepa/zzzops.git C:\dev\zzzops
 
 ### 2. Install it into your project
 
-From a normal terminal, preview the installation. On Windows:
+From a normal terminal on Windows:
 
 ```powershell
-py -3 C:\dev\zzzops\zzzops.py install C:\path\to\your-project
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\dev\zzzops\install.ps1 C:\path\to\your-project
 ```
 
 On macOS or Linux:
 
 ```bash
-python3 /path/to/zzzops/zzzops.py install /path/to/your-project
+/path/to/zzzops/install.sh /path/to/your-project
 ```
 
-The preview explains the tracked project mechanics it will add and prints an approval code. If Git ignores `.agents/skills` or `.claude/skills`, fix those rules first so collaborators receive the workflows. Apply the exact preview by repeating the command with `--apply APPROVAL_CODE`.
+The installer previews the tracked project mechanics, warns if Git ignores required `.agents/` or `.claude/` content, and asks once before writing. The default answer is no. Use `-DryRun` on Windows or `--dry-run` on macOS/Linux for a non-interactive preview.
 
 The CLI copies discoverable skills, mechanics, and blank templates—never itself, project state, another project’s goals, or the target’s `AGENTS.md`/`CLAUDE.md`.
 
@@ -48,7 +48,7 @@ Once reviewed, these policies let the agent make routine decisions without wakin
 
 GitHub Issues is the canonical goal authority. Initialization requires a successful repository and access probe; unavailable authentication, permission, or Issues support becomes an explicit blocker. Initialization does not commit, branch, or mutate GitHub, and after approval mentions the optional preferences panel without opening it.
 
-Post-install CLI examples use `<python>` for one Python 3 interpreter resolved once (`python3`, `python`, Windows `py -3`, or a harness-provided runtime). Agents must discover it before launching instead of first trying an assumed executable; the installation quickstart shows explicit platform commands for humans.
+The native installer does not require Python or Node. Post-install CLI examples use `<python>` for one Python 3 interpreter resolved once (`python3`, `python`, Windows `py -3`, or a harness-provided runtime). Agents must discover it before launching instead of first trying an assumed executable.
 
 **Visibility:** GitHub-backed goals inherit the repository's visibility. Never put secrets or raw sensitive data in a goal; redact it or link to an approved private system before capture or migration.
 
@@ -110,7 +110,7 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 
 | Feature | Primary surface |
 | --- | --- |
-| Preview and install ZzzOps mechanics from a normal terminal | `zzzops.py install` |
+| Preview and install ZzzOps mechanics from a normal terminal without Python or Node | `install.ps1` / `install.sh` |
 | Initialize a project with reviewed operating policies | `.agents/zzzops.py` |
 | Use GitHub Issues as the canonical goal backend | `.zzzops/rules/BACKENDS.md` |
 | Capture durable work | `.agents/skills/add-zzzops-goal/SKILL.md` |
@@ -180,7 +180,8 @@ To diagnose a PR or release, inspect **PR validation / dev-required-tests** or t
 <python> .agents/manual_acceptance.py coverage
 <python> .agents/prompt_stats.py --check
 <python> -m compileall -q .agents .github/scripts
-<python> -m py_compile zzzops.py
+bash -n install.sh
+powershell -NoProfile -Command "[void][scriptblock]::Create((Get-Content -Raw ./install.ps1))"
 ```
 
 `<python> .github/scripts/semantic_release.py` only writes a local notes file.
