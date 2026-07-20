@@ -2,7 +2,7 @@
 set -u
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-TARGET_SKILLS=(add-zzzops-goal execute-zzzops migrate-to-zzzops suggest-zzzops-work)
+TARGET_SKILLS=(add-zzzops-goal execute-zzzops migrate-to-zzzops review-zzzops-policy suggest-zzzops-work)
 DRY_RUN=0
 OVERWRITE=0
 
@@ -207,6 +207,14 @@ build_plan
 show_preview
 [[ ${#PLAN_ERRORS[@]} -eq 0 ]] || exit 2
 if [[ $DRY_RUN -eq 1 ]]; then printf 'No files were changed.\n'; exit 0; fi
+pending_changes=0
+for action in "${PLAN_ACTION[@]}"; do
+    [[ "$action" == create || "$action" == overwrite ]] && ((pending_changes+=1))
+done
+if [[ $pending_changes -eq 0 ]]; then
+    printf 'ZzzOps is already up to date. No further action is necessary.\n'
+    exit 0
+fi
 printf 'Install these changes? [y/N] '
 IFS= read -r answer || answer=''
 answer=${answer%$'\r'}
@@ -218,4 +226,4 @@ if [[ ${#PLAN_ERRORS[@]} -gt 0 || "$PLAN_SIGNATURE" != "$preview_signature" ]]; 
     exit 2
 fi
 if ! apply_plan; then printf 'Installation failed and was rolled back.\n'; exit 2; fi
-printf 'ZzzOps is installed. Start any ZzzOps workflow to set up the project.\n'
+printf 'ZzzOps is installed. Open the target repository in Codex or Claude Code; restart or reopen the harness if the new skills are not discovered. Begin with review-zzzops-policy.\n'

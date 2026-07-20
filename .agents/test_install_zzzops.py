@@ -86,11 +86,16 @@ class NativeInstallerTests(unittest.TestCase):
                 applied = self.run_installer(installer, target, answer="y\n")
                 self.assertEqual(0, applied.returncode, applied.stderr + applied.stdout)
                 self.assertIn("ZzzOps is installed.", applied.stdout)
+                self.assertIn("Codex or Claude Code", applied.stdout)
+                self.assertIn("restart or reopen", applied.stdout)
+                self.assertIn("review-zzzops-policy", applied.stdout)
                 self.assertTrue((target / ".zzzops" / "rules" / "INITIALIZATION.md").is_file())
                 self.assertTrue((target / ".agents" / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").is_file())
                 self.assertTrue((target / ".agents" / "zzzops" / ".gitignore").is_file())
                 self.assertTrue((target / ".agents" / "skills" / "add-zzzops-goal" / "SKILL.md").is_file())
                 self.assertTrue((target / ".claude" / "skills" / "add-zzzops-goal" / "SKILL.md").is_file())
+                self.assertTrue((target / ".agents" / "skills" / "review-zzzops-policy" / "SKILL.md").is_file())
+                self.assertTrue((target / ".claude" / "skills" / "review-zzzops-policy" / "SKILL.md").is_file())
                 self.assertEqual({"skills", "zzzops"}, {path.name for path in (target / ".agents").iterdir()})
                 self.assertEqual({"skills"}, {path.name for path in (target / ".claude").iterdir()})
                 self.assertFalse((target / ".gitignore").exists())
@@ -110,6 +115,11 @@ class NativeInstallerTests(unittest.TestCase):
                 repeated = self.run_installer(installer, target, "--dry-run")
                 self.assertEqual(0, repeated.returncode, repeated.stderr + repeated.stdout)
                 self.assertIn("already up to date", repeated.stdout)
+                current = self.run_installer(installer, target)
+                self.assertEqual(0, current.returncode, current.stderr + current.stdout)
+                self.assertIn("No further action is necessary", current.stdout)
+                self.assertNotIn("Install these changes?", current.stdout)
+                self.assertNotIn("cancelled", current.stdout)
 
     def test_ignore_warning_and_local_state_preservation(self):
         for name, installer in self.installers.items():

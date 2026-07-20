@@ -47,7 +47,8 @@ def main() -> int:
         required = [
             "install.ps1", "install.sh",
             ".agents/skills/add-zzzops-goal", ".agents/skills/migrate-to-zzzops",
-            ".agents/skills/suggest-zzzops-work", ".agents/skills/execute-zzzops",
+            ".agents/skills/review-zzzops-policy", ".agents/skills/suggest-zzzops-work",
+            ".agents/skills/execute-zzzops",
         ]
         mapped = {path for item in items for path in item["paths"]}
         missing = [path for path in required if not any(entry == path or entry.startswith(path + "/") for entry in mapped)]

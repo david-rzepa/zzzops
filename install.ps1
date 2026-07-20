@@ -8,7 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $SourceRoot = $PSScriptRoot
-$TargetSkills = @('add-zzzops-goal', 'execute-zzzops', 'migrate-to-zzzops', 'suggest-zzzops-work')
+$TargetSkills = @('add-zzzops-goal', 'execute-zzzops', 'migrate-to-zzzops', 'review-zzzops-policy', 'suggest-zzzops-work')
 
 function Stop-Install([string]$Message) {
     Write-Host "Cannot install yet: $Message"
@@ -219,6 +219,11 @@ if ($DryRun) {
     Write-Host 'No files were changed.'
     exit 0
 }
+$pendingChanges = @($plan.Actions | Where-Object { $_.Action -in @('create', 'overwrite') }).Count
+if (-not $pendingChanges) {
+    Write-Host 'ZzzOps is already up to date. No further action is necessary.'
+    exit 0
+}
 $answer = Read-Host 'Install these changes? [y/N]'
 if ($answer -notmatch '^(?i:y|yes)$') {
     Write-Host 'Installation cancelled; no files were changed.'
@@ -230,5 +235,5 @@ if ($confirmedPlan.Errors.Count -or $confirmedPlan.Signature -ne $plan.Signature
     exit 2
 }
 if (-not (Apply-Plan $confirmedPlan)) { exit 2 }
-Write-Host 'ZzzOps is installed. Start any ZzzOps workflow to set up the project.'
+Write-Host 'ZzzOps is installed. Open the target repository in Codex or Claude Code; restart or reopen the harness if the new skills are not discovered. Begin with review-zzzops-policy.'
 exit 0
