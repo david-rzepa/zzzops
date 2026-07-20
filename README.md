@@ -30,6 +30,8 @@ The installer previews the tracked project mechanics, warns if Git ignores requi
 
 The CLI copies discoverable skills, mechanics, and blank templates—never itself, project state, another project’s goals, or the target’s `AGENTS.md`/`CLAUDE.md`.
 
+Discoverable skills stay in `.agents/skills/` and `.claude/skills/`. Other harness support is grouped under `.agents/zzzops/`, while shared project rules and state use the root `.zzzops/` folder.
+
 Open a new Codex task or Claude Code session in the target project so its ZzzOps skills are discovered.
 
 ### 3. Initialize the project
@@ -111,7 +113,7 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 | Feature | Primary surface |
 | --- | --- |
 | Preview and install ZzzOps mechanics from a normal terminal without Python or Node | `install.ps1` / `install.sh` |
-| Initialize a project with reviewed operating policies | `.agents/zzzops.py` |
+| Initialize a project with reviewed operating policies | `.agents/zzzops/zzzops.py` |
 | Use GitHub Issues as the canonical goal backend | `.zzzops/rules/BACKENDS.md` |
 | Capture durable work | `.agents/skills/add-zzzops-goal/SKILL.md` |
 | Migrate repository TODOs and backlogs | `.agents/skills/migrate-to-zzzops/SKILL.md` |
@@ -119,18 +121,18 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 | Execute, prioritize, unblock, briefly watch human gates, verify, and hand off goals | `.agents/skills/execute-zzzops/SKILL.md` |
 | Give project-policy-driven updates, defaulting to concise outcomes and clear user actions | `.zzzops/rules/INITIALIZATION.md` |
 | Review or override refill, dependency, and parallel execution policy during initialization | `.zzzops/PROJECT.md` |
-| Select up to three worktree workers below 100 MB, otherwise read-only workers, from tracked repository size | `.agents/zzzops.py` / `.zzzops/rules/EXECUTION_STRATEGY.md` |
+| Select up to three worktree workers below 100 MB, otherwise read-only workers, from tracked repository size | `.agents/zzzops/zzzops.py` / `.zzzops/rules/EXECUTION_STRATEGY.md` |
 | Keep writable dependent goals gated while allowing read-only advance investigation | `.zzzops/rules/GOAL_SYSTEM.md` |
 | Clean completed worktrees or safely retain and reassign them | `.zzzops/rules/EXECUTION_STRATEGY.md` |
-| Inspect initialized capability and the canonical portfolio in one CLI checkpoint | `.agents/zzzops.py` |
-| Atomically reserve goals and known shared resources so concurrent agents avoid duplicate or colliding work | `.agents/zzzops.py` |
+| Inspect initialized capability and the canonical portfolio in one CLI checkpoint | `.agents/zzzops/zzzops.py` |
+| Atomically reserve goals and known shared resources so concurrent agents avoid duplicate or colliding work | `.agents/zzzops/zzzops.py` |
 | Validate dev PRs and preview or publish semantic releases | `.github/workflows` |
 
 ```text
 Use $execute-zzzops to interview me about and unblock blocked goals.
 Use $execute-zzzops to reprioritize all goals against project KPIs.
 Use $suggest-zzzops-work in dry-run mode to audit the project and suggest valuable goals.
-<python> .agents/zzzops.py --repo . checkpoint  # one initialized capability/queue/DAG read
+<python> .agents/zzzops/zzzops.py --repo . checkpoint  # one initialized capability/queue/DAG read
 ```
 
 In Claude Code, replace `$name` with `/name`, for example `/suggest-zzzops-work`.

@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 
-MODULE_PATH = Path(__file__).with_name("zzzops.py")
+MODULE_PATH = Path(__file__).parent / "zzzops" / "zzzops.py"
 SPEC = importlib.util.spec_from_file_location("zzzops", MODULE_PATH)
 zzzops = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader
@@ -24,7 +24,7 @@ class InitializationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.repo = Path(self.temp.name)
-        template_dir = self.repo / ".agents" / "templates" / "project-goals"
+        template_dir = self.repo / ".agents" / "zzzops" / "templates" / "project-goals"
         template_dir.mkdir(parents=True)
         (template_dir / "INIT_PLAN.json").write_text("{}\n", encoding="utf-8")
         (self.repo / ".zzzops").mkdir()
@@ -900,7 +900,7 @@ class ReservationTests(unittest.TestCase):
 
     def test_overlapping_resources_choose_one_goal_and_release_the_loser(self):
         adapter = FakeReservationAdapter(barrier=threading.Barrier(2), barrier_prefix="zzzops:resource:")
-        shared = ["path:.agents/zzzops.py"]
+        shared = ["path:.agents/zzzops/zzzops.py"]
         with ThreadPoolExecutor(max_workers=2) as pool:
             futures = [
                 pool.submit(
@@ -950,7 +950,7 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertNotIn(derived, zzzops.GOAL_FIELDS)
 
     def test_policy_taxonomy_is_stable_across_templates(self):
-        templates = Path(__file__).parent / "templates" / "project-goals"
+        templates = Path(__file__).parent / "zzzops" / "templates" / "project-goals"
         plan = json.loads((templates / "INIT_PLAN.json").read_text(encoding="utf-8"))
         plan_ids = [section["id"] for section in plan["policy"]["sections"]]
         rendered = zzzops.render_project(plan, 1)
@@ -960,7 +960,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertTrue(all(section["required"] and not section["review"]["approved"] for section in plan["policy"]["sections"]))
 
     def test_branch_policy_defaults_are_structured(self):
-        root = Path(__file__).parent
+        root = Path(__file__).parent / "zzzops"
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         git_policy = next(section for section in plan["policy"]["sections"] if section["id"] == "git_review_release")["settings"]
         self.assertEqual("per_goal", git_policy["execution_branch"])
@@ -975,7 +975,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(1, git_policy["review_state_reads_per_checkpoint"])
 
     def test_parallel_and_refill_defaults_are_structured(self):
-        root = Path(__file__).parent
+        root = Path(__file__).parent / "zzzops"
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         settings = next(section for section in plan["policy"]["sections"] if section["id"] == "autonomy_approval_parallelism")["settings"]
         self.assertEqual(3, settings["max_workers"])
@@ -998,7 +998,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertTrue(settings["read_only_dependency_investigation"])
         self.assertEqual("remove_or_retain_clean_for_reuse", settings["worktree_lifecycle"]["after_task"])
     def test_continuation_policy_defaults_are_structured(self):
-        root = Path(__file__).parent
+        root = Path(__file__).parent / "zzzops"
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         settings = next(section for section in plan["policy"]["sections"] if section["id"] == "execution_continuation")["settings"]
         self.assertEqual("same_task_until_superseded", settings["execute_intent"])
@@ -1013,7 +1013,7 @@ class WorkflowContractTests(unittest.TestCase):
             settings["human_unblock_watch"],
         )
     def test_completion_review_policy_defaults_are_structured(self):
-        root = Path(__file__).parent
+        root = Path(__file__).parent / "zzzops"
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         settings = next(section for section in plan["policy"]["sections"] if section["id"] == "code_quality")["settings"]
         self.assertEqual("required_before_review_or_done", settings["completion_self_review"])

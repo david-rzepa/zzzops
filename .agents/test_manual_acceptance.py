@@ -38,7 +38,7 @@ class ManualAcceptanceTests(unittest.TestCase):
             result = subprocess.run([sys.executable, str(SCRIPT), "coverage", "--repo", str(repo)], text=True, capture_output=True)
             self.assertEqual(1, result.returncode)
             self.assertIn("install.sh", json.loads(result.stdout)["unmapped_required_surfaces"])
-            self.assertIn(".agents/zzzops.py", json.loads(result.stdout)["unmapped_required_surfaces"])
+            self.assertIn(".agents/zzzops/zzzops.py", json.loads(result.stdout)["unmapped_required_surfaces"])
             self.assertEqual(path.read_text(encoding="utf-8"), "<!-- zzzops-acceptance-plan\n" + json.dumps(plan) + "\nzzzops-acceptance-plan -->\n")
 
 
