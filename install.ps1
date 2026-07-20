@@ -157,7 +157,7 @@ function Show-Preview($Plan) {
     Write-Host 'This will install:'
     Write-Host '- tracked project skills for Codex and Claude Code'
     Write-Host '- shared workflow rules and the ZzzOps control CLI'
-    Write-Host '- blank templates for project setup, preferences, and TODO migration'
+    Write-Host '- blank templates for project setup and TODO migration'
     $newCount = @($Plan.Actions | Where-Object Action -eq 'create').Count
     $updatedCount = @($Plan.Actions | Where-Object Action -eq 'overwrite').Count
     if ($newCount -or $updatedCount) { Write-Host "Planned changes: $newCount new, $updatedCount updated." }

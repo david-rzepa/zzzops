@@ -13,7 +13,7 @@
         "source": ".zzzops/PROJECT.md"
       },
       {
-        "finding": "Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and user-local preferences.",
+        "finding": "Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and reviewed PROJECT policy as the operational source of truth.",
         "id": "E-002",
         "kind": "observed",
         "source": "AGENTS.md"
@@ -41,6 +41,12 @@
         "id": "E-006",
         "kind": "observed",
         "source": "user decision and goal #102"
+      },
+      {
+        "finding": "User selected bounded refill for documentation, test coverage, and non-behavioral code quality, completed dependencies before writable implementation, read-only advance investigation, and up to three size-aware workers with clean worktree removal or reuse.",
+        "id": "E-007",
+        "kind": "observed",
+        "source": "user decisions and goal #117 on 2026-07-20"
       }
     ],
     "schema_version": 1,
@@ -80,7 +86,7 @@
       {
         "applicable": true,
         "confidence": "high",
-        "decision": "Per-goal branches from dev and PRs to dev. A dependency awaiting only human review/merge remains blocked itself but makes its child actionable from the exact review-ready checkpoint; preserve ancestry and merge the dependency first. Use Conventional Commits, human review after checks, and owner-only main releases.",
+        "decision": "Per-goal branches from dev and PRs to dev. Writable implementation waits until every dependency is complete; read-only investigation may prepare later work without claiming or starting it. Use Conventional Commits, human review after checks, and owner-only main releases.",
         "default_disposition": "accepted",
         "default_origin": "repository policy",
         "exceptions": [],
@@ -100,6 +106,7 @@
           "commit_unit": "verified_subgoal",
           "conversational_approval": "allowed_otherwise",
           "dependency_base": "dependency_branch",
+          "read_only_dependency_investigation": "allowed_before_completion",
           "execution_branch": "per_goal",
           "merge_after_approval": "when_authorized",
           "multiple_dependency_base": "reviewed_base_containing_all",
@@ -111,14 +118,15 @@
           "release_branch": "main",
           "release_update": "explicit_owner_force_push",
           "release_workflow": "main_update_runs_release_ci",
-          "review_pending_dependency": "stack_from_reviewed_checkpoint",
+          "review_pending_dependency": "wait_for_completed_dependencies",
           "review_gate": "human_after_checks",
           "review_state_reads_per_checkpoint": 1,
           "shared_pull_request": "explicit_reviewed_override"
         },
         "source_ids": [
           "E-002",
-          "E-005"
+          "E-005",
+          "E-007"
         ],
         "title": "Git, review, and release",
         "unresolved": []
@@ -126,7 +134,7 @@
       {
         "applicable": true,
         "confidence": "high",
-        "decision": "Continue sequentially across actionable goals and incorporate newly captured goals at the next safe checkpoint.",
+        "decision": "Continue across actionable goals under reviewed dependency and resource policy, and incorporate newly captured goals at the next safe checkpoint.",
         "default_disposition": "accepted",
         "default_origin": "ZzzOps default",
         "exceptions": [],
@@ -329,12 +337,12 @@
       {
         "applicable": true,
         "confidence": "high",
-        "decision": "Do not deploy without authority; default to sequential execution except bounded read-only delegation.",
+        "decision": "Do not deploy without authority; choose bounded parallelism from the deterministic tracked-file repository size.",
         "default_disposition": "accepted",
         "default_origin": "repository policy",
         "exceptions": [],
         "id": "deployment_resources",
-        "rationale": "Repository release policy restricts main updates and user preferences only allow read-only parallelism.",
+        "rationale": "Repository release policy restricts main updates, while the tracked tree is below 100 MB and the user selected size-aware parallel defaults.",
         "required": true,
         "review": {
           "approved": true,
@@ -345,10 +353,11 @@
         "settings": {
           "delegate_wait_after_seconds": 60,
           "deployment": "explicit_authority",
-          "resource_mode": "read_only"
+          "resource_mode": "size_aware"
         },
         "source_ids": [
-          "E-002"
+          "E-002",
+          "E-007"
         ],
         "title": "Deployment, environment, and resources",
         "unresolved": []
@@ -356,12 +365,12 @@
       {
         "applicable": true,
         "confidence": "high",
-        "decision": "Maximize safe autonomous progress; interview on consequential blockers; use at most two read-only workers.",
+        "decision": "Maximize safe autonomous progress; interview on consequential blockers; refill documentation, test-coverage, and non-behavioral code-quality work within the reviewed limit; use at most three size-aware workers with explicit worktree cleanup or reuse.",
         "default_disposition": "accepted",
-        "default_origin": "project and user policy",
+        "default_origin": "user-selected ZzzOps defaults and project policy",
         "exceptions": [],
         "id": "autonomy_approval_parallelism",
-        "rationale": "The charter values autonomy, completed issue #77 removed health reminders, and user-local preferences set a read-only two-worker ceiling.",
+        "rationale": "The charter values autonomy, and the user selected one reviewed policy surface with bounded valuable refill, strict writable dependency gates, and size-aware parallelism.",
         "required": true,
         "review": {
           "approved": true,
@@ -383,25 +392,45 @@
             "priority": "P2"
           },
           "claim_ttl_hours": 4,
-          "max_workers": 2,
+          "dependency_implementation_gate": "dependencies_done",
+          "max_workers": 3,
+          "parallelization": {
+            "at_or_above_threshold_mode": "read_only",
+            "below_threshold_mode": "worktrees",
+            "measurement": "existing_git_tracked_worktree_bytes",
+            "threshold_bytes": 104857600
+          },
           "planning": {
             "decompose_at": "L",
             "max_depth": 3
           },
-          "project_parallel_ceiling": "read_only",
+          "project_parallel_ceiling": "size_aware",
+          "read_only_dependency_investigation": true,
           "refill": {
             "allowed_categories": [
               "documentation",
               "tests",
               "code_quality_non_behavioral"
             ],
+            "enabled": true,
             "max_per_run": 3
+          },
+          "worktree_lifecycle": {
+            "abandoned_or_dirty": "forbidden",
+            "after_task": "remove_or_retain_clean_for_reuse",
+            "reuse_requires": [
+              "clean_state",
+              "reviewed_base",
+              "new_goal_resources",
+              "safe_branch_reassignment"
+            ]
           }
         },
         "source_ids": [
           "E-001",
           "E-002",
-          "E-004"
+          "E-004",
+          "E-007"
         ],
         "title": "Autonomy, approvals, and parallelism",
         "unresolved": []
@@ -412,7 +441,7 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 11,
+  "revision": 12,
   "schema_version": 1
 }
 zzzops-project-state -->
@@ -479,15 +508,15 @@ Read every section in this exact file. Each unchecked stable policy ID is a `dec
   - Exceptions: none
   - Unresolved: none
 - [x] `[policy:git_review_release]` **Git, review, and release** (applicable)
-  - Decision: Per-goal branches from dev and PRs to dev. A dependency awaiting only human review/merge remains blocked itself but makes its child actionable from the exact review-ready checkpoint; preserve ancestry and merge the dependency first. Use Conventional Commits, human review after checks, and owner-only main releases.
+  - Decision: Per-goal branches from dev and PRs to dev. Writable implementation waits until every dependency is complete; read-only investigation may prepare later work without claiming or starting it. Use Conventional Commits, human review after checks, and owner-only main releases.
   - Rationale: Root repository instructions define the integration and release boundary.
-  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and user-local preferences.; E-005: user decisions and goals #59/#88/#94/#95 — User decisions require review-ready dependency stacking, a brief bounded human-unblock watch, and artifact-specific verification without recursive documentation or test meta-tests.
+  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and reviewed PROJECT policy as the operational source of truth.; E-005: user decisions and goals #59/#88/#94/#95 — User decisions require review-ready dependency stacking, a brief bounded human-unblock watch, and artifact-specific verification without recursive documentation or test meta-tests.; E-007: user decisions and goal #117 on 2026-07-20 — User selected bounded refill for documentation, test coverage, and non-behavioral code quality, completed dependencies before writable implementation, read-only advance investigation, and up to three size-aware workers with clean worktree removal or reuse.
   - Confidence/default: high; repository policy → accepted
-  - Settings: `{"branch_base": "dev", "child_target": "nearest_parent_branch", "commit_style": "conventional", "commit_unit": "verified_subgoal", "conversational_approval": "allowed_otherwise", "dependency_base": "dependency_branch", "execution_branch": "per_goal", "merge_after_approval": "when_authorized", "multiple_dependency_base": "reviewed_base_containing_all", "parent_pseudo_trunk": true, "pr_approval": "required_when_repository_requires_pr", "pull_request_target": "dev", "pull_request_unit": "per_goal", "release_actor": "david-rzepa", "release_branch": "main", "release_update": "explicit_owner_force_push", "release_workflow": "main_update_runs_release_ci", "review_gate": "human_after_checks", "review_pending_dependency": "stack_from_reviewed_checkpoint", "review_state_reads_per_checkpoint": 1, "shared_pull_request": "explicit_reviewed_override"}`
+  - Settings: `{"branch_base": "dev", "child_target": "nearest_parent_branch", "commit_style": "conventional", "commit_unit": "verified_subgoal", "conversational_approval": "allowed_otherwise", "dependency_base": "dependency_branch", "execution_branch": "per_goal", "merge_after_approval": "when_authorized", "multiple_dependency_base": "reviewed_base_containing_all", "parent_pseudo_trunk": true, "pr_approval": "required_when_repository_requires_pr", "pull_request_target": "dev", "pull_request_unit": "per_goal", "read_only_dependency_investigation": "allowed_before_completion", "release_actor": "david-rzepa", "release_branch": "main", "release_update": "explicit_owner_force_push", "release_workflow": "main_update_runs_release_ci", "review_gate": "human_after_checks", "review_pending_dependency": "wait_for_completed_dependencies", "review_state_reads_per_checkpoint": 1, "shared_pull_request": "explicit_reviewed_override"}`
   - Exceptions: none
   - Unresolved: none
 - [x] `[policy:execution_continuation]` **Execution and work continuation** (applicable)
-  - Decision: Continue sequentially across actionable goals and incorporate newly captured goals at the next safe checkpoint.
+  - Decision: Continue across actionable goals under reviewed dependency and resource policy, and incorporate newly captured goals at the next safe checkpoint.
   - Rationale: The charter prioritizes reducing babysitting while preserving explicit boundaries.
   - Sources: E-001: .zzzops/PROJECT.md — The existing confirmed charter defines the outcome, KPIs, acceptance criteria, and value constraints.; E-005: user decisions and goals #59/#88/#94/#95 — User decisions require review-ready dependency stacking, a brief bounded human-unblock watch, and artifact-specific verification without recursive documentation or test meta-tests.
   - Confidence/default: high; ZzzOps default → accepted
@@ -497,7 +526,7 @@ Read every section in this exact file. Each unchecked stable policy ID is a `dec
 - [x] `[policy:verification_testing]` **Verification and testing** (applicable)
   - Decision: Require artifact-appropriate observable evidence in small chunks; documentation and test cases need no recursive tests, while product behavior and reusable test infrastructure require direct verification.
   - Rationale: Root instructions forbid unobservable implementation and unsanctioned test-bug fixes.
-  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and user-local preferences.; E-005: user decisions and goals #59/#88/#94/#95 — User decisions require review-ready dependency stacking, a brief bounded human-unblock watch, and artifact-specific verification without recursive documentation or test meta-tests.
+  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and reviewed PROJECT policy as the operational source of truth.; E-005: user decisions and goals #59/#88/#94/#95 — User decisions require review-ready dependency stacking, a brief bounded human-unblock watch, and artifact-specific verification without recursive documentation or test meta-tests.
   - Confidence/default: high; repository policy → accepted
   - Settings: `{"artifact_verification": {"documentation": "inspect_artifact_no_feature_test", "product_runtime": "risk_proportionate_behavioral_probe", "test_cases": "run_changed_tests_no_recursive_meta_test", "test_harness": "focused_behavioral_regression"}, "mode": "chunk_probe", "test_bug": "capture_and_ask", "widen": "as_relevant"}`
   - Exceptions: none
@@ -505,7 +534,7 @@ Read every section in this exact file. Each unchecked stable policy ID is a `dec
 - [x] `[policy:code_quality]` **Code-quality and refactoring boundaries** (applicable)
   - Decision: Preserve behavior unless a goal explicitly authorizes a behavior change.
   - Rationale: A bounded self-review prevents unrelated cleanup from expanding work.
-  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and user-local preferences.
+  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and reviewed PROJECT policy as the operational source of truth.
   - Confidence/default: medium; ZzzOps default → accepted
   - Settings: `{"completion_self_review": "required_before_review_or_done", "dead_code": "remove_only_if_evidenced_and_in_scope", "dynamic_generated_vendor": "retain_without_proof", "non_behavioral_only_without_feature_goal": true, "record_clean_review": true, "reverify_after_changes": true, "review_scope": "goal_diff_tests_and_relevant_surroundings"}`
   - Exceptions: none
@@ -529,25 +558,25 @@ Read every section in this exact file. Each unchecked stable policy ID is a `dec
 - [x] `[policy:documentation_style]` **Documentation and style** (applicable)
   - Decision: Follow evidenced repository documentation and style conventions; use outcome-first, low-technical-detail user updates by default while allowing explicit project policy to override the style.
   - Rationale: Repository instructions require prompt-budget updates, and the user selected concise actionable communication as this project's default without making it universal policy.
-  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and user-local preferences.; E-006: user decision and goal #102 — Communication style is reviewed project policy; outcome-first, low-technical-detail updates are the user's preferred ZzzOps default and may be overridden by explicit project policy.
+  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and reviewed PROJECT policy as the operational source of truth.; E-006: user decision and goal #102 — Communication style is reviewed project policy; outcome-first, low-technical-detail updates are the user's preferred ZzzOps default and may be overridden by explicit project policy.
   - Confidence/default: high; repository policy and user-preferred ZzzOps default → accepted
   - Settings: `{"communication": {"style": "outcome_first", "technical_detail": "decision_risk_failure_or_request", "user_action": "one_clear_action_with_reason_and_next_step"}, "documentation": "repository_conventions", "installed_prompt_markdown_check": ".agents/prompt_stats.py --check", "prompt_budget_ceiling": "explicit_value_justification", "prompt_counts": "do_not_commit", "style": "repository_conventions"}`
   - Exceptions: none
   - Unresolved: none
 - [x] `[policy:deployment_resources]` **Deployment, environment, and resources** (applicable)
-  - Decision: Do not deploy without authority; default to sequential execution except bounded read-only delegation.
-  - Rationale: Repository release policy restricts main updates and user preferences only allow read-only parallelism.
-  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and user-local preferences.
+  - Decision: Do not deploy without authority; choose bounded parallelism from the deterministic tracked-file repository size.
+  - Rationale: Repository release policy restricts main updates, while the tracked tree is below 100 MB and the user selected size-aware parallel defaults.
+  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and reviewed PROJECT policy as the operational source of truth.; E-007: user decisions and goal #117 on 2026-07-20 — User selected bounded refill for documentation, test coverage, and non-behavioral code quality, completed dependencies before writable implementation, read-only advance investigation, and up to three size-aware workers with clean worktree removal or reuse.
   - Confidence/default: high; repository policy → accepted
-  - Settings: `{"delegate_wait_after_seconds": 60, "deployment": "explicit_authority", "resource_mode": "read_only"}`
+  - Settings: `{"delegate_wait_after_seconds": 60, "deployment": "explicit_authority", "resource_mode": "size_aware"}`
   - Exceptions: none
   - Unresolved: none
 - [x] `[policy:autonomy_approval_parallelism]` **Autonomy, approvals, and parallelism** (applicable)
-  - Decision: Maximize safe autonomous progress; interview on consequential blockers; use at most two read-only workers.
-  - Rationale: The charter values autonomy, completed issue #77 removed health reminders, and user-local preferences set a read-only two-worker ceiling.
-  - Sources: E-001: .zzzops/PROJECT.md — The existing confirmed charter defines the outcome, KPIs, acceptance criteria, and value constraints.; E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and user-local preferences.; E-004: user decisions and completed issues #77/#81 — Health reminders were removed and GitHub Issues is now the only supported canonical goal backend.
-  - Confidence/default: high; project and user policy → accepted
-  - Settings: `{"blocker_interview": "immediate_batch", "blocker_order": ["safety_access_human", "cross_goal_decisions", "specification", "technical_unknown"], "capture_defaults": {"confidence": "low", "difficulty": "unknown", "priority": "P2"}, "claim_ttl_hours": 4, "max_workers": 2, "planning": {"decompose_at": "L", "max_depth": 3}, "project_parallel_ceiling": "read_only", "refill": {"allowed_categories": ["documentation", "tests", "code_quality_non_behavioral"], "max_per_run": 3}}`
+  - Decision: Maximize safe autonomous progress; interview on consequential blockers; refill documentation, test-coverage, and non-behavioral code-quality work within the reviewed limit; use at most three size-aware workers with explicit worktree cleanup or reuse.
+  - Rationale: The charter values autonomy, and the user selected one reviewed policy surface with bounded valuable refill, strict writable dependency gates, and size-aware parallelism.
+  - Sources: E-001: .zzzops/PROJECT.md — The existing confirmed charter defines the outcome, KPIs, acceptance criteria, and value constraints.; E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and reviewed PROJECT policy as the operational source of truth.; E-004: user decisions and completed issues #77/#81 — Health reminders were removed and GitHub Issues is now the only supported canonical goal backend.; E-007: user decisions and goal #117 on 2026-07-20 — User selected bounded refill for documentation, test coverage, and non-behavioral code quality, completed dependencies before writable implementation, read-only advance investigation, and up to three size-aware workers with clean worktree removal or reuse.
+  - Confidence/default: high; user-selected ZzzOps defaults and project policy → accepted
+  - Settings: `{"blocker_interview": "immediate_batch", "blocker_order": ["safety_access_human", "cross_goal_decisions", "specification", "technical_unknown"], "capture_defaults": {"confidence": "low", "difficulty": "unknown", "priority": "P2"}, "claim_ttl_hours": 4, "dependency_implementation_gate": "dependencies_done", "max_workers": 3, "parallelization": {"at_or_above_threshold_mode": "read_only", "below_threshold_mode": "worktrees", "measurement": "existing_git_tracked_worktree_bytes", "threshold_bytes": 104857600}, "planning": {"decompose_at": "L", "max_depth": 3}, "project_parallel_ceiling": "size_aware", "read_only_dependency_investigation": true, "refill": {"allowed_categories": ["documentation", "tests", "code_quality_non_behavioral"], "enabled": true, "max_per_run": 3}, "worktree_lifecycle": {"abandoned_or_dirty": "forbidden", "after_task": "remove_or_retain_clean_for_reuse", "reuse_requires": ["clean_state", "reviewed_base", "new_goal_resources", "safe_branch_reassignment"]}}`
   - Exceptions: none
   - Unresolved: none
 
@@ -562,3 +591,4 @@ Read every section in this exact file. Each unchecked stable policy ID is a `dec
 | 2026-07-19 | ZzzOps execute #95 | Encoded policy/default conformance in revision 9 | Added source-cited review-ready stacking, bounded human-watch defaults, artifact verification, release boundaries, and prompt-budget settings; PR review is the exact-file policy checkpoint. |
 | 2026-07-19 | ZzzOps execute #95 review | Clarified stacked actionability in revision 10 | Made explicit that a review-blocked dependency can still make its child actionable; dependency status and merge order do not serialize implementation when the exact checkpoint satisfies reviewed policy. |
 | 2026-07-19 | user/ZzzOps execute #102 | Added communication policy in revision 11 | User selected outcome-first, low-technical-detail communication as the default while requiring explicit project policy to remain able to override it. |
+| 2026-07-20 | user/ZzzOps execute #117 | Consolidated operational policy in revision 12 | Removed local preferences; selected bounded refill for documentation, test coverage, and non-behavioral code quality, completed dependency gates for writes, tracked-size parallel defaults with three workers, read-only advance investigation, and mandatory worktree cleanup or safe reuse. |

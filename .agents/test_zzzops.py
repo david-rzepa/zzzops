@@ -26,7 +26,7 @@ class InitializationTests(unittest.TestCase):
         self.repo = Path(self.temp.name)
         template_dir = self.repo / ".agents" / "templates" / "project-goals"
         template_dir.mkdir(parents=True)
-        (template_dir / "PREFERENCES.json").write_text("{}\n", encoding="utf-8")
+        (template_dir / "INIT_PLAN.json").write_text("{}\n", encoding="utf-8")
         (self.repo / ".zzzops").mkdir()
 
     def tearDown(self):
@@ -90,7 +90,6 @@ class InitializationTests(unittest.TestCase):
         self.assertEqual([], zzzops.validate_plan(self.repo, plan))
         applied = zzzops.apply_plan(self.repo, plan)
         self.assertTrue(applied["changed"])
-        self.assertEqual("<python> .agents/zzzops.py", applied["preferences_command"])
         result = zzzops.inspect_initialization(self.repo)
         self.assertFalse(result["initialized"])
         self.assertEqual("github_issues", result["state"]["backend"])
@@ -200,33 +199,16 @@ class InitializationTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr + result.stdout)
         self.assertTrue(json.loads(result.stdout)["initialized"])
 
-    def test_preferences_cli_saves_local_choices_and_preserves_extensions(self):
-        template = self.repo / ".agents" / "templates" / "project-goals" / "PREFERENCES.json"
-        template.write_text(
-            json.dumps({
-                "fill_backlog": {
-                    "documentation": False,
-                    "tests": False,
-                    "code_quality_non_behavioral": False,
-                    "max_goals_per_refill": 3,
-                },
-                "parallelization": {"mode": "read_only", "max_workers": 2},
-                "project_extension": {"keep": True},
-            }),
-            encoding="utf-8",
-        )
+    def test_cli_without_command_shows_help_without_writing_local_state(self):
         result = subprocess.run(
             [sys.executable, str(MODULE_PATH), "--repo", str(self.repo)],
-            input="1\n1\ns\nq\n",
             text=True,
             encoding="utf-8",
             capture_output=True,
             check=False,
         )
         self.assertEqual(0, result.returncode, result.stderr + result.stdout)
-        saved = json.loads((self.repo / ".zzzops" / "PREFERENCES.json").read_text(encoding="utf-8"))
-        self.assertTrue(saved["fill_backlog"]["documentation"])
-        self.assertEqual({"keep": True}, saved["project_extension"])
+        self.assertIn("ZzzOps project control CLI", result.stdout)
 
     def test_rejects_unconfirmed_unknown_and_stale_plans(self):
         plan = self.plan()
@@ -258,6 +240,32 @@ class InitializationTests(unittest.TestCase):
                 zzzops.atomic_text(path, "new\n")
         self.assertFalse(path.exists())
         self.assertEqual([], list(path.parent.iterdir()))
+
+    @mock.patch.object(zzzops.shutil, "which", return_value="git")
+    @mock.patch.object(zzzops.subprocess, "run")
+    def test_repository_size_uses_only_existing_git_tracked_bytes(self, run, _which):
+        tracked = self.repo / "tracked.bin"
+        ignored = self.repo / "ignored.bin"
+        tracked.write_bytes(b"123456789")
+        ignored.write_bytes(b"x" * 100)
+        run.return_value = subprocess.CompletedProcess([], 0, stdout=b"tracked.bin\0missing.bin\0", stderr=b"")
+        with mock.patch.object(zzzops, "REPOSITORY_SIZE_THRESHOLD_BYTES", 10):
+            small = zzzops.repository_size_profile(self.repo)
+            self.assertEqual("worktrees", small["mode"])
+            self.assertEqual(9, small["bytes"])
+            tracked.write_bytes(b"1234567890")
+            boundary = zzzops.repository_size_profile(self.repo)
+            self.assertEqual("read_only", boundary["mode"])
+            self.assertEqual(10, boundary["bytes"])
+        self.assertEqual(3, boundary["max_workers"])
+        self.assertEqual("existing_git_tracked_worktree_bytes", boundary["measurement"])
+
+    @mock.patch.object(zzzops.shutil, "which", return_value=None)
+    def test_repository_size_falls_back_to_read_only_when_git_is_unavailable(self, _which):
+        profile = zzzops.repository_size_profile(self.repo)
+        self.assertFalse(profile["available"])
+        self.assertEqual("read_only", profile["mode"])
+        self.assertEqual(3, profile["max_workers"])
 
     def test_rejects_unconfirmed_proposal(self):
         plan = self.plan()
@@ -557,8 +565,9 @@ class PortfolioTests(unittest.TestCase):
     @mock.patch.object(zzzops, "validate_project_state", return_value=[])
     @mock.patch.object(zzzops, "parse_project_state")
     @mock.patch.object(zzzops, "read_project", return_value=(Path("PROJECT.md"), "project"))
+    @mock.patch.object(zzzops, "repository_size_profile", return_value={"mode": "worktrees", "max_workers": 3})
     def test_decision_checkpoint_embeds_portfolio_with_two_subprocesses(
-        self, _read, parse, _validate, _audit, _blockers, _missing, run, _which,
+        self, _size, _read, parse, _validate, _audit, _blockers, _missing, run, _which,
     ):
         parse.return_value = {
             "initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"},
@@ -957,12 +966,37 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("per_goal", git_policy["execution_branch"])
         self.assertEqual("nearest_authorized_trunk", git_policy["branch_base"])
         self.assertEqual("dependency_branch", git_policy["dependency_base"])
-        self.assertEqual("stack_from_reviewed_checkpoint", git_policy["review_pending_dependency"])
+        self.assertEqual("wait_for_completed_dependencies", git_policy["review_pending_dependency"])
+        self.assertEqual("allowed_before_completion", git_policy["read_only_dependency_investigation"])
         self.assertTrue(git_policy["parent_pseudo_trunk"])
         self.assertEqual("per_goal", git_policy["pull_request_unit"])
         self.assertEqual("explicit_reviewed_override", git_policy["shared_pull_request"])
         self.assertEqual("human_after_checks", git_policy["review_gate"])
         self.assertEqual(1, git_policy["review_state_reads_per_checkpoint"])
+
+    def test_parallel_and_refill_defaults_are_structured(self):
+        root = Path(__file__).parent
+        plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        settings = next(section for section in plan["policy"]["sections"] if section["id"] == "autonomy_approval_parallelism")["settings"]
+        self.assertEqual(3, settings["max_workers"])
+        self.assertEqual(
+            {
+                "measurement": "existing_git_tracked_worktree_bytes", "threshold_bytes": 104857600,
+                "below_threshold_mode": "worktrees", "at_or_above_threshold_mode": "read_only",
+            },
+            settings["parallelization"],
+        )
+        self.assertEqual(
+            {
+                "enabled": True,
+                "allowed_categories": ["documentation", "tests", "code_quality_non_behavioral"],
+                "max_per_run": 3,
+            },
+            settings["refill"],
+        )
+        self.assertEqual("dependencies_done", settings["dependency_implementation_gate"])
+        self.assertTrue(settings["read_only_dependency_investigation"])
+        self.assertEqual("remove_or_retain_clean_for_reuse", settings["worktree_lifecycle"]["after_task"])
     def test_continuation_policy_defaults_are_structured(self):
         root = Path(__file__).parent
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))

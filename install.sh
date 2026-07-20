@@ -141,7 +141,7 @@ build_plan() {
 
 show_preview() {
     printf 'ZzzOps installation preview\nTarget: %s\n' "$TARGET_ROOT"
-    printf '%s\n' 'This will install:' '- tracked project skills for Codex and Claude Code' '- shared workflow rules and the ZzzOps control CLI' '- blank templates for project setup, preferences, and TODO migration'
+    printf '%s\n' 'This will install:' '- tracked project skills for Codex and Claude Code' '- shared workflow rules and the ZzzOps control CLI' '- blank templates for project setup and TODO migration'
     local new_count=0 updated_count=0 action error names=''
     for action in "${PLAN_ACTION[@]}"; do
         [[ "$action" == create ]] && ((new_count+=1))

@@ -68,7 +68,7 @@ query($owner:String!,$name:String!,$labels:[String!],$endCursor:String){
   }
 }
 """.strip()
-PREFERENCES_COMMAND = "<python> .agents/zzzops.py"
+REPOSITORY_SIZE_THRESHOLD_BYTES = 100 * 1024 * 1024
 GITHUB_MANAGEMENT_PERMISSIONS = {"TRIAGE", "WRITE", "MAINTAIN", "ADMIN"}
 RESERVATION_COLOR = "5319E7"
 RESERVATION_ID = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -511,63 +511,6 @@ def project_claim_ttl_seconds(project: dict[str, Any]) -> int:
     if not isinstance(hours, int) or isinstance(hours, bool) or not 1 <= hours <= 24:
         raise ValueError("Reviewed project policy must set claim_ttl_hours from 1 to 24")
     return hours * 3600
-
-PREFERENCE_LABELS = (
-    ("documentation", "Fill backlog with documentation work"),
-    ("tests", "Fill backlog with test work"),
-    ("code_quality_non_behavioral", "Fill backlog with non-behavioral code-quality work"),
-)
-PARALLEL_MODES = (
-    ("sequential", "Sequential only"),
-    ("read_only", "Read-only parallel work"),
-    ("worktrees", "Writable parallel work in Git worktrees"),
-)
-def load_preferences(repo: Path) -> tuple[Path, dict[str, Any]]:
-    path = repo / ".zzzops" / "PREFERENCES.json"
-    template = repo / ".agents" / "templates" / "project-goals" / "PREFERENCES.json"
-    source = path if path.exists() else template
-    try:
-        data = json.loads(source.read_text(encoding="utf-8-sig"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"Cannot read preferences from {source}: {exc}") from exc
-    if not isinstance(data, dict):
-        raise ValueError("Preferences root must be a JSON object")
-    fill = data.setdefault("fill_backlog", {})
-    if not isinstance(fill, dict):
-        raise ValueError("fill_backlog must be a JSON object")
-    for key, _label in PREFERENCE_LABELS:
-        if not isinstance(fill.setdefault(key, False), bool):
-            raise ValueError(f"fill_backlog.{key} must be true or false")
-    cap = fill.setdefault("max_goals_per_refill", 3)
-    if not isinstance(cap, int) or isinstance(cap, bool) or cap < 1 or cap > 25:
-        raise ValueError("max_goals_per_refill must be an integer from 1 to 25")
-    parallel = data.setdefault("parallelization", {})
-    if not isinstance(parallel, dict):
-        raise ValueError("parallelization must be a JSON object")
-    mode = parallel.setdefault("mode", "read_only")
-    if mode not in {value for value, _label in PARALLEL_MODES}:
-        raise ValueError("parallelization.mode must be sequential, read_only, or worktrees")
-    workers = parallel.setdefault("max_workers", 2)
-    if not isinstance(workers, int) or isinstance(workers, bool) or workers < 1 or workers > 8:
-        raise ValueError("parallelization.max_workers must be an integer from 1 to 8")
-    return path, data
-
-
-def atomic_json(path: Path, data: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    encoded = (json.dumps(data, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
-    temporary: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:
-            handle.write(encoded)
-            handle.flush()
-            os.fsync(handle.fileno())
-            temporary = Path(handle.name)
-        os.replace(temporary, path)
-    finally:
-        if temporary and temporary.exists():
-            temporary.unlink()
-
 
 def project_digest(text: str) -> str:
     return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -1401,6 +1344,54 @@ def command_probe(command: list[str], repo: Path) -> dict[str, Any]:
     }
 
 
+def repository_size_profile(repo: Path) -> dict[str, Any]:
+    """Select the default worker mode from existing Git-tracked file bytes."""
+    executable = shutil.which("git")
+    if not executable:
+        return {
+            "available": False, "measurement": "existing_git_tracked_worktree_bytes",
+            "threshold_bytes": REPOSITORY_SIZE_THRESHOLD_BYTES, "max_workers": 3,
+            "mode": "read_only", "detail": "git executable not found",
+        }
+    try:
+        result = subprocess.run(
+            [executable, "-C", str(repo), "ls-files", "-z"], cwd=repo,
+            capture_output=True, timeout=5, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {
+            "available": False, "measurement": "existing_git_tracked_worktree_bytes",
+            "threshold_bytes": REPOSITORY_SIZE_THRESHOLD_BYTES, "max_workers": 3,
+            "mode": "read_only", "detail": type(exc).__name__,
+        }
+    if result.returncode:
+        return {
+            "available": False, "measurement": "existing_git_tracked_worktree_bytes",
+            "threshold_bytes": REPOSITORY_SIZE_THRESHOLD_BYTES, "max_workers": 3,
+            "mode": "read_only", "detail": "git ls-files failed",
+        }
+    total = 0
+    files = 0
+    for encoded in result.stdout.split(b"\0"):
+        if not encoded:
+            continue
+        relative = Path(os.fsdecode(encoded))
+        if relative.is_absolute() or ".." in relative.parts:
+            continue
+        try:
+            stat = os.lstat(repo / relative)
+        except OSError:
+            continue
+        total += stat.st_size
+        files += 1
+    return {
+        "available": True, "measurement": "existing_git_tracked_worktree_bytes",
+        "bytes": total, "files": files, "threshold_bytes": REPOSITORY_SIZE_THRESHOLD_BYTES,
+        "mode": "worktrees" if total < REPOSITORY_SIZE_THRESHOLD_BYTES else "read_only",
+        "max_workers": 3,
+    }
+
+
 def sanitize_output(value: str) -> str:
     return re.sub(r"(https?://)[^/@\s]+@", r"\1***@", value)
 
@@ -1459,6 +1450,7 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
             "github_auth": github_auth,
             "github_repository": github_repository,
         },
+        "repository_size": repository_size_profile(repo),
     }
 
 
@@ -1532,6 +1524,7 @@ def decision_checkpoint(repo: Path) -> dict[str, Any]:
             "github_auth": github_auth,
             "github_repository": github_repository,
         },
+        "repository_size": repository_size_profile(repo),
         "portfolio": portfolio,
         "processes": {
             "total": (1 if git_remote.get("available") else 0) + github_processes,
@@ -1826,7 +1819,6 @@ def apply_plan(repo: Path, plan: dict[str, Any]) -> dict[str, Any]:
     if rendered == current:
         return {
             "changed": False, "path": str(path), "revision": revision,
-            "preferences_command": PREFERENCES_COMMAND,
         }
     atomic_text(path, rendered)
     return {
@@ -1835,7 +1827,6 @@ def apply_plan(repo: Path, plan: dict[str, Any]) -> dict[str, Any]:
         "decision_blockers": policy_blockers(plan["policy"]),
         "project_digest": project_digest(rendered),
         "review_required": "Read the exact PROJECT.md file, then explicitly approve its current digest.",
-        "preferences_command": PREFERENCES_COMMAND,
     }
 
 
@@ -1902,86 +1893,8 @@ def confirm_project(repo: Path, digest: str, reviewer: str, section_ids: list[st
     }
 
 
-def edit_preferences(repo: Path) -> None:
-    path, preferences = load_preferences(repo)
-    fill = preferences["fill_backlog"]
-    while True:
-        print("\nBacklog refill preferences")
-        for number, (key, label) in enumerate(PREFERENCE_LABELS, 1):
-            print(f"  {number}. [{'x' if fill[key] else ' '}] {label}")
-        print(f"  4. Maximum goals per refill: {fill['max_goals_per_refill']}")
-        print("  s. Save and return")
-        print("  q. Discard and return")
-        choice = input("> ").strip().casefold()
-        if choice in {"1", "2", "3"}:
-            key = PREFERENCE_LABELS[int(choice) - 1][0]
-            fill[key] = not fill[key]
-        elif choice == "4":
-            value = input("Maximum goals per refill (1-25): ").strip()
-            if value.isdigit() and 1 <= int(value) <= 25:
-                fill["max_goals_per_refill"] = int(value)
-            else:
-                print("Enter an integer from 1 to 25.")
-        elif choice == "s":
-            atomic_json(path, preferences)
-            print(f"Saved local preferences to {path}")
-            return
-        elif choice == "q":
-            print("No changes saved.")
-            return
-        else:
-            print("Choose 1-4, s, or q.")
-
-
-def edit_parallelization(repo: Path) -> None:
-    path, preferences = load_preferences(repo)
-    parallel = preferences["parallelization"]
-    while True:
-        print("\nParallelization preferences")
-        for number, (value, label) in enumerate(PARALLEL_MODES, 1):
-            print(f"  {number}. {'*' if parallel['mode'] == value else ' '} {label}")
-        print(f"  4. Maximum workers: {parallel['max_workers']}")
-        print("  s. Save and return")
-        print("  q. Discard and return")
-        choice = input("> ").strip().casefold()
-        if choice in {"1", "2", "3"}:
-            parallel["mode"] = PARALLEL_MODES[int(choice) - 1][0]
-        elif choice == "4":
-            value = input("Maximum workers (1-8): ").strip()
-            if value.isdigit() and 1 <= int(value) <= 8:
-                parallel["max_workers"] = int(value)
-            else:
-                print("Enter an integer from 1 to 8.")
-        elif choice == "s":
-            atomic_json(path, preferences)
-            print(f"Saved local preferences to {path}")
-            return
-        elif choice == "q":
-            print("No changes saved.")
-            return
-        else:
-            print("Choose 1-4, s, or q.")
-
-
-def interactive(repo: Path) -> None:
-    while True:
-        print("\nZzzOps control panel")
-        print("  1. Edit preferences")
-        print("  2. Edit parallelization")
-        print("  q. Exit")
-        choice = input("> ").strip().casefold()
-        if choice == "1":
-            edit_preferences(repo)
-        elif choice == "2":
-            edit_parallelization(repo)
-        elif choice == "q":
-            return
-        else:
-            print("Choose 1, 2, or q.")
-
-
 def main() -> int:
-    parser = argparse.ArgumentParser(description="ZzzOps control panel")
+    parser = argparse.ArgumentParser(description="ZzzOps project control CLI")
     parser.add_argument("--repo", type=Path, default=Path.cwd(), help="Project root (default: current directory)")
     commands = parser.add_subparsers(dest="command")
     init = commands.add_parser("init", help="Inspect, validate, or apply agent-driven project initialization")
@@ -2015,7 +1928,7 @@ def main() -> int:
             reserve_command.add_argument("--ttl-seconds", type=int, help="Override reviewed claim_ttl_hours")
     args = parser.parse_args()
     repo = args.repo.resolve()
-    if not (repo / ".agents" / "templates" / "project-goals" / "PREFERENCES.json").is_file():
+    if not (repo / ".agents" / "templates" / "project-goals" / "INIT_PLAN.json").is_file():
         print(f"ZzzOps is not installed at {repo}.")
         return 2
     try:
@@ -2090,7 +2003,7 @@ def main() -> int:
                 print(f"Goal #{args.goal} is not reserved by this run. Refresh before continuing.")
             return 0 if result.get("acquired") is True or result.get("released") is True else 3
         else:
-            interactive(repo)
+            parser.print_help()
     except (EOFError, KeyboardInterrupt):
         print("\nNo further changes made.")
     except ValueError as exc:

@@ -92,7 +92,6 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertTrue((target / ".claude" / "skills" / "add-zzzops-goal" / "SKILL.md").is_file())
                 self.assertFalse((target / ".gitignore").exists())
                 self.assertFalse((target / ".zzzops" / "PROJECT.md").exists())
-                self.assertFalse((target / ".zzzops" / "PREFERENCES.json").exists())
                 help_result = subprocess.run(
                     [sys.executable, str(target / ".agents" / "zzzops.py"), "--repo", str(target), "portfolio", "--help"],
                     text=True, encoding="utf-8", capture_output=True, check=False,
@@ -120,7 +119,7 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertEqual(".agents/\n.claude/\nkeep.local\n", ignore.read_text(encoding="utf-8"))
 
                 state = {
-                    target / ".zzzops" / "PREFERENCES.json": b'{"personal": true}\n',
+                    target / ".zzzops" / "LOCAL_NOTES.md": b"personal notes\n",
                     target / ".zzzops" / "PROJECT.md": b"project\n",
                     target / "AGENTS.md": b"project instructions\n",
                 }

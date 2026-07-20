@@ -7,7 +7,7 @@ ZzzOps uses the portable skill contract shared by Codex and Claude Code: the `na
 | `add-zzzops-goal` | add, create, capture, record; goal, TODO, backlog item | Write one canonical goal | None |
 | `execute-zzzops` | execute, work all goals, continue, triage, prioritize, reprioritize, unblock | Execute authorized work | `dry run`, `preview`, `plan`: read-only |
 | `migrate-to-zzzops` | discover, plan, migrate, import; TODOs, backlog | Build review artifacts; apply only after approval | `dry run`, `preview`, `plan`: report only; `apply`, `migrate`, `import`: approved write |
-| `suggest-zzzops-work` | suggest, discover, audit, refill | Dry run | `dry run`, `preview`, `plan`: read-only; `apply`: approved write; `refill`: preference-authorized write |
+| `suggest-zzzops-work` | suggest, discover, audit, refill | Dry run | `dry run`, `preview`, `plan`: read-only; `apply`: approved write; `refill`: PROJECT-policy-authorized write |
 
 Generic mode words are contextual: combine them with the task noun, such as “dry run TODO migration.” Installation uses the native root `install.ps1` and `install.sh` scripts rather than an agent skill. Keep descriptions concise and update contract tests when names, modes, or defaults change.
 
