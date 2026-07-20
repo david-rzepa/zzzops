@@ -1,6 +1,6 @@
 # GitHub goal backend
 
-`.zzzops/PROJECT.md` records GitHub Issues as the canonical goal authority.
+The reviewed canonical `.zzzops/POLICY.json` records GitHub Issues as the goal authority; `.zzzops/PROJECT.md` summarizes that choice for humans.
 
 Use the portfolio embedded by `INITIALIZATION.md`'s single checkpoint; never run a second portfolio command there. Require `complete:true` and `valid:true`; use its compact inventory/graph/human queue. It omits criteria/history, so re-read only the selected goal before writing and match revision/digest. Refresh the checkpoint once after mutation/drift. Standalone `portfolio` is for explicit CLI inspection/comparison.
 

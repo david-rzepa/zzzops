@@ -32,19 +32,19 @@ The CLI copies discoverable skills, mechanics, and blank templates—never itsel
 
 Discoverable skills stay in `.agents/skills/` and `.claude/skills/`. Other harness support is grouped under `.agents/zzzops/`, while shared project rules and state use the root `.zzzops/` folder.
 
-Open a new Codex task or Claude Code session in the target project so its ZzzOps skills are discovered.
+Open a new Codex task or Claude Code session in the target project so its ZzzOps skills are discovered, then start the policy review workflow.
 
 ### 3. Initialize the project
 
-Start any non-install workflow in the target, for example:
+Use the dedicated review skill in the target:
 
 ```text
-Use $add-zzzops-goal to capture our first piece of work.
+Use $review-zzzops-policy to initialize and summarize this project's policy.
 ```
 
-The agent first inspects code, docs, config, history, Git, GitHub, and repository policy; proposes the outcome, KPIs, acceptance criteria, GitHub authority, and operating rules; then asks only consequential questions. Deterministic CLI primitives validate and atomically create a pending `.zzzops/PROJECT.md`. You do not fill a blank wizard.
+The agent first inspects code, docs, config, history, Git, GitHub, and repository policy; proposes the outcome, KPIs, acceptance criteria, GitHub authority, and operating rules; then asks only consequential questions. Deterministic CLI primitives validate the concise charter, detailed audit, and canonical machine policy. You do not fill a blank wizard.
 
-The agent summarizes that exact file and tells you to read it in detail. Ordinary workflows remain blocked until you explicitly approve the current file digest; any edit invalidates the approval. Stable per-section checkboxes make GitHub authority, Git/review, continuation, testing, code quality, tooling, security, documentation, deployment/resources, and autonomy decisions visible rather than hiding them in universal prompts. After approval, `PROJECT.md` keeps only the charter and runtime decisions; digest-bound `PROJECT_AUDIT.md` preserves the full review record on demand.
+The agent summarizes the meaningful choices and invites adjustments. Ordinary workflows remain blocked until you explicitly approve the current policy; any bound charter, audit, or policy edit invalidates approval. `PROJECT.md` stays a concise human charter and summary, `POLICY.json` is the single machine-readable authority, and digest-bound `PROJECT_AUDIT.md` preserves detail on demand. Running the review skill later always produces a fresh summary before inviting changes.
 
 Once reviewed, these policies let the agent make routine decisions without waking you for every tiny choice.
 
@@ -113,14 +113,14 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 | Feature | Primary surface |
 | --- | --- |
 | Preview and install ZzzOps mechanics from a normal terminal without Python or Node | `install.ps1` / `install.sh` |
-| Initialize a project with reviewed operating policies | `.agents/zzzops/zzzops.py` |
+| Initialize, summarize, and adjust reviewed project policy | `.agents/skills/review-zzzops-policy/SKILL.md` |
 | Use GitHub Issues as the canonical goal backend | `.zzzops/rules/BACKENDS.md` |
 | Capture durable work | `.agents/skills/add-zzzops-goal/SKILL.md` |
 | Migrate repository TODOs and backlogs | `.agents/skills/migrate-to-zzzops/SKILL.md` |
 | Suggest evidence-backed backlog work | `.agents/skills/suggest-zzzops-work/SKILL.md` |
 | Execute, prioritize, unblock, briefly watch human gates, verify, and hand off goals | `.agents/skills/execute-zzzops/SKILL.md` |
 | Give project-policy-driven updates, defaulting to concise outcomes and clear user actions | `.zzzops/rules/INITIALIZATION.md` |
-| Review or override refill, dependency, and parallel execution policy during initialization | `.zzzops/PROJECT.md` |
+| Review or override refill, dependency, and parallel execution policy | `.agents/skills/review-zzzops-policy/SKILL.md` |
 | Select up to three worktree workers below 100 MB, otherwise read-only workers, from tracked repository size | `.agents/zzzops/zzzops.py` / `.zzzops/rules/EXECUTION_STRATEGY.md` |
 | Keep writable dependent goals gated while allowing read-only advance investigation | `.zzzops/rules/GOAL_SYSTEM.md` |
 | Clean completed worktrees or safely retain and reassign them | `.zzzops/rules/EXECUTION_STRATEGY.md` |
@@ -172,8 +172,9 @@ Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required
 
 ## The files that remember things
 
-- `.zzzops/PROJECT.md` — compact authoritative charter and reviewed runtime policy.
-- `.zzzops/PROJECT_AUDIT.md` — digest-bound evidence, rationales, review metadata, and history for initialization or reconciliation.
+- `.zzzops/PROJECT.md` — concise human charter and reviewed policy summary.
+- `.zzzops/POLICY.json` — canonical reviewed machine policy, loaded only by deterministic controls.
+- `.zzzops/PROJECT_AUDIT.md` — digest-bound evidence, rationales, review metadata, and history for review or reconciliation.
 - GitHub Issues — canonical goals, blockers, evidence, relations, and history.
 - `.zzzops/rules/` — tracked ZzzOps operating rules; machinery, not project content.
 - `.zzzops/migration/STATE.json` — records reviewed import fingerprints so repeat migrations propose only new work.
