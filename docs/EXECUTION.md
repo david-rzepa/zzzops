@@ -1,13 +1,13 @@
 # Goal branches and review
 
-Branch/review behavior is project policy, proposed during initialization from repository evidence. The first-release fallback uses one branch per source-changing goal and bases independent goals on the nearest authorized trunk. A dependency waiting only for human review or merge remains blocked for its own gate, but its exact review-ready checkpoint makes the child actionable and provides the child's branch base. In other words, dependency edges preserve ancestry and merge order; they do not force implementation to wait for merge. A parent with children owns a pseudo-trunk; children integrate there in dependency order before combined parent verification. Repositories can replace that fallback through reviewed `git_review_release` settings.
+Branch/review behavior is project policy, proposed during initialization from repository evidence. The first-release fallback uses one branch per source-changing goal, bases independent goals on the nearest authorized trunk, and waits for every dependency to be complete before writable implementation begins. Read-only agents may investigate later goals in advance without claiming, editing, branching, or marking them started. Repositories can replace this fallback through reviewed `git_review_release` settings, including explicitly allowing review-ready branch stacking.
 
 Where pull requests are supported, the fallback also uses one PR per source-changing goal. Being small, related, or selected in one run is not enough to bundle goals. Repository policy or an explicit user instruction may permit a shared PR, but every affected goal records the override, rationale, shared branch/PR, target, and review consequence before work is combined. Parent and child goals retain separate PRs targeting their resolved pseudo-trunks. PR granularity is independent of commit/squash policy, and capture-only goal creation remains Git-free.
 
 | Scenario | Base | Integration target |
 | --- | --- | --- |
 | Independent root goal | Nearest authorized trunk | Repository-policy target |
-| Dependent goal | Dependency branch | Repository-policy target containing dependencies |
+| Dependent goal after dependencies complete | Nearest authorized trunk containing dependencies | Repository-policy target containing dependencies |
 | Direct child | Parent pseudo-trunk | Parent pseudo-trunk |
 | Child with sibling dependency | Sibling dependency branch | Nearest parent pseudo-trunk |
 | Multiple dependencies | Reviewed base containing all | Nearest authorized target |

@@ -9,8 +9,8 @@ Before every non-install workflow follow `INITIALIZATION.md`, then use the GitHu
 - GitHub goals use repository plus issue number/URL as identity; never invent a second goal ID or duplicate GitHub title/relationship state in managed JSON.
 - Never store secrets/raw sensitive data; link to approved systems and name authority/sync direction.
 - Project charter defines success/value. Preserve unknown KPI/target/tradeoff fields; ask rather than invent.
-- Ignored `.zzzops/PREFERENCES.json` is user-local: validate types/ranges, preserve unknown keys, never commit/enable options yourself.
-- Initialization plans, preferences, and migration artifact shapes live in `.agents/templates/project-goals/`; `init apply` renders project state. Installation copies mechanics/templates only and never creates or overwrites project state.
+- Reviewed PROJECT policy contains repository operational choices; installed rules provide overridable defaults, never a second local policy layer.
+- Initialization plans and migration artifact shapes live in `.agents/templates/project-goals/`; `init apply` renders project state. Installation copies mechanics/templates only and never creates or overwrites project state.
 
 ## Lifecycle
 
@@ -38,7 +38,7 @@ Open blockers may coexist with active states while useful work remains. Reopen t
 
 One parent maximum; any children/dependencies; reject self-links/cycles. GitHub stores only parent/dependency issue numbers and derives inverse edges portfolio-wide. Create a child only for a separately verifiable/prioritized/blocked/claimed outcome or distinct risk; use checklists otherwise. Obey PROJECT depth/required-child policy. Required children finishing does not replace parent criteria.
 
-A dependency edge preserves required ancestry and final integration order; it does not necessarily serialize implementation. When reviewed PROJECT `review_pending_dependency` is `stack_from_reviewed_checkpoint`, an unfinished dependency blocked only on its human review/merge gate satisfies its child's selection gate at the exact recorded checkpoint. Keep the dependency blocked for its own gate and keep the child's `depends_on` edge, but select and stack the child. Never treat `status != done` or “not merged” alone as evidence that the child is non-actionable.
+A dependency edge preserves required ancestry and final integration order. The installed default requires every dependency to be `done` before writable implementation begins. Reviewed PROJECT policy may override actionability; for example, `stack_from_reviewed_checkpoint` may permit a child to stack from an unfinished dependency's exact technically ready checkpoint while preserving merge order. Read-only investigation may prepare dependent work when policy allows, but it does not claim, edit, branch, or mark that implementation started.
 
 Before substantial GitHub work, declare known `path:`, `branch:`, `integration:`, `generated:`, and `external:` resources, then atomically reserve the exact revision plus repeated `--resource` values with `<python> .agents/zzzops.py reserve acquire --goal N --revision R --owner OWNER --run-id RUN`. Only the bundle winner claims/works. On contention refresh once and choose other work. Renew at checkpoints; release before blocking, terminal state, or handoff. Claims audit; reservations exclude. Never fall back on uncertainty; record expiry recovery.
 
@@ -50,5 +50,5 @@ One logical update: re-read affected records/premise; perform and observe work; 
 - Human blockers appear in the portfolio human queue; resolutions retain request/answer/resolver/date.
 - Checked criteria cite observed evidence. Reassess due reviews.
 - Follow `.zzzops/rules/EXECUTION_STRATEGY.md`: baseline and observable probe before implementation; coordinator reconciles parallel work.
-- Preferences never justify invented work, priority distortion, or busywork.
-- Exhausted-queue refill requires user opt-in and stays within both user and PROJECT policy ceilings.
+- Policy never justifies invented work, priority distortion, or busywork.
+- The installed initialization default enables exhausted-queue refill for documentation, test coverage, and non-behavioral code quality, capped at three goals per run. It takes effect only through reviewed PROJECT policy, which may override or disable it; never loop-refill.

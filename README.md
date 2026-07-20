@@ -46,7 +46,7 @@ The agent summarizes that exact file and tells you to read it in detail. Ordinar
 
 Once reviewed, these policies let the agent make routine decisions without waking you for every tiny choice.
 
-GitHub Issues is the canonical goal authority. Initialization requires a successful repository and access probe; unavailable authentication, permission, or Issues support becomes an explicit blocker. Initialization does not commit, branch, or mutate GitHub, and after approval mentions the optional preferences panel without opening it.
+GitHub Issues is the canonical goal authority. Initialization requires a successful repository and access probe; unavailable authentication, permission, or Issues support becomes an explicit blocker. Initialization does not commit, branch, or mutate GitHub.
 
 The native installer does not require Python or Node. Post-install CLI examples use `<python>` for one Python 3 interpreter resolved once (`python3`, `python`, Windows `py -3`, or a harness-provided runtime). Agents must discover it before launching instead of first trying an assumed executable.
 
@@ -118,7 +118,10 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 | Suggest evidence-backed backlog work | `.agents/skills/suggest-zzzops-work/SKILL.md` |
 | Execute, prioritize, unblock, briefly watch human gates, verify, and hand off goals | `.agents/skills/execute-zzzops/SKILL.md` |
 | Give project-policy-driven updates, defaulting to concise outcomes and clear user actions | `.zzzops/rules/INITIALIZATION.md` |
-| Configure backlog refill and parallelization preferences | `.agents/zzzops.py` |
+| Review or override refill, dependency, and parallel execution policy during initialization | `.zzzops/PROJECT.md` |
+| Select up to three worktree workers below 100 MB, otherwise read-only workers, from tracked repository size | `.agents/zzzops.py` / `.zzzops/rules/EXECUTION_STRATEGY.md` |
+| Keep writable dependent goals gated while allowing read-only advance investigation | `.zzzops/rules/GOAL_SYSTEM.md` |
+| Clean completed worktrees or safely retain and reassign them | `.zzzops/rules/EXECUTION_STRATEGY.md` |
 | Inspect initialized capability and the canonical portfolio in one CLI checkpoint | `.agents/zzzops.py` |
 | Atomically reserve goals and known shared resources so concurrent agents avoid duplicate or colliding work | `.agents/zzzops.py` |
 | Validate dev PRs and preview or publish semantic releases | `.github/workflows` |
@@ -138,32 +141,9 @@ Maintainers: see the [skill discovery and mode contract](docs/SKILLS.md).
 
 Portfolio batching benchmarks and the machine contract are documented in [portfolio performance](docs/PERFORMANCE.md).
 
-Suggestions are preview-only unless you request apply. To let an exhausted execution run refill selected kinds of evidence-backed work, configure local, git-ignored `.zzzops/PREFERENCES.json`:
+Suggestions are preview-only unless you request apply. Once the initialization policy is reviewed, autonomous exhausted-queue refill defaults on for documentation, test coverage, and non-behavioral code quality, capped at three goals per run. A repository may override or disable those categories and limits in `PROJECT.md`.
 
-```json
-{
-  "fill_backlog": {
-    "documentation": true,
-    "tests": true,
-    "code_quality_non_behavioral": false,
-    "max_goals_per_refill": 3
-  },
-  "parallelization": {
-    "mode": "read_only",
-    "max_workers": 2
-  }
-}
-```
-
-Parallel modes are `sequential`, `read_only`, and `worktrees`. `worktrees` permits isolated writable sub-agents: one disjoint sub-goal and commit each, reviewed and integrated sequentially by the coordinator. It is an upper bound, not a request to turn your laptop into a space heater.
-
-Or use the interactive control panel from your project root:
-
-```powershell
-<python> .agents/zzzops.py
-```
-
-It edits project preferences and parallelization settings.
+The installed parallel default measures existing Git-tracked working-tree bytes, excluding `.git`, ignored/untracked files, and other worktrees. Repositories below 100 MB may use up to three isolated worktree sub-agents; repositories at or above the boundary, or whose size cannot be measured, may use up to three read-only agents. Reviewed project policy can override these operational defaults. Writable implementation waits for completed dependencies by default, although read-only agents may investigate later goals in advance. Every completed-task worktree is removed or deliberately retained clean and safely reassigned before reuse.
 
 ## Releases
 
@@ -194,7 +174,6 @@ Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required
 - `.zzzops/PROJECT_AUDIT.md` — digest-bound evidence, rationales, review metadata, and history for initialization or reconciliation.
 - GitHub Issues — canonical goals, blockers, evidence, relations, and history.
 - `.zzzops/rules/` — tracked ZzzOps operating rules; machinery, not project content.
-- `.zzzops/PREFERENCES.json` — local, ignored user opt-ins for bounded autonomous backlog refills.
 - `.zzzops/migration/STATE.json` — records reviewed import fingerprints so repeat migrations propose only new work.
 
 Agents follow the reviewed project resource policy, define the observable signal before editing, change one small falsifiable chunk at a time, and inspect real output after every chunk. Verification is proportional: documentation is inspected, changed tests are run, and product/runtime behavior plus reusable test infrastructure receive direct behavioral coverage—ZzzOps does not recursively add tests for prose or test cases. If the project is opaque, agents build a focused harness or scoped MCP observation server instead of vibe-coding and hoping. Execution follows the reviewed project branch, review, and commit policy; capture itself is Git-free.

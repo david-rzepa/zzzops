@@ -54,11 +54,11 @@
       },
       {
         "id": "git_review_release", "title": "Git, review, and release", "required": true, "applicable": true,
-        "decision": "Follow repository rules; otherwise use one branch per source-changing goal from the nearest authorized trunk and one Conventional Commit per verified sub-goal. A dependency awaiting only human review/merge may make its child actionable from the exact review-ready checkpoint while still merging first.", "rationale": "replace with repository evidence or retain the labeled fallback",
+        "decision": "Follow repository rules; otherwise use one branch per source-changing goal from the nearest authorized trunk and one Conventional Commit per verified sub-goal. Writable implementation waits until every dependency is complete; read-only investigation may prepare later work without claiming or starting it.", "rationale": "replace with repository evidence or retain the labeled fallback",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps first-release fallback", "default_disposition": "accepted",
         "settings": {
           "execution_branch": "per_goal", "branch_base": "nearest_authorized_trunk", "dependency_base": "dependency_branch",
-          "review_pending_dependency": "stack_from_reviewed_checkpoint",
+          "review_pending_dependency": "wait_for_completed_dependencies", "read_only_dependency_investigation": "allowed_before_completion",
           "multiple_dependency_base": "reviewed_base_containing_all", "parent_pseudo_trunk": true, "child_target": "nearest_parent_branch",
           "pull_request_unit": "per_goal", "shared_pull_request": "explicit_reviewed_override",
           "commit_unit": "verified_subgoal", "commit_style": "conventional", "review_gate": "human_after_checks",
@@ -69,7 +69,7 @@
       },
       {
         "id": "execution_continuation", "title": "Execution and work continuation", "required": true, "applicable": true,
-        "decision": "Continue sequentially across actionable goals and incorporate newly captured goals at the next safe checkpoint.", "rationale": "reduces babysitting without interrupting active work",
+        "decision": "Continue across actionable goals under reviewed dependency and resource policy, and incorporate newly captured goals at the next safe checkpoint.", "rationale": "reduces babysitting without forcing sequential work when bounded parallelism is safe",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps first-release fallback", "default_disposition": "accepted",
         "settings": {
           "continue_while_actionable": true, "triage_new_first": true, "max_easy_wins": 2,
@@ -133,20 +133,29 @@
       },
       {
         "id": "deployment_resources", "title": "Deployment, environment, and resources", "required": true, "applicable": true,
-        "decision": "Do not deploy without authority; execute sequentially unless bounded waiting work is safe to delegate.", "rationale": "limits external impact and local resource contention",
+        "decision": "Do not deploy without authority; choose bounded parallelism from the deterministic tracked-file repository size.", "rationale": "limits external impact and avoids multiplying large writable checkouts",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps conservative fallback", "default_disposition": "accepted",
-        "settings": {"deployment": "explicit_authority", "resource_mode": "sequential", "delegate_wait_after_seconds": 60},
+        "settings": {"deployment": "explicit_authority", "resource_mode": "size_aware", "delegate_wait_after_seconds": 60},
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {
         "id": "autonomy_approval_parallelism", "title": "Autonomy, approvals, and parallelism", "required": true, "applicable": true,
-        "decision": "Maximize safe autonomous progress; interview on consequential blockers; project and user ceilings both limit parallel work.", "rationale": "balances autonomy with authority and resource control",
+        "decision": "Maximize safe autonomous progress; interview on consequential blockers; refill documentation, test-coverage, and non-behavioral code-quality work within the reviewed limit; use up to three worktree workers below 100 MB and read-only workers otherwise.", "rationale": "balances autonomy with authority, bounded valuable refill, and predictable repository resource cost",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps conservative fallback", "default_disposition": "accepted",
         "settings": {
           "blocker_interview": "immediate_batch",
           "blocker_order": ["safety_access_human", "cross_goal_decisions", "specification", "technical_unknown"],
-          "project_parallel_ceiling": "sequential", "max_workers": 1, "claim_ttl_hours": 4,
-          "refill": {"allowed_categories": ["documentation", "tests", "code_quality_non_behavioral"], "max_per_run": 3},
+          "project_parallel_ceiling": "size_aware", "max_workers": 3, "claim_ttl_hours": 4,
+          "parallelization": {
+            "measurement": "existing_git_tracked_worktree_bytes", "threshold_bytes": 104857600,
+            "below_threshold_mode": "worktrees", "at_or_above_threshold_mode": "read_only"
+          },
+          "dependency_implementation_gate": "dependencies_done", "read_only_dependency_investigation": true,
+          "worktree_lifecycle": {
+            "after_task": "remove_or_retain_clean_for_reuse", "abandoned_or_dirty": "forbidden",
+            "reuse_requires": ["clean_state", "reviewed_base", "new_goal_resources", "safe_branch_reassignment"]
+          },
+          "refill": {"enabled": true, "allowed_categories": ["documentation", "tests", "code_quality_non_behavioral"], "max_per_run": 3},
           "capture_defaults": {"priority": "P2", "difficulty": "unknown", "confidence": "low"},
           "planning": {"decompose_at": "L", "max_depth": 3}
         },
