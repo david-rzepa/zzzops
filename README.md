@@ -12,23 +12,23 @@ ZzzOps gives agents an infinite, prioritized backlog so token FOMO stops at bedt
 git clone https://github.com/david-rzepa/zzzops.git C:\dev\zzzops
 ```
 
-Open `C:\dev\zzzops` in Codex or Claude Code.
-
 ### 2. Install it into your project
 
-Codex:
+From a normal terminal on Windows:
 
-```text
-Use $install-zzzops to preview and install ZzzOps into C:\path\to\your-project.
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\dev\zzzops\install.ps1 C:\path\to\your-project
 ```
 
-Claude Code:
+On macOS or Linux:
 
-```text
-/install-zzzops preview and install ZzzOps into C:\path\to\your-project
+```bash
+/path/to/zzzops/install.sh /path/to/your-project
 ```
 
-Review the preview and let the skill apply it. The installer copies discoverable skills, mechanics, and blank templates—never itself, project state, another project’s goals, or the target’s `AGENTS.md`/`CLAUDE.md`.
+The installer previews the tracked project mechanics, warns if Git ignores required `.agents/` or `.claude/` content, and asks once before writing. The default answer is no. Use `-DryRun` on Windows or `--dry-run` on macOS/Linux for a non-interactive preview.
+
+The CLI copies discoverable skills, mechanics, and blank templates—never itself, project state, another project’s goals, or the target’s `AGENTS.md`/`CLAUDE.md`.
 
 Open a new Codex task or Claude Code session in the target project so its ZzzOps skills are discovered.
 
@@ -48,7 +48,7 @@ Once reviewed, these policies let the agent make routine decisions without wakin
 
 GitHub Issues is the canonical goal authority. Initialization requires a successful repository and access probe; unavailable authentication, permission, or Issues support becomes an explicit blocker. Initialization does not commit, branch, or mutate GitHub, and after approval mentions the optional preferences panel without opening it.
 
-CLI examples use `<python>` for one Python 3 interpreter resolved once (`python3`, `python`, Windows `py -3`, or a harness-provided runtime). Agents must discover it before launching instead of first trying an assumed executable.
+The native installer does not require Python or Node. Post-install CLI examples use `<python>` for one Python 3 interpreter resolved once (`python3`, `python`, Windows `py -3`, or a harness-provided runtime). Agents must discover it before launching instead of first trying an assumed executable.
 
 **Visibility:** GitHub-backed goals inherit the repository's visibility. Never put secrets or raw sensitive data in a goal; redact it or link to an approved private system before capture or migration.
 
@@ -110,7 +110,7 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 
 | Feature | Primary surface |
 | --- | --- |
-| Install ZzzOps mechanics into another repository | `.agents/skills/install-zzzops/SKILL.md` |
+| Preview and install ZzzOps mechanics from a normal terminal without Python or Node | `install.ps1` / `install.sh` |
 | Initialize a project with reviewed operating policies | `.agents/zzzops.py` |
 | Use GitHub Issues as the canonical goal backend | `.zzzops/rules/BACKENDS.md` |
 | Capture durable work | `.agents/skills/add-zzzops-goal/SKILL.md` |
@@ -175,12 +175,13 @@ To diagnose a PR or release, inspect **PR validation / dev-required-tests** or t
 
 ```powershell
 <python> -m unittest discover -s .agents -p 'test_*.py'
-<python> -m unittest discover -s .agents/skills/install-zzzops/scripts -p 'test_*.py'
 <python> -m unittest discover -s .agents/skills/migrate-to-zzzops/scripts -p 'test_*.py'
 <python> -m unittest discover -s .github/scripts -p 'test_*.py'
 <python> .agents/manual_acceptance.py coverage
 <python> .agents/prompt_stats.py --check
 <python> -m compileall -q .agents .github/scripts
+bash -n install.sh
+powershell -NoProfile -Command "[void][scriptblock]::Create((Get-Content -Raw ./install.ps1))"
 ```
 
 `<python> .github/scripts/semantic_release.py` only writes a local notes file.
