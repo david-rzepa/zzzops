@@ -14,7 +14,7 @@ Prerequisite: use a disposable Git repository.
 
 Human action: ask the installed `install-zzzops` skill for a dry run, then inspect Git status.
 
-Expected: it plainly says this is a preview, gives the approval code needed to apply, and does not create mechanics or alter project state.
+Expected: it explains the skills, workflow rules/control CLI, and blank setup templates it would install; identifies any conflict requiring action; binds apply to that exact preview; and changes nothing.
 
 ## A-002 — Execute workflow is discoverable
 

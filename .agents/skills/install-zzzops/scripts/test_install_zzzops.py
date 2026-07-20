@@ -30,12 +30,17 @@ class InstallerInitializationTests(unittest.TestCase):
             (target / ".git").mkdir()
             preview = self.run_installer(target)
             self.assertEqual(0, preview.returncode, preview.stderr + preview.stdout)
-            self.assertIn("Preview only; no files changed.", preview.stdout)
-            self.assertNotIn("Mechanical files", preview.stdout)
+            self.assertIn("installation preview", preview.stdout)
+            self.assertIn("goal-management skills", preview.stdout)
+            self.assertIn("workflow rules", preview.stdout)
+            self.assertIn("blank templates", preview.stdout)
+            self.assertIn("No files were changed.", preview.stdout)
             fingerprint = re.search(r"Approval code: ([0-9a-f]+)", preview.stdout).group(1)
             applied = self.run_installer(target, "--apply", "--confirm-plan", fingerprint)
             self.assertEqual(0, applied.returncode, applied.stderr + applied.stdout)
             self.assertIn("ZzzOps is installed.", applied.stdout)
+            self.assertNotIn("installation preview", applied.stdout)
+            self.assertNotIn("Approval code", applied.stdout)
             self.assertTrue((target / ".zzzops" / "rules" / "INITIALIZATION.md").is_file())
             self.assertTrue((target / ".zzzops" / "rules" / "BACKENDS.md").is_file())
             self.assertTrue((target / ".zzzops" / "rules" / "CONTINUATION.md").is_file())
@@ -66,7 +71,7 @@ class InstallerInitializationTests(unittest.TestCase):
             self.assertFalse(json.loads(checkpoint.stdout)["ready"])
             rerun = self.run_installer(target)
             self.assertEqual(0, rerun.returncode, rerun.stderr + rerun.stdout)
-            self.assertIn("unchanged.", rerun.stdout)
+            self.assertIn("already up to date", rerun.stdout)
 
     def test_update_preserves_local_preferences(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -142,6 +147,10 @@ class InstallerInitializationTests(unittest.TestCase):
             self.assertIn("already manages", applied.stdout)
             self.assertEqual(b"changed after preview\n", changed.read_bytes())
             self.assertFalse((target / ".zzzops" / "rules" / "INITIALIZATION.md").exists())
+            refreshed = self.run_installer(target)
+            self.assertNotEqual(0, refreshed.returncode)
+            self.assertIn("Cannot install yet", refreshed.stdout)
+            self.assertIn(".agents/zzzops.py", refreshed.stdout)
 
 
 if __name__ == "__main__":
