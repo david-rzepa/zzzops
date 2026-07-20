@@ -70,7 +70,7 @@ In Claude Code, invoke the same workflow as:
 /migrate-to-zzzops inspect and migrate existing TODOs
 ```
 
-The agent inventories candidates, presents a human-readable plan, then migrates only after approval into GitHub Issues. Inline TODO comments remain; dedicated backlog files retire only after verified coverage.
+The agent uses section-aware inventory hints to find work hidden under completed-looking headings, reads the surrounding source itself, and performs one completeness review before presenting a human-readable plan. Similar mentions remain advisory rather than being merged automatically. Migration happens only after approval into GitHub Issues; inline TODO comments keep their useful context and gain the created issue link, while dedicated backlog files retire only after verified coverage.
 
 ### 5. Add new work
 

@@ -12,6 +12,8 @@ SCRIPT = Path(__file__).with_name("inventory.py")
 
 
 class InventoryTests(unittest.TestCase):
+    maxDiff = None
+
     def run_inventory(self, root: Path) -> dict:
         result = subprocess.run(
             [sys.executable, str(SCRIPT), str(root)],
@@ -111,6 +113,95 @@ class InventoryTests(unittest.TestCase):
             )
             self.assertEqual(2, result.returncode)
             self.assertIn("Cannot inventory Git repository", json.loads(result.stdout)["error"])
+
+    def test_section_hints_preserve_completion_context_and_advisory_duplicates(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            self.write(
+                root,
+                "TODO.md",
+                """# Project work
+
+## Earthquake v1 -- DONE
+FOLLOW-UPS (not blocking): (1) drive erosion shattering from logged epicentres; (2) add corrective angular velocity; (3) expose a seismicity map.
+
+## Climate clock -- FIXED
+One remaining clock defect is not fixed: wind advection still uses the geomorphic clock.
+
+## Completed renderer -- DONE
+Once the renderer lands, tune the cloud threshold against production captures.
+
+## Biomes -- PARKED
+Blocker: decide the taxonomy before redesigning the classifier.
+
+## Export collision metadata
+The export pipeline currently drops collision metadata during transfer.
+
+## DEM baseline
+Rebuild the real-Earth DEM baseline at production resolution.
+
+## OUTSTANDING stocktake
+The real-Earth DEM baseline needs rebuilding at production resolution.
+
+## (historical) Superseded transport -- DONE
+The earlier implementation used a different clock and was replaced. This paragraph explains why.
+""",
+            )
+            before = (root / "TODO.md").read_bytes()
+
+            result = self.run_inventory(root)
+            self.assertEqual(2, result["schema_version"])
+            self.assertEqual(before, (root / "TODO.md").read_bytes())
+            self.assertFalse((root / ".zzzops").exists())
+            candidates = result["candidates"]
+
+            completion = next(item for item in candidates if item["line"] == 3)
+            self.assertEqual("completion_claim", completion["candidate_type"])
+            earthquake = [item for item in candidates if item["section"]["heading"] == "Earthquake v1 -- DONE" and item["candidate_type"] == "follow_up"]
+            self.assertEqual(3, len(earthquake))
+            self.assertTrue(all(item["enclosing_completion_claim"] == "Earthquake v1 -- DONE" for item in earthquake))
+            self.assertTrue(all(item["evidence"][0]["line"] == 4 for item in earthquake))
+
+            clock = next(item for item in candidates if "wind advection" in item["text"])
+            self.assertEqual("known_defect", clock["candidate_type"])
+            self.assertEqual("Climate clock -- FIXED", clock["enclosing_completion_claim"])
+
+            conditional = next(item for item in candidates if "cloud threshold" in item["text"])
+            self.assertEqual("conditional_follow_up", conditional["candidate_type"])
+            self.assertIsNotNone(conditional["possible_dependency"])
+
+            parked = next(item for item in candidates if "taxonomy" in item["text"])
+            self.assertEqual("decision_needed", parked["candidate_type"])
+            self.assertIn("Biomes -- PARKED", parked["section"]["heading"])
+            parked_heading = next(item for item in candidates if item["text"] == "Biomes -- PARKED")
+            self.assertEqual("blocked_or_parked", parked_heading["candidate_type"])
+
+            zero_match = next(item for item in candidates if item["section"]["heading"] == "Export collision metadata")
+            self.assertEqual("open_section_without_line_match", zero_match["review_reason"])
+            self.assertEqual("low", zero_match["confidence"])
+
+            baseline_mentions = [item for item in candidates if "DEM baseline" in item["text"]]
+            self.assertEqual(2, len(baseline_mentions))
+            self.assertTrue(all(item["possible_same_outcome"] for item in baseline_mentions))
+            self.assertTrue(result["possible_same_outcome"])
+
+            historical = [item for item in candidates if "Superseded transport" in item["section"]["heading"]]
+            self.assertEqual(["historical_context"], [item["candidate_type"] for item in historical])
+
+    def test_fingerprint_is_stable_when_unrelated_candidate_is_inserted_earlier(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            original = "# Work\n\n## Target\n- [ ] Preserve this outcome\n"
+            self.write(root, "TODO.md", original)
+            first = self.run_inventory(root)
+            target_before = next(item for item in first["candidates"] if item["text"] == "Preserve this outcome")
+
+            self.write(root, "TODO.md", "# Work\n\n## Unrelated\n- [ ] Inserted earlier\n\n## Target\n- [ ] Preserve this outcome\n")
+            second = self.run_inventory(root)
+            target_after = next(item for item in second["candidates"] if item["text"] == "Preserve this outcome")
+            self.assertEqual(target_before["fingerprint"], target_after["fingerprint"])
 
 
 if __name__ == "__main__":
