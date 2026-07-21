@@ -39,6 +39,7 @@ class ManualAcceptanceTests(unittest.TestCase):
             self.assertEqual(1, result.returncode)
             self.assertIn("install.sh", json.loads(result.stdout)["unmapped_required_surfaces"])
             self.assertIn(".agents/skills/add-zzzops-goal", json.loads(result.stdout)["unmapped_required_surfaces"])
+            self.assertIn(".agents/skills/send-zzzops-feedback", json.loads(result.stdout)["unmapped_required_surfaces"])
             self.assertEqual(path.read_text(encoding="utf-8"), "<!-- zzzops-acceptance-plan\n" + json.dumps(plan) + "\nzzzops-acceptance-plan -->\n")
 
     def test_coverage_accepts_only_native_installers_and_installed_skills(self):
@@ -49,7 +50,7 @@ class ManualAcceptanceTests(unittest.TestCase):
                 "install.ps1", "install.sh",
                 ".agents/skills/add-zzzops-goal", ".agents/skills/migrate-to-zzzops",
                 ".agents/skills/review-zzzops-policy", ".agents/skills/suggest-zzzops-work",
-                ".agents/skills/execute-zzzops",
+                ".agents/skills/execute-zzzops", ".agents/skills/send-zzzops-feedback",
             ]
             plan = {
                 "version": 1,
