@@ -11,7 +11,7 @@ Run `.zzzops/rules/INITIALIZATION.md`, then `.zzzops/rules/BACKENDS.md`. Read pr
 2. Inspect actual architecture/entry points and relevant active code, tests/coverage evidence, user/developer/operations docs, CI/build/config, errors/observability/security/performance/accessibility, and stale/dead paths. Use focused native commands; do not run expensive suites merely for ideas.
 3. Compare charter, goals, blockers/history, and trackers. Reject duplicates, generated/dependency work, speculative rewrites, cosmetic churn, and ideas without evidenced beneficiary/observable result.
 4. Rank a short high-confidence list by value, risk, unlocks, confidence, difficulty, and feedback speed. Record full evidence/criteria/dependencies/probe internally; present outcome, why it matters, and the next useful decision. No observation surface means no suggestion without a concrete harness plan.
-5. Dry-run: report the ranked outcomes and say that nothing changed. Apply: create only approved/authorized canonical goals using `$add-zzzops-goal` semantics and record evidence/source. Never implement while suggesting; never automate Git for capture.
+5. Dry-run: report the ranked outcomes and say that nothing changed. Apply: create only approved/authorized canonical goals using `$add-zzzops-goal` semantics and record evidence/source. During exhausted-queue refill, tag every goal `zzzops-refill`; never copy source labels such as `zzzops-feedback`, reserved for explicit feedback submissions. Never implement while suggesting; never automate Git for capture.
 
 Exhausted-queue apply honors independent opt-ins:
 

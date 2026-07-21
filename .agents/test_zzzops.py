@@ -1386,5 +1386,17 @@ class WorkflowContractTests(unittest.TestCase):
         for phrase in ("zzzops-feedback", "current execution session", "Never ask per issue", "--include-feedback"):
             self.assertIn(phrase, execute)
 
+    def test_refill_and_feedback_provenance_labels_stay_distinct(self):
+        skills = Path(__file__).parent / "skills"
+        refill = (skills / "suggest-zzzops-work" / "SKILL.md").read_text(encoding="utf-8").lower()
+        feedback = (skills / "send-zzzops-feedback" / "SKILL.md").read_text(encoding="utf-8")
+        for phrase in ("during exhausted-queue refill", "zzzops-refill", "never copy source labels", "zzzops-feedback"):
+            self.assertIn(phrase, refill)
+        self.assertIn("`zzzops-feedback` label", feedback)
+        self.assertEqual(
+            ["zzzops", "zzzops-feedback", "zzzops:status:new", "zzzops:priority:P2"],
+            zzzops.EXECUTION_REPORT_LABELS,
+        )
+
 if __name__ == "__main__":
     unittest.main()
