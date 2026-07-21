@@ -297,6 +297,7 @@ class InitializationTests(unittest.TestCase):
         mechanics = {
             ".agents/zzzops/zzzops.py": "print('ok')\n",
             ".agents/zzzops/.gitignore": "__pycache__/\n",
+            ".agents/zzzops/INSTALL_MANIFEST": "zzzops-install-manifest-v1\n",
             ".agents/zzzops/templates/project-goals/INIT_PLAN.json": "{}\n",
             ".agents/skills/execute-zzzops/SKILL.md": "# Execute\n",
             ".claude/skills/execute-zzzops/SKILL.md": "# Execute\n",
@@ -345,6 +346,15 @@ class InitializationTests(unittest.TestCase):
         self.assertEqual([".agents/zzzops/zzzops.py"], deleted["paths"])
         subprocess.run(
             ["git", "restore", "--source=HEAD", "--worktree", "--", ".agents/zzzops/zzzops.py"],
+            cwd=self.repo, check=True,
+        )
+        manifest = self.repo / ".agents" / "zzzops" / "INSTALL_MANIFEST"
+        manifest.write_text("changed manifest\n", encoding="utf-8")
+        dirty_manifest = zzzops.machinery_commit_status(self.repo)
+        self.assertFalse(dirty_manifest["ok"])
+        self.assertEqual([".agents/zzzops/INSTALL_MANIFEST"], dirty_manifest["paths"])
+        subprocess.run(
+            ["git", "restore", "--source=HEAD", "--worktree", "--", ".agents/zzzops/INSTALL_MANIFEST"],
             cwd=self.repo, check=True,
         )
         untracked = self.repo / ".agents" / "skills" / "execute-zzzops" / "NEW.md"

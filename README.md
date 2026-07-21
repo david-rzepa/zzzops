@@ -26,7 +26,7 @@ On macOS or Linux:
 /path/to/zzzops/install.sh /path/to/your-project
 ```
 
-The installer previews the tracked project mechanics, warns if Git ignores required `.agents/` or `.claude/` content, and asks once before real writes. The default answer is no. If everything is current, it exits without prompting and says no further action is necessary. Use `-DryRun` on Windows or `--dry-run` on macOS/Linux for a non-interactive preview.
+The installer previews tracked project mechanics, warns if Git ignores required `.agents/` or `.claude/` content, and defaults confirmation to no. Accepted installs record the source revision and exact managed-file baseline. A later source version offers `Upgrade ZzzOps? [y/N]`, lists changed mechanics and recent source changes, and upgrades files still matching that baseline; locally divergent files remain protected behind the explicit overwrite option. Truly current installs exit without prompting. Use `-DryRun` on Windows or `--dry-run` on macOS/Linux for a non-interactive preview.
 
 After project policy is initialized and reviewed, the first ordinary ZzzOps checkpoint requires the installer-managed skills, shared rules, control CLI/templates, and machinery ignore files to be committed. Untracked, staged, modified, or deleted machinery stops ordinary workflows with a commit-first action; project policy/state and root repository instructions are not part of this machinery check.
 

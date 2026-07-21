@@ -65,6 +65,30 @@ class NativeInstallerTests(unittest.TestCase):
             env=self.environment(installer),
         )
 
+    def git_blob_hash(self, data: bytes) -> str:
+        result = subprocess.run(
+            ["git", "hash-object", "--stdin"], input=data, capture_output=True, check=True,
+        )
+        return result.stdout.decode("ascii").strip()
+
+    def simulate_older_managed_install(self, target: Path, relative: str) -> tuple[bytes, bytes]:
+        manifest = target / ".agents" / "zzzops" / "INSTALL_MANIFEST"
+        before_manifest = manifest.read_bytes()
+        old_data = b"older managed ZzzOps mechanics\n"
+        (target / relative).write_bytes(old_data)
+        older_revision = "0" * 40  # Deliberately unavailable in shallow clones; preview must fall back safely.
+        lines = before_manifest.decode("utf-8").splitlines()
+        rewritten = []
+        for line in lines:
+            fields = line.split("\t", 2)
+            if fields[0] == "revision":
+                line = f"revision\t{older_revision}"
+            elif len(fields) == 3 and fields[0] == "file" and fields[2] == relative:
+                line = f"file\t{self.git_blob_hash(old_data)}\t{relative}"
+            rewritten.append(line)
+        manifest.write_text("\n".join(rewritten) + "\n", encoding="utf-8", newline="\n")
+        return old_data, manifest.read_bytes()
+
     def test_dry_run_cancel_and_confirm_install(self):
         for name, installer in self.installers.items():
             with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
@@ -92,6 +116,7 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertTrue((target / ".zzzops" / "rules" / "INITIALIZATION.md").is_file())
                 self.assertTrue((target / ".agents" / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").is_file())
                 self.assertTrue((target / ".agents" / "zzzops" / ".gitignore").is_file())
+                self.assertTrue((target / ".agents" / "zzzops" / "INSTALL_MANIFEST").is_file())
                 self.assertTrue((target / ".agents" / "skills" / "add-zzzops-goal" / "SKILL.md").is_file())
                 self.assertTrue((target / ".claude" / "skills" / "add-zzzops-goal" / "SKILL.md").is_file())
                 self.assertTrue((target / ".agents" / "skills" / "review-zzzops-policy" / "SKILL.md").is_file())
@@ -125,6 +150,52 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertIn("No further action is necessary", current.stdout)
                 self.assertNotIn("Install these changes?", current.stdout)
                 self.assertNotIn("cancelled", current.stdout)
+
+    def test_declined_and_accepted_upgrade_are_distinct_from_local_divergence(self):
+        relative = ".agents/zzzops/zzzops.py"
+        source_data = (ROOT / relative).read_bytes()
+        for name, installer in self.installers.items():
+            with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
+                target = self.make_repo(directory)
+                installed = self.run_installer(installer, target, answer="y\n")
+                self.assertEqual(0, installed.returncode, installed.stderr + installed.stdout)
+
+                old_data, old_manifest = self.simulate_older_managed_install(target, relative)
+                before_decline = {
+                    path.relative_to(target).as_posix(): path.read_bytes()
+                    for path in target.rglob("*") if path.is_file() and ".git/" not in path.relative_to(target).as_posix()
+                }
+                declined = self.run_installer(installer, target, answer="\n")
+                self.assertEqual(0, declined.returncode, declined.stderr + declined.stdout)
+                self.assertIn("Upgrade available", declined.stdout)
+                self.assertIn("Managed files to update", declined.stdout)
+                self.assertIn(relative, declined.stdout)
+                self.assertIn("Changes since installed version", declined.stdout)
+                if installer[1].suffix == ".sh":
+                    self.assertIn("Upgrade ZzzOps? [y/N]", declined.stdout)
+                self.assertIn("cancelled", declined.stdout)
+                self.assertEqual(old_data, (target / relative).read_bytes())
+                self.assertEqual(old_manifest, (target / ".agents" / "zzzops" / "INSTALL_MANIFEST").read_bytes())
+                self.assertEqual(before_decline, {
+                    path.relative_to(target).as_posix(): path.read_bytes()
+                    for path in target.rglob("*") if path.is_file() and ".git/" not in path.relative_to(target).as_posix()
+                })
+
+                upgraded = self.run_installer(installer, target, answer="yes\n")
+                self.assertEqual(0, upgraded.returncode, upgraded.stderr + upgraded.stdout)
+                self.assertIn("ZzzOps was upgraded.", upgraded.stdout)
+                self.assertEqual(source_data, (target / relative).read_bytes())
+                self.assertNotEqual(old_manifest, (target / ".agents" / "zzzops" / "INSTALL_MANIFEST").read_bytes())
+
+                (target / relative).write_bytes(b"local project customization\n")
+                conflict = self.run_installer(installer, target, "--dry-run")
+                self.assertEqual(2, conflict.returncode, conflict.stderr + conflict.stdout)
+                self.assertIn("locally divergent", conflict.stdout)
+                self.assertNotIn("already up to date", conflict.stdout)
+                self.assertEqual(b"local project customization\n", (target / relative).read_bytes())
+                explicit = self.run_installer(installer, target, "--overwrite-mechanical", answer="y\n")
+                self.assertEqual(0, explicit.returncode, explicit.stderr + explicit.stdout)
+                self.assertEqual(source_data, (target / relative).read_bytes())
 
     def test_ignore_warning_and_local_state_preservation(self):
         for name, installer in self.installers.items():
