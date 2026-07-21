@@ -1,15 +1,15 @@
 # Privacy-safe execution reports
 
-Before any ZzzOps workflow stops or hands off, assess only machinery friction actually observed in that run. Do not create a report for routine success, project defects, or speculative improvement.
+Before stopping/handoff, assess only observed machinery friction. Never report routine success, project defects, or speculation.
 
-When a systemic ZzzOps/Codex/Claude behavior measurably caused friction, run one `report record` command per distinct issue with the resolved `<python>` interpreter:
+For measurable systemic ZzzOps/Codex/Claude friction, run once per distinct cause:
 
 ```text
-<python> .agents/zzzops/zzzops.py --repo . report record --workflow NAME --agent codex|claude|unknown --issue ISSUE --phase PHASE [numeric impact options]
+<python> .agents/zzzops/zzzops.py --repo . report record --workflow NAME --agent codex|claude|unknown --issue ISSUE --cause CAUSE --phase PHASE [numeric impact options]
 ```
 
-The CLI accepts only enumerated workflow, issue, phase, and agent values plus bounded numeric `occurrences`, `wait-seconds`, `extra-tool-calls`, and `estimated-tokens`. It deliberately accepts no free-text report field. Never encode or derive project names, paths, goals, issue IDs, code, domain facts, user content, secrets, or other project-specific information. Aggregate repeated instances into one constrained record. If the observed behavior cannot be represented without free text, do not record it; invite the user to describe it directly with `$send-zzzops-feedback` or `/send-zzzops-feedback`.
+All descriptive fields are CLI enums; impact counts are bounded. Choose the most specific `--cause` shown by CLI help. It selects fixed machinery-only narrative text during submission. Reports accept no free text: never encode/derive project names, paths, goals/issues, code, domain facts, user content, secrets, or project context. Aggregate the same cause; keep distinct causes separate even under one issue category. With no safe matching cause, do not record; invite direct `$send-zzzops-feedback` or `/send-zzzops-feedback`.
 
-Reviewed policy `autonomy_approval_parallelism.settings.execution_reports.enabled` defaults to `true`; `false` makes recording a no-op. Reports are immutable, content-addressed files under ignored `.zzzops/execution-reports/`. If the CLI returns `recorded:true`, tell the user once that a privacy-safe execution report was archived and invite the feedback skill. Do not add another state summary or question solely for this notice.
+Reviewed policy `autonomy_approval_parallelism.settings.execution_reports.enabled` defaults to `true`; `false` is a no-op. Reports are immutable, content-addressed, and ignored under `.zzzops/execution-reports/`. On `recorded:true`, tell the user once and invite the feedback skill; add no summary/question solely for this notice.
 
-The feedback skill previews the exact public GitHub issue payload and requires confirmation of its digest. Submitted issues receive `zzzops-feedback` plus managed-goal labels. Execute excludes them unless the user gives one approval for the current execution session; never ask per issue. Successful submission deletes only the reports in that confirmed payload. Failure, cancellation, drift, or an unexpected provider response retains them.
+The sender renders cause-specific readable observations plus a collapsed immutable JSON appendix. It marks fixed recovery/investigation text as guidance, previews the exact public payload, and requires its digest confirmation. `zzzops-feedback` goals require one execution-session approval, never per issue. Only successful submission deletes confirmed reports; cancellation, drift, failure, or unexpected output retains them.

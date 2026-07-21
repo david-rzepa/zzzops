@@ -87,7 +87,7 @@ GITHUB_MANAGEMENT_PERMISSIONS = {"TRIAGE", "WRITE", "MAINTAIN", "ADMIN"}
 RESERVATION_COLOR = "5319E7"
 RESERVATION_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 RESERVATION_EXPIRY_GRACE_SECONDS = 60
-EXECUTION_REPORT_SCHEMA_VERSION = 1
+EXECUTION_REPORT_SCHEMA_VERSION = 2
 EXECUTION_REPORT_TARGET = "david-rzepa/zzzops"
 EXECUTION_REPORT_TITLE = "ZzzOps feedback"
 EXECUTION_REPORT_LABELS = ["zzzops", "zzzops-feedback", "zzzops:status:new", "zzzops:priority:P2"]
@@ -100,12 +100,84 @@ EXECUTION_REPORT_ISSUES = {
     "avoidable_wait", "continuation_stall", "excessive_prompt_load", "excessive_token_use",
     "poor_tool_choice", "redundant_update", "repeated_tool_call", "unnecessary_question",
 }
+EXECUTION_REPORT_CAUSES = {
+    "child_process_auth_unavailable": {
+        "title": "Authentication was unavailable to a child process",
+        "surface": "Provider authentication across process and sandbox boundaries",
+        "observed": "A provider command succeeded in the parent shell but authentication was unavailable when the same provider was invoked by a child process.",
+        "recovery": "Run the provider call in the authenticated execution context or use the approved escalation path.",
+        "investigation": "Detect credential-boundary mismatches before selecting a subprocess-based workflow.",
+    },
+    "command_failed_after_external_write": {
+        "title": "A command failed after completing an external write",
+        "surface": "Provider command output handling",
+        "observed": "The external write completed, but later formatting or response handling made the command report failure.",
+        "recovery": "Read the provider state before retrying so the write is not duplicated.",
+        "investigation": "Separate write success from output formatting and validate provider responses without masking the created resource.",
+    },
+    "interactive_question_during_execution": {
+        "title": "An interactive question paused autonomous execution",
+        "surface": "Agent interaction during an authorized execution loop",
+        "observed": "The agent asked for input even though the active workflow allowed it to continue safely.",
+        "recovery": "Continue after the prompt times out or the user supplies the unnecessary response.",
+        "investigation": "Tighten execution-mode prompting so questions are reserved for consequential missing authority or decisions.",
+    },
+    "powershell_argument_encoding": {
+        "title": "PowerShell changed argument or text encoding",
+        "surface": "PowerShell argument and text transport",
+        "observed": "PowerShell passed command arguments or text bytes differently from the payload the workflow constructed.",
+        "recovery": "Use a UTF-8 file or a bounded helper process that preserves exact bytes.",
+        "investigation": "Standardize cross-platform byte transport and verify the received payload before external writes.",
+    },
+    "powershell_stdin_bom": {
+        "title": "PowerShell added a byte-order mark to standard input",
+        "surface": "PowerShell standard-input encoding",
+        "observed": "An unexpected UTF-8 byte-order mark changed the bytes supplied on standard input.",
+        "recovery": "Use BOM-tolerant input decoding or a byte-preserving UTF-8 input path.",
+        "investigation": "Normalize standard-input decoding and include empty-input and BOM cases in exact-payload tests.",
+    },
+    "redundant_state_summary": {
+        "title": "The agent repeated an unnecessary state summary",
+        "surface": "Agent progress communication",
+        "observed": "The agent restated workflow state without a new result, decision, risk, or required user action.",
+        "recovery": "Resume execution after the redundant update.",
+        "investigation": "Make progress updates outcome-driven and suppress summaries that do not help the user decide or act.",
+    },
+    "repeated_equivalent_tool_call": {
+        "title": "The agent repeated an equivalent tool call",
+        "surface": "Agent tool selection and state reuse",
+        "observed": "The agent repeated a read or probe even though the prior result was still current and sufficient.",
+        "recovery": "Reuse the existing observation and continue from the established state.",
+        "investigation": "Preserve tool results across workflow steps and make refresh triggers explicit.",
+    },
+    "shell_quoting_failure": {
+        "title": "Shell quoting changed an inline command",
+        "surface": "Cross-shell command construction",
+        "observed": "Shell parsing changed quoted inline code before the intended process could execute it.",
+        "recovery": "Use a securely created temporary file or a simpler native command interface.",
+        "investigation": "Avoid nested inline programs across shell boundaries and test exact argument transport on supported platforms.",
+    },
+    "unavailable_tool_selected": {
+        "title": "The workflow selected a tool that was unavailable",
+        "surface": "Capability discovery and tool routing",
+        "observed": "The workflow attempted a tool path before establishing that the required capability was available.",
+        "recovery": "Use the discovered available capability or stop once with an actionable blocker.",
+        "investigation": "Move capability discovery ahead of tool selection and reuse the discovered result.",
+    },
+    "unnecessary_wait_for_timeout": {
+        "title": "Waited for an avoidable timeout",
+        "surface": "Agent continuation and interactive waits",
+        "observed": "Execution waited for a timeout even though the workflow already had enough authority and information to continue.",
+        "recovery": "Continue automatically when the wait is not protecting a real decision or external state change.",
+        "investigation": "Distinguish required waits from optional interaction and bypass the latter during autonomous execution.",
+    },
+}
 EXECUTION_REPORT_PHASES = {
     "capture", "discovery", "handoff", "implementation", "installation", "migration",
     "policy_review", "triage", "unblocking", "verification",
 }
 EXECUTION_REPORT_FIELDS = {
-    "schema_version", "id", "created_at", "workflow", "agent", "issue", "phase",
+    "schema_version", "id", "created_at", "workflow", "agent", "issue", "cause", "phase",
     "occurrences", "impact",
 }
 EXECUTION_REPORT_ID = re.compile(r"^report-[0-9a-f]{64}$")
@@ -606,6 +678,7 @@ def validate_execution_report(report: Any) -> list[str]:
         ("workflow", EXECUTION_REPORT_WORKFLOWS),
         ("agent", EXECUTION_REPORT_AGENTS),
         ("issue", EXECUTION_REPORT_ISSUES),
+        ("cause", EXECUTION_REPORT_CAUSES),
         ("phase", EXECUTION_REPORT_PHASES),
     ):
         if report.get(field) not in allowed:
@@ -628,7 +701,7 @@ def validate_execution_report(report: Any) -> list[str]:
 
 
 def record_execution_report(
-    repo: Path, project: dict[str, Any], *, workflow: str, agent: str, issue: str, phase: str,
+    repo: Path, project: dict[str, Any], *, workflow: str, agent: str, issue: str, cause: str, phase: str,
     occurrences: int = 1, wait_seconds: int = 0, extra_tool_calls: int = 0,
     estimated_tokens: int = 0, now: datetime | None = None,
 ) -> dict[str, Any]:
@@ -643,6 +716,7 @@ def record_execution_report(
         "workflow": workflow,
         "agent": agent,
         "issue": issue,
+        "cause": cause,
         "phase": phase,
         "occurrences": occurrences,
         "impact": {
@@ -698,12 +772,49 @@ def prepare_feedback(repo: Path, prompt: str, report_ids: list[str] | None = Non
         raise ValueError("feedback requires prompt text or at least one execution report")
     report_json = json.dumps(reports, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     feedback_text = prompt if prompt.strip() else "(none)"
+    grouped: dict[str, dict[str, int]] = {}
+    for report in reports:
+        totals = grouped.setdefault(
+            report["cause"],
+            {"occurrences": 0, "wait_seconds": 0, "extra_tool_calls": 0, "estimated_tokens": 0},
+        )
+        totals["occurrences"] += report["occurrences"]
+        for field in ("wait_seconds", "extra_tool_calls", "estimated_tokens"):
+            totals[field] += report["impact"][field]
+    narratives = []
+    for cause in sorted(grouped):
+        account = EXECUTION_REPORT_CAUSES[cause]
+        totals = grouped[cause]
+        impact_parts = []
+        for field, singular, plural in (
+            ("occurrences", "occurrence", "occurrences"),
+            ("wait_seconds", "second waiting", "seconds waiting"),
+            ("extra_tool_calls", "extra tool call", "extra tool calls"),
+            ("estimated_tokens", "estimated token", "estimated tokens"),
+        ):
+            value = totals[field]
+            impact_parts.append(f"{value} {singular if value == 1 else plural}")
+        impact = "; ".join(impact_parts)
+        narratives.append(
+            f"### {account['title']}\n\n"
+            f"**Machinery surface:** {account['surface']}\n\n"
+            f"**Observed:** {account['observed']}\n\n"
+            f"**Measured impact:** {impact}.\n\n"
+            f"**Typical recovery:** {account['recovery']}\n\n"
+            f"**Suggested investigation:** {account['investigation']}"
+        )
+    narrative_text = "\n\n".join(narratives) if narratives else "No archived execution reports were included."
     body = (
         "## User feedback\n\n"
         f"{feedback_text}\n\n"
-        "## Archived execution reports\n\n"
-        "These constrained records contain ZzzOps/Codex/Claude machinery categories and numeric impact only.\n\n"
-        f"```json\n{report_json}\n```\n"
+        "## Machinery observations\n\n"
+        "These natural-language accounts are rendered from constrained machinery-only cause codes. "
+        "Observed behavior and measured impact come from the archived records; recovery and investigation text are fixed guidance, not project evidence.\n\n"
+        f"{narrative_text}\n\n"
+        "<details>\n<summary>Immutable structured reports</summary>\n\n"
+        "```json\n"
+        f"{report_json}\n"
+        "```\n\n</details>\n"
     )
     feedback_goal = {
         "schema_version": GOAL_SCHEMA_VERSION,
@@ -2315,6 +2426,7 @@ def main() -> int:
     report_record.add_argument("--workflow", choices=sorted(EXECUTION_REPORT_WORKFLOWS), required=True)
     report_record.add_argument("--agent", choices=sorted(EXECUTION_REPORT_AGENTS), required=True)
     report_record.add_argument("--issue", choices=sorted(EXECUTION_REPORT_ISSUES), required=True)
+    report_record.add_argument("--cause", choices=sorted(EXECUTION_REPORT_CAUSES), required=True)
     report_record.add_argument("--phase", choices=sorted(EXECUTION_REPORT_PHASES), required=True)
     report_record.add_argument("--occurrences", type=int, default=1)
     report_record.add_argument("--wait-seconds", type=int, default=0)
@@ -2408,7 +2520,8 @@ def main() -> int:
             if args.report_command == "record":
                 project = reviewed_project_state(repo)
                 result = record_execution_report(
-                    repo, project, workflow=args.workflow, agent=args.agent, issue=args.issue, phase=args.phase,
+                    repo, project, workflow=args.workflow, agent=args.agent, issue=args.issue,
+                    cause=args.cause, phase=args.phase,
                     occurrences=args.occurrences, wait_seconds=args.wait_seconds,
                     extra_tool_calls=args.extra_tool_calls, estimated_tokens=args.estimated_tokens,
                 )

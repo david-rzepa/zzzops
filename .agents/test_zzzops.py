@@ -7,7 +7,7 @@ import tempfile
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -427,6 +427,7 @@ class ExecutionReportTests(unittest.TestCase):
             "workflow": "execute-zzzops",
             "agent": "codex",
             "issue": "avoidable_wait",
+            "cause": "unnecessary_wait_for_timeout",
             "phase": "unblocking",
             "occurrences": 2,
             "wait_seconds": 30,
@@ -442,8 +443,9 @@ class ExecutionReportTests(unittest.TestCase):
         self.assertTrue(result["recorded"])
         self.assertRegex(result["id"], r"^report-[0-9a-f]{64}$")
         report = json.loads(Path(result["path"]).read_text(encoding="utf-8"))
-        self.assertEqual(1, report["schema_version"])
+        self.assertEqual(2, report["schema_version"])
         self.assertEqual("avoidable_wait", report["issue"])
+        self.assertEqual("unnecessary_wait_for_timeout", report["cause"])
         self.assertEqual(
             {"estimated_tokens": 250, "extra_tool_calls": 1, "wait_seconds": 30},
             report["impact"],
@@ -454,7 +456,7 @@ class ExecutionReportTests(unittest.TestCase):
         disabled["policy"]["sections"][0]["settings"]["execution_reports"]["enabled"] = False
         skipped = zzzops.record_execution_report(
             self.repo, disabled, workflow="execute-zzzops", agent="codex",
-            issue="redundant_update", phase="handoff",
+            issue="redundant_update", cause="redundant_state_summary", phase="handoff",
         )
         self.assertEqual({"recorded": False, "reason": "disabled"}, skipped)
         self.assertEqual(1, len(zzzops.load_execution_reports(self.repo)))
@@ -464,12 +466,14 @@ class ExecutionReportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "must be an object"):
             zzzops.record_execution_report(
                 self.repo, invalid, workflow="execute-zzzops", agent="codex",
-                issue="redundant_update", phase="handoff",
+                issue="redundant_update", cause="redundant_state_summary", phase="handoff",
             )
 
     def test_record_rejects_unconstrained_or_invalid_content(self):
         with self.assertRaisesRegex(ValueError, "issue"):
             self.record(issue="C:/private/project-name")
+        with self.assertRaisesRegex(ValueError, "cause"):
+            self.record(cause="C:/private/project-name")
         with self.assertRaisesRegex(ValueError, "occurrences"):
             self.record(occurrences=0)
         with self.assertRaisesRegex(ValueError, "wait_seconds"):
@@ -487,6 +491,14 @@ class ExecutionReportTests(unittest.TestCase):
             preview["labels"],
         )
         self.assertIn("Please reduce unnecessary waits.", preview["body"])
+        self.assertIn("## Machinery observations", preview["body"])
+        self.assertIn("### Waited for an avoidable timeout", preview["body"])
+        self.assertIn("**Observed:**", preview["body"])
+        self.assertIn("**Measured impact:**", preview["body"])
+        self.assertIn("**Typical recovery:**", preview["body"])
+        self.assertIn("**Suggested investigation:**", preview["body"])
+        self.assertIn("<summary>Immutable structured reports</summary>", preview["body"])
+        self.assertNotIn("1 extra tool calls", preview["body"])
         self.assertIn('"issue":"avoidable_wait"', preview["body"])
         self.assertEqual([created["id"]], preview["report_ids"])
         self.assertRegex(preview["digest"], r"^sha256:[0-9a-f]{64}$")
@@ -512,6 +524,39 @@ class ExecutionReportTests(unittest.TestCase):
             "--label", "zzzops:status:new", "--label", "zzzops:priority:P2",
         ], command)
         self.assertEqual(preview["body"], run.call_args.kwargs["input"])
+
+    def test_feedback_keeps_distinct_causes_separate_and_aggregates_matching_causes(self):
+        self.record(
+            issue="poor_tool_choice",
+            cause="powershell_stdin_bom",
+            occurrences=1,
+            wait_seconds=5,
+            extra_tool_calls=1,
+            estimated_tokens=50,
+        )
+        self.record(
+            issue="poor_tool_choice",
+            cause="child_process_auth_unavailable",
+            occurrences=2,
+            wait_seconds=30,
+            extra_tool_calls=2,
+            estimated_tokens=300,
+            now=self.now + timedelta(seconds=1),
+        )
+        self.record(
+            issue="poor_tool_choice",
+            cause="powershell_stdin_bom",
+            occurrences=2,
+            wait_seconds=10,
+            extra_tool_calls=2,
+            estimated_tokens=350,
+            now=self.now + timedelta(seconds=2),
+        )
+
+        body = zzzops.prepare_feedback(self.repo, "")["body"]
+        self.assertEqual(1, body.count("### PowerShell added a byte-order mark to standard input"))
+        self.assertEqual(1, body.count("### Authentication was unavailable to a child process"))
+        self.assertIn("3 occurrences; 15 seconds waiting; 3 extra tool calls; 400 estimated tokens", body)
 
     @mock.patch.object(zzzops.shutil, "which", return_value="gh")
     @mock.patch.object(zzzops.subprocess, "run")
