@@ -79,6 +79,7 @@ MANAGED_SKILLS = (
 MACHINERY_PATHS = (
     ".agents/zzzops/zzzops.py",
     ".agents/zzzops/.gitignore",
+    ".agents/zzzops/INSTALL_MANIFEST",
     ".agents/zzzops/templates/project-goals",
     *(f".agents/skills/{name}" for name in MANAGED_SKILLS),
     *(f".claude/skills/{name}" for name in MANAGED_SKILLS),

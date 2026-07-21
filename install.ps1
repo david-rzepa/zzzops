@@ -9,6 +9,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $SourceRoot = $PSScriptRoot
 $TargetSkills = @('add-zzzops-goal', 'execute-zzzops', 'migrate-to-zzzops', 'review-zzzops-policy', 'send-zzzops-feedback', 'suggest-zzzops-work')
+$InstallManifestRelative = '.agents/zzzops/INSTALL_MANIFEST'
 
 function Stop-Install([string]$Message) {
     Write-Host "Cannot install yet: $Message"
@@ -22,10 +23,49 @@ $TargetRoot = (Resolve-Path -LiteralPath $Target).Path
 if (-not (Test-Path -LiteralPath (Join-Path $TargetRoot '.git'))) {
     Stop-Install 'Target has no .git entry'
 }
+$SourceRevision = (& git -C $SourceRoot rev-parse HEAD 2>$null).Trim()
+if ($LASTEXITCODE -ne 0 -or $SourceRevision -notmatch '^[0-9a-f]{40,64}$') {
+    Stop-Install 'Source revision could not be read from the ZzzOps base repository'
+}
 
 function Get-FileDigest([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $digest = (& git hash-object --no-filters -- $Path 2>$null).Trim()
+    if ($LASTEXITCODE -ne 0 -or $digest -notmatch '^[0-9a-f]{40,64}$') { throw "Could not hash $Path" }
+    return $digest
+}
+
+function Read-InstallManifest {
+    $path = Join-Path $TargetRoot ($InstallManifestRelative.Replace('/', [IO.Path]::DirectorySeparatorChar))
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return [pscustomobject]@{ Exists = $false; Valid = $true; Revision = $null; Files = @{}; Path = $path }
+    }
+    $lines = @(Get-Content -LiteralPath $path -Encoding UTF8)
+    $files = @{}
+    $revision = $null
+    $valid = $lines.Count -ge 2 -and $lines[0] -eq 'zzzops-install-manifest-v1'
+    foreach ($line in @($lines | Select-Object -Skip 1)) {
+        $fields = $line -split "`t", 3
+        if ($fields.Count -eq 2 -and $fields[0] -eq 'revision' -and $fields[1] -match '^[0-9a-f]{40,64}$' -and -not $revision) {
+            $revision = $fields[1]
+        } elseif ($fields.Count -eq 3 -and $fields[0] -eq 'file' -and $fields[1] -match '^[0-9a-f]{40,64}$' -and $fields[2] -and -not $files.ContainsKey($fields[2])) {
+            $files[$fields[2]] = $fields[1]
+        } else {
+            $valid = $false
+        }
+    }
+    if (-not $revision) { $valid = $false }
+    return [pscustomobject]@{ Exists = $true; Valid = $valid; Revision = $revision; Files = $files; Path = $path }
+}
+
+function Get-ManifestText([array]$Actions) {
+    $lines = [System.Collections.ArrayList]::new()
+    [void]$lines.Add('zzzops-install-manifest-v1')
+    [void]$lines.Add("revision`t$SourceRevision")
+    foreach ($action in @($Actions | Sort-Object Relative)) {
+        [void]$lines.Add("file`t$($action.SourceHash)`t$($action.Relative)")
+    }
+    return (($lines -join "`n") + "`n")
 }
 
 function Add-InstallPair([System.Collections.ArrayList]$Pairs, [string]$Source, [string]$Relative) {
@@ -114,6 +154,10 @@ function Get-IgnoredMechanicRoots {
 function New-InstallPlan {
     $actions = [System.Collections.ArrayList]::new()
     $errors = [System.Collections.ArrayList]::new()
+    $manifest = Read-InstallManifest
+    if ($manifest.Exists -and -not $manifest.Valid -and -not $OverwriteMechanical) {
+        [void]$errors.Add("The installed ZzzOps manifest is invalid. Review $InstallManifestRelative before using -OverwriteMechanical.")
+    }
     foreach ($pair in Get-InstallPairs) {
         if (Test-UnsafeReparsePoint $pair.Relative) {
             [void]$errors.Add("A managed path uses a symlink or junction: $($pair.Relative)")
@@ -121,32 +165,52 @@ function New-InstallPlan {
         }
         $sourceHash = Get-FileDigest $pair.Source
         $expectedHash = Get-FileDigest $pair.Destination
+        $installedHash = if ($manifest.Valid -and $manifest.Files.ContainsKey($pair.Relative)) { $manifest.Files[$pair.Relative] } else { $null }
         if (Test-Path -LiteralPath $pair.Destination -PathType Container) {
             $action = 'conflict'
             [void]$errors.Add("ZzzOps manages $($pair.Relative) as a file, but the target contains a directory there.")
-        } elseif ($null -eq $expectedHash) {
+        } elseif (-not $manifest.Exists -and $null -eq $expectedHash) {
             $action = 'create'
+        } elseif (-not $manifest.Exists -and $expectedHash -eq $sourceHash) {
+            $action = 'unchanged'
+        } elseif (-not $manifest.Exists -and $OverwriteMechanical) {
+            $action = 'overwrite'
+        } elseif (-not $manifest.Exists) {
+            $action = 'conflict'
+            [void]$errors.Add("ZzzOps already manages $($pair.Relative), but no installed baseline proves it is safe to upgrade. Review it before using -OverwriteMechanical.")
+        } elseif (-not $manifest.Valid) {
+            $action = if ($OverwriteMechanical) { if ($null -eq $expectedHash) { 'create' } else { 'overwrite' } } else { 'conflict' }
+        } elseif ($null -eq $installedHash -and $null -eq $expectedHash) {
+            $action = 'create'
+        } elseif ($null -eq $installedHash -or $expectedHash -ne $installedHash) {
+            if ($OverwriteMechanical) { $action = 'overwrite' }
+            else {
+                $action = 'conflict'
+                [void]$errors.Add("ZzzOps-managed file $($pair.Relative) is locally divergent from its installed baseline. Review it before using -OverwriteMechanical.")
+            }
         } elseif ($expectedHash -eq $sourceHash) {
             $action = 'unchanged'
-        } elseif ($OverwriteMechanical) {
-            $action = 'overwrite'
         } else {
-            $action = 'conflict'
-            [void]$errors.Add("ZzzOps already manages $($pair.Relative), but its contents differ. Review it before using -OverwriteMechanical.")
+            $action = 'upgrade'
         }
         [void]$actions.Add([pscustomobject]@{
             Relative = $pair.Relative; Source = $pair.Source; Destination = $pair.Destination
-            Action = $action; SourceHash = $sourceHash; ExpectedHash = $expectedHash
+            Action = $action; SourceHash = $sourceHash; ExpectedHash = $expectedHash; InstalledHash = $installedHash
         })
     }
     $ignore = Get-IgnoredMechanicRoots
     $signatureData = [pscustomobject]@{
         Files = @($actions | ForEach-Object { @($_.Relative, $_.Action, $_.SourceHash, $_.ExpectedHash) })
+        ManifestExpectedHash = Get-FileDigest $manifest.Path
+        ManifestRevision = $manifest.Revision
+        SourceRevision = $SourceRevision
         Ignored = @($ignore.Roots)
         IgnoreWarning = $ignore.Warning
     }
     return [pscustomobject]@{
         Actions = @($actions); Errors = @($errors); Ignored = @($ignore.Roots); IgnoreWarning = $ignore.Warning
+        Manifest = $manifest; ManifestExpectedHash = Get-FileDigest $manifest.Path
+        IsUpgrade = [bool]($manifest.Exists -and $manifest.Valid -and @($actions | Where-Object Action -in @('create', 'upgrade')).Count)
         Signature = ($signatureData | ConvertTo-Json -Compress -Depth 6)
     }
 }
@@ -159,9 +223,24 @@ function Show-Preview($Plan) {
     Write-Host '- shared workflow rules and the ZzzOps control CLI'
     Write-Host '- blank templates for project setup and TODO migration'
     $newCount = @($Plan.Actions | Where-Object Action -eq 'create').Count
-    $updatedCount = @($Plan.Actions | Where-Object Action -eq 'overwrite').Count
-    if ($newCount -or $updatedCount) { Write-Host "Planned changes: $newCount new, $updatedCount updated." }
-    else { Write-Host 'Planned changes: ZzzOps is already up to date.' }
+    $updatedCount = @($Plan.Actions | Where-Object Action -in @('upgrade', 'overwrite')).Count
+    if ($Plan.IsUpgrade) {
+        Write-Host "Upgrade available: $($Plan.Manifest.Revision.Substring(0, 7)) -> $($SourceRevision.Substring(0, 7))."
+        Write-Host 'Managed files to update:'
+        foreach ($action in @($Plan.Actions | Where-Object Action -in @('create', 'upgrade'))) { Write-Host "- $($action.Relative)" }
+        Write-Host 'Changes since installed version:'
+        $previousErrorAction = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        $subjects = @(& git -C $SourceRoot log --no-merges --format='- %s' --max-count=8 "$($Plan.Manifest.Revision)..$SourceRevision" 2>$null)
+        $historyCode = $LASTEXITCODE
+        $ErrorActionPreference = $previousErrorAction
+        if ($historyCode -eq 0 -and $subjects.Count) { foreach ($subject in $subjects) { Write-Host $subject } }
+        else { Write-Host '- revision history is unavailable; inspect the managed-file list above' }
+    } elseif ($newCount -or $updatedCount) {
+        Write-Host "Planned changes: $newCount new, $updatedCount updated."
+    } elseif (-not $Plan.Errors.Count) {
+        Write-Host 'Planned changes: ZzzOps is already up to date.'
+    }
     if ($Plan.Ignored.Count) {
         $names = (($Plan.Ignored | ForEach-Object { "$_/" }) -join ' and ')
         Write-Host "Warning: Git ignores required ZzzOps project mechanics under $names."
@@ -187,7 +266,8 @@ function Apply-Plan($Plan) {
     New-Item -ItemType Directory -Path $backupRoot | Out-Null
     $written = [System.Collections.ArrayList]::new()
     try {
-        foreach ($action in $Plan.Actions | Where-Object { $_.Action -in @('create', 'overwrite') }) {
+        if ((Get-FileDigest $Plan.Manifest.Path) -ne $Plan.ManifestExpectedHash) { throw "Target changed after confirmation: $InstallManifestRelative" }
+        foreach ($action in $Plan.Actions | Where-Object { $_.Action -in @('create', 'upgrade', 'overwrite') }) {
             if ((Get-FileDigest $action.Destination) -ne $action.ExpectedHash) { throw "Target changed after confirmation: $($action.Relative)" }
             $backup = Join-Path $backupRoot ($action.Relative.Replace('/', [IO.Path]::DirectorySeparatorChar))
             $hadBefore = Test-Path -LiteralPath $action.Destination -PathType Leaf
@@ -202,6 +282,20 @@ function Apply-Plan($Plan) {
             Copy-Item -LiteralPath $action.Source -Destination $temporary -Force
             Move-Item -LiteralPath $temporary -Destination $action.Destination -Force
         }
+        $manifestDestination = $Plan.Manifest.Path
+        if ((Get-FileDigest $manifestDestination) -ne $Plan.ManifestExpectedHash) { throw "Target changed after confirmation: $InstallManifestRelative" }
+        $manifestBackup = Join-Path $backupRoot ($InstallManifestRelative.Replace('/', [IO.Path]::DirectorySeparatorChar))
+        $manifestHadBefore = Test-Path -LiteralPath $manifestDestination -PathType Leaf
+        if ($manifestHadBefore) {
+            New-Item -ItemType Directory -Path (Split-Path -Parent $manifestBackup) -Force | Out-Null
+            Copy-Item -LiteralPath $manifestDestination -Destination $manifestBackup -Force
+        }
+        [void]$written.Add([pscustomobject]@{ Destination = $manifestDestination; Backup = $manifestBackup; HadBefore = $manifestHadBefore })
+        $manifestParent = Split-Path -Parent $manifestDestination
+        New-Item -ItemType Directory -Path $manifestParent -Force | Out-Null
+        $manifestTemporary = Join-Path $manifestParent ('.zzzops-install-' + [guid]::NewGuid().ToString('N') + '.tmp')
+        [IO.File]::WriteAllText($manifestTemporary, (Get-ManifestText $Plan.Actions), [Text.UTF8Encoding]::new($false))
+        Move-Item -LiteralPath $manifestTemporary -Destination $manifestDestination -Force
     } catch {
         Restore-Writes @($written)
         Write-Host "Installation failed and was rolled back: $($_.Exception.Message)"
@@ -219,12 +313,13 @@ if ($DryRun) {
     Write-Host 'No files were changed.'
     exit 0
 }
-$pendingChanges = @($plan.Actions | Where-Object { $_.Action -in @('create', 'overwrite') }).Count
+$pendingChanges = @($plan.Actions | Where-Object { $_.Action -in @('create', 'upgrade', 'overwrite') }).Count
 if (-not $pendingChanges) {
     Write-Host 'ZzzOps is already up to date. No further action is necessary.'
     exit 0
 }
-$answer = Read-Host 'Install these changes? [y/N]'
+$prompt = if ($plan.IsUpgrade) { 'Upgrade ZzzOps? [y/N]' } else { 'Install these changes? [y/N]' }
+$answer = Read-Host $prompt
 if ($answer -notmatch '^(?i:y|yes)$') {
     Write-Host 'Installation cancelled; no files were changed.'
     exit 0
@@ -235,5 +330,6 @@ if ($confirmedPlan.Errors.Count -or $confirmedPlan.Signature -ne $plan.Signature
     exit 2
 }
 if (-not (Apply-Plan $confirmedPlan)) { exit 2 }
-Write-Host 'ZzzOps is installed. Open the target repository in Codex or Claude Code; restart or reopen the harness if the new skills are not discovered. Begin with review-zzzops-policy.'
+if ($confirmedPlan.IsUpgrade) { Write-Host 'ZzzOps was upgraded.' }
+else { Write-Host 'ZzzOps is installed. Open the target repository in Codex or Claude Code; restart or reopen the harness if the new skills are not discovered. Begin with review-zzzops-policy.' }
 exit 0

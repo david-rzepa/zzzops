@@ -3,6 +3,7 @@ set -u
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 TARGET_SKILLS=(add-zzzops-goal execute-zzzops migrate-to-zzzops review-zzzops-policy send-zzzops-feedback suggest-zzzops-work)
+INSTALL_MANIFEST_RELATIVE='.agents/zzzops/INSTALL_MANIFEST'
 DRY_RUN=0
 OVERWRITE=0
 
@@ -21,6 +22,8 @@ while [[ $# -gt 0 ]]; do
 done
 TARGET_ROOT="$(cd "$TARGET_INPUT" 2>/dev/null && pwd -P)" || fail 'Target is not a directory'
 [[ -e "$TARGET_ROOT/.git" ]] || fail 'Target has no .git entry'
+SOURCE_REVISION=$(git -C "$SOURCE_ROOT" rev-parse HEAD 2>/dev/null) || fail 'Source revision could not be read from the ZzzOps base repository'
+[[ "$SOURCE_REVISION" =~ ^[0-9a-f]{40,64}$ ]] || fail 'Source revision is invalid'
 
 PAIR_SOURCE=()
 PAIR_RELATIVE=()
@@ -59,6 +62,49 @@ build_pairs() {
 file_digest() {
     [[ -f "$1" ]] || return 0
     git hash-object --no-filters -- "$1" 2>/dev/null
+}
+
+MANIFEST_EXISTS=0
+MANIFEST_VALID=1
+MANIFEST_REVISION=''
+MANIFEST_RELATIVE=()
+MANIFEST_HASH=()
+read_manifest() {
+    MANIFEST_EXISTS=0; MANIFEST_VALID=1; MANIFEST_REVISION=''; MANIFEST_RELATIVE=(); MANIFEST_HASH=()
+    local path="$TARGET_ROOT/$INSTALL_MANIFEST_RELATIVE" line kind hash relative first=1
+    [[ -f "$path" ]] || return
+    MANIFEST_EXISTS=1
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ $first -eq 1 ]]; then
+            [[ "$line" == zzzops-install-manifest-v1 ]] || MANIFEST_VALID=0
+            first=0
+            continue
+        fi
+        IFS=$'\t' read -r kind hash relative <<< "$line"
+        if [[ "$kind" == revision && "$hash" =~ ^[0-9a-f]{40,64}$ && -z "$relative" && -z "$MANIFEST_REVISION" ]]; then
+            MANIFEST_REVISION=$hash
+        elif [[ "$kind" == file && "$hash" =~ ^[0-9a-f]{40,64}$ && -n "$relative" ]]; then
+            for existing in "${MANIFEST_RELATIVE[@]}"; do [[ "$existing" == "$relative" ]] && MANIFEST_VALID=0; done
+            MANIFEST_HASH+=("$hash"); MANIFEST_RELATIVE+=("$relative")
+        else MANIFEST_VALID=0
+        fi
+    done < "$path"
+    [[ -n "$MANIFEST_REVISION" ]] || MANIFEST_VALID=0
+}
+
+manifest_hash_for() {
+    local wanted=$1 i
+    for ((i=0; i<${#MANIFEST_RELATIVE[@]}; i++)); do
+        [[ "${MANIFEST_RELATIVE[$i]}" == "$wanted" ]] && { printf '%s' "${MANIFEST_HASH[$i]}"; return; }
+    done
+}
+
+write_manifest_content() {
+    local i
+    printf 'zzzops-install-manifest-v1\nrevision\t%s\n' "$SOURCE_REVISION"
+    for ((i=0; i<${#PLAN_RELATIVE[@]}; i++)); do
+        printf 'file\t%s\t%s\n' "${PLAN_SOURCE_HASH[$i]}" "${PLAN_RELATIVE[$i]}"
+    done
 }
 
 has_unsafe_symlink() {
@@ -104,11 +150,16 @@ PLAN_EXPECTED=()
 PLAN_SOURCE_HASH=()
 PLAN_ERRORS=()
 PLAN_SIGNATURE=''
+PLAN_MANIFEST_EXPECTED=''
+PLAN_IS_UPGRADE=0
 
 build_plan() {
     build_pairs
     PLAN_RELATIVE=(); PLAN_SOURCE=(); PLAN_DESTINATION=(); PLAN_ACTION=(); PLAN_EXPECTED=(); PLAN_SOURCE_HASH=(); PLAN_ERRORS=()
-    local i relative source destination source_hash expected action
+    PLAN_IS_UPGRADE=0
+    read_manifest
+    [[ $MANIFEST_EXISTS -eq 0 || $MANIFEST_VALID -eq 1 || $OVERWRITE -eq 1 ]] || PLAN_ERRORS+=("The installed ZzzOps manifest is invalid. Review $INSTALL_MANIFEST_RELATIVE before using --overwrite-mechanical.")
+    local i relative source destination source_hash expected installed action
     for ((i=0; i<${#PAIR_SOURCE[@]}; i++)); do
         source=${PAIR_SOURCE[$i]}; relative=${PAIR_RELATIVE[$i]}; destination="$TARGET_ROOT/$relative"
         if has_unsafe_symlink "$relative"; then
@@ -117,38 +168,60 @@ build_plan() {
         fi
         source_hash=$(file_digest "$source")
         expected=$(file_digest "$destination")
+        installed=$(manifest_hash_for "$relative")
         if [[ -d "$destination" ]]; then
             action=conflict
             PLAN_ERRORS+=("ZzzOps manages $relative as a file, but the target contains a directory there.")
-        elif [[ -z "$expected" ]]; then action=create
-        elif [[ "$expected" == "$source_hash" ]]; then action=unchanged
-        elif [[ $OVERWRITE -eq 1 ]]; then action=overwrite
-        else
+        elif [[ $MANIFEST_EXISTS -eq 0 && -z "$expected" ]]; then action=create
+        elif [[ $MANIFEST_EXISTS -eq 0 && "$expected" == "$source_hash" ]]; then action=unchanged
+        elif [[ $MANIFEST_EXISTS -eq 0 && $OVERWRITE -eq 1 ]]; then action=overwrite
+        elif [[ $MANIFEST_EXISTS -eq 0 ]]; then
             action=conflict
-            PLAN_ERRORS+=("ZzzOps already manages $relative, but its contents differ. Review it before using --overwrite-mechanical.")
+            PLAN_ERRORS+=("ZzzOps already manages $relative, but no installed baseline proves it is safe to upgrade. Review it before using --overwrite-mechanical.")
+        elif [[ $MANIFEST_VALID -ne 1 ]]; then
+            if [[ $OVERWRITE -eq 1 ]]; then [[ -z "$expected" ]] && action=create || action=overwrite
+            else action=conflict; fi
+        elif [[ -z "$installed" && -z "$expected" ]]; then action=create; PLAN_IS_UPGRADE=1
+        elif [[ -z "$installed" || "$expected" != "$installed" ]]; then
+            if [[ $OVERWRITE -eq 1 ]]; then action=overwrite
+            else
+                action=conflict
+                PLAN_ERRORS+=("ZzzOps-managed file $relative is locally divergent from its installed baseline. Review it before using --overwrite-mechanical.")
+            fi
+        elif [[ "$expected" == "$source_hash" ]]; then action=unchanged
+        else action=upgrade; PLAN_IS_UPGRADE=1
         fi
         PLAN_RELATIVE+=("$relative"); PLAN_SOURCE+=("$source"); PLAN_DESTINATION+=("$destination")
         PLAN_ACTION+=("$action"); PLAN_EXPECTED+=("$expected"); PLAN_SOURCE_HASH+=("$source_hash")
     done
     probe_ignored_roots
+    PLAN_MANIFEST_EXPECTED=$(file_digest "$TARGET_ROOT/$INSTALL_MANIFEST_RELATIVE")
     PLAN_SIGNATURE=$(
         for ((i=0; i<${#PLAN_RELATIVE[@]}; i++)); do
             printf '%s|%s|%s|%s\n' "${PLAN_RELATIVE[$i]}" "${PLAN_ACTION[$i]}" "${PLAN_SOURCE_HASH[$i]}" "${PLAN_EXPECTED[$i]}"
         done
-        printf 'ignored|%s\nwarning|%s\n' "${IGNORED[*]}" "$IGNORE_WARNING"
+        printf 'manifest|%s|%s|%s\nignored|%s\nwarning|%s\n' "$PLAN_MANIFEST_EXPECTED" "$MANIFEST_REVISION" "$SOURCE_REVISION" "${IGNORED[*]}" "$IGNORE_WARNING"
     )
 }
 
 show_preview() {
     printf 'ZzzOps installation preview\nTarget: %s\n' "$TARGET_ROOT"
     printf '%s\n' 'This will install:' '- tracked project skills for Codex and Claude Code' '- shared workflow rules and the ZzzOps control CLI' '- blank templates for project setup and TODO migration'
-    local new_count=0 updated_count=0 action error names=''
+    local new_count=0 updated_count=0 action error names='' i subjects
     for action in "${PLAN_ACTION[@]}"; do
         [[ "$action" == create ]] && ((new_count+=1))
-        [[ "$action" == overwrite ]] && ((updated_count+=1))
+        [[ "$action" == upgrade || "$action" == overwrite ]] && ((updated_count+=1))
     done
-    if [[ $new_count -gt 0 || $updated_count -gt 0 ]]; then printf 'Planned changes: %d new, %d updated.\n' "$new_count" "$updated_count"
-    else printf 'Planned changes: ZzzOps is already up to date.\n'; fi
+    if [[ $PLAN_IS_UPGRADE -eq 1 ]]; then
+        printf 'Upgrade available: %.7s -> %.7s.\nManaged files to update:\n' "$MANIFEST_REVISION" "$SOURCE_REVISION"
+        for ((i=0; i<${#PLAN_ACTION[@]}; i++)); do
+            [[ "${PLAN_ACTION[$i]}" == create || "${PLAN_ACTION[$i]}" == upgrade ]] && printf -- '- %s\n' "${PLAN_RELATIVE[$i]}"
+        done
+        printf 'Changes since installed version:\n'
+        subjects=$(git -C "$SOURCE_ROOT" log --no-merges --format='- %s' --max-count=8 "$MANIFEST_REVISION..$SOURCE_REVISION" 2>/dev/null) || subjects=''
+        [[ -n "$subjects" ]] && printf '%s\n' "$subjects" || printf '%s\n' '- revision history is unavailable; inspect the managed-file list above'
+    elif [[ $new_count -gt 0 || $updated_count -gt 0 ]]; then printf 'Planned changes: %d new, %d updated.\n' "$new_count" "$updated_count"
+    elif [[ ${#PLAN_ERRORS[@]} -eq 0 ]]; then printf 'Planned changes: ZzzOps is already up to date.\n'; fi
     if [[ ${#IGNORED[@]} -gt 0 ]]; then
         for action in "${IGNORED[@]}"; do
             [[ -n "$names" ]] && names+=' and '
@@ -180,9 +253,11 @@ apply_plan() {
     BACKUP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/zzzops-install.XXXXXX") || return 1
     WRITTEN_RELATIVE=(); WRITTEN_HAD_BEFORE=()
     local i action relative source destination current backup temporary
+    current=$(file_digest "$TARGET_ROOT/$INSTALL_MANIFEST_RELATIVE")
+    [[ "$current" == "$PLAN_MANIFEST_EXPECTED" ]] || { rm -rf "$BACKUP_ROOT"; return 1; }
     for ((i=0; i<${#PLAN_RELATIVE[@]}; i++)); do
         action=${PLAN_ACTION[$i]}
-        [[ "$action" == create || "$action" == overwrite ]] || continue
+        [[ "$action" == create || "$action" == upgrade || "$action" == overwrite ]] || continue
         relative=${PLAN_RELATIVE[$i]}; source=${PLAN_SOURCE[$i]}; destination=${PLAN_DESTINATION[$i]}
         current=$(file_digest "$destination")
         if [[ "$current" != "${PLAN_EXPECTED[$i]}" ]]; then rollback; rm -rf "$BACKUP_ROOT"; return 1; fi
@@ -199,6 +274,20 @@ apply_plan() {
             rm -f "$temporary"; rollback; rm -rf "$BACKUP_ROOT"; return 1;
         }
     done
+    relative=$INSTALL_MANIFEST_RELATIVE; destination="$TARGET_ROOT/$relative"; backup="$BACKUP_ROOT/$relative"
+    current=$(file_digest "$destination")
+    if [[ "$current" != "$PLAN_MANIFEST_EXPECTED" ]]; then rollback; rm -rf "$BACKUP_ROOT"; return 1; fi
+    if [[ -f "$destination" ]]; then
+        mkdir -p "$(dirname "$backup")"
+        cp -p "$destination" "$backup" || { rollback; rm -rf "$BACKUP_ROOT"; return 1; }
+        WRITTEN_HAD_BEFORE+=(1)
+    else WRITTEN_HAD_BEFORE+=(0); fi
+    WRITTEN_RELATIVE+=("$relative")
+    mkdir -p "$(dirname "$destination")" || { rollback; rm -rf "$BACKUP_ROOT"; return 1; }
+    temporary="$(dirname "$destination")/.zzzops-install.$$-manifest.tmp"
+    write_manifest_content > "$temporary" && mv -f "$temporary" "$destination" || {
+        rm -f "$temporary"; rollback; rm -rf "$BACKUP_ROOT"; return 1;
+    }
     rm -rf "$BACKUP_ROOT"
     return 0
 }
@@ -209,13 +298,14 @@ show_preview
 if [[ $DRY_RUN -eq 1 ]]; then printf 'No files were changed.\n'; exit 0; fi
 pending_changes=0
 for action in "${PLAN_ACTION[@]}"; do
-    [[ "$action" == create || "$action" == overwrite ]] && ((pending_changes+=1))
+    [[ "$action" == create || "$action" == upgrade || "$action" == overwrite ]] && ((pending_changes+=1))
 done
 if [[ $pending_changes -eq 0 ]]; then
     printf 'ZzzOps is already up to date. No further action is necessary.\n'
     exit 0
 fi
-printf 'Install these changes? [y/N] '
+if [[ $PLAN_IS_UPGRADE -eq 1 ]]; then printf 'Upgrade ZzzOps? [y/N] '
+else printf 'Install these changes? [y/N] '; fi
 IFS= read -r answer || answer=''
 answer=${answer%$'\r'}
 case "$answer" in y|Y|yes|YES|Yes) ;; *) printf 'Installation cancelled; no files were changed.\n'; exit 0 ;; esac
@@ -226,4 +316,5 @@ if [[ ${#PLAN_ERRORS[@]} -gt 0 || "$PLAN_SIGNATURE" != "$preview_signature" ]]; 
     exit 2
 fi
 if ! apply_plan; then printf 'Installation failed and was rolled back.\n'; exit 2; fi
-printf 'ZzzOps is installed. Open the target repository in Codex or Claude Code; restart or reopen the harness if the new skills are not discovered. Begin with review-zzzops-policy.\n'
+if [[ $PLAN_IS_UPGRADE -eq 1 ]]; then printf 'ZzzOps was upgraded.\n'
+else printf 'ZzzOps is installed. Open the target repository in Codex or Claude Code; restart or reopen the harness if the new skills are not discovered. Begin with review-zzzops-policy.\n'; fi
