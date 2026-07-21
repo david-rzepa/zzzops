@@ -106,6 +106,16 @@ For persistent Codex execution:
 
 Source-changing goals follow the reviewed project branch/review policy and pause at a human review blocker after checks. Maintainers: see the [branch topology and review lifecycle](docs/EXECUTION.md).
 
+### 7. Send ZzzOps feedback
+
+```text
+Use $send-zzzops-feedback to send <feedback about the ZzzOps workflow>.
+```
+
+ZzzOps workflows record only constrained machinery categories and numeric impact in immutable, content-addressed, Git-ignored execution reports. They never put project names, paths, code, goals, domain facts, user content, or secrets in those reports. Recording is enabled by reviewed policy by default and can be disabled with `autonomy_approval_parallelism.settings.execution_reports.enabled: false`.
+
+The feedback skill combines your text with archived reports, shows the exact issue payload, warns that `david-rzepa/zzzops` is public, and asks you to confirm that payload. Only then does it create a managed issue tagged `zzzops-feedback`. Execute excludes these issues by default; one explicit approval includes the entire feedback queue for that execution session, with no per-issue prompts. Successfully submitted reports are deleted; cancellation or failure retains them.
+
 ## Full feature list
 
 This is the complete list of shipped user-facing ZzzOps features. It is a catalogue, not exhaustive documentation. Keep it current whenever a user-facing surface changes.
@@ -118,7 +128,9 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 | Capture durable work | `.agents/skills/add-zzzops-goal/SKILL.md` |
 | Migrate repository TODOs and backlogs | `.agents/skills/migrate-to-zzzops/SKILL.md` |
 | Suggest evidence-backed backlog work | `.agents/skills/suggest-zzzops-work/SKILL.md` |
+| Preview and send user feedback plus privacy-safe execution reports | `.agents/skills/send-zzzops-feedback/SKILL.md` |
 | Execute, prioritize, unblock, briefly watch human gates, verify, and hand off goals | `.agents/skills/execute-zzzops/SKILL.md` |
+| Record constrained, project-free machinery friction with a policy opt-out | `.zzzops/rules/FEEDBACK.md` / `.agents/zzzops/zzzops.py` |
 | Give project-policy-driven updates, defaulting to concise outcomes and clear user actions | `.zzzops/rules/INITIALIZATION.md` |
 | Review or override refill, dependency, and parallel execution policy | `.agents/skills/review-zzzops-policy/SKILL.md` |
 | Select up to three worktree workers below 100 MB, otherwise read-only workers, from tracked repository size | `.agents/zzzops/zzzops.py` / `.zzzops/rules/EXECUTION_STRATEGY.md` |

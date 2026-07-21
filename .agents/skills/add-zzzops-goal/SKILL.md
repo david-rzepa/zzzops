@@ -13,3 +13,5 @@ Capture exact source path/line when applicable and explain value against project
 Capture never creates a branch, commit, push, or PR. A GitHub issue needs no Git checkpoint.
 
 After capture, apply `.zzzops/rules/CONTINUATION.md`; active same-task execute intent may resume once, while capture-only/replacement/stop intent wins. Confirm with the outcome and link; mention only next-affecting relationships or unknowns.
+
+Before stopping or handing off, apply `.zzzops/rules/FEEDBACK.md`.

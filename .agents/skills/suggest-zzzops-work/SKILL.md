@@ -20,3 +20,5 @@ Exhausted-queue apply honors independent opt-ins:
 - `code_quality_non_behavioral`: behavior-preserving naming, extraction/decomposition, dead/duplicate code cleanup, or monolith splitting. Require unchanged-behavior evidence; exclude features, architecture rewrites, and style churn.
 
 Use only PROJECT-enabled categories and its cap, then return to `$execute-zzzops`. Ask about material ambiguity; never manufacture utilization work.
+
+Before stopping or handing off, apply `.zzzops/rules/FEEDBACK.md`.

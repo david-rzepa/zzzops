@@ -346,6 +346,144 @@ class InitializationTests(unittest.TestCase):
         self.assertEqual("insufficient permission", insufficient["detail"])
 
 
+class ExecutionReportTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.temp.name)
+        (self.repo / ".zzzops").mkdir()
+        self.project = {
+            "policy": {"sections": [{
+                "id": "autonomy_approval_parallelism",
+                "settings": {"execution_reports": {"enabled": True}},
+            }]},
+        }
+        self.now = datetime(2026, 7, 21, 18, 0, tzinfo=timezone.utc)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def record(self, **overrides):
+        values = {
+            "workflow": "execute-zzzops",
+            "agent": "codex",
+            "issue": "avoidable_wait",
+            "phase": "unblocking",
+            "occurrences": 2,
+            "wait_seconds": 30,
+            "extra_tool_calls": 1,
+            "estimated_tokens": 250,
+            "now": self.now,
+        }
+        values.update(overrides)
+        return zzzops.record_execution_report(self.repo, self.project, **values)
+
+    def test_record_is_constrained_local_and_policy_can_disable_it(self):
+        result = self.record()
+        self.assertTrue(result["recorded"])
+        self.assertRegex(result["id"], r"^report-[0-9a-f]{64}$")
+        report = json.loads(Path(result["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(1, report["schema_version"])
+        self.assertEqual("avoidable_wait", report["issue"])
+        self.assertEqual(
+            {"estimated_tokens": 250, "extra_tool_calls": 1, "wait_seconds": 30},
+            report["impact"],
+        )
+        self.assertNotIn("project", json.dumps(report).lower())
+
+        disabled = json.loads(json.dumps(self.project))
+        disabled["policy"]["sections"][0]["settings"]["execution_reports"]["enabled"] = False
+        skipped = zzzops.record_execution_report(
+            self.repo, disabled, workflow="execute-zzzops", agent="codex",
+            issue="redundant_update", phase="handoff",
+        )
+        self.assertEqual({"recorded": False, "reason": "disabled"}, skipped)
+        self.assertEqual(1, len(zzzops.load_execution_reports(self.repo)))
+
+        invalid = json.loads(json.dumps(self.project))
+        invalid["policy"]["sections"][0]["settings"]["execution_reports"] = False
+        with self.assertRaisesRegex(ValueError, "must be an object"):
+            zzzops.record_execution_report(
+                self.repo, invalid, workflow="execute-zzzops", agent="codex",
+                issue="redundant_update", phase="handoff",
+            )
+
+    def test_record_rejects_unconstrained_or_invalid_content(self):
+        with self.assertRaisesRegex(ValueError, "issue"):
+            self.record(issue="C:/private/project-name")
+        with self.assertRaisesRegex(ValueError, "occurrences"):
+            self.record(occurrences=0)
+        with self.assertRaisesRegex(ValueError, "wait_seconds"):
+            self.record(wait_seconds=-1)
+
+    @mock.patch.object(zzzops.shutil, "which", return_value="gh")
+    @mock.patch.object(zzzops.subprocess, "run")
+    def test_feedback_preview_confirmation_and_successful_cleanup(self, run, _which):
+        created = self.record()
+        preview = zzzops.prepare_feedback(self.repo, "Please reduce unnecessary waits.")
+        self.assertEqual("david-rzepa/zzzops", preview["target"])
+        self.assertEqual("ZzzOps feedback", preview["title"])
+        self.assertEqual(
+            ["zzzops", "zzzops-feedback", "zzzops:status:new", "zzzops:priority:P2"],
+            preview["labels"],
+        )
+        self.assertIn("Please reduce unnecessary waits.", preview["body"])
+        self.assertIn('"issue":"avoidable_wait"', preview["body"])
+        self.assertEqual([created["id"]], preview["report_ids"])
+        self.assertRegex(preview["digest"], r"^sha256:[0-9a-f]{64}$")
+        feedback_goal = zzzops.parse_managed_goal(preview["body"])
+        self.assertEqual("new", feedback_goal["status"])
+        self.assertEqual("P2", feedback_goal["priority"])
+
+        with self.assertRaisesRegex(ValueError, "confirmation"):
+            zzzops.submit_feedback(self.repo, "Please reduce unnecessary waits.", "sha256:wrong")
+        self.assertEqual(1, len(zzzops.load_execution_reports(self.repo)))
+
+        run.return_value = SimpleNamespace(returncode=0, stdout="https://github.com/david-rzepa/zzzops/issues/130\n", stderr="")
+        submitted = zzzops.submit_feedback(
+            self.repo, "Please reduce unnecessary waits.", preview["digest"],
+        )
+        self.assertEqual("https://github.com/david-rzepa/zzzops/issues/130", submitted["url"])
+        self.assertEqual([], zzzops.load_execution_reports(self.repo))
+        command = run.call_args.args[0]
+        self.assertEqual([
+            "gh", "issue", "create", "--repo", "david-rzepa/zzzops",
+            "--title", "ZzzOps feedback", "--body-file", "-",
+            "--label", "zzzops", "--label", "zzzops-feedback",
+            "--label", "zzzops:status:new", "--label", "zzzops:priority:P2",
+        ], command)
+        self.assertEqual(preview["body"], run.call_args.kwargs["input"])
+
+    @mock.patch.object(zzzops.shutil, "which", return_value="gh")
+    @mock.patch.object(zzzops.subprocess, "run")
+    def test_failed_submission_retains_reports(self, run, _which):
+        self.record()
+        preview = zzzops.prepare_feedback(self.repo, "Feedback")
+        run.return_value = SimpleNamespace(returncode=1, stdout="", stderr="provider failed")
+        with self.assertRaisesRegex(ValueError, "provider failed"):
+            zzzops.submit_feedback(self.repo, "Feedback", preview["digest"])
+        self.assertEqual(1, len(zzzops.load_execution_reports(self.repo)))
+
+    @mock.patch.object(zzzops.shutil, "which", return_value="gh")
+    @mock.patch.object(zzzops.subprocess, "run")
+    def test_post_submit_drift_retains_changed_report(self, run, _which):
+        created = self.record()
+        preview = zzzops.prepare_feedback(self.repo, "Feedback")
+
+        def provider(*_args, **_kwargs):
+            path = zzzops.execution_report_directory(self.repo) / f"{created['id']}.json"
+            changed = json.loads(path.read_text(encoding="utf-8"))
+            changed["occurrences"] = 3
+            path.write_text(json.dumps(changed), encoding="utf-8")
+            return SimpleNamespace(returncode=0, stdout="https://github.com/david-rzepa/zzzops/issues/130\n", stderr="")
+
+        run.side_effect = provider
+        submitted = zzzops.submit_feedback(self.repo, "Feedback", preview["digest"])
+        self.assertEqual([], submitted["deleted_report_ids"])
+        self.assertEqual([created["id"]], submitted["retained_report_ids"])
+        with self.assertRaisesRegex(ValueError, "content-addressed"):
+            zzzops.load_execution_reports(self.repo)
+
+
 class ManagedGoalTests(unittest.TestCase):
     def goal(self):
         return {
@@ -558,11 +696,13 @@ class PortfolioTests(unittest.TestCase):
                     "labels": {"nodes": issue["labels"]},
                 }
 
+            feedback = self.issue(2, status="new")
+            feedback["labels"].append({"name": "zzzops-feedback"})
             payload = [
                 {"data": {"repository": {
                     "nameWithOwner": "owner/repo", "url": "https://example.test/owner/repo",
                     "hasIssuesEnabled": True, "viewerPermission": "ADMIN",
-                    "issues": {"nodes": [graphql_issue(self.issue(1))],
+                    "issues": {"nodes": [graphql_issue(self.issue(1)), graphql_issue(feedback)],
                                "pageInfo": {"hasNextPage": True, "endCursor": "page-1"}},
                 }}},
                 {"data": {"repository": {
@@ -574,15 +714,21 @@ class PortfolioTests(unittest.TestCase):
             ]
             run.return_value = SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
             snapshot = zzzops.portfolio_snapshot(repo)
+            _, included = zzzops.github_repository_portfolio_snapshot(
+                repo, {"backend": "github_issues", "repository": {"identity": "owner/repo"}},
+                include_feedback=True,
+            )
         self.assertEqual([1, 3], [goal["key"] for goal in snapshot["goals"]])
+        self.assertEqual([1, 2, 3], [goal["key"] for goal in included["goals"]])
         self.assertEqual(2, snapshot["summary"]["reads"])
         self.assertEqual(1, snapshot["summary"]["processes"])
-        self.assertEqual(0, snapshot["summary"]["ignored"])
+        self.assertEqual(1, snapshot["summary"]["ignored"])
+        self.assertEqual(0, included["summary"]["ignored"])
         command = run.call_args.args[0]
         self.assertIn("graphql", command)
         self.assertIn("--paginate", command)
         self.assertIn("--slurp", command)
-        self.assertEqual(1, run.call_count)
+        self.assertEqual(2, run.call_count)
 
     @mock.patch.object(zzzops.shutil, "which", side_effect=lambda command: command)
     @mock.patch.object(zzzops.subprocess, "run")
@@ -1028,7 +1174,10 @@ class WorkflowContractTests(unittest.TestCase):
         )
         self.assertEqual("dependencies_done", settings["dependency_implementation_gate"])
         self.assertTrue(settings["read_only_dependency_investigation"])
+        self.assertEqual({"enabled": True}, settings["execution_reports"])
         self.assertEqual("remove_or_retain_clean_for_reuse", settings["worktree_lifecycle"]["after_task"])
+        settings["execution_reports"]["enabled"] = "yes"
+        self.assertTrue(any("execution_reports.enabled must be boolean" in error for error in zzzops.validate_policy(plan["policy"], True)))
     def test_continuation_policy_defaults_are_structured(self):
         root = Path(__file__).parent / "zzzops"
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
@@ -1059,6 +1208,7 @@ class WorkflowContractTests(unittest.TestCase):
             "execute-zzzops": ("execute", "work all goals", "continue", "resume", "triage", "prioritize", "reprioritize", "unblock", '"dry run"', '"preview"', '"plan"', "default executes"),
             "migrate-to-zzzops": ("discover", "plan", "migrate", "import", "todos/backlogs", '"dry run"', '"preview"', '"apply"', "default builds review artifacts"),
             "review-zzzops-policy": ("review", "initialize", "summarize", "reconcile", "adjust", "policy", "preferred first workflow", "always re-summarizes"),
+            "send-zzzops-feedback": ("preview", "send", "feedback", "execution reports", "exact-payload confirmation"),
             "suggest-zzzops-work": ("suggest", "discover", "audit", '"dry run"', '"preview"', '"plan"', '"apply"', '"refill"'),
             "run-zzzops-acceptance": ("run", "guide", "check", "resume", "manual test", "acceptance test", "run the test plan", "next test"),
         }
@@ -1074,13 +1224,25 @@ class WorkflowContractTests(unittest.TestCase):
         root = Path(__file__).parent
         names = (
             "add-zzzops-goal", "execute-zzzops", "migrate-to-zzzops",
-            "review-zzzops-policy", "suggest-zzzops-work",
+            "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
         )
         for name in names:
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("INITIALIZATION.md", text, name)
-            if name != "review-zzzops-policy":
+            if name not in {"review-zzzops-policy", "send-zzzops-feedback"}:
                 self.assertIn("BACKENDS.md", text, name)
+
+    def test_skills_apply_shared_privacy_safe_feedback_handoff(self):
+        root = Path(__file__).parent / "skills"
+        for skill in root.iterdir():
+            path = skill / "SKILL.md"
+            if path.is_file():
+                self.assertIn("FEEDBACK.md", path.read_text(encoding="utf-8"), skill.name)
+
+    def test_execute_feedback_queue_requires_one_session_approval(self):
+        execute = (Path(__file__).parent / "skills" / "execute-zzzops" / "SKILL.md").read_text(encoding="utf-8")
+        for phrase in ("zzzops-feedback", "current execution session", "Never ask per issue", "--include-feedback"):
+            self.assertIn(phrase, execute)
 
 if __name__ == "__main__":
     unittest.main()

@@ -8,7 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $SourceRoot = $PSScriptRoot
-$TargetSkills = @('add-zzzops-goal', 'execute-zzzops', 'migrate-to-zzzops', 'review-zzzops-policy', 'suggest-zzzops-work')
+$TargetSkills = @('add-zzzops-goal', 'execute-zzzops', 'migrate-to-zzzops', 'review-zzzops-policy', 'send-zzzops-feedback', 'suggest-zzzops-work')
 
 function Stop-Install([string]$Message) {
     Write-Host "Cannot install yet: $Message"
@@ -40,7 +40,7 @@ function Get-InstallPairs {
     $pairs = [System.Collections.ArrayList]::new()
     $fixed = @(
         '.zzzops/rules/BACKENDS.md', '.zzzops/rules/BLOCKERS.md', '.zzzops/rules/CONTINUATION.md',
-        '.zzzops/rules/EXECUTION_STRATEGY.md', '.zzzops/rules/GOAL_SYSTEM.md', '.zzzops/rules/INITIALIZATION.md',
+        '.zzzops/rules/EXECUTION_STRATEGY.md', '.zzzops/rules/FEEDBACK.md', '.zzzops/rules/GOAL_SYSTEM.md', '.zzzops/rules/INITIALIZATION.md',
         '.agents/zzzops/zzzops.py'
     )
     foreach ($relative in $fixed) {
