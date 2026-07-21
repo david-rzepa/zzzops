@@ -45,6 +45,6 @@ Do not use writable worktrees for coupled work, broad shared-file changes, gener
 
 ## Waits, commits, resources
 
-Delegate wait-dominated commands and human-unblock watches at the PROJECT threshold before launch; keep the main thread on independent lightweight work. If an unexpected command runs long, poll boundedly and delegate comparable future waits rather than duplicate it. A wait monitor remains read-only and must stop on user input or state drift.
+Delegate waits and human watches at the PROJECT threshold. Resume yielded session/cell handles; poll boundedly, never relaunch because output was deferred. For quote-heavy/multiline cross-shell payloads, use secure UTF-8 temp files or byte-preserving stdin; verify bytes before external writes. Read-only monitors stop on input/drift.
 
 Follow PROJECT Git/commit policy and never absorb unrelated changes. Note fan-out, latency benefit, resource evidence, and contention; revert work types to sequential when parallel cost lacks value.
