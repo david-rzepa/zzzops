@@ -27,13 +27,13 @@ Reviewed PROJECT resource/autonomy policy is the permission ceiling, never a uti
 - `read_only`: bounded inspections/proposals/waits; only main writes.
 - `worktrees`: additionally permits isolated writable sub-goals below.
 
-Parallelize only when scopes are independent, mutable state/resources are disjoint, latency benefit is worthwhile, dependencies permit the proposed work, and policy capacity exists. Stop on contention, overlap, conflicting assumptions, or poor value. Read-only workers may investigate dependent goals early within the effective cap, but never claim, edit, branch, or treat them as started implementation; main reconciles and writes.
+Parallelize only for independently verifiable scopes with disjoint exclusive resources, worthwhile latency benefit, permitted dependencies, and policy capacity. Advisory path/target overlap requires pre-edit PR inspection, recorded overlap, and immediate-base coordination. Stop on exclusive contention, merge conflict, conflicting assumptions, or poor value. Read-only workers may investigate dependencies within cap, but never claim, edit, branch, or start implementation; main reconciles/writes.
 
 Sub-agent commands may create isolated disposable outputs/logs or assigned-port processes, but may not install dependencies, rewrite tracked files, deploy/migrate, change Git, or mutate shared external systems unless `worktrees` explicitly permits the assigned source work.
 
 ### Writable worktrees
 
-Use only for Git-backed, independently verifiable sub-goals with disjoint files/resources.
+Use only for Git-backed, independently verifiable sub-goals with disjoint exclusive resources. Advisory text-path overlap is permitted only when the coordinator has inspected the related PRs and assigned an explicit reconciliation order.
 
 1. Coordinator claims goals, reviews the base, and creates one worktree/branch per child without unrelated changes.
 2. Assign exact paths, criteria, baseline/probe, prohibited shared files, resource bound, and stop condition.
@@ -41,7 +41,7 @@ Use only for Git-backed, independently verifiable sub-goals with disjoint files/
 4. Coordinator reviews and integrates sequentially, probing each commit and combined behavior; coordinator alone updates ZzzOps state.
 5. After the task completes, remove its worktree or deliberately retain it only after verifying it is clean and recording it for reuse. Before reassignment, restore the next goal's reviewed base, branch, resources, and ownership; never carry prior changes, claims, or branch assumptions forward. Dirty, abandoned, or ambiguously owned worktrees are forbidden.
 
-Do not use writable worktrees for coupled work, broad shared-file changes, generated-output collisions, shared services/devices/data, or any policy-prohibited work.
+Do not use writable worktrees for coupled work, generated-output collisions, shared services/devices/data, binary or hard-to-merge paths marked exclusive by policy, or any policy-prohibited work. Broad advisory shared-file changes require an explicit reconciliation plan and remain sequential when their merge risk outweighs the latency benefit.
 
 ## Waits, commits, resources
 
