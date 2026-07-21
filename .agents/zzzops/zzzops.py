@@ -22,6 +22,7 @@ PROJECT_SCHEMA_VERSION = 1
 PLAN_SCHEMA_VERSION = 1
 POLICY_SCHEMA_VERSION = 1
 GOAL_SCHEMA_VERSION = 1
+GOAL_TRANSITION_SCHEMA_VERSION = 1
 PORTFOLIO_SCHEMA_VERSION = 1
 PROJECT_POLICY_RELATIVE = ".zzzops/POLICY.json"
 PROJECT_AUDIT_RELATIVE = ".zzzops/PROJECT_AUDIT.md"
@@ -45,6 +46,7 @@ GOAL_FIELDS = {
     "parent", "depends_on", "claim", "blockers",
     "evidence", "next_action", "revision", "implementation", "resources",
 }
+GOAL_TRANSITION_FIELDS = {"schema_version", "expected_revision", "expected_digest", "goal"}
 BLOCKER_CATEGORIES = {
     "specification", "decision", "access-approval", "human-action",
     "external-dependency", "technical-unknown", "safety-compliance",
@@ -185,6 +187,10 @@ EXECUTION_REPORT_ID = re.compile(r"^report-[0-9a-f]{64}$")
 
 class ReservationProviderError(ValueError):
     """The provider did not produce a safe, confirmed reservation result."""
+
+
+class GoalTransitionProviderError(ValueError):
+    """The provider did not produce a safe, confirmed goal transition result."""
 
 
 def _reservation_actor(value: str, field: str, limit: int) -> str:
@@ -367,6 +373,82 @@ class GitHubReservationAdapter:
         ])
         if result.returncode:
             raise self._provider_error(result)
+
+
+class GitHubGoalTransitionAdapter:
+    def __init__(self, repo: Path, repository: str):
+        self.repo = repo
+        self.repository = repository
+        self.executable = shutil.which("gh")
+        if not self.executable:
+            raise GoalTransitionProviderError("GitHub CLI is unavailable; no goal update was made.")
+        self._identity_checked = False
+
+    def _run(
+        self, arguments: list[str], *, input_text: str | None = None, timeout: int = 30,
+    ) -> subprocess.CompletedProcess[str]:
+        try:
+            return subprocess.run(
+                [self.executable, *arguments], cwd=self.repo, capture_output=True, text=True,
+                encoding="utf-8", input=input_text, timeout=timeout, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise GoalTransitionProviderError(
+                f"GitHub did not confirm the goal transition ({type(exc).__name__}); success was not assumed."
+            ) from exc
+
+    @staticmethod
+    def _provider_error(result: subprocess.CompletedProcess[str]) -> GoalTransitionProviderError:
+        detail = sanitize_output((result.stderr.strip() or result.stdout.strip() or "unknown GitHub error").splitlines()[0][:300])
+        return GoalTransitionProviderError(f"GitHub did not confirm the goal transition: {detail}")
+
+    def ensure_identity(self) -> None:
+        if self._identity_checked:
+            return
+        result = self._run(["repo", "view", self.repository, "--json", "nameWithOwner,hasIssuesEnabled,viewerPermission"])
+        if result.returncode:
+            raise self._provider_error(result)
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise GoalTransitionProviderError("GitHub returned invalid repository metadata; no goal update was made.") from exc
+        if data.get("nameWithOwner", "").casefold() != self.repository.casefold():
+            raise GoalTransitionProviderError("GitHub repository identity changed; no goal update was made.")
+        if not data.get("hasIssuesEnabled") or data.get("viewerPermission") not in GITHUB_MANAGEMENT_PERMISSIONS:
+            raise GoalTransitionProviderError("GitHub Issues management permission is required; no goal update was made.")
+        self._identity_checked = True
+
+    def get_issue(self, number: int) -> dict[str, Any]:
+        self.ensure_identity()
+        result = self._run(["api", f"repos/{self.repository}/issues/{number}"])
+        if result.returncode:
+            raise self._provider_error(result)
+        try:
+            issue = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise GoalTransitionProviderError("GitHub returned invalid goal data; no goal update was made.") from exc
+        if not isinstance(issue, dict):
+            raise GoalTransitionProviderError("GitHub returned incomplete goal data; no goal update was made.")
+        return issue
+
+    def update_issue(self, number: int, payload: dict[str, Any]) -> dict[str, Any]:
+        result = self._run(
+            ["api", "--method", "PATCH", f"repos/{self.repository}/issues/{number}", "--input", "-"],
+            input_text=json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+        )
+        if result.returncode:
+            raise self._provider_error(result)
+        try:
+            issue = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise GoalTransitionProviderError(
+                "GitHub returned an invalid goal-transition response; success was not assumed."
+            ) from exc
+        if not isinstance(issue, dict):
+            raise GoalTransitionProviderError(
+                "GitHub returned an incomplete goal-transition response; success was not assumed."
+            )
+        return issue
 
 
 def _validate_reservation_goal(
@@ -1291,6 +1373,104 @@ def github_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
         "updated_at": issue.get("updated_at"), "implementation": goal.get("implementation"),
         "labels": sorted(label["name"] for label in issue.get("labels", []) if isinstance(label, dict) and text_present(label.get("name"))),
         "state": issue.get("state"), "url": issue.get("html_url"),
+    }
+
+
+def validate_goal_transition(transition: Any, issue_number: int) -> list[str]:
+    if not isinstance(transition, dict):
+        return ["transition must be an object"]
+    errors = []
+    unknown = sorted(set(transition) - GOAL_TRANSITION_FIELDS)
+    missing = sorted(GOAL_TRANSITION_FIELDS - set(transition))
+    if unknown:
+        errors.append("unknown transition fields: " + ", ".join(unknown))
+    if missing:
+        errors.append("missing transition fields: " + ", ".join(missing))
+    if transition.get("schema_version") != GOAL_TRANSITION_SCHEMA_VERSION:
+        errors.append(f"transition schema_version must be {GOAL_TRANSITION_SCHEMA_VERSION}")
+    expected_revision = transition.get("expected_revision")
+    if not isinstance(expected_revision, int) or isinstance(expected_revision, bool) or expected_revision < 1:
+        errors.append("expected_revision must be a positive integer")
+    digest = transition.get("expected_digest")
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        errors.append("expected_digest must be the 64-character checkpoint goal digest")
+    goal = transition.get("goal")
+    errors.extend(validate_managed_goal(goal, issue_number))
+    if (
+        isinstance(goal, dict) and isinstance(expected_revision, int)
+        and not isinstance(expected_revision, bool) and goal.get("revision") != expected_revision + 1
+    ):
+        errors.append("goal revision must increment expected_revision by exactly one")
+    return errors
+
+
+def load_goal_transition(path: Path) -> dict[str, Any]:
+    try:
+        transition = json.loads(path.resolve().read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Could not read goal transition: {type(exc).__name__}") from exc
+    return transition
+
+
+def apply_goal_transition(
+    adapter: Any, repository: str, issue_number: int, transition: dict[str, Any],
+) -> dict[str, Any]:
+    errors = validate_goal_transition(transition, issue_number)
+    if errors:
+        raise ValueError("Invalid goal transition: " + "; ".join(errors))
+    if adapter.repository.casefold() != repository.casefold():
+        raise GoalTransitionProviderError("Repository identity changed; no goal update was made.")
+    issue = adapter.get_issue(issue_number)
+    try:
+        record = github_goal_record(issue)
+    except ValueError as exc:
+        raise GoalTransitionProviderError("The current goal could not be validated; no goal update was made.") from exc
+    if record["revision"] != transition["expected_revision"]:
+        raise ValueError(
+            f"Goal #{issue_number} changed from revision {transition['expected_revision']} to {record['revision']}; no update was made."
+        )
+    if not hmac.compare_digest(record["digest"], transition["expected_digest"]):
+        raise ValueError(f"Goal #{issue_number} digest changed; no update was made.")
+
+    desired = transition["goal"]
+    body = render_managed_goal(desired, issue["body"], issue_number)
+    retained_labels = sorted({
+        label["name"] for label in issue.get("labels", [])
+        if isinstance(label, dict) and text_present(label.get("name"))
+        and label["name"] != "zzzops"
+        and not label["name"].startswith("zzzops:status:")
+        and not label["name"].startswith("zzzops:priority:")
+    })
+    labels = ["zzzops", *retained_labels, f"zzzops:status:{desired['status']}", f"zzzops:priority:{desired['priority']}"]
+    state = "closed" if desired["status"] in {"done", "cancelled"} else "open"
+    updated = adapter.update_issue(issue_number, {"body": body, "labels": labels, "state": state})
+
+    expected_url = f"https://github.com/{repository}/issues/{issue_number}"
+    returned_labels = {
+        label["name"] for label in updated.get("labels", [])
+        if isinstance(label, dict) and text_present(label.get("name"))
+    }
+    try:
+        returned_goal = parse_managed_goal(updated.get("body"), issue_number)
+    except ValueError as exc:
+        raise GoalTransitionProviderError(
+            "GitHub returned an unexpected goal-transition response; success was not assumed."
+        ) from exc
+    if (
+        updated.get("number") != issue_number
+        or updated.get("title") != issue.get("title")
+        or updated.get("body") != body
+        or str(updated.get("state", "")).casefold() != state
+        or returned_labels != set(labels)
+        or updated.get("html_url") != expected_url
+        or returned_goal != desired
+    ):
+        raise GoalTransitionProviderError(
+            "GitHub returned an unexpected goal-transition response; success was not assumed."
+        )
+    return {
+        "number": issue_number, "revision": desired["revision"], "state": state,
+        "status": desired["status"], "url": expected_url,
     }
 
 
@@ -2409,6 +2589,11 @@ def main() -> int:
     portfolio_parser.add_argument("--include-done", action="store_true", help="Include terminal goals in summary output")
     portfolio_parser.add_argument("--compare", type=Path, help="Prior JSON snapshot used only to report digest/revision drift")
     portfolio_parser.add_argument("--include-feedback", action="store_true", help="Include specially tagged feedback goals")
+    goal_command = commands.add_parser("goal", help="Apply validated GitHub-backed goal transitions")
+    goal_commands = goal_command.add_subparsers(dest="goal_command", required=True)
+    transition_command = goal_commands.add_parser("transition", help="Apply one file-backed managed-goal transition")
+    transition_command.add_argument("--goal", type=int, required=True)
+    transition_command.add_argument("--input", type=Path, required=True, help="UTF-8 transition JSON file")
     reserve = commands.add_parser("reserve", help="Atomically reserve a GitHub-backed goal")
     reserve_commands = reserve.add_subparsers(dest="reserve_command", required=True)
     for name in ("acquire", "renew", "release"):
@@ -2487,6 +2672,13 @@ def main() -> int:
                 else:
                     print(f"Could not load goals: {exc}")
                 return 2
+        elif args.command == "goal":
+            project = reviewed_project_state(repo)
+            repository = _project_repository_identity(project)
+            transition = load_goal_transition(args.input)
+            adapter = GitHubGoalTransitionAdapter(repo, repository)
+            result = apply_goal_transition(adapter, repository, args.goal, transition)
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
         elif args.command == "reserve":
             project = reviewed_project_state(repo)
             repository = _project_repository_identity(project)

@@ -18,7 +18,7 @@ The checkpoint's one paginated GitHub process confirms identity, authentication,
 - Same-repository parent/dependency relations are positive issue numbers. Derive children/blocking edges portfolio-wide. Put resolutions/history in append-only comments; old comments remain immutable provenance.
 - Use label `zzzops`, one `zzzops:status:*`, and one `zzzops:priority:*` as derived indexes.
 - Reservations use transient `zzzops:reserve:<issue>` and `zzzops:resource:<hash>` labels. GitHub name uniqueness chooses one winner with Issues permission; metadata binds repository, goal/revision, owner/run, and expiry. Renew/recover by immutable node ID and exact readback, so delayed cleanup cannot delete a replacement. Drift, conflict, malformed state, provider failure, or uncertainty denies ownership; no alternate lock or advisory fallback.
-- Before update, re-read issue plus `updated_at`; parse/validate the block and abort/reconcile if the snapshot digest/revision changed. The batch command paginates once and reports incomplete reads instead of guessing.
+- Apply updates via `<python> .agents/zzzops/zzzops.py goal transition --goal N --input FILE`. UTF-8 input binds expected revision/digest to the next goal, preserves human text, derives labels/state, and validates the write.
 - Capability/auth/permission/disabled-Issues/label drift is an explicit blocker. Never invent a fallback authority.
 
 ## Git boundary
