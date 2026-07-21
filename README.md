@@ -28,6 +28,8 @@ On macOS or Linux:
 
 The installer previews the tracked project mechanics, warns if Git ignores required `.agents/` or `.claude/` content, and asks once before real writes. The default answer is no. If everything is current, it exits without prompting and says no further action is necessary. Use `-DryRun` on Windows or `--dry-run` on macOS/Linux for a non-interactive preview.
 
+After project policy is initialized and reviewed, the first ordinary ZzzOps checkpoint requires the installer-managed skills, shared rules, control CLI/templates, and machinery ignore files to be committed. Untracked, staged, modified, or deleted machinery stops ordinary workflows with a commit-first action; project policy/state and root repository instructions are not part of this machinery check.
+
 The CLI copies discoverable skills, mechanics, and blank templates—never itself, project state, another project’s goals, or the target’s `AGENTS.md`/`CLAUDE.md`.
 
 Discoverable skills stay in `.agents/skills/` and `.claude/skills/`. Other harness support is grouped under `.agents/zzzops/`, while shared project rules and state use the root `.zzzops/` folder.
