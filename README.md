@@ -163,24 +163,27 @@ The installed parallel default measures existing Git-tracked working-tree bytes,
 
 ## Releases
 
-Develop on branches created from `dev` and open ordinary PRs against `dev`. The read-only **PR validation / dev-required-tests** job must pass before merge. Each push to `dev` previews the release with read-only repository permission; it cannot publish. `main` is reserved for an intended owner force-push release: the same planner then receives `contents: write` and creates the Git tag and GitHub Release.
+Develop on branches created from `dev` and open ordinary PRs against `dev`. The read-only **PR validation / dev-required-tests** job must pass before merge. Each push to `dev` runs `semantic-release --dry-run` with read-only repository permission; dry-run skips tag creation and publication. `main` is reserved for an intended owner force-push release: semantic-release then receives `contents: write` and creates the Git tag and GitHub Release.
 
-Versions follow Conventional Commits since the latest `vMAJOR.MINOR.PATCH` tag: `!`, `BREAKING CHANGE:`, or `BREAKING-CHANGE:` bumps major, `feat` bumps minor, and `fix`/`perf` bumps patch. Other types do not release. The first release applies those rules from `0.0.0`; reruns with no new releasable commits are no-ops. No repository secret is required beyond GitHub's job token.
+Semantic commits since the latest reachable `vMAJOR.MINOR.PATCH` tag are the release-history source. `!` or a `BREAKING CHANGE` footer produces a major release, `feat` produces minor, and `fix`, `perf`, or `revert` produces patch. The highest change wins. Documentation, style, chores, refactors, tests, builds, and CI do not release and are omitted from notes. The conventional-commits generator emits sections in its fixed significance order—Features, Bug Fixes, Performance Improvements, then Reverts—with a distinct breaking-changes section; empty sections are omitted and entries are sorted by subject then scope. Reruns with no releasable commits are no-ops.
+
+Release notes live on the GitHub Release rather than in a versioned `CHANGELOG.md`, avoiding a release-generated commit and duplicate history. The exact Node and semantic-release/plugin versions are pinned in `package-lock.json`; no repository secret is required beyond GitHub's job token.
 
 To diagnose a PR or release, inspect **PR validation / dev-required-tests** or the **Semantic release** run and its failing step. Reproduce the same checks locally with:
 
 ```powershell
 <python> -m unittest discover -s .agents -p 'test_*.py'
 <python> -m unittest discover -s .agents/skills/migrate-to-zzzops/scripts -p 'test_*.py'
-<python> -m unittest discover -s .github/scripts -p 'test_*.py'
+npm ci
+npm run test:release
 <python> .agents/manual_acceptance.py coverage
 <python> .agents/prompt_stats.py --check
-<python> -m compileall -q .agents .github/scripts
+<python> -m compileall -q .agents
 bash -n install.sh
 powershell -NoProfile -Command "[void][scriptblock]::Create((Get-Content -Raw ./install.ps1))"
 ```
 
-`<python> .github/scripts/semantic_release.py` only writes a local notes file.
+`npx semantic-release --dry-run --branches dev` previews the next version and release notes without creating a tag or GitHub Release.
 
 Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required `dev` check, current GitHub Free limitation, closest enforceable `main` policy, and recovery procedure.
 

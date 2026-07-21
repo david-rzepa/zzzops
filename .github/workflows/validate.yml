@@ -20,6 +20,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.14.0'
+          cache: npm
+      - name: Install release tooling
+        run: npm ci
       - name: Test ZzzOps core and repository contracts
         run: python -m unittest discover -s .agents -p 'test_*.py'
       - name: Test TODO migration inventory
@@ -27,7 +33,7 @@ jobs:
       - name: Test manual acceptance plan coverage
         run: python .agents/manual_acceptance.py coverage
       - name: Test semantic releases
-        run: python -m unittest discover -s .github/scripts -p 'test_*.py'
+        run: npm run test:release
       - name: Verify prompt budget
         run: python .agents/prompt_stats.py --check
       - name: Check script syntax
