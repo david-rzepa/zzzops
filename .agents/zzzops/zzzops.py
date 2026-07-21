@@ -895,7 +895,8 @@ def reviewed_project_state(repo: Path) -> dict[str, Any]:
 
 def read_cli_text(value: str) -> str:
     if value == "-":
-        return sys.stdin.read()
+        text = sys.stdin.read()
+        return text[1:] if text.startswith("\ufeff") else text
     try:
         return Path(value).resolve().read_text(encoding="utf-8-sig")
     except (OSError, UnicodeError) as exc:
