@@ -8,7 +8,9 @@ import math
 from pathlib import Path
 
 
-MAX_ESTIMATED_TOKENS = 13_000
+# Goal #129 adds the privacy boundary itself: shared immutable-report rules, exact public-
+# payload consent, and one session gate that prevents feedback issues entering execution silently.
+MAX_ESTIMATED_TOKENS = 14_400
 
 def canonical_size(data: bytes) -> int:
     """Count UTF-8 bytes after normalizing platform line endings to LF."""

@@ -2,7 +2,7 @@
 set -u
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-TARGET_SKILLS=(add-zzzops-goal execute-zzzops migrate-to-zzzops review-zzzops-policy suggest-zzzops-work)
+TARGET_SKILLS=(add-zzzops-goal execute-zzzops migrate-to-zzzops review-zzzops-policy send-zzzops-feedback suggest-zzzops-work)
 DRY_RUN=0
 OVERWRITE=0
 
@@ -31,7 +31,7 @@ build_pairs() {
     local relative root file name suffix
     local fixed=(
         .zzzops/rules/BACKENDS.md .zzzops/rules/BLOCKERS.md .zzzops/rules/CONTINUATION.md
-        .zzzops/rules/EXECUTION_STRATEGY.md .zzzops/rules/GOAL_SYSTEM.md .zzzops/rules/INITIALIZATION.md
+        .zzzops/rules/EXECUTION_STRATEGY.md .zzzops/rules/FEEDBACK.md .zzzops/rules/GOAL_SYSTEM.md .zzzops/rules/INITIALIZATION.md
         .agents/zzzops/zzzops.py
     )
     for relative in "${fixed[@]}"; do add_pair "$SOURCE_ROOT/$relative" "$relative"; done

@@ -6,6 +6,8 @@ Use the portfolio embedded by `INITIALIZATION.md`'s single checkpoint; never run
 
 Closed goals are fully validated, then emitted as minimal archived projections. Re-read only likely duplicates, selection-critical relations, or explicit user targets.
 
+Managed issues labeled `zzzops-feedback` are omitted from ordinary portfolio checkpoints. Include them with `--include-feedback` only after one explicit approval for the current execution session; the choice covers the whole feedback queue, is not persisted, and never causes per-issue approval prompts.
+
 ## GitHub Issues (`github_issues`)
 
 The checkpoint's single paginated GitHub process must confirm identity, authentication, Issues, and management permission while fetching managed issues. Agents use native `gh issue`/`gh api` only for targeted reads/writes; the CLI validates managed structures.

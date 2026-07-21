@@ -4,3 +4,4 @@ init/*.tmp
 migration/plan.json
 migration/SUMMARY.md
 migration/*.tmp
+execution-reports/

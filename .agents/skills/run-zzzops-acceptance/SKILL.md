@@ -10,3 +10,5 @@ description: Run/guide/resume/check tests: "manual test", "acceptance test", "ru
 Only explicit same task `check ID` checks it. Never infer an ID. Failures/skips/blockers unchecked; separate tasks `next`.
 
 Use plain language and show only what the user must do now, the expected outcome, and whether it passed. Keep plan fingerprints and harness bookkeeping internal unless requested or needed to diagnose a failure.
+
+Before stopping or handing off, apply `.zzzops/rules/FEEDBACK.md`.

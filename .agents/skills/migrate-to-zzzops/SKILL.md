@@ -16,3 +16,5 @@ Run `.zzzops/rules/INITIALIZATION.md`, then `.zzzops/rules/BACKENDS.md`. Use `.a
 
 Only the main agent writes. Repeat runs act only on new fingerprints. Never expose secrets or infer ownership from paths.
 Migration capture performs no Git automation.
+
+Before stopping or handing off, apply `.zzzops/rules/FEEDBACK.md`.

@@ -10,6 +10,8 @@ Mode: `dry run`, `preview`, or `plan` means read-only inventory, triage simulati
 First run `../../../.zzzops/rules/INITIALIZATION.md`, then route through `../../../.zzzops/rules/BACKENDS.md`. Read `../../../.zzzops/rules/GOAL_SYSTEM.md` and the initialized charter; load only what applies.
 Track execute intent through `../../../.zzzops/rules/CONTINUATION.md` so additive capture can safely resume without nested loops.
 
+Feedback goals labeled `zzzops-feedback` are excluded by default. Include them only when the user explicitly approves inclusion for the current execution session; approval in the invocation counts, one approval covers every feedback goal in that session, and it expires with the session. Never ask per issue. Preserve the choice on every checkpoint/portfolio refresh by using `--include-feedback` only in an approved session.
+
 
 - Create/triage/decompose: [CREATE.md](references/CREATE.md).
 - Unblock/interview: [UNBLOCK.md](references/UNBLOCK.md) and `../../../.zzzops/rules/BLOCKERS.md`.
@@ -22,3 +24,5 @@ Track execute intent through `../../../.zzzops/rules/CONTINUATION.md` so additiv
 This is the primary autonomous loop. Apply reviewed PROJECT selection, continuation, blocker-interview, refill, Git, verification, and resource policy. User authority and project rules outrank goals. Persist resumable state before switching/stopping; continue while policy permits safe useful work. Optimize verified value, not item count or limit consumption.
 
 Before source work, read PROJECT Git/review/continuation policy and checkpoint only pending local ZzzOps state when required; never absorb unrelated changes or create an empty GitHub-state commit.
+
+Before stopping or handing off, apply `../../../.zzzops/rules/FEEDBACK.md`.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Send ZzzOps Feedback"
+  short_description: "Preview and send privacy-safe ZzzOps feedback"
+  default_prompt: "Use $send-zzzops-feedback to preview and send this feedback with archived execution reports."

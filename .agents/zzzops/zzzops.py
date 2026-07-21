@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -72,6 +74,28 @@ GITHUB_MANAGEMENT_PERMISSIONS = {"TRIAGE", "WRITE", "MAINTAIN", "ADMIN"}
 RESERVATION_COLOR = "5319E7"
 RESERVATION_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 RESERVATION_EXPIRY_GRACE_SECONDS = 60
+EXECUTION_REPORT_SCHEMA_VERSION = 1
+EXECUTION_REPORT_TARGET = "david-rzepa/zzzops"
+EXECUTION_REPORT_TITLE = "ZzzOps feedback"
+EXECUTION_REPORT_LABELS = ["zzzops", "zzzops-feedback", "zzzops:status:new", "zzzops:priority:P2"]
+EXECUTION_REPORT_WORKFLOWS = {
+    "add-zzzops-goal", "execute-zzzops", "migrate-to-zzzops", "review-zzzops-policy",
+    "run-zzzops-acceptance", "send-zzzops-feedback", "suggest-zzzops-work",
+}
+EXECUTION_REPORT_AGENTS = {"codex", "claude", "unknown"}
+EXECUTION_REPORT_ISSUES = {
+    "avoidable_wait", "continuation_stall", "excessive_prompt_load", "excessive_token_use",
+    "poor_tool_choice", "redundant_update", "repeated_tool_call", "unnecessary_question",
+}
+EXECUTION_REPORT_PHASES = {
+    "capture", "discovery", "handoff", "implementation", "installation", "migration",
+    "policy_review", "triage", "unblocking", "verification",
+}
+EXECUTION_REPORT_FIELDS = {
+    "schema_version", "id", "created_at", "workflow", "agent", "issue", "phase",
+    "occurrences", "impact",
+}
+EXECUTION_REPORT_ID = re.compile(r"^report-[0-9a-f]{64}$")
 
 
 class ReservationProviderError(ValueError):
@@ -511,6 +535,248 @@ def project_claim_ttl_seconds(project: dict[str, Any]) -> int:
         raise ValueError("Reviewed project policy must set claim_ttl_hours from 1 to 24")
     return hours * 3600
 
+
+def execution_reports_enabled(project: dict[str, Any]) -> bool:
+    sections = ((project.get("policy") or {}).get("sections") if isinstance(project.get("policy"), dict) else None)
+    section = next((item for item in sections or [] if isinstance(item, dict) and item.get("id") == "autonomy_approval_parallelism"), None)
+    settings = section.get("settings") if isinstance(section, dict) else None
+    configured = settings.get("execution_reports") if isinstance(settings, dict) and "execution_reports" in settings else None
+    if configured is not None and not isinstance(configured, dict):
+        raise ValueError("Reviewed project policy execution_reports must be an object")
+    enabled = configured.get("enabled") if isinstance(configured, dict) and "enabled" in configured else True
+    if not isinstance(enabled, bool):
+        raise ValueError("Reviewed project policy execution_reports.enabled must be boolean")
+    return enabled
+
+
+def execution_report_directory(repo: Path) -> Path:
+    return repo / ".zzzops" / "execution-reports"
+
+
+def _bounded_count(value: Any, field: str, minimum: int = 0) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or not minimum <= value <= 1_000_000_000:
+        raise ValueError(f"{field} must be an integer from {minimum} to 1000000000")
+    return value
+
+
+def execution_report_id(report: dict[str, Any]) -> str:
+    payload = {key: value for key, value in report.items() if key != "id"}
+    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "report-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def validate_execution_report(report: Any) -> list[str]:
+    if not isinstance(report, dict):
+        return ["execution report must be an object"]
+    errors: list[str] = []
+    unknown = sorted(set(report) - EXECUTION_REPORT_FIELDS)
+    missing = sorted(EXECUTION_REPORT_FIELDS - set(report))
+    if unknown:
+        errors.append("unknown execution report fields: " + ", ".join(unknown))
+    if missing:
+        errors.append("missing execution report fields: " + ", ".join(missing))
+    if report.get("schema_version") != EXECUTION_REPORT_SCHEMA_VERSION:
+        errors.append(f"schema_version must be {EXECUTION_REPORT_SCHEMA_VERSION}")
+    report_id = report.get("id")
+    if not isinstance(report_id, str) or not EXECUTION_REPORT_ID.fullmatch(report_id):
+        errors.append("id must use the constrained report identifier format")
+    elif report_id != execution_report_id(report):
+        errors.append("id must be content-addressed; execution reports are immutable")
+    created_at = report.get("created_at")
+    try:
+        parsed = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            raise ValueError
+    except ValueError:
+        errors.append("created_at must be an ISO-8601 timestamp with timezone")
+    for field, allowed in (
+        ("workflow", EXECUTION_REPORT_WORKFLOWS),
+        ("agent", EXECUTION_REPORT_AGENTS),
+        ("issue", EXECUTION_REPORT_ISSUES),
+        ("phase", EXECUTION_REPORT_PHASES),
+    ):
+        if report.get(field) not in allowed:
+            errors.append(f"{field} is invalid")
+    try:
+        _bounded_count(report.get("occurrences"), "occurrences", 1)
+    except ValueError as exc:
+        errors.append(str(exc))
+    impact = report.get("impact")
+    expected_impact = {"wait_seconds", "extra_tool_calls", "estimated_tokens"}
+    if not isinstance(impact, dict) or set(impact) != expected_impact:
+        errors.append("impact must contain only wait_seconds, extra_tool_calls, and estimated_tokens")
+    else:
+        for field in sorted(expected_impact):
+            try:
+                _bounded_count(impact.get(field), field)
+            except ValueError as exc:
+                errors.append(str(exc))
+    return errors
+
+
+def record_execution_report(
+    repo: Path, project: dict[str, Any], *, workflow: str, agent: str, issue: str, phase: str,
+    occurrences: int = 1, wait_seconds: int = 0, extra_tool_calls: int = 0,
+    estimated_tokens: int = 0, now: datetime | None = None,
+) -> dict[str, Any]:
+    if not execution_reports_enabled(project):
+        return {"recorded": False, "reason": "disabled"}
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        raise ValueError("report timestamp must include a timezone")
+    report = {
+        "schema_version": EXECUTION_REPORT_SCHEMA_VERSION,
+        "created_at": now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "workflow": workflow,
+        "agent": agent,
+        "issue": issue,
+        "phase": phase,
+        "occurrences": occurrences,
+        "impact": {
+            "wait_seconds": wait_seconds,
+            "extra_tool_calls": extra_tool_calls,
+            "estimated_tokens": estimated_tokens,
+        },
+    }
+    report_id = execution_report_id(report)
+    report["id"] = report_id
+    errors = validate_execution_report(report)
+    if errors:
+        raise ValueError("Invalid execution report: " + "; ".join(errors))
+    path = execution_report_directory(repo) / f"{report_id}.json"
+    if path.exists():
+        raise ValueError(f"execution report already exists: {report_id}")
+    atomic_text(path, json.dumps(report, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n")
+    return {"recorded": True, "id": report_id, "path": str(path)}
+
+
+def load_execution_reports(repo: Path, report_ids: list[str] | None = None) -> list[dict[str, Any]]:
+    directory = execution_report_directory(repo)
+    requested = None if report_ids is None else set(report_ids)
+    if requested is not None:
+        for report_id in requested:
+            if not isinstance(report_id, str) or not EXECUTION_REPORT_ID.fullmatch(report_id):
+                raise ValueError(f"invalid execution report id: {report_id}")
+    reports: list[dict[str, Any]] = []
+    if directory.is_dir():
+        for path in sorted(directory.glob("report-*.json")):
+            try:
+                report = json.loads(path.read_text(encoding="utf-8-sig"))
+            except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                raise ValueError(f"Could not read execution report {path.name}: {type(exc).__name__}") from exc
+            errors = validate_execution_report(report)
+            if errors or path.name != f"{report.get('id')}.json":
+                detail = "; ".join(errors) if errors else "filename does not match id"
+                raise ValueError(f"Invalid execution report {path.name}: {detail}")
+            if requested is None or report["id"] in requested:
+                reports.append(report)
+    if requested is not None:
+        missing = sorted(requested - {report["id"] for report in reports})
+        if missing:
+            raise ValueError("unknown execution report ids: " + ", ".join(missing))
+    return reports
+
+
+def prepare_feedback(repo: Path, prompt: str, report_ids: list[str] | None = None) -> dict[str, Any]:
+    if not isinstance(prompt, str):
+        raise ValueError("feedback prompt must be text")
+    reports = load_execution_reports(repo, report_ids)
+    if not prompt.strip() and not reports:
+        raise ValueError("feedback requires prompt text or at least one execution report")
+    report_json = json.dumps(reports, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    feedback_text = prompt if prompt.strip() else "(none)"
+    body = (
+        "## User feedback\n\n"
+        f"{feedback_text}\n\n"
+        "## Archived execution reports\n\n"
+        "These constrained records contain ZzzOps/Codex/Claude machinery categories and numeric impact only.\n\n"
+        f"```json\n{report_json}\n```\n"
+    )
+    feedback_goal = {
+        "schema_version": GOAL_SCHEMA_VERSION,
+        "status": "new", "priority": "P2", "value": "medium",
+        "difficulty": "unknown", "confidence": "low",
+        "parent": None, "depends_on": [], "claim": None, "blockers": [],
+        "evidence": ["User-submitted ZzzOps feedback"],
+        "next_action": "Triage this feedback against ZzzOps mechanisms and decide whether it warrants implementation.",
+        "revision": 1, "implementation": None, "resources": [],
+    }
+    body = render_managed_goal(feedback_goal, body)
+    selected = [report["id"] for report in reports]
+    canonical = json.dumps({
+        "target": EXECUTION_REPORT_TARGET, "title": EXECUTION_REPORT_TITLE,
+        "body": body, "labels": EXECUTION_REPORT_LABELS, "report_ids": selected,
+    }, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return {
+        "target": EXECUTION_REPORT_TARGET,
+        "title": EXECUTION_REPORT_TITLE,
+        "body": body,
+        "labels": list(EXECUTION_REPORT_LABELS),
+        "report_ids": selected,
+        "digest": "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+    }
+
+
+def submit_feedback(
+    repo: Path, prompt: str, confirmation: str, report_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    prepared = prepare_feedback(repo, prompt, report_ids)
+    if not isinstance(confirmation, str) or not hmac.compare_digest(confirmation, prepared["digest"]):
+        raise ValueError("feedback confirmation does not match the exact current payload")
+    executable = shutil.which("gh")
+    if not executable:
+        raise ValueError("GitHub CLI is unavailable")
+    command = [
+        executable, "issue", "create", "--repo", prepared["target"],
+        "--title", prepared["title"], "--body-file", "-",
+    ]
+    for label in prepared["labels"]:
+        command.extend(("--label", label))
+    try:
+        result = subprocess.run(
+            command, cwd=repo, input=prepared["body"], text=True, encoding="utf-8",
+            capture_output=True, timeout=60, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError(f"Feedback submission failed: {type(exc).__name__}") from exc
+    if result.returncode:
+        raise ValueError("Feedback submission failed: " + (result.stderr.strip() or "unknown gh error"))
+    url = result.stdout.strip()
+    expected_prefix = f"https://github.com/{prepared['target']}/issues/"
+    if not url.startswith(expected_prefix):
+        raise ValueError("Feedback submission returned an unexpected issue URL; reports were retained")
+    deleted: list[str] = []
+    retained: list[str] = []
+    for report_id in prepared["report_ids"]:
+        try:
+            load_execution_reports(repo, [report_id])
+            (execution_report_directory(repo) / f"{report_id}.json").unlink()
+            deleted.append(report_id)
+        except (OSError, ValueError):
+            retained.append(report_id)
+    return {
+        "submitted": True, "url": url,
+        "deleted_report_ids": deleted, "retained_report_ids": retained,
+    }
+
+
+def reviewed_project_state(repo: Path) -> dict[str, Any]:
+    _path, _policy_text, project = read_project_state(repo)
+    errors = validate_project_state(project) if project is not None else ["canonical policy is missing"]
+    errors.extend(validate_project_artifacts(repo, project))
+    if errors or project.get("initialized") is not True or policy_blockers(project.get("policy")):
+        raise ValueError("Project policy is not ready")
+    return project
+
+
+def read_cli_text(value: str) -> str:
+    if value == "-":
+        return sys.stdin.read()
+    try:
+        return Path(value).resolve().read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError) as exc:
+        raise ValueError(f"Could not read feedback prompt: {type(exc).__name__}") from exc
+
 def project_digest(text: str) -> str:
     return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -704,6 +970,18 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                 errors.append(f"{prefix}.source_ids missing citations: {', '.join(missing_sources)}")
         if not isinstance(section.get("settings"), dict):
             errors.append(f"{prefix}.settings must be an object")
+        elif section_id == "autonomy_approval_parallelism" and "execution_reports" in section["settings"]:
+            reporting = section["settings"]["execution_reports"]
+            if not isinstance(reporting, dict):
+                errors.append(f"{prefix}.settings.execution_reports must be an object")
+            elif not isinstance(reporting.get("enabled"), bool):
+                errors.append(f"{prefix}.settings.execution_reports.enabled must be boolean")
+        elif section_id == "autonomy_approval_parallelism" and "execution_reports" in section["settings"]:
+            reporting = section["settings"]["execution_reports"]
+            if not isinstance(reporting, dict):
+                errors.append(f"{prefix}.settings.execution_reports must be an object")
+            elif not isinstance(reporting.get("enabled"), bool):
+                errors.append(f"{prefix}.settings.execution_reports.enabled must be boolean")
         review = section.get("review")
         if not isinstance(review, dict) or not isinstance(review.get("approved"), bool):
             errors.append(f"{prefix}.review.approved must be boolean")
@@ -1141,7 +1419,9 @@ def _github_repository_capability(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def github_repository_portfolio_snapshot(repo: Path, project: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+def github_repository_portfolio_snapshot(
+    repo: Path, project: dict[str, Any], include_feedback: bool = False,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     identity = _project_repository_identity(project)
     owner, name = identity.split("/", 1)
     executable = shutil.which("gh")
@@ -1203,7 +1483,16 @@ def github_repository_portfolio_snapshot(repo: Path, project: dict[str, Any]) ->
         except (KeyError, TypeError, ValueError) as exc:
             goal = issue.get("number", "unknown") if isinstance(issue, dict) else "unknown"
             findings.append({"code": "malformed_record", "goal": goal, "detail": str(exc)})
-    managed = [issue for issue in issues if GOAL_BLOCK_START in issue["body"]]
+    def is_feedback(issue: dict[str, Any]) -> bool:
+        return any(
+            isinstance(label, dict) and label.get("name") == "zzzops-feedback"
+            for label in issue.get("labels", [])
+        )
+
+    managed = [
+        issue for issue in issues
+        if GOAL_BLOCK_START in issue["body"] and (include_feedback or not is_feedback(issue))
+    ]
     records = []
     for issue in managed:
         try:
@@ -1229,7 +1518,7 @@ def github_repository_portfolio_snapshot(repo: Path, project: dict[str, Any]) ->
     return repository_probe, compact_portfolio_output(snapshot)
 
 
-def portfolio_snapshot(repo: Path) -> dict[str, Any]:
+def portfolio_snapshot(repo: Path, include_feedback: bool = False) -> dict[str, Any]:
     _path, _text, project = read_project_state(repo)
     if project is None:
         raise ValueError("Project policy is missing; run the review-zzzops-policy skill")
@@ -1237,7 +1526,7 @@ def portfolio_snapshot(repo: Path) -> dict[str, Any]:
     errors.extend(validate_project_artifacts(repo, project))
     if errors or not project or not project.get("initialized"):
         raise ValueError("Project policy is not initialized: " + "; ".join(errors or ["review pending"]))
-    _repository, snapshot = github_repository_portfolio_snapshot(repo, project)
+    _repository, snapshot = github_repository_portfolio_snapshot(repo, project, include_feedback)
     return snapshot
 
 
@@ -1416,7 +1705,7 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
     }
 
 
-def decision_checkpoint(repo: Path) -> dict[str, Any]:
+def decision_checkpoint(repo: Path, include_feedback: bool = False) -> dict[str, Any]:
     path, text = read_project(repo)
     error = None
     try:
@@ -1452,7 +1741,7 @@ def decision_checkpoint(repo: Path) -> dict[str, Any]:
     if initialized and state:
         github_processes = 1 if github_available else 0
         try:
-            github_repository, portfolio = github_repository_portfolio_snapshot(repo, state)
+            github_repository, portfolio = github_repository_portfolio_snapshot(repo, state, include_feedback)
             github_auth = {"available": True, "ok": True, "detail": "github.com"}
         except ValueError as exc:
             detail = sanitize_output(str(exc))
@@ -1907,11 +2196,13 @@ def main() -> int:
     confirm_command.add_argument("--reviewer", required=True)
     confirm_command.add_argument("--section", action="append", default=[])
     confirm_command.add_argument("--all", action="store_true", help="Approve every current policy section")
-    commands.add_parser("checkpoint", help="Validate initialized state, GitHub capability, and the goal portfolio once")
+    checkpoint_parser = commands.add_parser("checkpoint", help="Validate initialized state, GitHub capability, and the goal portfolio once")
+    checkpoint_parser.add_argument("--include-feedback", action="store_true", help="Include specially tagged feedback goals for this session")
     portfolio_parser = commands.add_parser("portfolio", help="Read and audit the canonical goal portfolio once")
     portfolio_parser.add_argument("--format", dest="output_format", choices=("summary", "json"), default="summary")
     portfolio_parser.add_argument("--include-done", action="store_true", help="Include terminal goals in summary output")
     portfolio_parser.add_argument("--compare", type=Path, help="Prior JSON snapshot used only to report digest/revision drift")
+    portfolio_parser.add_argument("--include-feedback", action="store_true", help="Include specially tagged feedback goals")
     reserve = commands.add_parser("reserve", help="Atomically reserve a GitHub-backed goal")
     reserve_commands = reserve.add_subparsers(dest="reserve_command", required=True)
     for name in ("acquire", "renew", "release"):
@@ -1924,6 +2215,30 @@ def main() -> int:
         reserve_command.add_argument("--format", dest="output_format", choices=("summary", "json"), default="summary")
         if name != "release":
             reserve_command.add_argument("--ttl-seconds", type=int, help="Override reviewed claim_ttl_hours")
+    report = commands.add_parser("report", help="Record or inspect privacy-safe machinery execution reports")
+    report_commands = report.add_subparsers(dest="report_command", required=True)
+    report_record = report_commands.add_parser("record", help="Record one constrained machinery observation")
+    report_record.add_argument("--workflow", choices=sorted(EXECUTION_REPORT_WORKFLOWS), required=True)
+    report_record.add_argument("--agent", choices=sorted(EXECUTION_REPORT_AGENTS), required=True)
+    report_record.add_argument("--issue", choices=sorted(EXECUTION_REPORT_ISSUES), required=True)
+    report_record.add_argument("--phase", choices=sorted(EXECUTION_REPORT_PHASES), required=True)
+    report_record.add_argument("--occurrences", type=int, default=1)
+    report_record.add_argument("--wait-seconds", type=int, default=0)
+    report_record.add_argument("--extra-tool-calls", type=int, default=0)
+    report_record.add_argument("--estimated-tokens", type=int, default=0)
+    report_list = report_commands.add_parser("list", help="List valid archived reports")
+    report_list.add_argument("--report", action="append", default=[], help="Select a report id; repeat as needed")
+    feedback = commands.add_parser("feedback", help="Preview or submit feedback to the public ZzzOps repository")
+    feedback_commands = feedback.add_subparsers(dest="feedback_command", required=True)
+    for name in ("prepare", "submit"):
+        feedback_command = feedback_commands.add_parser(name)
+        feedback_command.add_argument(
+            "--prompt-file", default="-",
+            help="UTF-8 user feedback file, or - for stdin (default)",
+        )
+        feedback_command.add_argument("--report", action="append", default=[], help="Select a report id; repeat as needed")
+        if name == "submit":
+            feedback_command.add_argument("--confirm", required=True, help="Exact digest shown by feedback prepare")
     args = parser.parse_args()
     repo = args.repo.resolve()
     if not (repo / ".agents" / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").is_file():
@@ -1931,7 +2246,7 @@ def main() -> int:
         return 2
     try:
         if args.command == "checkpoint":
-            result = decision_checkpoint(repo)
+            result = decision_checkpoint(repo, args.include_feedback)
             print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 0 if result["ready"] else 2
         if args.command == "init":
@@ -1951,7 +2266,7 @@ def main() -> int:
                 print(json.dumps(result, indent=2))
         elif args.command == "portfolio":
             try:
-                result = portfolio_snapshot(repo)
+                result = portfolio_snapshot(repo, args.include_feedback)
                 if args.compare:
                     prior = json.loads(args.compare.resolve().read_text(encoding="utf-8-sig"))
                     result["changes"] = compare_portfolios(result, prior)
@@ -1966,11 +2281,7 @@ def main() -> int:
                     print(f"Could not load goals: {exc}")
                 return 2
         elif args.command == "reserve":
-            _path, _policy_text, project = read_project_state(repo)
-            errors = validate_project_state(project) if project is not None else ["canonical policy is missing"]
-            errors.extend(validate_project_artifacts(repo, project))
-            if errors or project.get("initialized") is not True or policy_blockers(project.get("policy")):
-                raise ValueError("Project policy is not ready; no reservation was made.")
+            project = reviewed_project_state(repo)
             repository = _project_repository_identity(project)
             adapter = GitHubReservationAdapter(repo, repository)
             ttl_seconds = None
@@ -1999,6 +2310,25 @@ def main() -> int:
             else:
                 print(f"Goal #{args.goal} is not reserved by this run. Refresh before continuing.")
             return 0 if result.get("acquired") is True or result.get("released") is True else 3
+        elif args.command == "report":
+            if args.report_command == "record":
+                project = reviewed_project_state(repo)
+                result = record_execution_report(
+                    repo, project, workflow=args.workflow, agent=args.agent, issue=args.issue, phase=args.phase,
+                    occurrences=args.occurrences, wait_seconds=args.wait_seconds,
+                    extra_tool_calls=args.extra_tool_calls, estimated_tokens=args.estimated_tokens,
+                )
+            else:
+                result = {"reports": load_execution_reports(repo, args.report or None)}
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+        elif args.command == "feedback":
+            prompt = read_cli_text(args.prompt_file)
+            selected = args.report or None
+            if args.feedback_command == "prepare":
+                result = prepare_feedback(repo, prompt, selected)
+            else:
+                result = submit_feedback(repo, prompt, args.confirm, selected)
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
         else:
             parser.print_help()
     except (EOFError, KeyboardInterrupt):

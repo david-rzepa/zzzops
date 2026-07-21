@@ -5,6 +5,7 @@
 ## Select
 
 1. Read the charter and use the current BACKENDS checkpoint portfolio; never reread it. Require `complete:true` and `valid:true`; resolve findings instead of selecting from an invalid graph, and use its compact relationships/claims/reviews rather than rereading goals. If the present user's human queue is non-empty, run `UNBLOCK.md` first.
+   Specially tagged `zzzops-feedback` goals are absent unless the user approved them for this execution session. One session approval includes the whole feedback queue; never request approval per issue, and retain `--include-feedback` on every checkpoint refresh in that session.
 2. Route `new` goals through `CREATE.md` according to PROJECT triage/continuation policy.
 3. Use the portfolio's PROJECT-derived `actionable` field. The installed default waits for every dependency to be `done` before writable implementation; a reviewed PROJECT override such as `stack_from_reviewed_checkpoint` may make a child actionable earlier. Read-only investigation may prepare waiting work when policy permits, but never claims, edits, branches, or marks it started. Recheck blocked work only on its trigger.
 4. Rank by evidenced charter/KPI movement and unlock value, then apply PROJECT priority, easy-win, tie-break, and resume policy.
