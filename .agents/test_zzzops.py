@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import json
 import re
 import subprocess
@@ -437,6 +438,16 @@ class ExecutionReportTests(unittest.TestCase):
         }
         values.update(overrides)
         return zzzops.record_execution_report(self.repo, self.project, **values)
+
+    def test_feedback_cli_text_normalizes_utf8_bom_for_file_and_stdin(self):
+        prompt = self.repo / "prompt.txt"
+        for text in ("", "Feedback"):
+            prompt.write_bytes(b"\xef\xbb\xbf" + text.encode("utf-8"))
+            from_file = zzzops.read_cli_text(str(prompt))
+            with mock.patch.object(sys, "stdin", io.StringIO("\ufeff" + text)):
+                from_stdin = zzzops.read_cli_text("-")
+            self.assertEqual(text, from_file)
+            self.assertEqual(from_file, from_stdin)
 
     def test_record_is_constrained_local_and_policy_can_disable_it(self):
         result = self.record()
