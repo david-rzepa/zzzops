@@ -292,6 +292,66 @@ class InitializationTests(unittest.TestCase):
         self.assertEqual("read_only", profile["mode"])
         self.assertEqual(3, profile["max_workers"])
 
+    def test_machinery_commit_status_accepts_clean_and_rejects_dirty_mechanics(self):
+        mechanics = {
+            ".agents/zzzops/zzzops.py": "print('ok')\n",
+            ".agents/zzzops/.gitignore": "__pycache__/\n",
+            ".agents/zzzops/templates/project-goals/INIT_PLAN.json": "{}\n",
+            ".agents/skills/execute-zzzops/SKILL.md": "# Execute\n",
+            ".claude/skills/execute-zzzops/SKILL.md": "# Execute\n",
+            ".zzzops/rules/INITIALIZATION.md": "# Initialize\n",
+            ".zzzops/.gitignore": "execution-reports/\n",
+            ".zzzops/PROJECT.md": "# Project state\n",
+            "AGENTS.md": "# Root instructions\n",
+        }
+        for relative, content in mechanics.items():
+            path = self.repo / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+        for command in (
+            ["git", "init"],
+            ["git", "config", "user.email", "test@example.invalid"],
+            ["git", "config", "user.name", "ZzzOps Test"],
+            ["git", "add", "."],
+            ["git", "commit", "-m", "test: commit mechanics"],
+        ):
+            subprocess.run(command, cwd=self.repo, check=True, capture_output=True)
+
+        clean = zzzops.machinery_commit_status(self.repo)
+        self.assertTrue(clean["ok"])
+        self.assertEqual([], clean["paths"])
+
+        (self.repo / ".zzzops" / "PROJECT.md").write_text("changed state\n", encoding="utf-8")
+        (self.repo / "AGENTS.md").write_text("changed instructions\n", encoding="utf-8")
+        (self.repo / "unrelated.txt").write_text("not machinery\n", encoding="utf-8")
+        self.assertTrue(zzzops.machinery_commit_status(self.repo)["ok"])
+
+        mechanic = self.repo / ".agents" / "zzzops" / "zzzops.py"
+        mechanic.write_text("print('dirty')\n", encoding="utf-8")
+        dirty = zzzops.machinery_commit_status(self.repo)
+        self.assertFalse(dirty["ok"])
+        self.assertEqual([".agents/zzzops/zzzops.py"], dirty["paths"])
+
+        subprocess.run(["git", "add", ".agents/zzzops/zzzops.py"], cwd=self.repo, check=True)
+        self.assertFalse(zzzops.machinery_commit_status(self.repo)["ok"])
+        subprocess.run(
+            ["git", "restore", "--source=HEAD", "--staged", "--worktree", "--", ".agents/zzzops/zzzops.py"],
+            cwd=self.repo, check=True,
+        )
+        mechanic.unlink()
+        deleted = zzzops.machinery_commit_status(self.repo)
+        self.assertFalse(deleted["ok"])
+        self.assertEqual([".agents/zzzops/zzzops.py"], deleted["paths"])
+        subprocess.run(
+            ["git", "restore", "--source=HEAD", "--worktree", "--", ".agents/zzzops/zzzops.py"],
+            cwd=self.repo, check=True,
+        )
+        untracked = self.repo / ".agents" / "skills" / "execute-zzzops" / "NEW.md"
+        untracked.write_text("new machinery\n", encoding="utf-8")
+        result = zzzops.machinery_commit_status(self.repo)
+        self.assertFalse(result["ok"])
+        self.assertEqual([".agents/skills/execute-zzzops/NEW.md"], result["paths"])
+
     def test_rejects_unconfirmed_proposal(self):
         plan = self.plan()
         plan["confirmations"] = []
@@ -739,8 +799,9 @@ class PortfolioTests(unittest.TestCase):
     @mock.patch.object(zzzops, "read_project_state")
     @mock.patch.object(zzzops, "read_project", return_value=(Path("PROJECT.md"), "project"))
     @mock.patch.object(zzzops, "repository_size_profile", return_value={"mode": "worktrees", "max_workers": 3})
-    def test_decision_checkpoint_embeds_portfolio_with_two_subprocesses(
-        self, _size, _read, read_state, _validate, _artifacts, _blockers, _missing, run, _which,
+    @mock.patch.object(zzzops, "machinery_commit_status", return_value={"available": True, "ok": True, "paths": [], "processes": 1, "detail": "ok"})
+    def test_decision_checkpoint_embeds_portfolio_after_clean_machinery(
+        self, _machinery, _size, _read, read_state, _validate, _artifacts, _blockers, _missing, run, _which,
     ):
         state = {
             "initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"},
@@ -771,10 +832,40 @@ class PortfolioTests(unittest.TestCase):
         self.assertTrue(result["capabilities"]["github_repository"]["usable"])
         self.assertTrue(result["portfolio"]["complete"])
         self.assertEqual([1], [goal["key"] for goal in result["portfolio"]["goals"]])
-        self.assertEqual({"total": 2, "github": 1}, result["processes"])
+        self.assertEqual({"total": 3, "github": 1}, result["processes"])
         self.assertEqual(2, run.call_count)
         self.assertEqual("git", run.call_args_list[0].args[0][0])
         self.assertIn("graphql", run.call_args_list[1].args[0])
+
+    @mock.patch.object(zzzops.shutil, "which", return_value="gh")
+    @mock.patch.object(zzzops, "repository_size_profile", return_value={"mode": "worktrees", "max_workers": 3})
+    @mock.patch.object(zzzops, "github_repository_portfolio_snapshot")
+    @mock.patch.object(zzzops, "command_probe", return_value={"available": True, "ok": True, "detail": "origin"})
+    @mock.patch.object(zzzops, "policy_blockers", return_value=[])
+    @mock.patch.object(zzzops, "validate_project_artifacts", return_value=[])
+    @mock.patch.object(zzzops, "validate_project_state", return_value=[])
+    @mock.patch.object(zzzops, "read_project_state")
+    @mock.patch.object(zzzops, "read_project", return_value=(Path("PROJECT.md"), "project"))
+    @mock.patch.object(zzzops, "machinery_commit_status", return_value={
+        "available": True, "ok": False, "paths": [".agents/zzzops/zzzops.py"], "processes": 1,
+        "detail": "Commit installed ZzzOps machinery before ordinary use.",
+    })
+    def test_decision_checkpoint_stops_before_portfolio_for_dirty_machinery(
+        self, _machinery, _read, read_state, _validate, _artifacts, _blockers,
+        _probe, portfolio, _size, _which,
+    ):
+        read_state.return_value = (Path("POLICY.json"), "state", {
+            "initialized": True, "backend": "github_issues",
+            "repository": {"identity": "owner/repo"}, "policy": {"sections": []},
+        })
+
+        result = zzzops.decision_checkpoint(Path("."))
+
+        self.assertFalse(result["ready"])
+        self.assertEqual([".agents/zzzops/zzzops.py"], result["capabilities"]["git_machinery"]["paths"])
+        self.assertIn("Commit installed ZzzOps machinery", result["portfolio"]["error"])
+        self.assertEqual({"total": 2, "github": 0}, result["processes"])
+        portfolio.assert_not_called()
 
     @mock.patch.object(zzzops.shutil, "which", return_value="gh")
     @mock.patch.object(zzzops.subprocess, "run", return_value=SimpleNamespace(returncode=1, stdout="", stderr="API rate limit exceeded; partial page rejected"))
@@ -1226,6 +1317,12 @@ class WorkflowContractTests(unittest.TestCase):
             "add-zzzops-goal", "execute-zzzops", "migrate-to-zzzops",
             "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
         )
+        self.assertEqual(names, zzzops.MANAGED_SKILLS)
+        repository = root.parent
+        for installer in (repository / "install.ps1", repository / "install.sh"):
+            installed = installer.read_text(encoding="utf-8")
+            for name in names:
+                self.assertIn(name, installed, f"{installer.name}: {name}")
         for name in names:
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("INITIALIZATION.md", text, name)

@@ -70,6 +70,19 @@ query($owner:String!,$name:String!,$labels:[String!],$endCursor:String){
 }
 """.strip()
 REPOSITORY_SIZE_THRESHOLD_BYTES = 100 * 1024 * 1024
+MANAGED_SKILLS = (
+    "add-zzzops-goal", "execute-zzzops", "migrate-to-zzzops", "review-zzzops-policy",
+    "send-zzzops-feedback", "suggest-zzzops-work",
+)
+MACHINERY_PATHS = (
+    ".agents/zzzops/zzzops.py",
+    ".agents/zzzops/.gitignore",
+    ".agents/zzzops/templates/project-goals",
+    *(f".agents/skills/{name}" for name in MANAGED_SKILLS),
+    *(f".claude/skills/{name}" for name in MANAGED_SKILLS),
+    ".zzzops/rules",
+    ".zzzops/.gitignore",
+)
 GITHUB_MANAGEMENT_PERMISSIONS = {"TRIAGE", "WRITE", "MAINTAIN", "ADMIN"}
 RESERVATION_COLOR = "5319E7"
 RESERVATION_ID = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -1643,6 +1656,62 @@ def repository_size_profile(repo: Path) -> dict[str, Any]:
     }
 
 
+def machinery_commit_status(repo: Path) -> dict[str, Any]:
+    """Report whether installed ZzzOps mechanics match the repository's HEAD."""
+    executable = shutil.which("git")
+    if not executable:
+        return {
+            "available": False, "ok": False, "paths": [], "processes": 0,
+            "detail": "Git is unavailable; commit installed ZzzOps machinery before ordinary use.",
+        }
+    command = [
+        executable, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--",
+        *MACHINERY_PATHS,
+    ]
+    try:
+        result = subprocess.run(
+            command, cwd=repo, capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=30, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {
+            "available": True, "ok": False, "paths": [], "processes": 1,
+            "detail": f"Could not verify committed ZzzOps machinery: {type(exc).__name__}.",
+        }
+    if result.returncode:
+        return {
+            "available": True, "ok": False, "paths": [], "processes": 1,
+            "detail": "Could not verify committed ZzzOps machinery with Git.",
+        }
+
+    paths: set[str] = set()
+    entries = result.stdout.split("\0")
+    index = 0
+    while index < len(entries):
+        entry = entries[index]
+        index += 1
+        if not entry:
+            continue
+        status = entry[:2]
+        candidates = [entry[3:] if len(entry) > 3 else ""]
+        if any(marker in status for marker in ("R", "C")) and index < len(entries):
+            candidates.append(entries[index])
+            index += 1
+        for candidate in candidates:
+            normalized = candidate.replace("\\", "/")
+            if not normalized or "/__pycache__/" in f"/{normalized}/" or normalized.endswith((".pyc", ".pyo")):
+                continue
+            paths.add(normalized)
+    changed = sorted(paths)
+    return {
+        "available": True,
+        "ok": not changed,
+        "paths": changed,
+        "processes": 1,
+        "detail": "ok" if not changed else "Commit installed ZzzOps machinery before ordinary use.",
+    }
+
+
 def sanitize_output(value: str) -> str:
     return re.sub(r"(https?://)[^/@\s]+@", r"\1***@", value)
 
@@ -1722,6 +1791,13 @@ def decision_checkpoint(repo: Path, include_feedback: bool = False) -> dict[str,
     git_remote = command_probe(["git", "remote", "get-url", "origin"], repo)
     github_available = shutil.which("gh") is not None
     github_processes = 0
+    git_machinery = {
+        "available": shutil.which("git") is not None,
+        "ok": False,
+        "paths": [],
+        "processes": 0,
+        "detail": "initialization required",
+    }
     portfolio = {
         "schema_version": PORTFOLIO_SCHEMA_VERSION,
         "complete": False,
@@ -1739,6 +1815,8 @@ def decision_checkpoint(repo: Path, include_feedback: bool = False) -> dict[str,
         "detail": "initialization required",
     }
     if initialized and state:
+        git_machinery = machinery_commit_status(repo)
+    if initialized and state and git_machinery.get("ok") is True:
         github_processes = 1 if github_available else 0
         try:
             github_repository, portfolio = github_repository_portfolio_snapshot(repo, state, include_feedback)
@@ -1753,9 +1831,20 @@ def decision_checkpoint(repo: Path, include_feedback: bool = False) -> dict[str,
                 "valid": False,
                 "error": detail,
             }
+    elif initialized and state:
+        detail = str(git_machinery.get("detail") or "Commit installed ZzzOps machinery before ordinary use.")
+        github_auth = {"available": github_available, "ok": False, "detail": detail}
+        github_repository = {"available": github_available, "usable": False, "detail": detail}
+        portfolio = {
+            "schema_version": PORTFOLIO_SCHEMA_VERSION,
+            "complete": False,
+            "valid": False,
+            "error": detail,
+        }
     ready = bool(
         initialized
         and git_remote.get("ok") is True
+        and git_machinery.get("ok") is True
         and github_auth.get("ok") is True
         and github_repository.get("usable") is True
         and portfolio.get("complete") is True
@@ -1772,13 +1861,18 @@ def decision_checkpoint(repo: Path, include_feedback: bool = False) -> dict[str,
         "ready": ready,
         "capabilities": {
             "git_origin": git_remote,
+            "git_machinery": git_machinery,
             "github_auth": github_auth,
             "github_repository": github_repository,
         },
         "repository_size": repository_size_profile(repo),
         "portfolio": portfolio,
         "processes": {
-            "total": (1 if git_remote.get("available") else 0) + github_processes,
+            "total": (
+                (1 if git_remote.get("available") else 0)
+                + int(git_machinery.get("processes", 0))
+                + github_processes
+            ),
             "github": github_processes,
         },
     }
