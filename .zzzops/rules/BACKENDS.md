@@ -1,16 +1,16 @@
 # GitHub goal backend
 
-The reviewed canonical `.zzzops/POLICY.json` records GitHub Issues as the goal authority; `.zzzops/PROJECT.md` summarizes that choice for humans.
+Canonical `.zzzops/POLICY.json` makes GitHub Issues the goal authority; `.zzzops/PROJECT.md` summarizes it.
 
-Use the portfolio embedded by `INITIALIZATION.md`'s single checkpoint; never run a second portfolio command there. Require `complete:true` and `valid:true`; use its compact inventory/graph/human queue. It omits criteria/history, so re-read only the selected goal before writing and match revision/digest. Refresh the checkpoint once after mutation/drift. Standalone `portfolio` is for explicit CLI inspection/comparison.
+Use `INITIALIZATION.md`'s checkpoint portfolio; never rerun `portfolio` there. Require `complete:true` and `valid:true`; use its inventory/graph/human queue. It omits criteria/history, so re-read only the selected goal and match revision/digest. Refresh once after mutation/drift. Standalone `portfolio` is only for explicit inspection/comparison.
 
-Closed goals are fully validated, then emitted as minimal archived projections. Re-read only likely duplicates, selection-critical relations, or explicit user targets.
+Closed goals become validated minimal projections. Re-read only likely duplicates, selection-critical relations, or explicit targets.
 
 Managed issues labeled `zzzops-feedback` are omitted from ordinary portfolio checkpoints. Include them with `--include-feedback` only after one explicit approval for the current execution session; the choice covers the whole feedback queue, is not persisted, and never causes per-issue approval prompts.
 
 ## GitHub Issues (`github_issues`)
 
-The checkpoint's single paginated GitHub process must confirm identity, authentication, Issues, and management permission while fetching managed issues. Agents use native `gh issue`/`gh api` only for targeted reads/writes; the CLI validates managed structures.
+The checkpoint's one paginated GitHub process confirms identity, authentication, Issues, and management permission. Use native `gh issue`/`gh api` only for targeted reads/writes; the CLI validates structures. If direct `gh` auth works but a sandboxed CLI child fails authentication, rerun the same bounded command once in an approved authenticated context; never reauthenticate or vary commands.
 
 - Repository plus issue number/URL is identity. Use a plain human title: never add a ZzzOps/date ID. Begin the body with concise human sections; no rendered metadata/frontmatter or duplicated title.
 - When introducing this backend, explain that goals inherit the repository's visibility and must not contain secrets or raw sensitive data.
