@@ -183,7 +183,7 @@ bash -n install.sh
 powershell -NoProfile -Command "[void][scriptblock]::Create((Get-Content -Raw ./install.ps1))"
 ```
 
-`npx semantic-release --dry-run --branches dev` previews the next version and release notes without creating a tag or GitHub Release.
+`node .github/scripts/preview_semantic_release.mjs` previews the next version and release notes against a temporary local bare remote. It uses only semantic-release's analysis and note-generation plugins, so it neither needs GitHub write permission nor can create a repository tag or GitHub Release.
 
 Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required `dev` check, current GitHub Free limitation, closest enforceable `main` policy, and recovery procedure.
 
