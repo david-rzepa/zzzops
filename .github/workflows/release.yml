@@ -28,9 +28,7 @@ jobs:
       - name: Test semantic release configuration
         run: npm run test:release
       - name: Preview semantic release
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: npx semantic-release --dry-run --branches dev
+        run: node .github/scripts/preview_semantic_release.mjs
 
   release:
     if: github.ref == 'refs/heads/main'
