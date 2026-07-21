@@ -229,6 +229,42 @@ def normalize_resources(resources: Any) -> list[str]:
     return sorted(normalized)
 
 
+def normalize_resource_policy(policy: Any = None) -> dict[str, Any]:
+    if policy is None:
+        policy = {}
+    if not isinstance(policy, dict):
+        raise ValueError("resource_reservations must be an object")
+    unknown = sorted(set(policy) - {"mode", "exclusive_prefixes", "exclusive_resources"})
+    if unknown:
+        raise ValueError("resource_reservations has unknown fields: " + ", ".join(unknown))
+    mode = policy.get("mode", "conflict_tolerant")
+    if mode not in {"conflict_tolerant", "strict"}:
+        raise ValueError("resource_reservations.mode must be conflict_tolerant or strict")
+    prefixes = policy.get("exclusive_prefixes", ["generated", "external"])
+    supported = {"path", "integration", "generated", "external"}
+    if (
+        not isinstance(prefixes, list)
+        or any(not isinstance(prefix, str) or prefix not in supported for prefix in prefixes)
+        or len(prefixes) != len(set(prefixes))
+    ):
+        raise ValueError("resource_reservations.exclusive_prefixes must contain unique supported prefixes")
+    resources = normalize_resources(policy.get("exclusive_resources", []))
+    return {"mode": mode, "exclusive_prefixes": sorted(prefixes), "exclusive_resources": resources}
+
+
+def exclusive_resources(resources: Any, policy: Any = None) -> list[str]:
+    resources = normalize_resources(resources)
+    policy = normalize_resource_policy(policy)
+    if policy["mode"] == "strict":
+        return resources
+    exact = set(policy["exclusive_resources"])
+    prefixes = set(policy["exclusive_prefixes"])
+    return [
+        resource for resource in resources
+        if resource.startswith("branch:") or resource in exact or resource.partition(":")[0] in prefixes
+    ]
+
+
 def resource_label_name(resource: str) -> str:
     normalized = normalize_resources([resource])[0]
     return "zzzops:resource:" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:32]
@@ -624,7 +660,10 @@ def _renew_resource(
     return {"acquired": True, "outcome": "renewed", "resource": resource}
 
 
-def _release_resource(adapter: Any, repository: str, resource: str, goal: int, revision: int, owner: str, run_id: str) -> None:
+def _release_resource(
+    adapter: Any, repository: str, resource: str, goal: int, revision: int, owner: str, run_id: str,
+    *, ignore_not_owned: bool = False,
+) -> None:
     name = resource_label_name(resource)
     existing = adapter.get_label(name)
     if existing is None:
@@ -632,6 +671,8 @@ def _release_resource(adapter: Any, repository: str, resource: str, goal: int, r
     current = parse_reservation_description(existing.get("description"))
     _validate_reservation_repository(current, repository)
     if current["goal"] != goal or current["owner"] != owner or current["run_id"] != run_id or current["revision"] > revision:
+        if ignore_not_owned:
+            return
         raise ReservationProviderError("This run does not own every declared resource; no release was assumed.")
     try:
         adapter.delete_label(existing["node_id"])
@@ -643,16 +684,17 @@ def _release_resource(adapter: Any, repository: str, resource: str, goal: int, r
 
 def acquire_reservation_bundle(
     adapter: Any, repository: str, goal: int, revision: int, owner: str, run_id: str,
-    resources: list[str], ttl_seconds: int = 900, now: datetime | None = None,
+    resources: list[str], ttl_seconds: int = 900, now: datetime | None = None, resource_policy: Any = None,
 ) -> dict[str, Any]:
     resources = normalize_resources(resources)
+    reserved_resources = exclusive_resources(resources, resource_policy)
     now = now or datetime.now(timezone.utc)
     goal_result = acquire_reservation(adapter, repository, goal, revision, owner, run_id, ttl_seconds, now)
     if not goal_result["acquired"]:
         return goal_result
     acquired = []
     try:
-        for resource in resources:
+        for resource in reserved_resources:
             result = _acquire_resource(adapter, repository, resource, goal, revision, owner, run_id, ttl_seconds, now)
             if not result["acquired"]:
                 for held in reversed(acquired):
@@ -665,32 +707,39 @@ def acquire_reservation_bundle(
             _release_resource(adapter, repository, held, goal, revision, owner, run_id)
         release_reservation(adapter, repository, goal, revision, owner, run_id, _validated=True)
         raise
-    return {**goal_result, "resources": resources}
+    return {**goal_result, "resources": resources, "reserved_resources": reserved_resources}
 
 
 def renew_reservation_bundle(
     adapter: Any, repository: str, goal: int, revision: int, owner: str, run_id: str,
-    resources: list[str], ttl_seconds: int = 900, now: datetime | None = None,
+    resources: list[str], ttl_seconds: int = 900, now: datetime | None = None, resource_policy: Any = None,
 ) -> dict[str, Any]:
     resources = normalize_resources(resources)
+    reserved_resources = exclusive_resources(resources, resource_policy)
     now = now or datetime.now(timezone.utc)
     result = renew_reservation(adapter, repository, goal, revision, owner, run_id, ttl_seconds, now)
     if not result["acquired"]:
         return result
-    for resource in resources:
+    for resource in reserved_resources:
         resource_result = _renew_resource(adapter, repository, resource, goal, revision, owner, run_id, ttl_seconds, now)
         if not resource_result["acquired"]:
             return {"acquired": False, "outcome": "resource_lost", "goal": goal, "resource": resource}
-    return {**result, "resources": resources}
+    return {**result, "resources": resources, "reserved_resources": reserved_resources}
 
 
 def release_reservation_bundle(
     adapter: Any, repository: str, goal: int, revision: int, owner: str, run_id: str, resources: list[str],
+    resource_policy: Any = None,
 ) -> dict[str, Any]:
     resources = normalize_resources(resources)
+    reserved_resources = exclusive_resources(resources, resource_policy)
     _validate_reservation_goal(adapter, repository, goal, revision)
-    for resource in reversed(resources):
+    for resource in reversed(reserved_resources):
         _release_resource(adapter, repository, resource, goal, revision, owner, run_id)
+    for resource in reversed(sorted(set(resources) - set(reserved_resources))):
+        _release_resource(
+            adapter, repository, resource, goal, revision, owner, run_id, ignore_not_owned=True,
+        )
     return release_reservation(adapter, repository, goal, revision, owner, run_id, _validated=True)
 
 
@@ -701,6 +750,14 @@ def project_claim_ttl_seconds(project: dict[str, Any]) -> int:
     if not isinstance(hours, int) or isinstance(hours, bool) or not 1 <= hours <= 24:
         raise ValueError("Reviewed project policy must set claim_ttl_hours from 1 to 24")
     return hours * 3600
+
+
+def project_resource_policy(project: dict[str, Any]) -> dict[str, Any]:
+    sections = ((project.get("policy") or {}).get("sections") if isinstance(project.get("policy"), dict) else None)
+    section = next((item for item in sections or [] if isinstance(item, dict) and item.get("id") == "autonomy_approval_parallelism"), None)
+    settings = section.get("settings") if isinstance(section, dict) else None
+    configured = settings.get("resource_reservations") if isinstance(settings, dict) else None
+    return normalize_resource_policy(configured)
 
 
 def execution_reports_enabled(project: dict[str, Any]) -> bool:
@@ -1177,18 +1234,19 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                 errors.append(f"{prefix}.source_ids missing citations: {', '.join(missing_sources)}")
         if not isinstance(section.get("settings"), dict):
             errors.append(f"{prefix}.settings must be an object")
-        elif section_id == "autonomy_approval_parallelism" and "execution_reports" in section["settings"]:
-            reporting = section["settings"]["execution_reports"]
-            if not isinstance(reporting, dict):
-                errors.append(f"{prefix}.settings.execution_reports must be an object")
-            elif not isinstance(reporting.get("enabled"), bool):
-                errors.append(f"{prefix}.settings.execution_reports.enabled must be boolean")
-        elif section_id == "autonomy_approval_parallelism" and "execution_reports" in section["settings"]:
-            reporting = section["settings"]["execution_reports"]
-            if not isinstance(reporting, dict):
-                errors.append(f"{prefix}.settings.execution_reports must be an object")
-            elif not isinstance(reporting.get("enabled"), bool):
-                errors.append(f"{prefix}.settings.execution_reports.enabled must be boolean")
+        elif section_id == "autonomy_approval_parallelism":
+            settings = section["settings"]
+            if "execution_reports" in settings:
+                reporting = settings["execution_reports"]
+                if not isinstance(reporting, dict):
+                    errors.append(f"{prefix}.settings.execution_reports must be an object")
+                elif not isinstance(reporting.get("enabled"), bool):
+                    errors.append(f"{prefix}.settings.execution_reports.enabled must be boolean")
+            if "resource_reservations" in settings:
+                try:
+                    normalize_resource_policy(settings["resource_reservations"])
+                except ValueError as exc:
+                    errors.append(f"{prefix}.settings.{exc}")
         review = section.get("review")
         if not isinstance(review, dict) or not isinstance(review.get("approved"), bool):
             errors.append(f"{prefix}.review.approved must be boolean")
@@ -1556,7 +1614,9 @@ def _dependencies_allow_action(
     return git_policy.get("multiple_dependency_base") == "reviewed_base_containing_all"
 
 
-def audit_portfolio(records: list[dict[str, Any]], backend: str, as_of: datetime | None = None) -> list[dict[str, Any]]:
+def audit_portfolio(
+    records: list[dict[str, Any]], backend: str, as_of: datetime | None = None, resource_policy: Any = None,
+) -> list[dict[str, Any]]:
     as_of = datetime.now(timezone.utc) if as_of is None else as_of
     findings: list[dict[str, Any]] = []
     grouped: dict[Any, list[dict[str, Any]]] = {}
@@ -1570,7 +1630,7 @@ def audit_portfolio(records: list[dict[str, Any]], backend: str, as_of: datetime
     for record in records:
         claim = record.get("claim")
         if isinstance(claim, dict) and claim.get("owner"):
-            for resource in record.get("resources", []):
+            for resource in exclusive_resources(record.get("resources", []), resource_policy):
                 live_resources.setdefault(resource, []).append(record["key"])
     for resource, owners in live_resources.items():
         if len(owners) > 1:
@@ -1626,6 +1686,7 @@ def audit_portfolio(records: list[dict[str, Any]], backend: str, as_of: datetime
 def build_portfolio_snapshot(
     backend: str, records: list[dict[str, Any]], *, reads: int, raw_bytes: int,
     ignored: int = 0, as_of: datetime | None = None, git_policy: dict[str, Any] | None = None,
+    resource_policy: Any = None,
 ) -> dict[str, Any]:
     for record in records:
         record["children"] = []
@@ -1640,7 +1701,8 @@ def build_portfolio_snapshot(
     for record in records:
         record["children"].sort(key=_portfolio_key)
         record["blocks"].sort(key=_portfolio_key)
-    findings = audit_portfolio(records, backend, as_of)
+    resource_policy = normalize_resource_policy(resource_policy)
+    findings = audit_portfolio(records, backend, as_of, resource_policy)
     terminal = {"done", "cancelled"}
     blocked = {record["key"] for record in records if record["status"] == "blocked" or record["needs_human"]}
     terminal_keys = {record["key"] for record in records if record["status"] in terminal}
@@ -1656,6 +1718,7 @@ def build_portfolio_snapshot(
     portfolio_digest = hashlib.sha256(
         (
             "git_policy:" + json.dumps(git_policy, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+            + "resource_policy:" + json.dumps(resource_policy, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
             + "\n".join(
                 f"{record['key']}:{record['revision']}:{record['digest']}"
                 for record in sorted(records, key=lambda item: _portfolio_key(item["key"]))
@@ -1814,6 +1877,7 @@ def github_repository_portfolio_snapshot(
             ),
             {},
         ),
+        resource_policy=project_resource_policy(project),
     )
     snapshot["findings"] = sorted(snapshot["findings"] + findings, key=lambda item: (item["code"], str(item["goal"])))
     snapshot["summary"]["findings"] = len(snapshot["findings"])
@@ -2682,6 +2746,7 @@ def main() -> int:
         elif args.command == "reserve":
             project = reviewed_project_state(repo)
             repository = _project_repository_identity(project)
+            resource_policy = project_resource_policy(project)
             adapter = GitHubReservationAdapter(repo, repository)
             ttl_seconds = None
             if args.reserve_command != "release":
@@ -2689,14 +2754,17 @@ def main() -> int:
             if args.reserve_command == "acquire":
                 result = acquire_reservation_bundle(
                     adapter, repository, args.goal, args.revision, args.owner, args.run_id, args.resource, ttl_seconds,
+                    resource_policy=resource_policy,
                 )
             elif args.reserve_command == "renew":
                 result = renew_reservation_bundle(
                     adapter, repository, args.goal, args.revision, args.owner, args.run_id, args.resource, ttl_seconds,
+                    resource_policy=resource_policy,
                 )
             else:
                 result = release_reservation_bundle(
                     adapter, repository, args.goal, args.revision, args.owner, args.run_id, args.resource,
+                    resource_policy=resource_policy,
                 )
             if args.output_format == "json":
                 print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))

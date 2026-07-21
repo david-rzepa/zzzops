@@ -1153,19 +1153,27 @@ class PortfolioTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "malformed goal"):
             zzzops.compare_portfolios(current, {"schema_version": 1, "goals": [None]})
 
-    def test_portfolio_rejects_two_live_claims_on_one_declared_resource(self):
+    def test_portfolio_allows_advisory_overlap_and_rejects_exclusive_overlap(self):
         common = {
             "status": "in_progress", "priority": "P1", "value": "high", "difficulty": "S",
             "confidence": "high", "parent": None, "depends_on": [], "needs_human": False,
             "blocker_categories": [], "next_action": "Work.", "revision": 1, "updated_at": None,
-            "implementation": None, "labels": [], "resources": ["path:shared.txt"],
+            "implementation": None, "labels": [], "resources": ["path:shared.txt", "branch:shared"],
         }
         records = [
             {**common, "key": 1, "title": "One", "claim": {"owner": "a"}, "digest": "a"},
             {**common, "key": 2, "title": "Two", "claim": {"owner": "b"}, "digest": "b"},
         ]
         snapshot = zzzops.build_portfolio_snapshot("github_issues", records, reads=1, raw_bytes=10)
-        self.assertIn("resource_collision", [finding["code"] for finding in snapshot["findings"]])
+        collisions = [finding["detail"] for finding in snapshot["findings"] if finding["code"] == "resource_collision"]
+        self.assertEqual(["branch:shared: 1,2"], collisions)
+
+        strict = zzzops.build_portfolio_snapshot(
+            "github_issues", records, reads=1, raw_bytes=10,
+            resource_policy={"mode": "strict", "exclusive_prefixes": [], "exclusive_resources": []},
+        )
+        strict_collisions = [finding["detail"] for finding in strict["findings"] if finding["code"] == "resource_collision"]
+        self.assertEqual(["branch:shared: 1,2", "path:shared.txt: 1,2"], strict_collisions)
 
 
 class FakeReservationAdapter:
@@ -1360,7 +1368,7 @@ class ReservationTests(unittest.TestCase):
         }]}}
         self.assertEqual(14400, zzzops.project_claim_ttl_seconds(project))
 
-    def test_overlapping_resources_choose_one_goal_and_release_the_loser(self):
+    def test_advisory_overlap_allows_both_goals_but_shared_branch_has_one_winner(self):
         adapter = FakeReservationAdapter(barrier=threading.Barrier(2), barrier_prefix="zzzops:resource:")
         shared = ["path:.agents/zzzops/zzzops.py"]
         with ThreadPoolExecutor(max_workers=2) as pool:
@@ -1372,32 +1380,83 @@ class ReservationTests(unittest.TestCase):
                 for goal in (12, 13)
             ]
         results = [future.result() for future in futures]
+        self.assertTrue(all(result["acquired"] for result in results))
+        self.assertTrue(all(result["reserved_resources"] == [] for result in results))
+
+        adapter = FakeReservationAdapter(barrier=threading.Barrier(2), barrier_prefix="zzzops:resource:")
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [
+                pool.submit(
+                    zzzops.acquire_reservation_bundle, adapter, "owner/repo", goal, 4,
+                    f"agent-{goal}", f"run-{goal}", ["branch:shared"], 120, self.now,
+                )
+                for goal in (12, 13)
+            ]
+        results = [future.result() for future in futures]
         winner = next(result for result in results if result["acquired"])
         loser = next(result for result in results if not result["acquired"])
         self.assertEqual("resource_contended", loser["outcome"])
         self.assertIsNone(adapter.get_label(zzzops.reservation_label_name(loser["goal"])))
         self.assertIsNotNone(adapter.get_label(zzzops.reservation_label_name(winner["goal"])))
 
+    def test_policy_can_make_paths_exclusive_and_strict_mode_reserves_everything(self):
+        self.assertEqual(
+            ["branch:topic", "external:device", "generated:dist"],
+            zzzops.exclusive_resources([
+                "path:src/app.py", "integration:dev", "generated:dist", "external:device", "branch:topic",
+            ]),
+        )
+        configured = {
+            "mode": "conflict_tolerant", "exclusive_prefixes": ["generated", "external"],
+            "exclusive_resources": ["path:assets/logo.png"],
+        }
+        self.assertEqual(
+            ["branch:topic", "path:assets/logo.png"],
+            zzzops.exclusive_resources(
+                ["integration:dev", "path:src/app.py", "path:assets/logo.png", "branch:topic"], configured,
+            ),
+        )
+        self.assertEqual(
+            ["branch:topic", "integration:dev", "path:src/app.py"],
+            zzzops.exclusive_resources(
+                ["integration:dev", "path:src/app.py", "branch:topic"],
+                {"mode": "strict", "exclusive_prefixes": [], "exclusive_resources": []},
+            ),
+        )
+
     def test_distinct_resources_preserve_parallelism_and_bundle_lifecycle(self):
         adapter = FakeReservationAdapter()
         first = zzzops.acquire_reservation_bundle(
-            adapter, "owner/repo", 12, 4, "agent-a", "run-a", ["path:src/a.py"], 120, self.now,
+            adapter, "owner/repo", 12, 4, "agent-a", "run-a", ["generated:dist/a"], 120, self.now,
         )
         second = zzzops.acquire_reservation_bundle(
-            adapter, "owner/repo", 13, 4, "agent-b", "run-b", ["path:src/b.py"], 120, self.now,
+            adapter, "owner/repo", 13, 4, "agent-b", "run-b", ["generated:dist/b"], 120, self.now,
         )
         self.assertTrue(first["acquired"] and second["acquired"])
         adapter.revision = 5
         renewed = zzzops.renew_reservation_bundle(
-            adapter, "owner/repo", 12, 5, "agent-a", "run-a", ["path:src/a.py"], 180, self.now,
+            adapter, "owner/repo", 12, 5, "agent-a", "run-a", ["generated:dist/a"], 180, self.now,
         )
         self.assertTrue(renewed["acquired"])
         released = zzzops.release_reservation_bundle(
-            adapter, "owner/repo", 12, 5, "agent-a", "run-a", ["path:src/a.py"],
+            adapter, "owner/repo", 12, 5, "agent-a", "run-a", ["generated:dist/a"],
         )
         self.assertTrue(released["released"])
-        self.assertIsNone(adapter.get_label(zzzops.resource_label_name("path:src/a.py")))
-        self.assertIsNotNone(adapter.get_label(zzzops.resource_label_name("path:src/b.py")))
+        self.assertIsNone(adapter.get_label(zzzops.resource_label_name("generated:dist/a")))
+        self.assertIsNotNone(adapter.get_label(zzzops.resource_label_name("generated:dist/b")))
+
+    def test_release_cleans_advisory_labels_owned_under_an_earlier_strict_policy(self):
+        adapter = FakeReservationAdapter()
+        strict = {"mode": "strict", "exclusive_prefixes": [], "exclusive_resources": []}
+        acquired = zzzops.acquire_reservation_bundle(
+            adapter, "owner/repo", 12, 4, "agent-a", "run-a", ["path:shared.txt"], 120, self.now, strict,
+        )
+        self.assertTrue(acquired["acquired"])
+        released = zzzops.release_reservation_bundle(
+            adapter, "owner/repo", 12, 4, "agent-a", "run-a", ["path:shared.txt"],
+        )
+        self.assertTrue(released["released"])
+        self.assertIsNone(adapter.get_label(zzzops.resource_label_name("path:shared.txt")))
 
     def test_resource_keys_are_normalized_and_bounded(self):
         self.assertEqual(["path:src/file.py"], zzzops.normalize_resources(["PATH:src\\File.py"]))
@@ -1462,6 +1521,25 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("dependencies_done", settings["dependency_implementation_gate"])
         self.assertTrue(settings["read_only_dependency_investigation"])
         self.assertEqual({"enabled": True}, settings["execution_reports"])
+        self.assertEqual(
+            {
+                "mode": "conflict_tolerant",
+                "exclusive_prefixes": ["generated", "external"],
+                "exclusive_resources": [],
+            },
+            settings["resource_reservations"],
+        )
+        invalid_reservations = dict(settings["resource_reservations"])
+        invalid_reservations["exclusive_prefixes"] = ["branch"]
+        settings["resource_reservations"] = invalid_reservations
+        self.assertTrue(any(
+            "resource_reservations.exclusive_prefixes" in error
+            for error in zzzops.validate_policy(plan["policy"], True)
+        ))
+        settings["resource_reservations"] = {
+            "mode": "conflict_tolerant", "exclusive_prefixes": ["generated", "external"],
+            "exclusive_resources": [],
+        }
         self.assertEqual("remove_or_retain_clean_for_reuse", settings["worktree_lifecycle"]["after_task"])
         settings["execution_reports"]["enabled"] = "yes"
         self.assertTrue(any("execution_reports.enabled must be boolean" in error for error in zzzops.validate_policy(plan["policy"], True)))

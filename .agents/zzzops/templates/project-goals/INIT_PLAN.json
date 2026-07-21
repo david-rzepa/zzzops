@@ -152,6 +152,11 @@
           },
           "dependency_implementation_gate": "dependencies_done", "read_only_dependency_investigation": true,
           "execution_reports": {"enabled": true},
+          "resource_reservations": {
+            "mode": "conflict_tolerant",
+            "exclusive_prefixes": ["generated", "external"],
+            "exclusive_resources": []
+          },
           "worktree_lifecycle": {
             "after_task": "remove_or_retain_clean_for_reuse", "abandoned_or_dirty": "forbidden",
             "reuse_requires": ["clean_state", "reviewed_base", "new_goal_resources", "safe_branch_reassignment"]
