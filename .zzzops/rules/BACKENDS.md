@@ -1,25 +1,25 @@
 # GitHub goal backend
 
-Canonical `.zzzops/POLICY.json` makes GitHub Issues the goal authority; `.zzzops/PROJECT.md` summarizes it.
+Canonical policy makes GitHub Issues goal authority; `.zzzops/PROJECT.md` summarizes it.
 
-Use `INITIALIZATION.md`'s checkpoint portfolio; never rerun `portfolio` there. Require `complete:true` and `valid:true`; use its inventory/graph/human queue. It omits criteria/history, so re-read only the selected goal and match revision/digest. Refresh once after mutation/drift. Standalone `portfolio` is only for explicit inspection/comparison.
+Use INITIALIZATION's checkpoint portfolio, requiring `complete:true` and `valid:true`; never rerun `portfolio`. It supplies inventory/graph/human queue but omits criteria/history, so re-read only the selected goal and match revision/digest. Refresh once after mutation/drift; standalone `portfolio` is for explicit comparison only.
 
-Closed goals become validated minimal projections. Re-read only likely duplicates, selection-critical relations, or explicit targets.
+Closed goals are validated minimal projections; re-read only likely duplicates, selection-critical relations, or explicit targets.
 
-Managed issues labeled `zzzops-feedback` are omitted from ordinary portfolio checkpoints. Include them with `--include-feedback` only after one explicit approval for the current execution session; the choice covers the whole feedback queue, is not persisted, and never causes per-issue approval prompts.
+Ordinary checkpoints omit `zzzops-feedback`. `--include-feedback` requires one explicit current-session approval covering the whole queue; never persist it or ask per issue.
 
 ## GitHub Issues (`github_issues`)
 
-`checkpoint` uses one paginated GitHub process to confirm identity, auth, Issues, and management permission. Use native `gh issue`/`gh api` only for targeted reads/writes; the CLI validates structures. Apply `INITIALIZATION.md`'s authenticated-context rule to every `gh` path.
+`checkpoint` uses one paginated process to confirm identity, auth, Issues, and management permission. Use `gh issue`/`gh api` only for targeted operations; the CLI validates structures. Apply INITIALIZATION's authenticated-context rule to every `gh` path.
 
-- Repository plus issue number/URL is identity. Use a plain human title: never add a ZzzOps/date ID. Begin the body with concise human sections; no rendered metadata/frontmatter or duplicated title.
-- When introducing this backend, explain that goals inherit the repository's visibility and must not contain secrets or raw sensitive data.
-- Append one compact hidden `<!-- zzzops-goal ... zzzops-goal -->` JSON block with `.agents/zzzops/zzzops.py`'s `render_managed_goal` helper. It stores state only: GitHub supplies identity/title; inverse `blocks`, human-queue membership, labels, and open/closed are derived. Preserve human/unmanaged text.
-- Same-repository parent/dependency relations are positive issue numbers. Derive children/blocking edges portfolio-wide. Put resolutions/history in append-only comments; old comments remain immutable provenance.
+- Identity is repository plus issue number/URL. Use a plain human title without ZzzOps/date ID; start with concise human sections, no rendered metadata/frontmatter or repeated title.
+- Explain that goals inherit repository visibility and forbid secrets/raw sensitive data.
+- Append one hidden `<!-- zzzops-goal ... zzzops-goal -->` JSON state block using `render_managed_goal`. GitHub supplies identity/title; inverse edges, human queue, labels, and open/closed are derived. Preserve unmanaged text.
+- Parent/dependencies are same-repository positive issue numbers; derive inverse edges portfolio-wide. Append resolutions/history as immutable-provenance comments.
 - Use label `zzzops`, one `zzzops:status:*`, and one `zzzops:priority:*` as derived indexes.
-- Reservations use transient `zzzops:reserve:<issue>` and `zzzops:resource:<hash>` labels. GitHub name uniqueness chooses one winner with Issues permission; metadata binds repository, goal/revision, owner/run, and expiry. Renew/recover by immutable node ID and exact readback, so delayed cleanup cannot delete a replacement. Drift, conflict, malformed state, provider failure, or uncertainty denies ownership; no alternate lock or advisory fallback.
+- Reservations use transient goal/resource labels; GitHub name uniqueness chooses one Issues-permitted winner. Metadata binds repository, goal/revision, owner/run, expiry; renew/recover by immutable node ID and exact readback so delayed cleanup cannot delete a replacement. Drift, conflict, malformed state, provider failure, or uncertainty denies ownership; no fallback lock.
 - Apply updates via `<python> .agents/zzzops/zzzops.py goal transition --goal N --input FILE`. UTF-8 input binds expected revision/digest to the next goal, preserves human text, derives labels/state, and validates the write.
-- Capability/auth/permission/disabled-Issues/label drift is an explicit blocker. Never invent a fallback authority.
+- Capability/auth/permission/Issues/label drift is an explicit blocker; never invent fallback authority.
 
 ## Git boundary
 

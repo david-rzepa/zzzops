@@ -2,14 +2,14 @@
 
 ## Authority and records
 
-Order: user/safety; project instructions; reviewed project policy (`.zzzops/PROJECT.md` bound to canonical `.zzzops/POLICY.json`); canonical GitHub issue. Project instructions outrank stale derived policy, but a repository-specific conflict with reviewed policy invalidates the affected assumption: stop and reconcile it instead of silently choosing either operational rule.
+Order: user/safety; project instructions; reviewed `.zzzops/PROJECT.md` (bound to canonical policy); canonical GitHub issue. A repository-policy conflict invalidates the assumption: stop and reconcile rather than choosing silently.
 
 Before every non-install workflow follow `INITIALIZATION.md`, then use the GitHub Issues authority in `BACKENDS.md`.
 
-- GitHub goals use repository plus issue number/URL as identity; never invent a second goal ID or duplicate GitHub title/relationship state in managed JSON.
-- Never store secrets/raw sensitive data; link to approved systems and name authority/sync direction.
-- Project charter defines success/value. Preserve unknown KPI/target/tradeoff fields; ask rather than invent.
-- Reviewed PROJECT policy contains repository operational choices; installed rules provide overridable defaults, never a second local policy layer.
+- Goal identity is repository plus issue number/URL; never invent another ID or duplicate GitHub title/relations in managed JSON.
+- Never store secrets/raw sensitive data; link approved systems and name authority/sync direction.
+- The charter defines success/value. Preserve unknown KPIs/targets/tradeoffs; ask rather than invent.
+- Reviewed PROJECT holds operational choices; installed rules are overridable defaults, not another policy layer.
 - Initialization plans and migration artifact shapes live in `.agents/zzzops/templates/project-goals/`; `init apply` renders project state. Installation copies mechanics/templates only and never creates or overwrites project state.
 
 ## Lifecycle
@@ -29,10 +29,10 @@ Open blockers may coexist with active states while useful work remains. Reopen t
 ## Metadata and value
 
 - Priority: `P0` urgent safety/production/deadline; `P1` major impact/unlock; `P2` normal; `P3` opportunistic.
-- Value: `critical|high|medium|low`, justified against charter acceptance/KPIs/beneficiaries/tradeoffs—not ease or code aesthetics.
-- Difficulty: `unknown|XS|S|M|L|XL`, including uncertainty/risk/coordination/verification; use the PROJECT policy's decomposition threshold.
-- Confidence: `low|medium|high` in outcome/scope/dependencies/estimate.
-- Owner is accountability, not authority/claim. Explain target dates; `review_after` triggers reassessment, never auto-cancellation.
+- Value: `critical|high|medium|low`, justified by charter outcomes—not ease/aesthetics.
+- Difficulty: `unknown|XS|S|M|L|XL`, including risk/coordination/verification; obey PROJECT's decomposition threshold.
+- Confidence: `low|medium|high` in outcome, scope, dependencies, and estimate.
+- Owner is accountability, not authority/claim. Explain dates; `review_after` triggers reassessment, never auto-cancellation.
 
 ## Relationships and claims
 
