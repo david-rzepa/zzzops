@@ -89,7 +89,7 @@ function Get-InstallPairs {
     $fixed = @(
         '.zzzops/rules/BACKENDS.md', '.zzzops/rules/BLOCKERS.md', '.zzzops/rules/CONTINUATION.md',
         '.zzzops/rules/EXECUTION_STRATEGY.md', '.zzzops/rules/FEEDBACK.md', '.zzzops/rules/GOAL_SYSTEM.md', '.zzzops/rules/INITIALIZATION.md',
-        '.agents/zzzops/zzzops.py', '.agents/zzzops/policy.py', '.agents/zzzops/reservation.py', 'LICENSE'
+        '.agents/zzzops/zzzops.py', '.agents/zzzops/policy.py', '.agents/zzzops/reservation.py', '.agents/zzzops/feedback.py', 'LICENSE'
     )
     foreach ($relative in $fixed) {
         $destination = if ($relative -eq 'LICENSE') { '.agents/zzzops/LICENSE' } else { $relative }
