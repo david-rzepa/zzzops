@@ -91,7 +91,9 @@ read_manifest() {
         elif [[ "$kind" == version && "$hash" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$ && -z "$relative" && -z "$MANIFEST_VERSION" ]]; then
             MANIFEST_VERSION=$hash
         elif [[ "$kind" == file && "$hash" =~ ^[0-9a-f]{40,64}$ && -n "$relative" ]]; then
-            for existing in "${MANIFEST_RELATIVE[@]}"; do [[ "$existing" == "$relative" ]] && MANIFEST_VALID=0; done
+            for existing in "${MANIFEST_RELATIVE[@]:-}"; do
+                [[ -n "$existing" && "$existing" == "$relative" ]] && MANIFEST_VALID=0
+            done
             MANIFEST_HASH+=("$hash"); MANIFEST_RELATIVE+=("$relative")
         else MANIFEST_VALID=0
         fi
@@ -101,7 +103,8 @@ read_manifest() {
 
 manifest_hash_for() {
     local wanted=$1 i
-    for ((i=0; i<${#MANIFEST_RELATIVE[@]}; i++)); do
+    for ((i=0; ; i++)); do
+        [[ -n "${MANIFEST_RELATIVE[$i]:-}" ]] || return
         [[ "${MANIFEST_RELATIVE[$i]}" == "$wanted" ]] && { printf '%s' "${MANIFEST_HASH[$i]}"; return; }
     done
 }
