@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory = $true, Position = 0)]
     [string]$Target,
     [switch]$DryRun,
-    [switch]$OverwriteMechanical
+    [switch]$OverwriteMechanical,
+    [switch]$Yes
 )
 
 $ErrorActionPreference = 'Stop'
@@ -89,7 +90,7 @@ function Get-InstallPairs {
     $fixed = @(
         '.zzzops/rules/BACKENDS.md', '.zzzops/rules/BLOCKERS.md', '.zzzops/rules/CONTINUATION.md',
         '.zzzops/rules/EXECUTION_STRATEGY.md', '.zzzops/rules/FEEDBACK.md', '.zzzops/rules/GOAL_SYSTEM.md', '.zzzops/rules/INITIALIZATION.md',
-        '.agents/zzzops/zzzops.py', '.agents/zzzops/policy.py', '.agents/zzzops/reservation.py', 'LICENSE'
+        '.agents/zzzops/zzzops.py', '.agents/zzzops/policy.py', '.agents/zzzops/reservation.py', '.agents/zzzops/feedback.py', 'LICENSE'
     )
     foreach ($relative in $fixed) {
         $destination = if ($relative -eq 'LICENSE') { '.agents/zzzops/LICENSE' } else { $relative }
@@ -335,7 +336,7 @@ if (-not $pendingChanges) {
     exit 0
 }
 $prompt = if ($plan.IsUpgrade) { 'Upgrade ZzzOps? [y/N]' } else { 'Install these changes? [y/N]' }
-$answer = Read-Host $prompt
+$answer = if ($Yes) { 'yes' } else { Read-Host $prompt }
 if ($answer -notmatch '^(?i:y|yes)$') {
     Write-Host 'Installation cancelled; no files were changed.'
     exit 0

@@ -44,6 +44,16 @@ class ReservationModuleTests(unittest.TestCase):
             self.assertIs(getattr(zzzops, name), getattr(reservation, name))
 
 
+class FeedbackModuleTests(unittest.TestCase):
+    def test_entry_point_reexports_feedback_contract(self):
+        feedback = zzzops._feedback
+        for name in (
+            "record_execution_report", "load_execution_reports", "prepare_feedback",
+            "submit_feedback", "zzzops_provenance", "validate_execution_report",
+        ):
+            self.assertIs(getattr(zzzops, name), getattr(feedback, name))
+
+
 class InitializationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
