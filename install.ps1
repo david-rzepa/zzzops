@@ -89,10 +89,11 @@ function Get-InstallPairs {
     $fixed = @(
         '.zzzops/rules/BACKENDS.md', '.zzzops/rules/BLOCKERS.md', '.zzzops/rules/CONTINUATION.md',
         '.zzzops/rules/EXECUTION_STRATEGY.md', '.zzzops/rules/FEEDBACK.md', '.zzzops/rules/GOAL_SYSTEM.md', '.zzzops/rules/INITIALIZATION.md',
-        '.agents/zzzops/zzzops.py'
+        '.agents/zzzops/zzzops.py', 'LICENSE'
     )
     foreach ($relative in $fixed) {
-        Add-InstallPair $pairs (Join-Path $SourceRoot ($relative.Replace('/', [IO.Path]::DirectorySeparatorChar))) $relative
+        $destination = if ($relative -eq 'LICENSE') { '.agents/zzzops/LICENSE' } else { $relative }
+        Add-InstallPair $pairs (Join-Path $SourceRoot ($relative.Replace('/', [IO.Path]::DirectorySeparatorChar))) $destination
     }
     Add-InstallPair $pairs (Join-Path $SourceRoot '.agents/.gitignore') '.agents/zzzops/.gitignore'
     $roots = @((Join-Path $SourceRoot '.agents/zzzops/templates/project-goals'))

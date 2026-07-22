@@ -125,6 +125,7 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertTrue((target / ".zzzops" / "rules" / "INITIALIZATION.md").is_file())
                 self.assertTrue((target / ".agents" / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").is_file())
                 self.assertTrue((target / ".agents" / "zzzops" / ".gitignore").is_file())
+                self.assertEqual((ROOT / "LICENSE").read_bytes(), (target / ".agents" / "zzzops" / "LICENSE").read_bytes())
                 self.assertTrue((target / ".agents" / "zzzops" / "INSTALL_MANIFEST").is_file())
                 manifest_text = (target / ".agents" / "zzzops" / "INSTALL_MANIFEST").read_text(encoding="utf-8")
                 self.assertIn("\nversion\t", manifest_text)

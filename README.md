@@ -163,6 +163,12 @@ Suggestions are preview-only unless you request apply. Once the initialization p
 
 The installed parallel default measures existing Git-tracked working-tree bytes, excluding `.git`, ignored/untracked files, and other worktrees. Repositories below 100 MB may use up to three isolated worktree sub-agents; repositories at or above the boundary, or whose size cannot be measured, may use up to three read-only agents. Reviewed project policy can override these operational defaults. Writable implementation waits for completed dependencies by default, although read-only agents may investigate later goals in advance. Every completed-task worktree is removed or deliberately retained clean and safely reassigned before reuse.
 
+## License, name, and feedback
+
+ZzzOps is licensed under [Apache-2.0](LICENSE), including its patent grant. The license permits forks and reuse, but does not grant rights to use the ZzzOps name or imply endorsement. Forks may accurately describe themselves as based on ZzzOps, but must not present themselves as the official project.
+
+The feedback workflow submits only an exactly previewed, user-confirmed payload to this public repository. Do not submit secrets, personal data, or project-confidential material. Contributions and issue content intentionally submitted for inclusion are governed by Apache-2.0 unless explicitly marked otherwise.
+
 ## Releases
 
 Develop on branches created from `dev` and open ordinary PRs against `dev`. The read-only **PR validation / dev-required-tests** job must pass before merge. Each push to `dev` runs `semantic-release --dry-run` with read-only repository permission; dry-run skips tag creation and publication. `main` is reserved for an intended owner force-push release: semantic-release then receives `contents: write` and creates the Git tag and GitHub Release.
