@@ -238,8 +238,8 @@ show_preview() {
         subjects=$(git -C "$SOURCE_ROOT" log --no-merges --format='- %s' --max-count=8 "$MANIFEST_REVISION..$SOURCE_REVISION" 2>/dev/null) || subjects=''
         [[ -n "$subjects" ]] && printf '%s\n' "$subjects" || printf '%s\n' '- revision history is unavailable; inspect the managed-file list above'
     elif [[ $new_count -gt 0 || $updated_count -gt 0 ]]; then printf 'Planned changes: %d new, %d updated.\n' "$new_count" "$updated_count"
-    elif [[ ${#PLAN_ERRORS[@]} -eq 0 ]]; then printf 'Planned changes: ZzzOps is already up to date.\n'; fi
-    if [[ ${#IGNORED[@]} -gt 0 ]]; then
+    elif [[ -z "${PLAN_ERRORS[*]:-}" ]]; then printf 'Planned changes: ZzzOps is already up to date.\n'; fi
+    if [[ -n "${IGNORED[*]:-}" ]]; then
         for action in "${IGNORED[@]:-}"; do
             [[ -n "$action" ]] || continue
             [[ -n "$names" ]] && names+=' and '
@@ -314,7 +314,7 @@ apply_plan() {
 
 build_plan
 show_preview
-[[ ${#PLAN_ERRORS[@]} -eq 0 ]] || exit 2
+[[ -z "${PLAN_ERRORS[*]:-}" ]] || exit 2
 if [[ $DRY_RUN -eq 1 ]]; then printf 'No files were changed.\n'; exit 0; fi
 pending_changes=0
 for action in "${PLAN_ACTION[@]}"; do
@@ -332,7 +332,7 @@ answer=${answer%$'\r'}
 case "$answer" in y|Y|yes|YES|Yes) ;; *) printf 'Installation cancelled; no files were changed.\n'; exit 0 ;; esac
 preview_signature=$PLAN_SIGNATURE
 build_plan
-if [[ ${#PLAN_ERRORS[@]} -gt 0 || "$PLAN_SIGNATURE" != "$preview_signature" ]]; then
+if [[ -n "${PLAN_ERRORS[*]:-}" || "$PLAN_SIGNATURE" != "$preview_signature" ]]; then
     printf 'The target changed after the preview. Run the installer again; no files were changed.\n'
     exit 2
 fi
