@@ -445,6 +445,7 @@ class ExecutionReportTests(unittest.TestCase):
             "extra_tool_calls": 1,
             "estimated_tokens": 250,
             "now": self.now,
+            "provenance": {"version": "v1.2.3-4-gabcdef0", "revision": "a" * 40},
         }
         values.update(overrides)
         return zzzops.record_execution_report(self.repo, self.project, **values)
@@ -464,7 +465,8 @@ class ExecutionReportTests(unittest.TestCase):
         self.assertTrue(result["recorded"])
         self.assertRegex(result["id"], r"^report-[0-9a-f]{64}$")
         report = json.loads(Path(result["path"]).read_text(encoding="utf-8"))
-        self.assertEqual(2, report["schema_version"])
+        self.assertEqual(3, report["schema_version"])
+        self.assertEqual({"version": "v1.2.3-4-gabcdef0", "revision": "a" * 40}, report["zzzops"])
         self.assertEqual("avoidable_wait", report["issue"])
         self.assertEqual("unnecessary_wait_for_timeout", report["cause"])
         self.assertEqual(
@@ -499,6 +501,10 @@ class ExecutionReportTests(unittest.TestCase):
             self.record(occurrences=0)
         with self.assertRaisesRegex(ValueError, "wait_seconds"):
             self.record(wait_seconds=-1)
+        with self.assertRaisesRegex(ValueError, "version"):
+            self.record(provenance={"version": "private project/version", "revision": "a" * 40})
+        with self.assertRaisesRegex(ValueError, "revision"):
+            self.record(provenance={"version": "v1.2.3", "revision": "short"})
 
     @mock.patch.object(zzzops.shutil, "which", return_value="gh")
     @mock.patch.object(zzzops.subprocess, "run")
@@ -514,6 +520,7 @@ class ExecutionReportTests(unittest.TestCase):
         self.assertIn("Please reduce unnecessary waits.", preview["body"])
         self.assertIn("## Machinery observations", preview["body"])
         self.assertIn("### Waited for an avoidable timeout", preview["body"])
+        self.assertIn("**ZzzOps build:** v1.2.3-4-gabcdef0 (revision " + "a" * 40 + ")", preview["body"])
         self.assertIn("**Observed:**", preview["body"])
         self.assertIn("**Measured impact:**", preview["body"])
         self.assertIn("**Typical recovery:**", preview["body"])
@@ -545,6 +552,59 @@ class ExecutionReportTests(unittest.TestCase):
             "--label", "zzzops:status:new", "--label", "zzzops:priority:P2",
         ], command)
         self.assertEqual(preview["body"], run.call_args.kwargs["input"])
+
+    def test_legacy_v2_report_remains_immutable_and_renders_unknown_provenance(self):
+        created = self.record()
+        path = Path(created["path"])
+        report = json.loads(path.read_text(encoding="utf-8"))
+        report["schema_version"] = 2
+        report.pop("zzzops")
+        report["id"] = zzzops.execution_report_id(report)
+        legacy_path = path.with_name(report["id"] + ".json")
+        path.unlink()
+        legacy_path.write_text(json.dumps(report), encoding="utf-8")
+
+        loaded = zzzops.load_execution_reports(self.repo)
+        self.assertEqual(2, loaded[0]["schema_version"])
+        body = zzzops.prepare_feedback(self.repo, "")["body"]
+        self.assertIn("**ZzzOps build:** Unknown (schema v2 predates version provenance)", body)
+        self.assertNotIn('"zzzops"', body)
+
+    def test_installed_provenance_resolution_and_revision_only_failure(self):
+        manifest = self.repo / ".agents" / "zzzops" / "INSTALL_MANIFEST"
+        manifest.parent.mkdir(parents=True)
+        installed = self.repo / ".agents" / "zzzops" / "installed.txt"
+        installed.write_text("installed mechanics\n", encoding="utf-8")
+        digest = zzzops._git_blob_digest(installed.read_bytes(), 40)
+        manifest.write_text(
+            "zzzops-install-manifest-v1\nrevision\t" + "b" * 40 + "\nversion\tv2.0.0\n"
+            f"file\t{digest}\t.agents/zzzops/installed.txt\n",
+            encoding="utf-8",
+        )
+        self.assertEqual({"version": "v2.0.0", "revision": "b" * 40}, zzzops.zzzops_provenance(self.repo))
+        installed.write_text("locally changed\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "do not match"):
+            zzzops.zzzops_provenance(self.repo)
+        manifest.write_text(
+            "zzzops-install-manifest-v1\nrevision\t" + "b" * 40 + f"\nfile\t{digest}\t.agents/zzzops/installed.txt\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(ValueError, "predates version provenance"):
+            zzzops.zzzops_provenance(self.repo)
+
+    @mock.patch.object(zzzops.subprocess, "run")
+    def test_base_repository_provenance_uses_bounded_git_identity(self, run):
+        (self.repo / "install.ps1").write_text("base", encoding="utf-8")
+        (self.repo / "install.sh").write_text("base", encoding="utf-8")
+        run.side_effect = [
+            SimpleNamespace(returncode=0, stdout="c" * 40 + "\n", stderr=""),
+            SimpleNamespace(returncode=0, stdout="v2.0.0-3-gccccccc\n", stderr=""),
+        ]
+        self.assertEqual(
+            {"version": "v2.0.0-3-gccccccc", "revision": "c" * 40},
+            zzzops.zzzops_provenance(self.repo),
+        )
+        self.assertEqual(2, run.call_count)
 
     def test_feedback_keeps_distinct_causes_separate_and_aggregates_matching_causes(self):
         self.record(
@@ -578,6 +638,17 @@ class ExecutionReportTests(unittest.TestCase):
         self.assertEqual(1, body.count("### PowerShell added a byte-order mark to standard input"))
         self.assertEqual(1, body.count("### Authentication was unavailable to a child process"))
         self.assertIn("3 occurrences; 15 seconds waiting; 3 extra tool calls; 400 estimated tokens", body)
+
+    def test_feedback_separates_the_same_cause_by_zzzops_build(self):
+        self.record(provenance={"version": "v1.0.0", "revision": "a" * 40})
+        self.record(
+            provenance={"version": "v1.1.0", "revision": "b" * 40},
+            now=self.now + timedelta(seconds=1),
+        )
+        body = zzzops.prepare_feedback(self.repo, "")["body"]
+        self.assertEqual(2, body.count("### Waited for an avoidable timeout"))
+        self.assertIn("**ZzzOps build:** v1.0.0 (revision " + "a" * 40 + ")", body)
+        self.assertIn("**ZzzOps build:** v1.1.0 (revision " + "b" * 40 + ")", body)
 
     @mock.patch.object(zzzops.shutil, "which", return_value="gh")
     @mock.patch.object(zzzops.subprocess, "run")
@@ -1626,6 +1697,11 @@ class WorkflowContractTests(unittest.TestCase):
             path = skill / "SKILL.md"
             if path.is_file():
                 self.assertIn("FEEDBACK.md", path.read_text(encoding="utf-8"), skill.name)
+        feedback_skill = (root / "send-zzzops-feedback" / "SKILL.md").read_text(encoding="utf-8")
+        feedback_rule = (root.parents[1] / ".zzzops" / "rules" / "FEEDBACK.md").read_text(encoding="utf-8")
+        self.assertIn("validated ZzzOps build provenance", feedback_skill)
+        self.assertIn("legacy schema-v2 provenance is explicitly unknown", feedback_skill)
+        self.assertIn("validated ZzzOps version/revision provenance", feedback_rule)
 
     def test_execute_feedback_queue_requires_one_session_approval(self):
         execute = (Path(__file__).parent / "skills" / "execute-zzzops" / "SKILL.md").read_text(encoding="utf-8")

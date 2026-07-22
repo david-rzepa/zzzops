@@ -27,6 +27,10 @@ $SourceRevision = (& git -C $SourceRoot rev-parse HEAD 2>$null).Trim()
 if ($LASTEXITCODE -ne 0 -or $SourceRevision -notmatch '^[0-9a-f]{40,64}$') {
     Stop-Install 'Source revision could not be read from the ZzzOps base repository'
 }
+$SourceVersion = (& git -c core.excludesFile=NUL -C $SourceRoot describe --tags --always --long --dirty 2>$null).Trim()
+if ($LASTEXITCODE -ne 0 -or $SourceVersion -notmatch '^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$') {
+    Stop-Install 'Source version could not be read from the ZzzOps base repository'
+}
 
 function Get-FileDigest([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
@@ -38,16 +42,19 @@ function Get-FileDigest([string]$Path) {
 function Read-InstallManifest {
     $path = Join-Path $TargetRoot ($InstallManifestRelative.Replace('/', [IO.Path]::DirectorySeparatorChar))
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-        return [pscustomobject]@{ Exists = $false; Valid = $true; Revision = $null; Files = @{}; Path = $path }
+        return [pscustomobject]@{ Exists = $false; Valid = $true; Revision = $null; Version = $null; Files = @{}; Path = $path }
     }
     $lines = @(Get-Content -LiteralPath $path -Encoding UTF8)
     $files = @{}
     $revision = $null
+    $version = $null
     $valid = $lines.Count -ge 2 -and $lines[0] -eq 'zzzops-install-manifest-v1'
     foreach ($line in @($lines | Select-Object -Skip 1)) {
         $fields = $line -split "`t", 3
         if ($fields.Count -eq 2 -and $fields[0] -eq 'revision' -and $fields[1] -match '^[0-9a-f]{40,64}$' -and -not $revision) {
             $revision = $fields[1]
+        } elseif ($fields.Count -eq 2 -and $fields[0] -eq 'version' -and $fields[1] -match '^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$' -and -not $version) {
+            $version = $fields[1]
         } elseif ($fields.Count -eq 3 -and $fields[0] -eq 'file' -and $fields[1] -match '^[0-9a-f]{40,64}$' -and $fields[2] -and -not $files.ContainsKey($fields[2])) {
             $files[$fields[2]] = $fields[1]
         } else {
@@ -55,13 +62,14 @@ function Read-InstallManifest {
         }
     }
     if (-not $revision) { $valid = $false }
-    return [pscustomobject]@{ Exists = $true; Valid = $valid; Revision = $revision; Files = $files; Path = $path }
+    return [pscustomobject]@{ Exists = $true; Valid = $valid; Revision = $revision; Version = $version; Files = $files; Path = $path }
 }
 
 function Get-ManifestText([array]$Actions) {
     $lines = [System.Collections.ArrayList]::new()
     [void]$lines.Add('zzzops-install-manifest-v1')
     [void]$lines.Add("revision`t$SourceRevision")
+    [void]$lines.Add("version`t$SourceVersion")
     foreach ($action in @($Actions | Sort-Object Relative)) {
         [void]$lines.Add("file`t$($action.SourceHash)`t$($action.Relative)")
     }
@@ -203,14 +211,18 @@ function New-InstallPlan {
         Files = @($actions | ForEach-Object { @($_.Relative, $_.Action, $_.SourceHash, $_.ExpectedHash) })
         ManifestExpectedHash = Get-FileDigest $manifest.Path
         ManifestRevision = $manifest.Revision
+        ManifestVersion = $manifest.Version
         SourceRevision = $SourceRevision
+        SourceVersion = $SourceVersion
         Ignored = @($ignore.Roots)
         IgnoreWarning = $ignore.Warning
     }
+    $manifestNeedsUpdate = [bool]($manifest.Exists -and $manifest.Valid -and ($manifest.Revision -ne $SourceRevision -or $manifest.Version -ne $SourceVersion))
     return [pscustomobject]@{
         Actions = @($actions); Errors = @($errors); Ignored = @($ignore.Roots); IgnoreWarning = $ignore.Warning
         Manifest = $manifest; ManifestExpectedHash = Get-FileDigest $manifest.Path
-        IsUpgrade = [bool]($manifest.Exists -and $manifest.Valid -and @($actions | Where-Object Action -in @('create', 'upgrade')).Count)
+        ManifestNeedsUpdate = $manifestNeedsUpdate
+        IsUpgrade = [bool]($manifest.Exists -and $manifest.Valid -and ($manifestNeedsUpdate -or @($actions | Where-Object Action -in @('create', 'upgrade')).Count))
         Signature = ($signatureData | ConvertTo-Json -Compress -Depth 6)
     }
 }
@@ -222,6 +234,9 @@ function Show-Preview($Plan) {
     Write-Host '- tracked project skills for Codex and Claude Code'
     Write-Host '- shared workflow rules and the ZzzOps control CLI'
     Write-Host '- blank templates for project setup and TODO migration'
+    $sourceDisplay = "$SourceVersion ($($SourceRevision.Substring(0, 7)))"
+    $installedDisplay = if (-not $Plan.Manifest.Exists) { 'not installed' } elseif (-not $Plan.Manifest.Valid -or -not $Plan.Manifest.Revision) { 'invalid manifest' } elseif ($Plan.Manifest.Version) { "$($Plan.Manifest.Version) ($($Plan.Manifest.Revision.Substring(0, 7)))" } else { "revision $($Plan.Manifest.Revision.Substring(0, 7))" }
+    Write-Host "ZzzOps version: $installedDisplay -> $sourceDisplay."
     $newCount = @($Plan.Actions | Where-Object Action -eq 'create').Count
     $updatedCount = @($Plan.Actions | Where-Object Action -in @('upgrade', 'overwrite')).Count
     if ($Plan.IsUpgrade) {
@@ -313,7 +328,7 @@ if ($DryRun) {
     Write-Host 'No files were changed.'
     exit 0
 }
-$pendingChanges = @($plan.Actions | Where-Object { $_.Action -in @('create', 'upgrade', 'overwrite') }).Count
+$pendingChanges = @($plan.Actions | Where-Object { $_.Action -in @('create', 'upgrade', 'overwrite') }).Count + [int]$plan.ManifestNeedsUpdate
 if (-not $pendingChanges) {
     Write-Host 'ZzzOps is already up to date. No further action is necessary.'
     exit 0
