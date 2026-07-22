@@ -348,7 +348,7 @@ class ValidationAggregateTests(unittest.TestCase):
         )
 
     def test_required_validation_accepts_only_complete_success(self):
-        success = self.run_required_validation("linux=success", "windows=success")
+        success = self.run_required_validation("linux=success", "windows=success", "macos=success")
         self.assertEqual(0, success.returncode, success.stderr + success.stdout)
 
         for results in (
@@ -356,6 +356,7 @@ class ValidationAggregateTests(unittest.TestCase):
             ("linux=failure", "windows=success"),
             ("linux=success", "windows=cancelled"),
             ("linux=success", "windows="),
+            ("linux=success", "windows=success", "macos=failure"),
             (),
         ):
             with self.subTest(results=results):
@@ -369,10 +370,14 @@ class ValidationAggregateTests(unittest.TestCase):
         self.assertIn("validate-windows:", workflow)
         self.assertIn("runs-on: windows-latest", workflow)
         self.assertEqual(2, workflow.count("ZZZOPS_EXPECT_INSTALLERS: PowerShell,Bash"))
+        self.assertIn("validate-macos:", workflow)
+        self.assertIn("runs-on: macos-latest", workflow)
+        self.assertIn("ZZZOPS_EXPECT_INSTALLERS: Bash", workflow)
         self.assertIn("name: dev-required-tests", workflow)
-        self.assertIn("needs: [validate-linux, validate-windows]", workflow)
+        self.assertIn("needs: [validate-linux, validate-windows, validate-macos]", workflow)
         self.assertIn("linux=${{ needs.validate-linux.result }}", workflow)
         self.assertIn("windows=${{ needs.validate-windows.result }}", workflow)
+        self.assertIn("macos=${{ needs.validate-macos.result }}", workflow)
 
 
 if __name__ == "__main__":

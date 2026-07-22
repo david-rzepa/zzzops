@@ -30,11 +30,15 @@ def windows_validation() -> None:
     run(sys.executable, "-m", "unittest", "discover", "-s", ".agents", "-p", "test_install_zzzops.py")
 
 
+def macos_validation() -> None:
+    run(sys.executable, "-m", "unittest", "discover", "-s", ".agents", "-p", "test_install_zzzops.py")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--platform", choices=("linux", "windows"), required=True)
+    parser.add_argument("--platform", choices=("linux", "windows", "macos"), required=True)
     args = parser.parse_args()
-    {"linux": linux_validation, "windows": windows_validation}[args.platform]()
+    {"linux": linux_validation, "windows": windows_validation, "macos": macos_validation}[args.platform]()
     return 0
 
 

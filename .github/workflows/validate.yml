@@ -44,10 +44,23 @@ jobs:
       - name: Test native Windows installer behavior
         run: python .github/scripts/run_product_validation.py --platform windows
 
+  validate-macos:
+    name: macOS installer validation
+    runs-on: macos-latest
+    env:
+      ZZZOPS_EXPECT_INSTALLERS: Bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test native macOS installer behavior
+        run: python .github/scripts/run_product_validation.py --platform macos
+
   required:
     name: dev-required-tests
     if: ${{ always() }}
-    needs: [validate-linux, validate-windows]
+    needs: [validate-linux, validate-windows, validate-macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,3 +69,4 @@ jobs:
           python .github/scripts/require_validation.py
           linux=${{ needs.validate-linux.result }}
           windows=${{ needs.validate-windows.result }}
+          macos=${{ needs.validate-macos.result }}
