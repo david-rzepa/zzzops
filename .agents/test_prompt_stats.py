@@ -28,6 +28,30 @@ class PromptStatsTests(unittest.TestCase):
         self.assertTrue(prompt_stats.within_budget([("a", 4, 2)], limit=2))
         self.assertFalse(prompt_stats.within_budget([("a", 4, 3)], limit=2))
 
+    def test_workflow_profiles_cover_both_harnesses(self) -> None:
+        root = SCRIPT.parents[1]
+        report = prompt_stats.render_workflow_report(root)
+        self.assertEqual(
+            {"capture", "execution", "policy-review", "migration", "suggestion", "acceptance", "feedback"},
+            set(prompt_stats.WORKFLOW_PROMPTS),
+        )
+        self.assertEqual(set(prompt_stats.WORKFLOW_PROMPTS), set(prompt_stats.WORKFLOW_SIGNALS))
+        self.assertIn("| Workflow | Codex bytes | Codex est. tokens | Claude bytes | Claude est. tokens |", report)
+        for workflow in prompt_stats.WORKFLOW_PROMPTS:
+            self.assertIn(f"| {workflow} |", report)
+
+    def test_workflow_eval_reports_missing_signal(self) -> None:
+        root = SCRIPT.parents[1]
+        failures, _ = prompt_stats.evaluate_workflows(root)
+        self.assertEqual([], failures)
+        original = prompt_stats.WORKFLOW_SIGNALS["capture"]
+        try:
+            prompt_stats.WORKFLOW_SIGNALS["capture"] = ("not-a-real-prompt-signal",)
+            failures, _ = prompt_stats.evaluate_workflows(root)
+            self.assertTrue(any(item.startswith("capture/codex:") for item in failures))
+        finally:
+            prompt_stats.WORKFLOW_SIGNALS["capture"] = original
+
 
 if __name__ == "__main__":
     unittest.main()
