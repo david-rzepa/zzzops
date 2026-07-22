@@ -1,6 +1,7 @@
 {
   "name": "zzzops-release-automation",
   "private": true,
+  "license": "Apache-2.0",
   "scripts": {
     "test:release": "node --test --test-isolation=none .github/scripts/test_semantic_release.mjs"
   },

@@ -37,9 +37,11 @@ build_pairs() {
     local fixed=(
         .zzzops/rules/BACKENDS.md .zzzops/rules/BLOCKERS.md .zzzops/rules/CONTINUATION.md
         .zzzops/rules/EXECUTION_STRATEGY.md .zzzops/rules/FEEDBACK.md .zzzops/rules/GOAL_SYSTEM.md .zzzops/rules/INITIALIZATION.md
-        .agents/zzzops/zzzops.py
+        .agents/zzzops/zzzops.py LICENSE
     )
-    for relative in "${fixed[@]}"; do add_pair "$SOURCE_ROOT/$relative" "$relative"; done
+    for relative in "${fixed[@]}"; do
+        [[ "$relative" == LICENSE ]] && add_pair "$SOURCE_ROOT/$relative" '.agents/zzzops/LICENSE' || add_pair "$SOURCE_ROOT/$relative" "$relative"
+    done
     add_pair "$SOURCE_ROOT/.agents/.gitignore" '.agents/zzzops/.gitignore'
     local roots=("$SOURCE_ROOT/.agents/zzzops/templates/project-goals")
     for name in "${TARGET_SKILLS[@]}"; do roots+=("$SOURCE_ROOT/.agents/skills/$name"); done
