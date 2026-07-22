@@ -1895,6 +1895,21 @@ class WorkflowContractTests(unittest.TestCase):
         for phrase in ("zzzops-feedback", "current execution session", "Never ask per issue", "--include-feedback"):
             self.assertIn(phrase, execute)
 
+    def test_execute_prioritization_contract_handles_adversarial_cases(self):
+        execute = (
+            Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "EXECUTE.md"
+        ).read_text(encoding="utf-8").lower()
+        scenarios = {
+            "explicit priority outranks an attractive lower-priority goal": "authority and explicit project priority first",
+            "hard high-value work outranks easy low-value volume": "difficulty is cost, not value",
+            "risk and unlocks outrank merely fast feedback": "risk-reducing or unlocking work over low-value easy or fast work",
+            "unmeasured KPIs stay qualitative": "never invent a baseline, score, or precision",
+            "an exact tie has a stable fallback": "resume policy, then the lowest goal key",
+        }
+        for scenario, expected in scenarios.items():
+            with self.subTest(scenario=scenario):
+                self.assertIn(expected, execute)
+
     def test_refill_and_feedback_provenance_labels_stay_distinct(self):
         skills = Path(__file__).parent / "skills"
         refill = (skills / "suggest-zzzops-work" / "SKILL.md").read_text(encoding="utf-8").lower()
