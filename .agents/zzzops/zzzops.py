@@ -90,6 +90,7 @@ GITHUB_MANAGEMENT_PERMISSIONS = {"TRIAGE", "WRITE", "MAINTAIN", "ADMIN"}
 RESERVATION_COLOR = "5319E7"
 RESERVATION_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 RESERVATION_EXPIRY_GRACE_SECONDS = 60
+RESOURCE_LABEL_PREFIX = "zzzops:resource:"
 EXECUTION_REPORT_SCHEMA_VERSION = 3
 LEGACY_EXECUTION_REPORT_SCHEMA_VERSION = 2
 EXECUTION_REPORT_TARGET = "david-rzepa/zzzops"
@@ -272,7 +273,7 @@ def exclusive_resources(resources: Any, policy: Any = None) -> list[str]:
 
 def resource_label_name(resource: str) -> str:
     normalized = normalize_resources([resource])[0]
-    return "zzzops:resource:" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:32]
+    return RESOURCE_LABEL_PREFIX + hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:32]
 
 
 def reservation_description(
@@ -382,6 +383,36 @@ class GitHubReservationAdapter:
         if not isinstance(label, dict) or not label.get("node_id"):
             raise ReservationProviderError("GitHub returned incomplete reservation metadata; no ownership assumed.")
         return label
+
+    def list_resource_labels(self) -> list[dict[str, Any]]:
+        result = self._run([
+            "api", "--paginate", "--slurp", f"repos/{self.repository}/labels?per_page=100",
+        ])
+        if result.returncode:
+            raise self._provider_error(result)
+        try:
+            pages = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise ReservationProviderError(
+                "GitHub returned invalid resource reservation metadata; no release was assumed."
+            ) from exc
+        if not isinstance(pages, list) or any(not isinstance(page, list) for page in pages):
+            raise ReservationProviderError(
+                "GitHub returned incomplete resource reservation metadata; no release was assumed."
+            )
+        labels = []
+        for label in (item for page in pages for item in page):
+            if not isinstance(label, dict):
+                raise ReservationProviderError(
+                    "GitHub returned incomplete resource reservation metadata; no release was assumed."
+                )
+            if str(label.get("name", "")).startswith(RESOURCE_LABEL_PREFIX):
+                if not label.get("node_id"):
+                    raise ReservationProviderError(
+                        "GitHub returned incomplete resource reservation metadata; no release was assumed."
+                    )
+                labels.append(label)
+        return labels
 
     def create_label(self, name: str, description: str) -> dict[str, Any] | None:
         result = self._run([
@@ -687,6 +718,31 @@ def _release_resource(
             raise ReservationProviderError("GitHub did not confirm resource release; it will expire safely.")
 
 
+def _owned_resource_labels(
+    adapter: Any, repository: str, goal: int, revision: int, owner: str, run_id: str,
+) -> list[dict[str, Any]]:
+    owned = []
+    for label in adapter.list_resource_labels():
+        metadata = parse_reservation_description(label.get("description"))
+        if metadata["repository_key"] != reservation_repository_key(repository):
+            continue
+        if (
+            metadata["goal"] == goal and metadata["owner"] == owner and metadata["run_id"] == run_id
+            and metadata["revision"] <= revision
+        ):
+            owned.append(label)
+    return owned
+
+
+def _delete_discovered_resource(adapter: Any, label: dict[str, Any]) -> None:
+    try:
+        adapter.delete_label(label["node_id"])
+    except ReservationProviderError:
+        confirmed = adapter.get_label(label["name"])
+        if confirmed is not None and confirmed.get("node_id") == label["node_id"]:
+            raise ReservationProviderError("GitHub did not confirm resource release; it will expire safely.")
+
+
 def acquire_reservation_bundle(
     adapter: Any, repository: str, goal: int, revision: int, owner: str, run_id: str,
     resources: list[str], ttl_seconds: int = 900, now: datetime | None = None, resource_policy: Any = None,
@@ -736,16 +792,67 @@ def release_reservation_bundle(
     adapter: Any, repository: str, goal: int, revision: int, owner: str, run_id: str, resources: list[str],
     resource_policy: Any = None,
 ) -> dict[str, Any]:
-    resources = normalize_resources(resources)
-    reserved_resources = exclusive_resources(resources, resource_policy)
-    _validate_reservation_goal(adapter, repository, goal, revision)
-    for resource in reversed(reserved_resources):
-        _release_resource(adapter, repository, resource, goal, revision, owner, run_id)
-    for resource in reversed(sorted(set(resources) - set(reserved_resources))):
-        _release_resource(
-            adapter, repository, resource, goal, revision, owner, run_id, ignore_not_owned=True,
-        )
-    return release_reservation(adapter, repository, goal, revision, owner, run_id, _validated=True)
+    exclusive_resources(resources, resource_policy)  # Validate retained CLI arguments and reviewed policy.
+    try:
+        _validate_reservation_goal(adapter, repository, goal, revision)
+    except ReservationProviderError as exc:
+        return {"released": False, "outcome": "failed", "goal": goal, "detail": str(exc)}
+    removed = 0
+    try:
+        owned = _owned_resource_labels(adapter, repository, goal, revision, owner, run_id)
+    except ReservationProviderError as exc:
+        return {"released": False, "outcome": "failed", "goal": goal, "detail": str(exc)}
+    for label in reversed(owned):
+        try:
+            _delete_discovered_resource(adapter, label)
+            removed += 1
+        except ReservationProviderError as exc:
+            outcome = "partial" if removed else "failed"
+            return {
+                "released": False, "outcome": outcome, "goal": goal,
+                "released_resources": removed, "detail": str(exc),
+            }
+    try:
+        remaining = _owned_resource_labels(adapter, repository, goal, revision, owner, run_id)
+    except ReservationProviderError as exc:
+        outcome = "partial" if removed else "failed"
+        return {
+            "released": False, "outcome": outcome, "goal": goal,
+            "released_resources": removed, "detail": str(exc),
+        }
+    if remaining:
+        return {
+            "released": False, "outcome": "partial", "goal": goal,
+            "released_resources": removed, "detail": "Owned resource reservations remain after release.",
+        }
+    try:
+        goal_result = release_reservation(adapter, repository, goal, revision, owner, run_id, _validated=True)
+    except ReservationProviderError as exc:
+        outcome = "partial" if removed else "failed"
+        return {
+            "released": False, "outcome": outcome, "goal": goal,
+            "released_resources": removed, "detail": str(exc),
+        }
+    if goal_result["outcome"] == "already_released" and not removed:
+        return goal_result
+    return {"released": True, "outcome": "released", "goal": goal}
+
+
+def reservation_cli_message(result: dict[str, Any], goal: int) -> str:
+    outcome = result.get("outcome")
+    if result.get("acquired") is True:
+        return f"Reserved goal #{goal}."
+    if outcome == "released":
+        return f"Released goal #{goal} and all owned resources."
+    if outcome == "already_released":
+        return f"Goal #{goal} and its owned resources were already released."
+    if outcome == "partial":
+        return f"Partially released goal #{goal}; owned reservations remain. Retry after refreshing."
+    if outcome == "failed":
+        return f"Could not safely release goal #{goal}; no complete release was assumed."
+    if outcome in {"contended", "resource_contended"}:
+        return f"Another agent is handling overlapping work for goal #{goal}. Refresh and choose different work."
+    return f"Goal #{goal} is not reserved by this run. Refresh before continuing."
 
 
 def project_claim_ttl_seconds(project: dict[str, Any]) -> int:
@@ -2861,14 +2968,8 @@ def main() -> int:
                 )
             if args.output_format == "json":
                 print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
-            elif result.get("acquired") is True:
-                print(f"Reserved goal #{args.goal}.")
-            elif result.get("released") is True:
-                print(f"Released goal #{args.goal}.")
-            elif result.get("outcome") in {"contended", "resource_contended"}:
-                print(f"Another agent is handling overlapping work for goal #{args.goal}. Refresh and choose different work.")
             else:
-                print(f"Goal #{args.goal} is not reserved by this run. Refresh before continuing.")
+                print(reservation_cli_message(result, args.goal))
             return 0 if result.get("acquired") is True or result.get("released") is True else 3
         elif args.command == "report":
             if args.report_command == "record":
