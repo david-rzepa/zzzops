@@ -212,7 +212,7 @@ build_plan() {
         for ((i=0; i<${#PLAN_RELATIVE[@]}; i++)); do
             printf '%s|%s|%s|%s\n' "${PLAN_RELATIVE[$i]}" "${PLAN_ACTION[$i]}" "${PLAN_SOURCE_HASH[$i]}" "${PLAN_EXPECTED[$i]}"
         done
-        printf 'manifest|%s|%s|%s|%s|%s\nignored|%s\nwarning|%s\n' "$PLAN_MANIFEST_EXPECTED" "$MANIFEST_REVISION" "$MANIFEST_VERSION" "$SOURCE_REVISION" "$SOURCE_VERSION" "${IGNORED[*]}" "$IGNORE_WARNING"
+        printf 'manifest|%s|%s|%s|%s|%s\nignored|%s\nwarning|%s\n' "$PLAN_MANIFEST_EXPECTED" "$MANIFEST_REVISION" "$MANIFEST_VERSION" "$SOURCE_REVISION" "$SOURCE_VERSION" "${IGNORED[*]:-}" "$IGNORE_WARNING"
     )
 }
 
@@ -240,7 +240,8 @@ show_preview() {
     elif [[ $new_count -gt 0 || $updated_count -gt 0 ]]; then printf 'Planned changes: %d new, %d updated.\n' "$new_count" "$updated_count"
     elif [[ ${#PLAN_ERRORS[@]} -eq 0 ]]; then printf 'Planned changes: ZzzOps is already up to date.\n'; fi
     if [[ ${#IGNORED[@]} -gt 0 ]]; then
-        for action in "${IGNORED[@]}"; do
+        for action in "${IGNORED[@]:-}"; do
+            [[ -n "$action" ]] || continue
             [[ -n "$names" ]] && names+=' and '
             names+="$action/"
         done
@@ -248,7 +249,9 @@ show_preview() {
         printf 'Remove those ignore rules before committing so collaborators receive the installed workflows.\n'
     fi
     [[ -n "$IGNORE_WARNING" ]] && printf 'Warning: %s\n' "$IGNORE_WARNING"
-    for error in "${PLAN_ERRORS[@]}"; do printf 'Cannot install yet: %s\n' "$error"; done
+    for error in "${PLAN_ERRORS[@]:-}"; do
+        [[ -n "$error" ]] && printf 'Cannot install yet: %s\n' "$error"
+    done
 }
 
 WRITTEN_RELATIVE=()
