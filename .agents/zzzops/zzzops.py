@@ -90,7 +90,8 @@ GITHUB_MANAGEMENT_PERMISSIONS = {"TRIAGE", "WRITE", "MAINTAIN", "ADMIN"}
 RESERVATION_COLOR = "5319E7"
 RESERVATION_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 RESERVATION_EXPIRY_GRACE_SECONDS = 60
-EXECUTION_REPORT_SCHEMA_VERSION = 2
+EXECUTION_REPORT_SCHEMA_VERSION = 3
+LEGACY_EXECUTION_REPORT_SCHEMA_VERSION = 2
 EXECUTION_REPORT_TARGET = "david-rzepa/zzzops"
 EXECUTION_REPORT_TITLE = "ZzzOps feedback"
 EXECUTION_REPORT_LABELS = ["zzzops", "zzzops-feedback", "zzzops:status:new", "zzzops:priority:P2"]
@@ -179,11 +180,14 @@ EXECUTION_REPORT_PHASES = {
     "capture", "discovery", "handoff", "implementation", "installation", "migration",
     "policy_review", "triage", "unblocking", "verification",
 }
-EXECUTION_REPORT_FIELDS = {
+EXECUTION_REPORT_V2_FIELDS = {
     "schema_version", "id", "created_at", "workflow", "agent", "issue", "cause", "phase",
     "occurrences", "impact",
 }
+EXECUTION_REPORT_FIELDS = EXECUTION_REPORT_V2_FIELDS | {"zzzops"}
 EXECUTION_REPORT_ID = re.compile(r"^report-[0-9a-f]{64}$")
+ZZZOPS_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$")
+ZZZOPS_REVISION = re.compile(r"^[0-9a-f]{40,64}$")
 
 
 class ReservationProviderError(ValueError):
@@ -790,18 +794,100 @@ def execution_report_id(report: dict[str, Any]) -> str:
     return "report-" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _validated_zzzops_provenance(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict) or set(value) != {"version", "revision"}:
+        raise ValueError("zzzops provenance must contain only version and revision")
+    version, revision = value.get("version"), value.get("revision")
+    if not isinstance(version, str) or not ZZZOPS_VERSION.fullmatch(version):
+        raise ValueError("zzzops version is invalid")
+    if not isinstance(revision, str) or not ZZZOPS_REVISION.fullmatch(revision):
+        raise ValueError("zzzops revision must be an exact 40-64 character lowercase Git revision")
+    return {"version": version, "revision": revision}
+
+
+def _git_blob_digest(data: bytes, width: int) -> str:
+    algorithm = hashlib.sha1 if width == 40 else hashlib.sha256
+    return algorithm(b"blob " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest()
+
+
+def zzzops_provenance(repo: Path) -> dict[str, str]:
+    manifest = repo / ".agents" / "zzzops" / "INSTALL_MANIFEST"
+    if manifest.is_file():
+        try:
+            lines = manifest.read_text(encoding="utf-8-sig").splitlines()
+        except (OSError, UnicodeError) as exc:
+            raise ValueError(f"Could not read installed ZzzOps provenance: {type(exc).__name__}") from exc
+        if not lines or lines[0] != "zzzops-install-manifest-v1":
+            raise ValueError("Installed ZzzOps provenance manifest header is invalid")
+        revisions, versions, files = [], [], {}
+        for line in lines[1:]:
+            fields = line.split("\t", 2)
+            if len(fields) == 2 and fields[0] == "revision":
+                revisions.append(fields[1])
+            elif len(fields) == 2 and fields[0] == "version":
+                versions.append(fields[1])
+            elif len(fields) == 3 and fields[0] == "file":
+                digest, relative = fields[1], fields[2]
+                path = Path(relative)
+                if not ZZZOPS_REVISION.fullmatch(digest) or path.is_absolute() or ".." in path.parts or relative in files:
+                    raise ValueError("Installed ZzzOps provenance manifest file entry is invalid")
+                files[relative] = digest
+            else:
+                raise ValueError("Installed ZzzOps provenance manifest entry is invalid")
+        if not versions:
+            raise ValueError("Installed ZzzOps manifest predates version provenance; rerun the installer before recording reports")
+        if len(revisions) != 1 or len(versions) != 1:
+            raise ValueError("Installed ZzzOps provenance fields must occur exactly once")
+        try:
+            provenance = _validated_zzzops_provenance({"version": versions[0], "revision": revisions[0]})
+        except ValueError as exc:
+            raise ValueError(f"Installed ZzzOps provenance is invalid: {exc}") from exc
+        if not files:
+            raise ValueError("Installed ZzzOps provenance manifest contains no managed files")
+        for relative, expected in files.items():
+            try:
+                data = (repo / relative).read_bytes()
+            except OSError as exc:
+                raise ValueError("Installed ZzzOps mechanics do not match recorded provenance") from exc
+            if not hmac.compare_digest(_git_blob_digest(data, len(expected)), expected):
+                raise ValueError("Installed ZzzOps mechanics do not match recorded provenance")
+        return provenance
+    if not (repo / "install.ps1").is_file() or not (repo / "install.sh").is_file():
+        raise ValueError("Installed ZzzOps provenance is unavailable; rerun the installer before recording reports")
+    values = []
+    for command in (("rev-parse", "HEAD"), ("describe", "--tags", "--always", "--long", "--dirty")):
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(repo), *command], text=True, encoding="utf-8",
+                capture_output=True, timeout=10, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ValueError(f"Could not resolve base-repository ZzzOps provenance: {type(exc).__name__}") from exc
+        if result.returncode or not result.stdout.strip():
+            raise ValueError("Could not resolve base-repository ZzzOps provenance")
+        values.append(result.stdout.strip())
+    return _validated_zzzops_provenance({"revision": values[0], "version": values[1]})
+
+
 def validate_execution_report(report: Any) -> list[str]:
     if not isinstance(report, dict):
         return ["execution report must be an object"]
     errors: list[str] = []
-    unknown = sorted(set(report) - EXECUTION_REPORT_FIELDS)
-    missing = sorted(EXECUTION_REPORT_FIELDS - set(report))
+    schema_version = report.get("schema_version")
+    expected_fields = EXECUTION_REPORT_V2_FIELDS if schema_version == LEGACY_EXECUTION_REPORT_SCHEMA_VERSION else EXECUTION_REPORT_FIELDS
+    unknown = sorted(set(report) - expected_fields)
+    missing = sorted(expected_fields - set(report))
     if unknown:
         errors.append("unknown execution report fields: " + ", ".join(unknown))
     if missing:
         errors.append("missing execution report fields: " + ", ".join(missing))
-    if report.get("schema_version") != EXECUTION_REPORT_SCHEMA_VERSION:
-        errors.append(f"schema_version must be {EXECUTION_REPORT_SCHEMA_VERSION}")
+    if schema_version not in {LEGACY_EXECUTION_REPORT_SCHEMA_VERSION, EXECUTION_REPORT_SCHEMA_VERSION}:
+        errors.append(f"schema_version must be {LEGACY_EXECUTION_REPORT_SCHEMA_VERSION} or {EXECUTION_REPORT_SCHEMA_VERSION}")
+    if schema_version == EXECUTION_REPORT_SCHEMA_VERSION:
+        try:
+            _validated_zzzops_provenance(report.get("zzzops"))
+        except ValueError as exc:
+            errors.append(str(exc))
     report_id = report.get("id")
     if not isinstance(report_id, str) or not EXECUTION_REPORT_ID.fullmatch(report_id):
         errors.append("id must use the constrained report identifier format")
@@ -843,7 +929,7 @@ def validate_execution_report(report: Any) -> list[str]:
 def record_execution_report(
     repo: Path, project: dict[str, Any], *, workflow: str, agent: str, issue: str, cause: str, phase: str,
     occurrences: int = 1, wait_seconds: int = 0, extra_tool_calls: int = 0,
-    estimated_tokens: int = 0, now: datetime | None = None,
+    estimated_tokens: int = 0, now: datetime | None = None, provenance: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     if not execution_reports_enabled(project):
         return {"recorded": False, "reason": "disabled"}
@@ -859,6 +945,7 @@ def record_execution_report(
         "cause": cause,
         "phase": phase,
         "occurrences": occurrences,
+        "zzzops": _validated_zzzops_provenance(provenance) if provenance is not None else zzzops_provenance(repo),
         "impact": {
             "wait_seconds": wait_seconds,
             "extra_tool_calls": extra_tool_calls,
@@ -912,19 +999,23 @@ def prepare_feedback(repo: Path, prompt: str, report_ids: list[str] | None = Non
         raise ValueError("feedback requires prompt text or at least one execution report")
     report_json = json.dumps(reports, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     feedback_text = prompt if prompt.strip() else "(none)"
-    grouped: dict[str, dict[str, int]] = {}
+    grouped: dict[tuple[str, str], dict[str, int]] = {}
     for report in reports:
+        if report["schema_version"] == LEGACY_EXECUTION_REPORT_SCHEMA_VERSION:
+            build = "Unknown (schema v2 predates version provenance)"
+        else:
+            build = f"{report['zzzops']['version']} (revision {report['zzzops']['revision']})"
         totals = grouped.setdefault(
-            report["cause"],
+            (report["cause"], build),
             {"occurrences": 0, "wait_seconds": 0, "extra_tool_calls": 0, "estimated_tokens": 0},
         )
         totals["occurrences"] += report["occurrences"]
         for field in ("wait_seconds", "extra_tool_calls", "estimated_tokens"):
             totals[field] += report["impact"][field]
     narratives = []
-    for cause in sorted(grouped):
+    for cause, build in sorted(grouped):
         account = EXECUTION_REPORT_CAUSES[cause]
-        totals = grouped[cause]
+        totals = grouped[(cause, build)]
         impact_parts = []
         for field, singular, plural in (
             ("occurrences", "occurrence", "occurrences"),
@@ -937,6 +1028,7 @@ def prepare_feedback(repo: Path, prompt: str, report_ids: list[str] | None = Non
         impact = "; ".join(impact_parts)
         narratives.append(
             f"### {account['title']}\n\n"
+            f"**ZzzOps build:** {build}\n\n"
             f"**Machinery surface:** {account['surface']}\n\n"
             f"**Observed:** {account['observed']}\n\n"
             f"**Measured impact:** {impact}.\n\n"

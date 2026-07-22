@@ -83,6 +83,8 @@ class NativeInstallerTests(unittest.TestCase):
             fields = line.split("\t", 2)
             if fields[0] == "revision":
                 line = f"revision\t{older_revision}"
+            elif fields[0] == "version":
+                continue  # Exercise the supported revision-only manifest upgrade path.
             elif len(fields) == 3 and fields[0] == "file" and fields[2] == relative:
                 line = f"file\t{self.git_blob_hash(old_data)}\t{relative}"
             rewritten.append(line)
@@ -90,6 +92,7 @@ class NativeInstallerTests(unittest.TestCase):
         return old_data, manifest.read_bytes()
 
     def test_dry_run_cancel_and_confirm_install(self):
+        installed_versions = {}
         for name, installer in self.installers.items():
             with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
                 target = self.make_repo(directory)
@@ -99,6 +102,7 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertIn("tracked project skills", preview.stdout)
                 self.assertIn("workflow rules", preview.stdout)
                 self.assertIn("blank templates", preview.stdout)
+                self.assertRegex(preview.stdout, r"ZzzOps version: not installed -> [A-Za-z0-9][A-Za-z0-9._+-]+ \([0-9a-f]{7}\)\.")
                 self.assertIn("No files were changed.", preview.stdout)
                 self.assertFalse((target / ".agents").exists())
 
@@ -117,6 +121,11 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertTrue((target / ".agents" / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").is_file())
                 self.assertTrue((target / ".agents" / "zzzops" / ".gitignore").is_file())
                 self.assertTrue((target / ".agents" / "zzzops" / "INSTALL_MANIFEST").is_file())
+                manifest_text = (target / ".agents" / "zzzops" / "INSTALL_MANIFEST").read_text(encoding="utf-8")
+                self.assertIn("\nversion\t", manifest_text)
+                fields = dict(line.split("\t", 1) for line in manifest_text.splitlines()[1:] if line.count("\t") == 1)
+                self.assertRegex(fields["revision"], r"^[0-9a-f]{40,64}$")
+                installed_versions[name] = (fields["version"], fields["revision"])
                 self.assertTrue((target / ".agents" / "skills" / "add-zzzops-goal" / "SKILL.md").is_file())
                 self.assertTrue((target / ".claude" / "skills" / "add-zzzops-goal" / "SKILL.md").is_file())
                 self.assertTrue((target / ".agents" / "skills" / "review-zzzops-policy" / "SKILL.md").is_file())
@@ -150,6 +159,7 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertIn("No further action is necessary", current.stdout)
                 self.assertNotIn("Install these changes?", current.stdout)
                 self.assertNotIn("cancelled", current.stdout)
+        self.assertEqual(1, len(set(installed_versions.values())))
 
     def test_declined_and_accepted_upgrade_are_distinct_from_local_divergence(self):
         relative = ".agents/zzzops/zzzops.py"
@@ -168,6 +178,7 @@ class NativeInstallerTests(unittest.TestCase):
                 declined = self.run_installer(installer, target, answer="\n")
                 self.assertEqual(0, declined.returncode, declined.stderr + declined.stdout)
                 self.assertIn("Upgrade available", declined.stdout)
+                self.assertIn("ZzzOps version: revision 0000000 ->", declined.stdout)
                 self.assertIn("Managed files to update", declined.stdout)
                 self.assertIn(relative, declined.stdout)
                 self.assertIn("Changes since installed version", declined.stdout)
@@ -186,6 +197,7 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertIn("ZzzOps was upgraded.", upgraded.stdout)
                 self.assertEqual(source_data, (target / relative).read_bytes())
                 self.assertNotEqual(old_manifest, (target / ".agents" / "zzzops" / "INSTALL_MANIFEST").read_bytes())
+                self.assertIn("\nversion\t", (target / ".agents" / "zzzops" / "INSTALL_MANIFEST").read_text(encoding="utf-8"))
 
                 (target / relative).write_bytes(b"local project customization\n")
                 conflict = self.run_installer(installer, target, "--dry-run")
@@ -196,6 +208,28 @@ class NativeInstallerTests(unittest.TestCase):
                 explicit = self.run_installer(installer, target, "--overwrite-mechanical", answer="y\n")
                 self.assertEqual(0, explicit.returncode, explicit.stderr + explicit.stdout)
                 self.assertEqual(source_data, (target / relative).read_bytes())
+
+    def test_revision_only_manifest_receives_version_metadata_upgrade(self):
+        for name, installer in self.installers.items():
+            with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
+                target = self.make_repo(directory)
+                installed = self.run_installer(installer, target, answer="y\n")
+                self.assertEqual(0, installed.returncode, installed.stderr + installed.stdout)
+                manifest = target / ".agents" / "zzzops" / "INSTALL_MANIFEST"
+                revision_only = "\n".join(
+                    line for line in manifest.read_text(encoding="utf-8").splitlines()
+                    if not line.startswith("version\t")
+                ) + "\n"
+                manifest.write_text(revision_only, encoding="utf-8", newline="\n")
+
+                preview = self.run_installer(installer, target, "--dry-run")
+                self.assertEqual(0, preview.returncode, preview.stderr + preview.stdout)
+                self.assertIn("Upgrade available", preview.stdout)
+                self.assertIn("ZzzOps version: revision ", preview.stdout)
+                upgraded = self.run_installer(installer, target, answer="yes\n")
+                self.assertEqual(0, upgraded.returncode, upgraded.stderr + upgraded.stdout)
+                self.assertIn("ZzzOps was upgraded", upgraded.stdout)
+                self.assertIn("\nversion\t", manifest.read_text(encoding="utf-8"))
 
     def test_ignore_warning_and_local_state_preservation(self):
         for name, installer in self.installers.items():
