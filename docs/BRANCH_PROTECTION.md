@@ -1,33 +1,35 @@
 # Branch protection
 
-ZzzOps currently uses a private repository on GitHub Free. GitHub returns `403` for both classic branch protection and repository rulesets until the repository becomes public or the owner upgrades to GitHub Pro. The CI workflow is already usable: every PR targeting `dev` runs Linux validation and native Windows installer validation behind the stable, read-only required-check candidate `dev-required-tests`. The aggregate fails unless both platform jobs succeed.
+ZzzOps is a public GitHub repository. Protection is implemented through active repository rulesets, not classic branch-protection endpoints. A `404` from `repos/{owner}/{repo}/branches/{branch}/protection` therefore does not mean that the branch is unprotected.
 
-## Enable protection after Pro/public access
+Read rulesets before relying on them; do not test protection with force-pushes, deletion, or direct updates.
 
-Configure these rules in **Settings → Rules → Rulesets**, then query the saved rules back before relying on them.
+```powershell
+gh repo view david-rzepa/zzzops --json visibility,url
+gh api repos/david-rzepa/zzzops/rulesets
+gh api repos/david-rzepa/zzzops/rulesets/19287297 # dev
+gh api repos/david-rzepa/zzzops/rulesets/19287218 # main
+gh api repos/david-rzepa/zzzops/branches/dev/protection # classic endpoint; 404 is expected here
+```
 
-### `dev`
+## `dev`
 
-- Target only `refs/heads/dev`.
-- Require changes through a pull request; zero approvals is acceptable unless review is desired.
-- Require status check `dev-required-tests` from GitHub Actions and require the branch to be current before merge.
-- Block force pushes and deletion.
-- Give no actor a bypass.
+The active `dev` ruleset targets only `refs/heads/dev` and:
 
-This makes PR CI mandatory. The workflow intentionally has no path filters, dynamic job name, matrix suffix, secrets, or write permission, so the required check is present on every PR into `dev`.
+- blocks deletion, non-fast-forward updates, and direct updates;
+- requires merge-only pull requests;
+- requires last-push approval and resolved review threads, while requiring zero approving reviews by count;
+- requires the stable GitHub Actions check `dev-required-tests` (the rule does not require the branch to be current);
+- has an always-bypass RepositoryRole actor. Read the ruleset before relying on bypass scope; the current caller can bypass it.
 
-### `main`
+`dev-required-tests` is the stable aggregate emitted on every PR to `dev`. It succeeds only when Linux validation, Windows installer validation, and macOS installer validation have all succeeded. The workflow has no path filters, dynamic check names, secrets, or write permission, so protection can rely on that one stable context.
 
-GitHub cannot express “the owner may update only by force push.” A user bypass permits that user to make ordinary pushes and PR merges as well. The closest enforceable configuration is:
+## `main`
 
-- Target only `refs/heads/main`.
-- Restrict updates to a bypass for user `david-rzepa` only; do not grant bot, app, role, team, or collaborator bypasses.
-- Permit non-fast-forward updates so the owner can publish the audited single-root release.
-- Use a separate no-bypass rule to block deletion, including by the owner.
-- Keep the root `AGENTS.md` policy: the owner uses the bypass only for an explicitly intended, leased release force-push; ordinary pushes and PR merges to `main` remain forbidden by project policy.
+The active `main` ruleset targets only `refs/heads/main` and blocks deletion, non-fast-forward updates, and direct updates. It currently has no bypass actors and no required-status-check rule.
 
-After saving, verify through the GitHub API that `dev` requires `dev-required-tests`, both branches reject deletion, `dev` rejects force pushes/direct updates, and only user `david-rzepa` appears in the `main` update bypass. Never test protection by destructively force-pushing or deleting a branch.
+This means the repository's owner-only release-force-push policy cannot be carried out while the current `main` ruleset remains active: GitHub will reject it. Reconcile the ruleset and the root release policy through an explicit reviewed change before attempting a release rewrite; never work around this by destructive testing.
 
 ## Recovery
 
-If `dev-required-tests` is renamed, update the rule only after a PR has emitted the new successful check. If CI is broken, fix it through a PR rather than bypassing `dev`. Before any authorized `main` history rewrite, create and verify a local Git bundle and use `--force-with-lease` against the freshly observed remote SHA.
+If `dev-required-tests` is renamed, update the ruleset only after a PR has emitted the replacement successful check. If validation fails, fix it through a PR rather than bypassing `dev`. Before any future, explicitly authorized `main` history rewrite, create and verify a local Git bundle and use `--force-with-lease` against a freshly observed remote SHA.
