@@ -54,6 +54,16 @@ class FeedbackModuleTests(unittest.TestCase):
             self.assertIs(getattr(zzzops, name), getattr(feedback, name))
 
 
+class GoalsModuleTests(unittest.TestCase):
+    def test_entry_point_reexports_managed_goal_contract(self):
+        goals = zzzops._goals
+        for name in (
+            "parse_managed_goal", "validate_managed_goal", "render_managed_goal",
+            "github_goal_record", "validate_github_issue_goal",
+        ):
+            self.assertIs(getattr(zzzops, name), getattr(goals, name))
+
+
 class InitializationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
