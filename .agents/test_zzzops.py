@@ -1613,6 +1613,13 @@ class WorkflowContractTests(unittest.TestCase):
             if name not in {"review-zzzops-policy", "send-zzzops-feedback"}:
                 self.assertIn("BACKENDS.md", text, name)
 
+        initialization = (root.parent / ".zzzops" / "rules" / "INITIALIZATION.md").read_text(encoding="utf-8")
+        for phrase in (
+            "Under Codex", "authenticated context for the first attempt",
+            "keep local-only commands in the normal sandbox", "Never reauthenticate or persistently relax the sandbox",
+        ):
+            self.assertIn(phrase, initialization)
+
     def test_skills_apply_shared_privacy_safe_feedback_handoff(self):
         root = Path(__file__).parent / "skills"
         for skill in root.iterdir():

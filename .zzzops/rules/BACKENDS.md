@@ -10,7 +10,7 @@ Managed issues labeled `zzzops-feedback` are omitted from ordinary portfolio che
 
 ## GitHub Issues (`github_issues`)
 
-The checkpoint's one paginated GitHub process confirms identity, authentication, Issues, and management permission. Use native `gh issue`/`gh api` only for targeted reads/writes; the CLI validates structures. If direct `gh` auth works but a sandboxed CLI child fails authentication, rerun the same bounded command once in an approved authenticated context; never reauthenticate or vary commands.
+`checkpoint` uses one paginated GitHub process to confirm identity, auth, Issues, and management permission. Use native `gh issue`/`gh api` only for targeted reads/writes; the CLI validates structures. Apply `INITIALIZATION.md`'s authenticated-context rule to every `gh` path.
 
 - Repository plus issue number/URL is identity. Use a plain human title: never add a ZzzOps/date ID. Begin the body with concise human sections; no rendered metadata/frontmatter or duplicated title.
 - When introducing this backend, explain that goals inherit the repository's visibility and must not contain secrets or raw sensitive data.
