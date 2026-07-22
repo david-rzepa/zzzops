@@ -12,9 +12,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validate:
-    name: dev-required-tests
+  validate-linux:
+    name: Linux validation
     runs-on: ubuntu-latest
+    env:
+      ZZZOPS_EXPECT_INSTALLERS: PowerShell,Bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -42,3 +44,29 @@ jobs:
           python -m compileall -q .agents .github/scripts
           bash -n install.sh
           [void][scriptblock]::Create((Get-Content -Raw ./install.ps1))
+
+  validate-windows:
+    name: Windows installer validation
+    runs-on: windows-latest
+    env:
+      ZZZOPS_EXPECT_INSTALLERS: PowerShell,Bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test native Windows installer behavior
+        run: python -m unittest discover -s .agents -p 'test_install_zzzops.py'
+
+  required:
+    name: dev-required-tests
+    if: ${{ always() }}
+    needs: [validate-linux, validate-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require every native validation leg
+        run: >-
+          python .github/scripts/require_validation.py
+          linux=${{ needs.validate-linux.result }}
+          windows=${{ needs.validate-windows.result }}

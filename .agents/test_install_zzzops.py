@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+REQUIRED_VALIDATION = ROOT / ".github" / "scripts" / "require_validation.py"
 
 
 def available_installers() -> dict[str, tuple[str, Path]]:
@@ -34,6 +35,10 @@ class NativeInstallerTests(unittest.TestCase):
         cls.installers = available_installers()
         if not cls.installers:
             raise unittest.SkipTest("PowerShell and Bash are unavailable")
+        expected = {name for name in os.environ.get("ZZZOPS_EXPECT_INSTALLERS", "").split(",") if name}
+        missing = expected - set(cls.installers)
+        if missing:
+            raise AssertionError("Required native installers are unavailable: " + ", ".join(sorted(missing)))
 
     def make_repo(self, directory: str) -> Path:
         target = Path(directory)
@@ -332,6 +337,41 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertIn("rolled back", result.stdout)
                 self.assertFalse((target / ".zzzops" / "rules" / "BACKENDS.md").exists())
                 self.assertFalse((target / ".zzzops" / "rules" / "BLOCKERS.md").exists())
+
+
+class ValidationAggregateTests(unittest.TestCase):
+    def run_required_validation(self, *results: str):
+        return subprocess.run(
+            [sys.executable, str(REQUIRED_VALIDATION), *results],
+            text=True, encoding="utf-8", capture_output=True, check=False,
+        )
+
+    def test_required_validation_accepts_only_complete_success(self):
+        success = self.run_required_validation("linux=success", "windows=success")
+        self.assertEqual(0, success.returncode, success.stderr + success.stdout)
+
+        for results in (
+            ("linux=success", "windows=failure"),
+            ("linux=failure", "windows=success"),
+            ("linux=success", "windows=cancelled"),
+            ("linux=success", "windows="),
+            (),
+        ):
+            with self.subTest(results=results):
+                failure = self.run_required_validation(*results)
+                self.assertNotEqual(0, failure.returncode, failure.stderr + failure.stdout)
+
+    def test_workflow_preserves_stable_check_and_requires_native_installers(self):
+        workflow = (ROOT / ".github" / "workflows" / "validate.yml").read_text(encoding="utf-8")
+        self.assertIn("validate-linux:", workflow)
+        self.assertIn("runs-on: ubuntu-latest", workflow)
+        self.assertIn("validate-windows:", workflow)
+        self.assertIn("runs-on: windows-latest", workflow)
+        self.assertEqual(2, workflow.count("ZZZOPS_EXPECT_INSTALLERS: PowerShell,Bash"))
+        self.assertIn("name: dev-required-tests", workflow)
+        self.assertIn("needs: [validate-linux, validate-windows]", workflow)
+        self.assertIn("linux=${{ needs.validate-linux.result }}", workflow)
+        self.assertIn("windows=${{ needs.validate-windows.result }}", workflow)
 
 
 if __name__ == "__main__":
