@@ -59,9 +59,17 @@ class GoalsModuleTests(unittest.TestCase):
         goals = zzzops._goals
         for name in (
             "parse_managed_goal", "validate_managed_goal", "render_managed_goal",
-            "github_goal_record", "validate_github_issue_goal",
+            "github_goal_record", "validate_github_issue_goal", "validate_goal_transition",
+            "load_goal_transition", "apply_goal_transition", "GoalTransitionProviderError",
         ):
             self.assertIs(getattr(zzzops, name), getattr(goals, name))
+
+
+class PortfolioModuleTests(unittest.TestCase):
+    def test_entry_point_reexports_portfolio_contract(self):
+        portfolio = zzzops._portfolio
+        for name in ("audit_portfolio", "build_portfolio_snapshot", "compact_portfolio_output"):
+            self.assertIs(getattr(zzzops, name), getattr(portfolio, name))
 
 
 class InitializationTests(unittest.TestCase):
