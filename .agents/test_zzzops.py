@@ -33,6 +33,17 @@ class PolicyModuleTests(unittest.TestCase):
             self.assertIs(getattr(zzzops, name), getattr(policy, name))
 
 
+class ReservationModuleTests(unittest.TestCase):
+    def test_entry_point_reexports_reservation_contract(self):
+        reservation = zzzops._reservation
+        for name in (
+            "GitHubReservationAdapter", "acquire_reservation_bundle",
+            "renew_reservation_bundle", "release_reservation_bundle",
+            "reservation_cli_message",
+        ):
+            self.assertIs(getattr(zzzops, name), getattr(reservation, name))
+
+
 class InitializationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
