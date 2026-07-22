@@ -34,6 +34,8 @@ The CLI copies discoverable skills, mechanics, and blank templates—never itsel
 
 Discoverable skills stay in `.agents/skills/` and `.claude/skills/`. Other harness support is grouped under `.agents/zzzops/`, while shared project rules and state use the root `.zzzops/` folder.
 
+Target projects receive exactly six skills: `add-zzzops-goal`, `execute-zzzops`, `migrate-to-zzzops`, `review-zzzops-policy`, `send-zzzops-feedback`, and `suggest-zzzops-work`. The `run-zzzops-acceptance` skill, [human acceptance plan](docs/ACCEPTANCE_TEST_PLAN.md), and `.agents/manual_acceptance.py` harness are maintenance and release infrastructure for this base repository; installers exclude them because target users exercise the six shipped workflows rather than maintain ZzzOps itself.
+
 Open a new Codex task or Claude Code session in the target project so its ZzzOps skills are discovered, then start the policy review workflow.
 
 ### 3. Initialize the project
