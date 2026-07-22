@@ -22,6 +22,17 @@ assert SPEC.loader
 SPEC.loader.exec_module(zzzops)
 
 
+class PolicyModuleTests(unittest.TestCase):
+    def test_entry_point_reexports_policy_state_contract(self):
+        policy = zzzops._policy
+        for name in (
+            "project_digest", "read_project_state", "validate_project_state",
+            "validate_policy", "render_project", "render_project_audit",
+            "normalize_resource_policy",
+        ):
+            self.assertIs(getattr(zzzops, name), getattr(policy, name))
+
+
 class InitializationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

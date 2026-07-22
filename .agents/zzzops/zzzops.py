@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import hashlib
 import hmac
 import json
@@ -18,29 +19,25 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-PROJECT_SCHEMA_VERSION = 1
+_POLICY_MODULE_PATH = Path(__file__).with_name("policy.py")
+_POLICY_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_policy", _POLICY_MODULE_PATH)
+assert _POLICY_MODULE_SPEC and _POLICY_MODULE_SPEC.loader
+_policy = importlib.util.module_from_spec(_POLICY_MODULE_SPEC)
+sys.modules[_POLICY_MODULE_SPEC.name] = _policy
+_POLICY_MODULE_SPEC.loader.exec_module(_policy)
+
+PROJECT_SCHEMA_VERSION = _policy.PROJECT_SCHEMA_VERSION
 PLAN_SCHEMA_VERSION = 1
-POLICY_SCHEMA_VERSION = 1
+POLICY_SCHEMA_VERSION = _policy.POLICY_SCHEMA_VERSION
 GOAL_SCHEMA_VERSION = 1
 GOAL_TRANSITION_SCHEMA_VERSION = 1
 PORTFOLIO_SCHEMA_VERSION = 1
-PROJECT_POLICY_RELATIVE = ".zzzops/POLICY.json"
-PROJECT_AUDIT_RELATIVE = ".zzzops/PROJECT_AUDIT.md"
+PROJECT_POLICY_RELATIVE = _policy.PROJECT_POLICY_RELATIVE
+PROJECT_AUDIT_RELATIVE = _policy.PROJECT_AUDIT_RELATIVE
 GOAL_BLOCK_START = "<!-- zzzops-goal"
 GOAL_BLOCK_END = "zzzops-goal -->"
-BACKENDS = {"github_issues"}
-POLICY_SECTION_IDS = (
-    "backend",
-    "git_review_release",
-    "execution_continuation",
-    "verification_testing",
-    "code_quality",
-    "dependencies_tooling",
-    "security_privacy_compliance",
-    "documentation_style",
-    "deployment_resources",
-    "autonomy_approval_parallelism",
-)
+BACKENDS = _policy.BACKENDS
+POLICY_SECTION_IDS = _policy.POLICY_SECTION_IDS
 GOAL_FIELDS = {
     "schema_version", "status", "priority", "value", "difficulty", "confidence",
     "parent", "depends_on", "claim", "blockers",
@@ -78,6 +75,7 @@ MANAGED_SKILLS = (
 )
 MACHINERY_PATHS = (
     ".agents/zzzops/zzzops.py",
+    ".agents/zzzops/policy.py",
     ".agents/zzzops/.gitignore",
     ".agents/zzzops/INSTALL_MANIFEST",
     ".agents/zzzops/templates/project-goals",
@@ -215,60 +213,9 @@ def reservation_repository_key(repository: str) -> str:
     return hashlib.sha256(repository.casefold().encode("utf-8")).hexdigest()[:12]
 
 
-def normalize_resources(resources: Any) -> list[str]:
-    if not isinstance(resources, list):
-        raise ValueError("resources must be a list")
-    normalized = []
-    for resource in resources:
-        if not isinstance(resource, str):
-            raise ValueError("resource entries must be text")
-        value = resource.strip().replace("\\", "/")
-        prefix, separator, target = value.partition(":")
-        prefix = prefix.casefold()
-        if prefix not in {"path", "branch", "integration", "generated", "external"} or not separator or not target:
-            raise ValueError("resources must use path, branch, integration, generated, or external prefixes")
-        if len(value) > 200 or any(ord(character) < 32 for character in value):
-            raise ValueError("resource entries must be at most 200 printable characters")
-        normalized.append(value.casefold())
-    if len(normalized) != len(set(normalized)):
-        raise ValueError("resource entries must be unique")
-    return sorted(normalized)
-
-
-def normalize_resource_policy(policy: Any = None) -> dict[str, Any]:
-    if policy is None:
-        policy = {}
-    if not isinstance(policy, dict):
-        raise ValueError("resource_reservations must be an object")
-    unknown = sorted(set(policy) - {"mode", "exclusive_prefixes", "exclusive_resources"})
-    if unknown:
-        raise ValueError("resource_reservations has unknown fields: " + ", ".join(unknown))
-    mode = policy.get("mode", "conflict_tolerant")
-    if mode not in {"conflict_tolerant", "strict"}:
-        raise ValueError("resource_reservations.mode must be conflict_tolerant or strict")
-    prefixes = policy.get("exclusive_prefixes", ["generated", "external"])
-    supported = {"path", "integration", "generated", "external"}
-    if (
-        not isinstance(prefixes, list)
-        or any(not isinstance(prefix, str) or prefix not in supported for prefix in prefixes)
-        or len(prefixes) != len(set(prefixes))
-    ):
-        raise ValueError("resource_reservations.exclusive_prefixes must contain unique supported prefixes")
-    resources = normalize_resources(policy.get("exclusive_resources", []))
-    return {"mode": mode, "exclusive_prefixes": sorted(prefixes), "exclusive_resources": resources}
-
-
-def exclusive_resources(resources: Any, policy: Any = None) -> list[str]:
-    resources = normalize_resources(resources)
-    policy = normalize_resource_policy(policy)
-    if policy["mode"] == "strict":
-        return resources
-    exact = set(policy["exclusive_resources"])
-    prefixes = set(policy["exclusive_prefixes"])
-    return [
-        resource for resource in resources
-        if resource.startswith("branch:") or resource in exact or resource.partition(":")[0] in prefixes
-    ]
+normalize_resources = _policy.normalize_resources
+normalize_resource_policy = _policy.normalize_resource_policy
+exclusive_resources = _policy.exclusive_resources
 
 
 def resource_label_name(resource: str) -> str:
@@ -1255,13 +1202,7 @@ def submit_feedback(
     }
 
 
-def reviewed_project_state(repo: Path) -> dict[str, Any]:
-    _path, _policy_text, project = read_project_state(repo)
-    errors = validate_project_state(project) if project is not None else ["canonical policy is missing"]
-    errors.extend(validate_project_artifacts(repo, project))
-    if errors or project.get("initialized") is not True or policy_blockers(project.get("policy")):
-        raise ValueError("Project policy is not ready")
-    return project
+reviewed_project_state = _policy.reviewed_project_state
 
 
 def read_cli_text(value: str) -> str:
@@ -1281,70 +1222,16 @@ def configure_cli_stdout() -> None:
         reconfigure(encoding="utf-8", errors="strict")
 
 
-def project_digest(text: str) -> str:
-    return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def project_path(repo: Path) -> Path:
-    return repo / ".zzzops" / "PROJECT.md"
-
-
-def project_audit_path(repo: Path) -> Path:
-    return repo / PROJECT_AUDIT_RELATIVE
-
-
-def project_policy_path(repo: Path) -> Path:
-    return repo / PROJECT_POLICY_RELATIVE
-
-
-def read_project(repo: Path) -> tuple[Path, str]:
-    path = project_path(repo)
-    try:
-        return path, path.read_text(encoding="utf-8-sig")
-    except FileNotFoundError:
-        return path, ""
-    except (OSError, UnicodeError) as exc:
-        raise ValueError(f"Cannot read project charter from {path}: {exc}") from exc
-
-
-def parse_policy_state(text: str) -> dict[str, Any]:
-    try:
-        state = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid canonical policy JSON: {exc}") from exc
-    if not isinstance(state, dict):
-        raise ValueError("Canonical policy state must be a JSON object")
-    return state
-
-
-def read_policy_text(repo: Path) -> tuple[Path, str]:
-    path = project_policy_path(repo)
-    try:
-        text = path.read_text(encoding="utf-8-sig")
-    except FileNotFoundError:
-        return path, ""
-    except (OSError, UnicodeError) as exc:
-        raise ValueError(f"Cannot read canonical policy from {path}: {exc}") from exc
-    return path, text
-
-
-def read_project_state(repo: Path) -> tuple[Path, str, dict[str, Any] | None]:
-    path, text = read_policy_text(repo)
-    if not text:
-        return path, text, None
-    return path, text, parse_policy_state(text)
-
-
-def initialization_base_digest(repo: Path) -> str:
-    _project_path, project_text = read_project(repo)
-    _policy_path, policy_text = read_policy_text(repo)
-    return project_digest(project_text + "\0" + policy_text)
-
-
-def policy_review_digest(state: dict[str, Any]) -> str:
-    reviewable = {key: value for key, value in state.items() if key != "approval"}
-    payload = json.dumps(reviewable, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return project_digest(payload)
+project_digest = _policy.project_digest
+project_path = _policy.project_path
+project_audit_path = _policy.project_audit_path
+project_policy_path = _policy.project_policy_path
+read_project = _policy.read_project
+parse_policy_state = _policy.parse_policy_state
+read_policy_text = _policy.read_policy_text
+read_project_state = _policy.read_project_state
+initialization_base_digest = _policy.initialization_base_digest
+policy_review_digest = _policy.policy_review_digest
 
 
 def validate_project_state(state: Any) -> list[str]:
@@ -1514,6 +1401,13 @@ def policy_blockers(policy: Any) -> list[str]:
         and section.get("required") is True
         and not (isinstance(section.get("review"), dict) and section["review"].get("approved") is True)
     ]
+
+
+# Stable entry-point re-exports for existing callers and installed skill prompts.
+validate_project_state = _policy.validate_project_state
+validate_project_artifacts = _policy.validate_project_artifacts
+validate_policy = _policy.validate_policy
+policy_blockers = _policy.policy_blockers
 
 
 def parse_managed_goal(text: str, issue_number: int | None = None) -> dict[str, Any] | None:
@@ -2737,6 +2631,17 @@ def render_project_audit(state: dict[str, Any]) -> str:
 
 def cell(value: str) -> str:
     return value.replace("|", "\\|").replace("\n", " ")
+
+
+# Policy rendering and text predicates are likewise exposed through the historic
+# CLI module while their implementation lives in the acyclic policy module.
+nonempty = _policy.nonempty
+text_present = _policy.text_present
+nonempty_list = _policy.nonempty_list
+cell = _policy.cell
+render_project = _policy.render_project
+render_policy_sections = _policy.render_policy_sections
+render_project_audit = _policy.render_project_audit
 
 
 def atomic_text(path: Path, text: str) -> None:
