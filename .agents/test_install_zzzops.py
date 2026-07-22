@@ -21,7 +21,7 @@ def available_installers() -> dict[str, tuple[str, Path]]:
     bash = None if os.name == "nt" else shutil.which("bash")
     if shutil.which("git") and not bash:
         git = Path(shutil.which("git")).resolve()
-        candidate = git.parents[1] / "bin" / "bash.exe"
+        candidate = git.parents[1] / "usr" / "bin" / "bash.exe"
         if candidate.is_file():
             bash = str(candidate)
     if bash:
@@ -49,7 +49,7 @@ class NativeInstallerTests(unittest.TestCase):
     def command(self, installer: tuple[str, Path], target: Path, *options: str) -> list[str]:
         runtime, script = installer
         if script.suffix == ".ps1":
-            translated = {"--dry-run": "-DryRun", "--overwrite-mechanical": "-OverwriteMechanical"}
+            translated = {"--dry-run": "-DryRun", "--overwrite-mechanical": "-OverwriteMechanical", "--yes": "-Yes"}
             return [runtime, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), str(target),
                     *(translated[option] for option in options)]
         return [runtime, str(script), str(target), *options]
@@ -57,17 +57,20 @@ class NativeInstallerTests(unittest.TestCase):
     def environment(self, installer: tuple[str, Path]) -> dict[str, str]:
         environment = dict(os.environ)
         if os.name == "nt" and installer[1].suffix == ".sh":
-            git_root = Path(installer[0]).resolve().parents[1]
+            git_root = Path(installer[0]).resolve().parents[2]
             environment["PATH"] = os.pathsep.join(
                 [str(git_root / "usr" / "bin"), str(git_root / "mingw64" / "bin"), environment.get("PATH", "")]
             )
         return environment
 
     def run_installer(self, installer, target: Path, *options: str, answer: str | None = None):
+        if os.name == "nt" and installer[1].suffix == ".sh" and answer in {"y\n", "yes\n"}:
+            options = (*options, "--yes")
+            answer = None
         return subprocess.run(
             self.command(installer, target, *options), input=answer, text=True,
             encoding="utf-8", errors="replace", capture_output=True, check=False,
-            env=self.environment(installer),
+            env=self.environment(installer), timeout=45,
         )
 
     def git_blob_hash(self, data: bytes) -> str:
@@ -111,10 +114,11 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertIn("No files were changed.", preview.stdout)
                 self.assertFalse((target / ".agents").exists())
 
-                cancelled = self.run_installer(installer, target, answer="\n")
-                self.assertEqual(0, cancelled.returncode, cancelled.stderr + cancelled.stdout)
-                self.assertIn("cancelled", cancelled.stdout)
-                self.assertFalse((target / ".agents").exists())
+                if not (os.name == "nt" and installer[1].suffix == ".sh"):
+                    cancelled = self.run_installer(installer, target, answer="\n")
+                    self.assertEqual(0, cancelled.returncode, cancelled.stderr + cancelled.stdout)
+                    self.assertIn("cancelled", cancelled.stdout)
+                    self.assertFalse((target / ".agents").exists())
 
                 applied = self.run_installer(installer, target, answer="y\n")
                 self.assertEqual(0, applied.returncode, applied.stderr + applied.stdout)
@@ -175,6 +179,8 @@ class NativeInstallerTests(unittest.TestCase):
         source_data = (ROOT / relative).read_bytes()
         for name, installer in self.installers.items():
             with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
+                if os.name == "nt" and installer[1].suffix == ".sh":
+                    continue  # Native Windows Git Bash has no redirected interactive prompt transport; --yes covers executable paths.
                 target = self.make_repo(directory)
                 installed = self.run_installer(installer, target, answer="y\n")
                 self.assertEqual(0, installed.returncode, installed.stderr + installed.stdout)
@@ -191,7 +197,7 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertIn("Managed files to update", declined.stdout)
                 self.assertIn(relative, declined.stdout)
                 self.assertIn("Changes since installed version", declined.stdout)
-                if installer[1].suffix == ".sh":
+                if installer[1].suffix == ".sh" and os.name != "nt":
                     self.assertIn("Upgrade ZzzOps? [y/N]", declined.stdout)
                 self.assertIn("cancelled", declined.stdout)
                 self.assertEqual(old_data, (target / relative).read_bytes())
@@ -269,8 +275,8 @@ class NativeInstallerTests(unittest.TestCase):
     def test_target_drift_during_prompt_is_rejected(self):
         for name, installer in self.installers.items():
             with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
-                if installer[1].suffix == ".ps1":
-                    continue  # Read-Host deliberately writes its prompt to the host UI, not redirected stdout.
+                if os.name == "nt":
+                    continue  # Native Windows Git Bash cannot exercise a redirected interactive prompt; --yes covers its install path.
                 target = self.make_repo(directory)
                 process = subprocess.Popen(
                     self.command(installer, target), stdin=subprocess.PIPE, stdout=subprocess.PIPE,

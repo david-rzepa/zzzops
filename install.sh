@@ -6,16 +6,18 @@ TARGET_SKILLS=(add-zzzops-goal execute-zzzops migrate-to-zzzops review-zzzops-po
 INSTALL_MANIFEST_RELATIVE='.agents/zzzops/INSTALL_MANIFEST'
 DRY_RUN=0
 OVERWRITE=0
+ASSUME_YES=0
 
 fail() { printf 'Cannot install yet: %s\n' "$1"; exit 2; }
 
-[[ $# -ge 1 ]] || fail 'Usage: install.sh TARGET [--dry-run] [--overwrite-mechanical]'
+[[ $# -ge 1 ]] || fail 'Usage: install.sh TARGET [--dry-run] [--overwrite-mechanical] [--yes]'
 TARGET_INPUT=$1
 shift
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run) DRY_RUN=1 ;;
         --overwrite-mechanical) OVERWRITE=1 ;;
+        --yes) ASSUME_YES=1 ;;
         *) fail "Unknown option: $1" ;;
     esac
     shift
@@ -328,11 +330,13 @@ if [[ $pending_changes -eq 0 ]]; then
     printf 'ZzzOps is already up to date. No further action is necessary.\n'
     exit 0
 fi
-if [[ $PLAN_IS_UPGRADE -eq 1 ]]; then printf 'Upgrade ZzzOps? [y/N] '
-else printf 'Install these changes? [y/N] '; fi
-IFS= read -r answer || answer=''
-answer=${answer%$'\r'}
-case "$answer" in y|Y|yes|YES|Yes) ;; *) printf 'Installation cancelled; no files were changed.\n'; exit 0 ;; esac
+if [[ $ASSUME_YES -eq 0 ]]; then
+    if [[ $PLAN_IS_UPGRADE -eq 1 ]]; then printf 'Upgrade ZzzOps? [y/N] '
+    else printf 'Install these changes? [y/N] '; fi
+    IFS= read -r answer || answer=''
+    answer=${answer%$'\r'}
+    case "$answer" in y|Y|yes|YES|Yes) ;; *) printf 'Installation cancelled; no files were changed.\n'; exit 0 ;; esac
+fi
 preview_signature=$PLAN_SIGNATURE
 build_plan
 if [[ -n "${PLAN_ERRORS[*]:-}" || "$PLAN_SIGNATURE" != "$preview_signature" ]]; then

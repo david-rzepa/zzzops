@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory = $true, Position = 0)]
     [string]$Target,
     [switch]$DryRun,
-    [switch]$OverwriteMechanical
+    [switch]$OverwriteMechanical,
+    [switch]$Yes
 )
 
 $ErrorActionPreference = 'Stop'
@@ -335,7 +336,7 @@ if (-not $pendingChanges) {
     exit 0
 }
 $prompt = if ($plan.IsUpgrade) { 'Upgrade ZzzOps? [y/N]' } else { 'Install these changes? [y/N]' }
-$answer = Read-Host $prompt
+$answer = if ($Yes) { 'yes' } else { Read-Host $prompt }
 if ($answer -notmatch '^(?i:y|yes)$') {
     Write-Host 'Installation cancelled; no files were changed.'
     exit 0
