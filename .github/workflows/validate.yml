@@ -29,21 +29,7 @@ jobs:
       - name: Install release tooling
         run: npm ci
       - name: Test ZzzOps core and repository contracts
-        run: python -m unittest discover -s .agents -p 'test_*.py'
-      - name: Test TODO migration inventory
-        run: python -m unittest discover -s .agents/skills/migrate-to-zzzops/scripts -p 'test_*.py'
-      - name: Test manual acceptance plan coverage
-        run: python .agents/manual_acceptance.py coverage
-      - name: Test semantic releases
-        run: npm run test:release
-      - name: Verify prompt budget
-        run: python .agents/prompt_stats.py --check
-      - name: Check script syntax
-        shell: pwsh
-        run: |
-          python -m compileall -q .agents .github/scripts
-          bash -n install.sh
-          [void][scriptblock]::Create((Get-Content -Raw ./install.ps1))
+        run: python .github/scripts/run_product_validation.py --platform linux
 
   validate-windows:
     name: Windows installer validation
@@ -56,7 +42,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Test native Windows installer behavior
-        run: python -m unittest discover -s .agents -p 'test_install_zzzops.py'
+        run: python .github/scripts/run_product_validation.py --platform windows
 
   required:
     name: dev-required-tests
