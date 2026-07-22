@@ -1134,6 +1134,14 @@ def read_cli_text(value: str) -> str:
     except (OSError, UnicodeError) as exc:
         raise ValueError(f"Could not read feedback prompt: {type(exc).__name__}") from exc
 
+
+def configure_cli_stdout() -> None:
+    """Use readable, byte-stable UTF-8 whenever stdout owns an encoding layer."""
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is not None:
+        reconfigure(encoding="utf-8", errors="strict")
+
+
 def project_digest(text: str) -> str:
     return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -2724,6 +2732,7 @@ def confirm_project(repo: Path, digest: str, reviewer: str, section_ids: list[st
 
 
 def main() -> int:
+    configure_cli_stdout()
     parser = argparse.ArgumentParser(description="ZzzOps project control CLI")
     parser.add_argument("--repo", type=Path, default=Path.cwd(), help="Project root (default: current directory)")
     commands = parser.add_subparsers(dest="command")

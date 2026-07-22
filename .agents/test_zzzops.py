@@ -1,6 +1,7 @@
 import importlib.util
 import io
 import json
+import os
 import re
 import subprocess
 import sys
@@ -459,6 +460,27 @@ class ExecutionReportTests(unittest.TestCase):
                 from_stdin = zzzops.read_cli_text("-")
             self.assertEqual(text, from_file)
             self.assertEqual(from_file, from_stdin)
+
+    def test_feedback_prepare_emits_utf8_bytes_under_non_utf8_inherited_encoding(self):
+        prompt = self.repo / "prompt.txt"
+        feedback = "Please preserve this em dash — exactly."
+        prompt.write_bytes(b"\xef\xbb\xbf" + feedback.encode("utf-8"))
+        environment = dict(os.environ)
+        environment["PYTHONIOENCODING"] = "cp1252"
+        command = [
+            sys.executable, str(MODULE_PATH), "--repo", str(MODULE_PATH.parents[2]),
+            "feedback", "prepare", "--prompt-file", str(prompt),
+        ]
+
+        first = subprocess.run(command, capture_output=True, check=False, env=environment)
+        self.assertEqual(0, first.returncode, first.stderr.decode("utf-8", errors="replace"))
+        decoded = first.stdout.decode("utf-8")
+        prepared = json.loads(decoded)
+        self.assertIn(feedback, prepared["body"])
+
+        second = subprocess.run(command, capture_output=True, check=False, env=environment)
+        self.assertEqual(first.stdout, second.stdout)
+        self.assertEqual(prepared["digest"], json.loads(second.stdout.decode("utf-8"))["digest"])
 
     def test_record_is_constrained_local_and_policy_can_disable_it(self):
         result = self.record()
