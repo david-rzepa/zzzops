@@ -1267,8 +1267,10 @@ class FakeReservationAdapter:
         self.next_id = 1
         self.lock = threading.Lock()
         self.delete_error = None
+        self.delete_error_node_ids = set()
         self.update_error = None
         self.create_error = None
+        self.list_error = None
 
     @property
     def label(self):
@@ -1289,6 +1291,15 @@ class FakeReservationAdapter:
         with self.lock:
             return dict(self.labels[name]) if name in self.labels else None
 
+    def list_resource_labels(self):
+        if self.list_error:
+            raise zzzops.ReservationProviderError(self.list_error)
+        with self.lock:
+            return [
+                dict(label) for name, label in self.labels.items()
+                if name.startswith("zzzops:resource:")
+            ]
+
     def create_label(self, name, description):
         if self.barrier and (self.barrier_prefix is None or name.startswith(self.barrier_prefix)):
             self.barrier.wait(timeout=2)
@@ -1303,7 +1314,7 @@ class FakeReservationAdapter:
 
     def delete_label(self, node_id):
         with self.lock:
-            if self.delete_error == "before":
+            if self.delete_error == "before" or node_id in self.delete_error_node_ids:
                 raise zzzops.ReservationProviderError("delete failed")
             match = next((name for name, label in self.labels.items() if label["node_id"] == node_id), None)
             if match:
@@ -1443,6 +1454,28 @@ class ReservationTests(unittest.TestCase):
         with self.assertRaisesRegex(zzzops.ReservationProviderError, "not available"):
             adapter.goal_revision(12, require_actionable=True)
 
+    def test_github_adapter_lists_only_complete_resource_labels_across_pages(self):
+        adapter = object.__new__(zzzops.GitHubReservationAdapter)
+        adapter.repository = "owner/repo"
+        resource = {
+            "name": zzzops.resource_label_name("branch:topic"), "node_id": "L1", "description": "metadata",
+        }
+        adapter._run = mock.Mock(return_value=SimpleNamespace(
+            returncode=0, stdout=json.dumps([[resource, {"name": "ordinary", "node_id": "L2"}], []]), stderr="",
+        ))
+        self.assertEqual([resource], adapter.list_resource_labels())
+        adapter._run.assert_called_once_with([
+            "api", "--paginate", "--slurp", "repos/owner/repo/labels?per_page=100",
+        ])
+
+        adapter._run.return_value = SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps([[{"name": zzzops.resource_label_name("branch:topic"), "description": "metadata"}]]),
+            stderr="",
+        )
+        with self.assertRaisesRegex(zzzops.ReservationProviderError, "incomplete resource"):
+            adapter.list_resource_labels()
+
     def test_reservation_ttl_uses_reviewed_claim_policy(self):
         project = {"policy": {"sections": [{
             "id": "autonomy_approval_parallelism", "settings": {"claim_ttl_hours": 4},
@@ -1525,6 +1558,138 @@ class ReservationTests(unittest.TestCase):
         self.assertTrue(released["released"])
         self.assertIsNone(adapter.get_label(zzzops.resource_label_name("generated:dist/a")))
         self.assertIsNotNone(adapter.get_label(zzzops.resource_label_name("generated:dist/b")))
+
+    def test_release_discovers_owned_resources_when_arguments_are_omitted(self):
+        adapter = FakeReservationAdapter()
+        resources = ["branch:topic", "generated:dist/a"]
+        acquired = zzzops.acquire_reservation_bundle(
+            adapter, "owner/repo", 12, 4, "agent-a", "run-a", resources, 120, self.now,
+        )
+        self.assertTrue(acquired["acquired"])
+
+        released = zzzops.release_reservation_bundle(
+            adapter, "owner/repo", 12, 4, "agent-a", "run-a", [],
+        )
+
+        self.assertEqual({"released": True, "outcome": "released", "goal": 12}, released)
+        self.assertIsNone(adapter.label)
+        for resource in resources:
+            self.assertIsNone(adapter.get_label(zzzops.resource_label_name(resource)))
+
+    def test_release_preserves_foreign_and_replacement_resource_owners(self):
+        adapter = FakeReservationAdapter()
+        self.acquire(adapter)
+        cases = {
+            "branch:other-owner": ("owner/repo", 12, 4, "agent-b", "run-a"),
+            "branch:other-run": ("owner/repo", 12, 4, "agent-a", "run-b"),
+            "branch:other-goal": ("owner/repo", 13, 4, "agent-a", "run-a"),
+            "branch:other-repo": ("other/repo", 12, 4, "agent-a", "run-a"),
+            "branch:replacement": ("owner/repo", 12, 5, "agent-a", "run-a"),
+        }
+        for resource, (repository, goal, revision, owner, run_id) in cases.items():
+            adapter.create_label(
+                zzzops.resource_label_name(resource),
+                zzzops.reservation_description(
+                    repository, goal, revision, owner, run_id, int(self.now.timestamp()) + 120,
+                ),
+            )
+
+        released = zzzops.release_reservation_bundle(
+            adapter, "owner/repo", 12, 4, "agent-a", "run-a", [],
+        )
+
+        self.assertEqual("released", released["outcome"])
+        self.assertIsNone(adapter.label)
+        for resource in cases:
+            self.assertIsNotNone(adapter.get_label(zzzops.resource_label_name(resource)))
+
+    def test_release_fails_safely_on_malformed_or_unavailable_discovery(self):
+        adapter = FakeReservationAdapter()
+        self.acquire(adapter)
+        adapter.create_label(zzzops.resource_label_name("branch:ambiguous"), "malformed")
+        malformed = zzzops.release_reservation_bundle(
+            adapter, "owner/repo", 12, 4, "agent-a", "run-a", [],
+        )
+        self.assertEqual("failed", malformed["outcome"])
+        self.assertFalse(malformed["released"])
+        self.assertIsNotNone(adapter.label)
+
+        adapter.labels.pop(zzzops.resource_label_name("branch:ambiguous"))
+        adapter.list_error = "list failed"
+        unavailable = zzzops.release_reservation_bundle(
+            adapter, "owner/repo", 12, 4, "agent-a", "run-a", [],
+        )
+        self.assertEqual("failed", unavailable["outcome"])
+        self.assertIsNotNone(adapter.label)
+
+    def test_release_reports_partial_cleanup_and_preserves_goal_for_retry(self):
+        adapter = FakeReservationAdapter()
+        resources = ["branch:first", "branch:second"]
+        zzzops.acquire_reservation_bundle(
+            adapter, "owner/repo", 12, 4, "agent-a", "run-a", resources, 120, self.now,
+        )
+        first = adapter.get_label(zzzops.resource_label_name("branch:first"))
+        adapter.delete_error_node_ids.add(first["node_id"])
+
+        released = zzzops.release_reservation_bundle(
+            adapter, "owner/repo", 12, 4, "agent-a", "run-a", [],
+        )
+
+        self.assertEqual("partial", released["outcome"])
+        self.assertEqual(1, released["released_resources"])
+        self.assertIsNotNone(adapter.label)
+        self.assertIsNotNone(adapter.get_label(zzzops.resource_label_name("branch:first")))
+        self.assertIsNone(adapter.get_label(zzzops.resource_label_name("branch:second")))
+
+        adapter.delete_error_node_ids.clear()
+        retried = zzzops.release_reservation_bundle(
+            adapter, "owner/repo", 12, 4, "agent-a", "run-a", [],
+        )
+        self.assertEqual("released", retried["outcome"])
+        self.assertIsNone(adapter.label)
+        self.assertIsNone(adapter.get_label(zzzops.resource_label_name("branch:first")))
+
+    def test_release_recovers_resources_after_goal_label_was_already_removed(self):
+        adapter = FakeReservationAdapter()
+        resource = "branch:orphaned"
+        zzzops.acquire_reservation_bundle(
+            adapter, "owner/repo", 12, 4, "agent-a", "run-a", [resource], 120, self.now,
+        )
+        adapter.label = None
+
+        released = zzzops.release_reservation_bundle(
+            adapter, "owner/repo", 12, 4, "agent-a", "run-a", [],
+        )
+
+        self.assertEqual("released", released["outcome"])
+        self.assertIsNone(adapter.get_label(zzzops.resource_label_name(resource)))
+
+    def test_release_reports_stale_goal_revision_as_failed_without_writing(self):
+        adapter = FakeReservationAdapter(revision=5)
+        adapter.create_label(
+            zzzops.resource_label_name("branch:owned"),
+            zzzops.reservation_description(
+                "owner/repo", 12, 4, "agent-a", "run-a", int(self.now.timestamp()) + 120,
+            ),
+        )
+        released = zzzops.release_reservation_bundle(
+            adapter, "owner/repo", 12, 4, "agent-a", "run-a", [],
+        )
+        self.assertEqual("failed", released["outcome"])
+        self.assertIsNotNone(adapter.get_label(zzzops.resource_label_name("branch:owned")))
+
+    def test_release_is_idempotent_when_goal_and_resources_are_already_absent(self):
+        adapter = FakeReservationAdapter()
+        released = zzzops.release_reservation_bundle(
+            adapter, "owner/repo", 12, 4, "agent-a", "run-a", [],
+        )
+        self.assertEqual({"released": True, "outcome": "already_released", "goal": 12}, released)
+
+    def test_release_cli_messages_distinguish_all_terminal_outcomes(self):
+        self.assertIn("all owned resources", zzzops.reservation_cli_message({"outcome": "released"}, 12))
+        self.assertIn("already released", zzzops.reservation_cli_message({"outcome": "already_released"}, 12))
+        self.assertIn("Partially released", zzzops.reservation_cli_message({"outcome": "partial"}, 12))
+        self.assertIn("no complete release", zzzops.reservation_cli_message({"outcome": "failed"}, 12))
 
     def test_release_cleans_advisory_labels_owned_under_an_earlier_strict_policy(self):
         adapter = FakeReservationAdapter()
