@@ -1532,8 +1532,48 @@ class ReservationTests(unittest.TestCase):
         winner = next(result for result in results if result["acquired"])
         loser = next(result for result in results if not result["acquired"])
         self.assertEqual("resource_contended", loser["outcome"])
+        self.assertEqual(
+            {"goal": winner["goal"], "owner": f"agent-{winner['goal']}", "run_id": f"run-{winner['goal']}",
+             "expires_at": int(self.now.timestamp()) + 120},
+            loser["holder"],
+        )
         self.assertIsNone(adapter.get_label(zzzops.reservation_label_name(loser["goal"])))
         self.assertIsNotNone(adapter.get_label(zzzops.reservation_label_name(winner["goal"])))
+
+    def test_live_resource_contention_reports_only_validated_holder_fields(self):
+        adapter = FakeReservationAdapter()
+        resource = "branch:shared"
+        self.assertTrue(
+            zzzops.acquire_reservation_bundle(
+                adapter, "owner/repo", 12, 4, "agent-a", "run-a", [resource], 120, self.now,
+            )["acquired"]
+        )
+        blocked = zzzops.acquire_reservation_bundle(
+            adapter, "owner/repo", 13, 4, "agent-b", "run-b", [resource], 120, self.now,
+        )
+        self.assertEqual("resource_contended", blocked["outcome"])
+        self.assertEqual(
+            {"goal": 12, "owner": "agent-a", "run_id": "run-a", "expires_at": int(self.now.timestamp()) + 120},
+            blocked["holder"],
+        )
+        message = zzzops.reservation_cli_message(blocked, 13)
+        self.assertIn("goal #12", message)
+        self.assertIn("agent-a", message)
+        self.assertIn("run-a", message)
+
+        expired = zzzops.acquire_reservation_bundle(
+            adapter, "owner/repo", 13, 4, "agent-b", "run-b", [resource], 120,
+            datetime.fromtimestamp(int(self.now.timestamp()) + 121, timezone.utc),
+        )
+        self.assertEqual("resource_contended", expired["outcome"])
+        self.assertNotIn("holder", expired)
+
+        malformed = FakeReservationAdapter()
+        malformed.create_label(zzzops.resource_label_name(resource), "not-reservation-metadata")
+        with self.assertRaisesRegex(zzzops.ReservationProviderError, "metadata is invalid"):
+            zzzops.acquire_reservation_bundle(
+                malformed, "owner/repo", 13, 4, "agent-b", "run-b", [resource], 120, self.now,
+            )
 
     def test_policy_can_make_paths_exclusive_and_strict_mode_reserves_everything(self):
         self.assertEqual(

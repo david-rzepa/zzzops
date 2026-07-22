@@ -307,11 +307,15 @@ def parse_reservation_description(value: Any) -> dict[str, Any]:
     if set(fields) != {"r", "g", "v", "o", "u", "a", "x"}:
         raise ReservationProviderError("Reservation metadata is incomplete; no ownership assumed.")
     try:
-        return {
+        metadata = {
             "repository_key": fields["r"], "goal": int(fields["g"]), "revision": int(fields["v"]),
-            "owner": fields["o"], "run_id": fields["u"], "acquired_at": int(fields["a"]),
+            "owner": _reservation_actor(fields["o"], "owner", 20),
+            "run_id": _reservation_actor(fields["u"], "run-id", 32), "acquired_at": int(fields["a"]),
             "expires_at": int(fields["x"]),
         }
+        if metadata["goal"] < 1 or metadata["revision"] < 1 or metadata["acquired_at"] < 0 or metadata["expires_at"] < metadata["acquired_at"]:
+            raise ValueError("reservation timestamps or identity are invalid")
+        return metadata
     except ValueError as exc:
         raise ReservationProviderError("Reservation metadata is invalid; no ownership assumed.") from exc
 
@@ -549,6 +553,13 @@ def _validate_reservation_repository(metadata: dict[str, Any], repository: str) 
         raise ReservationProviderError("Reservation repository identity is invalid; no ownership assumed.")
 
 
+def _live_reservation_holder(metadata: dict[str, Any], now_epoch: int) -> dict[str, Any] | None:
+    """Project only bounded, validated metadata for a presently live holder."""
+    if metadata["expires_at"] <= now_epoch:
+        return None
+    return {key: metadata[key] for key in ("goal", "owner", "run_id", "expires_at")}
+
+
 def acquire_reservation(
     adapter: Any, repository: str, goal: int, revision: int, owner: str, run_id: str,
     ttl_seconds: int = 900, now: datetime | None = None,
@@ -653,14 +664,23 @@ def _acquire_resource(
         ):
             return {"acquired": True, "outcome": "already_owned", "resource": resource}
         if current["expires_at"] + RESERVATION_EXPIRY_GRACE_SECONDS > now_epoch:
-            return {"acquired": False, "outcome": "resource_contended", "resource": resource}
+            result = {"acquired": False, "outcome": "resource_contended", "resource": resource}
+            holder = _live_reservation_holder(current, now_epoch)
+            return {**result, "holder": holder} if holder is not None else result
         try:
             adapter.delete_label(existing["node_id"])
         except ReservationProviderError:
             pass
     created = adapter.create_label(name, description)
     if created is None:
-        return {"acquired": False, "outcome": "resource_contended", "resource": resource}
+        result = {"acquired": False, "outcome": "resource_contended", "resource": resource}
+        confirmed = adapter.get_label(name)
+        if confirmed is None:
+            return result
+        current = parse_reservation_description(confirmed.get("description"))
+        _validate_reservation_repository(current, repository)
+        holder = _live_reservation_holder(current, now_epoch)
+        return {**result, "holder": holder} if holder is not None else result
     if not _reservation_matches(created, description):
         confirmed = adapter.get_label(name)
         if confirmed is None or not _reservation_matches(confirmed, description):
@@ -761,7 +781,8 @@ def acquire_reservation_bundle(
                 for held in reversed(acquired):
                     _release_resource(adapter, repository, held, goal, revision, owner, run_id)
                 release_reservation(adapter, repository, goal, revision, owner, run_id, _validated=True)
-                return {"acquired": False, "outcome": "resource_contended", "goal": goal, "resource": resource}
+                contention = {"acquired": False, "outcome": "resource_contended", "goal": goal, "resource": resource}
+                return {**contention, "holder": result["holder"]} if "holder" in result else contention
             acquired.append(resource)
     except Exception:
         for held in reversed(acquired):
@@ -851,6 +872,17 @@ def reservation_cli_message(result: dict[str, Any], goal: int) -> str:
     if outcome == "failed":
         return f"Could not safely release goal #{goal}; no complete release was assumed."
     if outcome in {"contended", "resource_contended"}:
+        holder = result.get("holder")
+        if isinstance(holder, dict):
+            try:
+                holder_goal = holder["goal"]
+                holder_owner = _reservation_actor(holder["owner"], "owner", 20)
+                holder_run = _reservation_actor(holder["run_id"], "run-id", 32)
+                holder_expiry = holder["expires_at"]
+                if isinstance(holder_goal, int) and not isinstance(holder_goal, bool) and holder_goal > 0 and isinstance(holder_expiry, int) and not isinstance(holder_expiry, bool) and holder_expiry >= 0:
+                    return f"Overlapping work is held by goal #{holder_goal}, owner {holder_owner}, run {holder_run}, until {holder_expiry}. Refresh and choose different work."
+            except (KeyError, ValueError):
+                pass
         return f"Another agent is handling overlapping work for goal #{goal}. Refresh and choose different work."
     return f"Goal #{goal} is not reserved by this run. Refresh before continuing."
 
