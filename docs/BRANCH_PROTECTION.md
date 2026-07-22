@@ -1,6 +1,6 @@
 # Branch protection
 
-ZzzOps currently uses a private repository on GitHub Free. GitHub returns `403` for both classic branch protection and repository rulesets until the repository becomes public or the owner upgrades to GitHub Pro. The CI workflow is already usable: every PR targeting `dev` runs the read-only required-check candidate `dev-required-tests`.
+ZzzOps currently uses a private repository on GitHub Free. GitHub returns `403` for both classic branch protection and repository rulesets until the repository becomes public or the owner upgrades to GitHub Pro. The CI workflow is already usable: every PR targeting `dev` runs Linux validation and native Windows installer validation behind the stable, read-only required-check candidate `dev-required-tests`. The aggregate fails unless both platform jobs succeed.
 
 ## Enable protection after Pro/public access
 
