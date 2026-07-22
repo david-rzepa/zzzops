@@ -1895,6 +1895,18 @@ class WorkflowContractTests(unittest.TestCase):
         for phrase in ("zzzops-feedback", "current execution session", "Never ask per issue", "--include-feedback"):
             self.assertIn(phrase, execute)
 
+    def test_execute_continues_past_nonblocking_human_questions(self):
+        execute = (Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "EXECUTE.md").read_text(encoding="utf-8")
+        unblock = (Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "UNBLOCK.md").read_text(encoding="utf-8")
+        for phrase in (
+            "continue independently actionable work without waiting for a non-blocking answer",
+            "consequential decision, authority, or safety boundary",
+            "Batch non-blocking information into one concise update",
+            "true queue exhaustion",
+        ):
+            self.assertIn(phrase, execute)
+        self.assertIn("independent authorized goals continue", unblock)
+
     def test_execute_prioritization_contract_handles_adversarial_cases(self):
         execute = (
             Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "EXECUTE.md"
