@@ -22,7 +22,7 @@ Use `Tracks #N`; default-branch closing keywords are insufficient. Only after th
 
 ## Review gate
 
-At each checkpoint, perform PROJECT `review_state_reads_per_checkpoint` bounded reads of review state, unresolved inline threads, and relevant comments. Prefer thread-aware data; classify actionable, resolved/outdated, discussion-only, automated, ambiguous, or unauthorized. Record actionable file/line context. Poll only under an enabled human-unblock watch.
+At each checkpoint, perform PROJECT `review_state_reads_per_checkpoint` bounded consolidated reads of review state, unresolved inline threads, relevant comments, PR checks, and exact head. Prefer thread-aware data; classify actionable, resolved/outdated, discussion-only, automated, ambiguous, or unauthorized. Reuse the one result for that checkpoint instead of issuing equivalent separate reads. Record actionable file/line context. Poll only under an enabled human-unblock watch.
 
 Change only authorized actionable feedback on the recorded branch/PR. Re-read head/threads first; after each verified change rerun self-review/checks, record the new exact checkpoint, and invalidate approval. Ambiguous, expanding, conflicting, or unauthorized feedback becomes a categorized blocker. Code changes do not resolve provider threads.
 
