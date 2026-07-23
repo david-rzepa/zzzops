@@ -39,6 +39,20 @@ _feedback = importlib.util.module_from_spec(_FEEDBACK_MODULE_SPEC)
 sys.modules[_FEEDBACK_MODULE_SPEC.name] = _feedback
 _FEEDBACK_MODULE_SPEC.loader.exec_module(_feedback)
 
+_GOALS_MODULE_PATH = Path(__file__).with_name("goals.py")
+_GOALS_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_goals", _GOALS_MODULE_PATH)
+assert _GOALS_MODULE_SPEC and _GOALS_MODULE_SPEC.loader
+_goals = importlib.util.module_from_spec(_GOALS_MODULE_SPEC)
+sys.modules[_GOALS_MODULE_SPEC.name] = _goals
+_GOALS_MODULE_SPEC.loader.exec_module(_goals)
+
+_PORTFOLIO_MODULE_PATH = Path(__file__).with_name("portfolio.py")
+_PORTFOLIO_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_portfolio", _PORTFOLIO_MODULE_PATH)
+assert _PORTFOLIO_MODULE_SPEC and _PORTFOLIO_MODULE_SPEC.loader
+_portfolio = importlib.util.module_from_spec(_PORTFOLIO_MODULE_SPEC)
+sys.modules[_PORTFOLIO_MODULE_SPEC.name] = _portfolio
+_PORTFOLIO_MODULE_SPEC.loader.exec_module(_portfolio)
+
 PROJECT_SCHEMA_VERSION = _policy.PROJECT_SCHEMA_VERSION
 PLAN_SCHEMA_VERSION = 1
 POLICY_SCHEMA_VERSION = _policy.POLICY_SCHEMA_VERSION
@@ -91,6 +105,8 @@ MACHINERY_PATHS = (
     ".agents/zzzops/policy.py",
     ".agents/zzzops/reservation.py",
     ".agents/zzzops/feedback.py",
+    ".agents/zzzops/goals.py",
+    ".agents/zzzops/portfolio.py",
     ".agents/zzzops/.gitignore",
     ".agents/zzzops/INSTALL_MANIFEST",
     ".agents/zzzops/templates/project-goals",
@@ -110,11 +126,8 @@ class ReservationProviderError(ValueError):
     """The provider did not produce a safe, confirmed reservation result."""
 
 
-class GoalTransitionProviderError(ValueError):
-    """The provider did not produce a safe, confirmed goal transition result."""
-
-
 ReservationProviderError = _reservation.ReservationProviderError
+GoalTransitionProviderError = _goals.GoalTransitionProviderError
 _reservation_actor = _reservation._reservation_actor
 reservation_label_name = _reservation.reservation_label_name
 reservation_repository_key = _reservation.reservation_repository_key
@@ -124,6 +137,22 @@ parse_reservation_description = _reservation.parse_reservation_description
 normalize_resources = _policy.normalize_resources
 normalize_resource_policy = _policy.normalize_resource_policy
 exclusive_resources = _policy.exclusive_resources
+
+_cycle_nodes = _portfolio._cycle_nodes
+_portfolio_key = _portfolio._portfolio_key
+audit_portfolio = _portfolio.audit_portfolio
+build_portfolio_snapshot = _portfolio.build_portfolio_snapshot
+compact_portfolio_output = _portfolio.compact_portfolio_output
+
+parse_managed_goal = _goals.parse_managed_goal
+validate_managed_goal = _goals.validate_managed_goal
+render_managed_goal = _goals.render_managed_goal
+goal_needs_human = _goals.goal_needs_human
+validate_github_issue_goal = _goals.validate_github_issue_goal
+github_goal_record = _goals.github_goal_record
+validate_goal_transition = _goals.validate_goal_transition
+load_goal_transition = _goals.load_goal_transition
+apply_goal_transition = _goals.apply_goal_transition
 
 execution_reports_enabled = _feedback.execution_reports_enabled
 execution_report_directory = _feedback.execution_report_directory
@@ -464,483 +493,6 @@ validate_project_state = _policy.validate_project_state
 validate_project_artifacts = _policy.validate_project_artifacts
 validate_policy = _policy.validate_policy
 policy_blockers = _policy.policy_blockers
-
-
-def parse_managed_goal(text: str, issue_number: int | None = None) -> dict[str, Any] | None:
-    pattern = re.compile(
-        re.escape(GOAL_BLOCK_START) + r"\s*\n(.*?)\n" + re.escape(GOAL_BLOCK_END),
-        re.DOTALL,
-    )
-    match = pattern.search(text)
-    if not match:
-        return None
-    try:
-        goal = json.loads(match.group(1))
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid managed goal JSON: {exc}") from exc
-    errors = validate_managed_goal(goal, issue_number)
-    if errors:
-        raise ValueError("Invalid managed goal: " + "; ".join(errors))
-    return goal
-
-
-def validate_managed_goal(goal: Any, issue_number: int | None = None) -> list[str]:
-    if not isinstance(goal, dict):
-        return ["managed goal must be an object"]
-    errors = []
-    unknown = sorted(set(goal) - GOAL_FIELDS)
-    if unknown:
-        errors.append("unknown fields: " + ", ".join(unknown))
-    if goal.get("schema_version") != GOAL_SCHEMA_VERSION:
-        errors.append(f"schema_version must be {GOAL_SCHEMA_VERSION}")
-    required_text = ("status", "priority", "value", "difficulty", "confidence", "next_action")
-    for field in required_text:
-        if not text_present(goal.get(field)):
-            errors.append(f"{field} is required")
-    for field, allowed in (
-        ("status", GOAL_STATUSES), ("priority", GOAL_PRIORITIES), ("value", GOAL_VALUES),
-        ("difficulty", GOAL_DIFFICULTIES), ("confidence", GOAL_CONFIDENCES),
-    ):
-        if text_present(goal.get(field)) and goal[field] not in allowed:
-            errors.append(f"{field} is invalid")
-    for field in ("depends_on", "blockers", "evidence"):
-        if not isinstance(goal.get(field), list):
-            errors.append(f"{field} must be a list")
-    parent = goal.get("parent")
-    if parent is not None and (not isinstance(parent, int) or isinstance(parent, bool) or parent < 1):
-        errors.append("parent must be null or a positive issue number")
-    dependencies = goal.get("depends_on")
-    if isinstance(dependencies, list):
-        if any(not isinstance(item, int) or isinstance(item, bool) or item < 1 for item in dependencies):
-            errors.append("depends_on entries must be positive issue numbers")
-        if len(set(dependencies)) != len(dependencies):
-            errors.append("depends_on entries must be unique")
-        if issue_number is not None and issue_number in dependencies:
-            errors.append("depends_on cannot contain the current issue")
-    if issue_number is not None and parent == issue_number:
-        errors.append("parent cannot be the current issue")
-    try:
-        normalize_resources(goal.get("resources", []))
-    except ValueError as exc:
-        errors.append(str(exc))
-    blockers = goal.get("blockers")
-    if isinstance(blockers, list):
-        for index, blocker in enumerate(blockers):
-            if not isinstance(blocker, dict):
-                errors.append(f"blockers[{index}] must be an object")
-            elif blocker.get("status") == "open" and blocker.get("category") not in BLOCKER_CATEGORIES:
-                errors.append(f"blockers[{index}].category is invalid or missing")
-    if not isinstance(goal.get("revision"), int) or isinstance(goal.get("revision"), bool) or goal.get("revision", 0) < 1:
-        errors.append("revision must be a positive integer")
-    implementation = goal.get("implementation")
-    if implementation is not None:
-        if not isinstance(implementation, dict):
-            errors.append("implementation must be an object")
-        else:
-            for field in ("branch", "base", "target", "pr"):
-                if field not in implementation or (implementation[field] is not None and not text_present(implementation[field])):
-                    errors.append(f"implementation.{field} must be null or non-empty text")
-            review = implementation.get("review")
-            if not isinstance(review, dict) or review.get("status") not in {"not_started", "pending", "approved", "changes_requested"}:
-                errors.append("implementation.review.status is invalid")
-            elif "checkpoint" not in review or (review["checkpoint"] is not None and not text_present(review["checkpoint"])):
-                errors.append("implementation.review.checkpoint must be null or non-empty text")
-    return errors
-
-
-def render_managed_goal(goal: dict[str, Any], body: str = "", issue_number: int | None = None) -> str:
-    errors = validate_managed_goal(goal, issue_number)
-    if errors:
-        raise ValueError("Invalid managed goal: " + "; ".join(errors))
-    block = f"{GOAL_BLOCK_START}\n{json.dumps(goal, ensure_ascii=False, sort_keys=True, separators=(',', ':'))}\n{GOAL_BLOCK_END}"
-    pattern = re.compile(
-        re.escape(GOAL_BLOCK_START) + r"\s*\n.*?\n" + re.escape(GOAL_BLOCK_END),
-        re.DOTALL,
-    )
-    if pattern.search(body):
-        return pattern.sub(lambda _match: block, body, count=1)
-    separator = "\n\n" if body and not body.endswith("\n\n") else ""
-    return f"{body}{separator}{block}\n"
-
-
-def goal_needs_human(goal: dict[str, Any]) -> bool:
-    return any(
-        isinstance(blocker, dict)
-        and blocker.get("status") == "open"
-        and blocker.get("category") in BLOCKER_CATEGORIES
-        for blocker in goal.get("blockers", [])
-    )
-
-
-def validate_github_issue_goal(issue_number: Any, title: Any, body: Any) -> list[str]:
-    errors = []
-    if not isinstance(issue_number, int) or isinstance(issue_number, bool) or issue_number < 1:
-        errors.append("issue_number must be a positive integer")
-    if not text_present(title):
-        errors.append("title is required")
-    elif REDUNDANT_GOAL_TITLE_PREFIX.match(title):
-        errors.append("title must not contain a redundant ZzzOps goal ID")
-    if not isinstance(body, str):
-        return errors + ["body must be text"]
-    human = body.split(GOAL_BLOCK_START, 1)[0].lstrip("\ufeff\r\n ")
-    if not human:
-        errors.append("human-readable content must precede managed state")
-    elif human.startswith("---"):
-        errors.append("human-readable content must not start with rendered frontmatter")
-    elif not human.startswith("## "):
-        errors.append("human-readable content must start with a section heading")
-    try:
-        goal = parse_managed_goal(body, issue_number if isinstance(issue_number, int) else None)
-    except ValueError as exc:
-        errors.append(str(exc))
-    else:
-        if goal is None:
-            errors.append("managed goal block is required")
-    return errors
-
-
-def github_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
-    number = issue.get("number")
-    body = issue.get("body") or ""
-    goal = parse_managed_goal(body, number)
-    if goal is None:
-        raise ValueError("managed goal block is required")
-    errors = validate_github_issue_goal(number, issue.get("title"), body)
-    if errors:
-        raise ValueError("; ".join(errors))
-    digest_source = "\0".join((issue.get("title") or "", body, issue.get("updated_at") or ""))
-    return {
-        "key": number, "title": issue["title"], "status": goal["status"],
-        "priority": goal["priority"], "value": goal["value"], "difficulty": goal["difficulty"],
-        "confidence": goal["confidence"], "parent": goal["parent"],
-        "depends_on": goal["depends_on"], "claim": goal["claim"], "resources": goal.get("resources", []),
-        "needs_human": goal_needs_human(goal),
-        "blocker_categories": sorted({blocker["category"] for blocker in goal["blockers"] if blocker.get("status") == "open"}),
-        "next_action": goal["next_action"], "revision": goal["revision"],
-        "digest": hashlib.sha256(digest_source.encode("utf-8")).hexdigest(),
-        "updated_at": issue.get("updated_at"), "implementation": goal.get("implementation"),
-        "labels": sorted(label["name"] for label in issue.get("labels", []) if isinstance(label, dict) and text_present(label.get("name"))),
-        "state": issue.get("state"), "url": issue.get("html_url"),
-    }
-
-
-def validate_goal_transition(transition: Any, issue_number: int) -> list[str]:
-    if not isinstance(transition, dict):
-        return ["transition must be an object"]
-    errors = []
-    unknown = sorted(set(transition) - GOAL_TRANSITION_FIELDS)
-    missing = sorted(GOAL_TRANSITION_FIELDS - set(transition))
-    if unknown:
-        errors.append("unknown transition fields: " + ", ".join(unknown))
-    if missing:
-        errors.append("missing transition fields: " + ", ".join(missing))
-    if transition.get("schema_version") != GOAL_TRANSITION_SCHEMA_VERSION:
-        errors.append(f"transition schema_version must be {GOAL_TRANSITION_SCHEMA_VERSION}")
-    expected_revision = transition.get("expected_revision")
-    if not isinstance(expected_revision, int) or isinstance(expected_revision, bool) or expected_revision < 1:
-        errors.append("expected_revision must be a positive integer")
-    digest = transition.get("expected_digest")
-    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
-        errors.append("expected_digest must be the 64-character checkpoint goal digest")
-    goal = transition.get("goal")
-    errors.extend(validate_managed_goal(goal, issue_number))
-    if (
-        isinstance(goal, dict) and isinstance(expected_revision, int)
-        and not isinstance(expected_revision, bool) and goal.get("revision") != expected_revision + 1
-    ):
-        errors.append("goal revision must increment expected_revision by exactly one")
-    return errors
-
-
-def load_goal_transition(path: Path) -> dict[str, Any]:
-    try:
-        transition = json.loads(path.resolve().read_text(encoding="utf-8-sig"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"Could not read goal transition: {type(exc).__name__}") from exc
-    return transition
-
-
-def apply_goal_transition(
-    adapter: Any, repository: str, issue_number: int, transition: dict[str, Any],
-) -> dict[str, Any]:
-    errors = validate_goal_transition(transition, issue_number)
-    if errors:
-        raise ValueError("Invalid goal transition: " + "; ".join(errors))
-    if adapter.repository.casefold() != repository.casefold():
-        raise GoalTransitionProviderError("Repository identity changed; no goal update was made.")
-    issue = adapter.get_issue(issue_number)
-    try:
-        record = github_goal_record(issue)
-    except ValueError as exc:
-        raise GoalTransitionProviderError("The current goal could not be validated; no goal update was made.") from exc
-    if record["revision"] != transition["expected_revision"]:
-        raise ValueError(
-            f"Goal #{issue_number} changed from revision {transition['expected_revision']} to {record['revision']}; no update was made."
-        )
-    if not hmac.compare_digest(record["digest"], transition["expected_digest"]):
-        raise ValueError(f"Goal #{issue_number} digest changed; no update was made.")
-
-    desired = transition["goal"]
-    body = render_managed_goal(desired, issue["body"], issue_number)
-    retained_labels = sorted({
-        label["name"] for label in issue.get("labels", [])
-        if isinstance(label, dict) and text_present(label.get("name"))
-        and label["name"] != "zzzops"
-        and not label["name"].startswith("zzzops:status:")
-        and not label["name"].startswith("zzzops:priority:")
-    })
-    labels = ["zzzops", *retained_labels, f"zzzops:status:{desired['status']}", f"zzzops:priority:{desired['priority']}"]
-    state = "closed" if desired["status"] in {"done", "cancelled"} else "open"
-    updated = adapter.update_issue(issue_number, {"body": body, "labels": labels, "state": state})
-
-    expected_url = f"https://github.com/{repository}/issues/{issue_number}"
-    returned_labels = {
-        label["name"] for label in updated.get("labels", [])
-        if isinstance(label, dict) and text_present(label.get("name"))
-    }
-    try:
-        returned_goal = parse_managed_goal(updated.get("body"), issue_number)
-    except ValueError as exc:
-        raise GoalTransitionProviderError(
-            "GitHub returned an unexpected goal-transition response; success was not assumed."
-        ) from exc
-    if (
-        updated.get("number") != issue_number
-        or updated.get("title") != issue.get("title")
-        or updated.get("body") != body
-        or str(updated.get("state", "")).casefold() != state
-        or returned_labels != set(labels)
-        or updated.get("html_url") != expected_url
-        or returned_goal != desired
-    ):
-        raise GoalTransitionProviderError(
-            "GitHub returned an unexpected goal-transition response; success was not assumed."
-        )
-    return {
-        "number": issue_number, "revision": desired["revision"], "state": state,
-        "status": desired["status"], "url": expected_url,
-    }
-
-
-def _cycle_nodes(records: list[dict[str, Any]], relation: str) -> set[Any]:
-    graph = {}
-    for record in records:
-        values = record.get(relation)
-        graph[record["key"]] = ([values] if relation == "parent" and values is not None else values or [])
-    state: dict[Any, int] = {}
-    cycles: set[Any] = set()
-    for start in graph:
-        if state.get(start):
-            continue
-        path: list[Any] = [start]
-        positions = {start: 0}
-        state[start] = 1
-        stack = [(start, iter(graph[start]))]
-        while stack:
-            node, targets = stack[-1]
-            try:
-                target = next(targets)
-            except StopIteration:
-                stack.pop()
-                state[node] = 2
-                positions.pop(node, None)
-                path.pop()
-                continue
-            if target not in graph or state.get(target) == 2:
-                continue
-            if state.get(target) == 1:
-                cycles.update(path[positions[target]:])
-                continue
-            state[target] = 1
-            positions[target] = len(path)
-            path.append(target)
-            stack.append((target, iter(graph[target])))
-    return cycles
-
-
-def _portfolio_key(value: Any) -> tuple[int, Any]:
-    return (0, value) if isinstance(value, int) and not isinstance(value, bool) else (1, str(value))
-
-
-def _review_ready_dependency(record: dict[str, Any]) -> bool:
-    """Return whether a dependency has a reviewable checkpoint safe to stack on."""
-    if record.get("status") != "blocked":
-        return False
-    blocker_categories = set(record.get("blocker_categories", []))
-    if not blocker_categories or not blocker_categories <= {"human-action", "access-approval"}:
-        return False
-    implementation = record.get("implementation")
-    if not isinstance(implementation, dict):
-        return False
-    review = implementation.get("review")
-    return (
-        text_present(implementation.get("branch"))
-        and text_present(implementation.get("base"))
-        and text_present(implementation.get("target"))
-        and text_present(implementation.get("pr"))
-        and isinstance(review, dict)
-        and review.get("status") in {"pending", "approved"}
-        and text_present(review.get("checkpoint"))
-    )
-
-
-def _dependencies_allow_action(
-    record: dict[str, Any], by_key: dict[Any, dict[str, Any]], git_policy: dict[str, Any],
-) -> bool:
-    dependencies = record.get("depends_on", [])
-    unfinished = [
-        by_key.get(dependency)
-        for dependency in dependencies
-        if by_key.get(dependency, {}).get("status") != "done"
-    ]
-    if not unfinished:
-        return True
-    if any(dependency is None or not _review_ready_dependency(dependency) for dependency in unfinished):
-        return False
-    if git_policy.get("review_pending_dependency") != "stack_from_reviewed_checkpoint":
-        return False
-    if len(unfinished) == 1:
-        return git_policy.get("dependency_base") == "dependency_branch"
-    return git_policy.get("multiple_dependency_base") == "reviewed_base_containing_all"
-
-
-def audit_portfolio(
-    records: list[dict[str, Any]], backend: str, as_of: datetime | None = None, resource_policy: Any = None,
-) -> list[dict[str, Any]]:
-    as_of = datetime.now(timezone.utc) if as_of is None else as_of
-    findings: list[dict[str, Any]] = []
-    grouped: dict[Any, list[dict[str, Any]]] = {}
-    for record in records:
-        grouped.setdefault(record["key"], []).append(record)
-    for key, matches in grouped.items():
-        if len(matches) > 1:
-            findings.append({"code": "duplicate_identity", "goal": key, "detail": f"{len(matches)} records"})
-    goals = {key: matches[0] for key, matches in grouped.items()}
-    live_resources: dict[str, list[Any]] = {}
-    for record in records:
-        claim = record.get("claim")
-        if isinstance(claim, dict) and claim.get("owner"):
-            for resource in exclusive_resources(record.get("resources", []), resource_policy):
-                live_resources.setdefault(resource, []).append(record["key"])
-    for resource, owners in live_resources.items():
-        if len(owners) > 1:
-            findings.append({"code": "resource_collision", "goal": owners[0], "detail": f"{resource}: {','.join(map(str, owners))}"})
-    for record in records:
-        key = record["key"]
-        relations = ([record["parent"]] if record.get("parent") is not None else []) + list(record.get("depends_on", []))
-        if len(record.get("depends_on", [])) != len(set(record.get("depends_on", []))):
-            findings.append({"code": "duplicate_dependency", "goal": key, "detail": "dependency repeated"})
-        for target in relations:
-            if target == key:
-                findings.append({"code": "self_relation", "goal": key, "detail": str(target)})
-            elif target not in goals:
-                findings.append({"code": "missing_relation", "goal": key, "detail": str(target)})
-        if record["status"] == "done":
-            unfinished = [str(target) for target in record.get("depends_on", []) if target in goals and goals[target]["status"] != "done"]
-            if unfinished:
-                findings.append({"code": "done_with_unfinished_dependency", "goal": key, "detail": ",".join(unfinished)})
-        cancelled = [str(target) for target in record.get("depends_on", []) if target in goals and goals[target]["status"] == "cancelled"]
-        if cancelled:
-            findings.append({"code": "cancelled_dependency", "goal": key, "detail": ",".join(cancelled)})
-        claim = record.get("claim")
-        if isinstance(claim, dict) and claim.get("owner") and claim.get("expires_at"):
-            try:
-                expires = datetime.fromisoformat(str(claim["expires_at"]).replace("Z", "+00:00"))
-                if expires.tzinfo is None:
-                    raise ValueError("timezone missing")
-                if expires < as_of:
-                    findings.append({"code": "stale_claim", "goal": key, "detail": str(claim["expires_at"])})
-            except ValueError:
-                findings.append({"code": "invalid_claim_expiry", "goal": key, "detail": str(claim["expires_at"])})
-        review = (record.get("implementation") or {}).get("review") if isinstance(record.get("implementation"), dict) else None
-        if isinstance(review, dict) and review.get("status") == "pending" and not review.get("checkpoint"):
-            findings.append({"code": "pending_review_without_checkpoint", "goal": key, "detail": "checkpoint missing"})
-        if backend == "github_issues":
-            if isinstance(review, dict) and review.get("status") == "approved" and not (record.get("implementation") or {}).get("pr"):
-                findings.append({"code": "approved_review_without_pr", "goal": key, "detail": "PR missing"})
-            expected = {"zzzops", f"zzzops:status:{record['status']}", f"zzzops:priority:{record['priority']}"}
-            actual = set(record.get("labels", []))
-            drift = sorted(expected - actual)
-            stale = sorted(label for label in actual if (label.startswith("zzzops:status:") or label.startswith("zzzops:priority:")) and label not in expected)
-            if drift or stale:
-                findings.append({"code": "label_drift", "goal": key, "detail": f"missing={drift}; stale={stale}"})
-            terminal = record["status"] in {"done", "cancelled"}
-            if terminal != (record.get("state") == "closed"):
-                findings.append({"code": "issue_state_drift", "goal": key, "detail": f"goal={record['status']}; issue={record.get('state')}"})
-    for relation in ("depends_on", "parent"):
-        for key in sorted(_cycle_nodes(records, relation), key=_portfolio_key):
-            findings.append({"code": f"{relation}_cycle", "goal": key, "detail": "cycle member"})
-    return sorted(findings, key=lambda finding: (finding["code"], str(finding["goal"]), finding["detail"]))
-
-
-def build_portfolio_snapshot(
-    backend: str, records: list[dict[str, Any]], *, reads: int, raw_bytes: int,
-    ignored: int = 0, as_of: datetime | None = None, git_policy: dict[str, Any] | None = None,
-    resource_policy: Any = None,
-) -> dict[str, Any]:
-    for record in records:
-        record["children"] = []
-        record["blocks"] = []
-    by_key = {record["key"]: record for record in records}
-    for record in records:
-        if record.get("parent") in by_key:
-            by_key[record["parent"]]["children"].append(record["key"])
-        for dependency in record.get("depends_on", []):
-            if dependency in by_key:
-                by_key[dependency]["blocks"].append(record["key"])
-    for record in records:
-        record["children"].sort(key=_portfolio_key)
-        record["blocks"].sort(key=_portfolio_key)
-    resource_policy = normalize_resource_policy(resource_policy)
-    findings = audit_portfolio(records, backend, as_of, resource_policy)
-    terminal = {"done", "cancelled"}
-    blocked = {record["key"] for record in records if record["status"] == "blocked" or record["needs_human"]}
-    terminal_keys = {record["key"] for record in records if record["status"] in terminal}
-    git_policy = git_policy or {}
-    actionable = [
-        record["key"] for record in records
-        if record["status"] in {"ready", "in_progress"} and record["key"] not in blocked
-        and _dependencies_allow_action(record, by_key, git_policy)
-    ]
-    actionable_keys = set(actionable)
-    for record in records:
-        record["actionable"] = record["key"] in actionable_keys
-    portfolio_digest = hashlib.sha256(
-        (
-            "git_policy:" + json.dumps(git_policy, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
-            + "resource_policy:" + json.dumps(resource_policy, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
-            + "\n".join(
-                f"{record['key']}:{record['revision']}:{record['digest']}"
-                for record in sorted(records, key=lambda item: _portfolio_key(item["key"]))
-            )
-        ).encode("utf-8")
-    ).hexdigest()
-    return {
-        "schema_version": PORTFOLIO_SCHEMA_VERSION, "backend": backend, "complete": True,
-        "valid": not findings,
-        "portfolio_digest": portfolio_digest, "goals": sorted(records, key=lambda record: _portfolio_key(record["key"])),
-        "findings": findings, "summary": {
-            "total": len(records), "actionable": len(actionable), "blocked": len(blocked),
-            "done": len(terminal_keys), "findings": len(findings), "reads": reads,
-            "raw_bytes": raw_bytes, "ignored": ignored,
-        },
-    }
-
-
-def compact_portfolio_output(snapshot: dict[str, Any]) -> dict[str, Any]:
-    terminal_fields = (
-        "key", "title", "status", "parent", "depends_on",
-        "revision", "digest", "updated_at", "url",
-    )
-    goals = []
-    archived = 0
-    for goal in snapshot["goals"]:
-        if goal["status"] in {"done", "cancelled"}:
-            goals.append({"archived": True, **{field: goal.get(field) for field in terminal_fields}})
-            archived += 1
-        else:
-            goals.append(goal)
-    return {**snapshot, "goals": goals, "summary": {**snapshot["summary"], "archived": archived}}
 
 
 def _project_repository_identity(project: dict[str, Any]) -> str:
@@ -1575,6 +1127,10 @@ def nonempty(value: Any) -> bool:
 
 def text_present(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+_goals.configure_entrypoint(normalize_resources=normalize_resources, text_present=text_present)
+_portfolio.configure_entrypoint(exclusive_resources=exclusive_resources, normalize_resource_policy=normalize_resource_policy, text_present=text_present)
 
 
 def nonempty_list(value: Any) -> bool:
