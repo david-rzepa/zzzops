@@ -120,6 +120,21 @@ ZzzOps workflows record only constrained machinery categories, cause codes, and 
 
 The feedback skill combines your text with archived reports, shows the exact issue payload, warns that `david-rzepa/zzzops` is public, and asks you to confirm that payload. Only then does it create a managed issue tagged `zzzops-feedback`. Execute excludes these issues by default; one explicit approval includes the entire feedback queue for that execution session, with no per-issue prompts. Successfully submitted reports are deleted; cancellation or failure retains them.
 
+## Control-module boundaries
+
+`.agents/zzzops/zzzops.py` is the stable installed executable and CLI composition layer. It loads focused, acyclic implementation modules and preserves the public command surface:
+
+| Module | Owns |
+| --- | --- |
+| `policy.py` | Reviewed project state, policy validation, initialization, and resource policy. |
+| `reservation.py` | GitHub-backed goal and resource reservation coordination. |
+| `feedback.py` | Privacy-safe execution reports, provenance, payload preparation, and submission. |
+| `goals.py` | Managed-goal parsing, validation, rendering, GitHub record projection, and guarded transitions. |
+| `portfolio.py` | Goal graph audits, actionability, and canonical portfolio snapshots. |
+| `zzzops.py` | CLI parsing/dispatch, provider probes/adapters, installed-file manifest, and stable re-exports. |
+
+Both installers copy, hash, protect, upgrade, and validate this complete module set. Keep cross-module dependencies one-way: focused modules may use explicitly configured entry-point callbacks, while callers continue to invoke the stable `zzzops.py` command or re-exported API.
+
 ## Full feature list
 
 This is the complete list of shipped user-facing ZzzOps features. It is a catalogue, not exhaustive documentation. Keep it current whenever a user-facing surface changes.
