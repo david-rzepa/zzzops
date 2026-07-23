@@ -1985,6 +1985,18 @@ class WorkflowContractTests(unittest.TestCase):
         for phrase in ("zzzops-feedback", "current execution session", "Never ask per issue", "--include-feedback"):
             self.assertIn(phrase, execute)
 
+    def test_execute_guidance_bounds_github_reads_without_weakening_safety_checks(self):
+        root = Path(__file__).parent / "skills" / "execute-zzzops"
+        execute = (root / "references" / "EXECUTE.md").read_text(encoding="utf-8")
+        review = (root / "references" / "BRANCH_REVIEW.md").read_text(encoding="utf-8")
+        for phrase in (
+            "current queue read", "one consolidated PR-state read",
+            "Exact-head, permission, merge, and transition readbacks remain mandatory",
+        ):
+            self.assertIn(phrase, execute)
+        self.assertIn("bounded consolidated reads", review)
+        self.assertIn("exact head", review)
+
     def test_execute_continues_past_nonblocking_human_questions(self):
         execute = (Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "EXECUTE.md").read_text(encoding="utf-8")
         unblock = (Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "UNBLOCK.md").read_text(encoding="utf-8")

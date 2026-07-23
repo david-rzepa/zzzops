@@ -6,6 +6,7 @@
 
 1. Read the charter and use the current BACKENDS checkpoint portfolio; never reread it. Require `complete:true` and `valid:true`; resolve findings instead of selecting from an invalid graph, and use its compact relationships/claims/reviews rather than rereading goals. If the present user's human queue is non-empty, run `UNBLOCK.md` first to identify consequential gates, but continue independently actionable work without waiting for a non-blocking answer.
    Specially tagged `zzzops-feedback` goals are absent unless the user approved them for this execution session. One session approval includes the whole feedback queue; never request approval per issue, and retain `--include-feedback` on every checkpoint refresh in that session.
+   Treat that complete checkpoint as the current queue read until a local state mutation, provider failure, explicit freshness requirement, or observed drift requires one refresh. Do not run an extra portfolio command merely to rediscover the same goals.
 2. Route `new` goals through `CREATE.md` according to PROJECT triage/continuation policy.
 3. Use the portfolio's PROJECT-derived `actionable` field. The installed default waits for every dependency to be `done` before writable implementation; a reviewed PROJECT override such as `stack_from_reviewed_checkpoint` may make a child actionable earlier. Read-only investigation may prepare waiting work when policy permits, but never claims, edits, branches, or marks it started. Recheck blocked work only on its trigger.
 4. Obey authority and explicit PROJECT priority first. Within the same effective priority, prefer evidenced charter/KPI value, safety/risk reduction, and unlocks: choose high-value, risk-reducing or unlocking work over low-value easy or fast work. Then prefer confidence, faster observable feedback, and lower difficulty; difficulty is cost, not value and never a reason to maximize item count. Unmeasured KPIs may support qualitative rationale, but never invent a baseline, score, or precision. On an exact tie use PROJECT resume policy, then the lowest goal key.
@@ -18,6 +19,12 @@ Ask immediately only for a consequential decision, authority, or safety boundary
 2. For source changes, establish/resume the policy-selected topology from `BRANCH_REVIEW.md` and persist branch/base/target before editing. Then follow `.zzzops/rules/EXECUTION_STRATEGY.md`: capture baseline; implement one smallest falsifiable chunk; run/inspect/record the real probe before continuing; widen only after proof.
 3. Work to a verified checkpoint without silent scope expansion. Classify discoveries as scope, checklist, child, dependency, or root. Apply PROJECT test-bug policy; never hide a failure, weaken the test, or expand authority silently.
 4. Persist evidence at natural checkpoints. Follow PROJECT-limited parallel/worktree rules; coordinator owns ZzzOps state and integration.
+
+## GitHub read budget
+
+- Use one consolidated PR-state read per review checkpoint: request the PR state, exact head, checks, review decision, and comments together. Reuse that result for the matching checkpoint rather than issuing separate status, checks, and review reads.
+- Poll only through an enabled bounded watch or heartbeat. Each unchanged poll uses one consolidated PR-state read; do not poll while implementing, and stop the watch as soon as a terminal state or a human decision is reached.
+- Exact-head, permission, merge, and transition readbacks remain mandatory at their safety boundaries. Reuse reduces equivalent reads; it never authorizes stale cached state.
 
 ## Block, complete, cycle
 
