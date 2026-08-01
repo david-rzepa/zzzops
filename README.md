@@ -232,4 +232,6 @@ If a new test discovers a real bug, ZzzOps files a separate TODO and asks you be
 <python> .agents/prompt_stats.py --check
 ```
 
+The [repository context-engineering audit](docs/CONTEXT_ENGINEERING.md) records how modern guidance applies to the context used by ZzzOps maintainers without changing installed runtime behavior.
+
 Go to bed. The backlog knows what to do.
