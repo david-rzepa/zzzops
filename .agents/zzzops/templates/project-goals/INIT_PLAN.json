@@ -76,7 +76,7 @@
           "execute_intent": "same_task_until_superseded", "new_goal_checkpoint": "next_safe_checkpoint",
           "after_additive_capture": "resume_once_and_reprioritize", "exhausted_handoff_retains_intent": true,
           "human_unblock_watch": {
-            "enabled": true, "trigger": "total_actionable_exhaustion", "max_blockers": 1,
+            "enabled": false, "trigger": "disabled_for_unattended_execution", "max_blockers": 1,
             "notify_once": true, "poll_seconds": 30, "max_seconds": 180
           },
           "stop_reasons_clear_intent": ["user_stop", "pause", "replacement_request", "capture_only", "required_authority", "blocking_boundary"],
@@ -140,11 +140,17 @@
       },
       {
         "id": "autonomy_approval_parallelism", "title": "Autonomy, approvals, and parallelism", "required": true, "applicable": true,
-        "decision": "Maximize safe autonomous progress; interview on consequential blockers; refill documentation, test-coverage, and non-behavioral code-quality work within the reviewed limit; use up to three worktree workers below 100 MB and read-only workers otherwise.", "rationale": "balances autonomy with authority, bounded valuable refill, and predictable repository resource cost",
+        "decision": "Interview adaptively during goal capture; execute unattended by persisting consequential questions as durable blockers; refill valuable bounded work; use up to three worktree workers below 100 MB and read-only workers otherwise.", "rationale": "balances precise capture, unattended execution, authority, bounded valuable refill, and predictable repository resource cost",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps conservative fallback", "default_disposition": "accepted",
         "settings": {
-          "blocker_interview": "immediate_batch",
+          "blocker_interview": "capture_only",
           "blocker_order": ["safety_access_human", "cross_goal_decisions", "specification", "technical_unknown"],
+          "requirements_interview": {
+            "capture_depth": "standard",
+            "mode": "adaptive",
+            "stakeholder_model": "requesting_user_only",
+            "execution_questions": "durable_blockers_only"
+          },
           "project_parallel_ceiling": "size_aware", "max_workers": 3, "claim_ttl_hours": 4,
           "parallelization": {
             "measurement": "existing_git_tracked_worktree_bytes", "threshold_bytes": 104857600,

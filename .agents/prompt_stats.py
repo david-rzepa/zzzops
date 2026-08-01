@@ -58,8 +58,8 @@ WORKFLOW_PROMPTS = {
 }
 
 WORKFLOW_SIGNALS = {
-    "capture": ("duplicate/relationship checks", "consequential ambiguity", "active same-task execute intent"),
-    "execution": ("complete:true", "smallest falsifiable chunk", "difficulty is cost, not value", "human_after_checks", "continue while policy permits safe useful work"),
+    "capture": ("duplicate/relationship checks", "adaptive requirements interview", "sole stakeholder", "active same-task execute intent"),
+    "execution": ("complete:true", "smallest falsifiable chunk", "difficulty is cost, not value", "human_after_checks", "Execution assumes the user is absent", "continue while policy permits safe useful work"),
     "policy-review": ("only this workflow changes or confirms policy", "explicit approval of the current digest", "execution-report recording"),
     "migration": ("explicit completeness review", "preserve every source location", "apply only after explicit approval"),
     "suggestion": ("no-write default", "zzzops-refill", "never copy source labels"),

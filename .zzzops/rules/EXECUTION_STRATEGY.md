@@ -15,7 +15,7 @@ If documentation/tests also alter runtime behavior, use the runtime rule. Record
 
 ## Test-discovered bugs
 
-Preserve the smallest reproduction and distinguish product from test/environment failure. Never hide the bug, weaken/delete its test, expand scope silently, or encode broken behavior. Follow PROJECT test-bug policy; without authorization capture a linked human-blocked goal and ask before fixing. Correct test-only defects normally and record why.
+Preserve the smallest reproduction and distinguish product from test/environment failure. Never hide the bug, weaken/delete its test, expand scope silently, or encode broken behavior. Follow PROJECT test-bug policy; without authorization capture a linked human-blocked goal and do not fix it until later input resolves the blocker. Correct test-only defects normally and record why.
 
 ## Delegation and parallelism
 
