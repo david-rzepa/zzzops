@@ -1879,21 +1879,20 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("dependencies_done", settings["dependency_implementation_gate"])
         self.assertTrue(settings["read_only_dependency_investigation"])
         self.assertEqual({"enabled": True}, settings["execution_reports"])
-        self.assertEqual(
-            {
-                "capture_depth": "standard",
-                "mode": "adaptive",
-                "stakeholder_model": "requesting_user_only",
-                "execution_questions": "durable_blockers_only",
-            },
-            settings["requirements_interview"],
-        )
+        self.assertEqual({"capture_depth": "standard"}, settings["requirements_interview"])
+        self.assertNotIn("blocker_interview", settings)
         settings["requirements_interview"]["capture_depth"] = "exhaustive"
         self.assertTrue(any(
             "requirements_interview.capture_depth is invalid" in error
             for error in zzzops.validate_policy(plan["policy"], True)
         ))
         settings["requirements_interview"]["capture_depth"] = "standard"
+        settings["requirements_interview"]["mode"] = "adaptive"
+        self.assertTrue(any(
+            "requirements_interview must contain only capture_depth" in error
+            for error in zzzops.validate_policy(plan["policy"], True)
+        ))
+        settings["requirements_interview"].pop("mode")
         self.assertEqual(
             {
                 "mode": "conflict_tolerant",
@@ -1924,13 +1923,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("resume_once_and_reprioritize", settings["after_additive_capture"])
         self.assertTrue(settings["exhausted_handoff_retains_intent"])
         self.assertEqual("require_explicit_harness_signal", settings["cross_task"])
-        self.assertEqual(
-            {
-                "enabled": False, "trigger": "disabled_for_unattended_execution", "max_blockers": 1,
-                "notify_once": True, "poll_seconds": 30, "max_seconds": 180,
-            },
-            settings["human_unblock_watch"],
-        )
+        self.assertNotIn("human_unblock_watch", settings)
     def test_completion_review_policy_defaults_are_structured(self):
         root = Path(__file__).parent / "zzzops"
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
@@ -1938,6 +1931,12 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("required_before_review_or_done", settings["completion_self_review"])
         self.assertEqual("remove_only_if_evidenced_and_in_scope", settings["dead_code"])
         self.assertEqual("retain_without_proof", settings["dynamic_generated_vendor"])
+
+    def test_verification_policy_uses_unattended_bug_blockers(self):
+        root = Path(__file__).parent / "zzzops"
+        plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        settings = next(section for section in plan["policy"]["sections"] if section["id"] == "verification_testing")["settings"]
+        self.assertEqual("capture_as_blocker", settings["test_bug"])
 
     def test_skill_names_descriptions_and_modes_are_discoverable(self):
         root = Path(__file__).parent / "skills"

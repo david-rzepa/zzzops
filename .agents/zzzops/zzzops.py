@@ -456,18 +456,12 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                     errors.append(f"{prefix}.settings.execution_reports.enabled must be boolean")
             if "requirements_interview" in settings:
                 interview = settings["requirements_interview"]
-                expected = {
-                    "capture_depth": {"light", "standard", "thorough"},
-                    "mode": {"adaptive"},
-                    "stakeholder_model": {"requesting_user_only"},
-                    "execution_questions": {"durable_blockers_only"},
-                }
                 if not isinstance(interview, dict):
                     errors.append(f"{prefix}.settings.requirements_interview must be an object")
-                else:
-                    for field, allowed in expected.items():
-                        if interview.get(field) not in allowed:
-                            errors.append(f"{prefix}.settings.requirements_interview.{field} is invalid")
+                elif set(interview) != {"capture_depth"}:
+                    errors.append(f"{prefix}.settings.requirements_interview must contain only capture_depth")
+                elif interview.get("capture_depth") not in {"light", "standard", "thorough"}:
+                    errors.append(f"{prefix}.settings.requirements_interview.capture_depth is invalid")
             if "resource_reservations" in settings:
                 try:
                     normalize_resource_policy(settings["resource_reservations"])

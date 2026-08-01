@@ -75,10 +75,6 @@
           "continue_while_actionable": true, "triage_new_first": true, "max_easy_wins": 2,
           "execute_intent": "same_task_until_superseded", "new_goal_checkpoint": "next_safe_checkpoint",
           "after_additive_capture": "resume_once_and_reprioritize", "exhausted_handoff_retains_intent": true,
-          "human_unblock_watch": {
-            "enabled": false, "trigger": "disabled_for_unattended_execution", "max_blockers": 1,
-            "notify_once": true, "poll_seconds": 30, "max_seconds": 180
-          },
           "stop_reasons_clear_intent": ["user_stop", "pause", "replacement_request", "capture_only", "required_authority", "blocking_boundary"],
           "cross_task": "require_explicit_harness_signal"
         },
@@ -89,7 +85,7 @@
         "decision": "Require artifact-appropriate observable evidence in small chunks; documentation and test cases need no recursive tests, while product behavior and reusable test infrastructure require direct verification.", "rationale": "prevents unobservable product changes and false confidence without manufacturing documentation or test meta-tests",
         "source_ids": ["E-002"], "confidence": "high", "default_origin": "ZzzOps observable-work fallback", "default_disposition": "accepted",
         "settings": {
-          "mode": "chunk_probe", "widen": "as_relevant", "test_bug": "capture_and_ask",
+          "mode": "chunk_probe", "widen": "as_relevant", "test_bug": "capture_as_blocker",
           "artifact_verification": {
             "product_runtime": "risk_proportionate_behavioral_probe",
             "documentation": "inspect_artifact_no_feature_test",
@@ -143,14 +139,8 @@
         "decision": "Interview adaptively during goal capture; execute unattended by persisting consequential questions as durable blockers; refill valuable bounded work; use up to three worktree workers below 100 MB and read-only workers otherwise.", "rationale": "balances precise capture, unattended execution, authority, bounded valuable refill, and predictable repository resource cost",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps conservative fallback", "default_disposition": "accepted",
         "settings": {
-          "blocker_interview": "capture_only",
           "blocker_order": ["safety_access_human", "cross_goal_decisions", "specification", "technical_unknown"],
-          "requirements_interview": {
-            "capture_depth": "standard",
-            "mode": "adaptive",
-            "stakeholder_model": "requesting_user_only",
-            "execution_questions": "durable_blockers_only"
-          },
+          "requirements_interview": {"capture_depth": "standard"},
           "project_parallel_ceiling": "size_aware", "max_workers": 3, "claim_ttl_hours": 4,
           "parallelization": {
             "measurement": "existing_git_tracked_worktree_bytes", "threshold_bytes": 104857600,

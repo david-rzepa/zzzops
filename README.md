@@ -106,7 +106,7 @@ For persistent Codex execution:
 /goal Use $execute-zzzops to work through all actionable project goals until complete or genuinely blocked.
 ```
 
-`/goal` is Codex-specific. Claude Code invokes ZzzOps workflows directly as `/skill-name`; ZzzOps supplies the same queue and operating rules in either tool. This is the point of ZzzOps: stop babysitting agents. When work runs dry, the agent interviews you about blockers before conceding defeat. If one safely observable human action is all that remains, it notifies you and briefly watches for completion before handing off. This is your scheduled cameo. After that, please locate the bedroom; staying awake does not make the remaining tokens more valuable.
+`/goal` is Codex-specific. Claude Code invokes ZzzOps workflows directly as `/skill-name`; ZzzOps supplies the same queue and operating rules in either tool. This is the point of ZzzOps: stop babysitting agents. When execution runs out of actionable work, it leaves every unanswered request on the affected issue and hands off the durable blocker queue without waiting for you. After that, please locate the bedroom; staying awake does not make the remaining tokens more valuable.
 
 Source-changing goals follow the reviewed project branch/review policy and pause at a human review blocker after checks. Maintainers: see the [branch topology and review lifecycle](docs/EXECUTION.md).
 
@@ -221,7 +221,7 @@ Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required
 
 Agents follow the reviewed project resource policy, define the observable signal before editing, change one small falsifiable chunk at a time, and inspect real output after every chunk. Verification is proportional: documentation is inspected, changed tests are run, and product/runtime behavior plus reusable test infrastructure receive direct behavioral coverage—ZzzOps does not recursively add tests for prose or test cases. If the project is opaque, agents build a focused harness or scoped MCP observation server instead of vibe-coding and hoping. Execution follows the reviewed project branch, review, and commit policy; capture itself is Git-free.
 
-If a new test discovers a real bug, ZzzOps files a separate TODO and asks you before fixing it. It does not smuggle a surprise product change into “just adding coverage,” because we have all reviewed that pull request before.
+If a new test discovers a real bug, ZzzOps files a separate blocked TODO and leaves it untouched until later input resolves the scope. It does not smuggle a surprise product change into “just adding coverage,” because we have all reviewed that pull request before.
 
 ## Prompt budget
 
@@ -231,5 +231,7 @@ If a new test discovers a real bug, ZzzOps files a separate TODO and asks you be
 <python> .agents/prompt_stats.py
 <python> .agents/prompt_stats.py --check
 ```
+
+The [context-engineering audit](docs/CONTEXT_ENGINEERING.md) records which modern guidance ZzzOps implements, already satisfies, or intentionally excludes.
 
 Go to bed. The backlog knows what to do.
