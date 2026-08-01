@@ -69,6 +69,7 @@ WORKFLOW_SIGNALS = {
 
 GLOBAL_SIGNALS = (
     "user/safety > project rules",
+    "Human-facing Markdown links goals",
     "Reports accept no free text",
 )
 
