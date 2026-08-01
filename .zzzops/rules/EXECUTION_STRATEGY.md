@@ -13,6 +13,10 @@ Apply reviewed PROJECT verification policy first. When it does not specify artif
 
 If documentation/tests also alter runtime behavior, use the runtime rule. Record why the check is sufficient.
 
+## CI-aware widening
+
+Run the smallest local falsifiable probe. Map broader commands to the project's required CI; when CI runs the same command and coverage at the pushed head, do not duplicate it locally. CI counts only after inspected completion at that exact head. Diagnose failures from logs and reprobe narrowly; cancellation, timeout, skipped jobs, provider failure, or head drift is not success. If required CI is unavailable, block durably rather than skip or substitute. Derive equivalence from project commands and checks, not provider names.
+
 ## Test-discovered bugs
 
 Preserve the smallest reproduction and distinguish product from test/environment failure. Never hide the bug, weaken/delete its test, expand scope silently, or encode broken behavior. Follow PROJECT test-bug policy; without authorization capture a linked human-blocked goal and do not fix it until later input resolves the blocker. Correct test-only defects normally and record why.

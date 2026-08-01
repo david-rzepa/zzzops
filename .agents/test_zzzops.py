@@ -1841,6 +1841,12 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(list(zzzops.POLICY_SECTION_IDS), project_ids)
         self.assertTrue(all(section["required"] and not section["review"]["approved"] for section in plan["policy"]["sections"]))
 
+    def test_required_pr_validation_includes_chained_targets(self):
+        workflow = (Path(__file__).parents[1] / ".github" / "workflows" / "validate.yml").read_text(encoding="utf-8")
+        trigger = workflow.split("permissions:", 1)[0]
+        self.assertIn("pull_request:", trigger)
+        self.assertNotIn("branches:", trigger)
+
     def test_branch_policy_defaults_are_structured(self):
         root = Path(__file__).parent / "zzzops"
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
@@ -1916,6 +1922,21 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("remove_or_retain_clean_for_reuse", settings["worktree_lifecycle"]["after_task"])
         settings["execution_reports"]["enabled"] = "yes"
         self.assertTrue(any("execution_reports.enabled must be boolean" in error for error in zzzops.validate_policy(plan["policy"], True)))
+
+    def test_verification_defaults_deduplicate_exact_required_ci(self):
+        root = Path(__file__).parent / "zzzops"
+        plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        settings = next(section for section in plan["policy"]["sections"] if section["id"] == "verification_testing")["settings"]
+        self.assertEqual(
+            {
+                "local_probe": "smallest_unique_falsifiable_signal",
+                "skip_broad_local_when": "same_command_required_ci",
+                "required_ci": "inspect_exact_pr_head",
+                "failure": "inspect_logs_and_reprobe",
+                "unavailable": "durable_blocker",
+            },
+            settings["ci_deduplication"],
+        )
     def test_continuation_policy_defaults_are_structured(self):
         root = Path(__file__).parent / "zzzops"
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))

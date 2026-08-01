@@ -186,13 +186,13 @@ The feedback workflow submits only an exactly previewed, user-confirmed payload 
 
 ## Releases
 
-Develop on branches created from `dev` and open ordinary PRs against `dev`. The read-only **PR validation / dev-required-tests** job must pass before merge. Each push to `dev` runs `semantic-release --dry-run` with read-only repository permission; dry-run skips tag creation and publication. `main` is reserved for an intended owner force-push release: semantic-release then receives `contents: write` and creates the Git tag and GitHub Release.
+Develop on branches created from `dev` and open ordinary PRs against `dev`. PR validation runs for every target branch so chained PRs receive exact-head evidence before they are retargeted; the read-only **PR validation / dev-required-tests** job must pass before merge. Each push to `dev` runs `semantic-release --dry-run` with read-only repository permission; dry-run skips tag creation and publication. `main` is reserved for an intended owner force-push release: semantic-release then receives `contents: write` and creates the Git tag and GitHub Release.
 
 Semantic commits since the latest reachable `vMAJOR.MINOR.PATCH` tag are the release-history source. `!` or a `BREAKING CHANGE` footer produces a major release, `feat` produces minor, and `fix`, `perf`, or `revert` produces patch. The highest change wins. Documentation, style, chores, refactors, tests, builds, and CI do not release and are omitted from notes. The conventional-commits generator emits sections in its fixed significance order—Features, Bug Fixes, Performance Improvements, then Reverts—with a distinct breaking-changes section; empty sections are omitted and entries are sorted by subject then scope. Reruns with no releasable commits are no-ops.
 
 Release notes live on the GitHub Release rather than in a versioned `CHANGELOG.md`, avoiding a release-generated commit and duplicate history. The exact Node and semantic-release/plugin versions are pinned in `package-lock.json`; no repository secret is required beyond GitHub's job token.
 
-To diagnose a PR or release, inspect **PR validation / dev-required-tests** or the **Semantic release** run and its failing step. Reproduce the same checks locally with:
+To diagnose a PR or release, inspect **PR validation / dev-required-tests** or the **Semantic release** run and its failing step. Routine implementation uses the smallest distinct local probe and leaves an exact-equivalent broad command to required CI at the pushed head. When CI fails or is unavailable, reproduce its commands locally with:
 
 ```powershell
 <python> -m unittest discover -s .agents -p 'test_*.py'

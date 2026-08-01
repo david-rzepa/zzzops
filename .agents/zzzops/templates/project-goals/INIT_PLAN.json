@@ -90,6 +90,13 @@
         "source_ids": ["E-002"], "confidence": "high", "default_origin": "ZzzOps observable-work fallback", "default_disposition": "accepted",
         "settings": {
           "mode": "chunk_probe", "widen": "as_relevant", "test_bug": "capture_and_ask",
+          "ci_deduplication": {
+            "local_probe": "smallest_unique_falsifiable_signal",
+            "skip_broad_local_when": "same_command_required_ci",
+            "required_ci": "inspect_exact_pr_head",
+            "failure": "inspect_logs_and_reprobe",
+            "unavailable": "durable_blocker"
+          },
           "artifact_verification": {
             "product_runtime": "risk_proportionate_behavioral_probe",
             "documentation": "inspect_artifact_no_feature_test",
