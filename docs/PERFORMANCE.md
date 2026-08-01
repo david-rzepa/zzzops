@@ -1,6 +1,6 @@
 # Portfolio performance
 
-Agents resolve one Python 3 interpreter once per task, then use one combined initialized decision checkpoint:
+Agents resolve one Python 3.10 or newer interpreter once per task, then use one combined initialized decision checkpoint:
 
 ```powershell
 <python> .agents/zzzops/zzzops.py --repo . checkpoint

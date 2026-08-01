@@ -390,6 +390,11 @@ class ValidationAggregateTests(unittest.TestCase):
         self.assertIn("windows=${{ needs.validate-windows.result }}", workflow)
         self.assertIn("macos=${{ needs.validate-macos.result }}", workflow)
 
+    def test_workflow_validates_supported_python_floor_and_current_runtime(self):
+        workflow = (ROOT / ".github" / "workflows" / "validate.yml").read_text(encoding="utf-8")
+        self.assertIn("python-version: ['3.10', '3.14']", workflow)
+        self.assertEqual(2, workflow.count("python-version: '3.14'"))
+
 
 if __name__ == "__main__":
     unittest.main()

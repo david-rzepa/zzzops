@@ -1962,7 +1962,14 @@ class WorkflowContractTests(unittest.TestCase):
                 self.assertIn("BACKENDS.md", text, name)
 
         initialization = (root.parent / ".zzzops" / "rules" / "INITIALIZATION.md").read_text(encoding="utf-8")
+        for relative in (
+            "README.md", "docs/INITIALIZATION.md", "docs/PERFORMANCE.md",
+            "docs/ACCEPTANCE_TEST_PLAN.md", ".zzzops/rules/INITIALIZATION.md",
+        ):
+            text = (root.parent / relative).read_text(encoding="utf-8")
+            self.assertIn("Python 3.10 or newer", text, relative)
         for phrase in (
+            "Python 3.10 or newer", "older interpreter", "block once",
             "Under Codex", "authenticated context for the first attempt",
             "keep local-only commands in the normal sandbox", "Never reauthenticate or persistently relax the sandbox",
         ):

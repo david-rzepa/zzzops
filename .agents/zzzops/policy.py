@@ -407,11 +407,15 @@ def render_policy_sections(policy: dict[str, Any]) -> str:
         approved = section["review"]["approved"] is True
         applicable = "applicable" if section["applicable"] else "not applicable"
         settings = json.dumps(section["settings"], ensure_ascii=False, sort_keys=True)
+        sources = "; ".join(
+            "{}: {}".format(source_id, evidence.get(source_id, "missing citation"))
+            for source_id in section["source_ids"]
+        )
         rendered.append(
             f"- [{'x' if approved else ' '}] `[policy:{section['id']}]` **{section['title']}** ({applicable})\n"
             f"  - Decision: {section['decision']}\n"
             f"  - Rationale: {section['rationale']}\n"
-            f"  - Sources: {'; '.join(f'{source_id}: {evidence.get(source_id, 'missing citation')}' for source_id in section['source_ids'])}\n"
+            f"  - Sources: {sources}\n"
             f"  - Confidence/default: {section['confidence']}; {section['default_origin']} → {section['default_disposition']}\n"
             f"  - Settings: `{settings}`\n"
             f"  - Exceptions: {', '.join(section['exceptions']) or 'none'}\n"
