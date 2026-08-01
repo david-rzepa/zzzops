@@ -16,7 +16,7 @@ Execution assumes the user is absent and never asks an interactive question, inc
 ## Execute
 
 1. Re-read only the selected goal and selection-critical parent/dependencies; compare revision/digest, declare known resources, then reserve the bundle per `GOAL_SYSTEM.md`. On contention refresh once and choose other work; only the winner claims or begins work.
-2. For source changes, establish/resume the policy-selected topology from `BRANCH_REVIEW.md` and persist branch/base/target before editing. Then follow `.zzzops/rules/EXECUTION_STRATEGY.md`: capture baseline; implement one smallest falsifiable chunk; run/inspect/record the real probe before continuing; widen only after proof.
+2. For source changes, establish/resume the policy-selected topology from `BRANCH_REVIEW.md` and persist branch/base/target before editing. Then follow `.zzzops/rules/EXECUTION_STRATEGY.md`: capture baseline; implement one smallest falsifiable chunk; run/inspect/record the real probe before continuing; widen only after proof, leaving exact-equivalent broad validation to required CI.
 3. Work to a verified checkpoint without silent scope expansion. Classify discoveries as scope, checklist, child, dependency, or root. Apply PROJECT test-bug policy; never hide a failure, weaken the test, or expand authority silently.
 4. Persist evidence at natural checkpoints. Follow PROJECT-limited parallel/worktree rules; coordinator owns ZzzOps state and integration.
 
