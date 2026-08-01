@@ -1,7 +1,7 @@
 # Project success charter
 
 **Status:** complete
-**Last reviewed:** 2026-07-18
+**Last reviewed:** 2026-08-01
 
 ## Overall goal
 - Outcome: ZzzOps lets Codex and Claude Code manage long-term project work autonomously with durable state, minimal babysitting, and explicit human control.
@@ -53,14 +53,14 @@ When KPIs conflict, prefer: user authority and safety, correctness, privacy, ver
 ## Operating policy
 
 - `[policy:backend]` **Canonical goal backend**: github_issues
-- `[policy:git_review_release]` **Git, review, and release**: Per-goal branches from dev and PRs to dev. Writable implementation waits until every dependency is complete; read-only investigation may prepare later work without claiming or starting it. Use Conventional Commits, human review after checks, and owner-only main releases.
-- `[policy:execution_continuation]` **Execution and work continuation**: Continue across actionable goals under reviewed dependency and resource policy, and incorporate newly captured goals at the next safe checkpoint.
+- `[policy:git_review_release]` **Git, review, and release**: Use one chained branch and PR per goal: start from dev, then stack each subsequent goal from the preceding exact reviewed checkpoint and merge in dependency order. Use Conventional Commits, human review after checks, and owner-only main releases.
+- `[policy:execution_continuation]` **Execution and work continuation**: Continue across actionable goals under reviewed dependency and resource policy, incorporate newly captured goals at the next safe checkpoint, and persist unanswered questions without live interviewing, notification, polling, or waiting.
 - `[policy:verification_testing]` **Verification and testing**: Require artifact-appropriate observable evidence in small chunks; documentation and test cases need no recursive tests, while product behavior and reusable test infrastructure require direct verification.
 - `[policy:code_quality]` **Code-quality and refactoring boundaries**: Preserve behavior unless a goal explicitly authorizes a behavior change.
 - `[policy:dependencies_tooling]` **Dependencies, tooling, and generated artifacts**: Use project-native tooling; do not hand-edit generated or dependency-owned files.
 - `[policy:security_privacy_compliance]` **Security, privacy, secrets, and compliance**: Repository policy may tighten but never weaken safety and authority boundaries.
 - `[policy:documentation_style]` **Documentation and style**: Follow evidenced repository documentation and style conventions; use outcome-first, low-technical-detail user updates by default while allowing explicit project policy to override the style.
 - `[policy:deployment_resources]` **Deployment, environment, and resources**: Do not deploy without authority; choose bounded parallelism from the deterministic tracked-file repository size.
-- `[policy:autonomy_approval_parallelism]` **Autonomy, approvals, and parallelism**: Maximize safe autonomous progress; interview on consequential blockers; refill documentation, test-coverage, and non-behavioral code-quality work within the reviewed limit; use at most three size-aware workers with explicit worktree cleanup or reuse.
+- `[policy:autonomy_approval_parallelism]` **Autonomy, approvals, and parallelism**: Interview adaptively during goal capture at the reviewed depth; treat the requesting user as the sole stakeholder; execute unattended by persisting consequential questions as durable blockers; record privacy-safe execution reports; refill valuable bounded work; and use up to three size-aware workers.
 
 Detailed rationale and review history: [PROJECT_AUDIT.md](PROJECT_AUDIT.md). Canonical policy state: [POLICY.json](POLICY.json).
