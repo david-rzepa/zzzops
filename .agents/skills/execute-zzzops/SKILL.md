@@ -14,14 +14,14 @@ Feedback goals labeled `zzzops-feedback` are excluded by default. Include them o
 
 
 - Create/triage/decompose: [CREATE.md](references/CREATE.md).
-- Unblock/interview: [UNBLOCK.md](references/UNBLOCK.md) and `../../../.zzzops/rules/BLOCKERS.md`.
+- Unblock and persist unanswered requests: [UNBLOCK.md](references/UNBLOCK.md) and `../../../.zzzops/rules/BLOCKERS.md`.
 - Select/execute/complete/handoff: [EXECUTE.md](references/EXECUTE.md).
 - Source-changing branch topology/review: [BRANCH_REVIEW.md](references/BRANCH_REVIEW.md).
 - Pre-handoff diff/dead-code review: [SELF_REVIEW.md](references/SELF_REVIEW.md).
 - Tests, delegation, parallelism, or long commands: `../../../.zzzops/rules/EXECUTION_STRATEGY.md`.
 - Exhausted-queue backlog suggestions: `$suggest-zzzops-work` when explicitly enabled by reviewed PROJECT policy.
 
-This is the primary autonomous loop. Apply reviewed PROJECT selection, continuation, blocker-interview, refill, Git, verification, and resource policy. User authority and project rules outrank goals. Persist resumable state before switching/stopping; continue while policy permits safe useful work. Optimize verified value, not item count or limit consumption.
+This is the primary autonomous loop. Apply reviewed PROJECT selection, continuation, blocker, refill, Git, verification, and resource policy. User authority and project rules outrank goals. Persist resumable state before switching/stopping; continue while policy permits safe useful work. Optimize verified value, not item count or limit consumption.
 
 Before source work, read PROJECT Git/review/continuation policy and checkpoint only pending local ZzzOps state when required; never absorb unrelated changes or create an empty GitHub-state commit.
 

@@ -4,14 +4,14 @@
 
 ## Select
 
-1. Read the charter and use the current BACKENDS checkpoint portfolio; never reread it. Require `complete:true` and `valid:true`; resolve findings instead of selecting from an invalid graph, and use its compact relationships/claims/reviews rather than rereading goals. If the present user's human queue is non-empty, run `UNBLOCK.md` first to identify consequential gates, but continue independently actionable work without waiting for a non-blocking answer.
+1. Read the charter and use the current BACKENDS checkpoint portfolio; never reread it. Require `complete:true` and `valid:true`; resolve findings instead of selecting from an invalid graph, and use its compact relationships/claims/reviews rather than rereading goals. If the human queue is non-empty, run `UNBLOCK.md` to order and persist consequential gates, then continue independently actionable work.
    Specially tagged `zzzops-feedback` goals are absent unless the user approved them for this execution session. One session approval includes the whole feedback queue; never request approval per issue, and retain `--include-feedback` on every checkpoint refresh in that session.
    Treat that complete checkpoint as the current queue read until a local state mutation, provider failure, explicit freshness requirement, or observed drift requires one refresh. Do not run an extra portfolio command merely to rediscover the same goals.
 2. Route `new` goals through `CREATE.md` according to PROJECT triage/continuation policy.
 3. Use the portfolio's PROJECT-derived `actionable` field. The installed default waits for every dependency to be `done` before writable implementation; a reviewed PROJECT override such as `stack_from_reviewed_checkpoint` may make a child actionable earlier. Read-only investigation may prepare waiting work when policy permits, but never claims, edits, branches, or marks it started. Recheck blocked work only on its trigger.
 4. Obey authority and explicit PROJECT priority first. Within the same effective priority, prefer evidenced charter/KPI value, safety/risk reduction, and unlocks: choose high-value, risk-reducing or unlocking work over low-value easy or fast work. Then prefer confidence, faster observable feedback, and lower difficulty; difficulty is cost, not value and never a reason to maximize item count. Unmeasured KPIs may support qualitative rationale, but never invent a baseline, score, or precision. On an exact tie use PROJECT resume policy, then the lowest goal key.
 
-Ask immediately only for a consequential decision, authority, or safety boundary that gates every safe affected action. Batch non-blocking information into one concise update; do not wait for it, repeat status summaries, or treat timeout as approval. Preserve every blocker and continue independent authorized goals until true queue exhaustion.
+Execution assumes the user is absent and never asks an interactive question, including for decisions, authority, or safety boundaries. Persist each unanswered consequential question on the affected goal with its category, evidence, recommendation, continuation boundary, safe work, and recheck trigger. Stop only affected work, never infer approval, and continue independent authorized goals until true queue exhaustion.
 
 ## Execute
 
@@ -28,13 +28,13 @@ Ask immediately only for a consequential decision, authority, or safety boundary
 
 ## Block, complete, cycle
 
-- On a blocker, follow `.zzzops/rules/BLOCKERS.md`: record continuation, ask when useful, do only bounded safe work, then keep active or block/release claim and reservation before switching.
+- On a blocker, follow `.zzzops/rules/BLOCKERS.md`: record the unanswered request and continuation, do only bounded safe work, then keep active or block/release claim and reservation before switching.
 - Before `done`, cite observed before/after evidence for each criterion; verify required children, blockers, and relevant checks; state anything unobserved. Build/lint/types/code review do not prove runtime behavior unless that is the criterion. Apply PROJECT completion-review policy through `SELF_REVIEW.md`; when required, fix/reverify in-scope findings and record even a clean result. Source-changing work then applies the reviewed gate in `BRANCH_REVIEW.md`; under the installed `human_after_checks` fallback, technical completion alone is not `done`.
 - Follow PROJECT Git/review/commit policy, staging only authorized implementation and pending local ZzzOps state; a GitHub-only state change never causes an empty commit. Refresh the batch after state mutation, recheck parent/unlocks, then select again.
 
 ## Exhaustion and handoff
 
-When no work is actionable, rebuild the human queue and apply PROJECT blocker-interview/continuation policy through `UNBLOCK.md`; persist answers and retry when policy restores work. At true exhaustion, apply PROJECT `human_unblock_watch` only when completion is safely observable.
+When no work is actionable, rebuild the human queue through `UNBLOCK.md`, leave every request durable, and hand off the highest-leverage required actions without asking for a live response. On a later invocation, resolve any supplied answers and retry when policy restores work. Do not poll or watch for human input during execution.
 
 If still empty, invoke `$suggest-zzzops-work` in apply mode only when reviewed PROJECT policy explicitly enables refill. Use its category and count limits; never loop-refill or enable policy yourself.
 

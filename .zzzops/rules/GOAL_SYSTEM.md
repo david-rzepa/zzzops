@@ -8,7 +8,7 @@ Before every non-install workflow follow `INITIALIZATION.md`, then use the GitHu
 
 - Goal identity is repository plus issue number/URL; never invent another ID or duplicate GitHub title/relations in managed JSON.
 - Never store secrets/raw sensitive data; link approved systems and name authority/sync direction.
-- The charter defines success/value. Preserve unknown KPIs/targets/tradeoffs; ask rather than invent.
+- The charter defines success/value. Preserve unknown KPIs/targets/tradeoffs; capture asks, while execution records blockers rather than inventing answers.
 - Reviewed PROJECT holds operational choices; installed rules are overridable defaults, not another policy layer.
 - Initialization plans and migration artifact shapes live in `.agents/zzzops/templates/project-goals/`; `init apply` renders project state. Installation copies mechanics/templates only and never creates or overwrites project state.
 

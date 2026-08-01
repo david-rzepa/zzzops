@@ -1,17 +1,10 @@
 # Unblock goals
 
+Execution is unattended: this workflow records and surfaces questions but never asks for or waits on a live response.
+
 1. Use the complete BACKENDS portfolio snapshot to derive the human queue; re-read only referenced goals for full blocker evidence, continuation, and triggers. Report derived drift rather than inventing missing state.
-2. Consolidate duplicates and apply PROJECT `blocker_order`. The installed fallback orders questions by leverage: safety/access/human action; choices blocking many goals; specifications; technical unknowns. Do not ask questions already answered in project docs, history, or related goals.
-3. Interview according to PROJECT timing/batching policy. Retain category/evidence internally. Ask immediately when a consequential decision, authority, or safety boundary gates all safe affected work; otherwise batch non-blocking information into one concise update while independent authorized goals continue. Ask for one clear action/decision, why it matters, a useful recommendation, and what follows. Mention multiple goals only when affected; avoid transcript dumps or repeated status summaries.
-4. On each answer, resolve the old blocker without deleting it; record answer, resolver/date, changed assumptions/scope/criteria/next action, and any narrower successor blocker. Update state, dependencies, history, and the portfolio-derived human queue atomically.
-5. Rebuild the actionable set and continue with `EXECUTE.md` when execution was requested. If nothing becomes actionable, follow PROJECT continuation/interview policy for another high-leverage batch or handoff. Preserve unanswered requests/recheck triggers and switch to independent safe work when allowed.
-
-## Bounded human-unblock watch
-
-Apply PROJECT `human_unblock_watch`. Only at total exhaustion select one highest-leverage human blocker with a safe read-only recheck. Notify once with the action, reason, link, and what resumes; keep category/checkpoint/poll mechanics internal. If policy or capability prevents a safe watch, preserve the blocker and hand off.
-
-Read cadence, maximum window, blocker count, and notification limit from that reviewed setting. The installed fallback is `poll_seconds: 30`, `max_seconds: 180`, `max_blockers: 1`, and `notify_once: true`; it allows at most six provider reads and delegates the wait after PROJECT `delegate_wait_after_seconds` when a monitor is available. Never exceed the reviewed bounds.
-
-Stop immediately on the observed unblock, changes requested, state drift, authorization/capability loss, provider failure, user interruption/stop/pause/replacement, or timeout. On unblock, refresh the combined checkpoint once and resume the existing execute loop once; never approve, merge, duplicate work, or bypass authority. Otherwise preserve the unchanged blocker and precise recheck trigger, record the stop reason, and hand off.
-
-Do not postpone a policy-required available-user interview for speculative implementation. Brief read-only inspection needed to phrase questions is allowed; stop once it no longer improves them.
+2. Consolidate duplicates and apply PROJECT `blocker_order`. The installed fallback orders requests by leverage: safety/access/human action; choices blocking many goals; specifications; technical unknowns. Search project docs, history, and related goals first; resolve an already-answered blocker instead of repeating it.
+3. Ensure every unanswered consequential gap is persisted on its affected issue with one clear question or required action, why it matters, evidence, options and recommendation, `continue-bounded` or `stop-affected-work`, safe work remaining, and a precise recheck trigger. Never infer an answer, approval, identity, or safety boundary.
+4. Continue independent authorized work. If a blocker leaves no useful affected work, mark only that goal `blocked`, release its claim/reservation, and select another goal.
+5. At true exhaustion, hand off a concise ordered blocker summary with issue links and what each answer resumes. Do not poll, watch, notify repeatedly, or make the handoff depend on an immediate response.
+6. On a later invocation containing an answer, resolve the old blocker without deleting it; record answer, resolver/date, changed assumptions/scope/criteria/next action, and any narrower successor. Rebuild the actionable set and continue with `EXECUTE.md` when execution was requested.

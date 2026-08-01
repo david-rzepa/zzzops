@@ -1881,6 +1881,21 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual({"enabled": True}, settings["execution_reports"])
         self.assertEqual(
             {
+                "capture_depth": "standard",
+                "mode": "adaptive",
+                "stakeholder_model": "requesting_user_only",
+                "execution_questions": "durable_blockers_only",
+            },
+            settings["requirements_interview"],
+        )
+        settings["requirements_interview"]["capture_depth"] = "exhaustive"
+        self.assertTrue(any(
+            "requirements_interview.capture_depth is invalid" in error
+            for error in zzzops.validate_policy(plan["policy"], True)
+        ))
+        settings["requirements_interview"]["capture_depth"] = "standard"
+        self.assertEqual(
+            {
                 "mode": "conflict_tolerant",
                 "exclusive_prefixes": ["generated", "external"],
                 "exclusive_resources": [],
@@ -1911,7 +1926,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("require_explicit_harness_signal", settings["cross_task"])
         self.assertEqual(
             {
-                "enabled": True, "trigger": "total_actionable_exhaustion", "max_blockers": 1,
+                "enabled": False, "trigger": "disabled_for_unattended_execution", "max_blockers": 1,
                 "notify_once": True, "poll_seconds": 30, "max_seconds": 180,
             },
             settings["human_unblock_watch"],
@@ -2004,17 +2019,22 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("bounded consolidated reads", review)
         self.assertIn("exact head", review)
 
-    def test_execute_continues_past_nonblocking_human_questions(self):
+    def test_execute_persists_questions_without_live_interaction(self):
         execute = (Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "EXECUTE.md").read_text(encoding="utf-8")
         unblock = (Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "UNBLOCK.md").read_text(encoding="utf-8")
         for phrase in (
-            "continue independently actionable work without waiting for a non-blocking answer",
-            "consequential decision, authority, or safety boundary",
-            "Batch non-blocking information into one concise update",
+            "Execution assumes the user is absent",
+            "never asks an interactive question",
+            "Persist each unanswered consequential question",
             "true queue exhaustion",
         ):
             self.assertIn(phrase, execute)
-        self.assertIn("independent authorized goals continue", unblock)
+        for phrase in (
+            "never asks for or waits on a live response",
+            "Continue independent authorized work",
+            "Do not poll, watch, notify repeatedly",
+        ):
+            self.assertIn(phrase, unblock)
 
     def test_execute_prioritization_contract_handles_adversarial_cases(self):
         execute = (

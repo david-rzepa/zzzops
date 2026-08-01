@@ -20,6 +20,10 @@ The workflow remains agent-driven. ZzzOps deliberately has no universal branch-m
 
 Execute-all intent may remain active across a same-task yield or queue-exhausted handoff. If the next turn merely captures unrelated work, ZzzOps completes that capture and re-enters ordinary inventory once, so the new goal joins the queue without jumping it. Explicit stop, pause, replacement, capture-only wording, authority/blocker boundaries, or loss of a trustworthy same-task signal wins. Time proximity alone is never evidence; separate tasks and unsupported harnesses do not share intent.
 
+Goal capture uses the project policy's adaptive requirements-interview depth before creating the canonical issue. The default `standard` depth establishes outcome and observable acceptance, checks scope, and explores constraints, dependencies, risks, authority, or verification only when they can materially change the goal. It treats the requesting user as the requirements and acceptance owner; multi-party stakeholder discovery is outside this behavior.
+
+Execution assumes no user is present. It never pauses to ask an interactive question: consequential unknowns, including authority and safety gates, are recorded as categorized issue blockers with recommendations and recheck triggers. Independent goals continue, and the durable blocker queue is summarized at handoff.
+
 ## Completion self-review
 
 Before human review or completion, the agent reviews the actual goal diff, criteria, tests, and relevant surroundings. It removes only in-scope dead code proven obsolete by the implementation, retains uncertain dynamic/generated/vendor or unrelated paths, fixes findings in observable chunks, reruns affected and relevant wider checks, and records either findings or a clean review. The pass does not authorize repository-wide cleanup or unrelated bug fixes.

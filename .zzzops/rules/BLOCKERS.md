@@ -26,10 +26,10 @@ Choose `continue-bounded` only if the work is reversible/read-only, does not ass
 
 Stop only the affected work. Mark the goal `blocked` only when nothing useful remains; update the human queue, release the claim, and select another goal.
 
-## Human interaction
+## Capture and unattended execution
 
-Follow reviewed PROJECT interview timing/batching policy. When interviewing, search project/related goals just enough to phrase a compact categorized batch with recommendation, consequence, and safe continuation. Do not substitute speculative implementation for a policy-required available-user interview. Persist questions in managed issues; do not repeat before their recheck trigger.
+Goal capture follows the reviewed PROJECT requirements-interview depth before the canonical write. Execution assumes the user is absent: search project/related goals enough to avoid stale or answered questions, then persist every unanswered consequential question on the affected managed issue. Never ask interactively, poll for a response, or substitute speculative implementation. Do not repeat a blocker before its recheck trigger.
 
 On input: resolve (never delete) the blocker; update affected assumptions/scope/criteria/next action/links; remove its queue row; move the goal to an actionable state if possible; append history; recheck dependents. If input only narrows the issue, resolve it and link a more precise successor.
 
-At total queue exhaustion, `UNBLOCK.md` may briefly watch one safely observable human action. Keep the original blocker and recheck trigger until completion is observed; timeout, interruption, drift, or provider failure never implies resolution.
+At total queue exhaustion, surface the ordered durable queue and hand off. Keep the original blocker and recheck trigger until completion is observed; silence, timeout, interruption, drift, or provider failure never implies resolution.
