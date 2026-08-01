@@ -2,7 +2,7 @@
 
 Installation copies mechanics and blank templates only. Start `$review-zzzops-policy` from a fresh Codex task or Claude Code session. It inspects repository evidence, proposes the charter/GitHub authority/operating policy, and interviews only consequential gaps. Other ZzzOps skills defer to it whenever reviewed policy is unavailable.
 
-Resolve one Python 3 interpreter first (`python3`, `python`, Windows `py -3`, or a harness-provided runtime), then reuse it below as `<python>` without speculative launcher attempts:
+Resolve one Python 3.10 or newer interpreter first (`python3`, `python`, Windows `py -3`, or a harness-provided runtime), reject older interpreters, then reuse the compatible command below as `<python>` without speculative launcher attempts. If none is compatible, stop once with the observed version and actionable install or selection detail:
 
 ```text
 <python> .agents/zzzops/zzzops.py --repo . init inspect

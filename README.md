@@ -54,7 +54,7 @@ Once reviewed, these policies let the agent make routine decisions without wakin
 
 GitHub Issues is the canonical goal authority. Initialization requires a successful repository and access probe; unavailable authentication, permission, or Issues support becomes an explicit blocker. Initialization does not commit, branch, or mutate GitHub.
 
-The native installer does not require Python or Node. Post-install CLI examples use `<python>` for one Python 3 interpreter resolved once (`python3`, `python`, Windows `py -3`, or a harness-provided runtime). Agents must discover it before launching instead of first trying an assumed executable.
+The native installer does not require Python or Node. Post-install CLI examples require Python 3.10 or newer and use `<python>` for one compatible interpreter resolved once (`python3`, `python`, Windows `py -3`, or a harness-provided runtime). Agents must discover and version-check it before launching instead of first trying an assumed executable.
 
 **Visibility:** GitHub-backed goals inherit the repository's visibility. Never put secrets or raw sensitive data in a goal; redact it or link to an approved private system before capture or migration.
 
