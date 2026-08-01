@@ -1,17 +1,17 @@
 {
   "approval": {
-    "date": "2026-07-18",
-    "digest": "sha256:b68016176b04ccd562e1c102410b0a276af32de148eec6c4bbd2f5b57150b65e",
-    "reviewer": "david-rzepa"
+    "date": "2026-08-01",
+    "digest": "sha256:a7838b1badb1062845b69556778bb4e15597ec0c3828d40133e8d3c4bf6d73a4",
+    "reviewer": "user"
   },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:1c31ea67908d4045339a8982d6132ee7a675dd4f8a960f257e3402716ecd03ff",
+      "digest": "sha256:b92bf593ddc375d43799573770e3eb1500b9e132f53e942a0ccf4b402c3b4b31",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
-      "digest": "sha256:3b417c55eeb355e633df70c3085278f07321cfec2350b05659ee467e553ef59d",
+      "digest": "sha256:1fa6149fb8dd25525ebe67d0b2f1ff9beedf299233df6e17d88b2bce7101fdc1",
       "path": ".zzzops/PROJECT.md"
     }
   },
@@ -75,57 +75,15 @@
   "history": [
     {
       "actor": "ZzzOps initialization",
-      "change": "Created pending revision 4",
-      "date": "2026-07-18",
-      "reason": "Confirmed agent-generated draft; exact-file policy review still required."
+      "change": "Created pending revision 13",
+      "date": "2026-08-01",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
     },
     {
       "actor": "user",
-      "change": "Reviewed policy revision 5",
-      "date": "2026-07-18",
-      "reason": "Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, autonomy_approval_parallelism; source digest `sha256:2144f007236745e92fc6b43f863f8ae8ecc5273bc2311113165aa1d59fdbeb8b`."
-    },
-    {
-      "actor": "ZzzOps initialization",
-      "change": "Created pending revision 6",
-      "date": "2026-07-18",
-      "reason": "Confirmed agent-generated draft; exact-file policy review still required."
-    },
-    {
-      "actor": "user",
-      "change": "Reviewed policy revision 7",
-      "date": "2026-07-18",
-      "reason": "Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, autonomy_approval_parallelism; source digest `sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7`."
-    },
-    {
-      "actor": "ZzzOps maintenance",
-      "change": "Removed inert transition state in revision 8",
-      "date": "2026-07-19",
-      "reason": "The field was permanently false and contradicted the final v1 no-prior-schema-migration contract; reviewed policy decisions are unchanged."
-    },
-    {
-      "actor": "ZzzOps execute #95",
-      "change": "Encoded policy/default conformance in revision 9",
-      "date": "2026-07-19",
-      "reason": "Added source-cited review-ready stacking, bounded human-watch defaults, artifact verification, release boundaries, and prompt-budget settings; PR review is the exact-file policy checkpoint."
-    },
-    {
-      "actor": "ZzzOps execute #95 review",
-      "change": "Clarified stacked actionability in revision 10",
-      "date": "2026-07-19",
-      "reason": "Made explicit that a review-blocked dependency can still make its child actionable; dependency status and merge order do not serialize implementation when the exact checkpoint satisfies reviewed policy."
-    },
-    {
-      "actor": "user/ZzzOps execute #102",
-      "change": "Added communication policy in revision 11",
-      "date": "2026-07-19",
-      "reason": "User selected outcome-first, low-technical-detail communication as the default while requiring explicit project policy to remain able to override it."
-    },
-    {
-      "actor": "user/ZzzOps execute #117",
-      "change": "Consolidated operational policy in revision 12",
-      "date": "2026-07-20",
-      "reason": "Removed local preferences; selected bounded refill for documentation, test coverage, and non-behavioral code quality, completed dependency gates for writes, tracked-size parallel defaults with three workers, read-only advance investigation, and mandatory worktree cleanup or safe reuse."
+      "change": "Reviewed policy revision 14",
+      "date": "2026-08-01",
+      "reason": "Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, autonomy_approval_parallelism; source digest sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a."
     }
   ],
   "initialized": true,
@@ -172,6 +130,12 @@
         "id": "E-007",
         "kind": "observed",
         "source": "user decisions and goal #117 on 2026-07-20"
+      },
+      {
+        "finding": "Use chained per-goal PRs from exact reviewed checkpoints; interview only during capture at standard adaptive depth with the requesting user as sole stakeholder; execute unattended with durable blockers; capture test-discovered out-of-scope bugs as blocked goals; enable privacy-safe execution reports.",
+        "id": "E-008",
+        "kind": "proposed",
+        "source": "user decisions 2026-08-01"
       }
     ],
     "schema_version": 1,
@@ -188,8 +152,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-07-18",
-          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
+          "date": "2026-08-01",
+          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
           "reviewer": "user"
         },
         "settings": {
@@ -211,17 +175,17 @@
       {
         "applicable": true,
         "confidence": "high",
-        "decision": "Per-goal branches from dev and PRs to dev. Writable implementation waits until every dependency is complete; read-only investigation may prepare later work without claiming or starting it. Use Conventional Commits, human review after checks, and owner-only main releases.",
-        "default_disposition": "accepted",
+        "decision": "Use one chained branch and PR per goal: start from dev, then stack each subsequent goal from the preceding exact reviewed checkpoint and merge in dependency order. Use Conventional Commits, human review after checks, and owner-only main releases.",
+        "default_disposition": "changed",
         "default_origin": "repository policy",
         "exceptions": [],
         "id": "git_review_release",
-        "rationale": "Root repository instructions define the integration and release boundary.",
+        "rationale": "The user explicitly selected chained PRs while retaining per-goal review units and ordered integration.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-07-18",
-          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
+          "date": "2026-08-01",
+          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
           "reviewer": "user"
         },
         "settings": {
@@ -236,7 +200,7 @@
           "multiple_dependency_base": "reviewed_base_containing_all",
           "parent_pseudo_trunk": true,
           "pr_approval": "required_when_repository_requires_pr",
-          "pull_request_target": "dev",
+          "pull_request_target": "preceding_goal_branch_then_dev",
           "pull_request_unit": "per_goal",
           "read_only_dependency_investigation": "allowed_before_completion",
           "release_actor": "david-rzepa",
@@ -244,14 +208,15 @@
           "release_update": "explicit_owner_force_push",
           "release_workflow": "main_update_runs_release_ci",
           "review_gate": "human_after_checks",
-          "review_pending_dependency": "wait_for_completed_dependencies",
+          "review_pending_dependency": "stack_from_reviewed_checkpoint",
           "review_state_reads_per_checkpoint": 1,
           "shared_pull_request": "explicit_reviewed_override"
         },
         "source_ids": [
           "E-002",
           "E-005",
-          "E-007"
+          "E-007",
+          "E-008"
         ],
         "title": "Git, review, and release",
         "unresolved": []
@@ -259,17 +224,17 @@
       {
         "applicable": true,
         "confidence": "high",
-        "decision": "Continue across actionable goals under reviewed dependency and resource policy, and incorporate newly captured goals at the next safe checkpoint.",
-        "default_disposition": "accepted",
+        "decision": "Continue across actionable goals under reviewed dependency and resource policy, incorporate newly captured goals at the next safe checkpoint, and persist unanswered questions without live interviewing, notification, polling, or waiting.",
+        "default_disposition": "changed",
         "default_origin": "ZzzOps default",
         "exceptions": [],
         "id": "execution_continuation",
-        "rationale": "The charter prioritizes reducing babysitting while preserving explicit boundaries.",
+        "rationale": "Execution is unattended; durable blockers preserve every consequential request without requiring a live user.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-07-18",
-          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
+          "date": "2026-08-01",
+          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
           "reviewer": "user"
         },
         "settings": {
@@ -278,14 +243,6 @@
           "cross_task": "require_explicit_harness_signal",
           "execute_intent": "same_task_until_superseded",
           "exhausted_handoff_retains_intent": true,
-          "human_unblock_watch": {
-            "enabled": true,
-            "max_blockers": 1,
-            "max_seconds": 180,
-            "notify_once": true,
-            "poll_seconds": 30,
-            "trigger": "total_actionable_exhaustion"
-          },
           "max_easy_wins": 2,
           "new_goal_checkpoint": "next_safe_checkpoint",
           "stop_reasons_clear_intent": [
@@ -300,7 +257,8 @@
         },
         "source_ids": [
           "E-001",
-          "E-005"
+          "E-005",
+          "E-008"
         ],
         "title": "Execution and work continuation",
         "unresolved": []
@@ -309,7 +267,7 @@
         "applicable": true,
         "confidence": "high",
         "decision": "Require artifact-appropriate observable evidence in small chunks; documentation and test cases need no recursive tests, while product behavior and reusable test infrastructure require direct verification.",
-        "default_disposition": "accepted",
+        "default_disposition": "changed",
         "default_origin": "repository policy",
         "exceptions": [],
         "id": "verification_testing",
@@ -317,8 +275,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-07-18",
-          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
+          "date": "2026-08-01",
+          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
           "reviewer": "user"
         },
         "settings": {
@@ -329,12 +287,13 @@
             "test_harness": "focused_behavioral_regression"
           },
           "mode": "chunk_probe",
-          "test_bug": "capture_and_ask",
+          "test_bug": "capture_as_blocker",
           "widen": "as_relevant"
         },
         "source_ids": [
           "E-002",
-          "E-005"
+          "E-005",
+          "E-008"
         ],
         "title": "Verification and testing",
         "unresolved": []
@@ -351,8 +310,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-07-18",
-          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
+          "date": "2026-08-01",
+          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
           "reviewer": "user"
         },
         "settings": {
@@ -382,8 +341,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-07-18",
-          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
+          "date": "2026-08-01",
+          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
           "reviewer": "user"
         },
         "settings": {
@@ -409,8 +368,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-07-18",
-          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
+          "date": "2026-08-01",
+          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
           "reviewer": "user"
         },
         "settings": {
@@ -436,8 +395,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-07-19",
-          "reviewed_digest": "sha256:04f16f9531f4174ae4b937c0f66b6b70f068eb272ec40e1afc239f67a7884f7c",
+          "date": "2026-08-01",
+          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
           "reviewer": "user"
         },
         "settings": {
@@ -471,8 +430,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-07-18",
-          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
+          "date": "2026-08-01",
+          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
           "reviewer": "user"
         },
         "settings": {
@@ -490,21 +449,21 @@
       {
         "applicable": true,
         "confidence": "high",
-        "decision": "Maximize safe autonomous progress; interview on consequential blockers; refill documentation, test-coverage, and non-behavioral code-quality work within the reviewed limit; use at most three size-aware workers with explicit worktree cleanup or reuse.",
-        "default_disposition": "accepted",
+        "decision": "Interview adaptively during goal capture at the reviewed depth; treat the requesting user as the sole stakeholder; execute unattended by persisting consequential questions as durable blockers; record privacy-safe execution reports; refill valuable bounded work; and use up to three size-aware workers.",
+        "default_disposition": "changed",
         "default_origin": "user-selected ZzzOps defaults and project policy",
         "exceptions": [],
         "id": "autonomy_approval_parallelism",
-        "rationale": "The charter values autonomy, and the user selected one reviewed policy surface with bounded valuable refill, strict writable dependency gates, and size-aware parallelism.",
+        "rationale": "This separates present-user requirements discovery from unattended execution while preserving durable control, chained progress, and privacy-safe machinery feedback.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-07-18",
-          "reviewed_digest": "sha256:2b444e1cc59b555abbd06c62d82cc3cd695a25358bee97dcef14ea2ac44f78f7",
+          "date": "2026-08-01",
+          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
           "reviewer": "user"
         },
         "settings": {
-          "blocker_interview": "immediate_batch",
+          "blocker_interview": "capture_only",
           "blocker_order": [
             "safety_access_human",
             "cross_goal_decisions",
@@ -517,7 +476,10 @@
             "priority": "P2"
           },
           "claim_ttl_hours": 4,
-          "dependency_implementation_gate": "dependencies_done",
+          "dependency_implementation_gate": "stack_from_reviewed_checkpoint",
+          "execution_reports": {
+            "enabled": true
+          },
           "max_workers": 3,
           "parallelization": {
             "at_or_above_threshold_mode": "read_only",
@@ -540,6 +502,12 @@
             "enabled": true,
             "max_per_run": 3
           },
+          "requirements_interview": {
+            "capture_depth": "standard",
+            "execution_questions": "durable_blockers_only",
+            "mode": "adaptive",
+            "stakeholder_model": "requesting_user_only"
+          },
           "worktree_lifecycle": {
             "abandoned_or_dirty": "forbidden",
             "after_task": "remove_or_retain_clean_for_reuse",
@@ -555,7 +523,8 @@
           "E-001",
           "E-002",
           "E-004",
-          "E-007"
+          "E-007",
+          "E-008"
         ],
         "title": "Autonomy, approvals, and parallelism",
         "unresolved": []
@@ -566,6 +535,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 12,
+  "revision": 14,
   "schema_version": 1
 }
