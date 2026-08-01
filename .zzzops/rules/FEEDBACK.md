@@ -1,5 +1,7 @@
 # Privacy-safe execution reports
 
+Human-facing Markdown links goals as `[#N](canonical issue URL)`; exempt: machine output, code/commands, Git syntax, immutable history.
+
 Before stopping/handoff, assess only observed machinery friction. Never report routine success, project defects, or speculation.
 
 For measurable systemic ZzzOps/Codex/Claude friction, run once per distinct cause:
