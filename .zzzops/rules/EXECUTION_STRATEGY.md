@@ -15,7 +15,7 @@ If documentation/tests also alter runtime behavior, use the runtime rule. Record
 
 ## CI-aware widening
 
-Run the smallest local falsifiable probe. If required CI runs the same broader command and coverage, do not duplicate it locally. CI counts only after inspected completion at the exact pushed head. Diagnose failures from logs and reprobe narrowly; cancellation, timeout, skips, provider failure, or head drift fails. Unavailable CI is a durable blocker. Derive equivalence from project commands and checks, not provider names.
+Run the smallest local falsifiable probe. Map broader commands to the project's required CI; when CI runs the same command and coverage at the pushed head, do not duplicate it locally. CI counts only after inspected completion at that exact head. Diagnose failures from logs and reprobe narrowly; cancellation, timeout, skipped jobs, provider failure, or head drift is not success. If required CI is unavailable, block durably rather than skip or substitute. Derive equivalence from project commands and checks, not provider names.
 
 ## Test-discovered bugs
 
