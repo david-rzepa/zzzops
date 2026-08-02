@@ -1126,17 +1126,25 @@ class PortfolioTests(unittest.TestCase):
     @mock.patch.object(zzzops, "validate_project_artifacts", return_value=[])
     @mock.patch.object(zzzops, "validate_project_state", return_value=[])
     @mock.patch.object(zzzops, "read_project_state", return_value=(Path("POLICY.json"), "state", {"initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"}}))
-    def test_github_adapter_uses_one_paginated_read_and_filters_prs(self, _read_state, _validate, _artifacts, run, _which):
+    def test_github_adapter_stages_minimal_discovery_and_targeted_bodies(self, _read_state, _validate, _artifacts, run, _which):
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary)
             (repo / ".zzzops").mkdir()
             (repo / ".zzzops" / "PROJECT.md").write_text("state", encoding="utf-8")
             def graphql_issue(issue):
                 return {
-                    "number": issue["number"], "title": issue["title"], "body": issue["body"],
-                    "state": issue["state"].upper(), "updatedAt": issue["updated_at"], "url": issue["html_url"],
+                    "number": issue["number"], "title": issue["title"],
+                    "state": issue["state"].upper(),
                     "labels": {"nodes": issue["labels"]},
                 }
+
+            def body_payload(*issues):
+                return {"data": {"repository": {
+                    f"goal_{issue['number']}": {
+                        "number": issue["number"], "body": issue["body"], "updatedAt": issue["updated_at"],
+                    }
+                    for issue in issues
+                }}}
 
             feedback = self.issue(2, status="new")
             feedback["labels"].append({"name": "zzzops-feedback"})
@@ -1154,7 +1162,13 @@ class PortfolioTests(unittest.TestCase):
                                "pageInfo": {"hasNextPage": False, "endCursor": "page-2"}},
                 }}},
             ]
-            run.return_value = SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
+            issue_one, issue_three = self.issue(1), self.issue(3)
+            run.side_effect = [
+                SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr=""),
+                SimpleNamespace(returncode=0, stdout=json.dumps(body_payload(issue_one, issue_three)), stderr=""),
+                SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr=""),
+                SimpleNamespace(returncode=0, stdout=json.dumps(body_payload(issue_one, feedback, issue_three)), stderr=""),
+            ]
             snapshot = zzzops.portfolio_snapshot(repo)
             _, included = zzzops.github_repository_portfolio_snapshot(
                 repo, {"backend": "github_issues", "repository": {"identity": "owner/repo"}},
@@ -1162,15 +1176,26 @@ class PortfolioTests(unittest.TestCase):
             )
         self.assertEqual([1, 3], [goal["key"] for goal in snapshot["goals"]])
         self.assertEqual([1, 2, 3], [goal["key"] for goal in included["goals"]])
-        self.assertEqual(2, snapshot["summary"]["reads"])
-        self.assertEqual(1, snapshot["summary"]["processes"])
+        self.assertEqual(3, snapshot["summary"]["reads"])
+        self.assertEqual(2, snapshot["summary"]["processes"])
         self.assertEqual(1, snapshot["summary"]["ignored"])
         self.assertEqual(0, included["summary"]["ignored"])
-        command = run.call_args.args[0]
-        self.assertIn("graphql", command)
-        self.assertIn("--paginate", command)
-        self.assertIn("--slurp", command)
-        self.assertEqual(2, run.call_count)
+        discovery = run.call_args_list[0].args[0]
+        hydration = run.call_args_list[1].args[0]
+        discovery_query = next(value[6:] for value in discovery if value.startswith("query="))
+        hydration_query = next(value[6:] for value in hydration if value.startswith("query="))
+        self.assertIn("--paginate", discovery)
+        self.assertIn("--slurp", discovery)
+        self.assertIn("number title state", discovery_query)
+        issue_fields = discovery_query.split("nodes{", 1)[1].split("}", 1)[0]
+        for excluded in ("body", "updatedAt", "url", "comments"):
+            self.assertNotIn(excluded, issue_fields)
+        self.assertIn("goal_1:issue(number:1){number body updatedAt}", hydration_query)
+        self.assertIn("goal_3:issue(number:3){number body updatedAt}", hydration_query)
+        self.assertNotIn("goal_2:", hydration_query)
+        self.assertEqual("https://example.test/owner/repo/issues/1", snapshot["goals"][0]["url"])
+        self.assertLess(snapshot["summary"]["discovery_raw_bytes"], snapshot["summary"]["raw_bytes"])
+        self.assertEqual(4, run.call_count)
 
     @mock.patch.object(zzzops.shutil, "which", side_effect=lambda command: command)
     @mock.patch.object(zzzops.subprocess, "run")
@@ -1192,8 +1217,8 @@ class PortfolioTests(unittest.TestCase):
         read_state.return_value = (Path("POLICY.json"), "state", state)
         issue = self.issue(1)
         graphql_issue = {
-            "number": issue["number"], "title": issue["title"], "body": issue["body"],
-            "state": issue["state"].upper(), "updatedAt": issue["updated_at"], "url": issue["html_url"],
+            "number": issue["number"], "title": issue["title"],
+            "state": issue["state"].upper(),
             "labels": {"nodes": issue["labels"]},
         }
         run.side_effect = [
@@ -1204,6 +1229,9 @@ class PortfolioTests(unittest.TestCase):
                 "issues": {"nodes": [graphql_issue],
                            "pageInfo": {"hasNextPage": False, "endCursor": "page-1"}},
             }}}]), stderr=""),
+            SimpleNamespace(returncode=0, stdout=json.dumps({"data": {"repository": {
+                "goal_1": {"number": 1, "body": issue["body"], "updatedAt": issue["updated_at"]},
+            }}}), stderr=""),
         ]
 
         result = zzzops.decision_checkpoint(Path("."))
@@ -1214,10 +1242,31 @@ class PortfolioTests(unittest.TestCase):
         self.assertTrue(result["capabilities"]["github_repository"]["usable"])
         self.assertTrue(result["portfolio"]["complete"])
         self.assertEqual([1], [goal["key"] for goal in result["portfolio"]["goals"]])
-        self.assertEqual({"total": 2, "github": 1}, result["processes"])
-        self.assertEqual(2, run.call_count)
+        self.assertEqual({"total": 3, "github": 2}, result["processes"])
+        self.assertEqual(3, run.call_count)
         self.assertEqual("git", run.call_args_list[0].args[0][0])
         self.assertIn("graphql", run.call_args_list[1].args[0])
+
+    @mock.patch.object(zzzops.shutil, "which", return_value="gh")
+    @mock.patch.object(zzzops.subprocess, "run")
+    def test_goal_history_is_an_explicit_separate_hydration(self, run, _which):
+        run.return_value = SimpleNamespace(returncode=0, stderr="", stdout=json.dumps([
+            {"data": {"repository": {"issue": {"comments": {
+                "nodes": [{"body": "prior state", "createdAt": "2026-01-01T00:00:00Z", "url": "history", "author": {"login": "user"}}],
+                "pageInfo": {"hasNextPage": False, "endCursor": None},
+            }}}}},
+        ]))
+
+        comments = zzzops.github_issue_history(
+            Path("."), {"backend": "github_issues", "repository": {"identity": "owner/repo"}}, 7,
+        )
+
+        self.assertEqual("prior state", comments[0]["body"])
+        command = run.call_args.args[0]
+        query = next(value[6:] for value in command if value.startswith("query="))
+        self.assertIn("comments(first:100", query)
+        self.assertNotIn(" title", query)
+        self.assertNotIn(" labels", query)
 
     @mock.patch.object(zzzops.shutil, "which", return_value="gh")
     @mock.patch.object(zzzops, "repository_size_profile", return_value={"mode": "worktrees", "max_workers": 3})
@@ -1301,6 +1350,15 @@ class PortfolioTests(unittest.TestCase):
             issue["body"] = zzzops.render_managed_goal(goal, f"## Outcome / Why\n\n{context}\n", number)
             issues.append(issue)
         raw_bytes = sum(len((issue["title"] + issue["body"]).encode("utf-8")) for issue in issues)
+        full_discovery = json.dumps([{
+            "number": issue["number"], "title": issue["title"], "body": issue["body"],
+            "state": issue["state"], "updatedAt": issue["updated_at"], "url": issue["html_url"],
+            "labels": issue["labels"],
+        } for issue in issues], separators=(",", ":")).encode("utf-8")
+        minimal_discovery = json.dumps([{
+            "number": issue["number"], "title": issue["title"], "state": issue["state"],
+            "labels": issue["labels"],
+        } for issue in issues], separators=(",", ":")).encode("utf-8")
         snapshot = zzzops.build_portfolio_snapshot(
             "github_issues", [zzzops.github_goal_record(issue) for issue in issues], reads=2, raw_bytes=raw_bytes,
         )
@@ -1309,6 +1367,22 @@ class PortfolioTests(unittest.TestCase):
         self.assertEqual(2, snapshot["summary"]["reads"])
         self.assertLess(json_bytes, raw_bytes)
         self.assertLess(summary_bytes, json_bytes)
+        self.assertLess(len(minimal_discovery), len(full_discovery) // 10)
+
+    def test_minimal_index_identifies_schema_from_labels_and_reconstructs_url(self):
+        issue = {
+            "number": 7, "title": "Selected goal", "state": "OPEN",
+            "labels": {"nodes": [{"name": "zzzops"}, {"name": "zzzops:schema:v2"}]},
+        }
+
+        indexed = zzzops._graphql_issue_index(issue, "https://github.com/owner/repo")
+
+        self.assertEqual(2, indexed["schema_version"])
+        self.assertEqual("https://github.com/owner/repo/issues/7", indexed["html_url"])
+        duplicate = json.loads(json.dumps(issue))
+        duplicate["labels"]["nodes"].append({"name": "zzzops:schema:v1"})
+        with self.assertRaisesRegex(ValueError, "multiple goal schema labels"):
+            zzzops._graphql_issue_index(duplicate, "https://github.com/owner/repo")
 
     def test_terminal_output_is_archived_after_full_validation(self):
         records = [zzzops.github_goal_record(self.issue(number, status="done")) for number in range(1, 121)]
