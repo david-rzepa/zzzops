@@ -59,8 +59,10 @@ class GoalsModuleTests(unittest.TestCase):
         goals = zzzops._goals
         for name in (
             "parse_managed_goal", "validate_managed_goal", "render_managed_goal",
-            "github_goal_record", "validate_github_issue_goal", "validate_goal_transition",
-            "load_goal_transition", "apply_goal_transition", "GoalTransitionProviderError",
+            "github_goal_record", "github_archived_goal_record", "current_goal_schema_label",
+            "validate_github_issue_goal", "validate_goal_transition", "load_goal_transition",
+            "apply_goal_transition", "ensure_current_goal_schema", "migrate_open_goal_schemas",
+            "GoalTransitionProviderError",
         ):
             self.assertIs(getattr(zzzops, name), getattr(goals, name))
 
@@ -625,7 +627,7 @@ class ExecutionReportTests(unittest.TestCase):
         self.assertEqual("david-rzepa/zzzops", preview["target"])
         self.assertEqual("ZzzOps feedback", preview["title"])
         self.assertEqual(
-            ["zzzops", "zzzops-feedback", "zzzops:status:new", "zzzops:priority:P2"],
+            ["zzzops", "zzzops-feedback", "zzzops:schema:v1", "zzzops:status:new", "zzzops:priority:P2"],
             preview["labels"],
         )
         self.assertIn("Please reduce unnecessary waits.", preview["body"])
@@ -660,7 +662,7 @@ class ExecutionReportTests(unittest.TestCase):
             "gh", "issue", "create", "--repo", "david-rzepa/zzzops",
             "--title", "ZzzOps feedback", "--body-file", "-",
             "--label", "zzzops", "--label", "zzzops-feedback",
-            "--label", "zzzops:status:new", "--label", "zzzops:priority:P2",
+            "--label", "zzzops:schema:v1", "--label", "zzzops:status:new", "--label", "zzzops:priority:P2",
         ], command)
         self.assertEqual(preview["body"], run.call_args.kwargs["input"])
 
@@ -874,8 +876,10 @@ class FakeGoalTransitionAdapter:
         self.repository = "owner/repo"
         self.issue = json.loads(json.dumps(issue))
         self.updates = []
+        self.comments = []
         self.failure = None
         self.response_mutation = None
+        self.comment_response_mutation = None
 
     def get_issue(self, number):
         self.assert_number(number)
@@ -889,10 +893,28 @@ class FakeGoalTransitionAdapter:
         updated = json.loads(json.dumps(self.issue))
         updated.update({"body": payload["body"], "state": payload["state"], "updated_at": "2026-07-21T21:00:00Z"})
         updated["labels"] = [{"name": label} for label in payload["labels"]]
-        if self.response_mutation:
-            self.response_mutation(updated)
         self.issue = updated
-        return json.loads(json.dumps(updated))
+        response = json.loads(json.dumps(updated))
+        if self.response_mutation:
+            self.response_mutation(response)
+        return response
+
+    def get_issue_comments(self, number):
+        self.assert_number(number)
+        return json.loads(json.dumps(self.comments))
+
+    def create_issue_comment(self, number, body):
+        self.assert_number(number)
+        comment = {
+            "id": len(self.comments) + 1, "body": body,
+            "html_url": f"https://github.com/owner/repo/issues/42#issuecomment-{len(self.comments) + 1}",
+        }
+        self.comments.append(json.loads(json.dumps(comment)))
+        self.issue["updated_at"] = "2026-07-21T20:30:00Z"
+        response = json.loads(json.dumps(comment))
+        if self.comment_response_mutation:
+            self.comment_response_mutation(response)
+        return response
 
     @staticmethod
     def assert_number(number):
@@ -939,15 +961,20 @@ class GoalTransitionTests(unittest.TestCase):
         adapter = FakeGoalTransitionAdapter(issue)
         result = zzzops.apply_goal_transition(adapter, "owner/repo", 42, self.transition(issue))
         self.assertEqual(1, len(adapter.updates))
+        self.assertEqual(1, len(adapter.comments))
         payload = adapter.updates[0]
         self.assertTrue(payload["body"].startswith("## Outcome / Why\n\nPreserve this human text."))
         self.assertEqual("open", payload["state"])
         self.assertEqual(
-            {"zzzops", "zzzops-feedback", "zzzops:status:blocked", "zzzops:priority:P1"},
+            {"zzzops", "zzzops-feedback", "zzzops:schema:v1", "zzzops:status:blocked", "zzzops:priority:P1"},
             set(payload["labels"]),
         )
         self.assertEqual({"number": 42, "revision": 2, "state": "open", "status": "blocked",
                           "url": "https://github.com/owner/repo/issues/42"}, result)
+        history = zzzops.parse_goal_history(adapter.comments[0]["body"])
+        self.assertEqual(issue["body"], history["prior_body"])
+        self.assertEqual(["Baseline."], history["requested_goal"]["evidence"])
+        self.assertEqual([], zzzops.parse_managed_goal(payload["body"], 42)["evidence"])
 
         adapter = FakeGoalTransitionAdapter(issue)
         transition = self.transition(issue)
@@ -955,6 +982,16 @@ class GoalTransitionTests(unittest.TestCase):
         result = zzzops.apply_goal_transition(adapter, "owner/repo", 42, transition)
         self.assertEqual("closed", result["state"])
         self.assertIn("zzzops:status:done", adapter.updates[0]["labels"])
+
+    def test_transition_replaces_stale_schema_labels_with_current_schema(self):
+        issue = self.issue()
+        issue["labels"].append({"name": "zzzops:schema:v9"})
+        adapter = FakeGoalTransitionAdapter(issue)
+
+        zzzops.apply_goal_transition(adapter, "owner/repo", 42, self.transition(issue))
+
+        self.assertIn("zzzops:schema:v1", adapter.updates[0]["labels"])
+        self.assertNotIn("zzzops:schema:v9", adapter.updates[0]["labels"])
 
     def test_transition_rejects_stale_or_malformed_input_before_write(self):
         issue = self.issue()
@@ -979,13 +1016,68 @@ class GoalTransitionTests(unittest.TestCase):
         adapter.failure = "provider failed"
         with self.assertRaisesRegex(zzzops.GoalTransitionProviderError, "provider failed"):
             zzzops.apply_goal_transition(adapter, "owner/repo", 42, self.transition(issue))
-        self.assertEqual(issue, adapter.issue)
+        self.assertEqual(issue["body"], adapter.issue["body"])
+        self.assertEqual("2026-07-21T20:30:00Z", adapter.issue["updated_at"])
+        self.assertEqual(1, len(adapter.comments))
+
+        adapter.failure = None
+        result = zzzops.apply_goal_transition(adapter, "owner/repo", 42, self.transition(issue))
+        self.assertEqual(1, len(adapter.comments))
+        self.assertEqual(2, result["revision"])
 
         adapter = FakeGoalTransitionAdapter(issue)
         adapter.response_mutation = lambda updated: updated.update({"body": "unexpected"})
         with self.assertRaisesRegex(zzzops.GoalTransitionProviderError, "unexpected"):
             zzzops.apply_goal_transition(adapter, "owner/repo", 42, self.transition(issue))
         self.assertEqual(1, len(adapter.updates))
+        result = zzzops.apply_goal_transition(adapter, "owner/repo", 42, self.transition(issue))
+        self.assertEqual(1, len(adapter.updates))
+        self.assertEqual(1, len(adapter.comments))
+        self.assertEqual(2, result["revision"])
+
+    def test_transition_compacts_history_sections_and_recovers_comment_confirmation(self):
+        issue = self.issue()
+        issue["body"] = zzzops.render_managed_goal(
+            self.goal(),
+            "## Outcome / Why\n\nKeep this.\n\n```md\n## Evidence\nKeep fenced example.\n```\n\n"
+            "## Evidence\n\nArchive this.\n\n## Scope\n\nKeep scope.\n",
+            42,
+        )
+        transition = self.transition(issue)
+        transition["goal"]["blockers"].append({
+            "id": "B-old", "status": "resolved", "category": "human-action", "resolution": "Done",
+        })
+        adapter = FakeGoalTransitionAdapter(issue)
+        adapter.comment_response_mutation = lambda comment: comment.update({"body": "unconfirmed"})
+        self.assertIn("transition evidence", zzzops.validate_compact_goal_body(issue["body"], 42)[0])
+
+        with self.assertRaisesRegex(zzzops.GoalTransitionProviderError, "exact transition history"):
+            zzzops.apply_goal_transition(adapter, "owner/repo", 42, transition)
+        self.assertEqual([], adapter.updates)
+        self.assertEqual(1, len(adapter.comments))
+
+        adapter.comment_response_mutation = None
+        zzzops.apply_goal_transition(adapter, "owner/repo", 42, transition)
+        self.assertEqual(1, len(adapter.comments))
+        self.assertNotIn("Archive this.", adapter.issue["body"])
+        self.assertIn("Keep fenced example.", adapter.issue["body"])
+        self.assertIn("## Outcome / Why", adapter.issue["body"])
+        self.assertIn("## Scope", adapter.issue["body"])
+        compact = zzzops.parse_managed_goal(adapter.issue["body"], 42)
+        self.assertEqual([], compact["evidence"])
+        self.assertEqual(["B-001"], [blocker["id"] for blocker in compact["blockers"]])
+        self.assertEqual([], zzzops.validate_compact_goal_body(adapter.issue["body"], 42))
+
+        history = zzzops.parse_goal_history(adapter.comments[0]["body"])
+        tampered = json.loads(json.dumps(history))
+        tampered["prior_body"] += "tampered"
+        tampered_body = (
+            f"{zzzops._goals.GOAL_HISTORY_BLOCK_START}\n"
+            f"{json.dumps(tampered, sort_keys=True, separators=(',', ':'))}\n"
+            f"{zzzops._goals.GOAL_HISTORY_BLOCK_END}\n"
+        )
+        with self.assertRaisesRegex(ValueError, "Invalid goal history payload"):
+            zzzops.parse_goal_history(tampered_body)
 
     def test_transition_file_is_bom_tolerant(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1007,6 +1099,135 @@ class GoalTransitionTests(unittest.TestCase):
             run.call_args.args[0],
         )
         self.assertEqual(payload, json.loads(run.call_args.kwargs["input"]))
+
+    @mock.patch.object(zzzops.shutil, "which", return_value="gh")
+    @mock.patch.object(zzzops.subprocess, "run")
+    def test_github_transition_adapter_reads_and_appends_selected_history(self, run, _which):
+        comment = {"id": 9, "body": "history", "html_url": "https://example.test/comment/9"}
+        run.side_effect = [
+            SimpleNamespace(returncode=0, stderr="", stdout=json.dumps({
+                "nameWithOwner": "owner/repo", "hasIssuesEnabled": True, "viewerPermission": "ADMIN",
+            })),
+            SimpleNamespace(returncode=0, stderr="", stdout=json.dumps([[comment]])),
+            SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(comment)),
+        ]
+        adapter = zzzops.GitHubGoalTransitionAdapter(Path.cwd(), "owner/repo")
+
+        self.assertEqual([comment], adapter.get_issue_comments(42))
+        self.assertEqual(comment, adapter.create_issue_comment(42, "history"))
+
+        read_command = run.call_args_list[1].args[0]
+        self.assertEqual(["gh", "api", "--paginate", "--slurp", "repos/owner/repo/issues/42/comments?per_page=100"], read_command)
+        write_command = run.call_args_list[2].args[0]
+        self.assertEqual(["gh", "api", "--method", "POST", "repos/owner/repo/issues/42/comments", "--input", "-"], write_command)
+        self.assertEqual({"body": "history"}, json.loads(run.call_args_list[2].kwargs["input"]))
+
+
+class FakeGoalSchemaAdapter:
+    def __init__(self, issues):
+        self.repository = "owner/repo"
+        self.issues = {issue["number"]: json.loads(json.dumps(issue)) for issue in issues}
+        self.comments = {number: [] for number in self.issues}
+        self.updates = []
+
+    def get_issue(self, number):
+        return json.loads(json.dumps(self.issues[number]))
+
+    def get_issue_comments(self, number):
+        return json.loads(json.dumps(self.comments[number]))
+
+    def create_issue_comment(self, number, body):
+        comment = {
+            "id": len(self.comments[number]) + 1,
+            "body": body,
+            "html_url": f"https://github.com/owner/repo/issues/{number}#history",
+        }
+        self.comments[number].append(json.loads(json.dumps(comment)))
+        return comment
+
+    def update_issue(self, number, payload):
+        self.updates.append(number)
+        issue = self.issues[number]
+        issue.update({"body": payload["body"], "state": payload["state"]})
+        issue["labels"] = [{"name": label} for label in payload["labels"]]
+        return json.loads(json.dumps(issue))
+
+
+class GoalSchemaMigrationTests(unittest.TestCase):
+    def issue(self, number, *, status="ready", schema=None):
+        goal = {
+            "schema_version": 1, "status": status, "priority": "P2", "value": "medium",
+            "difficulty": "S", "confidence": "high", "parent": None, "depends_on": [],
+            "claim": None, "blockers": [], "evidence": ["Historical evidence."],
+            "next_action": "Continue." if status not in {"done", "cancelled"} else "No further action.",
+            "revision": 1, "implementation": {
+                "branch": None, "base": None, "target": None, "pr": None,
+                "review": {"status": "not_started", "checkpoint": None},
+            }, "resources": [],
+        }
+        labels = [
+            {"name": "zzzops"}, {"name": f"zzzops:status:{status}"},
+            {"name": "zzzops:priority:P2"},
+        ]
+        if schema is not None:
+            labels.append({"name": f"zzzops:schema:v{schema}"})
+        return {
+            "number": number, "title": f"Goal {number}",
+            "body": zzzops.render_managed_goal(goal, "## Outcome\n\nKeep this.\n", number),
+            "state": "closed" if status in {"done", "cancelled"} else "open",
+            "updated_at": "2026-08-01T00:00:00Z",
+            "html_url": f"https://github.com/owner/repo/issues/{number}", "labels": labels,
+        }
+
+    def index(self, issue):
+        labels = issue["labels"]
+        schema = next((int(label["name"].rsplit("v", 1)[1]) for label in labels if label["name"].startswith("zzzops:schema:v")), None)
+        return {key: issue[key] for key in ("number", "title", "state", "labels", "html_url")} | {"schema_version": schema}
+
+    def test_open_migration_is_bounded_open_only_and_idempotent(self):
+        legacy_open = self.issue(1)
+        current_open = self.issue(2, schema=1)
+        legacy_closed = self.issue(3, status="done")
+        second_legacy_open = self.issue(4)
+        adapter = FakeGoalSchemaAdapter([legacy_open, current_open, legacy_closed, second_legacy_open])
+        indexes = [self.index(issue) for issue in (legacy_open, current_open, legacy_closed, second_legacy_open)]
+
+        first = zzzops.migrate_open_goal_schemas(adapter, "owner/repo", indexes, limit=1)
+        refreshed = [self.index(adapter.issues[number]) for number in sorted(adapter.issues)]
+        second = zzzops.migrate_open_goal_schemas(adapter, "owner/repo", refreshed, limit=1)
+        final = zzzops.migrate_open_goal_schemas(
+            adapter, "owner/repo", [self.index(adapter.issues[number]) for number in sorted(adapter.issues)], limit=1,
+        )
+
+        self.assertEqual([1], first["migrated"])
+        self.assertEqual(1, first["remaining"])
+        self.assertEqual([4], second["migrated"])
+        self.assertTrue(second["complete"])
+        self.assertEqual([], final["migrated"])
+        self.assertEqual([1, 4], adapter.updates)
+        self.assertEqual([], adapter.comments[3])
+        self.assertNotIn(3, adapter.updates)
+
+    def test_selected_current_label_repairs_noncompact_body(self):
+        issue = self.issue(6, schema=1)
+        adapter = FakeGoalSchemaAdapter([issue])
+
+        result = zzzops.ensure_current_goal_schema(adapter, "owner/repo", 6)
+
+        self.assertTrue(result["migrated"])
+        self.assertEqual([], zzzops.parse_managed_goal(adapter.issues[6]["body"], 6)["evidence"])
+
+    def test_selected_closed_legacy_goal_is_compacted_lazily(self):
+        issue = self.issue(7, status="done")
+        adapter = FakeGoalSchemaAdapter([issue])
+
+        result = zzzops.ensure_current_goal_schema(adapter, "owner/repo", 7)
+
+        self.assertTrue(result["migrated"])
+        self.assertEqual("closed", adapter.issues[7]["state"])
+        self.assertIn({"name": "zzzops:schema:v1"}, adapter.issues[7]["labels"])
+        self.assertEqual([], zzzops.parse_managed_goal(adapter.issues[7]["body"], 7)["evidence"])
+        self.assertEqual(1, len(adapter.comments[7]))
 
 
 class PortfolioTests(unittest.TestCase):
@@ -1126,17 +1347,25 @@ class PortfolioTests(unittest.TestCase):
     @mock.patch.object(zzzops, "validate_project_artifacts", return_value=[])
     @mock.patch.object(zzzops, "validate_project_state", return_value=[])
     @mock.patch.object(zzzops, "read_project_state", return_value=(Path("POLICY.json"), "state", {"initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"}}))
-    def test_github_adapter_uses_one_paginated_read_and_filters_prs(self, _read_state, _validate, _artifacts, run, _which):
+    def test_github_adapter_stages_minimal_discovery_and_targeted_bodies(self, _read_state, _validate, _artifacts, run, _which):
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary)
             (repo / ".zzzops").mkdir()
             (repo / ".zzzops" / "PROJECT.md").write_text("state", encoding="utf-8")
             def graphql_issue(issue):
                 return {
-                    "number": issue["number"], "title": issue["title"], "body": issue["body"],
-                    "state": issue["state"].upper(), "updatedAt": issue["updated_at"], "url": issue["html_url"],
+                    "number": issue["number"], "title": issue["title"],
+                    "state": issue["state"].upper(),
                     "labels": {"nodes": issue["labels"]},
                 }
+
+            def body_payload(*issues):
+                return {"data": {"repository": {
+                    f"goal_{issue['number']}": {
+                        "number": issue["number"], "body": issue["body"], "updatedAt": issue["updated_at"],
+                    }
+                    for issue in issues
+                }}}
 
             feedback = self.issue(2, status="new")
             feedback["labels"].append({"name": "zzzops-feedback"})
@@ -1154,7 +1383,14 @@ class PortfolioTests(unittest.TestCase):
                                "pageInfo": {"hasNextPage": False, "endCursor": "page-2"}},
                 }}},
             ]
-            run.return_value = SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
+            issue_one, issue_three = self.issue(1), self.issue(3, status="done")
+            payload[1]["data"]["repository"]["issues"]["nodes"][0] = graphql_issue(issue_three)
+            run.side_effect = [
+                SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr=""),
+                SimpleNamespace(returncode=0, stdout=json.dumps(body_payload(issue_one)), stderr=""),
+                SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr=""),
+                SimpleNamespace(returncode=0, stdout=json.dumps(body_payload(issue_one, feedback)), stderr=""),
+            ]
             snapshot = zzzops.portfolio_snapshot(repo)
             _, included = zzzops.github_repository_portfolio_snapshot(
                 repo, {"backend": "github_issues", "repository": {"identity": "owner/repo"}},
@@ -1162,15 +1398,29 @@ class PortfolioTests(unittest.TestCase):
             )
         self.assertEqual([1, 3], [goal["key"] for goal in snapshot["goals"]])
         self.assertEqual([1, 2, 3], [goal["key"] for goal in included["goals"]])
-        self.assertEqual(2, snapshot["summary"]["reads"])
-        self.assertEqual(1, snapshot["summary"]["processes"])
+        self.assertEqual(3, snapshot["summary"]["reads"])
+        self.assertEqual(2, snapshot["summary"]["processes"])
         self.assertEqual(1, snapshot["summary"]["ignored"])
         self.assertEqual(0, included["summary"]["ignored"])
-        command = run.call_args.args[0]
-        self.assertIn("graphql", command)
-        self.assertIn("--paginate", command)
-        self.assertIn("--slurp", command)
-        self.assertEqual(2, run.call_count)
+        discovery = run.call_args_list[0].args[0]
+        hydration = run.call_args_list[1].args[0]
+        discovery_query = next(value[6:] for value in discovery if value.startswith("query="))
+        hydration_query = next(value[6:] for value in hydration if value.startswith("query="))
+        self.assertIn("--paginate", discovery)
+        self.assertIn("--slurp", discovery)
+        self.assertIn("number title state", discovery_query)
+        issue_fields = discovery_query.split("nodes{", 1)[1].split("}", 1)[0]
+        for excluded in ("body", "updatedAt", "url", "comments"):
+            self.assertNotIn(excluded, issue_fields)
+        self.assertIn("goal_1:issue(number:1){number body updatedAt}", hydration_query)
+        self.assertNotIn("goal_3:", hydration_query)
+        self.assertNotIn("goal_2:", hydration_query)
+        archived = next(goal for goal in snapshot["goals"] if goal["key"] == 3)
+        self.assertTrue(archived["archived"])
+        self.assertEqual("done", archived["status"])
+        self.assertEqual("https://example.test/owner/repo/issues/1", snapshot["goals"][0]["url"])
+        self.assertLess(snapshot["summary"]["discovery_raw_bytes"], snapshot["summary"]["raw_bytes"])
+        self.assertEqual(4, run.call_count)
 
     @mock.patch.object(zzzops.shutil, "which", side_effect=lambda command: command)
     @mock.patch.object(zzzops.subprocess, "run")
@@ -1192,8 +1442,8 @@ class PortfolioTests(unittest.TestCase):
         read_state.return_value = (Path("POLICY.json"), "state", state)
         issue = self.issue(1)
         graphql_issue = {
-            "number": issue["number"], "title": issue["title"], "body": issue["body"],
-            "state": issue["state"].upper(), "updatedAt": issue["updated_at"], "url": issue["html_url"],
+            "number": issue["number"], "title": issue["title"],
+            "state": issue["state"].upper(),
             "labels": {"nodes": issue["labels"]},
         }
         run.side_effect = [
@@ -1204,6 +1454,9 @@ class PortfolioTests(unittest.TestCase):
                 "issues": {"nodes": [graphql_issue],
                            "pageInfo": {"hasNextPage": False, "endCursor": "page-1"}},
             }}}]), stderr=""),
+            SimpleNamespace(returncode=0, stdout=json.dumps({"data": {"repository": {
+                "goal_1": {"number": 1, "body": issue["body"], "updatedAt": issue["updated_at"]},
+            }}}), stderr=""),
         ]
 
         result = zzzops.decision_checkpoint(Path("."))
@@ -1214,10 +1467,31 @@ class PortfolioTests(unittest.TestCase):
         self.assertTrue(result["capabilities"]["github_repository"]["usable"])
         self.assertTrue(result["portfolio"]["complete"])
         self.assertEqual([1], [goal["key"] for goal in result["portfolio"]["goals"]])
-        self.assertEqual({"total": 2, "github": 1}, result["processes"])
-        self.assertEqual(2, run.call_count)
+        self.assertEqual({"total": 3, "github": 2}, result["processes"])
+        self.assertEqual(3, run.call_count)
         self.assertEqual("git", run.call_args_list[0].args[0][0])
         self.assertIn("graphql", run.call_args_list[1].args[0])
+
+    @mock.patch.object(zzzops.shutil, "which", return_value="gh")
+    @mock.patch.object(zzzops.subprocess, "run")
+    def test_goal_history_is_an_explicit_separate_hydration(self, run, _which):
+        run.return_value = SimpleNamespace(returncode=0, stderr="", stdout=json.dumps([
+            {"data": {"repository": {"issue": {"comments": {
+                "nodes": [{"body": "prior state", "createdAt": "2026-01-01T00:00:00Z", "url": "history", "author": {"login": "user"}}],
+                "pageInfo": {"hasNextPage": False, "endCursor": None},
+            }}}}},
+        ]))
+
+        comments = zzzops.github_issue_history(
+            Path("."), {"backend": "github_issues", "repository": {"identity": "owner/repo"}}, 7,
+        )
+
+        self.assertEqual("prior state", comments[0]["body"])
+        command = run.call_args.args[0]
+        query = next(value[6:] for value in command if value.startswith("query="))
+        self.assertIn("comments(first:100", query)
+        self.assertNotIn(" title", query)
+        self.assertNotIn(" labels", query)
 
     @mock.patch.object(zzzops.shutil, "which", return_value="gh")
     @mock.patch.object(zzzops, "repository_size_profile", return_value={"mode": "worktrees", "max_workers": 3})
@@ -1301,6 +1575,15 @@ class PortfolioTests(unittest.TestCase):
             issue["body"] = zzzops.render_managed_goal(goal, f"## Outcome / Why\n\n{context}\n", number)
             issues.append(issue)
         raw_bytes = sum(len((issue["title"] + issue["body"]).encode("utf-8")) for issue in issues)
+        full_discovery = json.dumps([{
+            "number": issue["number"], "title": issue["title"], "body": issue["body"],
+            "state": issue["state"], "updatedAt": issue["updated_at"], "url": issue["html_url"],
+            "labels": issue["labels"],
+        } for issue in issues], separators=(",", ":")).encode("utf-8")
+        minimal_discovery = json.dumps([{
+            "number": issue["number"], "title": issue["title"], "state": issue["state"],
+            "labels": issue["labels"],
+        } for issue in issues], separators=(",", ":")).encode("utf-8")
         snapshot = zzzops.build_portfolio_snapshot(
             "github_issues", [zzzops.github_goal_record(issue) for issue in issues], reads=2, raw_bytes=raw_bytes,
         )
@@ -1309,6 +1592,22 @@ class PortfolioTests(unittest.TestCase):
         self.assertEqual(2, snapshot["summary"]["reads"])
         self.assertLess(json_bytes, raw_bytes)
         self.assertLess(summary_bytes, json_bytes)
+        self.assertLess(len(minimal_discovery), len(full_discovery) // 10)
+
+    def test_minimal_index_identifies_schema_from_labels_and_reconstructs_url(self):
+        issue = {
+            "number": 7, "title": "Selected goal", "state": "OPEN",
+            "labels": {"nodes": [{"name": "zzzops"}, {"name": "zzzops:schema:v2"}]},
+        }
+
+        indexed = zzzops._graphql_issue_index(issue, "https://github.com/owner/repo")
+
+        self.assertEqual(2, indexed["schema_version"])
+        self.assertEqual("https://github.com/owner/repo/issues/7", indexed["html_url"])
+        duplicate = json.loads(json.dumps(issue))
+        duplicate["labels"]["nodes"].append({"name": "zzzops:schema:v1"})
+        with self.assertRaisesRegex(ValueError, "multiple goal schema labels"):
+            zzzops._graphql_issue_index(duplicate, "https://github.com/owner/repo")
 
     def test_terminal_output_is_archived_after_full_validation(self):
         records = [zzzops.github_goal_record(self.issue(number, status="done")) for number in range(1, 121)]
@@ -1322,7 +1621,7 @@ class PortfolioTests(unittest.TestCase):
         active = next(goal for goal in compact["goals"] if goal["key"] == 121)
         self.assertEqual(120, compact["summary"]["archived"])
         self.assertEqual(
-            {"archived", "depends_on", "digest", "key", "parent", "revision", "status", "title", "updated_at", "url"},
+            {"archived", "key", "schema_version", "status", "title"},
             set(archived),
         )
         self.assertNotIn("archived", active)
@@ -2133,7 +2432,7 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn(phrase, refill)
         self.assertIn("`zzzops-feedback` label", feedback)
         self.assertEqual(
-            ["zzzops", "zzzops-feedback", "zzzops:status:new", "zzzops:priority:P2"],
+            ["zzzops", "zzzops-feedback", "zzzops:schema:v1", "zzzops:status:new", "zzzops:priority:P2"],
             zzzops.EXECUTION_REPORT_LABELS,
         )
 

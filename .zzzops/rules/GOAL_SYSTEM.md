@@ -2,15 +2,13 @@
 
 ## Authority and records
 
-Order: user/safety; project instructions; reviewed `.zzzops/PROJECT.md` (bound to canonical policy); canonical GitHub issue. A repository-policy conflict invalidates the assumption: stop and reconcile rather than choosing silently.
+Order: user/safety; project instructions; reviewed `.zzzops/PROJECT.md`; canonical GitHub issue. Repository-policy conflict stops for reconciliation. Before non-install workflows follow `INITIALIZATION.md`, then `BACKENDS.md`.
 
-Before every non-install workflow follow `INITIALIZATION.md`, then use the GitHub Issues authority in `BACKENDS.md`.
-
-- Goal identity is repository plus issue number/URL; never invent another ID or duplicate GitHub title/relations in managed JSON.
+- Goal identity is repository plus issue number/URL; never invent IDs or duplicate provider-owned title/relations.
 - Never store secrets/raw sensitive data; link approved systems and name authority/sync direction.
-- The charter defines success/value. Preserve unknown KPIs/targets/tradeoffs; capture asks, while execution records blockers rather than inventing answers.
+- The charter defines value. Preserve unknown KPIs/targets/tradeoffs; capture asks and execution blocks rather than inventing answers.
 - Reviewed PROJECT holds operational choices; installed rules are overridable defaults, not another policy layer.
-- Initialization plans and migration artifact shapes live in `.agents/zzzops/templates/project-goals/`; `init apply` renders project state. Installation copies mechanics/templates only and never creates or overwrites project state.
+- Templates live in `.agents/zzzops/templates/project-goals/`; installation copies mechanics/templates, never project state.
 
 ## Lifecycle
 
@@ -36,19 +34,23 @@ Open blockers may coexist with active states while useful work remains. Reopen t
 
 ## Relationships and claims
 
-One parent maximum; any children/dependencies; reject self-links/cycles. GitHub stores only parent/dependency issue numbers and derives inverse edges portfolio-wide. Create a child only for a separately verifiable/prioritized/blocked/claimed outcome or distinct risk; use checklists otherwise. Obey PROJECT depth/required-child policy. Required children finishing does not replace parent criteria.
+One parent maximum; any children/dependencies; reject self-links/cycles. Store issue numbers and derive inverse edges. Use children only for distinct verifiable/prioritized/blocked/claimed outcomes or risks; otherwise use checklists. Obey PROJECT depth/required-child policy; children do not replace parent criteria.
 
-A dependency edge preserves required ancestry and final integration order. The installed default requires every dependency to be `done` before writable implementation begins. Reviewed PROJECT policy may override actionability; for example, `stack_from_reviewed_checkpoint` may permit a child to stack from an unfinished dependency's exact technically ready checkpoint while preserving merge order. Read-only investigation may prepare dependent work when policy allows, but it does not claim, edit, branch, or mark that implementation started.
+Dependencies preserve ancestry/integration order and default to `done` before writes. PROJECT may permit `stack_from_reviewed_checkpoint` while preserving merge order. Allowed read-only preparation never claims, edits, branches, or starts implementation.
 
-Before substantial GitHub work, declare `path:`, `branch:`, `integration:`, `generated:`, and `external:` resources; atomically reserve revision/resources with `<python> .agents/zzzops/zzzops.py reserve acquire --goal N --revision R --owner OWNER --run-id RUN`. Claims/branches are always exclusive. Default: text paths/integration targets are advisory; generated/external resources are exclusive. Policy may mark hard-to-merge paths, change configurable categories, or select strict mode. Only exclusive contention rejects bundles or creates `resource_collision`; reconcile advisory overlap in branch review. On contention refresh once and choose other work. Renew at checkpoints; release before blocking, terminal state, or handoff. Claims audit; reservations exclude. Never assume ownership; record expiry recovery.
+Declare `path:`, `branch:`, `integration:`, `generated:`, and `external:` resources; atomically reserve revision/resources with `<python> .agents/zzzops/zzzops.py reserve acquire --goal N --revision R --owner OWNER --run-id RUN`. Claims/branches are exclusive; paths/integration default advisory and generated/external resources exclusive unless PROJECT changes them. Exclusive contention rejects; reconcile advisory overlap. Refresh contention once, renew at checkpoints, and release before blocking/terminal/handoff. Never assume ownership; claims audit, reservations exclude.
 
 ## Update invariants
 
 One logical update: re-read affected records/premise; perform and observe work; update state, next action, evidence, blockers, and history. Prefer a smaller consistent update if interrupted.
+
+Use BACKENDS' current-body, append-first history, and idempotent retry contract.
+
+- Repair a selected/read goal lacking the current schema label or compact body; never sweep bodies/comments for drift.
 
 - Apply the PROJECT policy's triage/continuation order; every active goal has an action or gate.
 - Human blockers appear in the portfolio human queue; resolutions retain request/answer/resolver/date.
 - Checked criteria cite observed evidence. Reassess due reviews.
 - Follow `.zzzops/rules/EXECUTION_STRATEGY.md`: baseline and observable probe before implementation; coordinator reconciles parallel work.
 - Policy never justifies invented work, priority distortion, or busywork.
-- The installed initialization default enables exhausted-queue refill for documentation, test coverage, and non-behavioral code quality, capped at three goals per run. It takes effect only through reviewed PROJECT policy, which may override or disable it; never loop-refill.
+- Reviewed PROJECT may enable one capped exhausted-queue refill; never loop-refill or infer permission.
