@@ -2043,8 +2043,12 @@ class WorkflowContractTests(unittest.TestCase):
             "Python 3.10 or newer", "older interpreter", "block once",
             "Under Codex", "authenticated context for the first attempt",
             "keep local-only commands in the normal sandbox", "Never reauthenticate or persistently relax the sandbox",
+            "recommend one deliberate commit", "never sweep in unrelated changes",
         ):
             self.assertIn(phrase, initialization)
+        review_skill = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("exact pending ZzzOps-owned commit scope", review_skill)
+        self.assertIn("including the installed lock", review_skill)
 
     def test_skills_apply_shared_privacy_safe_feedback_handoff(self):
         root = Path(__file__).parent / "skills"
