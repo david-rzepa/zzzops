@@ -2400,6 +2400,17 @@ class ReservationTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_policy_review_reuses_capability_evidence_before_tool_selection(self):
+        review = (
+            Path(__file__).parent / "skills" / "review-zzzops-policy" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        for signal in (
+            "Before optional tools, reuse capabilities",
+            "never invoke an unavailable path",
+            "an alternative or block once",
+        ):
+            self.assertIn(signal, review)
+
     def test_execute_progress_updates_require_new_information(self):
         execute = (
             Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "EXECUTE.md"
