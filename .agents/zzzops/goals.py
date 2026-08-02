@@ -16,6 +16,7 @@ GOAL_BLOCK_END = "zzzops-goal -->"
 GOAL_HISTORY_BLOCK_START = "<!-- zzzops-history"
 GOAL_HISTORY_BLOCK_END = "zzzops-history -->"
 GOAL_HISTORY_SCHEMA_VERSION = 1
+GOAL_SCHEMA_LABEL_PREFIX = "zzzops:schema:v"
 GOAL_FIELDS = {
     "schema_version", "status", "priority", "value", "difficulty", "confidence",
     "parent", "depends_on", "claim", "blockers", "evidence", "next_action",
@@ -331,6 +332,15 @@ def github_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
     errors = validate_github_issue_goal(number, issue.get("title"), body)
     if errors:
         raise ValueError("; ".join(errors))
+    label_names = sorted(
+        label["name"] for label in issue.get("labels", [])
+        if isinstance(label, dict) and _text_present(label.get("name"))
+    )
+    schema_versions = [
+        int(label.removeprefix(GOAL_SCHEMA_LABEL_PREFIX))
+        for label in label_names
+        if label.startswith(GOAL_SCHEMA_LABEL_PREFIX) and label.removeprefix(GOAL_SCHEMA_LABEL_PREFIX).isdigit()
+    ]
     digest_source = "\0".join((issue.get("title") or "", body))
     return {
         "key": number, "title": issue["title"], "status": goal["status"],
@@ -342,8 +352,44 @@ def github_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
         "next_action": goal["next_action"], "revision": goal["revision"],
         "digest": hashlib.sha256(digest_source.encode("utf-8")).hexdigest(),
         "updated_at": issue.get("updated_at"), "implementation": goal.get("implementation"),
-        "labels": sorted(label["name"] for label in issue.get("labels", []) if isinstance(label, dict) and _text_present(label.get("name"))),
+        "labels": label_names, "schema_version": schema_versions[0] if len(schema_versions) == 1 else None,
         "state": issue.get("state"), "url": issue.get("html_url"),
+    }
+
+
+def current_goal_schema_label() -> str:
+    return f"{GOAL_SCHEMA_LABEL_PREFIX}{GOAL_SCHEMA_VERSION}"
+
+
+def github_archived_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
+    """Project one closed goal from discovery labels without hydrating its body."""
+    labels = sorted(
+        label["name"] for label in issue.get("labels", [])
+        if isinstance(label, dict) and isinstance(label.get("name"), str)
+    )
+    statuses = [label.removeprefix("zzzops:status:") for label in labels if label.startswith("zzzops:status:")]
+    priorities = [label.removeprefix("zzzops:priority:") for label in labels if label.startswith("zzzops:priority:")]
+    if len(statuses) != 1 or statuses[0] not in {"done", "cancelled"}:
+        raise ValueError("closed goal requires exactly one terminal status label")
+    if len(priorities) != 1 or priorities[0] not in GOAL_PRIORITIES:
+        raise ValueError("closed goal requires exactly one valid priority label")
+    if str(issue.get("state", "")).casefold() != "closed":
+        raise ValueError("archived goal projection requires a closed issue")
+    digest_source = json.dumps(
+        {
+            "number": issue.get("number"), "title": issue.get("title"), "state": "closed",
+            "labels": labels, "schema_version": issue.get("schema_version"),
+        },
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    )
+    return {
+        "key": issue.get("number"), "title": issue.get("title"), "status": statuses[0],
+        "priority": priorities[0], "value": None, "difficulty": None, "confidence": None,
+        "parent": None, "depends_on": [], "claim": None, "resources": [], "needs_human": False,
+        "blocker_categories": [], "next_action": None,
+        "revision": None, "digest": hashlib.sha256(digest_source.encode("utf-8")).hexdigest(),
+        "updated_at": None, "implementation": None, "labels": labels, "state": "closed",
+        "url": issue.get("html_url"), "schema_version": issue.get("schema_version"),
     }
 
 
@@ -420,6 +466,7 @@ def apply_goal_transition(
         if (
             issue.get("body") == compact_body
             and str(issue.get("state", "")).casefold() == state
+            and current_goal_schema_label() in returned_labels
             and f"zzzops:status:{desired['status']}" in returned_labels
             and f"zzzops:priority:{desired['priority']}" in returned_labels
             and len(histories) == 1
@@ -465,8 +512,12 @@ def apply_goal_transition(
         and label["name"] != "zzzops"
         and not label["name"].startswith("zzzops:status:")
         and not label["name"].startswith("zzzops:priority:")
+        and not label["name"].startswith(GOAL_SCHEMA_LABEL_PREFIX)
     })
-    labels = ["zzzops", *retained_labels, f"zzzops:status:{desired['status']}", f"zzzops:priority:{desired['priority']}"]
+    labels = [
+        "zzzops", *retained_labels, current_goal_schema_label(),
+        f"zzzops:status:{desired['status']}", f"zzzops:priority:{desired['priority']}",
+    ]
     updated = adapter.update_issue(issue_number, {"body": body, "labels": labels, "state": state})
 
     expected_url = f"https://github.com/{repository}/issues/{issue_number}"
@@ -495,5 +546,59 @@ def apply_goal_transition(
     return {
         "number": issue_number, "revision": desired["revision"], "state": state,
         "status": desired["status"], "url": expected_url,
+    }
+
+
+def ensure_current_goal_schema(
+    adapter: Any, repository: str, issue_number: int,
+) -> dict[str, Any]:
+    """Lazily compact one explicitly selected goal and apply the current schema label."""
+    issue = adapter.get_issue(issue_number)
+    labels = {
+        label["name"] for label in issue.get("labels", [])
+        if isinstance(label, dict) and isinstance(label.get("name"), str)
+    }
+    if current_goal_schema_label() in labels and not validate_compact_goal_body(issue.get("body"), issue_number):
+        return {"number": issue_number, "migrated": False, "schema_version": GOAL_SCHEMA_VERSION}
+    record = github_goal_record(issue)
+    desired = parse_managed_goal(issue["body"], issue_number)
+    if desired is None:  # pragma: no cover - github_goal_record already rejects this
+        raise GoalTransitionProviderError("The selected goal has no managed state; no migration was made.")
+    desired = json.loads(json.dumps(desired))
+    desired["revision"] += 1
+    result = apply_goal_transition(adapter, repository, issue_number, {
+        "schema_version": GOAL_TRANSITION_SCHEMA_VERSION,
+        "expected_revision": record["revision"],
+        "expected_digest": record["digest"],
+        "goal": desired,
+    })
+    return {**result, "migrated": True, "schema_version": GOAL_SCHEMA_VERSION}
+
+
+def migrate_open_goal_schemas(
+    adapter: Any, repository: str, indexes: list[dict[str, Any]], *, limit: int,
+) -> dict[str, Any]:
+    """Migrate one bounded page of open legacy goals; schema labels are the durable cursor."""
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100:
+        raise ValueError("migration limit must be from 1 to 100")
+    candidates = sorted(
+        (
+            issue for issue in indexes
+            if str(issue.get("state", "")).casefold() == "open"
+            and issue.get("schema_version") != GOAL_SCHEMA_VERSION
+        ),
+        key=lambda issue: issue.get("number", 0),
+    )
+    selected = candidates[:limit]
+    migrated = []
+    already_current = []
+    for issue in selected:
+        result = ensure_current_goal_schema(adapter, repository, issue["number"])
+        (migrated if result["migrated"] else already_current).append(issue["number"])
+    remaining = max(0, len(candidates) - len(selected))
+    return {
+        "schema_version": GOAL_SCHEMA_VERSION, "selected": [issue["number"] for issue in selected],
+        "migrated": migrated, "already_current": already_current,
+        "remaining": remaining, "complete": remaining == 0,
     }
 

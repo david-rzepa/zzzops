@@ -162,9 +162,13 @@ parse_goal_history = _goals.parse_goal_history
 goal_needs_human = _goals.goal_needs_human
 validate_github_issue_goal = _goals.validate_github_issue_goal
 github_goal_record = _goals.github_goal_record
+github_archived_goal_record = _goals.github_archived_goal_record
+current_goal_schema_label = _goals.current_goal_schema_label
 validate_goal_transition = _goals.validate_goal_transition
 load_goal_transition = _goals.load_goal_transition
 apply_goal_transition = _goals.apply_goal_transition
+ensure_current_goal_schema = _goals.ensure_current_goal_schema
+migrate_open_goal_schemas = _goals.migrate_open_goal_schemas
 
 execution_reports_enabled = _feedback.execution_reports_enabled
 execution_report_directory = _feedback.execution_report_directory
@@ -699,9 +703,10 @@ def _github_repository_capability(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def github_repository_portfolio_snapshot(
+def github_repository_goal_index(
     repo: Path, project: dict[str, Any], include_feedback: bool = False,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], int, int, int]:
+    """Read only provider-owned identity, state, and derived goal labels."""
     identity = _project_repository_identity(project)
     owner, name = identity.split("/", 1)
     executable = shutil.which("gh")
@@ -751,8 +756,6 @@ def github_repository_portfolio_snapshot(
             f"GitHub repository identity drift: canonical policy records {identity}, "
             f"but GitHub returned {first.get('nameWithOwner') or 'unknown'}"
         )
-    repository_probe = _github_repository_capability(first)
-
     indexed_issues = []
     findings = []
     for issue in issue_nodes:
@@ -770,11 +773,29 @@ def github_repository_portfolio_snapshot(
         )
 
     selected = [issue for issue in indexed_issues if include_feedback or not is_feedback(issue)]
+    return (
+        _github_repository_capability(first), selected, findings,
+        len(result.stdout.encode("utf-8")), len(pages), len(indexed_issues) - len(selected),
+    )
+
+
+def github_repository_portfolio_snapshot(
+    repo: Path, project: dict[str, Any], include_feedback: bool = False,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    identity = _project_repository_identity(project)
+    owner, name = identity.split("/", 1)
+    executable = shutil.which("gh")
+    if not executable:
+        raise ValueError("GitHub CLI is unavailable")
+    repository_probe, selected, findings, discovery_bytes, discovery_reads, excluded = github_repository_goal_index(
+        repo, project, include_feedback,
+    )
+    open_selected = [issue for issue in selected if issue["state"] == "open"]
     bodies, hydration_bytes, hydration_processes = _github_goal_bodies(
-        repo, executable, owner, name, [issue["number"] for issue in selected],
+        repo, executable, owner, name, [issue["number"] for issue in open_selected],
     )
     managed = []
-    for issue in selected:
+    for issue in open_selected:
         hydrated = bodies[issue["number"]]
         candidate = {**issue, **hydrated}
         if GOAL_BLOCK_START in candidate["body"]:
@@ -785,10 +806,17 @@ def github_repository_portfolio_snapshot(
             records.append(github_goal_record(issue))
         except (KeyError, TypeError, ValueError) as exc:
             findings.append({"code": "malformed_record", "goal": issue.get("number", "unknown"), "detail": str(exc)})
+    for issue in selected:
+        if issue["state"] != "closed":
+            continue
+        try:
+            records.append(github_archived_goal_record(issue))
+        except (KeyError, TypeError, ValueError) as exc:
+            findings.append({"code": "malformed_record", "goal": issue.get("number", "unknown"), "detail": str(exc)})
     snapshot = build_portfolio_snapshot(
-        project["backend"], records, reads=len(pages) + hydration_processes,
-        raw_bytes=len(result.stdout.encode("utf-8")) + hydration_bytes,
-        ignored=len(indexed_issues) - len(managed),
+        project["backend"], records, reads=discovery_reads + hydration_processes,
+        raw_bytes=discovery_bytes + hydration_bytes,
+        ignored=excluded + len(selected) - len(records),
         git_policy=next(
             (
                 section["settings"] for section in ((project.get("policy") or {}).get("sections") or [])
@@ -802,7 +830,7 @@ def github_repository_portfolio_snapshot(
     snapshot["summary"]["findings"] = len(snapshot["findings"])
     snapshot["complete"] = not findings
     snapshot["valid"] = not snapshot["findings"]
-    snapshot["summary"]["discovery_raw_bytes"] = len(result.stdout.encode("utf-8"))
+    snapshot["summary"]["discovery_raw_bytes"] = discovery_bytes
     snapshot["summary"]["hydration_raw_bytes"] = hydration_bytes
     snapshot["summary"]["processes"] = 1 + hydration_processes
     return repository_probe, compact_portfolio_output(snapshot)
@@ -818,6 +846,34 @@ def portfolio_snapshot(repo: Path, include_feedback: bool = False) -> dict[str, 
         raise ValueError("Project policy is not initialized: " + "; ".join(errors or ["review pending"]))
     _repository, snapshot = github_repository_portfolio_snapshot(repo, project, include_feedback)
     return snapshot
+
+
+def migrate_open_repository_goals(
+    repo: Path, project: dict[str, Any], *, limit: int, include_feedback: bool = False,
+) -> dict[str, Any]:
+    repository = _project_repository_identity(project)
+    capability, indexes, findings, discovery_bytes, discovery_reads, excluded = github_repository_goal_index(
+        repo, project, include_feedback,
+    )
+    if not capability["usable"]:
+        raise GoalTransitionProviderError("GitHub Issues management permission is required; no migration was made.")
+    if findings:
+        raise GoalTransitionProviderError("Minimal goal discovery is malformed; no migration was made.")
+    adapter = GitHubGoalTransitionAdapter(repo, repository)
+    result = migrate_open_goal_schemas(adapter, repository, indexes, limit=limit)
+    return {
+        **result, "discovery_raw_bytes": discovery_bytes, "discovery_reads": discovery_reads,
+        "excluded": excluded,
+    }
+
+
+def inspect_repository_goal(repo: Path, project: dict[str, Any], issue_number: int) -> dict[str, Any]:
+    """Explicitly inspect one goal, lazily repairing legacy schema before projection."""
+    repository = _project_repository_identity(project)
+    adapter = GitHubGoalTransitionAdapter(repo, repository)
+    migration = ensure_current_goal_schema(adapter, repository, issue_number)
+    issue = adapter.get_issue(issue_number)
+    return {"migration": migration, "goal": github_goal_record(issue)}
 
 
 def render_portfolio_summary(snapshot: dict[str, Any], include_done: bool = False) -> str:
@@ -851,7 +907,11 @@ def render_portfolio_summary(snapshot: dict[str, Any], include_done: bool = Fals
 def compare_portfolios(snapshot: dict[str, Any], prior: dict[str, Any]) -> list[dict[str, Any]]:
     if prior.get("schema_version") != PORTFOLIO_SCHEMA_VERSION or not isinstance(prior.get("goals"), list):
         raise ValueError("comparison snapshot has an unsupported schema")
-    if any(not isinstance(goal, dict) or "key" not in goal or "digest" not in goal or "revision" not in goal for goal in prior["goals"]):
+    if any(
+        not isinstance(goal, dict) or "key" not in goal
+        or (not goal.get("archived") and ("digest" not in goal or "revision" not in goal))
+        for goal in prior["goals"]
+    ):
         raise ValueError("comparison snapshot contains a malformed goal")
     current = {goal["key"]: goal for goal in snapshot["goals"]}
     previous = {goal["key"]: goal for goal in prior["goals"]}
@@ -861,8 +921,14 @@ def compare_portfolios(snapshot: dict[str, Any], prior: dict[str, Any]) -> list[
             findings.append({"code": "goal_added", "goal": key, "detail": "absent from comparison snapshot"})
         elif key not in current:
             findings.append({"code": "goal_removed", "goal": key, "detail": "absent from current snapshot"})
-        elif current[key].get("digest") != previous[key].get("digest") or current[key].get("revision") != previous[key].get("revision"):
-            findings.append({"code": "goal_changed", "goal": key, "detail": "digest or revision changed"})
+        elif (
+            current[key].get("digest"), current[key].get("revision"), current[key].get("title"),
+            current[key].get("status"), current[key].get("schema_version"),
+        ) != (
+            previous[key].get("digest"), previous[key].get("revision"), previous[key].get("title"),
+            previous[key].get("status"), previous[key].get("schema_version"),
+        ):
+            findings.append({"code": "goal_changed", "goal": key, "detail": "current projection changed"})
     return findings
 
 
@@ -1552,6 +1618,11 @@ def main() -> int:
     transition_command = goal_commands.add_parser("transition", help="Apply one file-backed managed-goal transition")
     transition_command.add_argument("--goal", type=int, required=True)
     transition_command.add_argument("--input", type=Path, required=True, help="UTF-8 transition JSON file")
+    migrate_open_command = goal_commands.add_parser("migrate-open", help="Compact one bounded page of open legacy goals")
+    migrate_open_command.add_argument("--limit", type=int, default=25)
+    migrate_open_command.add_argument("--include-feedback", action="store_true")
+    inspect_goal_command = goal_commands.add_parser("inspect", help="Inspect one goal and lazily compact legacy state")
+    inspect_goal_command.add_argument("--goal", type=int, required=True)
     reserve = commands.add_parser("reserve", help="Atomically reserve a GitHub-backed goal")
     reserve_commands = reserve.add_subparsers(dest="reserve_command", required=True)
     for name in ("acquire", "renew", "release"):
@@ -1633,9 +1704,16 @@ def main() -> int:
         elif args.command == "goal":
             project = reviewed_project_state(repo)
             repository = _project_repository_identity(project)
-            transition = load_goal_transition(args.input)
-            adapter = GitHubGoalTransitionAdapter(repo, repository)
-            result = apply_goal_transition(adapter, repository, args.goal, transition)
+            if args.goal_command == "transition":
+                transition = load_goal_transition(args.input)
+                adapter = GitHubGoalTransitionAdapter(repo, repository)
+                result = apply_goal_transition(adapter, repository, args.goal, transition)
+            elif args.goal_command == "migrate-open":
+                result = migrate_open_repository_goals(
+                    repo, project, limit=args.limit, include_feedback=args.include_feedback,
+                )
+            else:
+                result = inspect_repository_goal(repo, project, args.goal)
             print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
         elif args.command == "reserve":
             project = reviewed_project_state(repo)
