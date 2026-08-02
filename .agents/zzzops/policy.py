@@ -28,8 +28,21 @@ POLICY_SECTION_IDS = (
     "security_privacy_compliance",
     "documentation_style",
     "deployment_resources",
+    "automated_design",
     "autonomy_approval_parallelism",
 )
+
+AUTOMATED_DESIGN_SETTINGS = {
+    "scope": "reversible_in_scope_implementation",
+    "selection_basis": ["project_objectives", "kpi_evidence", "constraints", "precedence"],
+    "decision_record": ["alternatives", "rationale", "assumptions", "falsifiable_validation_signal"],
+    "privacy_security": "unambiguously_risk_reducing_without_material_behavior_change",
+    "hard_stops": [
+        "product_scope", "incompatible_public_contract", "destructive_migration", "external_spending",
+        "deployment", "external_write", "human_review", "safety_authority", "higher_authority",
+    ],
+    "insufficient_evidence": "durable_design_blocker",
+}
 
 
 def nonempty(value: Any) -> bool:
@@ -289,6 +302,13 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                 errors.append(f"{prefix}.source_ids missing citations: {', '.join(missing_sources)}")
         if not isinstance(section.get("settings"), dict):
             errors.append(f"{prefix}.settings must be an object")
+        elif section_id == "automated_design":
+            settings = section["settings"]
+            if section.get("decision") not in {"enabled", "disabled"}:
+                errors.append(f"{prefix}.decision must be enabled or disabled")
+            for field, expected in AUTOMATED_DESIGN_SETTINGS.items():
+                if settings.get(field) != expected:
+                    errors.append(f"{prefix}.automated_design.settings.{field} must preserve the bounded default")
         elif section_id == "autonomy_approval_parallelism":
             settings = section["settings"]
             if "execution_reports" in settings:
