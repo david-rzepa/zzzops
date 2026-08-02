@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "revision": "2f84ae889619d577585918908974a5d5bfddb2b4",
-  "version": "v1.0.0-136-g2f84ae8",
+  "revision": "103843a9ab011cd791e5a6b3e3481388d8987722",
+  "version": "v1.0.0-138-g103843a",
   "files": {
     ".agents/skills/add-zzzops-goal/SKILL.md": "843fdd30025cc0e0debae89eae6b95a750bb9f79926cac1e9ed9c1a41b764e75",
     ".agents/skills/add-zzzops-goal/agents/openai.yaml": "f1deff9c5f87c3c72ae8584a4b35423bbde401cf7aab3314953ad9d6d168239d",
@@ -11,7 +11,7 @@
     ".agents/skills/execute-zzzops/references/CREATE.md": "5806507b901d1220a6ec65195a29260913d66c53a2faf40bc719a3c720abb44d",
     ".agents/skills/execute-zzzops/references/EXECUTE.md": "7e18fbab12ec01f046ab48fe11941e20986c54402e5198b4fa43c8776434dfa9",
     ".agents/skills/execute-zzzops/references/SELF_REVIEW.md": "4a4624789628a5be5fd2520479050992f65745a251857ae91cb4189d5efa3cc2",
-    ".agents/skills/execute-zzzops/references/UNBLOCK.md": "d1568ecea9900efcfd23c724c325aefa5e1d787b746411516897f215e8a53e15",
+    ".agents/skills/execute-zzzops/references/UNBLOCK.md": "6dd6e732c9c8ca59d48e9bd6250b8baff54c4fd6221fe7147ffd191a56c09a84",
     ".agents/skills/migrate-to-zzzops/SKILL.md": "eadf7836096671aa9f25676575fd38dbb01b2d7af7827e9601aad92a76c0a594",
     ".agents/skills/migrate-to-zzzops/agents/openai.yaml": "796e0267f1471dfe7733843fb3a96f0c27a9a4cfa1e2270033320e7964b68f62",
     ".agents/skills/migrate-to-zzzops/scripts/inventory.py": "98fe5e34d7d8c7ed337143ef80c006be2a7da6c1e18e774924fb58198f698f71",
@@ -26,7 +26,7 @@
     ".agents/zzzops/goals.py": "217d88ae0c9d5dae1f08b4080bac8452aa4f990907a17d1bcd30fe2e275e2ea2",
     ".agents/zzzops/install_lock.py": "59004dd72ddb062fa9beb971ef47e3cb763aa6314d5a7abef818b5fcbfe30f11",
     ".agents/zzzops/installer.py": "76b01daeb69c8f4499a62e210cb06beceb603a6e42187ee48e48abf0f0f820cd",
-    ".agents/zzzops/policy.py": "01e1c8b86fe0d15cab8bea114970b789b514b52a90da338a005192ebd788eb80",
+    ".agents/zzzops/policy.py": "92fe357f3ce8170eb061954a806197032c563ea271c44c3aa2b57fc4775145f4",
     ".agents/zzzops/portfolio.py": "ea8385413360dbe9c970dbd768264ac4ad4d36b9c9739377a62b55498cc42354",
     ".agents/zzzops/reservation.py": "de6cd3a5b8d96d0b91e539f6a502d6452b8121c7a1659f91ab6410d3b8dc4eac",
     ".agents/zzzops/templates/project-goals/INIT_PLAN.json": "3e6e34f847fdb8e3ef43d00fba027e89971574905b6597d3c2773608cb1e53a7",
