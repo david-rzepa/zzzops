@@ -15,6 +15,8 @@ Execution assumes the user is absent and never asks an interactive question. Per
 
 Before substantive work on a newly selected goal or later-turn resume, tell the user in one plain sentence the intended outcome and immediate scope. Do this before reservation, edits, or implementation commands; do not repeat it for same-turn tool progress or make it an approval gate.
 
+Update the user only for a new result, decision, risk, changed assumption, required action, or long-operation heartbeat; never recap unchanged state.
+
 ## Execute
 
 1. Re-read only the selected goal and selection-critical parent/dependencies; compare revision/digest, declare known resources, then reserve the bundle per `GOAL_SYSTEM.md`. On contention refresh once and choose other work; only the winner claims or begins work.
