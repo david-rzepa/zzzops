@@ -39,7 +39,7 @@ EXECUTION_REPORT_SCHEMA_VERSION = 3
 LEGACY_EXECUTION_REPORT_SCHEMA_VERSION = 2
 EXECUTION_REPORT_TARGET = "david-rzepa/zzzops"
 EXECUTION_REPORT_TITLE = "ZzzOps feedback"
-EXECUTION_REPORT_LABELS = ["zzzops", "zzzops-feedback", "zzzops:status:new", "zzzops:priority:P2"]
+EXECUTION_REPORT_LABELS = ["zzzops", "zzzops-feedback", "zzzops:schema:v1", "zzzops:status:new", "zzzops:priority:P2"]
 EXECUTION_REPORT_WORKFLOWS = {
     "add-zzzops-goal", "execute-zzzops", "migrate-to-zzzops", "review-zzzops-policy",
     "run-zzzops-acceptance", "send-zzzops-feedback", "suggest-zzzops-work",
