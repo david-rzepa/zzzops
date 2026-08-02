@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "revision": "9219a0219ea13f49648286e9f1487100bec2fe7d",
-  "version": "v1.0.0-94-g9219a02",
+  "revision": "4305dca7cc154a090159dcb1d6aa3c97888bef49",
+  "version": "v1.0.0-96-g4305dca",
   "files": {
     ".agents/skills/add-zzzops-goal/SKILL.md": "86c408ae0b8a1a18cd86b1a8b470af7925bc5a49996b70baf16452d13d7b72c6",
     ".agents/skills/add-zzzops-goal/agents/openai.yaml": "f1deff9c5f87c3c72ae8584a4b35423bbde401cf7aab3314953ad9d6d168239d",
@@ -16,7 +16,7 @@
     ".agents/skills/migrate-to-zzzops/agents/openai.yaml": "796e0267f1471dfe7733843fb3a96f0c27a9a4cfa1e2270033320e7964b68f62",
     ".agents/skills/migrate-to-zzzops/scripts/inventory.py": "98fe5e34d7d8c7ed337143ef80c006be2a7da6c1e18e774924fb58198f698f71",
     ".agents/skills/migrate-to-zzzops/scripts/test_inventory.py": "50e429f851aade4268907037a78584a391d1b26a4ceb7ff9735fb06069519def",
-    ".agents/skills/review-zzzops-policy/SKILL.md": "cbd3fe161e9cc8110f5b7f2b1eb9fbeba0a251ad93f113e373fb80bf0a152279",
+    ".agents/skills/review-zzzops-policy/SKILL.md": "67c356c256fa080dc1e8b9dc4287b33570071f9a54ad8d6215225ac12f25b0f2",
     ".agents/skills/review-zzzops-policy/agents/openai.yaml": "75db2f7e65c73e8522d7aba9e3c165c64b1be168bd320803df73852e5b597993",
     ".agents/skills/send-zzzops-feedback/SKILL.md": "a2f5f6e9c911d4b68ae3bde7b4656367a14ff10b73396d76e87c058235fe25e2",
     ".agents/skills/send-zzzops-feedback/agents/openai.yaml": "30a405fc7ed61cf47b9f44c99ce3c0715105ca1658ed25115e390fde019a9f47",
@@ -41,6 +41,6 @@
     ".zzzops/rules/EXECUTION_STRATEGY.md": "8f7031cab4b9215c23c191ec13d4c9ac77720fd4690c043fee7aa058b46be938",
     ".zzzops/rules/FEEDBACK.md": "68b67b809de403a00eae86bae54a09d944d59799a8c44ddff01669670c7331c1",
     ".zzzops/rules/GOAL_SYSTEM.md": "459ae32f1df9adabb00f8f15f976cdfd834ec7b3adbec6aefdf6d1e55583ad7f",
-    ".zzzops/rules/INITIALIZATION.md": "6b54cb5988072b397708a66ccfb7f47f023864073189f9238693be0bf7af11f0"
+    ".zzzops/rules/INITIALIZATION.md": "61637e824aebed4371659a0775c8e00ec1d405bedbe44cb866d95c0bc534d894"
   }
 }
