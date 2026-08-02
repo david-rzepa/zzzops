@@ -2400,6 +2400,17 @@ class ReservationTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_execute_progress_updates_require_new_information(self):
+        execute = (
+            Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "EXECUTE.md"
+        ).read_text(encoding="utf-8")
+        for signal in (
+            "new result, decision, risk, changed assumption, required action",
+            "long-operation heartbeat",
+            "never recap unchanged state",
+        ):
+            self.assertIn(signal, execute)
+
     def test_execute_routes_explicit_work_states_without_blurring_write_authority(self):
         execute = (
             Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "EXECUTE.md"
