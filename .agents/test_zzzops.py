@@ -2043,14 +2043,14 @@ class WorkflowContractTests(unittest.TestCase):
             "Python 3.10 or newer", "older interpreter", "block once",
             "Under Codex", "authenticated context for the first attempt",
             "keep local-only commands in the normal sandbox", "Never reauthenticate or persistently relax the sandbox",
-            "ask plainly whether to commit", "never sweep in unrelated changes",
+            "ask to commit it first", "never policy or unrelated changes",
         ):
             self.assertIn(phrase, initialization)
         review_skill = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("The ZzzOps lock file and installation changes need to be committed", review_skill)
-        self.assertIn("Would you like me to commit them now?", review_skill)
-        self.assertIn("ask for it alone", review_skill)
-        self.assertIn("handle PR closure separately", review_skill)
+        self.assertIn("before policy review", review_skill)
+        self.assertIn("Would you like me to commit the lock file", review_skill)
+        self.assertIn("Stop for the answer", review_skill)
+        self.assertIn("Ask separately", review_skill)
 
     def test_skills_apply_shared_privacy_safe_feedback_handoff(self):
         root = Path(__file__).parent / "skills"
