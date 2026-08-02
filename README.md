@@ -95,19 +95,19 @@ When you remember “one last thing,” capture it instead of opening six files 
 For a normal Codex run:
 
 ```text
-Use $execute-zzzops to work on all actionable goals until nothing safe remains.
+Use $execute-zzzops to work on all available goals until nothing safe remains.
 ```
 
 For Claude Code:
 
 ```text
-/execute-zzzops work on all actionable goals until nothing safe remains
+/execute-zzzops work on all available goals until nothing safe remains
 ```
 
 For persistent Codex execution:
 
 ```text
-/goal Use $execute-zzzops to work through all actionable project goals until complete or genuinely blocked.
+/goal Use $execute-zzzops to work through all available project goals until complete or genuinely blocked.
 ```
 
 `/goal` is Codex-specific. Claude Code invokes ZzzOps workflows directly as `/skill-name`; ZzzOps supplies the same queue and operating rules in either tool. This is the point of ZzzOps: stop babysitting agents. When work runs dry, the agent interviews you about blockers before conceding defeat. If one safely observable human action is all that remains, it notifies you and briefly watches for completion before handing off. This is your scheduled cameo. After that, please locate the bedroom; staying awake does not make the remaining tokens more valuable.

@@ -30,6 +30,6 @@ Stop only the affected work. Mark the goal `blocked` only when nothing useful re
 
 Goal capture follows the reviewed PROJECT requirements-interview depth before the canonical write. Execution assumes the user is absent: search project/related goals enough to avoid stale or answered questions, then persist every unanswered consequential question on the affected managed issue. Never ask interactively, poll for a response, or substitute speculative implementation. Do not repeat a blocker before its recheck trigger.
 
-On input: resolve (never delete) the blocker; update affected assumptions/scope/criteria/next action/links; remove its queue row; move the goal to an actionable state if possible; append history; recheck dependents. If input only narrows the issue, resolve it and link a more precise successor.
+On input: resolve (never delete) the blocker; update affected assumptions/scope/criteria/next action/links; remove its queue row; move the goal to an available work state if possible; append history; recheck dependents. If input only narrows the issue, resolve it and link a more precise successor.
 
 At total queue exhaustion, surface the ordered durable queue and hand off. Keep the original blocker and recheck trigger until completion is observed; silence, timeout, interruption, drift, or provider failure never implies resolution.

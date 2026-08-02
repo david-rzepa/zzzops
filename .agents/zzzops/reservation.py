@@ -142,7 +142,7 @@ class GitHubReservationAdapter:
             raise ReservationProviderError("GitHub Issues management permission is required; no reservation was made.")
         self._identity_checked = True
 
-    def goal_revision(self, goal: int, require_actionable: bool = False) -> int:
+    def goal_revision(self, goal: int, require_writable: bool = False) -> int:
         self.ensure_identity()
         result = self._run(["api", f"repos/{self.repository}/issues/{goal}"])
         if result.returncode:
@@ -154,7 +154,7 @@ class GitHubReservationAdapter:
             raise ReservationProviderError("The goal could not be validated; no reservation was made.") from exc
         if parsed is None:
             raise ReservationProviderError("The goal could not be validated; no reservation was made.")
-        if require_actionable and parsed["status"] not in {"ready", "in_progress"}:
+        if require_writable and parsed["status"] not in {"ready", "in_progress"}:
             raise ReservationProviderError(f"Goal #{goal} is not available for work; no reservation was made.")
         return parsed["revision"]
 
@@ -236,11 +236,11 @@ class GitHubReservationAdapter:
 
 
 def _validate_reservation_goal(
-    adapter: Any, repository: str, goal: int, revision: int, require_actionable: bool = False,
+    adapter: Any, repository: str, goal: int, revision: int, require_writable: bool = False,
 ) -> None:
     if adapter.repository.casefold() != repository.casefold():
         raise ReservationProviderError("Repository identity changed; no reservation was made.")
-    observed_revision = adapter.goal_revision(goal, require_actionable=require_actionable)
+    observed_revision = adapter.goal_revision(goal, require_writable=require_writable)
     if observed_revision != revision:
         raise ReservationProviderError(
             f"Goal #{goal} changed from revision {revision} to {observed_revision}; refresh before reserving it."
@@ -279,7 +279,7 @@ def acquire_reservation(
     expires_at = now_epoch + ttl_seconds
     name = reservation_label_name(goal)
     description = reservation_description(repository, goal, revision, owner, run_id, expires_at, now_epoch)
-    _validate_reservation_goal(adapter, repository, goal, revision, require_actionable=True)
+    _validate_reservation_goal(adapter, repository, goal, revision, require_writable=True)
     existing = adapter.get_label(name)
     if existing is not None:
         current = parse_reservation_description(existing.get("description"))
