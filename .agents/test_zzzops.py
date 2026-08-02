@@ -627,7 +627,7 @@ class ExecutionReportTests(unittest.TestCase):
         self.assertEqual("david-rzepa/zzzops", preview["target"])
         self.assertEqual("ZzzOps feedback", preview["title"])
         self.assertEqual(
-            ["zzzops", "zzzops-feedback", "zzzops:status:new", "zzzops:priority:P2"],
+            ["zzzops", "zzzops-feedback", "zzzops:schema:v1", "zzzops:status:new", "zzzops:priority:P2"],
             preview["labels"],
         )
         self.assertIn("Please reduce unnecessary waits.", preview["body"])
@@ -662,7 +662,7 @@ class ExecutionReportTests(unittest.TestCase):
             "gh", "issue", "create", "--repo", "david-rzepa/zzzops",
             "--title", "ZzzOps feedback", "--body-file", "-",
             "--label", "zzzops", "--label", "zzzops-feedback",
-            "--label", "zzzops:status:new", "--label", "zzzops:priority:P2",
+            "--label", "zzzops:schema:v1", "--label", "zzzops:status:new", "--label", "zzzops:priority:P2",
         ], command)
         self.assertEqual(preview["body"], run.call_args.kwargs["input"])
 
@@ -2420,7 +2420,7 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn(phrase, refill)
         self.assertIn("`zzzops-feedback` label", feedback)
         self.assertEqual(
-            ["zzzops", "zzzops-feedback", "zzzops:status:new", "zzzops:priority:P2"],
+            ["zzzops", "zzzops-feedback", "zzzops:schema:v1", "zzzops:status:new", "zzzops:priority:P2"],
             zzzops.EXECUTION_REPORT_LABELS,
         )
 

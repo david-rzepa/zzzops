@@ -46,6 +46,8 @@ One logical update: re-read affected records/premise; perform and observe work; 
 
 Use BACKENDS' current-body, append-first history, and idempotent retry contract.
 
+- Repair a selected/read goal lacking the current schema label or compact body; never sweep bodies/comments for drift.
+
 - Apply the PROJECT policy's triage/continuation order; every active goal has an action or gate.
 - Human blockers appear in the portfolio human queue; resolutions retain request/answer/resolver/date.
 - Checked criteria cite observed evidence. Reassess due reviews.
