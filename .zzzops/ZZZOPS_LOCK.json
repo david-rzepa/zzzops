@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "revision": "78d1184a17a6be088b039d97442ba89b521aefb4",
-  "version": "v1.0.0-125-g78d1184",
+  "revision": "cda5352de9bd8dd80055db77abd359f2ea048feb",
+  "version": "v1.0.0-128-gcda5352",
   "files": {
     ".agents/skills/add-zzzops-goal/SKILL.md": "843fdd30025cc0e0debae89eae6b95a750bb9f79926cac1e9ed9c1a41b764e75",
     ".agents/skills/add-zzzops-goal/agents/openai.yaml": "f1deff9c5f87c3c72ae8584a4b35423bbde401cf7aab3314953ad9d6d168239d",
@@ -9,7 +9,7 @@
     ".agents/skills/execute-zzzops/agents/openai.yaml": "7b01721e471598eff99488904085af1bda48b7ce2b15e8ccd112747414915fea",
     ".agents/skills/execute-zzzops/references/BRANCH_REVIEW.md": "0994ce2b8cbd4a424d4e375e2d31b5df4ba8d06c5a951a44afa77bfef415d4b8",
     ".agents/skills/execute-zzzops/references/CREATE.md": "5806507b901d1220a6ec65195a29260913d66c53a2faf40bc719a3c720abb44d",
-    ".agents/skills/execute-zzzops/references/EXECUTE.md": "5a01b7876544c20c241fe7bb6d05de1b561f9fc8dab751920f25875ea11acd71",
+    ".agents/skills/execute-zzzops/references/EXECUTE.md": "7e18fbab12ec01f046ab48fe11941e20986c54402e5198b4fa43c8776434dfa9",
     ".agents/skills/execute-zzzops/references/SELF_REVIEW.md": "4a4624789628a5be5fd2520479050992f65745a251857ae91cb4189d5efa3cc2",
     ".agents/skills/execute-zzzops/references/UNBLOCK.md": "0ee727616c887f9bb8951cbea655fdce4c4235f38f9c70d5c40275be2b754d8a",
     ".agents/skills/migrate-to-zzzops/SKILL.md": "eadf7836096671aa9f25676575fd38dbb01b2d7af7827e9601aad92a76c0a594",
