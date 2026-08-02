@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory = $true, Position = 0)]
     [string]$Target,
     [switch]$DryRun,
-    [switch]$Yes
+    [switch]$Yes,
+    [switch]$Restore
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,5 +27,6 @@ if ($LASTEXITCODE -ne 0) {
 $arguments = @($engine, $Target)
 if ($DryRun) { $arguments += '--dry-run' }
 if ($Yes) { $arguments += '--yes' }
+if ($Restore) { $arguments += '--restore' }
 & $python.Source @pythonPrefix @arguments
 exit $LASTEXITCODE

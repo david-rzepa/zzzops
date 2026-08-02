@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -13,7 +14,9 @@ import sys
 import tempfile
 from pathlib import Path, PurePosixPath
 
-from install_lock import InstallLockError, LOCK_RELATIVE, file_digest, read_install_lock, validate_install_lock
+from install_lock import (
+    InstallLockError, LOCK_RELATIVE, file_digest, read_install_lock, read_install_lock_snapshot, validate_install_lock,
+)
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
@@ -108,6 +111,65 @@ def distribution_lock(sources: dict[str, Path]) -> dict[str, object]:
         "version": version,
         "files": {relative: file_digest(source) for relative, source in sources.items()},
     })
+
+
+def revision_available(revision: str) -> bool:
+    return git("cat-file", "-e", f"{revision}^{{commit}}", check=False).returncode == 0
+
+
+def ensure_pinned_revision(revision: str) -> None:
+    if revision_available(revision):
+        return
+    origin = git("remote", "get-url", "origin", check=False)
+    if origin.returncode or not origin.stdout.strip():
+        raise InstallError("The pinned revision is not available locally and the ZzzOps source clone has no origin to fetch it from")
+    attempts = []
+    for fetch_args in (("fetch", "--no-tags", "origin", revision), ("fetch", "--no-tags", "origin")):
+        fetched = git(*fetch_args, check=False)
+        if revision_available(revision):
+            return
+        if fetched.returncode:
+            attempts.append(fetched.stderr.strip() or fetched.stdout.strip())
+    detail = f": {'; '.join(attempts)}" if attempts else ""
+    raise InstallError("The pinned revision is not available from the ZzzOps source origin" + detail)
+
+
+@contextmanager
+def pinned_source_tree(revision: str):
+    ensure_pinned_revision(revision)
+    temporary = Path(tempfile.mkdtemp(prefix="zzzops-restore-"))
+    temporary.rmdir()  # git worktree add owns creation of the isolated checkout.
+    added = False
+    try:
+        git("worktree", "add", "--detach", str(temporary), revision)
+        added = True
+        yield temporary
+    finally:
+        if added:
+            removed = git("worktree", "remove", "--force", str(temporary), check=False)
+            if removed.returncode:
+                shutil.rmtree(temporary, ignore_errors=True)
+                pruned = git("worktree", "prune", check=False)
+                if pruned.returncode:
+                    raise InstallError("The temporary restore worktree could not be cleaned up")
+        elif temporary.exists():
+            shutil.rmtree(temporary, ignore_errors=True)
+
+
+def locked_distribution_sources(root: Path, lock: dict[str, object]) -> dict[str, Path]:
+    sources: dict[str, Path] = {}
+    errors: list[str] = []
+    for relative, expected_digest in lock["files"].items():
+        source = root / "LICENSE" if relative == ".agents/zzzops/LICENSE" else root.joinpath(*PurePosixPath(relative).parts)
+        if source.is_symlink() or not source.is_file():
+            errors.append(f"missing or unsafe source for {relative}")
+        elif file_digest(source) != expected_digest:
+            errors.append(f"source digest does not match the lock for {relative}")
+        else:
+            sources[relative] = source
+    if errors:
+        raise InstallError("Pinned source verification failed before target changes: " + "; ".join(errors))
+    return dict(sorted(sources.items()))
 
 
 def managed_roots(paths: object) -> tuple[str, ...]:
@@ -375,7 +437,10 @@ def atomic_write(path: Path, data: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def apply_install(target: Path, sources: dict[str, Path], lock: dict[str, object], state: dict[str, object]) -> None:
+def apply_install(
+    target: Path, sources: dict[str, Path], lock: dict[str, object], state: dict[str, object],
+    *, preserved_lock_bytes: bytes | None = None,
+) -> None:
     if installation_state(target, lock)["signature"] != state["signature"]:
         raise InstallError("The target changed after the preview. Run the installer again; no files were changed.")
     if state["cleanup_errors"]:
@@ -405,7 +470,7 @@ def apply_install(target: Path, sources: dict[str, Path], lock: dict[str, object
         raise InstallError("Fresh machinery validation failed: " + ", ".join(sorted(set(mismatches))))
     atomic_write(target / ".gitignore", str(state["root_ignore"]).encode("utf-8"))
     atomic_write(target / ".zzzops" / ".gitignore", str(state["state_ignore"]).encode("utf-8"))
-    atomic_write(target / LOCK_RELATIVE, lock_text(lock).encode("utf-8"))
+    atomic_write(target / LOCK_RELATIVE, preserved_lock_bytes or lock_text(lock).encode("utf-8"))
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -413,7 +478,70 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("target")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--yes", action="store_true")
+    parser.add_argument("--restore", action="store_true")
     return parser.parse_args(argv)
+
+
+def execute_install(
+    args: argparse.Namespace, target: Path, sources: dict[str, Path], lock: dict[str, object],
+    *, operation: str | None = None, preserved_lock_bytes: bytes | None = None,
+) -> int:
+    state = installation_state(target, lock)
+    if operation:
+        state["kind"] = operation
+    print("ZzzOps installation preview")
+    print(f"Target: {target}")
+    print(f"Operation: {state['kind']}.")
+    if state["kind"] == "upgrade" and state["installed_version"]:
+        print(f"Version: {state['installed_version']} -> {lock['version']}.")
+    else:
+        print(f"Version: {lock['version']}.")
+    if operation == "pinned restore":
+        print(f"Revision: {lock['revision']}.")
+    print(f"Disposable machinery roots: {len(state['current_roots'])}; managed files: {len(sources)}.")
+    print("The confirmed install will wipe and recreate only those roots, validate every file, update scoped ignore entries, then write .zzzops/ZZZOPS_LOCK.json.")
+    print("Local workflow scratch under .zzzops/init/ will be ignored but preserved.")
+    if state["old_warning"]:
+        print(f"Warning: the previous lock is invalid ({state['old_warning']}); current owned roots will still be reconstructed, but unknown obsolete paths cannot be inferred.")
+    if state["tracked"]:
+        print("Tracked ZzzOps machinery requires explicit index cleanup:")
+        for relative in state["tracked"]:
+            print(f"- {relative}")
+    if state["pending_untracking"]:
+        print(f"Pending deletion-only index cleanup is preserved ({len(state['pending_untracking'])} machinery paths).")
+    for error in state["cleanup_errors"]:
+        print(f"Blocked: {error}")
+    if args.dry_run:
+        print("No files or Git index entries were changed.")
+        return 2 if state["cleanup_errors"] else 0
+    if state["cleanup_errors"]:
+        raise InstallError("; ".join(str(error) for error in state["cleanup_errors"]))
+    if not args.yes:
+        if state["tracked"]:
+            try:
+                cleanup_answer = input("Clear exactly these ZzzOps machinery paths from Git tracking? [y/N] ")
+            except EOFError:
+                cleanup_answer = ""
+            if cleanup_answer.strip().casefold() not in {"y", "yes"}:
+                print("Installation cancelled; tracked files, working files, and ignore rules were unchanged.")
+                return 0
+        try:
+            answer = input(f"Confirm {state['kind']}? [y/N] ")
+        except EOFError:
+            answer = ""
+        if answer.strip().casefold() not in {"y", "yes"}:
+            print("Installation cancelled; no files or Git index entries were changed.")
+            return 0
+    apply_install(target, sources, lock, state, preserved_lock_bytes=preserved_lock_bytes)
+    print("ZzzOps machinery was reconstructed and validated.")
+    if operation == "pinned restore":
+        print(f"Restored version: {lock['version']}.")
+        print("The existing .zzzops/ZZZOPS_LOCK.json was preserved exactly; keep the restored machinery local.")
+    else:
+        print(f"Installed version: {lock['version']}.")
+        print("Commit .zzzops/ZZZOPS_LOCK.json and the scoped ignore-file changes; keep the installed machinery local.")
+    print("Open the target repository in Codex or Claude Code; restart or reopen the harness if the new skills are not discovered.")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -424,56 +552,20 @@ def main(argv: list[str] | None = None) -> int:
             raise InstallError("Target is not a directory")
         if not (target / ".git").exists():
             raise InstallError("Target has no .git entry")
+        if args.restore:
+            try:
+                lock, preserved_lock_bytes = read_install_lock_snapshot(target)
+            except InstallLockError as exc:
+                raise InstallError(f"The project lock cannot be restored: {exc}") from exc
+            with pinned_source_tree(str(lock["revision"])) as pinned_root:
+                sources = locked_distribution_sources(pinned_root, lock)
+                return execute_install(
+                    args, target, sources, lock, operation="pinned restore",
+                    preserved_lock_bytes=preserved_lock_bytes,
+                )
         sources = distribution_sources()
         lock = distribution_lock(sources)
-        state = installation_state(target, lock)
-        print("ZzzOps installation preview")
-        print(f"Target: {target}")
-        print(f"Operation: {state['kind']}.")
-        if state["kind"] == "upgrade" and state["installed_version"]:
-            print(f"Version: {state['installed_version']} -> {lock['version']}.")
-        else:
-            print(f"Version: {lock['version']}.")
-        print(f"Disposable machinery roots: {len(state['current_roots'])}; managed files: {len(sources)}.")
-        print("The confirmed install will wipe and recreate only those roots, validate every file, update scoped ignore entries, then write .zzzops/ZZZOPS_LOCK.json.")
-        print("Local workflow scratch under .zzzops/init/ will be ignored but preserved.")
-        if state["old_warning"]:
-            print(f"Warning: the previous lock is invalid ({state['old_warning']}); current owned roots will still be reconstructed, but unknown obsolete paths cannot be inferred.")
-        if state["tracked"]:
-            print("Tracked ZzzOps machinery requires explicit index cleanup:")
-            for relative in state["tracked"]:
-                print(f"- {relative}")
-        if state["pending_untracking"]:
-            print(f"Pending deletion-only index cleanup is preserved ({len(state['pending_untracking'])} machinery paths).")
-        for error in state["cleanup_errors"]:
-            print(f"Blocked: {error}")
-        if args.dry_run:
-            print("No files or Git index entries were changed.")
-            return 2 if state["cleanup_errors"] else 0
-        if state["cleanup_errors"]:
-            raise InstallError("; ".join(str(error) for error in state["cleanup_errors"]))
-        if not args.yes:
-            if state["tracked"]:
-                try:
-                    cleanup_answer = input("Clear exactly these ZzzOps machinery paths from Git tracking? [y/N] ")
-                except EOFError:
-                    cleanup_answer = ""
-                if cleanup_answer.strip().casefold() not in {"y", "yes"}:
-                    print("Installation cancelled; tracked files, working files, and ignore rules were unchanged.")
-                    return 0
-            try:
-                answer = input(f"Confirm {state['kind']}? [y/N] ")
-            except EOFError:
-                answer = ""
-            if answer.strip().casefold() not in {"y", "yes"}:
-                print("Installation cancelled; no files or Git index entries were changed.")
-                return 0
-        apply_install(target, sources, lock, state)
-        print("ZzzOps machinery was reconstructed and validated.")
-        print(f"Installed version: {lock['version']}.")
-        print("Commit .zzzops/ZZZOPS_LOCK.json and the scoped ignore-file changes; keep the installed machinery local.")
-        print("Open the target repository in Codex or Claude Code; restart or reopen the harness if the new skills are not discovered.")
-        return 0
+        return execute_install(args, target, sources, lock)
     except InstallError as exc:
         print(f"Cannot install yet: {exc}")
         return 2
