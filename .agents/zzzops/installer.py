@@ -230,6 +230,8 @@ def read_legacy_manifest(target: Path) -> tuple[set[str] | None, str | None]:
             continue
         elif len(fields) == 3 and fields[0] == "file" and len(fields[1]) in {40, 64}:
             relative = fields[2].replace("\\", "/")
+            if relative == ".zzzops/.gitignore":
+                continue  # Legacy project-state ignore metadata was never disposable machinery.
             try:
                 managed_roots([relative])
             except InstallError:
@@ -272,12 +274,31 @@ def tracked_cleanup(target: Path, roots: tuple[str, ...], old_lock: dict[str, ob
     return {"tracked": tracked, "staged": staged, "errors": errors}
 
 
+def broad_ignore_errors(target: Path) -> list[str]:
+    errors: list[str] = []
+    probes = (
+        ".agents/project-owned.txt",
+        ".agents/skills/project-owned/SKILL.md",
+        ".claude/project-owned.txt",
+        ".claude/skills/project-owned/SKILL.md",
+        ".zzzops/project-owned.txt",
+    )
+    for probe in probes:
+        result = git("check-ignore", "--no-index", "--quiet", "--", probe, cwd=target, check=False)
+        if result.returncode == 0:
+            errors.append(f"an existing ignore rule is broader than ZzzOps-owned paths: {probe}")
+        elif result.returncode != 1:
+            errors.append(f"Git could not validate scoped ignore ownership for {probe}")
+    return errors
+
+
 def installation_state(target: Path, lock: dict[str, object]) -> dict[str, object]:
     old_lock, old_warning = read_old_lock(target)
     current_roots = managed_roots(lock["files"])
     old_roots = managed_roots(old_lock["files"]) if old_lock else ()
     roots = tuple(sorted(set(current_roots) | set(old_roots)))
     cleanup = tracked_cleanup(target, roots, old_lock, old_warning)
+    cleanup["errors"].extend(broad_ignore_errors(target))
     inventory = target_inventory(target, roots)
     root_ignore, state_ignore = expected_ignore_texts(target, current_roots)
     expected = lock["files"]
@@ -365,7 +386,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("target")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--yes", action="store_true")
-    parser.add_argument("--overwrite-mechanical", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
 

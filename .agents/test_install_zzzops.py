@@ -4,13 +4,15 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_VALIDATION = ROOT / ".github" / "scripts" / "require_validation.py"
+sys.path.insert(0, str(ROOT / ".agents" / "zzzops"))
+import installer as installer_engine  # noqa: E402
 
 
 def available_installers() -> dict[str, tuple[str, Path]]:
@@ -44,12 +46,14 @@ class NativeInstallerTests(unittest.TestCase):
         target = Path(directory)
         result = subprocess.run(["git", "init", "--quiet", str(target)], text=True, capture_output=True, check=False)
         self.assertEqual(0, result.returncode, result.stderr)
+        subprocess.run(["git", "-C", str(target), "config", "user.email", "installer@test.invalid"], check=True)
+        subprocess.run(["git", "-C", str(target), "config", "user.name", "Installer Test"], check=True)
         return target
 
     def command(self, installer: tuple[str, Path], target: Path, *options: str) -> list[str]:
         runtime, script = installer
         if script.suffix == ".ps1":
-            translated = {"--dry-run": "-DryRun", "--overwrite-mechanical": "-OverwriteMechanical", "--yes": "-Yes"}
+            translated = {"--dry-run": "-DryRun", "--yes": "-Yes"}
             return [runtime, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), str(target),
                     *(translated[option] for option in options)]
         return [runtime, str(script), str(target), *options]
@@ -64,255 +68,17 @@ class NativeInstallerTests(unittest.TestCase):
         return environment
 
     def run_installer(self, installer, target: Path, *options: str, answer: str | None = None):
-        if os.name == "nt" and installer[1].suffix == ".sh" and answer in {"y\n", "yes\n"}:
-            options = (*options, "--yes")
-            answer = None
         return subprocess.run(
             self.command(installer, target, *options), input=answer, text=True,
             encoding="utf-8", errors="replace", capture_output=True, check=False,
-            env=self.environment(installer), timeout=45,
+            env=self.environment(installer), timeout=60,
         )
 
-    def git_blob_hash(self, data: bytes) -> str:
-        result = subprocess.run(
-            ["git", "hash-object", "--stdin"], input=data, capture_output=True, check=True,
-        )
-        return result.stdout.decode("ascii").strip()
-
-    def simulate_older_managed_install(self, target: Path, relative: str) -> tuple[bytes, bytes]:
-        manifest = target / ".agents" / "zzzops" / "INSTALL_MANIFEST"
-        before_manifest = manifest.read_bytes()
-        old_data = b"older managed ZzzOps mechanics\n"
-        (target / relative).write_bytes(old_data)
-        older_revision = "0" * 40  # Deliberately unavailable in shallow clones; preview must fall back safely.
-        lines = before_manifest.decode("utf-8").splitlines()
-        rewritten = []
-        for line in lines:
-            fields = line.split("\t", 2)
-            if fields[0] == "revision":
-                line = f"revision\t{older_revision}"
-            elif fields[0] == "version":
-                continue  # Exercise the supported revision-only manifest upgrade path.
-            elif len(fields) == 3 and fields[0] == "file" and fields[2] == relative:
-                line = f"file\t{self.git_blob_hash(old_data)}\t{relative}"
-            rewritten.append(line)
-        manifest.write_text("\n".join(rewritten) + "\n", encoding="utf-8", newline="\n")
-        return old_data, manifest.read_bytes()
-
-    def test_dry_run_cancel_and_confirm_install(self):
-        installed_versions = {}
-        for name, installer in self.installers.items():
-            with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
-                target = self.make_repo(directory)
-                preview = self.run_installer(installer, target, "--dry-run")
-                self.assertEqual(0, preview.returncode, preview.stderr + preview.stdout)
-                self.assertIn("installation preview", preview.stdout)
-                self.assertIn("tracked project skills", preview.stdout)
-                self.assertIn("workflow rules", preview.stdout)
-                self.assertIn("blank templates", preview.stdout)
-                self.assertRegex(preview.stdout, r"ZzzOps version: not installed -> [A-Za-z0-9][A-Za-z0-9._+-]+ \([0-9a-f]{7}\)\.")
-                self.assertIn("No files were changed.", preview.stdout)
-                self.assertFalse((target / ".agents").exists())
-
-                if not (os.name == "nt" and installer[1].suffix == ".sh"):
-                    cancelled = self.run_installer(installer, target, answer="\n")
-                    self.assertEqual(0, cancelled.returncode, cancelled.stderr + cancelled.stdout)
-                    self.assertIn("cancelled", cancelled.stdout)
-                    self.assertFalse((target / ".agents").exists())
-
-                applied = self.run_installer(installer, target, answer="y\n")
-                self.assertEqual(0, applied.returncode, applied.stderr + applied.stdout)
-                self.assertIn("ZzzOps is installed.", applied.stdout)
-                self.assertIn("Codex or Claude Code", applied.stdout)
-                self.assertIn("restart or reopen", applied.stdout)
-                self.assertIn("review-zzzops-policy", applied.stdout)
-                self.assertTrue((target / ".zzzops" / "rules" / "INITIALIZATION.md").is_file())
-                self.assertTrue((target / ".agents" / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").is_file())
-                self.assertTrue((target / ".agents" / "zzzops" / ".gitignore").is_file())
-                self.assertTrue((target / ".agents" / "zzzops" / "policy.py").is_file())
-                self.assertTrue((target / ".agents" / "zzzops" / "reservation.py").is_file())
-                self.assertTrue((target / ".agents" / "zzzops" / "feedback.py").is_file())
-                self.assertTrue((target / ".agents" / "zzzops" / "goals.py").is_file())
-                self.assertTrue((target / ".agents" / "zzzops" / "portfolio.py").is_file())
-                self.assertTrue((target / ".agents" / "zzzops" / "install_lock.py").is_file())
-                self.assertEqual((ROOT / "LICENSE").read_bytes(), (target / ".agents" / "zzzops" / "LICENSE").read_bytes())
-                self.assertTrue((target / ".agents" / "zzzops" / "INSTALL_MANIFEST").is_file())
-                manifest_text = (target / ".agents" / "zzzops" / "INSTALL_MANIFEST").read_text(encoding="utf-8")
-                self.assertIn("\nversion\t", manifest_text)
-                fields = dict(line.split("\t", 1) for line in manifest_text.splitlines()[1:] if line.count("\t") == 1)
-                self.assertRegex(fields["revision"], r"^[0-9a-f]{40,64}$")
-                installed_versions[name] = (fields["version"], fields["revision"])
-                self.assertTrue((target / ".agents" / "skills" / "add-zzzops-goal" / "SKILL.md").is_file())
-                self.assertTrue((target / ".claude" / "skills" / "add-zzzops-goal" / "SKILL.md").is_file())
-                self.assertTrue((target / ".agents" / "skills" / "review-zzzops-policy" / "SKILL.md").is_file())
-                self.assertTrue((target / ".claude" / "skills" / "review-zzzops-policy" / "SKILL.md").is_file())
-                self.assertTrue((target / ".agents" / "skills" / "send-zzzops-feedback" / "SKILL.md").is_file())
-                self.assertTrue((target / ".claude" / "skills" / "send-zzzops-feedback" / "SKILL.md").is_file())
-                self.assertTrue((target / ".zzzops" / "rules" / "FEEDBACK.md").is_file())
-                installed_ignore = (target / ".zzzops" / ".gitignore").read_text(encoding="utf-8")
-                self.assertIn("execution-reports/", installed_ignore)
-                self.assertEqual({"skills", "zzzops"}, {path.name for path in (target / ".agents").iterdir()})
-                self.assertEqual({"skills"}, {path.name for path in (target / ".claude").iterdir()})
-                self.assertFalse((target / ".gitignore").exists())
-                self.assertFalse((target / ".zzzops" / "PROJECT.md").exists())
-                help_result = subprocess.run(
-                    [sys.executable, str(target / ".agents" / "zzzops" / "zzzops.py"), "--repo", str(target), "portfolio", "--help"],
-                    text=True, encoding="utf-8", capture_output=True, check=False,
-                )
-                self.assertEqual(0, help_result.returncode, help_result.stderr + help_result.stdout)
-                self.assertIn("--format {summary,json}", help_result.stdout)
-                checkpoint = subprocess.run(
-                    [sys.executable, str(target / ".agents" / "zzzops" / "zzzops.py"), "--repo", str(target), "checkpoint"],
-                    text=True, encoding="utf-8", capture_output=True, check=False,
-                )
-                self.assertEqual(2, checkpoint.returncode, checkpoint.stderr + checkpoint.stdout)
-                self.assertFalse(json.loads(checkpoint.stdout)["ready"])
-                repeated = self.run_installer(installer, target, "--dry-run")
-                self.assertEqual(0, repeated.returncode, repeated.stderr + repeated.stdout)
-                self.assertIn("already up to date", repeated.stdout)
-                current = self.run_installer(installer, target)
-                self.assertEqual(0, current.returncode, current.stderr + current.stdout)
-                self.assertIn("No further action is necessary", current.stdout)
-                self.assertNotIn("Install these changes?", current.stdout)
-                self.assertNotIn("cancelled", current.stdout)
-        self.assertEqual(1, len(set(installed_versions.values())))
-
-    def test_declined_and_accepted_upgrade_are_distinct_from_local_divergence(self):
-        relative = ".agents/zzzops/zzzops.py"
-        source_data = (ROOT / relative).read_bytes()
-        for name, installer in self.installers.items():
-            with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
-                if os.name == "nt" and installer[1].suffix == ".sh":
-                    continue  # Native Windows Git Bash has no redirected interactive prompt transport; --yes covers executable paths.
-                target = self.make_repo(directory)
-                installed = self.run_installer(installer, target, answer="y\n")
-                self.assertEqual(0, installed.returncode, installed.stderr + installed.stdout)
-
-                old_data, old_manifest = self.simulate_older_managed_install(target, relative)
-                before_decline = {
-                    path.relative_to(target).as_posix(): path.read_bytes()
-                    for path in target.rglob("*") if path.is_file() and ".git/" not in path.relative_to(target).as_posix()
-                }
-                declined = self.run_installer(installer, target, answer="\n")
-                self.assertEqual(0, declined.returncode, declined.stderr + declined.stdout)
-                self.assertIn("Upgrade available", declined.stdout)
-                self.assertIn("ZzzOps version: revision 0000000 ->", declined.stdout)
-                self.assertIn("Managed files to update", declined.stdout)
-                self.assertIn(relative, declined.stdout)
-                self.assertIn("Changes since installed version", declined.stdout)
-                if installer[1].suffix == ".sh" and os.name != "nt":
-                    self.assertIn("Upgrade ZzzOps? [y/N]", declined.stdout)
-                self.assertIn("cancelled", declined.stdout)
-                self.assertEqual(old_data, (target / relative).read_bytes())
-                self.assertEqual(old_manifest, (target / ".agents" / "zzzops" / "INSTALL_MANIFEST").read_bytes())
-                self.assertEqual(before_decline, {
-                    path.relative_to(target).as_posix(): path.read_bytes()
-                    for path in target.rglob("*") if path.is_file() and ".git/" not in path.relative_to(target).as_posix()
-                })
-
-                upgraded = self.run_installer(installer, target, answer="yes\n")
-                self.assertEqual(0, upgraded.returncode, upgraded.stderr + upgraded.stdout)
-                self.assertIn("ZzzOps was upgraded.", upgraded.stdout)
-                self.assertEqual(source_data, (target / relative).read_bytes())
-                self.assertNotEqual(old_manifest, (target / ".agents" / "zzzops" / "INSTALL_MANIFEST").read_bytes())
-                self.assertIn("\nversion\t", (target / ".agents" / "zzzops" / "INSTALL_MANIFEST").read_text(encoding="utf-8"))
-
-                (target / relative).write_bytes(b"local project customization\n")
-                conflict = self.run_installer(installer, target, "--dry-run")
-                self.assertEqual(2, conflict.returncode, conflict.stderr + conflict.stdout)
-                self.assertIn("locally divergent", conflict.stdout)
-                self.assertNotIn("already up to date", conflict.stdout)
-                self.assertEqual(b"local project customization\n", (target / relative).read_bytes())
-                explicit = self.run_installer(installer, target, "--overwrite-mechanical", answer="y\n")
-                self.assertEqual(0, explicit.returncode, explicit.stderr + explicit.stdout)
-                self.assertEqual(source_data, (target / relative).read_bytes())
-
-    def test_revision_only_manifest_receives_version_metadata_upgrade(self):
-        for name, installer in self.installers.items():
-            with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
-                target = self.make_repo(directory)
-                installed = self.run_installer(installer, target, answer="y\n")
-                self.assertEqual(0, installed.returncode, installed.stderr + installed.stdout)
-                manifest = target / ".agents" / "zzzops" / "INSTALL_MANIFEST"
-                revision_only = "\n".join(
-                    line for line in manifest.read_text(encoding="utf-8").splitlines()
-                    if not line.startswith("version\t")
-                ) + "\n"
-                manifest.write_text(revision_only, encoding="utf-8", newline="\n")
-
-                preview = self.run_installer(installer, target, "--dry-run")
-                self.assertEqual(0, preview.returncode, preview.stderr + preview.stdout)
-                self.assertIn("Upgrade available", preview.stdout)
-                self.assertIn("ZzzOps version: revision ", preview.stdout)
-                upgraded = self.run_installer(installer, target, answer="yes\n")
-                self.assertEqual(0, upgraded.returncode, upgraded.stderr + upgraded.stdout)
-                self.assertIn("ZzzOps was upgraded", upgraded.stdout)
-                self.assertIn("\nversion\t", manifest.read_text(encoding="utf-8"))
-
-    def test_ignore_warning_and_local_state_preservation(self):
-        for name, installer in self.installers.items():
-            with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
-                target = self.make_repo(directory)
-                ignore = target / ".gitignore"
-                ignore.write_text(".agents/\n.claude/\nkeep.local\n", encoding="utf-8")
-                preview = self.run_installer(installer, target, "--dry-run")
-                self.assertEqual(0, preview.returncode, preview.stderr + preview.stdout)
-                self.assertIn("Warning: Git ignores", preview.stdout)
-                self.assertIn(".agents/", preview.stdout)
-                self.assertIn(".claude/", preview.stdout)
-                self.assertEqual(".agents/\n.claude/\nkeep.local\n", ignore.read_text(encoding="utf-8"))
-
-                state = {
-                    target / ".zzzops" / "LOCAL_NOTES.md": b"personal notes\n",
-                    target / ".zzzops" / "PROJECT.md": b"project\n",
-                    target / "AGENTS.md": b"project instructions\n",
-                }
-                for path, data in state.items():
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_bytes(data)
-                applied = self.run_installer(installer, target, answer="yes\n")
-                self.assertEqual(0, applied.returncode, applied.stderr + applied.stdout)
-                for path, data in state.items():
-                    self.assertEqual(data, path.read_bytes())
-
-    def test_target_drift_during_prompt_is_rejected(self):
-        for name, installer in self.installers.items():
-            with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
-                if os.name == "nt":
-                    continue  # Native Windows Git Bash cannot exercise a redirected interactive prompt; --yes covers its install path.
-                target = self.make_repo(directory)
-                process = subprocess.Popen(
-                    self.command(installer, target), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=0,
-                    env=self.environment(installer),
-                )
-                output: list[str] = []
-                prompted = threading.Event()
-
-                def read_output():
-                    assert process.stdout is not None
-                    while character := process.stdout.read(1):
-                        output.append(character)
-                        if "[y/N]" in "".join(output[-12:]):
-                            prompted.set()
-
-                reader = threading.Thread(target=read_output, daemon=True)
-                reader.start()
-                self.assertTrue(prompted.wait(15), "installer did not prompt: " + "".join(output))
-                changed = target / ".agents" / "zzzops" / "zzzops.py"
-                changed.parent.mkdir(parents=True)
-                changed.write_bytes(b"changed after preview\n")
-                assert process.stdin is not None
-                process.stdin.write("y\n")
-                process.stdin.close()
-                process.wait(timeout=15)
-                reader.join(timeout=5)
-                process.stdout.close()
-                combined = "".join(output)
-                self.assertNotEqual(0, process.returncode, combined)
-                self.assertIn("target changed", combined.lower())
-                self.assertEqual(b"changed after preview\n", changed.read_bytes())
-                self.assertFalse((target / ".zzzops" / "rules" / "INITIALIZATION.md").exists())
+    def tracked_machinery(self, target: Path) -> list[str]:
+        return subprocess.run(
+            ["git", "-C", str(target), "ls-files", "--", ".agents/zzzops", ".agents/skills", ".claude/skills", ".zzzops/rules"],
+            text=True, encoding="utf-8", capture_output=True, check=True,
+        ).stdout.splitlines()
 
     def test_disposable_install_reconstructs_and_ignores_exact_roots(self):
         locks = []
@@ -322,6 +88,7 @@ class NativeInstallerTests(unittest.TestCase):
                 preview = self.run_installer(installer, target, "--dry-run")
                 self.assertEqual(0, preview.returncode, preview.stderr + preview.stdout)
                 self.assertIn("Operation: fresh install", preview.stdout)
+                self.assertIn("No files or Git index entries were changed", preview.stdout)
                 self.assertFalse((target / ".agents").exists())
 
                 cancelled = self.run_installer(installer, target, answer="\n")
@@ -331,8 +98,7 @@ class NativeInstallerTests(unittest.TestCase):
 
                 installed = self.run_installer(installer, target, "--yes")
                 self.assertEqual(0, installed.returncode, installed.stderr + installed.stdout)
-                lock_path = target / ".zzzops" / "ZZZOPS_LOCK.json"
-                lock = json.loads(lock_path.read_text(encoding="utf-8"))
+                lock = json.loads((target / ".zzzops" / "ZZZOPS_LOCK.json").read_text(encoding="utf-8"))
                 locks.append(lock)
                 self.assertTrue((target / ".agents" / "zzzops" / "installer.py").is_file())
                 self.assertTrue((target / ".claude" / "skills" / "execute-zzzops" / "SKILL.md").is_file())
@@ -342,6 +108,7 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertIn("/.claude/skills/execute-zzzops/", root_ignore)
                 self.assertIn("/.zzzops/rules/", root_ignore)
                 self.assertNotIn("/.agents/\n", root_ignore)
+                self.assertEqual([], self.tracked_machinery(target))
                 self.assertEqual([], subprocess.run(
                     ["git", "-C", str(target), "status", "--short", "--untracked-files=all", "--", ".agents", ".claude", ".zzzops/rules"],
                     text=True, encoding="utf-8", capture_output=True, check=True,
@@ -360,11 +127,10 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertEqual(0, repaired.returncode, repaired.stderr + repaired.stdout)
                 self.assertNotEqual("locally divergent\n", changed.read_text(encoding="utf-8"))
                 self.assertEqual("preserve me\n", scratch.read_text(encoding="utf-8"))
-                ignored = subprocess.run(
+                self.assertEqual(0, subprocess.run(
                     ["git", "-C", str(target), "check-ignore", "--quiet", "--", ".zzzops/init/historical-transition.json"],
                     check=False,
-                )
-                self.assertEqual(0, ignored.returncode)
+                ).returncode)
 
                 missing = target / ".agents" / "zzzops" / "policy.py"
                 missing.unlink()
@@ -381,47 +147,27 @@ class NativeInstallerTests(unittest.TestCase):
         for name, installer in self.installers.items():
             with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
                 target = self.make_repo(directory)
-                subprocess.run(["git", "-C", str(target), "config", "user.email", "installer@test.invalid"], check=True)
-                subprocess.run(["git", "-C", str(target), "config", "user.name", "Installer Test"], check=True)
                 installed = self.run_installer(installer, target, "--yes")
                 self.assertEqual(0, installed.returncode, installed.stderr + installed.stdout)
-                subprocess.run([
-                    "git", "-C", str(target), "add", ".gitignore", ".zzzops/.gitignore", ".zzzops/ZZZOPS_LOCK.json"
-                ], check=True)
-                subprocess.run([
-                    "git", "-C", str(target), "add", "-f", ".agents/zzzops", ".agents/skills",
-                    ".claude/skills", ".zzzops/rules",
-                ], check=True)
+                subprocess.run(["git", "-C", str(target), "add", ".gitignore", ".zzzops/.gitignore", ".zzzops/ZZZOPS_LOCK.json"], check=True)
+                subprocess.run(["git", "-C", str(target), "add", "-f", ".agents/zzzops", ".agents/skills", ".claude/skills", ".zzzops/rules"], check=True)
                 subprocess.run(["git", "-C", str(target), "commit", "--quiet", "-m", "legacy tracked install"], check=True)
+                tracked_before = self.tracked_machinery(target)
 
-                tracked_before = subprocess.run(
-                    ["git", "-C", str(target), "ls-files", "-z", "--", ".agents/zzzops", ".agents/skills", ".claude/skills", ".zzzops/rules"],
-                    capture_output=True, check=True,
-                ).stdout
                 preview = self.run_installer(installer, target, "--dry-run")
                 self.assertEqual(0, preview.returncode, preview.stderr + preview.stdout)
                 self.assertIn("Tracked ZzzOps machinery requires explicit index cleanup", preview.stdout)
                 self.assertIn(".agents/zzzops/zzzops.py", preview.stdout)
-                self.assertEqual(tracked_before, subprocess.run(
-                    ["git", "-C", str(target), "ls-files", "-z", "--", ".agents/zzzops", ".agents/skills", ".claude/skills", ".zzzops/rules"],
-                    capture_output=True, check=True,
-                ).stdout)
+                self.assertEqual(tracked_before, self.tracked_machinery(target))
 
                 declined = self.run_installer(installer, target, answer="\n")
                 self.assertEqual(0, declined.returncode, declined.stderr + declined.stdout)
                 self.assertIn("tracked files, working files, and ignore rules were unchanged", declined.stdout)
-                self.assertEqual(tracked_before, subprocess.run(
-                    ["git", "-C", str(target), "ls-files", "-z", "--", ".agents/zzzops", ".agents/skills", ".claude/skills", ".zzzops/rules"],
-                    capture_output=True, check=True,
-                ).stdout)
+                self.assertEqual(tracked_before, self.tracked_machinery(target))
 
                 cleaned = self.run_installer(installer, target, "--yes")
                 self.assertEqual(0, cleaned.returncode, cleaned.stderr + cleaned.stdout)
-                tracked_after = subprocess.run(
-                    ["git", "-C", str(target), "ls-files", "--", ".agents/zzzops", ".agents/skills", ".claude/skills", ".zzzops/rules"],
-                    text=True, encoding="utf-8", capture_output=True, check=True,
-                ).stdout.splitlines()
-                self.assertEqual([], tracked_after)
+                self.assertEqual([], self.tracked_machinery(target))
                 self.assertTrue((target / ".agents" / "zzzops" / "zzzops.py").is_file())
                 self.assertTrue((target / ".claude" / "skills" / "execute-zzzops" / "SKILL.md").is_file())
 
@@ -436,42 +182,83 @@ class NativeInstallerTests(unittest.TestCase):
                     text=True, encoding="utf-8", capture_output=True, check=True,
                 ).stdout.splitlines())
 
-    def test_injected_mid_write_failure_rolls_back(self):
+    def test_invalid_legacy_ownership_stops_before_index_or_worktree_mutation(self):
         for name, installer in self.installers.items():
             with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
                 target = self.make_repo(directory)
-                script = installer[1].read_text(encoding="utf-8")
-                if installer[1].suffix == ".ps1":
-                    quoted_root = str(ROOT).replace("'", "''")
-                    script = script.replace("$SourceRoot = $PSScriptRoot", f"$SourceRoot = '{quoted_root}'", 1)
-                    needle = "            Move-Item -LiteralPath $temporary -Destination $action.Destination -Force"
-                    replacement = (
-                        "            if ($null -eq $script:InjectedWrites) { $script:InjectedWrites = 0 }\n"
-                        "            $script:InjectedWrites += 1\n"
-                        "            if ($script:InjectedWrites -eq 2) { throw 'injected write failure' }\n" + needle
-                    )
-                else:
-                    quoted_root = str(ROOT).replace("'", "'\\''")
-                    script = script.replace(
-                        'SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"',
-                        f"SOURCE_ROOT='{quoted_root}'", 1,
-                    )
-                    needle = '        cp "$source" "$temporary" && mv -f "$temporary" "$destination" || {'
-                    replacement = (
-                        "        INJECTED_WRITES=$((INJECTED_WRITES + 1))\n"
-                        "        [[ $INJECTED_WRITES -ne 2 ]] && cp \"$source\" \"$temporary\" && "
-                        "mv -f \"$temporary\" \"$destination\" || {"
-                    )
-                    script = script.replace("WRITTEN_RELATIVE=()", "INJECTED_WRITES=0\nWRITTEN_RELATIVE=()", 1)
-                self.assertIn(needle, script)
-                script = script.replace(needle, replacement, 1)
-                injected = Path(directory) / installer[1].name
-                injected.write_text(script, encoding="utf-8", newline="\n")
-                result = self.run_installer((installer[0], injected), target, answer="y\n")
+                managed = target / ".agents" / "zzzops" / "zzzops.py"
+                managed.parent.mkdir(parents=True)
+                managed.write_text("unknown owner\n", encoding="utf-8")
+                subprocess.run(["git", "-C", str(target), "add", "-f", ".agents/zzzops/zzzops.py"], check=True)
+                subprocess.run(["git", "-C", str(target), "commit", "--quiet", "-m", "ambiguous tracked file"], check=True)
+                before = managed.read_bytes()
+                result = self.run_installer(installer, target, "--yes")
                 self.assertNotEqual(0, result.returncode, result.stderr + result.stdout)
-                self.assertIn("rolled back", result.stdout)
-                self.assertFalse((target / ".zzzops" / "rules" / "BACKENDS.md").exists())
-                self.assertFalse((target / ".zzzops" / "rules" / "BLOCKERS.md").exists())
+                self.assertIn("no valid previous lock or legacy install manifest", result.stdout)
+                self.assertEqual(before, managed.read_bytes())
+                self.assertEqual([".agents/zzzops/zzzops.py"], self.tracked_machinery(target))
+                self.assertFalse((target / ".zzzops" / "ZZZOPS_LOCK.json").exists())
+
+    def test_broad_existing_ignore_rule_is_rejected_without_mutation(self):
+        for name, installer in self.installers.items():
+            with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
+                target = self.make_repo(directory)
+                ignore = target / ".gitignore"
+                ignore.write_text(".agents/\nkeep.local\n", encoding="utf-8")
+                result = self.run_installer(installer, target, "--dry-run")
+                self.assertNotEqual(0, result.returncode, result.stderr + result.stdout)
+                self.assertIn("existing ignore rule is broader", result.stdout)
+                self.assertEqual(".agents/\nkeep.local\n", ignore.read_text(encoding="utf-8"))
+                self.assertFalse((target / ".agents").exists())
+                self.assertFalse((target / ".zzzops").exists())
+
+    def test_legacy_manifest_keeps_project_ignore_metadata_outside_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = self.make_repo(directory)
+            manifest = target / ".agents" / "zzzops" / "INSTALL_MANIFEST"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(
+                "zzzops-install-manifest-v1\n"
+                f"revision\t{'a' * 40}\n"
+                "file\t1111111111111111111111111111111111111111\t.zzzops/.gitignore\n"
+                "file\t2222222222222222222222222222222222222222\t.agents/zzzops/zzzops.py\n",
+                encoding="utf-8",
+            )
+            files, error = installer_engine.read_legacy_manifest(target)
+            self.assertIsNone(error)
+            self.assertEqual({".agents/zzzops/INSTALL_MANIFEST", ".agents/zzzops/zzzops.py"}, files)
+
+    def test_preview_drift_stops_before_mutation_and_copy_failure_keeps_project_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = self.make_repo(directory)
+            sources = installer_engine.distribution_sources()
+            lock = installer_engine.distribution_lock(sources)
+            state = installer_engine.installation_state(target, lock)
+            (target / ".gitignore").write_text("changed after preview\n", encoding="utf-8")
+            with self.assertRaisesRegex(installer_engine.InstallError, "changed after the preview"):
+                installer_engine.apply_install(target, sources, lock, state)
+            self.assertFalse((target / ".agents").exists())
+
+            (target / ".gitignore").unlink()
+            state = installer_engine.installation_state(target, lock)
+            project = target / ".zzzops" / "PROJECT.md"
+            project.parent.mkdir(parents=True)
+            project.write_text("project-owned\n", encoding="utf-8")
+            real_copy = shutil.copyfile
+            calls = 0
+
+            def fail_second_copy(source, destination):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    raise OSError("injected disposable copy failure")
+                return real_copy(source, destination)
+
+            with mock.patch.object(installer_engine.shutil, "copyfile", side_effect=fail_second_copy):
+                with self.assertRaisesRegex(OSError, "injected disposable copy failure"):
+                    installer_engine.apply_install(target, sources, lock, state)
+            self.assertEqual("project-owned\n", project.read_text(encoding="utf-8"))
+            self.assertFalse((target / ".zzzops" / "ZZZOPS_LOCK.json").exists())
 
 
 class ValidationAggregateTests(unittest.TestCase):
@@ -484,7 +271,6 @@ class ValidationAggregateTests(unittest.TestCase):
     def test_required_validation_accepts_only_complete_success(self):
         success = self.run_required_validation("linux=success", "windows=success", "macos=success")
         self.assertEqual(0, success.returncode, success.stderr + success.stdout)
-
         for results in (
             ("linux=success", "windows=failure"),
             ("linux=failure", "windows=success"),

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "revision": "c9e11ff245a10db5d81cdb91e0ec6e74d8cbf8d2",
-  "version": "v1.0.0-89-gc9e11ff-dirty",
+  "revision": "7cb8a526f5ae83114c7a06b7a24de4c78a65a71e",
+  "version": "v1.0.0-90-g7cb8a52-dirty",
   "files": {
     ".agents/skills/add-zzzops-goal/SKILL.md": "e18bf5b9e8ff61def7b1818680576705814d2fa56958ea5e1bbc7048b860fec8",
     ".agents/skills/add-zzzops-goal/agents/openai.yaml": "25cce72190aed0a03217f92ed7088d83dee5e36b23157d0cd6906297cea18344",
@@ -22,10 +22,10 @@
     ".agents/skills/send-zzzops-feedback/agents/openai.yaml": "94a070d009ec633d43c0f7ca4e791b0248eb9ce68eb8bccb047d4215e5fcfbfc",
     ".agents/skills/suggest-zzzops-work/SKILL.md": "430d8723ca8b86a1b6726f7f25380fb3dd7d36a735ba240549f372b91f99b15e",
     ".agents/skills/suggest-zzzops-work/agents/openai.yaml": "490a64a7efe400edeb8035be216c2610be8b5eda1fba24cd2e449dce1cb97440",
-    ".agents/zzzops/feedback.py": "62f45638258c5e218385535d01869296486cd1ac222f492d372a75562abd77de",
+    ".agents/zzzops/feedback.py": "3041996b53a7762acf6d27336456a2dae89e9d766840776bb5a923172065fd12",
     ".agents/zzzops/goals.py": "f7f65e1b9f818f7a3486fad732868eacd65a97fba620b9244628ec8fda982772",
     ".agents/zzzops/install_lock.py": "4347e752e83f099839d44dc18ce2afe71f76673e1b6b9685c7810be68f972baf",
-    ".agents/zzzops/installer.py": "bddc2a39cae40ee06eb455f43740e8e610fe3060717f612f5cd33e69e060b665",
+    ".agents/zzzops/installer.py": "9e31893be2c55fb4a1901a767cda3f4a495fe02785214523a87c08f0862b8753",
     ".agents/zzzops/policy.py": "00f0fc19465f257ee64d0524206aa3731c049782c800eec1df737f4757eba95d",
     ".agents/zzzops/portfolio.py": "48c08ff2ac812e75bf91f2ae43483c348b81436671ff5f03d2500d55d1542b12",
     ".agents/zzzops/reservation.py": "fee69631aa5923a9ed9c785fc1a94100549af2bc61f47c1ee7096a4a75d374c5",
@@ -34,13 +34,13 @@
     ".agents/zzzops/templates/project-goals/MIGRATION_STATE.json": "7ddc0e1d0ef1cc780360c9d2c2ad8fc6047b680f8943effdb71684ca79a3065d",
     ".agents/zzzops/templates/project-goals/MIGRATION_SUMMARY.md": "9f7b65af96037ff1728d5eea194672541ec20078d2d310c85b5d4a1259bb686e",
     ".agents/zzzops/templates/project-goals/ZZZOPS_GITIGNORE": "353f71c5c4e1a9d2199db0d276493be9266b3fdd6295c1888e44bfbd173dd6ab",
-    ".agents/zzzops/zzzops.py": "ed8a02773ca2b7e6956d98d3a10accef80207b803bda8bba96cd1856efbeefb2",
+    ".agents/zzzops/zzzops.py": "d07234c216e0c6b8847246e5228f4a0d149890dc2180d2e8aebfaf838829b134",
     ".zzzops/rules/BACKENDS.md": "360c9ae138e4cda79c49c21d2eab53f2ab52a0fa43ff848cb84e7be180f9823d",
     ".zzzops/rules/BLOCKERS.md": "a3d3d83124a6eda0bb5ccf084d6196f9f65e7f5b988eaed2b9bbb5133cca76f2",
     ".zzzops/rules/CONTINUATION.md": "5c7ac02360b7421c3db0bee8cd9bc1ee445c41b2be7dba6e36ebee1deaecf024",
     ".zzzops/rules/EXECUTION_STRATEGY.md": "72a80aa106a713250db6f7fcbead81ca61b7b01adb6cf7acd3763e24cab25a0a",
     ".zzzops/rules/FEEDBACK.md": "f5375e5a057a8bca8ee376a8093fe312eada591941f76233c051811a0916f539",
     ".zzzops/rules/GOAL_SYSTEM.md": "a9445ab32f119db806408b5020a0391d6f6a59adf237705fb0c4cb8196cb4330",
-    ".zzzops/rules/INITIALIZATION.md": "3a3a56b41db009c3472010c3b1d7eb1cc68c7023eb2e6eb5bc466c5396ce4de1"
+    ".zzzops/rules/INITIALIZATION.md": "8b2f4b80863be9809da0e4ddfd96b3bbea2f6ec059badee76de7c5a84a64da53"
   }
 }

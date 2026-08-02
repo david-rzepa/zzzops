@@ -26,11 +26,13 @@ On macOS or Linux:
 /path/to/zzzops/install.sh /path/to/your-project
 ```
 
-The installer previews tracked project mechanics, warns if Git ignores required `.agents/` or `.claude/` content, and defaults confirmation to no. Accepted installs record the source revision and exact managed-file baseline. A later source version offers `Upgrade ZzzOps? [y/N]`, lists changed mechanics and recent source changes, and upgrades files still matching that baseline; locally divergent files remain protected behind the explicit overwrite option. Truly current installs exit without prompting. Use `-DryRun` on Windows or `--dry-run` on macOS/Linux for a non-interactive preview.
+The installer requires Python 3.10 or newer, previews one exact disposable machinery set, and defaults every confirmation to no. A confirmed fresh install, reinstall, repair, or upgrade wipes only the scoped ZzzOps-owned roots, reconstructs them from the source clone, validates every SHA-256 digest, updates exact ignore entries, and writes `.zzzops/ZZZOPS_LOCK.json` last. Local edits to installed machinery are disposable; rerun the regular installer to repair them. Use `-DryRun` on Windows or `--dry-run` on macOS/Linux for a non-interactive preview.
 
-After project policy is initialized and reviewed, the first ordinary ZzzOps checkpoint requires the installer-managed skills, shared rules, control CLI/templates, and machinery ignore files to be committed. Untracked, staged, modified, or deleted machinery stops ordinary workflows with a commit-first action; project policy/state and root repository instructions are not part of this machinery check.
+Installed skills, shared rules, the control CLI, and blank templates stay local and Git-ignored. Commit the lockfile and scoped ignore-file changes, not the machinery. If an older installation still tracks machinery, the installer lists the exact proven paths and asks separately before removing them from the index; declining changes neither files nor index. Project policy/state, root instructions, and `.zzzops/init/` scratch are never deleted or untracked by machinery cleanup.
 
-The CLI copies discoverable skills, mechanics, and blank templates—never itself, project state, another project’s goals, or the target’s `AGENTS.md`/`CLAUDE.md`.
+After project policy is initialized and reviewed, ordinary checkpoints validate local disposable machinery against the committed lock. Missing, changed, stale, unsafe, or unexpected machinery stops before provider access and directs you to rerun the regular installer; checkpoint never repairs it.
+
+The installer copies discoverable skills, mechanics, and blank templates—never project state, another project’s goals, or the target’s `AGENTS.md`/`CLAUDE.md`.
 
 Discoverable skills stay in `.agents/skills/` and `.claude/skills/`. Other harness support is grouped under `.agents/zzzops/`, while shared project rules and state use the root `.zzzops/` folder.
 
@@ -54,7 +56,7 @@ Once reviewed, these policies let the agent make routine decisions without wakin
 
 GitHub Issues is the canonical goal authority. Initialization requires a successful repository and access probe; unavailable authentication, permission, or Issues support becomes an explicit blocker. Initialization does not commit, branch, or mutate GitHub.
 
-The native installer does not require Python or Node. Post-install CLI examples require Python 3.10 or newer and use `<python>` for one compatible interpreter resolved once (`python3`, `python`, Windows `py -3`, or a harness-provided runtime). Agents must discover and version-check it before launching instead of first trying an assumed executable.
+The native wrappers and post-install CLI require Python 3.10 or newer. CLI examples use `<python>` for one compatible interpreter resolved once (`python3`, `python`, Windows `py -3`, or a harness-provided runtime). Agents must discover and version-check it before launching instead of first trying an assumed executable.
 
 **Visibility:** GitHub-backed goals inherit the repository's visibility. Never put secrets or raw sensitive data in a goal; redact it or link to an approved private system before capture or migration.
 
@@ -131,9 +133,10 @@ The feedback skill combines your text with archived reports, shows the exact iss
 | `feedback.py` | Privacy-safe execution reports, provenance, payload preparation, and submission. |
 | `goals.py` | Managed-goal parsing, validation, rendering, GitHub record projection, and guarded transitions. |
 | `portfolio.py` | Goal graph audits, actionability, and canonical portfolio snapshots. |
-| `zzzops.py` | CLI parsing/dispatch, provider probes/adapters, installed-file manifest, and stable re-exports. |
+| `installer.py` | Shared deterministic install, ignore, validation, and consented legacy-index cleanup. |
+| `zzzops.py` | CLI parsing/dispatch, provider probes/adapters, install-lock integration, and stable re-exports. |
 
-Both installers copy, hash, protect, upgrade, and validate this complete module set. Keep cross-module dependencies one-way: focused modules may use explicitly configured entry-point callbacks, while callers continue to invoke the stable `zzzops.py` command or re-exported API.
+Both native wrappers delegate to the same installer engine, which derives, copies, hashes, and validates the complete materialized set. Keep cross-module dependencies one-way: focused modules may use explicitly configured entry-point callbacks, while callers continue to invoke the stable `zzzops.py` command or re-exported API.
 
 ## Full feature list
 
@@ -141,7 +144,7 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 
 | Feature | Primary surface |
 | --- | --- |
-| Preview and install ZzzOps mechanics from a normal terminal without Python or Node | `install.ps1` / `install.sh` |
+| Preview and reconstruct ignored ZzzOps machinery from a normal terminal | `install.ps1` / `install.sh` / `.agents/zzzops/installer.py` |
 | Initialize, summarize, and adjust reviewed project policy | `.agents/skills/review-zzzops-policy/SKILL.md` |
 | Use GitHub Issues as the canonical goal backend | `.zzzops/rules/BACKENDS.md` |
 | Capture durable work | `.agents/skills/add-zzzops-goal/SKILL.md` |
@@ -216,7 +219,8 @@ Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required
 - `.zzzops/POLICY.json` — canonical reviewed machine policy, loaded only by deterministic controls.
 - `.zzzops/PROJECT_AUDIT.md` — digest-bound evidence, rationales, review metadata, and history for review or reconciliation.
 - GitHub Issues — canonical goals, blockers, evidence, relations, and history.
-- `.zzzops/rules/` — tracked ZzzOps operating rules; machinery, not project content.
+- `.zzzops/ZZZOPS_LOCK.json` — committed source revision and exact hashes for ignored disposable machinery.
+- `.zzzops/rules/` — ignored local ZzzOps operating rules reconstructed by the installer.
 - `.zzzops/migration/STATE.json` — records reviewed import fingerprints so repeat migrations propose only new work.
 
 Agents follow the reviewed project resource policy, define the observable signal before editing, change one small falsifiable chunk at a time, and inspect real output after every chunk. Verification is proportional: documentation is inspected, changed tests are run, and product/runtime behavior plus reusable test infrastructure receive direct behavioral coverage—ZzzOps does not recursively add tests for prose or test cases. If the project is opaque, agents build a focused harness or scoped MCP observation server instead of vibe-coding and hoping. Execution follows the reviewed project branch, review, and commit policy; capture itself is Git-free.

@@ -681,26 +681,20 @@ class ExecutionReportTests(unittest.TestCase):
         self.assertIn("**ZzzOps build:** Unknown (schema v2 predates version provenance)", body)
         self.assertNotIn('"zzzops"', body)
 
-    def test_installed_provenance_resolution_and_revision_only_failure(self):
-        manifest = self.repo / ".agents" / "zzzops" / "INSTALL_MANIFEST"
-        manifest.parent.mkdir(parents=True)
+    def test_installed_provenance_uses_validated_install_lock(self):
         installed = self.repo / ".agents" / "zzzops" / "installed.txt"
+        installed.parent.mkdir(parents=True)
         installed.write_text("installed mechanics\n", encoding="utf-8")
-        digest = zzzops._git_blob_digest(installed.read_bytes(), 40)
-        manifest.write_text(
-            "zzzops-install-manifest-v1\nrevision\t" + "b" * 40 + "\nversion\tv2.0.0\n"
-            f"file\t{digest}\t.agents/zzzops/installed.txt\n",
-            encoding="utf-8",
-        )
+        lock_path = self.repo / ".zzzops" / "ZZZOPS_LOCK.json"
+        lock_path.write_text(json.dumps(
+            zzzops._install_lock.build_install_lock(self.repo, "b" * 40, "v2.0.0")
+        ), encoding="utf-8")
         self.assertEqual({"version": "v2.0.0", "revision": "b" * 40}, zzzops.zzzops_provenance(self.repo))
         installed.write_text("locally changed\n", encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "do not match"):
+        with self.assertRaisesRegex(ValueError, "do not match recorded lock provenance"):
             zzzops.zzzops_provenance(self.repo)
-        manifest.write_text(
-            "zzzops-install-manifest-v1\nrevision\t" + "b" * 40 + f"\nfile\t{digest}\t.agents/zzzops/installed.txt\n",
-            encoding="utf-8",
-        )
-        with self.assertRaisesRegex(ValueError, "predates version provenance"):
+        lock_path.write_text("{}", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "lock provenance is invalid"):
             zzzops.zzzops_provenance(self.repo)
 
     @mock.patch.object(zzzops.subprocess, "run")

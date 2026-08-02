@@ -150,7 +150,6 @@ execution_reports_enabled = _feedback.execution_reports_enabled
 execution_report_directory = _feedback.execution_report_directory
 execution_report_id = _feedback.execution_report_id
 _validated_zzzops_provenance = _feedback._validated_zzzops_provenance
-_git_blob_digest = _feedback._git_blob_digest
 zzzops_provenance = _feedback.zzzops_provenance
 validate_execution_report = _feedback.validate_execution_report
 record_execution_report = _feedback.record_execution_report
@@ -1521,7 +1520,12 @@ def main() -> int:
     return 0
 
 
-_feedback.configure_entrypoint(atomic_text=atomic_text, render_managed_goal=render_managed_goal)
+_feedback.configure_entrypoint(
+    atomic_text=atomic_text,
+    render_managed_goal=render_managed_goal,
+    read_install_lock=_install_lock.read_install_lock,
+    installation_lock_status=_install_lock.installation_lock_status,
+)
 
 
 if __name__ == "__main__":
