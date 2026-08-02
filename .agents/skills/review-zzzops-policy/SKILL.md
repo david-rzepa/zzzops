@@ -9,9 +9,11 @@ Follow `.zzzops/rules/INITIALIZATION.md`; only this workflow changes or confirms
 
 Checkpoint only for readiness; never read goals/history.
 
-Before `init inspect`, check INITIALIZATION's exact installer commit scope. If pending, ask: `The ZzzOps installation needs to be committed before policy review. Would you like me to commit the lock file and related ZzzOps installation changes now? Unrelated changes stay untouched.` Stop for the answer; after yes, commit only that scope. Run `init inspect` once, summarize choices, and invite adjustments. Include privacy-safe execution reports (default enabled). For an existing policy with a missing automated-design section, explicitly propose enabled/disabled without inferring approval.
+Before optional tools, reuse capabilities; never invoke an unavailable path—use an alternative or block once.
 
-Compare default IDs/digests first; load full old/new snapshots only for changed or selected sections. Missing legacy provenance stays unknown. Offer replacement only when the effective value equals its stored snapshot and the installed default changed; report customized values without replacement. Unchanged or previously declined defaults need no approval. Accept/decline only through normal explicit policy review.
+Before `init inspect`, check INITIALIZATION's installer commit scope. If pending, ask: `The ZzzOps installation needs to be committed before policy review. Would you like me to commit the lock file and related ZzzOps installation changes now? Unrelated changes stay untouched.` Stop for the answer; after yes, commit that scope. Run `init inspect` once, summarize choices, and invite adjustments. Include privacy-safe execution reports (default enabled). For existing policy with a missing automated-design section, propose enabled/disabled without inferring approval.
+
+Compare default IDs/digests first; load full old/new snapshots only for changed or selected sections. Missing legacy provenance stays unknown. Replace only when effective value matches stored snapshot and installed default changed; report customized values without replacement. Unchanged/declined defaults need no approval; accept/decline only in explicit review.
 
 For valid policy with a current approval digest and all required sections approved, say `The policy is already approved.` Do not ask for approval or run `init confirm`; invite adjustments and checkpoint. Changed/stale state, pending sections, or proposals require explicit approval of the current digest, then confirmation. Ask only consequential questions. Ask separately before policy commits/PRs.
 
