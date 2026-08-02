@@ -2350,6 +2350,18 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("Would you like me to commit the lock file", review_skill)
         self.assertIn("Stop for the answer", review_skill)
         self.assertIn("Ask separately", review_skill)
+        for text in (review_skill, initialization):
+            self.assertIn("The policy is already approved.", text)
+            self.assertIn("Do not ask for approval", text)
+            self.assertIn("do not", text.lower())
+            self.assertIn("`init confirm`", text)
+            self.assertIn("approval digest", text)
+            self.assertIn("required section", text)
+            self.assertIn("Changed/stale", text)
+            self.assertIn("privacy-safe execution reports", text)
+        engine = (root / "zzzops" / "installer.py").read_text(encoding="utf-8")
+        self.assertIn('add_tree(result, source, f".agents/skills/{name}")', engine)
+        self.assertIn('add_tree(result, source, f".claude/skills/{name}")', engine)
 
     def test_skills_apply_shared_privacy_safe_feedback_handoff(self):
         root = Path(__file__).parent / "skills"
