@@ -13,7 +13,7 @@ import sys
 import tempfile
 from pathlib import Path, PurePosixPath
 
-from install_lock import InstallLockError, LOCK_RELATIVE, read_install_lock, validate_install_lock
+from install_lock import InstallLockError, LOCK_RELATIVE, file_digest, read_install_lock, validate_install_lock
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
@@ -41,14 +41,6 @@ LEGACY_STATE_IGNORES = {
 
 class InstallError(RuntimeError):
     """The requested installation cannot proceed safely."""
-
-
-def sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def git(*args: str, cwd: Path = SOURCE_ROOT, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -114,7 +106,7 @@ def distribution_lock(sources: dict[str, Path]) -> dict[str, object]:
         "schema_version": 1,
         "revision": revision,
         "version": version,
-        "files": {relative: sha256(source) for relative, source in sources.items()},
+        "files": {relative: file_digest(source) for relative, source in sources.items()},
     })
 
 
@@ -193,7 +185,7 @@ def target_inventory(target: Path, roots: tuple[str, ...]) -> dict[str, str]:
             if item.is_symlink():
                 result[relative] = "symlink"
             elif item.is_file() and "__pycache__" not in item.parts and item.suffix not in {".pyc", ".pyo"}:
-                result[relative] = sha256(item)
+                result[relative] = file_digest(item)
     return dict(sorted(result.items()))
 
 

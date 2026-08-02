@@ -2020,10 +2020,12 @@ class WorkflowContractTests(unittest.TestCase):
         )
         self.assertEqual(names, zzzops.MANAGED_SKILLS)
         repository = root.parent
+        engine = (root / "zzzops" / "installer.py").read_text(encoding="utf-8")
+        for name in names:
+            self.assertIn(name, engine, f"installer.py: {name}")
         for installer in (repository / "install.ps1", repository / "install.sh"):
             installed = installer.read_text(encoding="utf-8")
-            for name in names:
-                self.assertIn(name, installed, f"{installer.name}: {name}")
+            self.assertIn("installer.py", installed, installer.name)
         for name in names:
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("INITIALIZATION.md", text, name)

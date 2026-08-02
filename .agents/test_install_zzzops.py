@@ -80,6 +80,15 @@ class NativeInstallerTests(unittest.TestCase):
             text=True, encoding="utf-8", capture_output=True, check=True,
         ).stdout.splitlines()
 
+    def test_text_digests_are_line_ending_independent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            unix = root / "unix.md"
+            windows = root / "windows.md"
+            unix.write_bytes(b"first\nsecond\n")
+            windows.write_bytes(b"first\r\nsecond\r\n")
+            self.assertEqual(installer_engine.file_digest(unix), installer_engine.file_digest(windows))
+
     def test_disposable_install_reconstructs_and_ignores_exact_roots(self):
         locks = []
         for name, installer in self.installers.items():

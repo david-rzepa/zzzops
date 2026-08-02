@@ -97,11 +97,10 @@ def read_install_lock(repo: Path) -> dict[str, Any]:
 
 
 def file_digest(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    data = path.read_bytes()
+    if path.suffix.lower() in {".json", ".md", ".py", ".yaml", ".yml"} or path.name == "ZZZOPS_GITIGNORE":
+        data = data.replace(b"\r\n", b"\n")
+    return hashlib.sha256(data).hexdigest()
 
 
 def build_install_lock(repo: Path, revision: str, version: str) -> dict[str, Any]:
