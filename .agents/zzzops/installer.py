@@ -350,6 +350,7 @@ def installation_state(target: Path, lock: dict[str, object]) -> dict[str, objec
     }, sort_keys=True).encode("utf-8")).hexdigest()
     return {
         "kind": kind,
+        "installed_version": old_lock.get("version") if old_lock else None,
         "roots": roots,
         "current_roots": current_roots,
         "old_warning": old_warning,
@@ -429,6 +430,10 @@ def main(argv: list[str] | None = None) -> int:
         print("ZzzOps installation preview")
         print(f"Target: {target}")
         print(f"Operation: {state['kind']}.")
+        if state["kind"] == "upgrade" and state["installed_version"]:
+            print(f"Version: {state['installed_version']} -> {lock['version']}.")
+        else:
+            print(f"Version: {lock['version']}.")
         print(f"Disposable machinery roots: {len(state['current_roots'])}; managed files: {len(sources)}.")
         print("The confirmed install will wipe and recreate only those roots, validate every file, update scoped ignore entries, then write .zzzops/ZZZOPS_LOCK.json.")
         print("Local workflow scratch under .zzzops/init/ will be ignored but preserved.")
@@ -465,6 +470,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
         apply_install(target, sources, lock, state)
         print("ZzzOps machinery was reconstructed and validated.")
+        print(f"Installed version: {lock['version']}.")
         print("Commit .zzzops/ZZZOPS_LOCK.json and the scoped ignore-file changes; keep the installed machinery local.")
         print("Open the target repository in Codex or Claude Code; restart or reopen the harness if the new skills are not discovered.")
         return 0

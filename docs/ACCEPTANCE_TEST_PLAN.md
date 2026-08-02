@@ -16,7 +16,7 @@ Prerequisite: use a clean disposable Git repository and a Python 3.10 or newer i
 
 Human action: from a normal terminal outside any agent harness, run `install.ps1 TARGET -DryRun` on Windows or `install.sh TARGET --dry-run` on macOS/Linux, then inspect the target and Git status.
 
-Expected: it identifies a fresh disposable install, reports the exact root/file counts, explains wipe/reconstruct/validate/ignore/lock-last behavior, states that `.zzzops/init/` is preserved local scratch, defaults confirmation to no, and changes neither files nor Git index.
+Expected: it identifies a fresh disposable install and incoming ZzzOps version, reports the exact root/file counts, explains wipe/reconstruct/validate/ignore/lock-last behavior, states that `.zzzops/init/` is preserved local scratch, defaults confirmation to no, and changes neither files nor Git index.
 
 ## A-002 - Native installer confirms and applies once
 
@@ -30,7 +30,7 @@ Expected: the same invocation rechecks and applies the preview; installation suc
 
 Human action: install an older tracked ZzzOps revision into a disposable repository, then run the newer installer. Inspect the exact tracked-path list and press Enter at the cleanup prompt. Rerun, approve cleanup and installation, then edit and delete installed files and rerun once more. Also create a file under `.zzzops/init/` before repair.
 
-Expected: the newer installer identifies upgrade/repair, lists only provenance-backed tracked machinery, and asks separately before index cleanup; Enter leaves files, index, lock, and ignores unchanged. Approval removes exactly those paths from the index while reconstruction leaves validated ignored working files present and writes the new lock last. Later local edits and missing files are treated as disposable and repaired by the regular installer. The `.zzzops/init/` file remains present and ignored. PowerShell and shell behavior match; staged managed changes block before mutation.
+Expected: the newer installer identifies upgrade/repair, shows the installed and incoming ZzzOps versions, lists only provenance-backed tracked machinery, and asks separately before index cleanup; Enter leaves files, index, lock, and ignores unchanged. Approval removes exactly those paths from the index while reconstruction leaves validated ignored working files present, writes the new lock last, and confirms the installed version. Later local edits and missing files are treated as disposable and repaired by the regular installer. The `.zzzops/init/` file remains present and ignored. PowerShell and shell behavior match; staged managed changes block before mutation.
 
 ## A-003 - Review and initialize project policy
 
