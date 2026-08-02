@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "revision": "5c6fda55d161e43412cd082ecf6c2cd4c0f9ebba",
-  "version": "v1.0.0-92-g5c6fda5",
+  "revision": "9219a0219ea13f49648286e9f1487100bec2fe7d",
+  "version": "v1.0.0-94-g9219a02",
   "files": {
     ".agents/skills/add-zzzops-goal/SKILL.md": "86c408ae0b8a1a18cd86b1a8b470af7925bc5a49996b70baf16452d13d7b72c6",
     ".agents/skills/add-zzzops-goal/agents/openai.yaml": "f1deff9c5f87c3c72ae8584a4b35423bbde401cf7aab3314953ad9d6d168239d",
@@ -25,7 +25,7 @@
     ".agents/zzzops/feedback.py": "32e5974366148caf7e9b3ba835067449df04f5dcb226f3c4fee0f016533e46b1",
     ".agents/zzzops/goals.py": "8824825af30b06aec70905451d823ca9390fda1b543e410724a2ab6b5eb6ea31",
     ".agents/zzzops/install_lock.py": "59004dd72ddb062fa9beb971ef47e3cb763aa6314d5a7abef818b5fcbfe30f11",
-    ".agents/zzzops/installer.py": "cdeffd19fda244511df18eac9afffc2f332dd454e404a91f295064ec0b9ee163",
+    ".agents/zzzops/installer.py": "76b01daeb69c8f4499a62e210cb06beceb603a6e42187ee48e48abf0f0f820cd",
     ".agents/zzzops/policy.py": "6fe9dbb418f698aa06ec11255cce40eacd1014ac27663618311625be4c6d8088",
     ".agents/zzzops/portfolio.py": "2ddf46a30f0c23e6830cc1ae167d0c242d27b3970a32946158634acce790dc53",
     ".agents/zzzops/reservation.py": "de6cd3a5b8d96d0b91e539f6a502d6452b8121c7a1659f91ab6410d3b8dc4eac",
