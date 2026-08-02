@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "revision": "5b884d7e41bad3f209d2f4e71aa4bec8e956dd6e",
-  "version": "v1.0.0-86-g5b884d7-dirty",
+  "revision": "a2ab10121a85343ce441033ee3a508053e592644",
+  "version": "v1.0.0-88-ga2ab101-dirty",
   "files": {
     ".agents/skills/add-zzzops-goal/SKILL.md": "e18bf5b9e8ff61def7b1818680576705814d2fa56958ea5e1bbc7048b860fec8",
     ".agents/skills/add-zzzops-goal/agents/openai.yaml": "25cce72190aed0a03217f92ed7088d83dee5e36b23157d0cd6906297cea18344",
@@ -25,6 +25,7 @@
     ".agents/zzzops/feedback.py": "62f45638258c5e218385535d01869296486cd1ac222f492d372a75562abd77de",
     ".agents/zzzops/goals.py": "f7f65e1b9f818f7a3486fad732868eacd65a97fba620b9244628ec8fda982772",
     ".agents/zzzops/install_lock.py": "4347e752e83f099839d44dc18ce2afe71f76673e1b6b9685c7810be68f972baf",
+    ".agents/zzzops/installer.py": "0878a98629185d19d1f3d0506e2420685651e2a4ffed87f47fd3b21912ab3835",
     ".agents/zzzops/policy.py": "00f0fc19465f257ee64d0524206aa3731c049782c800eec1df737f4757eba95d",
     ".agents/zzzops/portfolio.py": "48c08ff2ac812e75bf91f2ae43483c348b81436671ff5f03d2500d55d1542b12",
     ".agents/zzzops/reservation.py": "fee69631aa5923a9ed9c785fc1a94100549af2bc61f47c1ee7096a4a75d374c5",
@@ -32,7 +33,7 @@
     ".agents/zzzops/templates/project-goals/MIGRATION_PLAN.json": "f05370ed1f45a8ac89480e6f86c7d07238f0c32712063778f5f51f0b5e82b4f1",
     ".agents/zzzops/templates/project-goals/MIGRATION_STATE.json": "7ddc0e1d0ef1cc780360c9d2c2ad8fc6047b680f8943effdb71684ca79a3065d",
     ".agents/zzzops/templates/project-goals/MIGRATION_SUMMARY.md": "9f7b65af96037ff1728d5eea194672541ec20078d2d310c85b5d4a1259bb686e",
-    ".agents/zzzops/templates/project-goals/ZZZOPS_GITIGNORE": "f73bb4f193002a439f3b49f24ecea24e6cd47ea1624840447a6b2077d16cec68",
+    ".agents/zzzops/templates/project-goals/ZZZOPS_GITIGNORE": "353f71c5c4e1a9d2199db0d276493be9266b3fdd6295c1888e44bfbd173dd6ab",
     ".agents/zzzops/zzzops.py": "ed8a02773ca2b7e6956d98d3a10accef80207b803bda8bba96cd1856efbeefb2",
     ".zzzops/rules/BACKENDS.md": "360c9ae138e4cda79c49c21d2eab53f2ab52a0fa43ff848cb84e7be180f9823d",
     ".zzzops/rules/BLOCKERS.md": "a3d3d83124a6eda0bb5ccf084d6196f9f65e7f5b988eaed2b9bbb5133cca76f2",

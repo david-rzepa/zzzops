@@ -1,5 +1,4 @@
-init/plan.json
-init/*.tmp
+init/
 migration/plan.json
 migration/SUMMARY.md
 migration/*.tmp

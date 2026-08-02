@@ -314,6 +314,69 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertEqual(b"changed after preview\n", changed.read_bytes())
                 self.assertFalse((target / ".zzzops" / "rules" / "INITIALIZATION.md").exists())
 
+    def test_disposable_install_reconstructs_and_ignores_exact_roots(self):
+        locks = []
+        for name, installer in self.installers.items():
+            with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
+                target = self.make_repo(directory)
+                preview = self.run_installer(installer, target, "--dry-run")
+                self.assertEqual(0, preview.returncode, preview.stderr + preview.stdout)
+                self.assertIn("Operation: fresh install", preview.stdout)
+                self.assertFalse((target / ".agents").exists())
+
+                cancelled = self.run_installer(installer, target, answer="\n")
+                self.assertEqual(0, cancelled.returncode, cancelled.stderr + cancelled.stdout)
+                self.assertIn("cancelled", cancelled.stdout)
+                self.assertFalse((target / ".agents").exists())
+
+                installed = self.run_installer(installer, target, "--yes")
+                self.assertEqual(0, installed.returncode, installed.stderr + installed.stdout)
+                lock_path = target / ".zzzops" / "ZZZOPS_LOCK.json"
+                lock = json.loads(lock_path.read_text(encoding="utf-8"))
+                locks.append(lock)
+                self.assertTrue((target / ".agents" / "zzzops" / "installer.py").is_file())
+                self.assertTrue((target / ".claude" / "skills" / "execute-zzzops" / "SKILL.md").is_file())
+                root_ignore = (target / ".gitignore").read_text(encoding="utf-8")
+                self.assertIn("/.agents/zzzops/", root_ignore)
+                self.assertIn("/.agents/skills/execute-zzzops/", root_ignore)
+                self.assertIn("/.claude/skills/execute-zzzops/", root_ignore)
+                self.assertIn("/.zzzops/rules/", root_ignore)
+                self.assertNotIn("/.agents/\n", root_ignore)
+                self.assertEqual([], subprocess.run(
+                    ["git", "-C", str(target), "status", "--short", "--untracked-files=all", "--", ".agents", ".claude", ".zzzops/rules"],
+                    text=True, encoding="utf-8", capture_output=True, check=True,
+                ).stdout.splitlines())
+
+                scratch = target / ".zzzops" / "init" / "historical-transition.json"
+                scratch.parent.mkdir(parents=True)
+                scratch.write_text("preserve me\n", encoding="utf-8")
+                changed = target / ".agents" / "zzzops" / "zzzops.py"
+                changed.write_text("locally divergent\n", encoding="utf-8")
+                repair = self.run_installer(installer, target, "--dry-run")
+                self.assertEqual(0, repair.returncode, repair.stderr + repair.stdout)
+                self.assertIn("Operation: repair", repair.stdout)
+                self.assertEqual("locally divergent\n", changed.read_text(encoding="utf-8"))
+                repaired = self.run_installer(installer, target, "--yes")
+                self.assertEqual(0, repaired.returncode, repaired.stderr + repaired.stdout)
+                self.assertNotEqual("locally divergent\n", changed.read_text(encoding="utf-8"))
+                self.assertEqual("preserve me\n", scratch.read_text(encoding="utf-8"))
+                ignored = subprocess.run(
+                    ["git", "-C", str(target), "check-ignore", "--quiet", "--", ".zzzops/init/historical-transition.json"],
+                    check=False,
+                )
+                self.assertEqual(0, ignored.returncode)
+
+                missing = target / ".agents" / "zzzops" / "policy.py"
+                missing.unlink()
+                partial = self.run_installer(installer, target, "--yes")
+                self.assertEqual(0, partial.returncode, partial.stderr + partial.stdout)
+                self.assertTrue(missing.is_file())
+                reinstall = self.run_installer(installer, target, "--dry-run")
+                self.assertEqual(0, reinstall.returncode, reinstall.stderr + reinstall.stdout)
+                self.assertIn("Operation: reinstall", reinstall.stdout)
+        self.assertTrue(locks)
+        self.assertEqual(1, len({json.dumps(lock, sort_keys=True) for lock in locks}))
+
     def test_injected_mid_write_failure_rolls_back(self):
         for name, installer in self.installers.items():
             with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
