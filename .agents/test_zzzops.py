@@ -344,35 +344,35 @@ class InitializationTests(unittest.TestCase):
         self.assertEqual("read_only", profile["mode"])
         self.assertEqual(3, profile["max_workers"])
 
-    def test_machinery_commit_status_accepts_clean_and_rejects_dirty_mechanics(self):
+    def test_machinery_lock_status_accepts_exact_files_and_rejects_drift(self):
         mechanics = {
             ".agents/zzzops/zzzops.py": "print('ok')\n",
-            ".agents/zzzops/.gitignore": "__pycache__/\n",
-            ".agents/zzzops/INSTALL_MANIFEST": "zzzops-install-manifest-v1\n",
+            ".agents/zzzops/install_lock.py": "# lock validation\n",
             ".agents/zzzops/templates/project-goals/INIT_PLAN.json": "{}\n",
             ".agents/skills/execute-zzzops/SKILL.md": "# Execute\n",
             ".claude/skills/execute-zzzops/SKILL.md": "# Execute\n",
             ".zzzops/rules/INITIALIZATION.md": "# Initialize\n",
-            ".zzzops/.gitignore": "execution-reports/\n",
-            ".zzzops/PROJECT.md": "# Project state\n",
-            "AGENTS.md": "# Root instructions\n",
         }
         for relative, content in mechanics.items():
             path = self.repo / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
-        for command in (
-            ["git", "init"],
-            ["git", "config", "user.email", "test@example.invalid"],
-            ["git", "config", "user.name", "ZzzOps Test"],
-            ["git", "add", "."],
-            ["git", "commit", "-m", "test: commit mechanics"],
-        ):
-            subprocess.run(command, cwd=self.repo, check=True, capture_output=True)
+        lock = {
+            "schema_version": 1,
+            "revision": "a" * 40,
+            "version": "v1.0.0",
+            "files": {
+                relative: zzzops._install_lock.file_digest(self.repo / relative)
+                for relative in mechanics
+            },
+        }
+        lock_path = self.repo / ".zzzops" / "ZZZOPS_LOCK.json"
+        lock_path.write_text(json.dumps(lock), encoding="utf-8")
 
         clean = zzzops.machinery_commit_status(self.repo)
         self.assertTrue(clean["ok"])
         self.assertEqual([], clean["paths"])
+        self.assertEqual(0, clean["processes"])
 
         (self.repo / ".zzzops" / "PROJECT.md").write_text("changed state\n", encoding="utf-8")
         (self.repo / "AGENTS.md").write_text("changed instructions\n", encoding="utf-8")
@@ -385,34 +385,73 @@ class InitializationTests(unittest.TestCase):
         self.assertFalse(dirty["ok"])
         self.assertEqual([".agents/zzzops/zzzops.py"], dirty["paths"])
 
-        subprocess.run(["git", "add", ".agents/zzzops/zzzops.py"], cwd=self.repo, check=True)
-        self.assertFalse(zzzops.machinery_commit_status(self.repo)["ok"])
-        subprocess.run(
-            ["git", "restore", "--source=HEAD", "--staged", "--worktree", "--", ".agents/zzzops/zzzops.py"],
-            cwd=self.repo, check=True,
-        )
-        mechanic.unlink()
-        deleted = zzzops.machinery_commit_status(self.repo)
-        self.assertFalse(deleted["ok"])
-        self.assertEqual([".agents/zzzops/zzzops.py"], deleted["paths"])
-        subprocess.run(
-            ["git", "restore", "--source=HEAD", "--worktree", "--", ".agents/zzzops/zzzops.py"],
-            cwd=self.repo, check=True,
-        )
-        manifest = self.repo / ".agents" / "zzzops" / "INSTALL_MANIFEST"
-        manifest.write_text("changed manifest\n", encoding="utf-8")
-        dirty_manifest = zzzops.machinery_commit_status(self.repo)
-        self.assertFalse(dirty_manifest["ok"])
-        self.assertEqual([".agents/zzzops/INSTALL_MANIFEST"], dirty_manifest["paths"])
-        subprocess.run(
-            ["git", "restore", "--source=HEAD", "--worktree", "--", ".agents/zzzops/INSTALL_MANIFEST"],
-            cwd=self.repo, check=True,
-        )
+        mechanic.write_text("print('ok')\n", encoding="utf-8")
         untracked = self.repo / ".agents" / "skills" / "execute-zzzops" / "NEW.md"
         untracked.write_text("new machinery\n", encoding="utf-8")
         result = zzzops.machinery_commit_status(self.repo)
         self.assertFalse(result["ok"])
         self.assertEqual([".agents/skills/execute-zzzops/NEW.md"], result["paths"])
+
+        untracked.unlink()
+        mechanic.unlink()
+        missing = zzzops.machinery_commit_status(self.repo)
+        self.assertFalse(missing["ok"])
+        self.assertEqual([".agents/zzzops/zzzops.py"], missing["paths"])
+
+    def test_install_lock_rejects_malformed_hashes_and_unsafe_paths(self):
+        valid = {
+            "schema_version": 1,
+            "revision": "a" * 40,
+            "version": "v1.0.0",
+            "files": {".agents/zzzops/zzzops.py": "b" * 64},
+        }
+        self.assertEqual(valid, zzzops._install_lock.validate_install_lock(valid))
+        for path in ("../escape", ".zzzops/POLICY.json", ".agents/skills/unknown/SKILL.md", "/absolute"):
+            malformed = json.loads(json.dumps(valid))
+            malformed["files"] = {path: "b" * 64}
+            with self.assertRaisesRegex(zzzops._install_lock.InstallLockError, "path"):
+                zzzops._install_lock.validate_install_lock(malformed)
+        malformed = json.loads(json.dumps(valid))
+        malformed["files"][".agents/zzzops/zzzops.py"] = "not-a-hash"
+        with self.assertRaisesRegex(zzzops._install_lock.InstallLockError, "SHA-256"):
+            zzzops._install_lock.validate_install_lock(malformed)
+        malformed = json.loads(json.dumps(valid))
+        malformed["files"][".agents/zzzops/ZZZOPS.py"] = "c" * 64
+        with self.assertRaisesRegex(zzzops._install_lock.InstallLockError, "cross-platform"):
+            zzzops._install_lock.validate_install_lock(malformed)
+
+    def test_build_install_lock_is_sorted_and_excludes_project_state(self):
+        first = self.repo / ".zzzops" / "rules" / "Z.md"
+        second = self.repo / ".agents" / "zzzops" / "a.py"
+        for path in (first, second):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(path.name, encoding="utf-8")
+        (self.repo / ".zzzops" / "POLICY.json").write_text("{}", encoding="utf-8")
+        lock = zzzops._install_lock.build_install_lock(self.repo, "a" * 40, "v1.0.0")
+        self.assertEqual(sorted(lock["files"]), list(lock["files"]))
+        self.assertIn(".agents/zzzops/a.py", lock["files"])
+        self.assertIn(".zzzops/rules/Z.md", lock["files"])
+        self.assertNotIn(".zzzops/POLICY.json", lock["files"])
+
+    def test_machinery_lock_status_requires_readable_committed_lock(self):
+        missing = zzzops.machinery_commit_status(self.repo)
+        self.assertFalse(missing["ok"])
+        self.assertEqual([".zzzops/ZZZOPS_LOCK.json"], missing["paths"])
+        self.assertIn("rerun the regular ZzzOps installer", missing["detail"])
+        lock_path = self.repo / ".zzzops" / "ZZZOPS_LOCK.json"
+        lock_path.write_text("{bad}\n", encoding="utf-8")
+        malformed = zzzops.machinery_commit_status(self.repo)
+        self.assertFalse(malformed["ok"])
+        self.assertIn("could not read committed installation lock", malformed["detail"])
+        lock_path.write_text(
+            '{"schema_version":1,"revision":"' + "a" * 40
+            + '","version":"v1","files":{".agents/zzzops/a.py":"' + "b" * 64
+            + '",".agents/zzzops/a.py":"' + "c" * 64 + '"}}',
+            encoding="utf-8",
+        )
+        duplicate = zzzops.machinery_commit_status(self.repo)
+        self.assertFalse(duplicate["ok"])
+        self.assertIn("duplicate installation lock key", duplicate["detail"])
 
     def test_rejects_unconfirmed_proposal(self):
         plan = self.plan()
@@ -642,26 +681,20 @@ class ExecutionReportTests(unittest.TestCase):
         self.assertIn("**ZzzOps build:** Unknown (schema v2 predates version provenance)", body)
         self.assertNotIn('"zzzops"', body)
 
-    def test_installed_provenance_resolution_and_revision_only_failure(self):
-        manifest = self.repo / ".agents" / "zzzops" / "INSTALL_MANIFEST"
-        manifest.parent.mkdir(parents=True)
+    def test_installed_provenance_uses_validated_install_lock(self):
         installed = self.repo / ".agents" / "zzzops" / "installed.txt"
+        installed.parent.mkdir(parents=True)
         installed.write_text("installed mechanics\n", encoding="utf-8")
-        digest = zzzops._git_blob_digest(installed.read_bytes(), 40)
-        manifest.write_text(
-            "zzzops-install-manifest-v1\nrevision\t" + "b" * 40 + "\nversion\tv2.0.0\n"
-            f"file\t{digest}\t.agents/zzzops/installed.txt\n",
-            encoding="utf-8",
-        )
+        lock_path = self.repo / ".zzzops" / "ZZZOPS_LOCK.json"
+        lock_path.write_text(json.dumps(
+            zzzops._install_lock.build_install_lock(self.repo, "b" * 40, "v2.0.0")
+        ), encoding="utf-8")
         self.assertEqual({"version": "v2.0.0", "revision": "b" * 40}, zzzops.zzzops_provenance(self.repo))
         installed.write_text("locally changed\n", encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "do not match"):
+        with self.assertRaisesRegex(ValueError, "do not match recorded lock provenance"):
             zzzops.zzzops_provenance(self.repo)
-        manifest.write_text(
-            "zzzops-install-manifest-v1\nrevision\t" + "b" * 40 + f"\nfile\t{digest}\t.agents/zzzops/installed.txt\n",
-            encoding="utf-8",
-        )
-        with self.assertRaisesRegex(ValueError, "predates version provenance"):
+        lock_path.write_text("{}", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "lock provenance is invalid"):
             zzzops.zzzops_provenance(self.repo)
 
     @mock.patch.object(zzzops.subprocess, "run")
@@ -1148,7 +1181,7 @@ class PortfolioTests(unittest.TestCase):
     @mock.patch.object(zzzops, "read_project_state")
     @mock.patch.object(zzzops, "read_project", return_value=(Path("PROJECT.md"), "project"))
     @mock.patch.object(zzzops, "repository_size_profile", return_value={"mode": "worktrees", "max_workers": 3})
-    @mock.patch.object(zzzops, "machinery_commit_status", return_value={"available": True, "ok": True, "paths": [], "processes": 1, "detail": "ok"})
+    @mock.patch.object(zzzops, "machinery_commit_status", return_value={"available": True, "ok": True, "paths": [], "processes": 0, "detail": "ok"})
     def test_decision_checkpoint_embeds_portfolio_after_clean_machinery(
         self, _machinery, _size, _read, read_state, _validate, _artifacts, _blockers, _missing, run, _which,
     ):
@@ -1181,7 +1214,7 @@ class PortfolioTests(unittest.TestCase):
         self.assertTrue(result["capabilities"]["github_repository"]["usable"])
         self.assertTrue(result["portfolio"]["complete"])
         self.assertEqual([1], [goal["key"] for goal in result["portfolio"]["goals"]])
-        self.assertEqual({"total": 3, "github": 1}, result["processes"])
+        self.assertEqual({"total": 2, "github": 1}, result["processes"])
         self.assertEqual(2, run.call_count)
         self.assertEqual("git", run.call_args_list[0].args[0][0])
         self.assertIn("graphql", run.call_args_list[1].args[0])
@@ -1196,8 +1229,8 @@ class PortfolioTests(unittest.TestCase):
     @mock.patch.object(zzzops, "read_project_state")
     @mock.patch.object(zzzops, "read_project", return_value=(Path("PROJECT.md"), "project"))
     @mock.patch.object(zzzops, "machinery_commit_status", return_value={
-        "available": True, "ok": False, "paths": [".agents/zzzops/zzzops.py"], "processes": 1,
-        "detail": "Commit installed ZzzOps machinery before ordinary use.",
+        "available": True, "ok": False, "paths": [".agents/zzzops/zzzops.py"], "processes": 0,
+        "detail": "Disposable ZzzOps machinery does not match the committed lock; rerun the regular installer.",
     })
     def test_decision_checkpoint_stops_before_portfolio_for_dirty_machinery(
         self, _machinery, _read, read_state, _validate, _artifacts, _blockers,
@@ -1212,8 +1245,8 @@ class PortfolioTests(unittest.TestCase):
 
         self.assertFalse(result["ready"])
         self.assertEqual([".agents/zzzops/zzzops.py"], result["capabilities"]["git_machinery"]["paths"])
-        self.assertIn("Commit installed ZzzOps machinery", result["portfolio"]["error"])
-        self.assertEqual({"total": 2, "github": 0}, result["processes"])
+        self.assertIn("rerun the regular installer", result["portfolio"]["error"])
+        self.assertEqual({"total": 1, "github": 0}, result["processes"])
         portfolio.assert_not_called()
 
     @mock.patch.object(zzzops.shutil, "which", return_value="gh")
@@ -1987,10 +2020,12 @@ class WorkflowContractTests(unittest.TestCase):
         )
         self.assertEqual(names, zzzops.MANAGED_SKILLS)
         repository = root.parent
+        engine = (root / "zzzops" / "installer.py").read_text(encoding="utf-8")
+        for name in names:
+            self.assertIn(name, engine, f"installer.py: {name}")
         for installer in (repository / "install.ps1", repository / "install.sh"):
             installed = installer.read_text(encoding="utf-8")
-            for name in names:
-                self.assertIn(name, installed, f"{installer.name}: {name}")
+            self.assertIn("installer.py", installed, installer.name)
         for name in names:
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("INITIALIZATION.md", text, name)
@@ -2008,8 +2043,14 @@ class WorkflowContractTests(unittest.TestCase):
             "Python 3.10 or newer", "older interpreter", "block once",
             "Under Codex", "authenticated context for the first attempt",
             "keep local-only commands in the normal sandbox", "Never reauthenticate or persistently relax the sandbox",
+            "ask to commit it first", "never policy or unrelated changes",
         ):
             self.assertIn(phrase, initialization)
+        review_skill = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("before policy review", review_skill)
+        self.assertIn("Would you like me to commit the lock file", review_skill)
+        self.assertIn("Stop for the answer", review_skill)
+        self.assertIn("Ask separately", review_skill)
 
     def test_skills_apply_shared_privacy_safe_feedback_handoff(self):
         root = Path(__file__).parent / "skills"

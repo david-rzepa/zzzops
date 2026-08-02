@@ -7,8 +7,8 @@ description: Review, initialize, summarize, reconcile, or adjust ZzzOps project 
 
 Follow `.zzzops/rules/INITIALIZATION.md`; only this workflow changes or confirms policy.
 
-Run one `init inspect`. Summarize choices and invite adjustments, even for valid policy. Include whether privacy-safe execution-report recording is enabled; the reviewed default is enabled and the project may disable it. Otherwise guide initialization through the rule.
+Before `init inspect`, check INITIALIZATION's exact installer commit scope. If pending, ask: `The ZzzOps installation needs to be committed before policy review. Would you like me to commit the lock file and related ZzzOps installation changes now? I will leave unrelated changes untouched.` Stop for the answer; after yes, commit only that scope. Then run `init inspect` once, summarize choices, and invite adjustments. Include execution-report recording (default enabled; may be disabled).
 
-Ask only consequential questions. Preserve safety/authority boundaries and one canonical policy. Only explicit approval of the current digest confirms review; then run one checkpoint. Hide mechanics unless relevant or requested.
+Ask consequential questions only. Only explicit approval of the current digest confirms review; ask for it alone. Then confirm and checkpoint once. Ask separately before committing policy changes or handling PR closure.
 
 Before stopping or handing off, apply `.zzzops/rules/FEEDBACK.md`.

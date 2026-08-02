@@ -16,12 +16,19 @@ from typing import Any, Callable
 GOAL_SCHEMA_VERSION = 1
 _atomic_text: Callable[[Path, str], None] | None = None
 _render_managed_goal: Callable[[dict[str, Any], str], str] | None = None
+_read_install_lock: Callable[[Path], dict[str, Any]] | None = None
+_installation_lock_status: Callable[[Path], dict[str, Any]] | None = None
 
-def configure_entrypoint(*, atomic_text: Callable[[Path, str], None], render_managed_goal: Callable[[dict[str, Any], str], str]) -> None:
-    """Provide the two core helpers required by this acyclic module."""
-    global _atomic_text, _render_managed_goal
+def configure_entrypoint(
+    *, atomic_text: Callable[[Path, str], None], render_managed_goal: Callable[[dict[str, Any], str], str],
+    read_install_lock: Callable[[Path], dict[str, Any]], installation_lock_status: Callable[[Path], dict[str, Any]],
+) -> None:
+    """Provide the core helpers required by this acyclic module."""
+    global _atomic_text, _render_managed_goal, _read_install_lock, _installation_lock_status
     _atomic_text = atomic_text
     _render_managed_goal = render_managed_goal
+    _read_install_lock = read_install_lock
+    _installation_lock_status = installation_lock_status
 
 def _require_configured() -> tuple[Callable[[Path, str], None], Callable[[dict[str, Any], str], str]]:
     if _atomic_text is None or _render_managed_goal is None:
@@ -167,55 +174,21 @@ def _validated_zzzops_provenance(value: Any) -> dict[str, str]:
     return {"version": version, "revision": revision}
 
 
-def _git_blob_digest(data: bytes, width: int) -> str:
-    algorithm = hashlib.sha1 if width == 40 else hashlib.sha256
-    return algorithm(b"blob " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest()
-
-
 def zzzops_provenance(repo: Path) -> dict[str, str]:
-    manifest = repo / ".agents" / "zzzops" / "INSTALL_MANIFEST"
-    if manifest.is_file():
+    lock_path = repo / ".zzzops" / "ZZZOPS_LOCK.json"
+    if lock_path.is_file():
+        if _read_install_lock is None or _installation_lock_status is None:
+            raise RuntimeError("Feedback module was not configured with installation-lock helpers")
         try:
-            lines = manifest.read_text(encoding="utf-8-sig").splitlines()
-        except (OSError, UnicodeError) as exc:
-            raise ValueError(f"Could not read installed ZzzOps provenance: {type(exc).__name__}") from exc
-        if not lines or lines[0] != "zzzops-install-manifest-v1":
-            raise ValueError("Installed ZzzOps provenance manifest header is invalid")
-        revisions, versions, files = [], [], {}
-        for line in lines[1:]:
-            fields = line.split("\t", 2)
-            if len(fields) == 2 and fields[0] == "revision":
-                revisions.append(fields[1])
-            elif len(fields) == 2 and fields[0] == "version":
-                versions.append(fields[1])
-            elif len(fields) == 3 and fields[0] == "file":
-                digest, relative = fields[1], fields[2]
-                path = Path(relative)
-                if not ZZZOPS_REVISION.fullmatch(digest) or path.is_absolute() or ".." in path.parts or relative in files:
-                    raise ValueError("Installed ZzzOps provenance manifest file entry is invalid")
-                files[relative] = digest
-            else:
-                raise ValueError("Installed ZzzOps provenance manifest entry is invalid")
-        if not versions:
-            raise ValueError("Installed ZzzOps manifest predates version provenance; rerun the installer before recording reports")
-        if len(revisions) != 1 or len(versions) != 1:
-            raise ValueError("Installed ZzzOps provenance fields must occur exactly once")
-        try:
-            provenance = _validated_zzzops_provenance({"version": versions[0], "revision": revisions[0]})
+            lock = _read_install_lock(repo)
         except ValueError as exc:
-            raise ValueError(f"Installed ZzzOps provenance is invalid: {exc}") from exc
-        if not files:
-            raise ValueError("Installed ZzzOps provenance manifest contains no managed files")
-        for relative, expected in files.items():
-            try:
-                data = (repo / relative).read_bytes()
-            except OSError as exc:
-                raise ValueError("Installed ZzzOps mechanics do not match recorded provenance") from exc
-            if not hmac.compare_digest(_git_blob_digest(data, len(expected)), expected):
-                raise ValueError("Installed ZzzOps mechanics do not match recorded provenance")
-        return provenance
+            raise ValueError(f"Installed ZzzOps lock provenance is invalid: {exc}") from exc
+        status = _installation_lock_status(repo)
+        if not status.get("ok"):
+            raise ValueError("Installed ZzzOps mechanics do not match recorded lock provenance; rerun the installer")
+        return _validated_zzzops_provenance({"version": lock["version"], "revision": lock["revision"]})
     if not (repo / "install.ps1").is_file() or not (repo / "install.sh").is_file():
-        raise ValueError("Installed ZzzOps provenance is unavailable; rerun the installer before recording reports")
+        raise ValueError("Installed ZzzOps lock provenance is unavailable; rerun the installer before recording reports")
     values = []
     for command in (("rev-parse", "HEAD"), ("describe", "--tags", "--always", "--long", "--dirty")):
         try:
