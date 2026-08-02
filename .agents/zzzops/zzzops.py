@@ -153,6 +153,12 @@ compact_portfolio_output = _portfolio.compact_portfolio_output
 parse_managed_goal = _goals.parse_managed_goal
 validate_managed_goal = _goals.validate_managed_goal
 render_managed_goal = _goals.render_managed_goal
+compact_human_goal_text = _goals.compact_human_goal_text
+compact_managed_goal = _goals.compact_managed_goal
+validate_compact_goal_body = _goals.validate_compact_goal_body
+goal_history_id = _goals.goal_history_id
+render_goal_history = _goals.render_goal_history
+parse_goal_history = _goals.parse_goal_history
 goal_needs_human = _goals.goal_needs_human
 validate_github_issue_goal = _goals.validate_github_issue_goal
 github_goal_record = _goals.github_goal_record
@@ -264,6 +270,46 @@ class GitHubGoalTransitionAdapter:
                 "GitHub returned an incomplete goal-transition response; success was not assumed."
             )
         return issue
+
+    def get_issue_comments(self, number: int) -> list[dict[str, Any]]:
+        self.ensure_identity()
+        result = self._run([
+            "api", "--paginate", "--slurp",
+            f"repos/{self.repository}/issues/{number}/comments?per_page=100",
+        ])
+        if result.returncode:
+            raise self._provider_error(result)
+        try:
+            pages = json.loads(result.stdout)
+            if not isinstance(pages, list) or any(not isinstance(page, list) for page in pages):
+                raise TypeError("comment pages must be lists")
+            comments = [comment for page in pages for comment in page]
+            if any(not isinstance(comment, dict) for comment in comments):
+                raise TypeError("comments must be objects")
+            return comments
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise GoalTransitionProviderError(
+                "GitHub returned invalid goal history; no body update was made."
+            ) from exc
+
+    def create_issue_comment(self, number: int, body: str) -> dict[str, Any]:
+        result = self._run(
+            ["api", "--method", "POST", f"repos/{self.repository}/issues/{number}/comments", "--input", "-"],
+            input_text=json.dumps({"body": body}, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+        )
+        if result.returncode:
+            raise self._provider_error(result)
+        try:
+            comment = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise GoalTransitionProviderError(
+                "GitHub returned an invalid history response; body replacement was not attempted."
+            ) from exc
+        if not isinstance(comment, dict):
+            raise GoalTransitionProviderError(
+                "GitHub returned an incomplete history response; body replacement was not attempted."
+            )
+        return comment
 
 
 _validate_reservation_goal = _reservation._validate_reservation_goal

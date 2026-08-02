@@ -15,7 +15,8 @@ Ordinary checkpoints omit `zzzops-feedback`. `--include-feedback` requires one e
 - Identity is repository plus issue number/URL. Use a plain human title without ZzzOps/date ID; start with concise human sections, no rendered metadata/frontmatter or repeated title.
 - Explain that goals inherit repository visibility and forbid secrets/raw sensitive data.
 - Append one hidden `<!-- zzzops-goal ... zzzops-goal -->` JSON state block using `render_managed_goal`. GitHub supplies identity/title; inverse edges, human queue, labels, and open/closed are derived. Preserve unmanaged text.
-- Parent/dependencies are same-repository positive issue numbers; derive inverse edges portfolio-wide. Append resolutions/history as immutable-provenance comments.
+- Parent/dependencies are same-repository positive issue numbers; derive inverse edges portfolio-wide.
+- Keep bodies current-only: active human sections plus relationships, open blockers, next action, and compact managed state. Before replacement, confirm one lossless content-addressed history comment containing the prior body and requested transition. Retries reuse its transition ID and never duplicate confirmed history.
 - Use label `zzzops`, one `zzzops:status:*`, and one `zzzops:priority:*` as derived indexes.
 - Reservations use transient goal/resource labels; GitHub name uniqueness chooses one Issues-permitted winner. Metadata binds repository, goal/revision, owner/run, expiry; renew/recover by immutable node ID and exact readback so delayed cleanup cannot delete a replacement. Drift, conflict, malformed state, provider failure, or uncertainty denies ownership; no fallback lock.
 - Apply updates via `<python> .agents/zzzops/zzzops.py goal transition --goal N --input FILE`. UTF-8 input binds expected revision/digest to the next goal, preserves human text, derives labels/state, and validates the write.

@@ -13,6 +13,9 @@ from typing import Any, Callable
 GOAL_SCHEMA_VERSION = 1
 GOAL_BLOCK_START = "<!-- zzzops-goal"
 GOAL_BLOCK_END = "zzzops-goal -->"
+GOAL_HISTORY_BLOCK_START = "<!-- zzzops-history"
+GOAL_HISTORY_BLOCK_END = "zzzops-history -->"
+GOAL_HISTORY_SCHEMA_VERSION = 1
 GOAL_FIELDS = {
     "schema_version", "status", "priority", "value", "difficulty", "confidence",
     "parent", "depends_on", "claim", "blockers", "evidence", "next_action",
@@ -27,6 +30,10 @@ GOAL_TRANSITION_SCHEMA_VERSION = 1
 GOAL_TRANSITION_FIELDS = {"schema_version", "expected_revision", "expected_digest", "goal"}
 BLOCKER_CATEGORIES = {"specification", "decision", "access-approval", "human-action", "external-dependency", "technical-unknown", "safety-compliance"}
 REDUNDANT_GOAL_TITLE_PREFIX = re.compile(r"^\[G-\d{8}-\d{3}-[^\]]+\]\s*")
+HISTORICAL_HUMAN_SECTIONS = {
+    "completed evidence", "evidence", "history", "implementation history",
+    "prior checkpoints", "resolved blockers", "superseded requirements",
+}
 _normalize_resources: Callable[[Any], list[str]] | None = None
 _text_present: Callable[[Any], bool] | None = None
 
@@ -141,6 +148,144 @@ def render_managed_goal(goal: dict[str, Any], body: str = "", issue_number: int 
     return f"{body}{separator}{block}\n"
 
 
+def compact_human_goal_text(body: str) -> str:
+    """Retain current human sections while removing explicitly historical sections."""
+    human = body.split(GOAL_BLOCK_START, 1)[0].strip("\ufeff\r\n ")
+    sections: list[list[str]] = []
+    fence: tuple[str, int] | None = None
+    for line in human.splitlines():
+        marker = re.match(r"^\s*(`{3,}|~{3,})", line)
+        if marker:
+            token = marker.group(1)
+            if fence is None:
+                fence = (token[0], len(token))
+            elif token[0] == fence[0] and len(token) >= fence[1]:
+                fence = None
+        if fence is None and re.match(r"^##\s+", line) and sections and sections[-1]:
+            sections.append([])
+        if not sections:
+            sections.append([])
+        sections[-1].append(line)
+    kept = []
+    for section in sections:
+        text = "\n".join(section).strip()
+        if not text:
+            continue
+        heading = section[0]
+        normalized = re.sub(r"\s+", " ", heading.removeprefix("##").strip()).casefold()
+        if normalized in HISTORICAL_HUMAN_SECTIONS:
+            continue
+        kept.append(text)
+    return "\n\n".join(kept) + "\n"
+
+
+def compact_managed_goal(goal: dict[str, Any]) -> dict[str, Any]:
+    """Project requested transition state into the current-state-only body schema."""
+    compact = json.loads(json.dumps(goal))
+    compact["evidence"] = []
+    compact["blockers"] = [
+        blocker for blocker in compact.get("blockers", [])
+        if isinstance(blocker, dict) and blocker.get("status") == "open"
+    ]
+    return compact
+
+
+def validate_compact_goal_body(body: Any, issue_number: int | None = None) -> list[str]:
+    if not isinstance(body, str):
+        return ["compact goal body must be text"]
+    errors = []
+    try:
+        goal = parse_managed_goal(body, issue_number)
+    except ValueError as exc:
+        return [str(exc)]
+    if goal is None:
+        return ["managed goal block is required"]
+    if goal.get("evidence"):
+        errors.append("current managed state must not retain transition evidence")
+    if any(not isinstance(blocker, dict) or blocker.get("status") != "open" for blocker in goal.get("blockers", [])):
+        errors.append("current managed state may contain only open blockers")
+    human = body.split(GOAL_BLOCK_START, 1)[0].strip("\ufeff\r\n ") + "\n"
+    if compact_human_goal_text(body) != human:
+        errors.append("current human text contains an explicitly historical section")
+    return errors
+
+
+def goal_history_id(issue_number: int, expected_digest: str, desired: dict[str, Any]) -> str:
+    source = json.dumps(
+        {"issue": issue_number, "expected_digest": expected_digest, "desired": compact_managed_goal(desired)},
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    )
+    return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+
+def render_goal_history(
+    issue_number: int, expected_digest: str, prior_body: str, desired: dict[str, Any],
+) -> tuple[str, str]:
+    """Render one lossless, deterministic append-only transition record."""
+    history_id = goal_history_id(issue_number, expected_digest, desired)
+    payload = {
+        "schema_version": GOAL_HISTORY_SCHEMA_VERSION,
+        "id": history_id,
+        "issue": issue_number,
+        "expected_digest": expected_digest,
+        "from_revision": desired["revision"] - 1,
+        "to_revision": desired["revision"],
+        "prior_body": prior_body,
+        "requested_goal": desired,
+    }
+    payload["payload_digest"] = hashlib.sha256(json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")).hexdigest()
+    block = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return history_id, (
+        f"## ZzzOps transition history\n\n"
+        f"Archived canonical state before revision {desired['revision']}.\n\n"
+        f"{GOAL_HISTORY_BLOCK_START}\n{block}\n{GOAL_HISTORY_BLOCK_END}\n"
+    )
+
+
+def parse_goal_history(body: Any) -> dict[str, Any] | None:
+    if not isinstance(body, str):
+        return None
+    pattern = re.compile(
+        re.escape(GOAL_HISTORY_BLOCK_START) + r"\s*\n(.*?)\n" + re.escape(GOAL_HISTORY_BLOCK_END),
+        re.DOTALL,
+    )
+    match = pattern.search(body)
+    if not match:
+        return None
+    try:
+        payload = json.loads(match.group(1))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid goal history JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid goal history payload")
+    digest = payload.get("payload_digest")
+    digest_payload = {key: value for key, value in payload.items() if key != "payload_digest"}
+    calculated_digest = hashlib.sha256(json.dumps(
+        digest_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")).hexdigest()
+    if (
+        payload.get("schema_version") != GOAL_HISTORY_SCHEMA_VERSION
+        or not isinstance(payload.get("id"), str)
+        or not re.fullmatch(r"[0-9a-f]{64}", payload["id"])
+        or not isinstance(payload.get("issue"), int)
+        or isinstance(payload.get("issue"), bool)
+        or payload["issue"] < 1
+        or not isinstance(payload.get("expected_digest"), str)
+        or not re.fullmatch(r"[0-9a-f]{64}", payload["expected_digest"])
+        or not isinstance(payload.get("prior_body"), str)
+        or not isinstance(payload.get("requested_goal"), dict)
+        or not isinstance(digest, str)
+        or not hmac.compare_digest(digest, calculated_digest)
+        or not hmac.compare_digest(
+            payload["id"], goal_history_id(payload["issue"], payload["expected_digest"], payload["requested_goal"])
+        )
+    ):
+        raise ValueError("Invalid goal history payload")
+    return payload
+
+
 def goal_needs_human(goal: dict[str, Any]) -> bool:
     return any(
         isinstance(blocker, dict)
@@ -186,7 +331,7 @@ def github_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
     errors = validate_github_issue_goal(number, issue.get("title"), body)
     if errors:
         raise ValueError("; ".join(errors))
-    digest_source = "\0".join((issue.get("title") or "", body, issue.get("updated_at") or ""))
+    digest_source = "\0".join((issue.get("title") or "", body))
     return {
         "key": number, "title": issue["title"], "status": goal["status"],
         "priority": goal["priority"], "value": goal["value"], "difficulty": goal["difficulty"],
@@ -250,6 +395,44 @@ def apply_goal_transition(
         record = github_goal_record(issue)
     except ValueError as exc:
         raise GoalTransitionProviderError("The current goal could not be validated; no goal update was made.") from exc
+    requested = transition["goal"]
+    desired = compact_managed_goal(requested)
+    history_id = goal_history_id(issue_number, transition["expected_digest"], requested)
+    comments = adapter.get_issue_comments(issue_number)
+    histories = []
+    for comment in comments:
+        try:
+            history = parse_goal_history(comment.get("body") if isinstance(comment, dict) else None)
+        except ValueError as exc:
+            raise GoalTransitionProviderError("The selected goal has malformed transition history; no update was made.") from exc
+        if history is not None and history.get("id") == history_id:
+            histories.append((comment, history))
+    if len(histories) > 1:
+        raise GoalTransitionProviderError("The selected goal has duplicate transition history; no update was made.")
+
+    state = "closed" if desired["status"] in {"done", "cancelled"} else "open"
+    if record["revision"] == desired["revision"]:
+        compact_body = render_managed_goal(desired, compact_human_goal_text(issue["body"]), issue_number)
+        returned_labels = {
+            label["name"] for label in issue.get("labels", [])
+            if isinstance(label, dict) and isinstance(label.get("name"), str)
+        }
+        if (
+            issue.get("body") == compact_body
+            and str(issue.get("state", "")).casefold() == state
+            and f"zzzops:status:{desired['status']}" in returned_labels
+            and f"zzzops:priority:{desired['priority']}" in returned_labels
+            and len(histories) == 1
+            and histories[0][1].get("issue") == issue_number
+            and histories[0][1].get("to_revision") == desired["revision"]
+            and histories[0][1].get("requested_goal") == requested
+        ):
+            return {
+                "number": issue_number, "revision": desired["revision"], "state": state,
+                "status": desired["status"], "url": f"https://github.com/{repository}/issues/{issue_number}",
+            }
+        raise ValueError(f"Goal #{issue_number} changed; the requested transition was not confirmed.")
+
     if record["revision"] != transition["expected_revision"]:
         raise ValueError(
             f"Goal #{issue_number} changed from revision {transition['expected_revision']} to {record['revision']}; no update was made."
@@ -257,8 +440,24 @@ def apply_goal_transition(
     if not hmac.compare_digest(record["digest"], transition["expected_digest"]):
         raise ValueError(f"Goal #{issue_number} digest changed; no update was made.")
 
-    desired = transition["goal"]
-    body = render_managed_goal(desired, issue["body"], issue_number)
+    body = render_managed_goal(desired, compact_human_goal_text(issue["body"]), issue_number)
+    compact_errors = validate_compact_goal_body(body, issue_number)
+    if compact_errors:
+        raise ValueError("Invalid compact goal body: " + "; ".join(compact_errors))
+    _, history_body = render_goal_history(
+        issue_number, transition["expected_digest"], issue["body"], requested,
+    )
+    if len(history_body) > 65536:
+        raise GoalTransitionProviderError("Transition history exceeds GitHub's comment limit; no update was made.")
+    if histories:
+        if histories[0][0].get("body") != history_body:
+            raise GoalTransitionProviderError("Existing transition history does not match the requested update.")
+    else:
+        created = adapter.create_issue_comment(issue_number, history_body)
+        if created.get("body") != history_body or not isinstance(created.get("html_url"), str):
+            raise GoalTransitionProviderError(
+                "GitHub did not confirm exact transition history; body replacement was not attempted."
+            )
     _, text_present = _require_configured()
     retained_labels = sorted({
         label["name"] for label in issue.get("labels", [])
@@ -268,7 +467,6 @@ def apply_goal_transition(
         and not label["name"].startswith("zzzops:priority:")
     })
     labels = ["zzzops", *retained_labels, f"zzzops:status:{desired['status']}", f"zzzops:priority:{desired['priority']}"]
-    state = "closed" if desired["status"] in {"done", "cancelled"} else "open"
     updated = adapter.update_issue(issue_number, {"body": body, "labels": labels, "state": state})
 
     expected_url = f"https://github.com/{repository}/issues/{issue_number}"
