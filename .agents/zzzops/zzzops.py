@@ -53,6 +53,13 @@ _portfolio = importlib.util.module_from_spec(_PORTFOLIO_MODULE_SPEC)
 sys.modules[_PORTFOLIO_MODULE_SPEC.name] = _portfolio
 _PORTFOLIO_MODULE_SPEC.loader.exec_module(_portfolio)
 
+_INSTALL_LOCK_MODULE_PATH = Path(__file__).with_name("install_lock.py")
+_INSTALL_LOCK_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_install_lock", _INSTALL_LOCK_MODULE_PATH)
+assert _INSTALL_LOCK_MODULE_SPEC and _INSTALL_LOCK_MODULE_SPEC.loader
+_install_lock = importlib.util.module_from_spec(_INSTALL_LOCK_MODULE_SPEC)
+sys.modules[_INSTALL_LOCK_MODULE_SPEC.name] = _install_lock
+_INSTALL_LOCK_MODULE_SPEC.loader.exec_module(_install_lock)
+
 PROJECT_SCHEMA_VERSION = _policy.PROJECT_SCHEMA_VERSION
 PLAN_SCHEMA_VERSION = 1
 POLICY_SCHEMA_VERSION = _policy.POLICY_SCHEMA_VERSION
@@ -99,21 +106,6 @@ REPOSITORY_SIZE_THRESHOLD_BYTES = 100 * 1024 * 1024
 MANAGED_SKILLS = (
     "add-zzzops-goal", "execute-zzzops", "migrate-to-zzzops", "review-zzzops-policy",
     "send-zzzops-feedback", "suggest-zzzops-work",
-)
-MACHINERY_PATHS = (
-    ".agents/zzzops/zzzops.py",
-    ".agents/zzzops/policy.py",
-    ".agents/zzzops/reservation.py",
-    ".agents/zzzops/feedback.py",
-    ".agents/zzzops/goals.py",
-    ".agents/zzzops/portfolio.py",
-    ".agents/zzzops/.gitignore",
-    ".agents/zzzops/INSTALL_MANIFEST",
-    ".agents/zzzops/templates/project-goals",
-    *(f".agents/skills/{name}" for name in MANAGED_SKILLS),
-    *(f".claude/skills/{name}" for name in MANAGED_SKILLS),
-    ".zzzops/rules",
-    ".zzzops/.gitignore",
 )
 GITHUB_MANAGEMENT_PERMISSIONS = {"TRIAGE", "WRITE", "MAINTAIN", "ADMIN"}
 RESERVATION_COLOR = "5319E7"
@@ -769,59 +761,8 @@ def repository_size_profile(repo: Path) -> dict[str, Any]:
 
 
 def machinery_commit_status(repo: Path) -> dict[str, Any]:
-    """Report whether installed ZzzOps mechanics match the repository's HEAD."""
-    executable = shutil.which("git")
-    if not executable:
-        return {
-            "available": False, "ok": False, "paths": [], "processes": 0,
-            "detail": "Git is unavailable; commit installed ZzzOps machinery before ordinary use.",
-        }
-    command = [
-        executable, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--",
-        *MACHINERY_PATHS,
-    ]
-    try:
-        result = subprocess.run(
-            command, cwd=repo, capture_output=True, text=True, encoding="utf-8",
-            errors="replace", timeout=30, check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return {
-            "available": True, "ok": False, "paths": [], "processes": 1,
-            "detail": f"Could not verify committed ZzzOps machinery: {type(exc).__name__}.",
-        }
-    if result.returncode:
-        return {
-            "available": True, "ok": False, "paths": [], "processes": 1,
-            "detail": "Could not verify committed ZzzOps machinery with Git.",
-        }
-
-    paths: set[str] = set()
-    entries = result.stdout.split("\0")
-    index = 0
-    while index < len(entries):
-        entry = entries[index]
-        index += 1
-        if not entry:
-            continue
-        status = entry[:2]
-        candidates = [entry[3:] if len(entry) > 3 else ""]
-        if any(marker in status for marker in ("R", "C")) and index < len(entries):
-            candidates.append(entries[index])
-            index += 1
-        for candidate in candidates:
-            normalized = candidate.replace("\\", "/")
-            if not normalized or "/__pycache__/" in f"/{normalized}/" or normalized.endswith((".pyc", ".pyo")):
-                continue
-            paths.add(normalized)
-    changed = sorted(paths)
-    return {
-        "available": True,
-        "ok": not changed,
-        "paths": changed,
-        "processes": 1,
-        "detail": "ok" if not changed else "Commit installed ZzzOps machinery before ordinary use.",
-    }
+    """Report whether local disposable machinery exactly matches its lock."""
+    return _install_lock.installation_lock_status(repo)
 
 
 def sanitize_output(value: str) -> str:
