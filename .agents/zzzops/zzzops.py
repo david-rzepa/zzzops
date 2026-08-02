@@ -94,7 +94,7 @@ query($owner:String!,$name:String!,$labels:[String!],$endCursor:String){
     nameWithOwner url hasIssuesEnabled viewerPermission
     issues(first:100,after:$endCursor,states:[OPEN,CLOSED],labels:$labels,orderBy:{field:CREATED_AT,direction:ASC}){
       nodes{
-        number title body state updatedAt url
+        number title state
         labels(first:100){nodes{name}}
       }
       pageInfo{hasNextPage endCursor}
@@ -102,6 +102,20 @@ query($owner:String!,$name:String!,$labels:[String!],$endCursor:String){
   }
 }
 """.strip()
+GITHUB_GOAL_HISTORY_QUERY = """
+query($owner:String!,$name:String!,$number:Int!,$endCursor:String){
+  repository(owner:$owner,name:$name){
+    issue(number:$number){
+      comments(first:100,after:$endCursor){
+        nodes{body createdAt url author{login}}
+        pageInfo{hasNextPage endCursor}
+      }
+    }
+  }
+}
+""".strip()
+GOAL_SCHEMA_LABEL = re.compile(r"^zzzops:schema:v(?P<version>[1-9][0-9]*)$")
+GOAL_HYDRATION_BATCH_SIZE = 100
 REPOSITORY_SIZE_THRESHOLD_BYTES = 100 * 1024 * 1024
 MANAGED_SKILLS = (
     "add-zzzops-goal", "execute-zzzops", "migrate-to-zzzops", "review-zzzops-policy",
@@ -507,16 +521,121 @@ def _project_repository_identity(project: dict[str, Any]) -> str:
     return identity
 
 
-def _graphql_issue(issue: dict[str, Any]) -> dict[str, Any]:
+def _graphql_labels(issue: dict[str, Any]) -> list[dict[str, Any]]:
     labels = issue.get("labels")
     nodes = labels.get("nodes") if isinstance(labels, dict) else None
     if not isinstance(nodes, list):
         raise ValueError("issue labels are incomplete or malformed")
+    return [{"name": node.get("name")} for node in nodes if isinstance(node, dict)]
+
+
+def _graphql_issue_index(issue: dict[str, Any], repository_url: str) -> dict[str, Any]:
+    labels = _graphql_labels(issue)
+    schema_versions = [
+        int(match.group("version"))
+        for label in labels
+        if isinstance(label.get("name"), str) and (match := GOAL_SCHEMA_LABEL.fullmatch(label["name"]))
+    ]
+    if len(schema_versions) > 1:
+        raise ValueError("issue has multiple goal schema labels")
     return {
-        "number": issue["number"], "title": issue["title"], "body": issue.get("body") or "",
-        "state": str(issue["state"]).lower(), "updated_at": issue["updatedAt"], "html_url": issue["url"],
-        "labels": [{"name": node.get("name")} for node in nodes if isinstance(node, dict)],
+        "number": issue["number"], "title": issue["title"],
+        "state": str(issue["state"]).lower(), "labels": labels,
+        "schema_version": schema_versions[0] if schema_versions else None,
+        "html_url": f"{repository_url.rstrip('/')}/issues/{issue['number']}",
     }
+
+
+def _goal_body_query(numbers: list[int]) -> str:
+    fields = "\n".join(
+        f"    goal_{number}:issue(number:{number}){{number body updatedAt}}"
+        for number in numbers
+    )
+    return (
+        "query($owner:String!,$name:String!){\n"
+        "  repository(owner:$owner,name:$name){\n"
+        f"{fields}\n"
+        "  }\n"
+        "}"
+    )
+
+
+def _github_goal_bodies(
+    repo: Path, executable: str, owner: str, name: str, numbers: list[int],
+) -> tuple[dict[int, dict[str, Any]], int, int]:
+    if not numbers:
+        return {}, 0, 0
+    hydrated = {}
+    raw_bytes = 0
+    processes = 0
+    for offset in range(0, len(numbers), GOAL_HYDRATION_BATCH_SIZE):
+        batch = numbers[offset:offset + GOAL_HYDRATION_BATCH_SIZE]
+        command = [
+            executable, "api", "graphql", "-f", f"query={_goal_body_query(batch)}",
+            "-F", f"owner={owner}", "-F", f"name={name}",
+        ]
+        try:
+            result = subprocess.run(
+                command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ValueError(f"GitHub targeted goal-body read failed: {type(exc).__name__}") from exc
+        processes += 1
+        if result.returncode:
+            raise ValueError("GitHub targeted goal-body read failed: " + (result.stderr.strip() or "unknown gh error"))
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"GitHub targeted goal-body read returned invalid JSON: {exc}") from exc
+        data = payload.get("data") if isinstance(payload, dict) else None
+        repository = data.get("repository") if isinstance(data, dict) else None
+        if not isinstance(repository, dict):
+            raise ValueError("GitHub targeted goal-body read is incomplete or malformed")
+        for number in batch:
+            issue = repository.get(f"goal_{number}")
+            if not isinstance(issue, dict) or issue.get("number") != number or not isinstance(issue.get("body"), str):
+                raise ValueError(f"GitHub targeted goal-body read omitted issue #{number}")
+            hydrated[number] = {"body": issue["body"], "updated_at": issue.get("updatedAt")}
+        raw_bytes += len(result.stdout.encode("utf-8"))
+    return hydrated, raw_bytes, processes
+
+
+def github_issue_history(repo: Path, project: dict[str, Any], issue_number: int) -> list[dict[str, Any]]:
+    """Hydrate append-only history for one explicitly selected goal."""
+    identity = _project_repository_identity(project)
+    owner, name = identity.split("/", 1)
+    executable = shutil.which("gh")
+    if not executable:
+        raise ValueError("GitHub CLI is unavailable")
+    command = [
+        executable, "api", "graphql", "--paginate", "--slurp",
+        "-f", f"query={GITHUB_GOAL_HISTORY_QUERY}", "-F", f"owner={owner}",
+        "-F", f"name={name}", "-F", f"number={issue_number}",
+    ]
+    try:
+        result = subprocess.run(
+            command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError(f"GitHub goal-history read failed: {type(exc).__name__}") from exc
+    if result.returncode:
+        raise ValueError("GitHub goal-history read failed: " + (result.stderr.strip() or "unknown gh error"))
+    try:
+        pages = json.loads(result.stdout)
+        if not isinstance(pages, list) or not pages:
+            raise TypeError("pagination result must contain at least one page")
+        comments = []
+        for index, page in enumerate(pages):
+            connection = page["data"]["repository"]["issue"]["comments"]
+            page_info = connection["pageInfo"]
+            if index < len(pages) - 1 and page_info.get("hasNextPage") is not True:
+                raise TypeError("history pagination stopped before final page")
+            if index == len(pages) - 1 and page_info.get("hasNextPage") is not False:
+                raise TypeError("history pagination is incomplete")
+            comments.extend(connection["nodes"])
+        return comments
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise ValueError("GitHub goal-history read is incomplete or malformed") from exc
 
 
 def _github_repository_capability(data: dict[str, Any]) -> dict[str, Any]:
@@ -588,13 +707,13 @@ def github_repository_portfolio_snapshot(
         )
     repository_probe = _github_repository_capability(first)
 
-    issues = []
+    indexed_issues = []
     findings = []
     for issue in issue_nodes:
         try:
             if not isinstance(issue, dict):
                 raise ValueError("issue must be an object")
-            issues.append(_graphql_issue(issue))
+            indexed_issues.append(_graphql_issue_index(issue, first["url"]))
         except (KeyError, TypeError, ValueError) as exc:
             goal = issue.get("number", "unknown") if isinstance(issue, dict) else "unknown"
             findings.append({"code": "malformed_record", "goal": goal, "detail": str(exc)})
@@ -604,10 +723,16 @@ def github_repository_portfolio_snapshot(
             for label in issue.get("labels", [])
         )
 
-    managed = [
-        issue for issue in issues
-        if GOAL_BLOCK_START in issue["body"] and (include_feedback or not is_feedback(issue))
-    ]
+    selected = [issue for issue in indexed_issues if include_feedback or not is_feedback(issue)]
+    bodies, hydration_bytes, hydration_processes = _github_goal_bodies(
+        repo, executable, owner, name, [issue["number"] for issue in selected],
+    )
+    managed = []
+    for issue in selected:
+        hydrated = bodies[issue["number"]]
+        candidate = {**issue, **hydrated}
+        if GOAL_BLOCK_START in candidate["body"]:
+            managed.append(candidate)
     records = []
     for issue in managed:
         try:
@@ -615,8 +740,9 @@ def github_repository_portfolio_snapshot(
         except (KeyError, TypeError, ValueError) as exc:
             findings.append({"code": "malformed_record", "goal": issue.get("number", "unknown"), "detail": str(exc)})
     snapshot = build_portfolio_snapshot(
-        project["backend"], records, reads=len(pages), raw_bytes=len(result.stdout.encode("utf-8")),
-        ignored=len(issues) - len(managed),
+        project["backend"], records, reads=len(pages) + hydration_processes,
+        raw_bytes=len(result.stdout.encode("utf-8")) + hydration_bytes,
+        ignored=len(indexed_issues) - len(managed),
         git_policy=next(
             (
                 section["settings"] for section in ((project.get("policy") or {}).get("sections") or [])
@@ -630,7 +756,9 @@ def github_repository_portfolio_snapshot(
     snapshot["summary"]["findings"] = len(snapshot["findings"])
     snapshot["complete"] = not findings
     snapshot["valid"] = not snapshot["findings"]
-    snapshot["summary"]["processes"] = 1
+    snapshot["summary"]["discovery_raw_bytes"] = len(result.stdout.encode("utf-8"))
+    snapshot["summary"]["hydration_raw_bytes"] = hydration_bytes
+    snapshot["summary"]["processes"] = 1 + hydration_processes
     return repository_probe, compact_portfolio_output(snapshot)
 
 
@@ -875,6 +1003,7 @@ def decision_checkpoint(repo: Path, include_feedback: bool = False) -> dict[str,
         github_processes = 1 if github_available else 0
         try:
             github_repository, portfolio = github_repository_portfolio_snapshot(repo, state, include_feedback)
+            github_processes = int(portfolio.get("summary", {}).get("processes", github_processes))
             github_auth = {"available": True, "ok": True, "detail": "github.com"}
         except ValueError as exc:
             detail = sanitize_output(str(exc))
