@@ -65,7 +65,7 @@ PLAN_SCHEMA_VERSION = 1
 POLICY_SCHEMA_VERSION = _policy.POLICY_SCHEMA_VERSION
 GOAL_SCHEMA_VERSION = 1
 GOAL_TRANSITION_SCHEMA_VERSION = 1
-PORTFOLIO_SCHEMA_VERSION = 1
+PORTFOLIO_SCHEMA_VERSION = _portfolio.PORTFOLIO_SCHEMA_VERSION
 PROJECT_POLICY_RELATIVE = _policy.PROJECT_POLICY_RELATIVE
 PROJECT_AUDIT_RELATIVE = _policy.PROJECT_AUDIT_RELATIVE
 GOAL_BLOCK_START = "<!-- zzzops-goal"
@@ -883,7 +883,8 @@ def inspect_repository_goal(repo: Path, project: dict[str, Any], issue_number: i
 def render_portfolio_summary(snapshot: dict[str, Any], include_done: bool = False) -> str:
     summary = snapshot["summary"]
     lines = [
-        f"Goals: {summary['actionable']} ready to work, {summary['blocked']} blocked, "
+        f"Goals: {summary['available']} available ({summary['writable']} writable), "
+        f"{summary['waiting']} waiting on dependencies, {summary['blocked']} blocked, "
         f"{summary['done']} closed ({summary['total']} total)."
     ]
     if not snapshot["complete"] or not snapshot["valid"]:
@@ -892,13 +893,16 @@ def render_portfolio_summary(snapshot: dict[str, Any], include_done: bool = Fals
         "new": "New", "triaged": "Planned", "ready": "Ready", "in_progress": "In progress",
         "blocked": "Blocked", "done": "Done", "cancelled": "Cancelled",
     }
+    work_labels = {
+        "triage": "Triage available", "prepare": "Preparation available",
+        "wait_dependency": "Waiting on dependency", "wait_human": "Waiting on human",
+    }
     for goal in snapshot["goals"]:
         if not include_done and goal["status"] in {"done", "cancelled"}:
             continue
         title = re.sub(r"\s+", " ", str(goal["title"])).strip()[:240]
         label = status_labels.get(goal["status"], goal["status"])
-        if goal["status"] in {"ready", "in_progress"} and not goal.get("actionable"):
-            label = "Waiting"
+        label = work_labels.get(goal.get("work_state"), label)
         line = f"#{goal['key']} {label}: {title}"
         if goal.get("needs_human"):
             line += " — action needed"

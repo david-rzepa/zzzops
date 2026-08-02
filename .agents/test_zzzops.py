@@ -1457,7 +1457,41 @@ class PortfolioTests(unittest.TestCase):
         self.assertEqual(0, first["summary"]["total"])
         self.assertEqual([], first["findings"])
 
-    def test_snapshot_derives_graph_actionability_and_compact_summary(self):
+    def test_snapshot_projects_explicit_work_states(self):
+        records = [
+            zzzops.github_goal_record(self.issue(1, status="new")),
+            zzzops.github_goal_record(self.issue(2, status="triaged")),
+            zzzops.github_goal_record(self.issue(3, status="ready")),
+            zzzops.github_goal_record(self.issue(4, status="in_progress", depends_on=[3])),
+            zzzops.github_goal_record(self.issue(
+                5, status="blocked",
+                blockers=[{"id": "B-1", "status": "open", "category": "human-action"}],
+            )),
+            zzzops.github_goal_record(self.issue(6, status="blocked")),
+            zzzops.github_goal_record(self.issue(7, status="done")),
+            zzzops.github_goal_record(self.issue(
+                8, status="ready",
+                blockers=[{"id": "B-2", "status": "open", "category": "human-action"}],
+            )),
+        ]
+
+        snapshot = zzzops.build_portfolio_snapshot("github_issues", records, reads=1, raw_bytes=100)
+        by_key = {goal["key"]: goal for goal in snapshot["goals"]}
+
+        self.assertEqual(2, snapshot["schema_version"])
+        self.assertEqual(
+            {
+                1: "triage", 2: "prepare", 3: "write", 4: "wait_dependency",
+                5: "wait_human", 6: "blocked", 7: "terminal", 8: "write",
+            },
+            {key: goal["work_state"] for key, goal in by_key.items()},
+        )
+        self.assertFalse(any("actionable" in goal for goal in snapshot["goals"]))
+        self.assertEqual(4, snapshot["summary"]["available"])
+        self.assertEqual(2, snapshot["summary"]["writable"])
+        self.assertEqual(1, snapshot["summary"]["waiting"])
+
+    def test_snapshot_derives_graph_work_state_and_compact_summary(self):
         records = [
             zzzops.github_goal_record(self.issue(1, status="done")),
             zzzops.github_goal_record(self.issue(2, depends_on=[1])),
@@ -1470,10 +1504,14 @@ class PortfolioTests(unittest.TestCase):
         by_key = {goal["key"]: goal for goal in snapshot["goals"]}
         self.assertEqual([2], by_key[1]["blocks"])
         self.assertEqual([3], by_key[2]["children"])
-        self.assertEqual({"total": 3, "actionable": 1, "blocked": 1, "done": 1, "findings": 0, "reads": 1, "raw_bytes": 20000, "ignored": 0}, snapshot["summary"])
+        self.assertEqual({
+            "total": 3, "available": 1, "writable": 1, "waiting": 0,
+            "blocked": 1, "done": 1, "findings": 0, "reads": 1,
+            "raw_bytes": 20000, "ignored": 0,
+        }, snapshot["summary"])
         self.assertTrue(snapshot["valid"])
         summary = zzzops.render_portfolio_summary(snapshot)
-        self.assertIn("Goals: 1 ready to work, 1 blocked, 1 closed (3 total).", summary)
+        self.assertIn("Goals: 1 available (1 writable), 0 waiting on dependencies, 1 blocked, 1 closed (3 total).", summary)
         self.assertIn("#2 Ready: Goal 2", summary)
         self.assertNotIn("Goal 1", summary)
         self.assertNotIn("digest", summary)
@@ -1481,7 +1519,7 @@ class PortfolioTests(unittest.TestCase):
         self.assertNotIn("P1", summary)
         self.assertLess(len(summary.encode("utf-8")), snapshot["summary"]["raw_bytes"] // 10)
 
-    def test_review_ready_dependency_is_actionable_only_when_project_policy_allows_stacking(self):
+    def test_review_ready_dependency_is_writable_only_when_project_policy_allows_stacking(self):
         review_ready = {
             "branch": "goal/parent", "base": "dev", "target": "dev", "pr": "https://example.test/pull/1",
             "review": {"status": "pending", "checkpoint": "abc123"},
@@ -1501,17 +1539,21 @@ class PortfolioTests(unittest.TestCase):
             },
         )
         by_key = {goal["key"]: goal for goal in stacked["goals"]}
-        self.assertEqual(1, stacked["summary"]["actionable"])
-        self.assertTrue(by_key[2]["actionable"])
+        self.assertEqual(1, stacked["summary"]["writable"])
+        self.assertEqual("write", by_key[2]["work_state"])
         self.assertIn("#2 In progress: Goal 2", zzzops.render_portfolio_summary(stacked))
 
         completed_only = zzzops.build_portfolio_snapshot(
             "github_issues", records, reads=1, raw_bytes=100,
             git_policy={"dependency_base": "completed_goal"},
         )
-        self.assertEqual(0, completed_only["summary"]["actionable"])
+        self.assertEqual(0, completed_only["summary"]["available"])
+        self.assertEqual(1, completed_only["summary"]["waiting"])
         self.assertNotEqual(stacked["portfolio_digest"], completed_only["portfolio_digest"])
-        self.assertFalse(next(goal for goal in completed_only["goals"] if goal["key"] == 2)["actionable"])
+        self.assertEqual(
+            "wait_dependency",
+            next(goal for goal in completed_only["goals"] if goal["key"] == 2)["work_state"],
+        )
 
         records[0]["blocker_categories"] = ["technical-unknown"]
         unsafe = zzzops.build_portfolio_snapshot(
@@ -1521,7 +1563,8 @@ class PortfolioTests(unittest.TestCase):
                 "review_pending_dependency": "stack_from_reviewed_checkpoint",
             },
         )
-        self.assertEqual(0, unsafe["summary"]["actionable"])
+        self.assertEqual(0, unsafe["summary"]["available"])
+        self.assertEqual(1, unsafe["summary"]["waiting"])
 
     def test_audit_reports_graph_state_claim_review_and_label_drift(self):
         stale = {"owner": "Codex", "expires_at": "2026-07-16T00:00:00Z"}
@@ -1746,7 +1789,7 @@ class PortfolioTests(unittest.TestCase):
                 Path("."), {"backend": "github_issues", "repository": {"identity": "owner/repo"}},
             )
 
-    def test_large_graph_is_iterative_and_invalid_states_are_not_actionable(self):
+    def test_large_graph_is_iterative_and_invalid_snapshots_still_expose_work_states(self):
         chain = [{"key": index, "parent": None, "depends_on": [] if index == 0 else [index - 1]} for index in range(1500)]
         self.assertEqual(set(), zzzops._cycle_nodes(chain, "depends_on"))
         chain[0]["depends_on"] = [1499]
@@ -1758,7 +1801,11 @@ class PortfolioTests(unittest.TestCase):
             zzzops.github_goal_record(self.issue(4, depends_on=[3])),
         ]
         snapshot = zzzops.build_portfolio_snapshot("github_issues", records, reads=1, raw_bytes=100)
-        self.assertEqual(0, snapshot["summary"]["actionable"])
+        self.assertEqual(2, snapshot["summary"]["available"])
+        self.assertEqual(
+            {1: "triage", 2: "prepare", 3: "terminal", 4: "wait_dependency"},
+            {goal["key"]: goal["work_state"] for goal in snapshot["goals"]},
+        )
         self.assertFalse(snapshot["valid"])
         self.assertIn("cancelled_dependency", {finding["code"] for finding in snapshot["findings"]})
 
@@ -1829,10 +1876,12 @@ class PortfolioTests(unittest.TestCase):
             {"key": "A", "title": "A", "status": "ready", "priority": "P1", "value": "high", "difficulty": "S", "confidence": "high", "parent": None, "depends_on": [], "claim": None, "needs_human": False, "blocker_categories": [], "next_action": "A", "revision": 2, "digest": "new", "updated_at": None, "implementation": None, "labels": []},
             {"key": "C", "title": "C", "status": "ready", "priority": "P2", "value": "medium", "difficulty": "S", "confidence": "high", "parent": None, "depends_on": [], "claim": None, "needs_human": False, "blocker_categories": [], "next_action": "C", "revision": 1, "digest": "c", "updated_at": None, "implementation": None, "labels": []},
         ], reads=1, raw_bytes=10)
-        prior = {"schema_version": 1, "goals": [{"key": "A", "revision": 1, "digest": "old"}, {"key": "B", "revision": 1, "digest": "b"}]}
+        prior = {"schema_version": 2, "goals": [{"key": "A", "revision": 1, "digest": "old"}, {"key": "B", "revision": 1, "digest": "b"}]}
         self.assertEqual(["goal_changed", "goal_removed", "goal_added"], [finding["code"] for finding in zzzops.compare_portfolios(current, prior)])
+        with self.assertRaisesRegex(ValueError, "unsupported schema"):
+            zzzops.compare_portfolios(current, {"schema_version": 1, "goals": []})
         with self.assertRaisesRegex(ValueError, "malformed goal"):
-            zzzops.compare_portfolios(current, {"schema_version": 1, "goals": [None]})
+            zzzops.compare_portfolios(current, {"schema_version": 2, "goals": [None]})
 
     def test_portfolio_allows_advisory_overlap_and_rejects_exclusive_overlap(self):
         common = {
@@ -1884,7 +1933,7 @@ class FakeReservationAdapter:
         else:
             self.labels[name] = value
 
-    def goal_revision(self, _goal, require_actionable=False):
+    def goal_revision(self, _goal, require_writable=False):
         return self.revision
 
     def get_label(self, name):
@@ -2052,7 +2101,7 @@ class ReservationTests(unittest.TestCase):
         body = f"Human goal\n\n{zzzops.GOAL_BLOCK_START}\n{json.dumps(goal)}\n{zzzops.GOAL_BLOCK_END}\n"
         adapter._run.return_value = SimpleNamespace(returncode=0, stdout=json.dumps({"body": body}), stderr="")
         with self.assertRaisesRegex(zzzops.ReservationProviderError, "not available"):
-            adapter.goal_revision(12, require_actionable=True)
+            adapter.goal_revision(12, require_writable=True)
 
     def test_github_adapter_lists_only_complete_resource_labels_across_pages(self):
         adapter = object.__new__(zzzops.GitHubReservationAdapter)
@@ -2351,6 +2400,16 @@ class ReservationTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_execute_routes_explicit_work_states_without_blurring_write_authority(self):
+        execute = (
+            Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "EXECUTE.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("work_state: triage|prepare", execute)
+        for state in ("write", "wait_dependency", "wait_human", "blocked", "terminal"):
+            self.assertIn(f"`{state}`", execute)
+        self.assertIn("no goal has `work_state: triage|prepare|write`", execute)
+        self.assertNotIn("portfolio's PROJECT-derived `actionable` field", execute)
+
     def test_github_schema_is_issue_native(self):
         self.assertIn("schema_version", zzzops.GOAL_FIELDS)
         for derived in ("id", "title", "blocks", "needs_human"):

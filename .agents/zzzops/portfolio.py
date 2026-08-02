@@ -6,7 +6,8 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-PORTFOLIO_SCHEMA_VERSION = 1
+PORTFOLIO_SCHEMA_VERSION = 2
+AVAILABLE_WORK_STATES = {"triage", "prepare", "write"}
 _exclusive_resources: Callable[[list[str], Any], list[str]] | None = None
 _normalize_resource_policy: Callable[[Any], dict[str, Any]] | None = None
 _text_present: Callable[[Any], bool] | None = None
@@ -83,7 +84,7 @@ def _review_ready_dependency(record: dict[str, Any]) -> bool:
     )
 
 
-def _dependencies_allow_action(
+def _dependencies_allow_write(
     record: dict[str, Any], by_key: dict[Any, dict[str, Any]], git_policy: dict[str, Any],
 ) -> bool:
     dependencies = record.get("depends_on", [])
@@ -101,6 +102,24 @@ def _dependencies_allow_action(
     if len(unfinished) == 1:
         return git_policy.get("dependency_base") == "dependency_branch"
     return git_policy.get("multiple_dependency_base") == "reviewed_base_containing_all"
+
+
+def _work_state(
+    record: dict[str, Any], by_key: dict[Any, dict[str, Any]], git_policy: dict[str, Any],
+) -> str:
+    """Describe the safest useful work currently available for one goal."""
+    status = record["status"]
+    if status in {"done", "cancelled"}:
+        return "terminal"
+    if status == "blocked":
+        return "wait_human" if record.get("needs_human") else "blocked"
+    if status == "new":
+        return "triage"
+    if status == "triaged":
+        return "prepare"
+    if status in {"ready", "in_progress"}:
+        return "write" if _dependencies_allow_write(record, by_key, git_policy) else "wait_dependency"
+    return "blocked"
 
 
 def audit_portfolio(
@@ -195,17 +214,14 @@ def build_portfolio_snapshot(
     resource_policy = normalize_resource_policy(resource_policy)
     findings = audit_portfolio(records, backend, as_of, resource_policy)
     terminal = {"done", "cancelled"}
-    blocked = {record["key"] for record in records if record["status"] == "blocked" or record["needs_human"]}
     terminal_keys = {record["key"] for record in records if record["status"] in terminal}
     git_policy = git_policy or {}
-    actionable = [
-        record["key"] for record in records
-        if record["status"] in {"ready", "in_progress"} and record["key"] not in blocked
-        and _dependencies_allow_action(record, by_key, git_policy)
-    ]
-    actionable_keys = set(actionable)
     for record in records:
-        record["actionable"] = record["key"] in actionable_keys
+        record["work_state"] = _work_state(record, by_key, git_policy)
+    available = [record["key"] for record in records if record["work_state"] in AVAILABLE_WORK_STATES]
+    writable = [record["key"] for record in records if record["work_state"] == "write"]
+    waiting = [record["key"] for record in records if record["work_state"] == "wait_dependency"]
+    blocked = [record["key"] for record in records if record["work_state"] in {"wait_human", "blocked"}]
     portfolio_digest = hashlib.sha256(
         (
             "git_policy:" + json.dumps(git_policy, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
@@ -221,7 +237,8 @@ def build_portfolio_snapshot(
         "valid": not findings,
         "portfolio_digest": portfolio_digest, "goals": sorted(records, key=lambda record: _portfolio_key(record["key"])),
         "findings": findings, "summary": {
-            "total": len(records), "actionable": len(actionable), "blocked": len(blocked),
+            "total": len(records), "available": len(available), "writable": len(writable),
+            "waiting": len(waiting), "blocked": len(blocked),
             "done": len(terminal_keys), "findings": len(findings), "reads": reads,
             "raw_bytes": raw_bytes, "ignored": ignored,
         },

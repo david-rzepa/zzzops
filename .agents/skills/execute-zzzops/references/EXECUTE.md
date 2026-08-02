@@ -7,8 +7,8 @@
 1. Read the charter and use the current BACKENDS checkpoint portfolio; never reread it. Require `complete:true` and `valid:true`; resolve findings instead of selecting from an invalid graph, and use its compact relationships/claims/reviews rather than rereading goals. If the human queue is non-empty, run `UNBLOCK.md` to order and persist consequential gates, then continue independently actionable work.
    `zzzops-feedback` goals appear only with current-session approval covering the whole queue; never ask per issue, and keep `--include-feedback` on every checkpoint refresh.
    Treat that complete checkpoint as the current queue read until a local state mutation, provider failure, explicit freshness requirement, or observed drift requires one refresh. Do not run an extra portfolio command merely to rediscover the same goals.
-2. Route `new` goals through `CREATE.md` according to PROJECT triage/continuation policy.
-3. Use the portfolio's PROJECT-derived `actionable` field. The installed default waits for every dependency to be `done` before writable implementation; a reviewed PROJECT override such as `stack_from_reviewed_checkpoint` may make a child actionable earlier. Read-only investigation may prepare waiting work when policy permits, but never claims, edits, branches, or marks it started. Recheck blocked work only on its trigger.
+2. Route `work_state: triage|prepare` through `CREATE.md`. It may update goal state or justified children, never claim, branch, edit source, or start implementation.
+3. `write` permits reservation and source changes. `wait_dependency` permits only policy-authorized read-only investigation; `wait_human`, `blocked`, and `terminal` wait for their trigger. PROJECT dependency policy derives `write`, including permitted review-checkpoint stacking; no other state grants write authority.
 4. Obey authority and explicit PROJECT priority first. Within the same effective priority, prefer evidenced charter/KPI value, safety/risk reduction, and unlocks: choose high-value, risk-reducing or unlocking work over low-value easy or fast work. Then prefer confidence, faster observable feedback, and lower difficulty; difficulty is cost, not value and never a reason to maximize item count. Unmeasured KPIs may support qualitative rationale, but never invent a baseline, score, or precision. On an exact tie use PROJECT resume policy, then the lowest goal key.
 
 Execution assumes the user is absent and never asks an interactive question. Persist each unanswered consequential question with category, evidence, recommendation, boundary, safe work, and trigger. Never infer approval; stop only affected work and continue authorized goals until true queue exhaustion.
@@ -37,7 +37,7 @@ Before substantive work on a newly selected goal or later-turn resume, tell the 
 
 ## Exhaustion and handoff
 
-When no work is actionable, rebuild the human queue through `UNBLOCK.md`, leave every request durable, and hand off the highest-leverage required actions without asking for a live response. On a later invocation, resolve any supplied answers and retry when policy restores work. Do not poll or watch for human input during execution.
+When no goal has `work_state: triage|prepare|write`, rebuild the human queue through `UNBLOCK.md`, leave every request durable, and hand off the highest-leverage required actions without asking for a live response. On a later invocation, resolve any supplied answers and retry when policy restores work. Do not poll or watch for human input during execution.
 
 If still empty, invoke `$suggest-zzzops-work` in apply mode only when reviewed PROJECT policy explicitly enables refill. Use its category and count limits; never loop-refill or enable policy yourself.
 
