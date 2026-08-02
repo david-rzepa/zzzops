@@ -191,6 +191,40 @@ class InitializationTests(unittest.TestCase):
         final = zzzops.confirm_project(self.repo, first["policy_digest"], "test-user", [], True)
         self.assertTrue(final["initialized"])
 
+    def test_policy_rereview_preserves_history_and_appends_once(self):
+        first = zzzops.apply_plan(self.repo, self.plan())
+        zzzops.confirm_project(self.repo, first["policy_digest"], "first-reviewer", [], True)
+        prior = json.loads(json.dumps(zzzops.read_project_state(self.repo)[2]["history"]))
+
+        second = zzzops.apply_plan(self.repo, self.plan())
+        pending = zzzops.read_project_state(self.repo)[2]
+        self.assertEqual(prior, pending["history"][:-1])
+        self.assertEqual(len(prior) + 1, len(pending["history"]))
+        self.assertEqual("ZzzOps initialization", pending["history"][-1]["actor"])
+
+        with self.assertRaisesRegex(ValueError, "base_digest is stale"):
+            zzzops.apply_plan(self.repo, second)
+        self.assertEqual(pending["history"], zzzops.read_project_state(self.repo)[2]["history"])
+
+        with self.assertRaisesRegex(ValueError, "digest changed"):
+            zzzops.confirm_project(self.repo, "sha256:stale", "second-reviewer", [], True)
+        self.assertEqual(pending["history"], zzzops.read_project_state(self.repo)[2]["history"])
+
+        zzzops.confirm_project(self.repo, second["policy_digest"], "second-reviewer", [], True)
+        reviewed = zzzops.read_project_state(self.repo)[2]
+        self.assertEqual(prior, reviewed["history"][:len(prior)])
+        self.assertEqual(len(prior) + 2, len(reviewed["history"]))
+        self.assertEqual("second-reviewer", reviewed["history"][-1]["actor"])
+        audit = (self.repo / ".zzzops" / "PROJECT_AUDIT.md").read_text(encoding="utf-8")
+        for entry in reviewed["history"]:
+            self.assertIn(entry["change"], audit)
+
+    def test_clean_initialization_starts_with_one_pending_history_entry(self):
+        zzzops.apply_plan(self.repo, self.plan())
+        history = zzzops.read_project_state(self.repo)[2]["history"]
+        self.assertEqual(1, len(history))
+        self.assertEqual("ZzzOps initialization", history[0]["actor"])
+
     def test_bound_charter_and_canonical_policy_changes_invalidate_review(self):
         applied = zzzops.apply_plan(self.repo, self.plan())
         zzzops.confirm_project(self.repo, applied["policy_digest"], "test-user", [], True)

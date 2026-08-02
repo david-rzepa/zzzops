@@ -1482,6 +1482,12 @@ def apply_plan(repo: Path, plan: dict[str, Any]) -> dict[str, Any]:
     revision = int(old_state.get("revision", 0)) + 1 if old_state else 1
     policy = json.loads(json.dumps(plan["policy"]))
     policy["evidence"] = plan["evidence"]
+    history = json.loads(json.dumps(old_state["history"])) if old_state else []
+    history.append({
+        "date": date.today().isoformat(), "actor": "ZzzOps initialization",
+        "change": f"Created pending revision {revision}",
+        "reason": "Confirmed agent-generated draft; explicit policy review still required.",
+    })
     state = {
         "schema_version": PROJECT_SCHEMA_VERSION,
         "initialized": False,
@@ -1490,11 +1496,7 @@ def apply_plan(repo: Path, plan: dict[str, Any]) -> dict[str, Any]:
         "revision": revision,
         "charter": plan["charter"],
         "policy": policy,
-        "history": [{
-            "date": date.today().isoformat(), "actor": "ZzzOps initialization",
-            "change": f"Created pending revision {revision}",
-            "reason": "Confirmed agent-generated draft; explicit policy review still required.",
-        }],
+        "history": history,
         "bindings": {},
         "approval": None,
     }
