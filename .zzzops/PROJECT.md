@@ -1,7 +1,7 @@
 # Project success charter
 
 **Status:** complete
-**Last reviewed:** 2026-08-01
+**Last reviewed:** 2026-08-02
 
 ## Overall goal
 - Outcome: ZzzOps lets Codex and Claude Code manage long-term project work autonomously with durable state, minimal babysitting, and explicit human control.
@@ -61,6 +61,6 @@ When KPIs conflict, prefer: user authority and safety, correctness, privacy, ver
 - `[policy:security_privacy_compliance]` **Security, privacy, secrets, and compliance**: Repository policy may tighten but never weaken safety and authority boundaries.
 - `[policy:documentation_style]` **Documentation and style**: Follow evidenced repository documentation and style conventions; use outcome-first, low-technical-detail user updates by default while allowing explicit project policy to override the style.
 - `[policy:deployment_resources]` **Deployment, environment, and resources**: Do not deploy without authority; choose bounded parallelism from the deterministic tracked-file repository size.
-- `[policy:autonomy_approval_parallelism]` **Autonomy, approvals, and parallelism**: Interview adaptively during goal capture at the reviewed depth; treat the requesting user as the sole stakeholder; execute unattended by persisting consequential questions as durable blockers; record privacy-safe execution reports; refill valuable bounded work; and use up to three size-aware workers.
+- `[policy:autonomy_approval_parallelism]` **Autonomy, approvals, and parallelism**: Interview adaptively during goal capture at the reviewed depth; treat the requesting user as the sole stakeholder; execute unattended by persisting consequential questions as durable blockers; repair in-scope CI failures without another approval; record privacy-safe execution reports; refill valuable bounded work; and use up to three size-aware workers.
 
 Detailed rationale and review history: [PROJECT_AUDIT.md](PROJECT_AUDIT.md). Canonical policy state: [POLICY.json](POLICY.json).

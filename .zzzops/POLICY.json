@@ -1,17 +1,17 @@
 {
   "approval": {
-    "date": "2026-08-01",
-    "digest": "sha256:a7838b1badb1062845b69556778bb4e15597ec0c3828d40133e8d3c4bf6d73a4",
+    "date": "2026-08-02",
+    "digest": "sha256:078356367556e5215333cba1eb21029a4614f3009a3c46a3658ea08776bc0bd7",
     "reviewer": "user"
   },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:b92bf593ddc375d43799573770e3eb1500b9e132f53e942a0ccf4b402c3b4b31",
+      "digest": "sha256:8f127874a90242258d63c24c9539e56b8dbe0e35bc3682c07b820a2e405a1859",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
-      "digest": "sha256:1fa6149fb8dd25525ebe67d0b2f1ff9beedf299233df6e17d88b2bce7101fdc1",
+      "digest": "sha256:6eacc54e2b838ce413b0a7d684b51be113ed57dc85e3d85352a1c1b4b7e4cefd",
       "path": ".zzzops/PROJECT.md"
     }
   },
@@ -75,15 +75,15 @@
   "history": [
     {
       "actor": "ZzzOps initialization",
-      "change": "Created pending revision 13",
-      "date": "2026-08-01",
+      "change": "Created pending revision 15",
+      "date": "2026-08-02",
       "reason": "Confirmed agent-generated draft; explicit policy review still required."
     },
     {
       "actor": "user",
-      "change": "Reviewed policy revision 14",
-      "date": "2026-08-01",
-      "reason": "Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, autonomy_approval_parallelism; source digest sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a."
+      "change": "Reviewed policy revision 16",
+      "date": "2026-08-02",
+      "reason": "Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, autonomy_approval_parallelism; source digest sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c."
     }
   ],
   "initialized": true,
@@ -136,6 +136,12 @@
         "id": "E-008",
         "kind": "proposed",
         "source": "user decisions 2026-08-01"
+      },
+      {
+        "finding": "Authorization to execute a goal includes diagnosing and repairing CI failures caused by that goal's own changes; do not ask for separate fix approval unless the repair expands scope or needs new authority.",
+        "id": "E-009",
+        "kind": "proposed",
+        "source": "user decision 2026-08-02"
       }
     ],
     "schema_version": 1,
@@ -152,8 +158,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-01",
-          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
+          "date": "2026-08-02",
+          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
           "reviewer": "user"
         },
         "settings": {
@@ -184,8 +190,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-01",
-          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
+          "date": "2026-08-02",
+          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
           "reviewer": "user"
         },
         "settings": {
@@ -233,8 +239,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-01",
-          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
+          "date": "2026-08-02",
+          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
           "reviewer": "user"
         },
         "settings": {
@@ -275,8 +281,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-01",
-          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
+          "date": "2026-08-02",
+          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
           "reviewer": "user"
         },
         "settings": {
@@ -310,8 +316,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-01",
-          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
+          "date": "2026-08-02",
+          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
           "reviewer": "user"
         },
         "settings": {
@@ -341,8 +347,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-01",
-          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
+          "date": "2026-08-02",
+          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
           "reviewer": "user"
         },
         "settings": {
@@ -368,8 +374,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-01",
-          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
+          "date": "2026-08-02",
+          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
           "reviewer": "user"
         },
         "settings": {
@@ -395,8 +401,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-01",
-          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
+          "date": "2026-08-02",
+          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
           "reviewer": "user"
         },
         "settings": {
@@ -430,8 +436,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-01",
-          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
+          "date": "2026-08-02",
+          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
           "reviewer": "user"
         },
         "settings": {
@@ -449,7 +455,7 @@
       {
         "applicable": true,
         "confidence": "high",
-        "decision": "Interview adaptively during goal capture at the reviewed depth; treat the requesting user as the sole stakeholder; execute unattended by persisting consequential questions as durable blockers; record privacy-safe execution reports; refill valuable bounded work; and use up to three size-aware workers.",
+        "decision": "Interview adaptively during goal capture at the reviewed depth; treat the requesting user as the sole stakeholder; execute unattended by persisting consequential questions as durable blockers; repair in-scope CI failures without another approval; record privacy-safe execution reports; refill valuable bounded work; and use up to three size-aware workers.",
         "default_disposition": "changed",
         "default_origin": "user-selected ZzzOps defaults and project policy",
         "exceptions": [],
@@ -458,8 +464,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-01",
-          "reviewed_digest": "sha256:f9af51318847600a648a1e432361b80b02a7116925fcc9aee6fa3cab6262da2a",
+          "date": "2026-08-02",
+          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
           "reviewer": "user"
         },
         "settings": {
@@ -480,6 +486,7 @@
           "execution_reports": {
             "enabled": true
           },
+          "in_scope_ci_failure_repair": "authorized_without_additional_approval",
           "max_workers": 3,
           "parallelization": {
             "at_or_above_threshold_mode": "read_only",
@@ -524,7 +531,8 @@
           "E-002",
           "E-004",
           "E-007",
-          "E-008"
+          "E-008",
+          "E-009"
         ],
         "title": "Autonomy, approvals, and parallelism",
         "unresolved": []
@@ -535,6 +543,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 14,
+  "revision": 16,
   "schema_version": 1
 }
