@@ -146,6 +146,20 @@
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {
+        "id": "automated_design", "title": "Automated design authority", "required": true, "applicable": true,
+        "decision": "enabled", "rationale": "Allow unattended execution to resolve reversible in-scope design choices when reviewed project evidence is decisive, while retaining consequential authority gates.",
+        "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps bounded automated-design fallback", "default_disposition": "accepted",
+        "settings": {
+          "scope": "reversible_in_scope_implementation",
+          "selection_basis": ["project_objectives", "kpi_evidence", "constraints", "precedence"],
+          "decision_record": ["alternatives", "rationale", "assumptions", "falsifiable_validation_signal"],
+          "privacy_security": "unambiguously_risk_reducing_without_material_behavior_change",
+          "hard_stops": ["product_scope", "incompatible_public_contract", "destructive_migration", "external_spending", "deployment", "external_write", "human_review", "safety_authority", "higher_authority"],
+          "insufficient_evidence": "durable_design_blocker"
+        },
+        "exceptions": [], "unresolved": [], "review": {"approved": false}
+      },
+      {
         "id": "autonomy_approval_parallelism", "title": "Autonomy, approvals, and parallelism", "required": true, "applicable": true,
         "decision": "Interview adaptively during goal capture; execute unattended by persisting consequential questions as durable blockers; refill valuable bounded work; use up to three worktree workers below 100 MB and read-only workers otherwise.", "rationale": "balances precise capture, unattended execution, authority, bounded valuable refill, and predictable repository resource cost",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps conservative fallback", "default_disposition": "accepted",

@@ -2303,6 +2303,66 @@ class WorkflowContractTests(unittest.TestCase):
             },
             settings["ci_deduplication"],
         )
+
+    def test_automated_design_policy_is_explicit_bounded_and_rendered(self):
+        root = Path(__file__).parent
+        plan = json.loads((root / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        section = next(item for item in plan["policy"]["sections"] if item["id"] == "automated_design")
+        self.assertEqual("enabled", section["decision"])
+        self.assertEqual(
+            ["project_objectives", "kpi_evidence", "constraints", "precedence"],
+            section["settings"]["selection_basis"],
+        )
+        self.assertEqual(
+            ["alternatives", "rationale", "assumptions", "falsifiable_validation_signal"],
+            section["settings"]["decision_record"],
+        )
+        self.assertEqual("durable_design_blocker", section["settings"]["insufficient_evidence"])
+        self.assertIn("destructive_migration", section["settings"]["hard_stops"])
+        self.assertIn("higher_authority", section["settings"]["hard_stops"])
+        self.assertEqual([], zzzops.validate_policy(plan["policy"], True))
+        rendered = zzzops.render_project({
+            "initialized": False, "approval": None, "charter": plan["charter"], "policy": plan["policy"],
+        })
+        self.assertIn("[policy:automated_design]", rendered)
+
+        legacy = json.loads(json.dumps(plan["policy"]))
+        legacy["evidence"] = plan["evidence"]
+        legacy["sections"] = [item for item in legacy["sections"] if item["id"] != "automated_design"]
+        self.assertEqual([], zzzops.validate_policy(legacy, False))
+        self.assertTrue(any("missing sections: automated_design" in error for error in zzzops.validate_policy(legacy, True)))
+
+        for decision in ("enabled", "disabled"):
+            candidate = json.loads(json.dumps(plan["policy"]))
+            next(item for item in candidate["sections"] if item["id"] == "automated_design")["decision"] = decision
+            self.assertEqual([], zzzops.validate_policy(candidate, True), decision)
+
+        mutations = {
+            "decision": lambda item: item.update({"decision": "ask_agent"}),
+            "selection_basis": lambda item: item["settings"]["selection_basis"].remove("kpi_evidence"),
+            "privacy_security": lambda item: item["settings"].update({"privacy_security": "agent_discretion"}),
+            "hard_stops": lambda item: item["settings"]["hard_stops"].remove("destructive_migration"),
+        }
+        for field, mutate in mutations.items():
+            invalid = json.loads(json.dumps(plan["policy"]))
+            mutate(next(item for item in invalid["sections"] if item["id"] == "automated_design"))
+            self.assertTrue(any(field in error for error in zzzops.validate_policy(invalid, True)), field)
+
+    def test_automated_design_execution_and_review_contracts_preserve_boundaries(self):
+        root = Path(__file__).parent
+        unblock = (root / "skills" / "execute-zzzops" / "references" / "UNBLOCK.md").read_text(encoding="utf-8")
+        review = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
+        for phrase in (
+            "objectives, KPI evidence, constraints, and precedence",
+            "alternatives, rationale, assumptions, and a falsifiable validation signal",
+            "unambiguously reduces exposure, privilege, collection, or retention",
+            "product scope, incompatible public contracts, destructive migrations, external spending, deployment",
+            "durable design blocker",
+        ):
+            self.assertIn(phrase, unblock)
+        self.assertIn("missing automated-design section", review)
+        self.assertIn("without inferring approval", review)
+
     def test_continuation_policy_defaults_are_structured(self):
         root = Path(__file__).parent / "zzzops"
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
