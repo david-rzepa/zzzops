@@ -245,7 +245,16 @@ def nul_paths(output: str) -> list[str]:
 
 def tracked_cleanup(target: Path, roots: tuple[str, ...], old_lock: dict[str, object] | None, old_warning: str | None) -> dict[str, object]:
     tracked = nul_paths(git("ls-files", "-z", "--", *roots, cwd=target).stdout)
-    staged = nul_paths(git("diff", "--cached", "--name-only", "-z", "--", *roots, ".gitignore", ".zzzops/.gitignore", LOCK_RELATIVE, cwd=target).stdout)
+    staged_machinery = nul_paths(git("diff", "--cached", "--name-only", "-z", "--", *roots, cwd=target).stdout)
+    staged_non_deletions = nul_paths(git(
+        "diff", "--cached", "--diff-filter=ACMRTUXB", "--name-only", "-z", "--", *roots,
+        cwd=target,
+    ).stdout)
+    staged_metadata = nul_paths(git(
+        "diff", "--cached", "--name-only", "-z", "--", ".gitignore", ".zzzops/.gitignore", LOCK_RELATIVE,
+        cwd=target,
+    ).stdout)
+    staged = sorted(set(staged_machinery) | set(staged_metadata))
     errors: list[str] = []
     if tracked:
         authorized: set[str] | None = set(old_lock["files"]) if old_lock else None
@@ -261,9 +270,14 @@ def tracked_cleanup(target: Path, roots: tuple[str, ...], old_lock: dict[str, ob
             unauthorized = sorted(set(tracked) - authorized)
             if unauthorized:
                 errors.append("tracked paths are not proven legacy ZzzOps machinery: " + ", ".join(unauthorized))
-    if staged:
-        errors.append("staged changes overlap ZzzOps machinery or installer-owned metadata: " + ", ".join(staged))
-    return {"tracked": tracked, "staged": staged, "errors": errors}
+    return {
+        "tracked": tracked,
+        "staged": staged,
+        "staged_machinery": staged_machinery,
+        "staged_non_deletions": staged_non_deletions,
+        "staged_metadata": staged_metadata,
+        "errors": errors,
+    }
 
 
 def broad_ignore_errors(target: Path) -> list[str]:
@@ -296,8 +310,25 @@ def installation_state(target: Path, lock: dict[str, object]) -> dict[str, objec
     expected = lock["files"]
     matching = inventory == expected
     same_lock = old_lock == lock
+    installed_lock_matches = old_lock is not None and inventory == old_lock["files"]
     ignores_match = read_text(target / ".gitignore").replace("\r\n", "\n") == root_ignore
     state_ignores_match = read_text(target / ".zzzops" / ".gitignore").replace("\r\n", "\n") == state_ignore
+    pending_untracking = (
+        cleanup["staged_machinery"]
+        if cleanup["staged_machinery"]
+        and not cleanup["tracked"]
+        and not cleanup["staged_non_deletions"]
+        and not cleanup["staged_metadata"]
+        and installed_lock_matches
+        and ignores_match
+        and state_ignores_match
+        else []
+    )
+    unsafe_staged = sorted(set(cleanup["staged"]) - set(pending_untracking))
+    if unsafe_staged:
+        cleanup["errors"].append(
+            "staged changes overlap ZzzOps machinery or installer-owned metadata: " + ", ".join(unsafe_staged)
+        )
     if old_lock is None and not inventory:
         kind = "fresh install"
     elif old_lock and old_lock.get("revision") != lock.get("revision"):
@@ -314,6 +345,8 @@ def installation_state(target: Path, lock: dict[str, object]) -> dict[str, objec
         "state_ignore": read_text(target / ".zzzops" / ".gitignore"),
         "tracked": cleanup["tracked"],
         "staged": cleanup["staged"],
+        "staged_non_deletions": cleanup["staged_non_deletions"],
+        "staged_metadata": cleanup["staged_metadata"],
     }, sort_keys=True).encode("utf-8")).hexdigest()
     return {
         "kind": kind,
@@ -324,6 +357,7 @@ def installation_state(target: Path, lock: dict[str, object]) -> dict[str, objec
         "state_ignore": state_ignore,
         "signature": signature,
         "tracked": cleanup["tracked"],
+        "pending_untracking": pending_untracking,
         "cleanup_errors": cleanup["errors"],
     }
 
@@ -404,8 +438,10 @@ def main(argv: list[str] | None = None) -> int:
             print("Tracked ZzzOps machinery requires explicit index cleanup:")
             for relative in state["tracked"]:
                 print(f"- {relative}")
+        if state["pending_untracking"]:
+            print(f"Pending deletion-only index cleanup is preserved ({len(state['pending_untracking'])} machinery paths).")
         for error in state["cleanup_errors"]:
-            print(f"Cannot clean tracked machinery yet: {error}")
+            print(f"Blocked: {error}")
         if args.dry_run:
             print("No files or Git index entries were changed.")
             return 2 if state["cleanup_errors"] else 0

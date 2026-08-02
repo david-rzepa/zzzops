@@ -180,6 +180,37 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertTrue((target / ".agents" / "zzzops" / "zzzops.py").is_file())
                 self.assertTrue((target / ".claude" / "skills" / "execute-zzzops" / "SKILL.md").is_file())
 
+                staged_cleanup = subprocess.run(
+                    ["git", "-C", str(target), "diff", "--cached", "--diff-filter=D", "--name-only"],
+                    text=True, encoding="utf-8", capture_output=True, check=True,
+                ).stdout.splitlines()
+                self.assertTrue(staged_cleanup)
+                pending = self.run_installer(installer, target, "--dry-run")
+                self.assertEqual(0, pending.returncode, pending.stderr + pending.stdout)
+                self.assertIn("Pending deletion-only index cleanup is preserved", pending.stdout)
+                current_lock = json.loads((target / ".zzzops" / "ZZZOPS_LOCK.json").read_text(encoding="utf-8"))
+                next_lock = json.loads(json.dumps(current_lock))
+                next_lock["revision"] = "f" * 40
+                next_lock["version"] = "next-version"
+                upgraded_state = installer_engine.installation_state(target, next_lock)
+                self.assertEqual(staged_cleanup, upgraded_state["pending_untracking"])
+                self.assertEqual([], upgraded_state["cleanup_errors"])
+                repeated = self.run_installer(installer, target, "--yes")
+                self.assertEqual(0, repeated.returncode, repeated.stderr + repeated.stdout)
+                self.assertEqual(staged_cleanup, subprocess.run(
+                    ["git", "-C", str(target), "diff", "--cached", "--diff-filter=D", "--name-only"],
+                    text=True, encoding="utf-8", capture_output=True, check=True,
+                ).stdout.splitlines())
+
+                lock_path = target / ".zzzops" / "ZZZOPS_LOCK.json"
+                lock_bytes = lock_path.read_bytes()
+                lock_path.write_bytes(lock_bytes + b"\n")
+                subprocess.run(["git", "-C", str(target), "add", ".zzzops/ZZZOPS_LOCK.json"], check=True)
+                metadata_blocked = self.run_installer(installer, target, "--dry-run")
+                self.assertNotEqual(0, metadata_blocked.returncode, metadata_blocked.stderr + metadata_blocked.stdout)
+                self.assertIn(".zzzops/ZZZOPS_LOCK.json", metadata_blocked.stdout)
+                lock_path.write_bytes(lock_bytes)
+
                 subprocess.run(["git", "-C", str(target), "reset", "--quiet", "HEAD", "--", "."], check=True)
                 (target / ".agents" / "zzzops" / "zzzops.py").write_text("staged divergence\n", encoding="utf-8")
                 subprocess.run(["git", "-C", str(target), "add", "-f", ".agents/zzzops/zzzops.py"], check=True)
