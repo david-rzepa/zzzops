@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "revision": "cda5352de9bd8dd80055db77abd359f2ea048feb",
-  "version": "v1.0.0-128-gcda5352",
+  "revision": "794d8b419398e2648c5e6d352ec8235a165f7a05",
+  "version": "v1.0.0-133-g794d8b4",
   "files": {
     ".agents/skills/add-zzzops-goal/SKILL.md": "843fdd30025cc0e0debae89eae6b95a750bb9f79926cac1e9ed9c1a41b764e75",
     ".agents/skills/add-zzzops-goal/agents/openai.yaml": "f1deff9c5f87c3c72ae8584a4b35423bbde401cf7aab3314953ad9d6d168239d",
@@ -34,7 +34,7 @@
     ".agents/zzzops/templates/project-goals/MIGRATION_STATE.json": "0343639fac1511a32a4c9a92c7655a6e9f9ad3a600fc6f30b5bdad6806160a97",
     ".agents/zzzops/templates/project-goals/MIGRATION_SUMMARY.md": "8fd4826d3352e7bdc43943e0fa9721dee0e133b3f6b138dd6fae751e6a85f770",
     ".agents/zzzops/templates/project-goals/ZZZOPS_GITIGNORE": "353f71c5c4e1a9d2199db0d276493be9266b3fdd6295c1888e44bfbd173dd6ab",
-    ".agents/zzzops/zzzops.py": "0728f60834ba8dde6383677cade3f26d3d3c31f6ff577c754162c1277b86ecb8",
+    ".agents/zzzops/zzzops.py": "13ec3854f5d6580d3c0f9fcbe90c0eaf35407da271199e65ce169928627b5110",
     ".zzzops/rules/BACKENDS.md": "2aa48513005031c6cd47963531041aa17b5f1c87ad8eaedbc769387e21f62c93",
     ".zzzops/rules/BLOCKERS.md": "9188bb5ef85ae521df8e9b1cbff9c773e4639e745f4cf037304cec345f2b9ea6",
     ".zzzops/rules/CONTINUATION.md": "78cdb44777015a9fbb2dc24e5954582824c01ff03a76f6da32e58ef923d1b2dd",
