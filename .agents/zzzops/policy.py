@@ -347,7 +347,10 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
             errors.append(f"{prefix}.review cannot approve unresolved choices")
         if section.get("applicable") is False and not text_present(section.get("rationale")):
             errors.append(f"{prefix}.rationale is required for not applicable")
-    missing = sorted(set(POLICY_SECTION_IDS) - seen)
+    required_sections = set(POLICY_SECTION_IDS)
+    if not require_pending:
+        required_sections.remove("automated_design")  # Existing reviewed policies opt in only after an explicit proposal.
+    missing = sorted(required_sections - seen)
     if missing:
         errors.append("missing sections: " + ", ".join(missing))
     return errors

@@ -2326,6 +2326,12 @@ class WorkflowContractTests(unittest.TestCase):
         })
         self.assertIn("[policy:automated_design]", rendered)
 
+        legacy = json.loads(json.dumps(plan["policy"]))
+        legacy["evidence"] = plan["evidence"]
+        legacy["sections"] = [item for item in legacy["sections"] if item["id"] != "automated_design"]
+        self.assertEqual([], zzzops.validate_policy(legacy, False))
+        self.assertTrue(any("missing sections: automated_design" in error for error in zzzops.validate_policy(legacy, True)))
+
         for decision in ("enabled", "disabled"):
             candidate = json.loads(json.dumps(plan["policy"]))
             next(item for item in candidate["sections"] if item["id"] == "automated_design")["decision"] = decision
