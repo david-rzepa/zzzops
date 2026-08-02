@@ -15,6 +15,7 @@ from typing import Any
 
 PROJECT_SCHEMA_VERSION = 1
 POLICY_SCHEMA_VERSION = 1
+POLICY_DEFAULT_SCHEMA_VERSION = 1
 PROJECT_POLICY_RELATIVE = ".zzzops/POLICY.json"
 PROJECT_AUDIT_RELATIVE = ".zzzops/PROJECT_AUDIT.md"
 BACKENDS = {"github_issues"}
@@ -43,6 +44,244 @@ AUTOMATED_DESIGN_SETTINGS = {
     ],
     "insufficient_evidence": "durable_design_blocker",
 }
+
+POLICY_DEFAULT_CONTENT_FIELDS = ("decision", "settings")
+
+
+def policy_default_content(section: dict[str, Any]) -> dict[str, Any]:
+    return {
+        field: json.loads(json.dumps(section.get(field), ensure_ascii=False))
+        for field in POLICY_DEFAULT_CONTENT_FIELDS
+    }
+
+
+def policy_content_digest(content: Any) -> str:
+    canonical = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def policy_section_review_content(section: dict[str, Any], evidence: list[dict[str, Any]]) -> dict[str, Any]:
+    content = {key: value for key, value in section.items() if key != "review"}
+    sources = set(section.get("source_ids", []))
+    content["source_evidence"] = sorted(
+        (item for item in evidence if item.get("id") in sources), key=lambda item: item["id"],
+    )
+    return json.loads(json.dumps(content, ensure_ascii=False, sort_keys=True))
+
+
+def policy_default_catalog() -> dict[str, dict[str, Any]]:
+    template = Path(__file__).parent / "templates" / "project-goals" / "INIT_PLAN.json"
+    data = json.loads(template.read_text(encoding="utf-8-sig"))
+    catalog: dict[str, dict[str, Any]] = {}
+    for section in data["policy"]["sections"]:
+        default_id = section["default_id"]
+        if default_id in catalog:
+            raise ValueError(f"duplicate policy default id: {default_id}")
+        content = policy_default_content(section)
+        catalog[default_id] = {
+            "id": default_id,
+            "schema_version": POLICY_DEFAULT_SCHEMA_VERSION,
+            "section_id": section["id"],
+            "content": content,
+            "digest": policy_content_digest(content),
+        }
+    return dict(sorted(catalog.items()))
+
+
+def machinery_provenance(repo: Path) -> dict[str, str]:
+    try:
+        lock = json.loads((repo / ".zzzops" / "ZZZOPS_LOCK.json").read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"default provenance requires a readable installation lock: {type(exc).__name__}") from exc
+    if not text_present(lock.get("revision")) or not text_present(lock.get("version")):
+        raise ValueError("default provenance requires installation-lock revision and version")
+    return {"revision": lock["revision"], "version": lock["version"]}
+
+
+def _adopted_provenance(entry: dict[str, Any], source: dict[str, str]) -> dict[str, Any]:
+    return {
+        "status": "adopted", "default_id": entry["id"],
+        "schema_version": entry["schema_version"], "source": source,
+        "digest": entry["digest"], "snapshot": json.loads(json.dumps(entry["content"])),
+    }
+
+
+def prepare_policy_defaults(
+    repo: Path, policy: dict[str, Any], previous_policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    prepared = json.loads(json.dumps(policy))
+    catalog = policy_default_catalog()
+    previous = {
+        section["id"]: section for section in (previous_policy or {}).get("sections", [])
+        if isinstance(section, dict) and text_present(section.get("id"))
+    }
+    source: dict[str, str] | None = None
+    for section in prepared.get("sections", []):
+        if not isinstance(section, dict):
+            continue
+        section_id = section.get("id")
+        default_id = section.pop("default_id", None)
+        resolution = section.pop("default_resolution", None)
+        prior = previous.get(section_id)
+        provenance = section.get("default_provenance")
+        if prior is not None:
+            provenance = json.loads(json.dumps(prior["default_provenance"])) if "default_provenance" in prior else None
+        if provenance is not None and not isinstance(provenance, dict):
+            raise ValueError(f"policy section {section_id} default provenance must be an object")
+        if prior is None and default_id is None and not (isinstance(provenance, dict) and provenance.get("default_id")):
+            raise ValueError(f"policy section {section_id} lacks a stable default identity")
+        entry = catalog.get(default_id or (provenance or {}).get("default_id"))
+        if entry is not None and entry["section_id"] != section_id:
+            raise ValueError(f"policy section {section_id} uses a default for {entry['section_id']}")
+        if resolution is not None:
+            if not isinstance(resolution, dict) or resolution.get("action") not in {"accept", "decline"} or entry is None:
+                raise ValueError(f"policy section {section_id} has an invalid default resolution")
+            if resolution.get("digest") != entry["digest"]:
+                raise ValueError(f"policy section {section_id} default resolution is stale")
+            if resolution["action"] == "accept":
+                for field, value in entry["content"].items():
+                    section[field] = json.loads(json.dumps(value))
+                source = source or machinery_provenance(repo)
+                provenance = _adopted_provenance(entry, source)
+                section["default_disposition"] = "accepted"
+            else:
+                if not isinstance(provenance, dict) or provenance.get("status") != "adopted":
+                    raise ValueError(f"policy section {section_id} cannot decline a default without adopted provenance")
+                provenance["declined_digest"] = entry["digest"]
+        elif provenance is None:
+            if prior is not None:
+                provenance = None
+            elif default_id is None or section.get("default_disposition") == "unknown":
+                provenance = {"status": "unknown"}
+            elif entry is None:
+                raise ValueError(f"policy section {section_id} references an unknown default")
+            elif section.get("default_disposition") == "accepted":
+                if policy_default_content(section) != entry["content"]:
+                    raise ValueError(f"policy section {section_id} accepted default content is inconsistent")
+                source = source or machinery_provenance(repo)
+                provenance = _adopted_provenance(entry, source)
+            else:
+                source = source or machinery_provenance(repo)
+                provenance = {
+                    "status": "customized", "default_id": entry["id"],
+                    "schema_version": entry["schema_version"], "source": source,
+                    "catalog_digest": entry["digest"],
+                }
+        elif prior is None and provenance.get("status") in {"adopted", "customized"}:
+            if entry is None:
+                raise ValueError(f"policy section {section_id} references an unknown default")
+            source = source or machinery_provenance(repo)
+            expected_digest = provenance.get("digest") if provenance.get("status") == "adopted" else provenance.get("catalog_digest")
+            if expected_digest != entry["digest"] or provenance.get("source") != source:
+                raise ValueError(f"policy section {section_id} default provenance does not match installed machinery")
+        elif provenance.get("status") == "adopted" and policy_default_content(section) != provenance.get("snapshot"):
+            provenance = {
+                "status": "customized", "default_id": provenance.get("default_id"),
+                "schema_version": provenance.get("schema_version"), "source": provenance.get("source"),
+                "catalog_digest": provenance.get("digest"),
+            }
+            section["default_disposition"] = "changed"
+        if provenance is None:
+            section.pop("default_provenance", None)
+        else:
+            section["default_provenance"] = provenance
+    return prepared
+
+
+def compare_policy_defaults(
+    policy: dict[str, Any], catalog: dict[str, dict[str, Any]] | None = None,
+    selected_ids: set[str] | None = None,
+) -> list[dict[str, Any]]:
+    catalog = catalog or policy_default_catalog()
+    selected_ids = selected_ids or set()
+    result = []
+    for section in policy.get("sections", []):
+        section_id = section.get("id")
+        provenance = section.get("default_provenance")
+        item: dict[str, Any] = {"section_id": section_id}
+        if not isinstance(provenance, dict) or provenance.get("status") == "unknown":
+            item["status"] = "unknown_origin"
+        elif provenance.get("status") == "customized" or policy_default_content(section) != provenance.get("snapshot"):
+            item.update({"status": "customized", "default_id": provenance.get("default_id")})
+        else:
+            entry = catalog.get(provenance.get("default_id"))
+            if entry is None:
+                item.update({"status": "unknown_default", "default_id": provenance.get("default_id")})
+            elif provenance.get("digest") == entry["digest"]:
+                item.update({"status": "current", "default_id": entry["id"], "digest": entry["digest"]})
+            elif provenance.get("declined_digest") == entry["digest"]:
+                item.update({"status": "declined", "default_id": entry["id"], "old_digest": provenance.get("digest"), "new_digest": entry["digest"]})
+            else:
+                item.update({"status": "update_available", "default_id": entry["id"], "old_digest": provenance.get("digest"), "new_digest": entry["digest"]})
+                if section_id in selected_ids:
+                    item["old_snapshot"] = provenance.get("snapshot")
+                    item["new_snapshot"] = entry["content"]
+        result.append(item)
+    return result
+
+
+def _digest_text(value: Any) -> bool:
+    return isinstance(value, str) and len(value) == 71 and value.startswith("sha256:") and all(
+        character in "0123456789abcdef" for character in value[7:]
+    )
+
+
+def validate_default_provenance(section: dict[str, Any], prefix: str) -> list[str]:
+    provenance = section.get("default_provenance")
+    if provenance is None:
+        return []  # Legacy reviewed policy: never infer provenance from value equality.
+    if not isinstance(provenance, dict):
+        return [f"{prefix}.default_provenance must be an object"]
+    status = provenance.get("status")
+    if status == "unknown":
+        return [] if set(provenance) == {"status"} else [f"{prefix}.default_provenance unknown origin must contain only status"]
+    if status not in {"adopted", "customized"}:
+        return [f"{prefix}.default_provenance.status is invalid"]
+    errors = []
+    expected_fields = {
+        "adopted": {"status", "default_id", "schema_version", "source", "digest", "snapshot"},
+        "customized": {"status", "default_id", "schema_version", "source", "catalog_digest"},
+    }[status]
+    if status == "adopted" and "declined_digest" in provenance:
+        expected_fields.add("declined_digest")
+    if set(provenance) != expected_fields:
+        errors.append(f"{prefix}.default_provenance contains non-canonical fields")
+    default_id = provenance.get("default_id")
+    if default_id != f"zzzops.policy.{section.get('id')}":
+        errors.append(f"{prefix}.default_provenance.default_id is inconsistent")
+    if provenance.get("schema_version") != POLICY_DEFAULT_SCHEMA_VERSION:
+        errors.append(f"{prefix}.default_provenance.schema_version must be {POLICY_DEFAULT_SCHEMA_VERSION}")
+    source = provenance.get("source")
+    revision = source.get("revision") if isinstance(source, dict) else None
+    if (
+        not isinstance(source, dict) or set(source) != {"revision", "version"}
+        or not text_present(source.get("version"))
+        or not isinstance(revision, str) or len(revision) not in {40, 64}
+        or any(character not in "0123456789abcdef" for character in revision)
+    ):
+        errors.append(f"{prefix}.default_provenance.source requires revision and version")
+    digest_field = "digest" if status == "adopted" else "catalog_digest"
+    if not _digest_text(provenance.get(digest_field)):
+        errors.append(f"{prefix}.default_provenance.{digest_field} is invalid")
+    if status == "adopted":
+        snapshot = provenance.get("snapshot")
+        if not isinstance(snapshot, dict) or set(snapshot) != set(POLICY_DEFAULT_CONTENT_FIELDS):
+            errors.append(f"{prefix}.default_provenance.snapshot must contain the complete canonical default")
+        elif policy_content_digest(snapshot) != provenance.get("digest"):
+            errors.append(f"{prefix}.default_provenance.digest does not match snapshot")
+        elif policy_default_content(section) != snapshot:
+            errors.append(f"{prefix}.default_provenance snapshot differs from effective policy")
+        if "declined_digest" in provenance and not _digest_text(provenance["declined_digest"]):
+            errors.append(f"{prefix}.default_provenance.declined_digest is invalid")
+    return errors
+
+
+def default_provenance_label(section: dict[str, Any]) -> str:
+    status = (section.get("default_provenance") or {}).get("status")
+    return {
+        "adopted": "adopted from the recorded ZzzOps default",
+        "customized": "customized from a ZzzOps default",
+    }.get(status, "default origin unknown")
 
 
 def nonempty(value: Any) -> bool:
@@ -284,6 +523,8 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
             errors.append(f"{prefix}.id must be unique and from the current taxonomy")
         else:
             seen.add(section_id)
+        if section.get("default_id") is not None and section.get("default_id") != f"zzzops.policy.{section_id}":
+            errors.append(f"{prefix}.default_id is inconsistent")
         for field in ("title", "decision", "rationale", "confidence", "default_origin", "default_disposition"):
             if not text_present(section.get(field)):
                 errors.append(f"{prefix}.{field} is required")
@@ -347,6 +588,7 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
             errors.append(f"{prefix}.review cannot approve unresolved choices")
         if section.get("applicable") is False and not text_present(section.get("rationale")):
             errors.append(f"{prefix}.rationale is required for not applicable")
+        errors.extend(validate_default_provenance(section, prefix))
     required_sections = set(POLICY_SECTION_IDS)
     if not require_pending:
         required_sections.remove("automated_design")  # Existing reviewed policies opt in only after an explicit proposal.
@@ -388,7 +630,10 @@ def render_project(state: dict[str, Any]) -> str:
     kpis = "\n".join(f"| {cell(k['name'])} | {cell(k['why'])} | {cell(k['baseline'])} | {cell(k['target'])} | {cell(k['evidence'])} | {cell(k['cadence'])} |" for k in charter["kpis"])
     bullets = lambda values: "\n".join(f"- {value}" for value in values)
     checks = "\n".join(f"- [x] {value}" for value in charter["acceptance_criteria"])
-    policy = "\n".join(f"- `[policy:{section['id']}]` **{section['title']}**: {section['decision']}" for section in state["policy"]["sections"])
+    policy = "\n".join(
+        f"- `[policy:{section['id']}]` **{section['title']}**: {section['decision']} ({default_provenance_label(section)})"
+        for section in state["policy"]["sections"]
+    )
     return f"""# Project success charter
 
 **Status:** {status}
@@ -454,6 +699,7 @@ def render_policy_sections(policy: dict[str, Any]) -> str:
             f"  - Rationale: {section['rationale']}\n"
             f"  - Sources: {sources}\n"
             f"  - Confidence/default: {section['confidence']}; {section['default_origin']} → {section['default_disposition']}\n"
+            f"  - Provenance: {default_provenance_label(section)}\n"
             f"  - Settings: `{settings}`\n"
             f"  - Exceptions: {', '.join(section['exceptions']) or 'none'}\n"
             f"  - Unresolved: {', '.join(section['unresolved']) or 'none'}"

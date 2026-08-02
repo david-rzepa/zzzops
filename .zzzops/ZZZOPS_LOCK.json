@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "revision": "103843a9ab011cd791e5a6b3e3481388d8987722",
-  "version": "v1.0.0-138-g103843a",
+  "revision": "a10af4780070d750dc5c072640224d2bfe6852b5",
+  "version": "v1.0.0-141-ga10af47",
   "files": {
     ".agents/skills/add-zzzops-goal/SKILL.md": "843fdd30025cc0e0debae89eae6b95a750bb9f79926cac1e9ed9c1a41b764e75",
     ".agents/skills/add-zzzops-goal/agents/openai.yaml": "f1deff9c5f87c3c72ae8584a4b35423bbde401cf7aab3314953ad9d6d168239d",
@@ -16,7 +16,7 @@
     ".agents/skills/migrate-to-zzzops/agents/openai.yaml": "796e0267f1471dfe7733843fb3a96f0c27a9a4cfa1e2270033320e7964b68f62",
     ".agents/skills/migrate-to-zzzops/scripts/inventory.py": "98fe5e34d7d8c7ed337143ef80c006be2a7da6c1e18e774924fb58198f698f71",
     ".agents/skills/migrate-to-zzzops/scripts/test_inventory.py": "50e429f851aade4268907037a78584a391d1b26a4ceb7ff9735fb06069519def",
-    ".agents/skills/review-zzzops-policy/SKILL.md": "c591925b28959ac01552dd688abb0130f29f4f523cad04f6f8453178fdcd19b2",
+    ".agents/skills/review-zzzops-policy/SKILL.md": "6efeabf9bf610493dc27299fe29e86933658ac7b480974af6e2196fb2b809f53",
     ".agents/skills/review-zzzops-policy/agents/openai.yaml": "75db2f7e65c73e8522d7aba9e3c165c64b1be168bd320803df73852e5b597993",
     ".agents/skills/send-zzzops-feedback/SKILL.md": "9b58627bc69e32d2b951d8cacaf22fd9fa9abd07860f82c68098785b5b7f4042",
     ".agents/skills/send-zzzops-feedback/agents/openai.yaml": "30a405fc7ed61cf47b9f44c99ce3c0715105ca1658ed25115e390fde019a9f47",
@@ -26,21 +26,21 @@
     ".agents/zzzops/goals.py": "217d88ae0c9d5dae1f08b4080bac8452aa4f990907a17d1bcd30fe2e275e2ea2",
     ".agents/zzzops/install_lock.py": "59004dd72ddb062fa9beb971ef47e3cb763aa6314d5a7abef818b5fcbfe30f11",
     ".agents/zzzops/installer.py": "76b01daeb69c8f4499a62e210cb06beceb603a6e42187ee48e48abf0f0f820cd",
-    ".agents/zzzops/policy.py": "92fe357f3ce8170eb061954a806197032c563ea271c44c3aa2b57fc4775145f4",
+    ".agents/zzzops/policy.py": "78f26ae7840260defe6a9335aaea1439c26cb21e6ef4cc6353a7eeb1bbacf868",
     ".agents/zzzops/portfolio.py": "ea8385413360dbe9c970dbd768264ac4ad4d36b9c9739377a62b55498cc42354",
     ".agents/zzzops/reservation.py": "de6cd3a5b8d96d0b91e539f6a502d6452b8121c7a1659f91ab6410d3b8dc4eac",
-    ".agents/zzzops/templates/project-goals/INIT_PLAN.json": "3e6e34f847fdb8e3ef43d00fba027e89971574905b6597d3c2773608cb1e53a7",
+    ".agents/zzzops/templates/project-goals/INIT_PLAN.json": "7292bdbb7f8af558cae5e01155f7ccc75ea4f04dabfefe64c97ac861273a189d",
     ".agents/zzzops/templates/project-goals/MIGRATION_PLAN.json": "52c4178eb0ac82fef29f140512c40466e6f6aa7fa1245f4dfda1c9cd4117e1c1",
     ".agents/zzzops/templates/project-goals/MIGRATION_STATE.json": "0343639fac1511a32a4c9a92c7655a6e9f9ad3a600fc6f30b5bdad6806160a97",
     ".agents/zzzops/templates/project-goals/MIGRATION_SUMMARY.md": "8fd4826d3352e7bdc43943e0fa9721dee0e133b3f6b138dd6fae751e6a85f770",
     ".agents/zzzops/templates/project-goals/ZZZOPS_GITIGNORE": "353f71c5c4e1a9d2199db0d276493be9266b3fdd6295c1888e44bfbd173dd6ab",
-    ".agents/zzzops/zzzops.py": "13ec3854f5d6580d3c0f9fcbe90c0eaf35407da271199e65ce169928627b5110",
+    ".agents/zzzops/zzzops.py": "c70529f7062a0aeb85569e0c127541b85be0b7428f6c71167d00ddd33ca712cc",
     ".zzzops/rules/BACKENDS.md": "2aa48513005031c6cd47963531041aa17b5f1c87ad8eaedbc769387e21f62c93",
     ".zzzops/rules/BLOCKERS.md": "9188bb5ef85ae521df8e9b1cbff9c773e4639e745f4cf037304cec345f2b9ea6",
     ".zzzops/rules/CONTINUATION.md": "78cdb44777015a9fbb2dc24e5954582824c01ff03a76f6da32e58ef923d1b2dd",
     ".zzzops/rules/EXECUTION_STRATEGY.md": "8f7031cab4b9215c23c191ec13d4c9ac77720fd4690c043fee7aa058b46be938",
     ".zzzops/rules/FEEDBACK.md": "68b67b809de403a00eae86bae54a09d944d59799a8c44ddff01669670c7331c1",
     ".zzzops/rules/GOAL_SYSTEM.md": "66ca54ff31c6fcb9bd64ec65638a7ce887b97479ff0acc007403a5cce4dbf4c6",
-    ".zzzops/rules/INITIALIZATION.md": "40df128ca26405acb965b5f0a7e15451281c846ad5bf0211923c72e81427c27d"
+    ".zzzops/rules/INITIALIZATION.md": "eb68e70e78ddffd58b800f1b2af836bb144ecefd21fdc7f03faaa7901a936a8e"
   }
 }
