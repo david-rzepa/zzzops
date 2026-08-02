@@ -604,6 +604,20 @@ class InitializationTests(unittest.TestCase):
         with self.assertRaisesRegex(zzzops._install_lock.InstallLockError, "cross-platform"):
             zzzops._install_lock.validate_install_lock(malformed)
 
+    def test_install_lock_snapshot_binds_validation_to_preserved_bytes(self):
+        lock = {
+            "schema_version": 1,
+            "revision": "a" * 40,
+            "version": "v1.0.0",
+            "files": {".agents/zzzops/zzzops.py": "b" * 64},
+        }
+        lock_path = self.repo / ".zzzops" / "ZZZOPS_LOCK.json"
+        exact = b"\xef\xbb\xbf" + (json.dumps(lock, indent=2) + "\r\n").encode("utf-8")
+        lock_path.write_bytes(exact)
+        parsed, snapshot = zzzops._install_lock.read_install_lock_snapshot(self.repo)
+        self.assertEqual(lock, parsed)
+        self.assertEqual(exact, snapshot)
+
     def test_build_install_lock_is_sorted_and_excludes_project_state(self):
         first = self.repo / ".zzzops" / "rules" / "Z.md"
         second = self.repo / ".agents" / "zzzops" / "a.py"

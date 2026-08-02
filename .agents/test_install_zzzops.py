@@ -53,7 +53,7 @@ class NativeInstallerTests(unittest.TestCase):
     def command(self, installer: tuple[str, Path], target: Path, *options: str) -> list[str]:
         runtime, script = installer
         if script.suffix == ".ps1":
-            translated = {"--dry-run": "-DryRun", "--yes": "-Yes"}
+            translated = {"--dry-run": "-DryRun", "--yes": "-Yes", "--restore": "-Restore"}
             return [runtime, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), str(target),
                     *(translated[option] for option in options)]
         return [runtime, str(script), str(target), *options]
@@ -175,6 +175,90 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertEqual(0, upgraded.returncode, upgraded.stderr + upgraded.stdout)
                 self.assertGreaterEqual(upgraded.stdout.count(incoming["version"]), 2)
                 self.assertEqual(incoming, json.loads(lock_path.read_text(encoding="utf-8")))
+
+    def test_restore_reconstructs_the_committed_lock_without_moving_source_checkout(self):
+        pinned_lock_bytes = (ROOT / ".zzzops" / "ZZZOPS_LOCK.json").read_bytes()
+        pinned = json.loads(pinned_lock_bytes.decode("utf-8"))
+        source_head = subprocess.run(
+            ["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True, capture_output=True, check=True,
+        ).stdout.strip()
+        source_status = subprocess.run(
+            ["git", "-C", str(ROOT), "status", "--porcelain=v1", "-z"], capture_output=True, check=True,
+        ).stdout
+        source_worktrees = subprocess.run(
+            ["git", "-C", str(ROOT), "worktree", "list", "--porcelain"], capture_output=True, check=True,
+        ).stdout
+        for name, installer in self.installers.items():
+            with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
+                target = self.make_repo(directory)
+                installed = self.run_installer(installer, target, "--yes")
+                self.assertEqual(0, installed.returncode, installed.stderr + installed.stdout)
+                lock_path = target / ".zzzops" / "ZZZOPS_LOCK.json"
+                lock_path.write_bytes(pinned_lock_bytes)
+                damaged = target / ".agents" / "zzzops" / "installer.py"
+                damaged.write_text("damaged\n", encoding="utf-8")
+
+                preview = self.run_installer(installer, target, "--restore", "--dry-run")
+                self.assertEqual(0, preview.returncode, preview.stderr + preview.stdout)
+                self.assertIn("pinned restore", preview.stdout)
+                self.assertIn(pinned["version"], preview.stdout)
+                self.assertIn(pinned["revision"], preview.stdout)
+                self.assertEqual("damaged\n", damaged.read_text(encoding="utf-8"))
+                self.assertEqual(pinned_lock_bytes, lock_path.read_bytes())
+
+                cancelled = self.run_installer(installer, target, "--restore", answer="\n")
+                self.assertEqual(0, cancelled.returncode, cancelled.stderr + cancelled.stdout)
+                self.assertIn("cancelled", cancelled.stdout)
+                self.assertEqual("damaged\n", damaged.read_text(encoding="utf-8"))
+                self.assertEqual(pinned_lock_bytes, lock_path.read_bytes())
+
+                restored = self.run_installer(installer, target, "--restore", "--yes")
+                self.assertEqual(0, restored.returncode, restored.stderr + restored.stdout)
+                self.assertIn(pinned["version"], restored.stdout)
+                self.assertEqual(pinned["files"][".agents/zzzops/installer.py"], installer_engine.file_digest(damaged))
+                self.assertEqual(pinned_lock_bytes, lock_path.read_bytes())
+                repeated = self.run_installer(installer, target, "--restore", "--yes")
+                self.assertEqual(0, repeated.returncode, repeated.stderr + repeated.stdout)
+                self.assertEqual(pinned_lock_bytes, lock_path.read_bytes())
+                self.assertEqual(source_head, subprocess.run(
+                    ["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True, capture_output=True, check=True,
+                ).stdout.strip())
+                self.assertEqual(source_status, subprocess.run(
+                    ["git", "-C", str(ROOT), "status", "--porcelain=v1", "-z"], capture_output=True, check=True,
+                ).stdout)
+                self.assertEqual(source_worktrees, subprocess.run(
+                    ["git", "-C", str(ROOT), "worktree", "list", "--porcelain"], capture_output=True, check=True,
+                ).stdout)
+
+    def test_restore_rejects_a_lock_that_does_not_match_pinned_source(self):
+        installer = next(iter(self.installers.values()))
+        with tempfile.TemporaryDirectory() as directory:
+            target = self.make_repo(directory)
+            installed = self.run_installer(installer, target, "--yes")
+            self.assertEqual(0, installed.returncode, installed.stderr + installed.stdout)
+            lock_path = target / ".zzzops" / "ZZZOPS_LOCK.json"
+            lock = json.loads((ROOT / ".zzzops" / "ZZZOPS_LOCK.json").read_text(encoding="utf-8"))
+            lock["files"][".agents/zzzops/installer.py"] = "f" * 64
+            mismatched_lock_bytes = (json.dumps(lock, indent=2) + "\n").encode("utf-8")
+            lock_path.write_bytes(mismatched_lock_bytes)
+            damaged = target / ".agents" / "zzzops" / "installer.py"
+            damaged.write_text("leave me\n", encoding="utf-8")
+
+            result = self.run_installer(installer, target, "--restore", "--yes")
+            self.assertNotEqual(0, result.returncode, result.stderr + result.stdout)
+            self.assertIn("before target changes", result.stdout)
+            self.assertEqual("leave me\n", damaged.read_text(encoding="utf-8"))
+            self.assertEqual(mismatched_lock_bytes, lock_path.read_bytes())
+
+    def test_restore_requires_a_valid_existing_lock_before_creating_machinery(self):
+        installer = next(iter(self.installers.values()))
+        with tempfile.TemporaryDirectory() as directory:
+            target = self.make_repo(directory)
+            result = self.run_installer(installer, target, "--restore", "--yes")
+            self.assertNotEqual(0, result.returncode, result.stderr + result.stdout)
+            self.assertIn("project lock cannot be restored", result.stdout)
+            self.assertFalse((target / ".agents").exists())
+            self.assertFalse((target / ".zzzops").exists())
 
     def test_tracked_machinery_cleanup_requires_exact_consent_and_clean_index(self):
         for name, installer in self.installers.items():
@@ -323,6 +407,35 @@ class NativeInstallerTests(unittest.TestCase):
                     installer_engine.apply_install(target, sources, lock, state)
             self.assertEqual("project-owned\n", project.read_text(encoding="utf-8"))
             self.assertFalse((target / ".zzzops" / "ZZZOPS_LOCK.json").exists())
+
+
+class RestoreResolutionTests(unittest.TestCase):
+    def result(self, returncode=0, stdout="", stderr=""):
+        return subprocess.CompletedProcess(["git"], returncode, stdout, stderr)
+
+    def test_missing_revision_is_fetched_from_origin_and_rechecked(self):
+        with mock.patch.object(installer_engine, "revision_available", side_effect=[False, True]), mock.patch.object(
+            installer_engine, "git", side_effect=[self.result(stdout="https://example.invalid/zzzops.git\n"), self.result()],
+        ) as git:
+            installer_engine.ensure_pinned_revision("a" * 40)
+        self.assertEqual(mock.call("remote", "get-url", "origin", check=False), git.call_args_list[0])
+        self.assertEqual(mock.call("fetch", "--no-tags", "origin", "a" * 40, check=False), git.call_args_list[1])
+
+    def test_locally_available_revision_does_not_contact_origin(self):
+        with mock.patch.object(installer_engine, "revision_available", return_value=True), mock.patch.object(
+            installer_engine, "git",
+        ) as git:
+            installer_engine.ensure_pinned_revision("a" * 40)
+        git.assert_not_called()
+
+    def test_missing_revision_fails_when_origin_cannot_supply_it(self):
+        with mock.patch.object(installer_engine, "revision_available", side_effect=[False, False, False]), mock.patch.object(
+            installer_engine, "git", side_effect=[
+                self.result(stdout="https://example.invalid/zzzops.git\n"), self.result(), self.result(),
+            ],
+        ):
+            with self.assertRaisesRegex(installer_engine.InstallError, "not available from"):
+                installer_engine.ensure_pinned_revision("a" * 40)
 
 
 class ValidationAggregateTests(unittest.TestCase):

@@ -75,9 +75,7 @@ def validate_install_lock(data: Any) -> dict[str, Any]:
     }
 
 
-def read_install_lock(repo: Path) -> dict[str, Any]:
-    path = repo / LOCK_RELATIVE
-
+def parse_install_lock_bytes(data: bytes) -> dict[str, Any]:
     def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for key, value in pairs:
@@ -86,14 +84,27 @@ def read_install_lock(repo: Path) -> dict[str, Any]:
             result[key] = value
         return result
     try:
+        parsed = json.loads(data.decode("utf-8-sig"), object_pairs_hook=reject_duplicates)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise InstallLockError(f"could not read committed installation lock: {type(exc).__name__}") from exc
+    return validate_install_lock(parsed)
+
+
+def read_install_lock_snapshot(repo: Path) -> tuple[dict[str, Any], bytes]:
+    path = repo / LOCK_RELATIVE
+    try:
         if path.is_symlink():
             raise InstallLockError(f"committed installation lock must not be a symlink: {LOCK_RELATIVE}")
-        data = json.loads(path.read_text(encoding="utf-8-sig"), object_pairs_hook=reject_duplicates)
+        data = path.read_bytes()
     except FileNotFoundError as exc:
         raise InstallLockError(f"missing committed installation lock: {LOCK_RELATIVE}") from exc
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+    except OSError as exc:
         raise InstallLockError(f"could not read committed installation lock: {type(exc).__name__}") from exc
-    return validate_install_lock(data)
+    return parse_install_lock_bytes(data), data
+
+
+def read_install_lock(repo: Path) -> dict[str, Any]:
+    return read_install_lock_snapshot(repo)[0]
 
 
 def file_digest(path: Path) -> str:
