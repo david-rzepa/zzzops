@@ -229,10 +229,7 @@ def build_portfolio_snapshot(
 
 
 def compact_portfolio_output(snapshot: dict[str, Any]) -> dict[str, Any]:
-    terminal_fields = (
-        "key", "title", "status", "parent", "depends_on",
-        "revision", "digest", "updated_at", "url",
-    )
+    terminal_fields = ("key", "title", "status", "schema_version")
     goals = []
     archived = 0
     for goal in snapshot["goals"]:

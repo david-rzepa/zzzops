@@ -59,8 +59,10 @@ class GoalsModuleTests(unittest.TestCase):
         goals = zzzops._goals
         for name in (
             "parse_managed_goal", "validate_managed_goal", "render_managed_goal",
-            "github_goal_record", "validate_github_issue_goal", "validate_goal_transition",
-            "load_goal_transition", "apply_goal_transition", "GoalTransitionProviderError",
+            "github_goal_record", "github_archived_goal_record", "current_goal_schema_label",
+            "validate_github_issue_goal", "validate_goal_transition", "load_goal_transition",
+            "apply_goal_transition", "ensure_current_goal_schema", "migrate_open_goal_schemas",
+            "GoalTransitionProviderError",
         ):
             self.assertIs(getattr(zzzops, name), getattr(goals, name))
 
@@ -964,7 +966,7 @@ class GoalTransitionTests(unittest.TestCase):
         self.assertTrue(payload["body"].startswith("## Outcome / Why\n\nPreserve this human text."))
         self.assertEqual("open", payload["state"])
         self.assertEqual(
-            {"zzzops", "zzzops-feedback", "zzzops:status:blocked", "zzzops:priority:P1"},
+            {"zzzops", "zzzops-feedback", "zzzops:schema:v1", "zzzops:status:blocked", "zzzops:priority:P1"},
             set(payload["labels"]),
         )
         self.assertEqual({"number": 42, "revision": 2, "state": "open", "status": "blocked",
@@ -980,6 +982,16 @@ class GoalTransitionTests(unittest.TestCase):
         result = zzzops.apply_goal_transition(adapter, "owner/repo", 42, transition)
         self.assertEqual("closed", result["state"])
         self.assertIn("zzzops:status:done", adapter.updates[0]["labels"])
+
+    def test_transition_replaces_stale_schema_labels_with_current_schema(self):
+        issue = self.issue()
+        issue["labels"].append({"name": "zzzops:schema:v9"})
+        adapter = FakeGoalTransitionAdapter(issue)
+
+        zzzops.apply_goal_transition(adapter, "owner/repo", 42, self.transition(issue))
+
+        self.assertIn("zzzops:schema:v1", adapter.updates[0]["labels"])
+        self.assertNotIn("zzzops:schema:v9", adapter.updates[0]["labels"])
 
     def test_transition_rejects_stale_or_malformed_input_before_write(self):
         issue = self.issue()
@@ -1109,6 +1121,113 @@ class GoalTransitionTests(unittest.TestCase):
         write_command = run.call_args_list[2].args[0]
         self.assertEqual(["gh", "api", "--method", "POST", "repos/owner/repo/issues/42/comments", "--input", "-"], write_command)
         self.assertEqual({"body": "history"}, json.loads(run.call_args_list[2].kwargs["input"]))
+
+
+class FakeGoalSchemaAdapter:
+    def __init__(self, issues):
+        self.repository = "owner/repo"
+        self.issues = {issue["number"]: json.loads(json.dumps(issue)) for issue in issues}
+        self.comments = {number: [] for number in self.issues}
+        self.updates = []
+
+    def get_issue(self, number):
+        return json.loads(json.dumps(self.issues[number]))
+
+    def get_issue_comments(self, number):
+        return json.loads(json.dumps(self.comments[number]))
+
+    def create_issue_comment(self, number, body):
+        comment = {
+            "id": len(self.comments[number]) + 1,
+            "body": body,
+            "html_url": f"https://github.com/owner/repo/issues/{number}#history",
+        }
+        self.comments[number].append(json.loads(json.dumps(comment)))
+        return comment
+
+    def update_issue(self, number, payload):
+        self.updates.append(number)
+        issue = self.issues[number]
+        issue.update({"body": payload["body"], "state": payload["state"]})
+        issue["labels"] = [{"name": label} for label in payload["labels"]]
+        return json.loads(json.dumps(issue))
+
+
+class GoalSchemaMigrationTests(unittest.TestCase):
+    def issue(self, number, *, status="ready", schema=None):
+        goal = {
+            "schema_version": 1, "status": status, "priority": "P2", "value": "medium",
+            "difficulty": "S", "confidence": "high", "parent": None, "depends_on": [],
+            "claim": None, "blockers": [], "evidence": ["Historical evidence."],
+            "next_action": "Continue." if status not in {"done", "cancelled"} else "No further action.",
+            "revision": 1, "implementation": {
+                "branch": None, "base": None, "target": None, "pr": None,
+                "review": {"status": "not_started", "checkpoint": None},
+            }, "resources": [],
+        }
+        labels = [
+            {"name": "zzzops"}, {"name": f"zzzops:status:{status}"},
+            {"name": "zzzops:priority:P2"},
+        ]
+        if schema is not None:
+            labels.append({"name": f"zzzops:schema:v{schema}"})
+        return {
+            "number": number, "title": f"Goal {number}",
+            "body": zzzops.render_managed_goal(goal, "## Outcome\n\nKeep this.\n", number),
+            "state": "closed" if status in {"done", "cancelled"} else "open",
+            "updated_at": "2026-08-01T00:00:00Z",
+            "html_url": f"https://github.com/owner/repo/issues/{number}", "labels": labels,
+        }
+
+    def index(self, issue):
+        labels = issue["labels"]
+        schema = next((int(label["name"].rsplit("v", 1)[1]) for label in labels if label["name"].startswith("zzzops:schema:v")), None)
+        return {key: issue[key] for key in ("number", "title", "state", "labels", "html_url")} | {"schema_version": schema}
+
+    def test_open_migration_is_bounded_open_only_and_idempotent(self):
+        legacy_open = self.issue(1)
+        current_open = self.issue(2, schema=1)
+        legacy_closed = self.issue(3, status="done")
+        second_legacy_open = self.issue(4)
+        adapter = FakeGoalSchemaAdapter([legacy_open, current_open, legacy_closed, second_legacy_open])
+        indexes = [self.index(issue) for issue in (legacy_open, current_open, legacy_closed, second_legacy_open)]
+
+        first = zzzops.migrate_open_goal_schemas(adapter, "owner/repo", indexes, limit=1)
+        refreshed = [self.index(adapter.issues[number]) for number in sorted(adapter.issues)]
+        second = zzzops.migrate_open_goal_schemas(adapter, "owner/repo", refreshed, limit=1)
+        final = zzzops.migrate_open_goal_schemas(
+            adapter, "owner/repo", [self.index(adapter.issues[number]) for number in sorted(adapter.issues)], limit=1,
+        )
+
+        self.assertEqual([1], first["migrated"])
+        self.assertEqual(1, first["remaining"])
+        self.assertEqual([4], second["migrated"])
+        self.assertTrue(second["complete"])
+        self.assertEqual([], final["migrated"])
+        self.assertEqual([1, 4], adapter.updates)
+        self.assertEqual([], adapter.comments[3])
+        self.assertNotIn(3, adapter.updates)
+
+    def test_selected_current_label_repairs_noncompact_body(self):
+        issue = self.issue(6, schema=1)
+        adapter = FakeGoalSchemaAdapter([issue])
+
+        result = zzzops.ensure_current_goal_schema(adapter, "owner/repo", 6)
+
+        self.assertTrue(result["migrated"])
+        self.assertEqual([], zzzops.parse_managed_goal(adapter.issues[6]["body"], 6)["evidence"])
+
+    def test_selected_closed_legacy_goal_is_compacted_lazily(self):
+        issue = self.issue(7, status="done")
+        adapter = FakeGoalSchemaAdapter([issue])
+
+        result = zzzops.ensure_current_goal_schema(adapter, "owner/repo", 7)
+
+        self.assertTrue(result["migrated"])
+        self.assertEqual("closed", adapter.issues[7]["state"])
+        self.assertIn({"name": "zzzops:schema:v1"}, adapter.issues[7]["labels"])
+        self.assertEqual([], zzzops.parse_managed_goal(adapter.issues[7]["body"], 7)["evidence"])
+        self.assertEqual(1, len(adapter.comments[7]))
 
 
 class PortfolioTests(unittest.TestCase):
@@ -1264,12 +1383,13 @@ class PortfolioTests(unittest.TestCase):
                                "pageInfo": {"hasNextPage": False, "endCursor": "page-2"}},
                 }}},
             ]
-            issue_one, issue_three = self.issue(1), self.issue(3)
+            issue_one, issue_three = self.issue(1), self.issue(3, status="done")
+            payload[1]["data"]["repository"]["issues"]["nodes"][0] = graphql_issue(issue_three)
             run.side_effect = [
                 SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr=""),
-                SimpleNamespace(returncode=0, stdout=json.dumps(body_payload(issue_one, issue_three)), stderr=""),
+                SimpleNamespace(returncode=0, stdout=json.dumps(body_payload(issue_one)), stderr=""),
                 SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr=""),
-                SimpleNamespace(returncode=0, stdout=json.dumps(body_payload(issue_one, feedback, issue_three)), stderr=""),
+                SimpleNamespace(returncode=0, stdout=json.dumps(body_payload(issue_one, feedback)), stderr=""),
             ]
             snapshot = zzzops.portfolio_snapshot(repo)
             _, included = zzzops.github_repository_portfolio_snapshot(
@@ -1293,8 +1413,11 @@ class PortfolioTests(unittest.TestCase):
         for excluded in ("body", "updatedAt", "url", "comments"):
             self.assertNotIn(excluded, issue_fields)
         self.assertIn("goal_1:issue(number:1){number body updatedAt}", hydration_query)
-        self.assertIn("goal_3:issue(number:3){number body updatedAt}", hydration_query)
+        self.assertNotIn("goal_3:", hydration_query)
         self.assertNotIn("goal_2:", hydration_query)
+        archived = next(goal for goal in snapshot["goals"] if goal["key"] == 3)
+        self.assertTrue(archived["archived"])
+        self.assertEqual("done", archived["status"])
         self.assertEqual("https://example.test/owner/repo/issues/1", snapshot["goals"][0]["url"])
         self.assertLess(snapshot["summary"]["discovery_raw_bytes"], snapshot["summary"]["raw_bytes"])
         self.assertEqual(4, run.call_count)
@@ -1498,7 +1621,7 @@ class PortfolioTests(unittest.TestCase):
         active = next(goal for goal in compact["goals"] if goal["key"] == 121)
         self.assertEqual(120, compact["summary"]["archived"])
         self.assertEqual(
-            {"archived", "depends_on", "digest", "key", "parent", "revision", "status", "title", "updated_at", "url"},
+            {"archived", "key", "schema_version", "status", "title"},
             set(archived),
         )
         self.assertNotIn("archived", active)
