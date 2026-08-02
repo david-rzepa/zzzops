@@ -22,7 +22,7 @@ The active `dev` ruleset targets only `refs/heads/dev` and:
 - requires the stable GitHub Actions check `dev-required-tests` (the rule does not require the branch to be current);
 - has an always-bypass RepositoryRole actor. Read the ruleset before relying on bypass scope; the current caller can bypass it.
 
-`dev-required-tests` is the stable aggregate emitted on every PR to `dev`. It succeeds only when Linux validation, Windows installer validation, and macOS installer validation have all succeeded. The workflow has no path filters, dynamic check names, secrets, or write permission, so protection can rely on that one stable context.
+`dev-required-tests` is the stable aggregate emitted on every PR to `dev`. It succeeds only when `Core validation (Linux, Python <version>)`, `Windows installer validation`, and `macOS installer validation` have all succeeded. The workflow has no path filters, dynamic check names, secrets, or write permission, so protection can rely on that one stable context.
 
 ## `main`
 
