@@ -210,11 +210,74 @@ def read_old_lock(target: Path) -> tuple[dict[str, object] | None, str | None]:
         return None, str(exc)
 
 
+def read_legacy_manifest(target: Path) -> tuple[set[str] | None, str | None]:
+    path = target / ".agents" / "zzzops" / "INSTALL_MANIFEST"
+    if not path.is_file():
+        return None, None
+    files: set[str] = set()
+    revision = None
+    try:
+        lines = path.read_text(encoding="utf-8-sig").splitlines()
+    except (OSError, UnicodeError) as exc:
+        return None, f"legacy install manifest is unreadable: {type(exc).__name__}"
+    if not lines or lines[0] != "zzzops-install-manifest-v1":
+        return None, "legacy install manifest header is invalid"
+    for line in lines[1:]:
+        fields = line.split("\t")
+        if len(fields) == 2 and fields[0] == "revision" and not revision:
+            revision = fields[1]
+        elif len(fields) == 2 and fields[0] == "version":
+            continue
+        elif len(fields) == 3 and fields[0] == "file" and len(fields[1]) in {40, 64}:
+            relative = fields[2].replace("\\", "/")
+            try:
+                managed_roots([relative])
+            except InstallError:
+                return None, f"legacy install manifest contains an unsafe path: {relative}"
+            if relative in files:
+                return None, f"legacy install manifest repeats a path: {relative}"
+            files.add(relative)
+        else:
+            return None, "legacy install manifest contains an invalid record"
+    if not revision or not files:
+        return None, "legacy install manifest lacks provenance or files"
+    files.add(".agents/zzzops/INSTALL_MANIFEST")
+    return files, None
+
+
+def nul_paths(output: str) -> list[str]:
+    return sorted(path.replace("\\", "/") for path in output.split("\0") if path)
+
+
+def tracked_cleanup(target: Path, roots: tuple[str, ...], old_lock: dict[str, object] | None, old_warning: str | None) -> dict[str, object]:
+    tracked = nul_paths(git("ls-files", "-z", "--", *roots, cwd=target).stdout)
+    staged = nul_paths(git("diff", "--cached", "--name-only", "-z", "--", *roots, ".gitignore", ".zzzops/.gitignore", LOCK_RELATIVE, cwd=target).stdout)
+    errors: list[str] = []
+    if tracked:
+        authorized: set[str] | None = set(old_lock["files"]) if old_lock else None
+        if old_warning:
+            errors.append("tracked cleanup requires a valid previous lock or legacy install manifest")
+        if authorized is None and not old_warning:
+            authorized, manifest_warning = read_legacy_manifest(target)
+            if manifest_warning:
+                errors.append(manifest_warning)
+        if authorized is None and not errors:
+            errors.append("tracked ZzzOps paths have no valid previous lock or legacy install manifest")
+        elif authorized is not None:
+            unauthorized = sorted(set(tracked) - authorized)
+            if unauthorized:
+                errors.append("tracked paths are not proven legacy ZzzOps machinery: " + ", ".join(unauthorized))
+    if staged:
+        errors.append("staged changes overlap ZzzOps machinery or installer-owned metadata: " + ", ".join(staged))
+    return {"tracked": tracked, "staged": staged, "errors": errors}
+
+
 def installation_state(target: Path, lock: dict[str, object]) -> dict[str, object]:
     old_lock, old_warning = read_old_lock(target)
     current_roots = managed_roots(lock["files"])
     old_roots = managed_roots(old_lock["files"]) if old_lock else ()
     roots = tuple(sorted(set(current_roots) | set(old_roots)))
+    cleanup = tracked_cleanup(target, roots, old_lock, old_warning)
     inventory = target_inventory(target, roots)
     root_ignore, state_ignore = expected_ignore_texts(target, current_roots)
     expected = lock["files"]
@@ -236,6 +299,8 @@ def installation_state(target: Path, lock: dict[str, object]) -> dict[str, objec
         "old_lock_bytes": read_text(target / LOCK_RELATIVE),
         "root_ignore": read_text(target / ".gitignore"),
         "state_ignore": read_text(target / ".zzzops" / ".gitignore"),
+        "tracked": cleanup["tracked"],
+        "staged": cleanup["staged"],
     }, sort_keys=True).encode("utf-8")).hexdigest()
     return {
         "kind": kind,
@@ -245,6 +310,8 @@ def installation_state(target: Path, lock: dict[str, object]) -> dict[str, objec
         "root_ignore": root_ignore,
         "state_ignore": state_ignore,
         "signature": signature,
+        "tracked": cleanup["tracked"],
+        "cleanup_errors": cleanup["errors"],
     }
 
 
@@ -263,6 +330,16 @@ def atomic_write(path: Path, data: bytes) -> None:
 def apply_install(target: Path, sources: dict[str, Path], lock: dict[str, object], state: dict[str, object]) -> None:
     if installation_state(target, lock)["signature"] != state["signature"]:
         raise InstallError("The target changed after the preview. Run the installer again; no files were changed.")
+    if state["cleanup_errors"]:
+        raise InstallError("; ".join(str(error) for error in state["cleanup_errors"]))
+    tracked = [str(path) for path in state["tracked"]]
+    if tracked:
+        result = git("rm", "--cached", "--", *tracked, cwd=target, check=False)
+        if result.returncode:
+            raise InstallError("Git refused tracked-machinery cleanup before installation: " + (result.stderr.strip() or result.stdout.strip()))
+        missing = [relative for relative in tracked if not (target / relative).exists()]
+        if missing:
+            raise InstallError("Git cleanup unexpectedly removed working-tree files: " + ", ".join(missing))
     for root in state["roots"]:
         path = safe_target_path(target, str(root))
         if path.is_dir():
@@ -311,10 +388,26 @@ def main(argv: list[str] | None = None) -> int:
         print("Local workflow scratch under .zzzops/init/ will be ignored but preserved.")
         if state["old_warning"]:
             print(f"Warning: the previous lock is invalid ({state['old_warning']}); current owned roots will still be reconstructed, but unknown obsolete paths cannot be inferred.")
+        if state["tracked"]:
+            print("Tracked ZzzOps machinery requires explicit index cleanup:")
+            for relative in state["tracked"]:
+                print(f"- {relative}")
+        for error in state["cleanup_errors"]:
+            print(f"Cannot clean tracked machinery yet: {error}")
         if args.dry_run:
             print("No files or Git index entries were changed.")
-            return 0
+            return 2 if state["cleanup_errors"] else 0
+        if state["cleanup_errors"]:
+            raise InstallError("; ".join(str(error) for error in state["cleanup_errors"]))
         if not args.yes:
+            if state["tracked"]:
+                try:
+                    cleanup_answer = input("Clear exactly these ZzzOps machinery paths from Git tracking? [y/N] ")
+                except EOFError:
+                    cleanup_answer = ""
+                if cleanup_answer.strip().casefold() not in {"y", "yes"}:
+                    print("Installation cancelled; tracked files, working files, and ignore rules were unchanged.")
+                    return 0
             try:
                 answer = input(f"Confirm {state['kind']}? [y/N] ")
             except EOFError:

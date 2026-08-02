@@ -377,6 +377,65 @@ class NativeInstallerTests(unittest.TestCase):
         self.assertTrue(locks)
         self.assertEqual(1, len({json.dumps(lock, sort_keys=True) for lock in locks}))
 
+    def test_tracked_machinery_cleanup_requires_exact_consent_and_clean_index(self):
+        for name, installer in self.installers.items():
+            with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
+                target = self.make_repo(directory)
+                subprocess.run(["git", "-C", str(target), "config", "user.email", "installer@test.invalid"], check=True)
+                subprocess.run(["git", "-C", str(target), "config", "user.name", "Installer Test"], check=True)
+                installed = self.run_installer(installer, target, "--yes")
+                self.assertEqual(0, installed.returncode, installed.stderr + installed.stdout)
+                subprocess.run([
+                    "git", "-C", str(target), "add", ".gitignore", ".zzzops/.gitignore", ".zzzops/ZZZOPS_LOCK.json"
+                ], check=True)
+                subprocess.run([
+                    "git", "-C", str(target), "add", "-f", ".agents/zzzops", ".agents/skills",
+                    ".claude/skills", ".zzzops/rules",
+                ], check=True)
+                subprocess.run(["git", "-C", str(target), "commit", "--quiet", "-m", "legacy tracked install"], check=True)
+
+                tracked_before = subprocess.run(
+                    ["git", "-C", str(target), "ls-files", "-z", "--", ".agents/zzzops", ".agents/skills", ".claude/skills", ".zzzops/rules"],
+                    capture_output=True, check=True,
+                ).stdout
+                preview = self.run_installer(installer, target, "--dry-run")
+                self.assertEqual(0, preview.returncode, preview.stderr + preview.stdout)
+                self.assertIn("Tracked ZzzOps machinery requires explicit index cleanup", preview.stdout)
+                self.assertIn(".agents/zzzops/zzzops.py", preview.stdout)
+                self.assertEqual(tracked_before, subprocess.run(
+                    ["git", "-C", str(target), "ls-files", "-z", "--", ".agents/zzzops", ".agents/skills", ".claude/skills", ".zzzops/rules"],
+                    capture_output=True, check=True,
+                ).stdout)
+
+                declined = self.run_installer(installer, target, answer="\n")
+                self.assertEqual(0, declined.returncode, declined.stderr + declined.stdout)
+                self.assertIn("tracked files, working files, and ignore rules were unchanged", declined.stdout)
+                self.assertEqual(tracked_before, subprocess.run(
+                    ["git", "-C", str(target), "ls-files", "-z", "--", ".agents/zzzops", ".agents/skills", ".claude/skills", ".zzzops/rules"],
+                    capture_output=True, check=True,
+                ).stdout)
+
+                cleaned = self.run_installer(installer, target, "--yes")
+                self.assertEqual(0, cleaned.returncode, cleaned.stderr + cleaned.stdout)
+                tracked_after = subprocess.run(
+                    ["git", "-C", str(target), "ls-files", "--", ".agents/zzzops", ".agents/skills", ".claude/skills", ".zzzops/rules"],
+                    text=True, encoding="utf-8", capture_output=True, check=True,
+                ).stdout.splitlines()
+                self.assertEqual([], tracked_after)
+                self.assertTrue((target / ".agents" / "zzzops" / "zzzops.py").is_file())
+                self.assertTrue((target / ".claude" / "skills" / "execute-zzzops" / "SKILL.md").is_file())
+
+                subprocess.run(["git", "-C", str(target), "reset", "--quiet", "HEAD", "--", "."], check=True)
+                (target / ".agents" / "zzzops" / "zzzops.py").write_text("staged divergence\n", encoding="utf-8")
+                subprocess.run(["git", "-C", str(target), "add", "-f", ".agents/zzzops/zzzops.py"], check=True)
+                blocked = self.run_installer(installer, target, "--yes")
+                self.assertNotEqual(0, blocked.returncode, blocked.stderr + blocked.stdout)
+                self.assertIn("staged changes overlap", blocked.stdout)
+                self.assertIn(".agents/zzzops/zzzops.py", subprocess.run(
+                    ["git", "-C", str(target), "diff", "--cached", "--name-only"],
+                    text=True, encoding="utf-8", capture_output=True, check=True,
+                ).stdout.splitlines())
+
     def test_injected_mid_write_failure_rolls_back(self):
         for name, installer in self.installers.items():
             with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
