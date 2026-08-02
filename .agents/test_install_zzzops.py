@@ -152,6 +152,30 @@ class NativeInstallerTests(unittest.TestCase):
         self.assertTrue(locks)
         self.assertEqual(1, len({json.dumps(lock, sort_keys=True) for lock in locks}))
 
+    def test_upgrade_preview_reports_installed_and_incoming_versions(self):
+        for name, installer in self.installers.items():
+            with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
+                target = self.make_repo(directory)
+                installed = self.run_installer(installer, target, "--yes")
+                self.assertEqual(0, installed.returncode, installed.stderr + installed.stdout)
+                lock_path = target / ".zzzops" / "ZZZOPS_LOCK.json"
+                incoming = json.loads(lock_path.read_text(encoding="utf-8"))
+                previous = json.loads(json.dumps(incoming))
+                previous["revision"] = "0" * 40
+                previous["version"] = "previous-test-build"
+                lock_path.write_text(json.dumps(previous, indent=2) + "\n", encoding="utf-8")
+
+                preview = self.run_installer(installer, target, "--dry-run")
+                self.assertEqual(0, preview.returncode, preview.stderr + preview.stdout)
+                self.assertIn("Operation: upgrade", preview.stdout)
+                self.assertIn(previous["version"], preview.stdout)
+                self.assertIn(incoming["version"], preview.stdout)
+
+                upgraded = self.run_installer(installer, target, "--yes")
+                self.assertEqual(0, upgraded.returncode, upgraded.stderr + upgraded.stdout)
+                self.assertGreaterEqual(upgraded.stdout.count(incoming["version"]), 2)
+                self.assertEqual(incoming, json.loads(lock_path.read_text(encoding="utf-8")))
+
     def test_tracked_machinery_cleanup_requires_exact_consent_and_clean_index(self):
         for name, installer in self.installers.items():
             with self.subTest(installer=name), tempfile.TemporaryDirectory() as directory:
