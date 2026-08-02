@@ -42,7 +42,7 @@
     "schema_version": 1,
     "sections": [
       {
-        "id": "backend", "title": "Canonical goal backend", "required": true, "applicable": true,
+        "id": "backend", "default_id": "zzzops.policy.backend", "title": "Canonical goal backend", "required": true, "applicable": true,
         "decision": "github_issues", "rationale": "replace with capability evidence and repository identity",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps GitHub-only authority", "default_disposition": "accepted",
         "settings": {
@@ -53,7 +53,7 @@
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {
-        "id": "git_review_release", "title": "Git, review, and release", "required": true, "applicable": true,
+        "id": "git_review_release", "default_id": "zzzops.policy.git_review_release", "title": "Git, review, and release", "required": true, "applicable": true,
         "decision": "Follow repository rules; otherwise use one branch per source-changing goal from the nearest authorized trunk and one Conventional Commit per verified sub-goal. Writable implementation waits until every dependency is complete; read-only investigation may prepare later work without claiming or starting it.", "rationale": "replace with repository evidence or retain the labeled fallback",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps first-release fallback", "default_disposition": "accepted",
         "settings": {
@@ -68,7 +68,7 @@
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {
-        "id": "execution_continuation", "title": "Execution and work continuation", "required": true, "applicable": true,
+        "id": "execution_continuation", "default_id": "zzzops.policy.execution_continuation", "title": "Execution and work continuation", "required": true, "applicable": true,
         "decision": "Continue across actionable goals under reviewed dependency and resource policy, and incorporate newly captured goals at the next safe checkpoint.", "rationale": "reduces babysitting without forcing sequential work when bounded parallelism is safe",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps first-release fallback", "default_disposition": "accepted",
         "settings": {
@@ -85,7 +85,7 @@
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {
-        "id": "verification_testing", "title": "Verification and testing", "required": true, "applicable": true,
+        "id": "verification_testing", "default_id": "zzzops.policy.verification_testing", "title": "Verification and testing", "required": true, "applicable": true,
         "decision": "Require artifact-appropriate observable evidence in small chunks; documentation and test cases need no recursive tests, while product behavior and reusable test infrastructure require direct verification.", "rationale": "prevents unobservable product changes and false confidence without manufacturing documentation or test meta-tests",
         "source_ids": ["E-002"], "confidence": "high", "default_origin": "ZzzOps observable-work fallback", "default_disposition": "accepted",
         "settings": {
@@ -107,7 +107,7 @@
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {
-        "id": "code_quality", "title": "Code-quality and refactoring boundaries", "required": true, "applicable": true,
+        "id": "code_quality", "default_id": "zzzops.policy.code_quality", "title": "Code-quality and refactoring boundaries", "required": true, "applicable": true,
         "decision": "Preserve behavior unless a goal explicitly authorizes a behavior change.", "rationale": "separates cleanup from product decisions",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps conservative fallback", "default_disposition": "accepted",
         "settings": {
@@ -118,35 +118,35 @@
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {
-        "id": "dependencies_tooling", "title": "Dependencies, tooling, and generated artifacts", "required": true, "applicable": true,
+        "id": "dependencies_tooling", "default_id": "zzzops.policy.dependencies_tooling", "title": "Dependencies, tooling, and generated artifacts", "required": true, "applicable": true,
         "decision": "Use project-native tooling; do not hand-edit generated or dependency-owned files.", "rationale": "replace with repository-specific commands and ownership evidence",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps conservative fallback", "default_disposition": "accepted",
         "settings": {"tooling": "project_native", "generated_files": "source_or_generator_only", "dependency_changes": "explicit_scope"},
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {
-        "id": "security_privacy_compliance", "title": "Security, privacy, secrets, and compliance", "required": true, "applicable": true,
+        "id": "security_privacy_compliance", "default_id": "zzzops.policy.security_privacy_compliance", "title": "Security, privacy, secrets, and compliance", "required": true, "applicable": true,
         "decision": "Repository policy may tighten but never weaken ZzzOps safety and authority boundaries.", "rationale": "record applicable project constraints without making safety optional",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "immutable ZzzOps boundary", "default_disposition": "accepted",
         "settings": {"secrets": "never_expose", "production_mutation": "explicit_authority", "project_constraints": []},
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {
-        "id": "documentation_style", "title": "Documentation and style", "required": true, "applicable": true,
+        "id": "documentation_style", "default_id": "zzzops.policy.documentation_style", "title": "Documentation and style", "required": true, "applicable": true,
         "decision": "Follow evidenced repository documentation, style, and user-communication conventions.", "rationale": "keep communication project-appropriate while providing a concise ZzzOps fallback",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps fallback overridden by repository or user evidence", "default_disposition": "accepted",
         "settings": {"documentation": "repository_conventions", "style": "repository_conventions", "communication": {"style": "outcome_first", "technical_detail": "decision_risk_failure_or_request", "user_action": "one_clear_action_with_reason_and_next_step"}},
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {
-        "id": "deployment_resources", "title": "Deployment, environment, and resources", "required": true, "applicable": true,
+        "id": "deployment_resources", "default_id": "zzzops.policy.deployment_resources", "title": "Deployment, environment, and resources", "required": true, "applicable": true,
         "decision": "Do not deploy without authority; choose bounded parallelism from the deterministic tracked-file repository size.", "rationale": "limits external impact and avoids multiplying large writable checkouts",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps conservative fallback", "default_disposition": "accepted",
         "settings": {"deployment": "explicit_authority", "resource_mode": "size_aware", "delegate_wait_after_seconds": 60},
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {
-        "id": "automated_design", "title": "Automated design authority", "required": true, "applicable": true,
+        "id": "automated_design", "default_id": "zzzops.policy.automated_design", "title": "Automated design authority", "required": true, "applicable": true,
         "decision": "enabled", "rationale": "Allow unattended execution to resolve reversible in-scope design choices when reviewed project evidence is decisive, while retaining consequential authority gates.",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps bounded automated-design fallback", "default_disposition": "accepted",
         "settings": {
@@ -160,7 +160,7 @@
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {
-        "id": "autonomy_approval_parallelism", "title": "Autonomy, approvals, and parallelism", "required": true, "applicable": true,
+        "id": "autonomy_approval_parallelism", "default_id": "zzzops.policy.autonomy_approval_parallelism", "title": "Autonomy, approvals, and parallelism", "required": true, "applicable": true,
         "decision": "Interview adaptively during goal capture; execute unattended by persisting consequential questions as durable blockers; refill valuable bounded work; use up to three worktree workers below 100 MB and read-only workers otherwise.", "rationale": "balances precise capture, unattended execution, authority, bounded valuable refill, and predictable repository resource cost",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps conservative fallback", "default_disposition": "accepted",
         "settings": {

@@ -28,7 +28,8 @@ class PolicyModuleTests(unittest.TestCase):
         for name in (
             "project_digest", "read_project_state", "validate_project_state",
             "validate_policy", "render_project", "render_project_audit",
-            "normalize_resource_policy",
+            "normalize_resource_policy", "policy_default_catalog", "policy_content_digest",
+            "prepare_policy_defaults", "compare_policy_defaults",
         ):
             self.assertIs(getattr(zzzops, name), getattr(policy, name))
 
@@ -88,11 +89,17 @@ class InitializationTests(unittest.TestCase):
 
     def plan(self):
         inspection = zzzops.inspect_initialization(self.repo)
+        lock_path = self.repo / ".zzzops" / "ZZZOPS_LOCK.json"
+        if not lock_path.exists():
+            lock_path.write_text(json.dumps({
+                "schema_version": 1, "revision": "a" * 40, "version": "test-v1", "files": {},
+            }), encoding="utf-8")
         init_template = MODULE_PATH.parent / "templates" / "project-goals" / "INIT_PLAN.json"
         policy = json.loads(init_template.read_text(encoding="utf-8"))["policy"]
         policy["sections"][0]["settings"]["repository_identity"] = "example/repo"
         policy["sections"][0]["decision"] = "github_issues"
         policy["sections"][0]["settings"]["authority"] = "github_issues"
+        policy["sections"][0]["default_disposition"] = "changed"
         return {
             "schema_version": 1,
             "base_digest": inspection["base_digest"],
@@ -253,6 +260,7 @@ class InitializationTests(unittest.TestCase):
         plan = self.plan()
         section = plan["policy"]["sections"][4]
         section["settings"]["project_extension"] = {"custom": True}
+        section["default_disposition"] = "changed"
         section["review"]["approved"] = True
         self.assertTrue(any("review must be pending" in error for error in zzzops.validate_plan(self.repo, plan)))
         section["review"]["approved"] = False
@@ -260,6 +268,145 @@ class InitializationTests(unittest.TestCase):
         zzzops.confirm_project(self.repo, applied["policy_digest"], "test-user", [], True)
         state = zzzops.read_project_state(self.repo)[2]
         self.assertEqual({"custom": True}, state["policy"]["sections"][4]["settings"]["project_extension"])
+
+    def test_default_catalog_and_adopted_provenance_are_canonical(self):
+        catalog = zzzops.policy_default_catalog()
+        self.assertEqual(len(zzzops.POLICY_SECTION_IDS), len(catalog))
+        self.assertEqual(catalog, zzzops.policy_default_catalog())
+        for default_id, entry in catalog.items():
+            self.assertEqual(default_id, entry["id"])
+            self.assertEqual(1, entry["schema_version"])
+            self.assertEqual(entry["digest"], zzzops.policy_content_digest(entry["content"]))
+
+        missing_id = self.plan()
+        next(item for item in missing_id["policy"]["sections"] if item["id"] == "documentation_style").pop("default_id")
+        self.assertTrue(any("lacks a stable default identity" in error for error in zzzops.validate_plan(self.repo, missing_id)))
+        malformed = self.plan()
+        next(item for item in malformed["policy"]["sections"] if item["id"] == "documentation_style").pop("settings")
+        self.assertTrue(any("settings must be an object" in error for error in zzzops.validate_plan(self.repo, malformed)))
+        forged = self.plan()
+        next(item for item in forged["policy"]["sections"] if item["id"] == "documentation_style")["default_provenance"] = "forged"
+        self.assertTrue(any("default provenance must be an object" in error for error in zzzops.validate_plan(self.repo, forged)))
+
+        applied = zzzops.apply_plan(self.repo, self.plan())
+        state = zzzops.read_project_state(self.repo)[2]
+        backend = next(item for item in state["policy"]["sections"] if item["id"] == "backend")
+        documentation = next(item for item in state["policy"]["sections"] if item["id"] == "documentation_style")
+        self.assertEqual("customized", backend["default_provenance"]["status"])
+        adopted = documentation["default_provenance"]
+        self.assertEqual("adopted", adopted["status"])
+        self.assertEqual(1, adopted["schema_version"])
+        self.assertEqual(adopted["digest"], zzzops.policy_content_digest(adopted["snapshot"]))
+        self.assertTrue(adopted["source"]["revision"])
+        self.assertTrue(adopted["source"]["version"])
+        self.assertEqual([], zzzops.validate_project_state(state))
+        self.assertTrue(applied["policy_digest"])
+        summary = zzzops.inspect_initialization(self.repo)["policy_defaults"]
+        self.assertEqual(len(zzzops.POLICY_SECTION_IDS), len(summary))
+        self.assertTrue(all("old_snapshot" not in item and "new_snapshot" not in item for item in summary))
+
+        adopted["digest"] = "sha256:" + "0" * 64
+        self.assertTrue(any("default_provenance.digest" in error for error in zzzops.validate_project_state(state)))
+
+    def test_default_comparison_is_progressive_and_never_attributes_legacy_values(self):
+        zzzops.apply_plan(self.repo, self.plan())
+        policy = zzzops.read_project_state(self.repo)[2]["policy"]
+        catalog = zzzops.policy_default_catalog()
+        default_id = "zzzops.policy.documentation_style"
+        changed = json.loads(json.dumps(catalog))
+        changed[default_id]["content"]["decision"] = "A newer documented default."
+        changed[default_id]["digest"] = zzzops.policy_content_digest(changed[default_id]["content"])
+        quality_id = "zzzops.policy.code_quality"
+        changed[quality_id]["content"]["decision"] = "A newer quality default."
+        changed[quality_id]["digest"] = zzzops.policy_content_digest(changed[quality_id]["content"])
+
+        compact = {item["section_id"]: item for item in zzzops.compare_policy_defaults(policy, changed)}
+        self.assertEqual("update_available", compact["documentation_style"]["status"])
+        self.assertEqual("update_available", compact["code_quality"]["status"])
+        self.assertNotIn("old_snapshot", compact["documentation_style"])
+        selected = zzzops.compare_policy_defaults(policy, changed, {"documentation_style"})
+        documentation = next(item for item in selected if item["section_id"] == "documentation_style")
+        self.assertIn("old_snapshot", documentation)
+        self.assertIn("new_snapshot", documentation)
+        self.assertEqual("customized", compact["backend"]["status"])
+
+        legacy = json.loads(json.dumps(policy))
+        next(item for item in legacy["sections"] if item["id"] == "documentation_style").pop("default_provenance")
+        legacy_result = {item["section_id"]: item for item in zzzops.compare_policy_defaults(legacy, changed)}
+        self.assertEqual("unknown_origin", legacy_result["documentation_style"]["status"])
+        self.assertEqual([], zzzops.validate_policy(legacy, False))
+        prepared_legacy = zzzops.prepare_policy_defaults(self.repo, legacy, legacy)
+        self.assertNotIn(
+            "default_provenance",
+            next(item for item in prepared_legacy["sections"] if item["id"] == "documentation_style"),
+        )
+
+        provenance = next(item for item in policy["sections"] if item["id"] == "documentation_style")["default_provenance"]
+        provenance["declined_digest"] = changed[default_id]["digest"]
+        declined = {item["section_id"]: item for item in zzzops.compare_policy_defaults(policy, changed)}
+        self.assertEqual("declined", declined["documentation_style"]["status"])
+
+    def test_changed_default_acceptance_uses_normal_policy_review(self):
+        first = zzzops.apply_plan(self.repo, self.plan())
+        zzzops.confirm_project(self.repo, first["policy_digest"], "first-reviewer", [], True)
+        catalog = zzzops.policy_default_catalog()
+        default_id = "zzzops.policy.documentation_style"
+        catalog[default_id]["content"]["decision"] = "A newer documented default."
+        catalog[default_id]["digest"] = zzzops.policy_content_digest(catalog[default_id]["content"])
+        plan = self.plan()
+        section = next(item for item in plan["policy"]["sections"] if item["id"] == "documentation_style")
+        section["default_resolution"] = {"action": "accept", "digest": catalog[default_id]["digest"]}
+        with mock.patch.object(zzzops._policy, "policy_default_catalog", return_value=catalog):
+            stale = json.loads(json.dumps(plan))
+            next(item for item in stale["policy"]["sections"] if item["id"] == "documentation_style")["default_resolution"]["digest"] = "sha256:" + "0" * 64
+            self.assertTrue(any("default resolution is stale" in error for error in zzzops.validate_plan(self.repo, stale)))
+            self.assertEqual([], zzzops.validate_plan(self.repo, plan))
+            applied = zzzops.apply_plan(self.repo, plan)
+        pending = zzzops.read_project_state(self.repo)[2]
+        updated = next(item for item in pending["policy"]["sections"] if item["id"] == "documentation_style")
+        self.assertEqual("A newer documented default.", updated["decision"])
+        self.assertEqual(catalog[default_id]["digest"], updated["default_provenance"]["digest"])
+        self.assertFalse(pending["initialized"])
+        self.assertEqual(["policy:documentation_style"], applied["decision_blockers"])
+        self.assertTrue(next(item for item in pending["policy"]["sections"] if item["id"] == "code_quality")["review"]["approved"])
+        zzzops.confirm_project(self.repo, applied["policy_digest"], "second-reviewer", [], True)
+
+    def test_changed_default_decline_is_stable_and_does_not_reprompt(self):
+        first = zzzops.apply_plan(self.repo, self.plan())
+        zzzops.confirm_project(self.repo, first["policy_digest"], "first-reviewer", [], True)
+        catalog = zzzops.policy_default_catalog()
+        default_id = "zzzops.policy.documentation_style"
+        catalog[default_id]["content"]["decision"] = "A newer documented default."
+        catalog[default_id]["digest"] = zzzops.policy_content_digest(catalog[default_id]["content"])
+        plan = self.plan()
+        section = next(item for item in plan["policy"]["sections"] if item["id"] == "documentation_style")
+        section["default_resolution"] = {"action": "decline", "digest": catalog[default_id]["digest"]}
+        with mock.patch.object(zzzops._policy, "policy_default_catalog", return_value=catalog):
+            applied = zzzops.apply_plan(self.repo, plan)
+            zzzops.confirm_project(self.repo, applied["policy_digest"], "second-reviewer", [], True)
+            confirmed = zzzops.read_project_state(self.repo)[2]
+            first_comparison = zzzops.compare_policy_defaults(confirmed["policy"], catalog)
+            second_comparison = zzzops.compare_policy_defaults(confirmed["policy"], catalog)
+        result = {item["section_id"]: item for item in first_comparison}
+        self.assertEqual("declined", result["documentation_style"]["status"])
+        self.assertEqual(first_comparison, second_comparison)
+
+    def test_default_provenance_renders_plain_language(self):
+        zzzops.apply_plan(self.repo, self.plan())
+        state = zzzops.read_project_state(self.repo)[2]
+        audit = zzzops.render_project_audit(state)
+        self.assertIn("adopted from the recorded ZzzOps default", audit)
+        self.assertIn("customized from a ZzzOps default", audit)
+
+    def test_policy_review_guidance_loads_changed_default_snapshots_progressively(self):
+        review = (MODULE_PATH.parents[1] / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
+        for phrase in (
+            "Compare default IDs/digests first",
+            "load full old/new snapshots only for changed or selected sections",
+            "Missing legacy provenance stays unknown",
+            "report customized values without replacement",
+        ):
+            self.assertIn(phrase, review)
 
     def test_project_policy_requires_resolvable_source_citations(self):
         applied = zzzops.apply_plan(self.repo, self.plan())
@@ -279,6 +426,7 @@ class InitializationTests(unittest.TestCase):
         section = plan["policy"]["sections"][7]
         section["applicable"] = False
         section["decision"] = "not applicable"
+        section["default_disposition"] = "changed"
         section["rationale"] = "No user or developer documentation exists in this repository."
         applied = zzzops.apply_plan(self.repo, plan)
         self.assertIn("policy:documentation_style", applied["decision_blockers"])

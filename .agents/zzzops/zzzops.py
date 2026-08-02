@@ -72,6 +72,10 @@ GOAL_BLOCK_START = "<!-- zzzops-goal"
 GOAL_BLOCK_END = "zzzops-goal -->"
 BACKENDS = _policy.BACKENDS
 POLICY_SECTION_IDS = _policy.POLICY_SECTION_IDS
+policy_default_catalog = _policy.policy_default_catalog
+policy_content_digest = _policy.policy_content_digest
+prepare_policy_defaults = _policy.prepare_policy_defaults
+compare_policy_defaults = _policy.compare_policy_defaults
 GOAL_FIELDS = {
     "schema_version", "status", "priority", "value", "difficulty", "confidence",
     "parent", "depends_on", "claim", "blockers",
@@ -1057,6 +1061,7 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         "state_error": error,
         "missing_charter_fields": charter_missing_fields(text),
         "decision_blockers": policy_blockers(state.get("policy")) if state else ["policy:missing"],
+        "policy_defaults": compare_policy_defaults(state["policy"]) if state and isinstance(state.get("policy"), dict) else [],
         "backend_constraints": {
             "github_issues": "requires a usable GitHub repository probe",
         },
@@ -1292,6 +1297,13 @@ def validate_plan(repo: Path, plan: dict[str, Any]) -> list[str]:
     policy_errors = validate_policy(plan.get("policy"), require_pending=True)
     errors.extend(f"policy.{error}" for error in policy_errors)
     policy = plan.get("policy")
+    if isinstance(policy, dict):
+        try:
+            previous = read_project_state(repo)[2]
+            prepared = prepare_policy_defaults(repo, policy, (previous or {}).get("policy"))
+            errors.extend(f"policy.{error}" for error in validate_policy(prepared, require_pending=True))
+        except ValueError as exc:
+            errors.append(f"policy.default provenance: {exc}")
     if isinstance(policy, dict) and isinstance(policy.get("sections"), list):
         for index, section in enumerate(policy["sections"]):
             if not isinstance(section, dict):
@@ -1480,8 +1492,20 @@ def apply_plan(repo: Path, plan: dict[str, Any]) -> dict[str, Any]:
     path, current = read_project(repo)
     _policy_path, policy_text, old_state = read_project_state(repo)
     revision = int(old_state.get("revision", 0)) + 1 if old_state else 1
-    policy = json.loads(json.dumps(plan["policy"]))
+    previous_policy = old_state.get("policy") if old_state else None
+    policy = prepare_policy_defaults(repo, plan["policy"], previous_policy)
     policy["evidence"] = plan["evidence"]
+    if previous_policy:
+        old_sections = {section["id"]: section for section in previous_policy["sections"]}
+        old_evidence = previous_policy.get("evidence", [])
+        for section in policy["sections"]:
+            prior = old_sections.get(section["id"])
+            if (
+                prior is not None
+                and _policy.policy_section_review_content(section, policy["evidence"])
+                == _policy.policy_section_review_content(prior, old_evidence)
+            ):
+                section["review"] = json.loads(json.dumps(prior["review"]))
     history = json.loads(json.dumps(old_state["history"])) if old_state else []
     history.append({
         "date": date.today().isoformat(), "actor": "ZzzOps initialization",
@@ -1515,7 +1539,7 @@ def apply_plan(repo: Path, plan: dict[str, Any]) -> dict[str, Any]:
     return {
         "changed": changed, "path": str(path), "policy_path": str(project_policy_path(repo)), "revision": revision,
         "initialized": False,
-        "decision_blockers": policy_blockers(plan["policy"]),
+        "decision_blockers": policy_blockers(policy),
         "policy_digest": policy_review_digest(state),
         "review_required": "Review the summarized policy, then explicitly approve its current policy digest.",
     }
