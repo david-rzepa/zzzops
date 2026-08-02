@@ -8,7 +8,7 @@ Installed workflows run this before ordinary work; installers do not. Defer inva
 4. Summarize evidence, conflicts, defaults, capability, and consequential unknowns; interview compactly once. User/repository evidence wins. Unavailable decisions become blockers, never inferred approval.
 5. After proposal approval run `init validate`, then `init apply`. It writes pending charter/audit/policy, not initialization. Summarize meaningful choices/conflicts and invite adjustment.
 6. Stop for explicit review confirmation, then run `init confirm --policy-digest DIGEST --reviewer NAME --all` (or repeated `--section ID`). Bound artifact/policy changes stale approval; unchecked required sections remain `decision` blockers. Hide the digest unless needed.
-7. Run `checkpoint`; inspect Git status for exact ZzzOps-owned artifacts/installer metadata. If the lock, scoped ignores, policy/instructions, or legacy deletions are pending, recommend one deliberate commit naming that scope; never sweep in unrelated changes. Do not stage/commit unless asked. Continue under policy. Initialization makes no Git/GitHub writes. Later reviews resummarize.
+7. Run `checkpoint`; inspect Git status for exact ZzzOps-owned artifacts/installer metadata. If the lock, scoped ignores, policy/instructions, or legacy deletions are pending, ask plainly whether to commit that named scope; never sweep in unrelated changes. Keep policy approval, commit permission, and PR actions separate. Do not stage/commit unless asked. Continue under policy. Initialization makes no Git/GitHub writes. Later reviews resummarize.
 
 Unsupported/partial state, identity drift, or policy-evidence conflict stops affected work. There is no prior-schema migration path. Never reset or invent fallback authority.
 
