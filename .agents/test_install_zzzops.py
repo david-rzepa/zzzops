@@ -134,6 +134,7 @@ class NativeInstallerTests(unittest.TestCase):
                 self.assertTrue((target / ".agents" / "zzzops" / "feedback.py").is_file())
                 self.assertTrue((target / ".agents" / "zzzops" / "goals.py").is_file())
                 self.assertTrue((target / ".agents" / "zzzops" / "portfolio.py").is_file())
+                self.assertTrue((target / ".agents" / "zzzops" / "install_lock.py").is_file())
                 self.assertEqual((ROOT / "LICENSE").read_bytes(), (target / ".agents" / "zzzops" / "LICENSE").read_bytes())
                 self.assertTrue((target / ".agents" / "zzzops" / "INSTALL_MANIFEST").is_file())
                 manifest_text = (target / ".agents" / "zzzops" / "INSTALL_MANIFEST").read_text(encoding="utf-8")

@@ -39,7 +39,7 @@ build_pairs() {
     local fixed=(
         .zzzops/rules/BACKENDS.md .zzzops/rules/BLOCKERS.md .zzzops/rules/CONTINUATION.md
         .zzzops/rules/EXECUTION_STRATEGY.md .zzzops/rules/FEEDBACK.md .zzzops/rules/GOAL_SYSTEM.md .zzzops/rules/INITIALIZATION.md
-        .agents/zzzops/zzzops.py .agents/zzzops/policy.py .agents/zzzops/reservation.py .agents/zzzops/feedback.py .agents/zzzops/goals.py .agents/zzzops/portfolio.py LICENSE
+        .agents/zzzops/zzzops.py .agents/zzzops/policy.py .agents/zzzops/reservation.py .agents/zzzops/feedback.py .agents/zzzops/goals.py .agents/zzzops/portfolio.py .agents/zzzops/install_lock.py LICENSE
     )
     for relative in "${fixed[@]}"; do
         [[ "$relative" == LICENSE ]] && add_pair "$SOURCE_ROOT/$relative" '.agents/zzzops/LICENSE' || add_pair "$SOURCE_ROOT/$relative" "$relative"
