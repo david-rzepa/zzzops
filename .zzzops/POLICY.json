@@ -1,13 +1,17 @@
 {
-  "approval": null,
+  "approval": {
+    "date": "2026-08-09",
+    "digest": "sha256:9d0f831aff51b653bdc85f839a5fb2a0f7e2cc54fbaec66c25c0a6c4a5b5f636",
+    "reviewer": "user"
+  },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:a34983f319087fb90f568bf061aa6f5f47f75af0f53e5ac5c3032798efedbc00",
+      "digest": "sha256:fe78c07e75ab63cc6fc354a81de6703600787190810b5463b8a5759b3fb94a99",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
-      "digest": "sha256:0a4a6a3fecdf7f4403582809ec407e46c76b9768faa0f670b9f1881e088de805",
+      "digest": "sha256:101ae8132983939f5f8806951c6eac21f294a18cd073860850b24658fd3f66d0",
       "path": ".zzzops/PROJECT.md"
     }
   },
@@ -87,9 +91,21 @@
       "change": "Created pending revision 17",
       "date": "2026-08-09",
       "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 18",
+      "date": "2026-08-09",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "user",
+      "change": "Reviewed policy revision 19",
+      "date": "2026-08-09",
+      "reason": "Approved: automated_design; source digest sha256:334572a80f28915d6759f1cd4c896cc6c7ea5b1f3c37a6d2c7e910d424aed4b8."
     }
   ],
-  "initialized": false,
+  "initialized": true,
   "policy": {
     "evidence": [
       {
@@ -151,6 +167,12 @@
         "id": "E-010",
         "kind": "proposed",
         "source": "user decisions and goal #253 on 2026-08-09"
+      },
+      {
+        "finding": "Disable automated design authority; require explicit user direction for design choices.",
+        "id": "E-011",
+        "kind": "proposed",
+        "source": "user decision 2026-08-09"
       }
     ],
     "schema_version": 1,
@@ -549,56 +571,28 @@
       {
         "applicable": true,
         "confidence": "medium",
-        "decision": "enabled",
-        "default_disposition": "accepted",
-        "default_origin": "ZzzOps bounded automated-design fallback",
+        "decision": "disabled",
+        "default_disposition": "changed",
+        "default_origin": "user decision",
         "default_provenance": {
+          "catalog_digest": "sha256:d90cefdbd3d5d0e7822c2c5a5e3773054dcf50f4a95517de58a7bf5048ef7250",
           "default_id": "zzzops.policy.automated_design",
-          "digest": "sha256:d90cefdbd3d5d0e7822c2c5a5e3773054dcf50f4a95517de58a7bf5048ef7250",
           "schema_version": 1,
-          "snapshot": {
-            "decision": "enabled",
-            "settings": {
-              "decision_record": [
-                "alternatives",
-                "rationale",
-                "assumptions",
-                "falsifiable_validation_signal"
-              ],
-              "hard_stops": [
-                "product_scope",
-                "incompatible_public_contract",
-                "destructive_migration",
-                "external_spending",
-                "deployment",
-                "external_write",
-                "human_review",
-                "safety_authority",
-                "higher_authority"
-              ],
-              "insufficient_evidence": "durable_design_blocker",
-              "privacy_security": "unambiguously_risk_reducing_without_material_behavior_change",
-              "scope": "reversible_in_scope_implementation",
-              "selection_basis": [
-                "project_objectives",
-                "kpi_evidence",
-                "constraints",
-                "precedence"
-              ]
-            }
-          },
           "source": {
             "revision": "65828e7ec5d088a93a978b19be73c8be5053d5e6781e3b52dd5065f203b7093a",
             "version": "2.0.0"
           },
-          "status": "adopted"
+          "status": "customized"
         },
         "exceptions": [],
         "id": "automated_design",
-        "rationale": "Allow unattended execution to resolve reversible in-scope design choices when reviewed project evidence is decisive, while retaining consequential authority gates.",
+        "rationale": "Require explicit user direction for design choices; unattended execution persists them as durable blockers.",
         "required": true,
         "review": {
-          "approved": false
+          "approved": true,
+          "date": "2026-08-09",
+          "reviewed_digest": "sha256:334572a80f28915d6759f1cd4c896cc6c7ea5b1f3c37a6d2c7e910d424aed4b8",
+          "reviewer": "user"
         },
         "settings": {
           "decision_record": [
@@ -629,7 +623,8 @@
           ]
         },
         "source_ids": [
-          "E-002"
+          "E-002",
+          "E-011"
         ],
         "title": "Automated design authority",
         "unresolved": []
@@ -640,6 +635,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 17,
+  "revision": 19,
   "schema_version": 1
 }

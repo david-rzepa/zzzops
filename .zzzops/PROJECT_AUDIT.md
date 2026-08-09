@@ -1,6 +1,6 @@
 # ZzzOps project policy audit
 
-Status: pending explicit review. Reviewer: not yet approved. Revision: 17.
+Status: complete. Reviewer: user. Revision: 19.
 
 ## Evidence and decisions
 
@@ -94,12 +94,12 @@ Status: pending explicit review. Reviewer: not yet approved. Revision: 17.
   - Settings: `{"blocker_interview": "capture_only", "blocker_order": ["safety_access_human", "cross_goal_decisions", "specification", "technical_unknown"], "capture_defaults": {"confidence": "low", "difficulty": "unknown", "priority": "P2"}, "claim_ttl_hours": 4, "dependency_implementation_gate": "stack_from_reviewed_checkpoint", "execution_reports": {"enabled": true}, "in_scope_ci_failure_repair": "authorized_without_additional_approval", "max_workers": 3, "parallelization": {"at_or_above_threshold_mode": "read_only", "below_threshold_mode": "worktrees", "measurement": "existing_git_tracked_worktree_bytes", "threshold_bytes": 104857600}, "planning": {"decompose_at": "L", "max_depth": 3}, "project_parallel_ceiling": "size_aware", "read_only_dependency_investigation": true, "refill": {"allowed_categories": ["documentation", "tests", "code_quality_non_behavioral"], "enabled": true, "max_per_run": 3}, "requirements_interview": {"capture_depth": "standard", "execution_questions": "durable_blockers_only", "mode": "adaptive", "stakeholder_model": "requesting_user_only"}, "worktree_lifecycle": {"abandoned_or_dirty": "forbidden", "after_task": "remove_or_retain_clean_for_reuse", "reuse_requires": ["clean_state", "reviewed_base", "new_goal_resources", "safe_branch_reassignment"]}}`
   - Exceptions: none
   - Unresolved: none
-- [ ] `[policy:automated_design]` **Automated design authority** (applicable)
-  - Decision: enabled
-  - Rationale: Allow unattended execution to resolve reversible in-scope design choices when reviewed project evidence is decisive, while retaining consequential authority gates.
-  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and reviewed PROJECT policy as the operational source of truth.
-  - Confidence/default: medium; ZzzOps bounded automated-design fallback → accepted
-  - Provenance: adopted from the recorded ZzzOps default
+- [x] `[policy:automated_design]` **Automated design authority** (applicable)
+  - Decision: disabled
+  - Rationale: Require explicit user direction for design choices; unattended execution persists them as durable blockers.
+  - Sources: E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and reviewed PROJECT policy as the operational source of truth.; E-011: user decision 2026-08-09 — Disable automated design authority; require explicit user direction for design choices.
+  - Confidence/default: medium; user decision → changed
+  - Provenance: customized from a ZzzOps default
   - Settings: `{"decision_record": ["alternatives", "rationale", "assumptions", "falsifiable_validation_signal"], "hard_stops": ["product_scope", "incompatible_public_contract", "destructive_migration", "external_spending", "deployment", "external_write", "human_review", "safety_authority", "higher_authority"], "insufficient_evidence": "durable_design_blocker", "privacy_security": "unambiguously_risk_reducing_without_material_behavior_change", "scope": "reversible_in_scope_implementation", "selection_basis": ["project_objectives", "kpi_evidence", "constraints", "precedence"]}`
   - Exceptions: none
   - Unresolved: none
@@ -111,5 +111,7 @@ Status: pending explicit review. Reviewer: not yet approved. Revision: 17.
 | 2026-08-02 | ZzzOps initialization | Created pending revision 15 | Confirmed agent-generated draft; explicit policy review still required. |
 | 2026-08-02 | user | Reviewed policy revision 16 | Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, autonomy_approval_parallelism; source digest sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c. |
 | 2026-08-09 | ZzzOps initialization | Created pending revision 17 | Confirmed agent-generated draft; explicit policy review still required. |
+| 2026-08-09 | ZzzOps initialization | Created pending revision 18 | Confirmed agent-generated draft; explicit policy review still required. |
+| 2026-08-09 | user | Reviewed policy revision 19 | Approved: automated_design; source digest sha256:334572a80f28915d6759f1cd4c896cc6c7ea5b1f3c37a6d2c7e910d424aed4b8. |
 
 The machine-readable authority is [POLICY.json](POLICY.json); this file is its human audit view.
