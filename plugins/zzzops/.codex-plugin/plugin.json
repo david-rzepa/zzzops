@@ -19,7 +19,7 @@
     "category": "Developer Tools",
     "capabilities": ["Write"],
     "websiteURL": "https://github.com/david-rzepa/zzzops",
-    "composerIcon": "./assets/logo.png",
+    "composerIcon": "./assets/composer-icon.png",
     "logo": "./assets/logo.png",
     "logoDark": "./assets/logo-dark.png",
     "defaultPrompt": [
