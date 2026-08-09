@@ -13,7 +13,7 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "ZzzOps",
-    "shortDescription": "Run durable autonomous project goals.",
+    "shortDescription": "Durable autonomous goals",
     "longDescription": "ZzzOps gives Codex a reviewed, prioritized, and resumable project-goal loop backed by GitHub Issues.",
     "developerName": "David Rzepa",
     "category": "Developer Tools",
