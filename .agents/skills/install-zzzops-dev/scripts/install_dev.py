@@ -16,6 +16,7 @@ PLUGIN_NAME = "zzzops"
 MARKETPLACE_RELATIVE = Path(".agents/plugins/marketplace.json")
 PLUGIN_RELATIVE = Path("plugins/zzzops")
 CODEX_MANIFEST_RELATIVE = PLUGIN_RELATIVE / ".codex-plugin/plugin.json"
+OPEN_MANIFEST_RELATIVE = PLUGIN_RELATIVE / "plugin.json"
 
 
 def find_repo_root(start: Path) -> Path:
@@ -56,14 +57,13 @@ def configured_marketplace_root(codex: str, marketplace_name: str, repo_root: Pa
     return Path(match.group(1)).resolve() if match else None
 
 
-def cachebusted_manifest(original: bytes, manifest_path: Path) -> bytes:
+def cachebusted_manifest(original: bytes, manifest_path: Path, cachebuster: str) -> bytes:
     payload = json.loads(original.decode("utf-8"))
     version = payload.get("version")
     if not isinstance(version, str) or not version.strip():
         raise RuntimeError(f"missing version in {manifest_path}")
     base_version = version.split("+", 1)[0]
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-    payload["version"] = f"{base_version}+codex.{timestamp}"
+    payload["version"] = f"{base_version}+codex.{cachebuster}"
     return (json.dumps(payload, indent=2) + "\n").encode("utf-8")
 
 
@@ -74,11 +74,12 @@ def main() -> int:
     if codex is None:
         raise RuntimeError("codex CLI is not available on PATH")
 
-    manifest_status = run(
-        ["git", "status", "--short", "--", CODEX_MANIFEST_RELATIVE.as_posix()], cwd=repo_root
-    ).stdout.strip()
+    manifest_status = run([
+        "git", "status", "--short", "--",
+        CODEX_MANIFEST_RELATIVE.as_posix(), OPEN_MANIFEST_RELATIVE.as_posix(),
+    ], cwd=repo_root).stdout.strip()
     if manifest_status:
-        raise RuntimeError(f"refusing to overwrite a changed Codex manifest: {manifest_status}")
+        raise RuntimeError(f"refusing to overwrite a changed plugin manifest: {manifest_status}")
 
     npm = shutil.which("npm")
     if npm is None:
@@ -99,18 +100,23 @@ def main() -> int:
             "remove and re-add it only after confirming the other checkout can be disconnected"
         )
 
-    manifest_path = plugin_path / ".codex-plugin/plugin.json"
-    original = manifest_path.read_bytes()
-    temporary = cachebusted_manifest(original, manifest_path)
+    manifest_paths = [plugin_path / "plugin.json", plugin_path / ".codex-plugin/plugin.json"]
+    originals = {path: path.read_bytes() for path in manifest_paths}
+    cachebuster = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    temporary = {
+        path: cachebusted_manifest(originals[path], path, cachebuster) for path in manifest_paths
+    }
     try:
-        manifest_path.write_bytes(temporary)
+        for path in manifest_paths:
+            path.write_bytes(temporary[path])
         result = run([codex, "plugin", "add", f"{PLUGIN_NAME}@{marketplace_name}", "--json"], cwd=repo_root)
         if result.stdout.strip():
             print(result.stdout.strip())
     finally:
-        manifest_path.write_bytes(original)
+        for path in manifest_paths:
+            path.write_bytes(originals[path])
 
-    installed_version = json.loads(temporary.decode("utf-8"))["version"]
+    installed_version = json.loads(temporary[manifest_paths[0]].decode("utf-8"))["version"]
     print(f"Installed {PLUGIN_NAME}@{marketplace_name} from {plugin_path} as {installed_version}.")
     print("Start a new Codex task to load the refreshed skills.")
     return 0

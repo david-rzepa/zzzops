@@ -11,4 +11,4 @@ From the intended checkout run:
 python .agents/skills/install-zzzops-dev/scripts/install_dev.py
 ```
 
-It validates, cache-busts, installs, and restores the manifest. Ask before replacing another checkout's marketplace registration. Report the source and tell the user to start a new task.
+It validates, cache-busts, installs, and restores both manifests. Ask before replacing another checkout's marketplace registration. Report the source and tell the user to start a new task.
