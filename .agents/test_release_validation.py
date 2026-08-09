@@ -37,6 +37,8 @@ class ReleaseValidationTests(unittest.TestCase):
         self.assertIn("needs: [validate-linux, validate-windows]", workflow)
         self.assertIn("python .github/scripts/run_product_validation.py --platform linux", workflow)
         self.assertIn("python .github/scripts/run_product_validation.py --platform windows", workflow)
+        runner = RUNNER_PATH.read_text(encoding="utf-8")
+        self.assertEqual(2, runner.count('run(sys.executable, ".agents/test_legacy_cleanup.py")'))
 
 
 if __name__ == "__main__":
