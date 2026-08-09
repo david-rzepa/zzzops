@@ -2422,6 +2422,35 @@ class WorkflowContractTests(unittest.TestCase):
         ):
             self.assertIn(signal, execute)
 
+    def test_unknown_discovery_is_adaptive_durable_and_reviewable(self):
+        root = Path(__file__).parent
+        capture = (root / "skills" / "add-zzzops-goal" / "SKILL.md").read_text(encoding="utf-8")
+        create = (root / "skills" / "execute-zzzops" / "references" / "CREATE.md").read_text(encoding="utf-8")
+        execute = (root / "skills" / "execute-zzzops" / "references" / "EXECUTE.md").read_text(encoding="utf-8")
+        self_review = (root / "skills" / "execute-zzzops" / "references" / "SELF_REVIEW.md").read_text(encoding="utf-8")
+        docs = (root.parent / "docs" / "EXECUTION.md").read_text(encoding="utf-8")
+
+        for text in (capture, create):
+            self.assertIn("bounded blind-spot pass", text)
+            self.assertIn("known unknowns, tacit criteria", text)
+            self.assertIn("disposable prototype", text)
+        self.assertIn("Skip well-understood work", capture)
+        self.assertIn("Foreground change-sensitive decisions", create)
+        self.assertIn("append material assumptions, new constraints, and plan deviations", execute)
+        self.assertIn("not tool logs", execute)
+        self.assertIn("never interview live", execute)
+        for phrase in (
+            "consequential behavior, decisions/trade-offs, remaining unknowns",
+            "comprehension checks only when they aid safe approval",
+            "never replace tests, CI, self-review, or human approval",
+        ):
+            self.assertIn(phrase, self_review)
+        for pattern in (
+            "Blind-spot pass", "Brainstorms and prototypes", "Interviews", "References",
+            "Implementation plans", "Implementation notes", "Pitches and explainers", "Quizzes",
+        ):
+            self.assertIn(f"| {pattern} |", docs)
+
     def test_execute_routes_explicit_work_states_without_blurring_write_authority(self):
         execute = (
             Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "EXECUTE.md"

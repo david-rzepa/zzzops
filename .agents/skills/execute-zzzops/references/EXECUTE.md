@@ -23,7 +23,8 @@ Update the user only for a new result, decision, risk, changed assumption, requi
    If it lacks the current schema label or compact body, run `goal inspect`, refresh it, and never sweep other bodies/comments.
 2. For source changes, establish/resume the policy-selected topology from `BRANCH_REVIEW.md` and persist branch/base/target before editing. Then follow `.zzzops/rules/EXECUTION_STRATEGY.md`: capture baseline; implement one smallest falsifiable chunk; run/inspect/record the real probe before continuing; widen only after proof, leaving exact-equivalent broad validation to required CI.
 3. Work to a verified checkpoint without silent scope expansion. Classify discoveries as scope, checklist, child, dependency, or root. Apply PROJECT test-bug policy; never hide a failure, weaken the test, or expand authority silently.
-4. Persist evidence at natural checkpoints. Follow PROJECT-limited parallel/worktree rules; coordinator owns ZzzOps state and integration.
+4. At checkpoints append material assumptions, new constraints, and plan deviations—not tool logs—to history. Resolve in-scope decisions under automated-design policy or record one blocker; never interview live.
+5. Persist evidence at natural checkpoints. Follow PROJECT-limited parallel/worktree rules; coordinator owns ZzzOps state and integration.
 
 ## GitHub read budget
 
