@@ -20,6 +20,7 @@
     "capabilities": ["Write"],
     "composerIcon": "./assets/logo.png",
     "logo": "./assets/logo.png",
+    "logoDark": "./assets/logo-dark.png",
     "defaultPrompt": [
       "Review and initialize this project's ZzzOps policy.",
       "Capture a durable project goal with ZzzOps.",
