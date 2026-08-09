@@ -9,7 +9,7 @@ Run `../../rules/INITIALIZATION.md`, then read `../../rules/FEEDBACK.md`. Use th
 
 Use checkpoint only for readiness; detailed inputs are local reports and explicit feedback, never goal bodies/history.
 
-1. Treat the user's text after the invocation as user-authored feedback. It may contain project information because the user controls it, but never merge that text into an execution report.
+1. Keep user text separate from execution reports. Before public preview, reject credentials, payment cards, health data, government IDs, and other restricted data.
 2. Run `report list` and inspect every valid archived report. Reports contain only constrained machinery codes, numeric impact, and validated ZzzOps build provenance; legacy schema-v2 provenance is explicitly unknown. Malformed or unknown content is a safety failure, so stop without submitting or deleting anything.
 3. Pass the feedback through stdin or a securely created temporary UTF-8 file to `feedback prepare`; never put it directly in a command-line argument. By default include all archived reports unless the user selected a subset.
 4. Show the exact target, title, labels, and body returned by `feedback prepare`, including cause/build-specific natural-language accounts and the collapsed immutable JSON appendix. State that `david-rzepa/zzzops` is public and ask the user to confirm that exact payload. The `zzzops-feedback` label keeps it outside ordinary execution unless a user approves the feedback queue for that session. Do not submit on an inferred, stale, or general approval.

@@ -5,7 +5,7 @@
 Order: user/safety; project instructions; reviewed `.zzzops/PROJECT.md`; canonical GitHub issue. Repository-policy conflict stops for reconciliation. Before non-install workflows follow `INITIALIZATION.md`, then `BACKENDS.md`.
 
 - Goal identity is repository plus issue number/URL; never invent IDs or duplicate provider-owned title/relations.
-- Never store secrets/raw sensitive data; link approved systems and name authority/sync direction.
+- Never store credentials, payment cards, health data, government IDs, or raw sensitive data; redact or link an approved private system.
 - The charter defines value. Preserve unknown KPIs/targets/tradeoffs; capture asks and execution blocks rather than inventing answers.
 - Reviewed PROJECT holds operational choices; installed rules are overridable defaults, not another policy layer.
 - Templates live in the plugin package at `zzzops/templates/project-goals/`; plugin installation never creates or copies project state.

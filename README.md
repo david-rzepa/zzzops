@@ -19,6 +19,10 @@ You can perform the equivalent actions from Codex's `/plugins` interface. Codex 
 
 ZzzOps v2 supports Codex. Claude Code users can remain on [v1.2.0, the final legacy installer release](https://github.com/david-rzepa/zzzops/releases/tag/v1.2.0); that line is retained for download but is not updated by the v2 marketplace workflow.
 
+[Privacy policy](PRIVACY.md) · [OpenAI compliance review](docs/OPENAI_COMPLIANCE.md) · Support, privacy, and security: [zzzops.support@gmail.com](mailto:zzzops.support@gmail.com)
+
+ZzzOps is independently developed and is not created, supported, certified, endorsed by, or affiliated with OpenAI. It uses your existing GitHub authentication to read and write GitHub Issues and, when your reviewed project policy authorizes implementation, to coordinate Git branches, commits, and pull requests. ZzzOps has no ZzzOps-operated server, telemetry, advertising, or commerce.
+
 Open a new Codex task in the target project after installation so its ZzzOps skills are discovered, then start the policy review workflow.
 
 ### 3. Initialize the project
@@ -39,7 +43,7 @@ GitHub Issues is the canonical goal authority. Initialization requires a success
 
 The plugin CLI requires Python 3.10 or newer. CLI examples use `<python>` for one compatible interpreter resolved once (`python3`, `python`, Windows `py -3`, or a harness-provided runtime). Agents resolve the CLI from the installed plugin package rather than assuming it exists in the target repository.
 
-**Visibility:** GitHub-backed goals inherit the repository's visibility. Never put secrets or raw sensitive data in a goal; redact it or link to an approved private system before capture or migration.
+**Visibility:** GitHub-backed goals inherit the repository's visibility. Never put authentication secrets, payment-card data, protected health information, government identifiers, or other restricted or raw sensitive data in a goal; redact it or link to an approved private system before capture or migration.
 
 Maintainers: see the [initialization and policy contract](docs/INITIALIZATION.md).
 
@@ -114,6 +118,7 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 | Feature | Primary surface |
 | --- | --- |
 | Discover, install, update, and remove ZzzOps through Codex | `.agents/plugins/marketplace.json` / `plugins/zzzops/plugin.json` |
+| Publish the privacy boundary, compliance review, and support contact | `PRIVACY.md` / `docs/OPENAI_COMPLIANCE.md` / `README.md` |
 | Initialize, summarize, and adjust reviewed project policy | `plugins/zzzops/skills/review-zzzops-policy/SKILL.md` |
 | Use GitHub Issues as the canonical goal backend | `plugins/zzzops/rules/BACKENDS.md` |
 | Capture durable work | `plugins/zzzops/skills/add-zzzops-goal/SKILL.md` |

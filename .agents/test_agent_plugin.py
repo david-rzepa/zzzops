@@ -15,6 +15,7 @@ SHIPPED_SKILLS = {
     "send-zzzops-feedback",
     "suggest-zzzops-work",
 }
+SUPPORT_EMAIL = "zzzops.support@gmail.com"
 
 
 class AgentPluginTests(unittest.TestCase):
@@ -52,6 +53,49 @@ class AgentPluginTests(unittest.TestCase):
             "plugins/zzzops/zzzops/install_lock.py",
         ):
             self.assertFalse((ROOT / relative).exists(), relative)
+
+    def test_published_compliance_disclosures_are_complete(self) -> None:
+        privacy = (ROOT / "PRIVACY.md").read_text(encoding="utf-8")
+        compliance = (ROOT / "docs" / "OPENAI_COMPLIANCE.md").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        codex_manifest = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
+
+        for required in (
+            SUPPORT_EMAIL,
+            "## Data ZzzOps processes",
+            "## Why data is processed",
+            "## Who receives data",
+            "## Retention",
+            "## Your choices and controls",
+            "GitHub Issues",
+            "OpenAI processes",
+            "public feedback",
+            "no ZzzOps-operated server",
+        ):
+            self.assertIn(required, privacy)
+        self.assertIn("[Privacy policy](PRIVACY.md)", readme)
+        self.assertIn("[OpenAI compliance review](docs/OPENAI_COMPLIANCE.md)", readme)
+        self.assertIn(SUPPORT_EMAIL, readme)
+        self.assertIn("not created, supported, certified, endorsed by, or affiliated with OpenAI", readme)
+        self.assertIn("no ZzzOps-operated server, telemetry, advertising, or commerce", readme)
+        self.assertIn(SUPPORT_EMAIL, compliance)
+        self.assertIn("https://openai.com/policies/developer-apps-terms/", compliance)
+        self.assertIn("https://developers.openai.com/plugins/app-guidelines", compliance)
+        self.assertIn("## Owner checklist before submission or publication", compliance)
+        self.assertIn("GitHub Issues", codex_manifest["interface"]["longDescription"])
+        self.assertEqual(["Write"], codex_manifest["interface"]["capabilities"])
+
+    def test_restricted_data_boundary_is_shipped(self) -> None:
+        goal_rules = (PLUGIN / "rules" / "GOAL_SYSTEM.md").read_text(encoding="utf-8")
+        feedback_skill = (PLUGIN / "skills" / "send-zzzops-feedback" / "SKILL.md").read_text(encoding="utf-8")
+        for restricted in (
+            "credentials",
+            "payment cards",
+            "health data",
+            "government IDs",
+        ):
+            self.assertIn(restricted, goal_rules)
+            self.assertIn(restricted, feedback_skill)
 
 
 if __name__ == "__main__":
