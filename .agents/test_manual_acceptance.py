@@ -32,25 +32,25 @@ class ManualAcceptanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)
             (repo / "docs").mkdir()
-            plan = {"version": 1, "items": [{"id":"A-1","status":"unchecked","paths":["install.ps1"],"fingerprint":None,"notes":""}]}
+            plan = {"version": 1, "items": [{"id":"A-1","status":"unchecked","paths":["plugins/zzzops/plugin.json"],"fingerprint":None,"notes":""}]}
             path = repo / "docs" / "ACCEPTANCE_TEST_PLAN.md"
             path.write_text("<!-- zzzops-acceptance-plan\n" + json.dumps(plan) + "\nzzzops-acceptance-plan -->\n")
             result = subprocess.run([sys.executable, str(SCRIPT), "coverage", "--repo", str(repo)], text=True, capture_output=True)
             self.assertEqual(1, result.returncode)
-            self.assertIn("install.sh", json.loads(result.stdout)["unmapped_required_surfaces"])
-            self.assertIn(".agents/skills/add-zzzops-goal", json.loads(result.stdout)["unmapped_required_surfaces"])
-            self.assertIn(".agents/skills/send-zzzops-feedback", json.loads(result.stdout)["unmapped_required_surfaces"])
+            self.assertIn(".agents/plugins/marketplace.json", json.loads(result.stdout)["unmapped_required_surfaces"])
+            self.assertIn("plugins/zzzops/skills/add-zzzops-goal", json.loads(result.stdout)["unmapped_required_surfaces"])
+            self.assertIn("plugins/zzzops/skills/send-zzzops-feedback", json.loads(result.stdout)["unmapped_required_surfaces"])
             self.assertEqual(path.read_text(encoding="utf-8"), "<!-- zzzops-acceptance-plan\n" + json.dumps(plan) + "\nzzzops-acceptance-plan -->\n")
 
-    def test_coverage_accepts_only_native_installers_and_installed_skills(self):
+    def test_coverage_accepts_plugin_manifests_and_packaged_skills(self):
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)
             (repo / "docs").mkdir()
             surfaces = [
-                "install.ps1", "install.sh",
-                ".agents/skills/add-zzzops-goal", ".agents/skills/migrate-to-zzzops",
-                ".agents/skills/review-zzzops-policy", ".agents/skills/suggest-zzzops-work",
-                ".agents/skills/execute-zzzops", ".agents/skills/send-zzzops-feedback",
+                "plugins/zzzops/plugin.json", ".agents/plugins/marketplace.json",
+                "plugins/zzzops/skills/add-zzzops-goal", "plugins/zzzops/skills/migrate-to-zzzops",
+                "plugins/zzzops/skills/review-zzzops-policy", "plugins/zzzops/skills/suggest-zzzops-work",
+                "plugins/zzzops/skills/execute-zzzops", "plugins/zzzops/skills/send-zzzops-feedback",
             ]
             plan = {
                 "version": 1,

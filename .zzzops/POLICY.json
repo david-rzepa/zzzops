@@ -1,27 +1,27 @@
 {
   "approval": {
-    "date": "2026-08-02",
-    "digest": "sha256:078356367556e5215333cba1eb21029a4614f3009a3c46a3658ea08776bc0bd7",
+    "date": "2026-08-09",
+    "digest": "sha256:9d0f831aff51b653bdc85f839a5fb2a0f7e2cc54fbaec66c25c0a6c4a5b5f636",
     "reviewer": "user"
   },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:8f127874a90242258d63c24c9539e56b8dbe0e35bc3682c07b820a2e405a1859",
+      "digest": "sha256:fe78c07e75ab63cc6fc354a81de6703600787190810b5463b8a5759b3fb94a99",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
-      "digest": "sha256:6eacc54e2b838ce413b0a7d684b51be113ed57dc85e3d85352a1c1b4b7e4cefd",
+      "digest": "sha256:101ae8132983939f5f8806951c6eac21f294a18cd073860850b24658fd3f66d0",
       "path": ".zzzops/PROJECT.md"
     }
   },
   "charter": {
     "acceptance_criteria": [
-      "A clean installation can be agent-initialized and capture a canonical goal without manual form filling.",
+      "A clean Codex Agent Plugin installation can be agent-initialized and capture a canonical goal without manual form filling.",
       "An execution run can prioritize, unblock, verify, checkpoint, and cycle across durable goals without losing state.",
       "Unsupported capabilities and human-only decisions become explicit categorized blockers rather than invented behavior.",
-      "Codex and Claude Code receive equivalent concise workflow semantics.",
-      "Tests prove installer preservation, backend invariants, fast observable feedback, and prompt-budget accounting."
+      "Codex receives concise, discoverable Agent Plugin workflow semantics.",
+      "Tests prove Agent Plugin packaging and marketplace discovery, backend invariants, fast observable feedback, and prompt-budget accounting."
     ],
     "beneficiaries": [
       "developers delegating long-running project work to coding agents"
@@ -44,9 +44,9 @@
       {
         "baseline": "Not yet measured.",
         "cadence": "Each release",
-        "evidence": "Timed clean-install and initialization acceptance run.",
+        "evidence": "Timed Codex marketplace installation and initialization acceptance run.",
         "name": "Time to usable backlog",
-        "target": "Clean install to initialized, capturable backlog in under 10 minutes.",
+        "target": "Marketplace install to initialized, capturable backlog in under 10 minutes.",
         "why": "Setup friction increases babysitting."
       },
       {
@@ -60,10 +60,11 @@
     ],
     "non_goals": [
       "Replace general-purpose project management suites.",
-      "Guarantee capabilities that Codex or Claude Code does not expose.",
+      "Guarantee capabilities that Codex does not expose.",
+      "Maintain v2 compatibility with Claude Code or the retired per-project installer.",
       "Spend tokens on work with no evidenced link to project value."
     ],
-    "outcome": "ZzzOps lets Codex and Claude Code manage long-term project work autonomously with durable state, minimal babysitting, and explicit human control.",
+    "outcome": "ZzzOps lets Codex manage long-term project work autonomously with durable state, minimal babysitting, and explicit human control.",
     "precedence": "user authority and safety, correctness, privacy, verified project value, autonomy, then prompt savings",
     "time_horizon": "ongoing, reviewed monthly",
     "unacceptable_tradeoffs": [
@@ -84,6 +85,24 @@
       "change": "Reviewed policy revision 16",
       "date": "2026-08-02",
       "reason": "Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, autonomy_approval_parallelism; source digest sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 17",
+      "date": "2026-08-09",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 18",
+      "date": "2026-08-09",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "user",
+      "change": "Reviewed policy revision 19",
+      "date": "2026-08-09",
+      "reason": "Approved: automated_design; source digest sha256:334572a80f28915d6759f1cd4c896cc6c7ea5b1f3c37a6d2c7e910d424aed4b8."
     }
   ],
   "initialized": true,
@@ -142,6 +161,18 @@
         "id": "E-009",
         "kind": "proposed",
         "source": "user decision 2026-08-02"
+      },
+      {
+        "finding": "Adopt Agent Plugins v1 for Codex, remove the legacy installer and Claude v2 support, and direct Claude users to final legacy release v1.2.0.",
+        "id": "E-010",
+        "kind": "proposed",
+        "source": "user decisions and goal #253 on 2026-08-09"
+      },
+      {
+        "finding": "Disable automated design authority; require explicit user direction for design choices.",
+        "id": "E-011",
+        "kind": "proposed",
+        "source": "user decision 2026-08-09"
       }
     ],
     "schema_version": 1,
@@ -536,6 +567,67 @@
         ],
         "title": "Autonomy, approvals, and parallelism",
         "unresolved": []
+      },
+      {
+        "applicable": true,
+        "confidence": "medium",
+        "decision": "disabled",
+        "default_disposition": "changed",
+        "default_origin": "user decision",
+        "default_provenance": {
+          "catalog_digest": "sha256:d90cefdbd3d5d0e7822c2c5a5e3773054dcf50f4a95517de58a7bf5048ef7250",
+          "default_id": "zzzops.policy.automated_design",
+          "schema_version": 1,
+          "source": {
+            "revision": "65828e7ec5d088a93a978b19be73c8be5053d5e6781e3b52dd5065f203b7093a",
+            "version": "2.0.0"
+          },
+          "status": "customized"
+        },
+        "exceptions": [],
+        "id": "automated_design",
+        "rationale": "Require explicit user direction for design choices; unattended execution persists them as durable blockers.",
+        "required": true,
+        "review": {
+          "approved": true,
+          "date": "2026-08-09",
+          "reviewed_digest": "sha256:334572a80f28915d6759f1cd4c896cc6c7ea5b1f3c37a6d2c7e910d424aed4b8",
+          "reviewer": "user"
+        },
+        "settings": {
+          "decision_record": [
+            "alternatives",
+            "rationale",
+            "assumptions",
+            "falsifiable_validation_signal"
+          ],
+          "hard_stops": [
+            "product_scope",
+            "incompatible_public_contract",
+            "destructive_migration",
+            "external_spending",
+            "deployment",
+            "external_write",
+            "human_review",
+            "safety_authority",
+            "higher_authority"
+          ],
+          "insufficient_evidence": "durable_design_blocker",
+          "privacy_security": "unambiguously_risk_reducing_without_material_behavior_change",
+          "scope": "reversible_in_scope_implementation",
+          "selection_basis": [
+            "project_objectives",
+            "kpi_evidence",
+            "constraints",
+            "precedence"
+          ]
+        },
+        "source_ids": [
+          "E-002",
+          "E-011"
+        ],
+        "title": "Automated design authority",
+        "unresolved": []
       }
     ]
   },
@@ -543,6 +635,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 16,
+  "revision": 19,
   "schema_version": 1
 }

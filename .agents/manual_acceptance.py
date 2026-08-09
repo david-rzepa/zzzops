@@ -45,10 +45,10 @@ def main() -> int:
     items = data["items"]
     if args.command == "coverage":
         required = [
-            "install.ps1", "install.sh",
-            ".agents/skills/add-zzzops-goal", ".agents/skills/migrate-to-zzzops",
-            ".agents/skills/review-zzzops-policy", ".agents/skills/suggest-zzzops-work",
-            ".agents/skills/execute-zzzops", ".agents/skills/send-zzzops-feedback",
+            "plugins/zzzops/plugin.json", ".agents/plugins/marketplace.json",
+            "plugins/zzzops/skills/add-zzzops-goal", "plugins/zzzops/skills/migrate-to-zzzops",
+            "plugins/zzzops/skills/review-zzzops-policy", "plugins/zzzops/skills/suggest-zzzops-work",
+            "plugins/zzzops/skills/execute-zzzops", "plugins/zzzops/skills/send-zzzops-feedback",
         ]
         mapped = {path for item in items for path in item["paths"]}
         missing = [path for path in required if not any(entry == path or entry.startswith(path + "/") for entry in mapped)]

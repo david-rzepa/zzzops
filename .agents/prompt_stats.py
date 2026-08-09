@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print and enforce a stable cross-harness prompt-budget estimate."""
+"""Print and enforce a stable Codex plugin prompt-budget estimate."""
 
 from __future__ import annotations
 
@@ -15,45 +15,44 @@ MAX_ESTIMATED_TOKENS = 14_400
 
 HARNESS_PROMPTS = {
     "codex": ("AGENTS.md",),
-    "claude": ("CLAUDE.md", "AGENTS.md"),
 }
 
 WORKFLOW_PROMPTS = {
     "capture": (
-        ".agents/skills/add-zzzops-goal/SKILL.md",
-        ".zzzops/rules/INITIALIZATION.md", ".zzzops/rules/BACKENDS.md",
-        ".zzzops/rules/CONTINUATION.md", ".zzzops/rules/FEEDBACK.md",
+        "plugins/zzzops/skills/add-zzzops-goal/SKILL.md",
+        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
+        "plugins/zzzops/rules/CONTINUATION.md", "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "execution": (
-        ".agents/skills/execute-zzzops/SKILL.md",
-        ".agents/skills/execute-zzzops/references/EXECUTE.md",
-        ".agents/skills/execute-zzzops/references/BRANCH_REVIEW.md",
-        ".agents/skills/execute-zzzops/references/SELF_REVIEW.md",
-        ".zzzops/rules/INITIALIZATION.md", ".zzzops/rules/BACKENDS.md",
-        ".zzzops/rules/GOAL_SYSTEM.md", ".zzzops/rules/CONTINUATION.md",
-        ".zzzops/rules/EXECUTION_STRATEGY.md", ".zzzops/rules/FEEDBACK.md",
+        "plugins/zzzops/skills/execute-zzzops/SKILL.md",
+        "plugins/zzzops/skills/execute-zzzops/references/EXECUTE.md",
+        "plugins/zzzops/skills/execute-zzzops/references/BRANCH_REVIEW.md",
+        "plugins/zzzops/skills/execute-zzzops/references/SELF_REVIEW.md",
+        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
+        "plugins/zzzops/rules/GOAL_SYSTEM.md", "plugins/zzzops/rules/CONTINUATION.md",
+        "plugins/zzzops/rules/EXECUTION_STRATEGY.md", "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "policy-review": (
-        ".agents/skills/review-zzzops-policy/SKILL.md",
-        ".zzzops/rules/INITIALIZATION.md", ".zzzops/rules/FEEDBACK.md",
+        "plugins/zzzops/skills/review-zzzops-policy/SKILL.md",
+        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "migration": (
-        ".agents/skills/migrate-to-zzzops/SKILL.md",
-        ".zzzops/rules/INITIALIZATION.md", ".zzzops/rules/BACKENDS.md",
-        ".zzzops/rules/FEEDBACK.md",
+        "plugins/zzzops/skills/migrate-to-zzzops/SKILL.md",
+        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
+        "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "suggestion": (
-        ".agents/skills/suggest-zzzops-work/SKILL.md",
-        ".zzzops/rules/INITIALIZATION.md", ".zzzops/rules/BACKENDS.md",
-        ".zzzops/rules/FEEDBACK.md",
+        "plugins/zzzops/skills/suggest-zzzops-work/SKILL.md",
+        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
+        "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "acceptance": (
         ".agents/skills/run-zzzops-acceptance/SKILL.md",
-        ".zzzops/rules/FEEDBACK.md",
+        "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "feedback": (
-        ".agents/skills/send-zzzops-feedback/SKILL.md",
-        ".zzzops/rules/INITIALIZATION.md", ".zzzops/rules/FEEDBACK.md",
+        "plugins/zzzops/skills/send-zzzops-feedback/SKILL.md",
+        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
     ),
 }
 
@@ -79,12 +78,13 @@ def canonical_size(data: bytes) -> int:
 
 
 def prompt_files(root: Path) -> list[Path]:
-    files = [root / "AGENTS.md", root / "CLAUDE.md"]
-    files.extend((root / ".zzzops" / "rules").glob("*.md"))
+    files = [root / "AGENTS.md"]
+    files.extend((root / "plugins" / "zzzops" / "rules").glob("*.md"))
+    files.extend((root / "plugins" / "zzzops" / "skills").glob("*/SKILL.md"))
+    files.extend((root / "plugins" / "zzzops" / "skills").glob("*/references/*.md"))
+    files.extend((root / "plugins" / "zzzops" / "zzzops" / "templates" / "project-goals").glob("*.md"))
     files.extend((root / ".agents" / "skills").glob("*/SKILL.md"))
     files.extend((root / ".agents" / "skills").glob("*/references/*.md"))
-    files.extend((root / ".agents" / "zzzops" / "templates" / "project-goals").glob("*.md"))
-    files.extend((root / ".claude" / "skills").glob("*/SKILL.md"))
     return sorted({path for path in files if path.is_file()}, key=lambda path: path.relative_to(root).as_posix())
 
 
@@ -94,7 +94,7 @@ def render_report(rows: list[tuple[str, int, int]]) -> str:
     table = [
         "# Prompt budget report",
         "",
-        "Stable cross-harness estimate: `ceil(canonical UTF-8 bytes / 4)`; line endings normalize to LF. This is prompt-size regression evidence, not billing.",
+        "Stable Codex estimate: `ceil(canonical UTF-8 bytes / 4)`; line endings normalize to LF. This is prompt-size regression evidence, not billing.",
         "",
         "| Prompt | Bytes | Est. tokens |",
         "| --- | ---: | ---: |",
@@ -119,15 +119,14 @@ def render_workflow_report(root: Path) -> str:
     table = [
         "# Routed workflow prompt report",
         "",
-        "Directly routed source prompts plus each harness root; conditional execution create/unblock documents are excluded.",
+        "Directly routed plugin prompts plus the Codex repository root; conditional execution create/unblock documents are excluded.",
         "",
-        "| Workflow | Codex bytes | Codex est. tokens | Claude bytes | Claude est. tokens |",
-        "| --- | ---: | ---: | ---: | ---: |",
+        "| Workflow | Codex bytes | Codex est. tokens |",
+        "| --- | ---: | ---: |",
     ]
     for workflow in WORKFLOW_PROMPTS:
         codex = workflow_profile(root, workflow, "codex")
-        claude = workflow_profile(root, workflow, "claude")
-        table.append(f"| {workflow} | {codex[0]} | {codex[1]} | {claude[0]} | {claude[1]} |")
+        table.append(f"| {workflow} | {codex[0]} | {codex[1]} |")
     return "\n".join(table) + "\n"
 
 
@@ -146,7 +145,7 @@ def evaluate_workflows(root: Path) -> tuple[list[str], float]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Print or enforce the prompt-budget estimate")
     parser.add_argument("--check", action="store_true", help="Fail when the estimated prompt budget exceeds its committed ceiling")
-    parser.add_argument("--profiles", action="store_true", help="Print per-workflow prompt loads for Codex and Claude")
+    parser.add_argument("--profiles", action="store_true", help="Print per-workflow prompt loads for Codex")
     parser.add_argument("--eval", action="store_true", help="Run deterministic routed-workflow success fixtures")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]

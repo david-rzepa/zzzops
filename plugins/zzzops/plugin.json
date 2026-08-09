@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "zzzops",
+  "version": "2.0.0",
+  "description": "Durable autonomous project goals for Codex",
+  "author": {
+    "name": "David Rzepa",
+    "url": "https://github.com/david-rzepa"
+  },
+  "homepage": "https://github.com/david-rzepa/zzzops",
+  "repository": "https://github.com/david-rzepa/zzzops",
+  "license": "Apache-2.0",
+  "keywords": ["codex", "goals", "automation", "project-management"]
+}

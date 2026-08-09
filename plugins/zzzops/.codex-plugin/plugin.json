@@ -1,0 +1,31 @@
+{
+  "name": "zzzops",
+  "version": "2.0.0",
+  "description": "Durable autonomous project goals for Codex",
+  "author": {
+    "name": "David Rzepa",
+    "url": "https://github.com/david-rzepa"
+  },
+  "homepage": "https://github.com/david-rzepa/zzzops",
+  "repository": "https://github.com/david-rzepa/zzzops",
+  "license": "Apache-2.0",
+  "keywords": ["codex", "goals", "automation", "project-management"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "ZzzOps",
+    "shortDescription": "Durable autonomous goals",
+    "longDescription": "ZzzOps gives Codex a reviewed, prioritized, and resumable project-goal loop backed by GitHub Issues.",
+    "developerName": "David Rzepa",
+    "category": "Developer Tools",
+    "capabilities": ["Write"],
+    "websiteURL": "https://github.com/david-rzepa/zzzops",
+    "composerIcon": "./assets/composer-icon.png",
+    "logo": "./assets/logo.png",
+    "logoDark": "./assets/logo-dark.png",
+    "defaultPrompt": [
+      "Review and initialize this project's ZzzOps policy.",
+      "Capture a durable project goal with ZzzOps.",
+      "Work all available ZzzOps goals until blocked."
+    ]
+  }
+}
