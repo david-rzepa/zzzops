@@ -14,7 +14,7 @@
   "interface": {
     "displayName": "ZzzOps",
     "shortDescription": "Durable autonomous goals",
-    "longDescription": "ZzzOps gives Codex a reviewed, prioritized, and resumable project-goal loop backed by GitHub Issues.",
+    "longDescription": "ZzzOps gives Codex a reviewed, prioritized, and resumable project-goal loop. It reads and writes GitHub Issues through your existing GitHub authentication and coordinates implementation only under reviewed project policy.",
     "developerName": "David Rzepa",
     "category": "Developer Tools",
     "capabilities": ["Write"],
