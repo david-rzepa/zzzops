@@ -9,6 +9,8 @@ Run `.zzzops/rules/INITIALIZATION.md`, then `.zzzops/rules/BACKENDS.md`. Use min
 
 First reuse the request, repository evidence, related goals, and prior answers. Ask only about consequential gaps, 1–3 focused questions at a time, with a recommendation when a material choice exists; never repeat answered or irrelevant dimensions. `light` requires a clear outcome, observable acceptance evidence, and critical constraints. `standard` also checks scope/non-goals and conditionally checks examples, dependencies, material risks, authority, and verification when they can change the work. `thorough` additionally checks applicable data lifecycle, failure/recovery, operations, rollout, accessibility, and governance. Challenge vague success language and reconcile contradictions.
 
+If unfamiliarity or decision risk could change architecture, scope, acceptance, or quality, run a bounded blind-spot pass for known unknowns, tacit criteria, and blind spots. Use the cheapest research, high-fidelity reference, alternatives, or disposable prototype for actionable questions/risks/experiments. Skip well-understood work and fixed ceremony.
+
 Stop interviewing when the goal is independently actionable and verifiable at the selected depth, or when remaining unknowns are explicit and the user chooses to preserve them as blockers. Then create one canonical goal using the human-first managed GitHub issue schema and current schema label in one call. Capture exact source path/line when applicable and explain value against project KPIs/acceptance. Preserve unknowns rather than inventing them. Use `$execute-zzzops` afterward for decomposition, triage, or execution.
 
 Capture never creates a branch, commit, push, or PR. A GitHub issue needs no Git checkpoint.

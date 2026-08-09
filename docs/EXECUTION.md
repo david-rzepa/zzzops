@@ -24,6 +24,23 @@ Goal capture uses the project policy's adaptive requirements-interview depth bef
 
 Execution assumes no user is present. It never pauses to ask an interactive question: consequential unknowns, including authority and safety gates, are recorded as categorized issue blockers with recommendations and recheck triggers. Independent goals continue, and the durable blocker queue is summarized at handoff.
 
+## Adaptive discovery of unknowns
+
+ZzzOps treats uncertainty reduction as an adaptive lifecycle concern, not a mandatory phase. Capture and preparation run a bounded blind-spot pass only when unfamiliarity or a change-sensitive decision could materially affect architecture, scope, acceptance, or the quality bar. The pass identifies known unknowns, tacit criteria, and plausible blind spots, then chooses the cheapest useful evidence source or experiment. Execution preserves only material assumptions, constraints, and plan deviations in goal history. Review handoffs explain consequential decisions and remaining unknowns, adding comprehension checks only when they materially improve safe approval.
+
+The patterns from Anthropic's [field guide to finding unknowns](https://claude.com/blog/a-field-guide-to-claude-fable-finding-your-unknowns) map to shipped behavior as follows:
+
+| Pattern | Disposition | ZzzOps behavior |
+| --- | --- | --- |
+| Blind-spot pass | Adopt | Trigger boundedly from evidenced unfamiliarity or decision risk; return actionable questions, risks, references, or experiments. |
+| Brainstorms and prototypes | Adapt | Use bounded alternatives or disposable prototypes only when tacit criteria or feasibility could change the implementation. |
+| Interviews | Already satisfied | Capture interviews adapt to reviewed depth; unattended execution records blockers and never requests a live interview. |
+| References | Adopt | Prefer source, schemas, tests, fixtures, and other high-fidelity references over duplicated prose when they encode semantics better. |
+| Implementation plans | Adapt | Foreground data models, interfaces, architecture, and user-visible decisions; subordinate trusted mechanical steps. |
+| Implementation notes | Adapt | Append material assumptions, constraints, and deviations to durable goal history instead of requiring a temporary notes file. |
+| Pitches and explainers | Adopt | Completion handoffs explain consequential behavior, trade-offs, remaining unknowns, and non-obvious failure modes. |
+| Quizzes | Adapt | Add a few high-value comprehension checks only when reviewer understanding materially affects approval; never replace verification or review gates. |
+
 ## Completion self-review
 
 Before human review or completion, the agent reviews the actual goal diff, criteria, tests, and relevant surroundings. It removes only in-scope dead code proven obsolete by the implementation, retains uncertain dynamic/generated/vendor or unrelated paths, fixes findings in observable chunks, reruns affected and relevant wider checks, and records either findings or a clean review. The pass does not authorize repository-wide cleanup or unrelated bug fixes.
