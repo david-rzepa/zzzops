@@ -17,21 +17,22 @@ def run(*command: str) -> None:
 
 def linux_validation() -> None:
     run(sys.executable, "-m", "unittest", "discover", "-s", ".agents", "-p", "test_*.py")
-    run(sys.executable, "-m", "unittest", "discover", "-s", ".agents/skills/migrate-to-zzzops/scripts", "-p", "test_*.py")
+    run(sys.executable, "-m", "unittest", "discover", "-s", "plugins/zzzops/skills/migrate-to-zzzops/scripts", "-p", "test_*.py")
     run(sys.executable, ".agents/manual_acceptance.py", "coverage")
+    run("npm", "run", "test:plugin")
     run("npm", "run", "test:release")
     run(sys.executable, ".agents/prompt_stats.py", "--check")
-    run(sys.executable, "-m", "compileall", "-q", ".agents", ".github/scripts")
-    run("bash", "-n", "install.sh")
-    run("pwsh", "-NoProfile", "-Command", "[void][scriptblock]::Create((Get-Content -Raw ./install.ps1))")
+    run(sys.executable, "-m", "compileall", "-q", ".agents", "plugins/zzzops", ".github/scripts")
 
 
 def windows_validation() -> None:
-    run(sys.executable, "-m", "unittest", "discover", "-s", ".agents", "-p", "test_install_zzzops.py")
+    run(sys.executable, ".agents/test_zzzops.py")
+    run(sys.executable, "-m", "unittest", "discover", "-s", "plugins/zzzops/skills/migrate-to-zzzops/scripts", "-p", "test_*.py")
 
 
 def macos_validation() -> None:
-    run(sys.executable, "-m", "unittest", "discover", "-s", ".agents", "-p", "test_install_zzzops.py")
+    run(sys.executable, ".agents/test_zzzops.py")
+    run(sys.executable, "-m", "unittest", "discover", "-s", "plugins/zzzops/skills/migrate-to-zzzops/scripts", "-p", "test_*.py")
 
 
 def main() -> int:

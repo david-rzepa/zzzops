@@ -28,7 +28,7 @@ class PromptStatsTests(unittest.TestCase):
         self.assertTrue(prompt_stats.within_budget([("a", 4, 2)], limit=2))
         self.assertFalse(prompt_stats.within_budget([("a", 4, 3)], limit=2))
 
-    def test_workflow_profiles_cover_both_harnesses(self) -> None:
+    def test_workflow_profiles_cover_codex(self) -> None:
         root = SCRIPT.parents[1]
         report = prompt_stats.render_workflow_report(root)
         self.assertEqual(
@@ -36,7 +36,8 @@ class PromptStatsTests(unittest.TestCase):
             set(prompt_stats.WORKFLOW_PROMPTS),
         )
         self.assertEqual(set(prompt_stats.WORKFLOW_PROMPTS), set(prompt_stats.WORKFLOW_SIGNALS))
-        self.assertIn("| Workflow | Codex bytes | Codex est. tokens | Claude bytes | Claude est. tokens |", report)
+        self.assertIn("| Workflow | Codex bytes | Codex est. tokens |", report)
+        self.assertEqual({"codex"}, set(prompt_stats.HARNESS_PROMPTS))
         for workflow in prompt_stats.WORKFLOW_PROMPTS:
             self.assertIn(f"| {workflow} |", report)
 

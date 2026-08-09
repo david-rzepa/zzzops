@@ -1,6 +1,6 @@
 # Repository context-engineering audit
 
-This audit applies Anthropic's July 2026 [context-engineering guidance](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models) only to the context used by agents maintaining this repository. It does not prescribe or change installed ZzzOps skills, rules, policy schemas, templates, installers, or downstream project behavior.
+This historical audit applies Anthropic's July 2026 [context-engineering guidance](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models) only to the context used by agents maintaining this repository. It does not prescribe Agent Plugin behavior.
 
 | Guideline | Disposition | Repository evidence or decision |
 | --- | --- | --- |
@@ -10,13 +10,13 @@ This audit applies Anthropic's July 2026 [context-engineering guidance](https://
 | Keep tool descriptions simple and avoid repeating instructions | Already satisfied | Root context names workflows and repository boundaries; selected skills and rules carry their own detail. The root files do not duplicate tool manuals. |
 | Prefer automatic memory over storing personal memory in `CLAUDE.md` | Not applicable | ZzzOps goals and reviewed policy are shared, inspectable repository state rather than personal model memory. `CLAUDE.md` contains no personal memory. |
 | Prefer rich references over oversimplified prose specs | Already satisfied | Repository work can inspect implementation code, schemas, fixtures, CI definitions, tests, and the acceptance ledger directly. Root instructions point to those authorities rather than paraphrasing them. |
-| Put product context in the system prompt | Not applicable | This repository cannot control the Codex or Claude system prompt. Its reviewed charter and local instructions supply repository context through supported project surfaces. |
+| Put product context in the system prompt | Not applicable | This repository cannot control the Codex system prompt. Its reviewed charter and local instructions supply repository context through supported project surfaces. |
 | Keep `CLAUDE.md` lightweight and repository-specific | Already satisfied | `CLAUDE.md` has one delegation sentence plus the repository-specific locations of installed and canonical skills. |
 | Keep skills lightweight, opinionated, and progressively disclosed | Outside scope | The canonical skills are shipped ZzzOps runtime content. They may be audited under a separate runtime goal, but this repository-only goal does not edit them. |
 | Simplify without assuming smaller context is automatically better | Implemented by boundary | The audit uses the existing prompt measurements and behavioral checks as guardrails. It removes the initially proposed runtime rewrite rather than treating instruction deletion as an end in itself. |
 
 ## Verification boundary
 
-The baseline is 56,766 canonical prompt bytes, approximately 14,200 estimated tokens. This repository-only audit changes no measured prompt input, so aggregate and routed Codex/Claude measurements must remain identical and the existing ceiling must remain unchanged.
+The historical baseline was 56,766 canonical prompt bytes, approximately 14,200 estimated tokens. Current Codex Agent Plugin prompt accounting is reported by `.agents/prompt_stats.py`; the committed ceiling remains unchanged unless an explicit value justification approves a change.
 
-The final implementation diff must contain no installed skill, `.zzzops` runtime rule, policy validator, initialization template, installer, or downstream behavior change. Required CI at the exact final PR head supplies the shipped-behavior regression evidence.
+Context-only changes must remain separate from Agent Plugin skills, runtime rules, policy validators, initialization templates, and downstream behavior. Required CI at the exact final PR head supplies the shipped-behavior regression evidence.

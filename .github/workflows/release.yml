@@ -50,14 +50,12 @@ jobs:
   validate-windows:
     if: github.ref == 'refs/heads/main'
     runs-on: windows-latest
-    env:
-      ZZZOPS_EXPECT_INSTALLERS: PowerShell,Bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Run the shared native Windows validation leg
+      - name: Run the shared Windows plugin validation leg
         run: python .github/scripts/run_product_validation.py --platform windows
 
   release:

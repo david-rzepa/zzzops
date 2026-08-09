@@ -1,0 +1,32 @@
+---
+name: execute-zzzops
+description: >-
+  Execute the primary ZzzOps goal loop: work all goals, continue, resume, triage,
+  prioritize, reprioritize, unblock, verify, commit, refill, and report. Default
+  executes authorized work. "dry run", "preview", or "plan" performs read-only
+  queue analysis with no writes. Not one-off untracked work.
+---
+
+# Execute ZzzOps
+
+Mode: `dry run`, `preview`, or `plan` means read-only inventory, triage simulation, ordering, and blocker reporting; do not initialize/apply, claim, update goals, edit source, run mutating commands, or change Git/external state. Otherwise run the live loop below.
+
+First run `../../rules/INITIALIZATION.md`, then route through `../../rules/BACKENDS.md`. Read `../../rules/GOAL_SYSTEM.md` and the initialized charter; load only what applies.
+Track execute intent through `../../rules/CONTINUATION.md` so additive capture can safely resume without nested loops.
+
+Feedback goals labeled `zzzops-feedback` are excluded by default. Include them only when the user explicitly approves inclusion for the current execution session; approval in the invocation counts, one approval covers every feedback goal in that session, and it expires with the session. Never ask per issue. Preserve the choice on every checkpoint/portfolio refresh by using `--include-feedback` only in an approved session.
+
+
+- Create/triage/decompose: [CREATE.md](references/CREATE.md).
+- Unblock and persist unanswered requests: [UNBLOCK.md](references/UNBLOCK.md) and `../../rules/BLOCKERS.md`.
+- Select/execute/complete/handoff: [EXECUTE.md](references/EXECUTE.md).
+- Source-changing branch topology/review: [BRANCH_REVIEW.md](references/BRANCH_REVIEW.md).
+- Pre-handoff diff/dead-code review: [SELF_REVIEW.md](references/SELF_REVIEW.md).
+- Tests, delegation, parallelism, or long commands: `../../rules/EXECUTION_STRATEGY.md`.
+- Exhausted-queue backlog suggestions: `$suggest-zzzops-work` when explicitly enabled by reviewed PROJECT policy.
+
+This is the primary autonomous loop. Apply reviewed PROJECT selection, continuation, blocker, refill, Git, verification, and resource policy. User authority and project rules outrank goals. Persist resumable state before switching/stopping; continue while policy permits safe useful work. Optimize verified value, not item count or limit consumption.
+
+Before source work, read PROJECT Git/review/continuation policy and checkpoint only pending local ZzzOps state when required; never absorb unrelated changes or create an empty GitHub-state commit.
+
+Before stopping or handing off, apply `../../rules/FEEDBACK.md`.

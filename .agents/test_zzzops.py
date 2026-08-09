@@ -15,7 +15,8 @@ from types import SimpleNamespace
 from unittest import mock
 
 
-MODULE_PATH = Path(__file__).parent / "zzzops" / "zzzops.py"
+PLUGIN_ROOT = Path(__file__).parent.parent / "plugins" / "zzzops"
+MODULE_PATH = PLUGIN_ROOT / "zzzops" / "zzzops.py"
 SPEC = importlib.util.spec_from_file_location("zzzops", MODULE_PATH)
 zzzops = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader
@@ -79,9 +80,6 @@ class InitializationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.repo = Path(self.temp.name)
-        template_dir = self.repo / ".agents" / "zzzops" / "templates" / "project-goals"
-        template_dir.mkdir(parents=True)
-        (template_dir / "INIT_PLAN.json").write_text("{}\n", encoding="utf-8")
         (self.repo / ".zzzops").mkdir()
 
     def tearDown(self):
@@ -89,11 +87,6 @@ class InitializationTests(unittest.TestCase):
 
     def plan(self):
         inspection = zzzops.inspect_initialization(self.repo)
-        lock_path = self.repo / ".zzzops" / "ZZZOPS_LOCK.json"
-        if not lock_path.exists():
-            lock_path.write_text(json.dumps({
-                "schema_version": 1, "revision": "a" * 40, "version": "test-v1", "files": {},
-            }), encoding="utf-8")
         init_template = MODULE_PATH.parent / "templates" / "project-goals" / "INIT_PLAN.json"
         policy = json.loads(init_template.read_text(encoding="utf-8"))["policy"]
         policy["sections"][0]["settings"]["repository_identity"] = "example/repo"
@@ -528,128 +521,16 @@ class InitializationTests(unittest.TestCase):
         self.assertEqual("read_only", profile["mode"])
         self.assertEqual(3, profile["max_workers"])
 
-    def test_machinery_lock_status_accepts_exact_files_and_rejects_drift(self):
-        mechanics = {
-            ".agents/zzzops/zzzops.py": "print('ok')\n",
-            ".agents/zzzops/install_lock.py": "# lock validation\n",
-            ".agents/zzzops/templates/project-goals/INIT_PLAN.json": "{}\n",
-            ".agents/skills/execute-zzzops/SKILL.md": "# Execute\n",
-            ".claude/skills/execute-zzzops/SKILL.md": "# Execute\n",
-            ".zzzops/rules/INITIALIZATION.md": "# Initialize\n",
-        }
-        for relative, content in mechanics.items():
-            path = self.repo / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding="utf-8")
-        lock = {
-            "schema_version": 1,
-            "revision": "a" * 40,
-            "version": "v1.0.0",
-            "files": {
-                relative: zzzops._install_lock.file_digest(self.repo / relative)
-                for relative in mechanics
-            },
-        }
-        lock_path = self.repo / ".zzzops" / "ZZZOPS_LOCK.json"
-        lock_path.write_text(json.dumps(lock), encoding="utf-8")
+    def test_plugin_package_status_and_provenance_are_valid(self):
+        status = zzzops.machinery_commit_status(self.repo)
+        self.assertTrue(status["ok"])
+        self.assertEqual("2.0.0", status["version"])
+        self.assertRegex(status["revision"], r"^[0-9a-f]{64}$")
+        self.assertEqual(0, status["processes"])
 
-        clean = zzzops.machinery_commit_status(self.repo)
-        self.assertTrue(clean["ok"])
-        self.assertEqual([], clean["paths"])
-        self.assertEqual(0, clean["processes"])
-
-        (self.repo / ".zzzops" / "PROJECT.md").write_text("changed state\n", encoding="utf-8")
-        (self.repo / "AGENTS.md").write_text("changed instructions\n", encoding="utf-8")
-        (self.repo / "unrelated.txt").write_text("not machinery\n", encoding="utf-8")
-        self.assertTrue(zzzops.machinery_commit_status(self.repo)["ok"])
-
-        mechanic = self.repo / ".agents" / "zzzops" / "zzzops.py"
-        mechanic.write_text("print('dirty')\n", encoding="utf-8")
-        dirty = zzzops.machinery_commit_status(self.repo)
-        self.assertFalse(dirty["ok"])
-        self.assertEqual([".agents/zzzops/zzzops.py"], dirty["paths"])
-
-        mechanic.write_text("print('ok')\n", encoding="utf-8")
-        untracked = self.repo / ".agents" / "skills" / "execute-zzzops" / "NEW.md"
-        untracked.write_text("new machinery\n", encoding="utf-8")
-        result = zzzops.machinery_commit_status(self.repo)
-        self.assertFalse(result["ok"])
-        self.assertEqual([".agents/skills/execute-zzzops/NEW.md"], result["paths"])
-
-        untracked.unlink()
-        mechanic.unlink()
-        missing = zzzops.machinery_commit_status(self.repo)
-        self.assertFalse(missing["ok"])
-        self.assertEqual([".agents/zzzops/zzzops.py"], missing["paths"])
-
-    def test_install_lock_rejects_malformed_hashes_and_unsafe_paths(self):
-        valid = {
-            "schema_version": 1,
-            "revision": "a" * 40,
-            "version": "v1.0.0",
-            "files": {".agents/zzzops/zzzops.py": "b" * 64},
-        }
-        self.assertEqual(valid, zzzops._install_lock.validate_install_lock(valid))
-        for path in ("../escape", ".zzzops/POLICY.json", ".agents/skills/unknown/SKILL.md", "/absolute"):
-            malformed = json.loads(json.dumps(valid))
-            malformed["files"] = {path: "b" * 64}
-            with self.assertRaisesRegex(zzzops._install_lock.InstallLockError, "path"):
-                zzzops._install_lock.validate_install_lock(malformed)
-        malformed = json.loads(json.dumps(valid))
-        malformed["files"][".agents/zzzops/zzzops.py"] = "not-a-hash"
-        with self.assertRaisesRegex(zzzops._install_lock.InstallLockError, "SHA-256"):
-            zzzops._install_lock.validate_install_lock(malformed)
-        malformed = json.loads(json.dumps(valid))
-        malformed["files"][".agents/zzzops/ZZZOPS.py"] = "c" * 64
-        with self.assertRaisesRegex(zzzops._install_lock.InstallLockError, "cross-platform"):
-            zzzops._install_lock.validate_install_lock(malformed)
-
-    def test_install_lock_snapshot_binds_validation_to_preserved_bytes(self):
-        lock = {
-            "schema_version": 1,
-            "revision": "a" * 40,
-            "version": "v1.0.0",
-            "files": {".agents/zzzops/zzzops.py": "b" * 64},
-        }
-        lock_path = self.repo / ".zzzops" / "ZZZOPS_LOCK.json"
-        exact = b"\xef\xbb\xbf" + (json.dumps(lock, indent=2) + "\r\n").encode("utf-8")
-        lock_path.write_bytes(exact)
-        parsed, snapshot = zzzops._install_lock.read_install_lock_snapshot(self.repo)
-        self.assertEqual(lock, parsed)
-        self.assertEqual(exact, snapshot)
-
-    def test_build_install_lock_is_sorted_and_excludes_project_state(self):
-        first = self.repo / ".zzzops" / "rules" / "Z.md"
-        second = self.repo / ".agents" / "zzzops" / "a.py"
-        for path in (first, second):
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(path.name, encoding="utf-8")
-        (self.repo / ".zzzops" / "POLICY.json").write_text("{}", encoding="utf-8")
-        lock = zzzops._install_lock.build_install_lock(self.repo, "a" * 40, "v1.0.0")
-        self.assertEqual(sorted(lock["files"]), list(lock["files"]))
-        self.assertIn(".agents/zzzops/a.py", lock["files"])
-        self.assertIn(".zzzops/rules/Z.md", lock["files"])
-        self.assertNotIn(".zzzops/POLICY.json", lock["files"])
-
-    def test_machinery_lock_status_requires_readable_committed_lock(self):
-        missing = zzzops.machinery_commit_status(self.repo)
-        self.assertFalse(missing["ok"])
-        self.assertEqual([".zzzops/ZZZOPS_LOCK.json"], missing["paths"])
-        self.assertIn("rerun the regular ZzzOps installer", missing["detail"])
-        lock_path = self.repo / ".zzzops" / "ZZZOPS_LOCK.json"
-        lock_path.write_text("{bad}\n", encoding="utf-8")
-        malformed = zzzops.machinery_commit_status(self.repo)
-        self.assertFalse(malformed["ok"])
-        self.assertIn("could not read committed installation lock", malformed["detail"])
-        lock_path.write_text(
-            '{"schema_version":1,"revision":"' + "a" * 40
-            + '","version":"v1","files":{".agents/zzzops/a.py":"' + "b" * 64
-            + '",".agents/zzzops/a.py":"' + "c" * 64 + '"}}',
-            encoding="utf-8",
-        )
-        duplicate = zzzops.machinery_commit_status(self.repo)
-        self.assertFalse(duplicate["ok"])
-        self.assertIn("duplicate installation lock key", duplicate["detail"])
+        provenance = zzzops.zzzops_provenance(self.repo)
+        self.assertEqual(status["version"], provenance["version"])
+        self.assertEqual(status["revision"], provenance["revision"])
 
     def test_rejects_unconfirmed_proposal(self):
         plan = self.plan()
@@ -879,35 +760,10 @@ class ExecutionReportTests(unittest.TestCase):
         self.assertIn("**ZzzOps build:** Unknown (schema v2 predates version provenance)", body)
         self.assertNotIn('"zzzops"', body)
 
-    def test_installed_provenance_uses_validated_install_lock(self):
-        installed = self.repo / ".agents" / "zzzops" / "installed.txt"
-        installed.parent.mkdir(parents=True)
-        installed.write_text("installed mechanics\n", encoding="utf-8")
-        lock_path = self.repo / ".zzzops" / "ZZZOPS_LOCK.json"
-        lock_path.write_text(json.dumps(
-            zzzops._install_lock.build_install_lock(self.repo, "b" * 40, "v2.0.0")
-        ), encoding="utf-8")
-        self.assertEqual({"version": "v2.0.0", "revision": "b" * 40}, zzzops.zzzops_provenance(self.repo))
-        installed.write_text("locally changed\n", encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "do not match recorded lock provenance"):
-            zzzops.zzzops_provenance(self.repo)
-        lock_path.write_text("{}", encoding="utf-8")
-        with self.assertRaisesRegex(ValueError, "lock provenance is invalid"):
-            zzzops.zzzops_provenance(self.repo)
-
-    @mock.patch.object(zzzops.subprocess, "run")
-    def test_base_repository_provenance_uses_bounded_git_identity(self, run):
-        (self.repo / "install.ps1").write_text("base", encoding="utf-8")
-        (self.repo / "install.sh").write_text("base", encoding="utf-8")
-        run.side_effect = [
-            SimpleNamespace(returncode=0, stdout="c" * 40 + "\n", stderr=""),
-            SimpleNamespace(returncode=0, stdout="v2.0.0-3-gccccccc\n", stderr=""),
-        ]
-        self.assertEqual(
-            {"version": "v2.0.0-3-gccccccc", "revision": "c" * 40},
-            zzzops.zzzops_provenance(self.repo),
-        )
-        self.assertEqual(2, run.call_count)
+    def test_feedback_provenance_uses_validated_plugin_package(self):
+        provenance = zzzops.zzzops_provenance(self.repo)
+        self.assertEqual("2.0.0", provenance["version"])
+        self.assertRegex(provenance["revision"], r"^[0-9a-f]{64}$")
 
     def test_feedback_keeps_distinct_causes_separate_and_aggregates_matching_causes(self):
         self.record(
@@ -1670,9 +1526,9 @@ class PortfolioTests(unittest.TestCase):
     @mock.patch.object(zzzops, "read_project_state")
     @mock.patch.object(zzzops, "read_project", return_value=(Path("PROJECT.md"), "project"))
     @mock.patch.object(zzzops, "repository_size_profile", return_value={"mode": "worktrees", "max_workers": 3})
-    @mock.patch.object(zzzops, "machinery_commit_status", return_value={"available": True, "ok": True, "paths": [], "processes": 0, "detail": "ok"})
-    def test_decision_checkpoint_embeds_portfolio_after_clean_machinery(
-        self, _machinery, _size, _read, read_state, _validate, _artifacts, _blockers, _missing, run, _which,
+    @mock.patch.object(zzzops._package, "package_status", return_value={"available": True, "ok": True, "paths": [], "processes": 0, "detail": "ok"})
+    def test_decision_checkpoint_embeds_portfolio_after_valid_plugin_package(
+        self, _package, _size, _read, read_state, _validate, _artifacts, _blockers, _missing, run, _which,
     ):
         state = {
             "initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"},
@@ -1741,11 +1597,11 @@ class PortfolioTests(unittest.TestCase):
     @mock.patch.object(zzzops, "validate_project_state", return_value=[])
     @mock.patch.object(zzzops, "read_project_state")
     @mock.patch.object(zzzops, "read_project", return_value=(Path("PROJECT.md"), "project"))
-    @mock.patch.object(zzzops, "machinery_commit_status", return_value={
-        "available": True, "ok": False, "paths": [".agents/zzzops/zzzops.py"], "processes": 0,
-        "detail": "Disposable ZzzOps machinery does not match the committed lock; rerun the regular installer.",
+    @mock.patch.object(zzzops._package, "package_status", return_value={
+        "available": True, "ok": False, "paths": ["plugins/zzzops/zzzops/zzzops.py"], "processes": 0,
+        "detail": "The installed ZzzOps plugin package is invalid; reinstall or update it through Codex.",
     })
-    def test_decision_checkpoint_stops_before_portfolio_for_dirty_machinery(
+    def test_decision_checkpoint_stops_before_portfolio_for_invalid_plugin_package(
         self, _machinery, _read, read_state, _validate, _artifacts, _blockers,
         _probe, portfolio, _size, _which,
     ):
@@ -1757,8 +1613,8 @@ class PortfolioTests(unittest.TestCase):
         result = zzzops.decision_checkpoint(Path("."))
 
         self.assertFalse(result["ready"])
-        self.assertEqual([".agents/zzzops/zzzops.py"], result["capabilities"]["git_machinery"]["paths"])
-        self.assertIn("rerun the regular installer", result["portfolio"]["error"])
+        self.assertEqual(["plugins/zzzops/zzzops/zzzops.py"], result["capabilities"]["plugin_package"]["paths"])
+        self.assertIn("reinstall or update", result["portfolio"]["error"])
         self.assertEqual({"total": 1, "github": 0}, result["processes"])
         portfolio.assert_not_called()
 
@@ -2133,7 +1989,7 @@ class ReservationTests(unittest.TestCase):
 
     def test_advisory_overlap_allows_both_goals_but_shared_branch_has_one_winner(self):
         adapter = FakeReservationAdapter(barrier=threading.Barrier(2), barrier_prefix="zzzops:resource:")
-        shared = ["path:.agents/zzzops/zzzops.py"]
+        shared = ["path:plugins/zzzops/zzzops/zzzops.py"]
         with ThreadPoolExecutor(max_workers=2) as pool:
             futures = [
                 pool.submit(
@@ -2402,7 +2258,7 @@ class ReservationTests(unittest.TestCase):
 class WorkflowContractTests(unittest.TestCase):
     def test_policy_review_reuses_capability_evidence_before_tool_selection(self):
         review = (
-            Path(__file__).parent / "skills" / "review-zzzops-policy" / "SKILL.md"
+            PLUGIN_ROOT / "skills" / "review-zzzops-policy" / "SKILL.md"
         ).read_text(encoding="utf-8")
         for signal in (
             "Before optional tools, reuse capabilities",
@@ -2413,7 +2269,7 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_execute_progress_updates_require_new_information(self):
         execute = (
-            Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "EXECUTE.md"
+            PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "EXECUTE.md"
         ).read_text(encoding="utf-8")
         for signal in (
             "new result, decision, risk, changed assumption, required action",
@@ -2423,12 +2279,12 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn(signal, execute)
 
     def test_unknown_discovery_is_adaptive_durable_and_reviewable(self):
-        root = Path(__file__).parent
+        root = PLUGIN_ROOT
         capture = (root / "skills" / "add-zzzops-goal" / "SKILL.md").read_text(encoding="utf-8")
         create = (root / "skills" / "execute-zzzops" / "references" / "CREATE.md").read_text(encoding="utf-8")
         execute = (root / "skills" / "execute-zzzops" / "references" / "EXECUTE.md").read_text(encoding="utf-8")
         self_review = (root / "skills" / "execute-zzzops" / "references" / "SELF_REVIEW.md").read_text(encoding="utf-8")
-        docs = (root.parent / "docs" / "EXECUTION.md").read_text(encoding="utf-8")
+        docs = (root.parent.parent / "docs" / "EXECUTION.md").read_text(encoding="utf-8")
 
         for text in (capture, create):
             self.assertIn("bounded blind-spot pass", text)
@@ -2453,7 +2309,7 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_execute_routes_explicit_work_states_without_blurring_write_authority(self):
         execute = (
-            Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "EXECUTE.md"
+            PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "EXECUTE.md"
         ).read_text(encoding="utf-8")
         self.assertIn("work_state: triage|prepare", execute)
         for state in ("write", "wait_dependency", "wait_human", "blocked", "terminal"):
@@ -2467,7 +2323,7 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertNotIn(derived, zzzops.GOAL_FIELDS)
 
     def test_policy_taxonomy_is_stable_across_templates(self):
-        templates = Path(__file__).parent / "zzzops" / "templates" / "project-goals"
+        templates = PLUGIN_ROOT / "zzzops" / "templates" / "project-goals"
         plan = json.loads((templates / "INIT_PLAN.json").read_text(encoding="utf-8"))
         plan_ids = [section["id"] for section in plan["policy"]["sections"]]
         rendered = zzzops.render_project({
@@ -2486,7 +2342,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("branches:", trigger)
 
     def test_branch_policy_defaults_are_structured(self):
-        root = Path(__file__).parent / "zzzops"
+        root = PLUGIN_ROOT / "zzzops"
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         git_policy = next(section for section in plan["policy"]["sections"] if section["id"] == "git_review_release")["settings"]
         self.assertEqual("per_goal", git_policy["execution_branch"])
@@ -2501,7 +2357,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(1, git_policy["review_state_reads_per_checkpoint"])
 
     def test_parallel_and_refill_defaults_are_structured(self):
-        root = Path(__file__).parent / "zzzops"
+        root = PLUGIN_ROOT / "zzzops"
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         settings = next(section for section in plan["policy"]["sections"] if section["id"] == "autonomy_approval_parallelism")["settings"]
         self.assertEqual(3, settings["max_workers"])
@@ -2562,7 +2418,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertTrue(any("execution_reports.enabled must be boolean" in error for error in zzzops.validate_policy(plan["policy"], True)))
 
     def test_verification_defaults_deduplicate_exact_required_ci(self):
-        root = Path(__file__).parent / "zzzops"
+        root = PLUGIN_ROOT / "zzzops"
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         settings = next(section for section in plan["policy"]["sections"] if section["id"] == "verification_testing")["settings"]
         self.assertEqual(
@@ -2577,7 +2433,7 @@ class WorkflowContractTests(unittest.TestCase):
         )
 
     def test_automated_design_policy_is_explicit_bounded_and_rendered(self):
-        root = Path(__file__).parent
+        root = PLUGIN_ROOT
         plan = json.loads((root / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         section = next(item for item in plan["policy"]["sections"] if item["id"] == "automated_design")
         self.assertEqual("enabled", section["decision"])
@@ -2621,7 +2477,7 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertTrue(any(field in error for error in zzzops.validate_policy(invalid, True)), field)
 
     def test_automated_design_execution_and_review_contracts_preserve_boundaries(self):
-        root = Path(__file__).parent
+        root = PLUGIN_ROOT
         unblock = (root / "skills" / "execute-zzzops" / "references" / "UNBLOCK.md").read_text(encoding="utf-8")
         review = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
         for phrase in (
@@ -2636,7 +2492,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("without inferring approval", review)
 
     def test_continuation_policy_defaults_are_structured(self):
-        root = Path(__file__).parent / "zzzops"
+        root = PLUGIN_ROOT / "zzzops"
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         settings = next(section for section in plan["policy"]["sections"] if section["id"] == "execution_continuation")["settings"]
         self.assertEqual("same_task_until_superseded", settings["execute_intent"])
@@ -2651,7 +2507,7 @@ class WorkflowContractTests(unittest.TestCase):
             settings["human_unblock_watch"],
         )
     def test_completion_review_policy_defaults_are_structured(self):
-        root = Path(__file__).parent / "zzzops"
+        root = PLUGIN_ROOT / "zzzops"
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         settings = next(section for section in plan["policy"]["sections"] if section["id"] == "code_quality")["settings"]
         self.assertEqual("required_before_review_or_done", settings["completion_self_review"])
@@ -2659,7 +2515,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("retain_without_proof", settings["dynamic_generated_vendor"])
 
     def test_skill_names_descriptions_and_modes_are_discoverable(self):
-        root = Path(__file__).parent / "skills"
+        root = PLUGIN_ROOT / "skills"
         contracts = {
             "add-zzzops-goal": ("capture", "add", "create", "record", "goal/todo", "writes canonical goal state by default"),
             "execute-zzzops": ("execute", "work all goals", "continue", "resume", "triage", "prioritize", "reprioritize", "unblock", '"dry run"', '"preview"', '"plan"', "default executes"),
@@ -2667,54 +2523,43 @@ class WorkflowContractTests(unittest.TestCase):
             "review-zzzops-policy": ("review", "initialize", "summarize", "reconcile", "adjust", "policy", "preferred first workflow", "always re-summarizes"),
             "send-zzzops-feedback": ("preview", "send", "feedback", "execution reports", "exact-payload confirmation"),
             "suggest-zzzops-work": ("suggest", "discover", "audit", '"dry run"', '"preview"', '"plan"', '"apply"', '"refill"'),
-            "run-zzzops-acceptance": ("run", "guide", "check", "resume", "manual test", "acceptance test", "run the test plan", "next test"),
         }
         self.assertEqual(set(contracts), {path.name for path in root.iterdir() if (path / "SKILL.md").is_file()})
         for name, phrases in contracts.items():
             skill = (root / name / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn(f"name: {name}", skill, name)
-            description = skill.split("---", 2)[1].lower()
+            description = re.sub(r"\s+", " ", skill.split("---", 2)[1].lower())
             for phrase in phrases:
                 self.assertIn(phrase, description, f"{name}: {phrase}")
 
     def test_installed_skills_share_preflight_and_backend_rules(self):
-        root = Path(__file__).parent
+        root = PLUGIN_ROOT
         names = (
             "add-zzzops-goal", "execute-zzzops", "migrate-to-zzzops",
             "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
         )
         self.assertEqual(names, zzzops.MANAGED_SKILLS)
-        repository = root.parent
-        engine = (root / "zzzops" / "installer.py").read_text(encoding="utf-8")
-        for name in names:
-            self.assertIn(name, engine, f"installer.py: {name}")
-        for installer in (repository / "install.ps1", repository / "install.sh"):
-            installed = installer.read_text(encoding="utf-8")
-            self.assertIn("installer.py", installed, installer.name)
         for name in names:
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("INITIALIZATION.md", text, name)
             if name not in {"review-zzzops-policy", "send-zzzops-feedback"}:
                 self.assertIn("BACKENDS.md", text, name)
 
-        initialization = (root.parent / ".zzzops" / "rules" / "INITIALIZATION.md").read_text(encoding="utf-8")
+        initialization = (root / "rules" / "INITIALIZATION.md").read_text(encoding="utf-8")
         for relative in (
             "README.md", "docs/INITIALIZATION.md", "docs/PERFORMANCE.md",
-            "docs/ACCEPTANCE_TEST_PLAN.md", ".zzzops/rules/INITIALIZATION.md",
+            "docs/ACCEPTANCE_TEST_PLAN.md", "plugins/zzzops/rules/INITIALIZATION.md",
         ):
-            text = (root.parent / relative).read_text(encoding="utf-8")
+            text = (PLUGIN_ROOT.parent.parent / relative).read_text(encoding="utf-8")
             self.assertIn("Python 3.10 or newer", text, relative)
         for phrase in (
             "Python 3.10 or newer", "older interpreter", "block once",
             "Under Codex", "authenticated context for the first attempt",
             "keep local-only commands in the normal sandbox", "Never reauthenticate or persistently relax the sandbox",
-            "ask to commit it first", "never policy or unrelated changes",
+            "plugin package", "reinstalling or updating it through Codex",
         ):
             self.assertIn(phrase, initialization)
         review_skill = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("before policy review", review_skill)
-        self.assertIn("Would you like me to commit the lock file", review_skill)
-        self.assertIn("Stop for the answer", review_skill)
         self.assertIn("Ask separately", review_skill)
         for text in (review_skill, initialization):
             self.assertIn("The policy is already approved.", text)
@@ -2725,29 +2570,29 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn("required section", text)
             self.assertIn("Changed/stale", text)
             self.assertIn("privacy-safe execution reports", text)
-        engine = (root / "zzzops" / "installer.py").read_text(encoding="utf-8")
-        self.assertIn('add_tree(result, source, f".agents/skills/{name}")', engine)
-        self.assertIn('add_tree(result, source, f".claude/skills/{name}")', engine)
+        manifest = json.loads((root / "plugin.json").read_text(encoding="utf-8"))
+        self.assertEqual("zzzops", manifest["name"])
+        self.assertEqual("2.0.0", manifest["version"])
 
     def test_skills_apply_shared_privacy_safe_feedback_handoff(self):
-        root = Path(__file__).parent / "skills"
+        root = PLUGIN_ROOT / "skills"
         for skill in root.iterdir():
             path = skill / "SKILL.md"
             if path.is_file():
                 self.assertIn("FEEDBACK.md", path.read_text(encoding="utf-8"), skill.name)
         feedback_skill = (root / "send-zzzops-feedback" / "SKILL.md").read_text(encoding="utf-8")
-        feedback_rule = (root.parents[1] / ".zzzops" / "rules" / "FEEDBACK.md").read_text(encoding="utf-8")
+        feedback_rule = (PLUGIN_ROOT / "rules" / "FEEDBACK.md").read_text(encoding="utf-8")
         self.assertIn("validated ZzzOps build provenance", feedback_skill)
         self.assertIn("legacy schema-v2 provenance is explicitly unknown", feedback_skill)
         self.assertIn("validated ZzzOps version/revision provenance", feedback_rule)
 
     def test_execute_feedback_queue_requires_one_session_approval(self):
-        execute = (Path(__file__).parent / "skills" / "execute-zzzops" / "SKILL.md").read_text(encoding="utf-8")
+        execute = (PLUGIN_ROOT / "skills" / "execute-zzzops" / "SKILL.md").read_text(encoding="utf-8")
         for phrase in ("zzzops-feedback", "current execution session", "Never ask per issue", "--include-feedback"):
             self.assertIn(phrase, execute)
 
     def test_execute_guidance_bounds_github_reads_without_weakening_safety_checks(self):
-        root = Path(__file__).parent / "skills" / "execute-zzzops"
+        root = PLUGIN_ROOT / "skills" / "execute-zzzops"
         execute = (root / "references" / "EXECUTE.md").read_text(encoding="utf-8")
         review = (root / "references" / "BRANCH_REVIEW.md").read_text(encoding="utf-8")
         for phrase in (
@@ -2759,8 +2604,8 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("exact head", review)
 
     def test_execute_persists_questions_without_live_interaction(self):
-        execute = (Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "EXECUTE.md").read_text(encoding="utf-8")
-        unblock = (Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "UNBLOCK.md").read_text(encoding="utf-8")
+        execute = (PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "EXECUTE.md").read_text(encoding="utf-8")
+        unblock = (PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "UNBLOCK.md").read_text(encoding="utf-8")
         for phrase in (
             "Execution assumes the user is absent",
             "never asks an interactive question",
@@ -2777,7 +2622,7 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_execute_prioritization_contract_handles_adversarial_cases(self):
         execute = (
-            Path(__file__).parent / "skills" / "execute-zzzops" / "references" / "EXECUTE.md"
+            PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "EXECUTE.md"
         ).read_text(encoding="utf-8").lower()
         scenarios = {
             "explicit priority outranks an attractive lower-priority goal": "authority and explicit project priority first",
@@ -2791,7 +2636,7 @@ class WorkflowContractTests(unittest.TestCase):
                 self.assertIn(expected, execute)
 
     def test_refill_and_feedback_provenance_labels_stay_distinct(self):
-        skills = Path(__file__).parent / "skills"
+        skills = PLUGIN_ROOT / "skills"
         refill = (skills / "suggest-zzzops-work" / "SKILL.md").read_text(encoding="utf-8").lower()
         feedback = (skills / "send-zzzops-feedback" / "SKILL.md").read_text(encoding="utf-8")
         for phrase in ("during exhausted-queue refill", "zzzops-refill", "never copy source labels", "zzzops-feedback"):

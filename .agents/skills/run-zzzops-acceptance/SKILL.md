@@ -13,4 +13,4 @@ Only explicit same task `check ID` checks it. Never infer an ID. Failures/skips/
 
 Use plain language and show only what the user must do now, the expected outcome, and whether it passed. Keep plan fingerprints and harness bookkeeping internal unless requested or needed to diagnose a failure.
 
-Before stopping or handing off, apply `.zzzops/rules/FEEDBACK.md`.
+Before stopping or handing off, apply `plugins/zzzops/rules/FEEDBACK.md`.

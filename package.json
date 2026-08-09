@@ -3,12 +3,14 @@
   "private": true,
   "license": "Apache-2.0",
   "scripts": {
+    "test:plugin": "node .github/scripts/validate_agent_plugin.mjs",
     "test:release": "node --test --test-isolation=none .github/scripts/test_semantic_release.mjs"
   },
   "devDependencies": {
     "@semantic-release/commit-analyzer": "13.0.1",
     "@semantic-release/github": "12.0.9",
     "@semantic-release/release-notes-generator": "14.1.1",
+    "ajv": "8.17.1",
     "conventional-changelog-conventionalcommits": "9.3.1",
     "semantic-release": "25.0.8"
   }

@@ -11,12 +11,12 @@ Use `$execute-zzzops` for the goal loop and “work on all goals”/`/goal`; use
 - PROJECT policy controls operations. Parallel permission is a ceiling: workers are read-only unless `worktrees`; only the coordinator edits ZzzOps state/integrates. Refill requires reviewed opt-in.
 - Before switching/stopping persist resumable state. Commit each verified sub-goal separately with semantic Conventional Commits (`type(scope): outcome`).
 
-Without skill discovery read [goal rules](.zzzops/rules/GOAL_SYSTEM.md), then [create](.agents/skills/execute-zzzops/references/CREATE.md), [execute](.agents/skills/execute-zzzops/references/EXECUTE.md), or [unblock](.agents/skills/execute-zzzops/references/UNBLOCK.md); load blocker/execution strategy only when relevant.
+Without skill discovery, install the ZzzOps Agent Plugin through Codex, then read its `rules/GOAL_SYSTEM.md`; use the plugin's create, execute, or unblock references as appropriate and load blocker/execution strategy only when relevant.
 <!-- END DURABLE PROJECT GOALS -->
 
 ## Base repository
 
-Run `install.ps1`/`install.sh` here. They install target mechanics, never themselves, project state, or target instructions.
+The distributable Agent Plugin lives in `plugins/zzzops`; `.agents/plugins/marketplace.json` publishes it to Codex. Plugin installation never copies project state or target instructions.
 
 Git: pure goal capture never automates Git. Execute from current `dev` and open ordinary PRs to `dev`, never `main` unless the user explicitly retains an existing branch. Separate independently useful/revertible commits; squash changes valid only together. Only owner `david-rzepa` may intentionally release-force-push `main` after preconditions; every `main` update runs release CI.
 
