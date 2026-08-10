@@ -11,10 +11,12 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import struct
 import sys
 import tempfile
 from typing import Any
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
+import zlib
 
 
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$")
@@ -50,6 +52,61 @@ def require_text(value: Any, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise BundleError(f"{field} must be non-empty text")
     return value
+
+
+def validate_portal_png(relative: str, data: bytes) -> None:
+    """Fully decode the conservative PNG profile used for portal branding."""
+    if len(data) > 5 * 1024 * 1024:
+        raise BundleError(f"branding PNG exceeds the portal size limit: {relative}")
+    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise BundleError(f"branding asset is not a PNG: {relative}")
+    offset = 8
+    header = None
+    compressed = bytearray()
+    ended = False
+    chunk_types = []
+    while offset < len(data):
+        if offset + 12 > len(data):
+            raise BundleError(f"truncated branding PNG chunk: {relative}")
+        length = struct.unpack(">I", data[offset:offset + 4])[0]
+        chunk_type = data[offset + 4:offset + 8]
+        end = offset + 12 + length
+        if end > len(data):
+            raise BundleError(f"truncated branding PNG payload: {relative}")
+        payload = data[offset + 8:offset + 8 + length]
+        chunk_types.append(chunk_type)
+        expected_crc = struct.unpack(">I", data[offset + 8 + length:end])[0]
+        if zlib.crc32(chunk_type + payload) & 0xFFFFFFFF != expected_crc:
+            raise BundleError(f"branding PNG has an invalid checksum: {relative}")
+        if chunk_type == b"IHDR":
+            if header is not None or length != 13:
+                raise BundleError(f"branding PNG has an invalid header: {relative}")
+            header = struct.unpack(">IIBBBBB", payload)
+        elif chunk_type == b"IDAT":
+            compressed.extend(payload)
+        elif chunk_type == b"IEND":
+            if length != 0 or end != len(data):
+                raise BundleError(f"branding PNG has an invalid terminator: {relative}")
+            ended = True
+        offset = end
+    if header is None:
+        raise BundleError(f"branding PNG has no header: {relative}")
+    width, height, bit_depth, color_type, compression, filtering, interlace = header
+    if (
+        width != height or not 48 <= width <= 4096
+        or (bit_depth, color_type, compression, filtering, interlace) != (8, 6, 0, 0, 0)
+        or not compressed or not ended
+        or chunk_types[0] != b"IHDR" or chunk_types[-1] != b"IEND"
+        or any(chunk not in {b"IHDR", b"IDAT", b"IEND"} for chunk in chunk_types)
+    ):
+        raise BundleError(f"branding PNG must be metadata-free square 8-bit RGBA: {relative}")
+    try:
+        pixels = zlib.decompress(bytes(compressed))
+    except zlib.error as exc:
+        raise BundleError(f"branding PNG pixel data cannot be decoded: {relative}") from exc
+    row_size = 1 + width * 4
+    if len(pixels) != row_size * height or any(pixels[row * row_size] > 4 for row in range(height)):
+        raise BundleError(f"branding PNG scanlines are invalid: {relative}")
 
 
 def validate_sources(root: Path) -> tuple[dict[str, Any], dict[str, Any], str]:
@@ -93,8 +150,10 @@ def validate_sources(root: Path) -> tuple[dict[str, Any], dict[str, Any], str]:
     for relative in assets.values():
         if not isinstance(relative, str) or PurePosixPath(relative).is_absolute() or ".." in PurePosixPath(relative).parts:
             raise BundleError(f"unsafe asset path: {relative}")
-        if not root.joinpath(*PurePosixPath(relative).parts).is_file():
+        asset_path = root.joinpath(*PurePosixPath(relative).parts)
+        if not asset_path.is_file():
             raise BundleError(f"missing submission asset: {relative}")
+        validate_portal_png(relative, asset_path.read_bytes())
     if not isinstance(tests, dict) or set(tests) != {"schema_version", "positive", "negative"} or tests.get("schema_version") != 1:
         raise BundleError("test-cases.json fields are invalid")
     if not isinstance(tests["positive"], list) or len(tests["positive"]) < 5:
@@ -136,7 +195,9 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
             raise BundleError(f"plugin package contains a symlink: {relative}")
         if not path.is_file() or "__pycache__" in path.parts or path.suffix in {".pyc", ".pyo"}:
             continue
-        data = path.read_bytes().replace(b"\r\n", b"\n")
+        data = path.read_bytes()
+        if path.suffix.casefold() in {".json", ".md", ".py", ".yaml", ".yml"}:
+            data = data.replace(b"\r\n", b"\n")
         if relative in {"plugin.json", ".codex-plugin/plugin.json"}:
             manifest = json.loads(data.decode("utf-8-sig"))
             manifest["version"] = version
