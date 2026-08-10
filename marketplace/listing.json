@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "submission_type": "skills_only",
+  "official_submission_docs": "https://developers.openai.com/plugins/deploy/submission",
+  "listing": {
+    "name": "ZzzOps",
+    "short_description": "Durable autonomous goals",
+    "long_description": "ZzzOps gives Codex a reviewed, prioritized, and resumable project-goal loop. It captures durable work in GitHub Issues, coordinates implementation under reviewed project policy, and keeps human approval at consequential review and release boundaries.",
+    "category": "Developer Tools",
+    "developer_name": "David Rzepa",
+    "website_url": "https://github.com/david-rzepa/zzzops",
+    "support_url": "https://github.com/david-rzepa/zzzops/issues",
+    "privacy_policy_url": "https://github.com/david-rzepa/zzzops/blob/main/PRIVACY.md",
+    "terms_url": "https://github.com/david-rzepa/zzzops/blob/main/LICENSE"
+  },
+  "assets": {
+    "logo_light": "plugins/zzzops/assets/logo.png",
+    "logo_dark": "plugins/zzzops/assets/logo-dark.png",
+    "composer_icon_light": "plugins/zzzops/assets/composer-icon.png",
+    "composer_icon_dark": "plugins/zzzops/assets/composer-icon-dark.png"
+  },
+  "starter_prompts": [
+    "Review and initialize this project's ZzzOps policy.",
+    "Capture a durable project goal with ZzzOps.",
+    "Work all available ZzzOps goals until blocked."
+  ],
+  "availability": {
+    "choice": "all_portal_supported_countries",
+    "rationale": "ZzzOps has no operated service, commerce, regional data store, or region-specific functionality; the publisher must still review the portal's current country selection before submission."
+  }
+}

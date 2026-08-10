@@ -171,6 +171,10 @@ The feedback workflow submits only an exactly previewed, user-confirmed payload 
 
 ## Releases
 
+Every semantic release on `main` prepares two validated, versioned OpenAI marketplace assets before GitHub publication: `zzzops-plugin-v<version>.zip` for the portal's skills upload and `zzzops-openai-submission-v<version>.zip` for listing copy, light/dark assets, starter prompts, review tests, availability, release notes, manifests, and the human attestation checklist. A build or validation failure stops semantic-release before GitHub publication; successful artifacts are attached to the matching GitHub Release.
+
+The version-controlled sources live in `marketplace/`. OpenAI portal upload, attestation, review submission, approval, and final publication remain explicit human actions. ZzzOps does not use browser automation or undocumented endpoints, and a future documented publication API requires a separately approved integration. See [marketplace submission sources](marketplace/README.md) and the [official submission documentation](https://developers.openai.com/plugins/deploy/submission).
+
 Develop on branches created from `dev` and open ordinary PRs against `dev`. PR validation runs for every target branch so chained PRs receive exact-head evidence before they are retargeted; the read-only **PR validation / dev-required-tests** job must pass before merge. Each push to `dev` runs `semantic-release --dry-run` with read-only repository permission; dry-run skips tag creation and publication. `main` is reserved for an intended owner force-push release: semantic-release then receives `contents: write` and creates the Git tag and GitHub Release.
 
 Semantic commits since the latest reachable `vMAJOR.MINOR.PATCH` tag are the release-history source. `!` or a `BREAKING CHANGE` footer produces a major release, `feat` produces minor, and `fix`, `perf`, or `revert` produces patch. The highest change wins. Documentation, style, chores, refactors, tests, builds, and CI do not release and are omitted from notes. The conventional-commits generator emits sections in its fixed significance order—Features, Bug Fixes, Performance Improvements, then Reverts—with a distinct breaking-changes section; empty sections are omitted and entries are sorted by subject then scope. Reruns with no releasable commits are no-ops.
@@ -202,6 +206,7 @@ Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required
 - GitHub Issues — canonical goals, blockers, evidence, relations, and history.
 - `plugins/zzzops/plugin.json` — Agent Plugins v1 manifest for the distributable package.
 - `plugins/zzzops/scripts/cleanup_legacy.py` — dry-run-first cleanup for proven retired per-project installations.
+- `marketplace/` — reviewed OpenAI listing, test, availability, and attestation sources for generated release packets.
 - `.agents/plugins/marketplace.json` — Codex marketplace entry for the package.
 - `.zzzops/migration/STATE.json` — records reviewed import fingerprints so repeat migrations propose only new work.
 

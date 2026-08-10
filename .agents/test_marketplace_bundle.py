@@ -1,0 +1,90 @@
+"""Regression tests for deterministic OpenAI submission bundles."""
+
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from zipfile import ZipFile
+
+
+ROOT = Path(__file__).resolve().parents[1]
+BUILDER = ROOT / ".github" / "scripts" / "build_marketplace_bundle.py"
+
+
+def load_builder():
+    spec = importlib.util.spec_from_file_location("build_marketplace_bundle", BUILDER)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+class MarketplaceBundleTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.builder = load_builder()
+
+    def test_fixed_version_build_is_deterministic_and_complete(self) -> None:
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+            notes = "Initial skills-only submission.\n"
+            one = self.builder.build_bundles(ROOT, Path(first), "2.0.0", notes)
+            two = self.builder.build_bundles(ROOT, Path(second), "2.0.0", notes)
+            for key in ("plugin", "submission"):
+                self.assertEqual(
+                    hashlib.sha256(one[key].read_bytes()).hexdigest(),
+                    hashlib.sha256(two[key].read_bytes()).hexdigest(),
+                )
+
+            with ZipFile(one["plugin"]) as archive:
+                names = archive.namelist()
+                self.assertIn("plugin.json", names)
+                self.assertIn(".codex-plugin/plugin.json", names)
+                self.assertIn("scripts/cleanup_legacy.py", names)
+                self.assertNotIn("skills/run-zzzops-acceptance/SKILL.md", names)
+                self.assertFalse(any("__pycache__" in name or name.endswith((".pyc", ".pyo")) for name in names))
+                self.assertEqual("2.0.0", json.loads(archive.read("plugin.json"))["version"])
+                self.assertEqual("2.0.0", json.loads(archive.read(".codex-plugin/plugin.json"))["version"])
+
+            with ZipFile(one["submission"]) as archive:
+                names = set(archive.namelist())
+                self.assertEqual({
+                    "ATTESTATIONS.md", "LISTING.md", "RELEASE_NOTES.md", "TEST_CASES.md",
+                    "assets/composer-icon-dark.png", "assets/composer-icon.png",
+                    "assets/logo-dark.png", "assets/logo.png", "manifest.json", "submission.json",
+                }, names)
+                submission = json.loads(archive.read("submission.json"))
+                manifest = json.loads(archive.read("manifest.json"))
+                self.assertEqual("skills_only", submission["submission_type"])
+                self.assertEqual("2.0.0", submission["version"])
+                self.assertLessEqual(len(submission["listing"]["short_description"]), 30)
+                self.assertEqual("https://github.com/david-rzepa/zzzops", submission["listing"]["website_url"])
+                self.assertGreaterEqual(len(submission["tests"]["positive"]), 5)
+                self.assertGreaterEqual(len(submission["tests"]["negative"]), 3)
+                self.assertEqual(
+                    hashlib.sha256(one["plugin"].read_bytes()).hexdigest(),
+                    submission["plugin_archive"]["sha256"],
+                )
+                self.assertEqual("2.0.0", manifest["version"])
+                self.assertEqual(
+                    hashlib.sha256(archive.read("submission.json")).hexdigest(),
+                    manifest["files"]["submission.json"],
+                )
+
+    def test_invalid_version_or_incomplete_sources_fail_before_output(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            with self.assertRaisesRegex(self.builder.BundleError, "version"):
+                self.builder.build_bundles(ROOT, output, "latest", "notes")
+            self.assertEqual([], list(output.iterdir()))
+        with self.assertRaisesRegex(self.builder.BundleError, "secret-like"):
+            self.builder.scan_for_secrets("config.txt", b"OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz")
+
+
+if __name__ == "__main__":
+    unittest.main()

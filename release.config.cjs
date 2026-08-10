@@ -34,5 +34,18 @@ const notes = [
 module.exports = {
   branches: ["main"],
   tagFormat: "v${version}",
-  plugins: [analyzer, notes, "@semantic-release/github"]
+  plugins: [
+    analyzer,
+    notes,
+    "./.github/scripts/semantic_release_bundle.cjs",
+    [
+      "@semantic-release/github",
+      {
+        assets: [
+          { path: "dist/marketplace/zzzops-plugin-v*.zip", label: "OpenAI portal skills bundle" },
+          { path: "dist/marketplace/zzzops-openai-submission-v*.zip", label: "OpenAI submission packet" }
+        ]
+      }
+    ]
+  ]
 };

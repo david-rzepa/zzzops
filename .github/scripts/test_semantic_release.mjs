@@ -14,6 +14,7 @@ import semanticRelease from "semantic-release";
 
 const require = createRequire(import.meta.url);
 const releaseConfig = require("../../release.config.cjs");
+const bundlePlugin = require("./semantic_release_bundle.cjs");
 const releaseTestConfig = { ...releaseConfig, plugins: releaseConfig.plugins.slice(0, 2) };
 const [analyzerName, analyzerOptions] = releaseTestConfig.plugins[0];
 const [notesName, notesOptions] = releaseTestConfig.plugins[1];
@@ -21,6 +22,27 @@ const logger = { log() {}, error() {} };
 
 assert.equal(analyzerName, "@semantic-release/commit-analyzer");
 assert.equal(notesName, "@semantic-release/release-notes-generator");
+
+test("marketplace bundles gate publication and become GitHub release assets", () => {
+  assert.equal(releaseConfig.plugins[2], "./.github/scripts/semantic_release_bundle.cjs");
+  const [githubPlugin, githubOptions] = releaseConfig.plugins[3];
+  assert.equal(githubPlugin, "@semantic-release/github");
+  assert.deepEqual(githubOptions.assets.map(({ path }) => path), [
+    "dist/marketplace/zzzops-plugin-v*.zip",
+    "dist/marketplace/zzzops-openai-submission-v*.zip"
+  ]);
+});
+
+test("marketplace preparation failure aborts semantic release", async () => {
+  await assert.rejects(
+    bundlePlugin.prepare({}, {
+      cwd: process.cwd(),
+      logger,
+      nextRelease: { version: "not-a-version", notes: "Release notes" }
+    }),
+    /Marketplace bundle preparation failed/
+  );
+});
 
 function commits(...messages) {
   return messages.map((message, index) => ({
