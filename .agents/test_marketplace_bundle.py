@@ -50,6 +50,13 @@ class MarketplaceBundleTests(unittest.TestCase):
                 self.assertFalse(any("__pycache__" in name or name.endswith((".pyc", ".pyo")) for name in names))
                 self.assertEqual("2.0.0", json.loads(archive.read("plugin.json"))["version"])
                 self.assertEqual("2.0.0", json.loads(archive.read(".codex-plugin/plugin.json"))["version"])
+                for name in (
+                    "assets/composer-icon-dark.png", "assets/composer-icon.png",
+                    "assets/logo-dark.png", "assets/logo.png",
+                ):
+                    packaged = archive.read(name)
+                    self.builder.validate_portal_png(name, packaged)
+                    self.assertEqual((ROOT / "plugins" / "zzzops" / name).read_bytes(), packaged)
 
             with ZipFile(one["submission"]) as archive:
                 names = set(archive.namelist())
@@ -84,6 +91,11 @@ class MarketplaceBundleTests(unittest.TestCase):
             self.assertEqual([], list(output.iterdir()))
         with self.assertRaisesRegex(self.builder.BundleError, "secret-like"):
             self.builder.scan_for_secrets("config.txt", b"OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz")
+        image = (ROOT / "plugins" / "zzzops" / "assets" / "logo.png").read_bytes()
+        with self.assertRaisesRegex(self.builder.BundleError, "not a PNG"):
+            self.builder.validate_portal_png("assets/logo.png", image.replace(b"\r\n", b"\n"))
+        with self.assertRaisesRegex(self.builder.BundleError, "truncated|checksum|decoded"):
+            self.builder.validate_portal_png("assets/logo.png", image[:-20])
 
 
 if __name__ == "__main__":
