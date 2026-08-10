@@ -172,6 +172,9 @@ current_goal_schema_label = _goals.current_goal_schema_label
 validate_goal_transition = _goals.validate_goal_transition
 load_goal_transition = _goals.load_goal_transition
 apply_goal_transition = _goals.apply_goal_transition
+validate_goal_create = _goals.validate_goal_create
+load_goal_create = _goals.load_goal_create
+apply_goal_create = _goals.apply_goal_create
 ensure_current_goal_schema = _goals.ensure_current_goal_schema
 migrate_open_goal_schemas = _goals.migrate_open_goal_schemas
 
@@ -224,13 +227,13 @@ class GitHubGoalTransitionAdapter:
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise GoalTransitionProviderError(
-                f"GitHub did not confirm the goal transition ({type(exc).__name__}); success was not assumed."
+                f"GitHub did not confirm the goal operation ({type(exc).__name__}); success was not assumed."
             ) from exc
 
     @staticmethod
     def _provider_error(result: subprocess.CompletedProcess[str]) -> GoalTransitionProviderError:
         detail = sanitize_output((result.stderr.strip() or result.stdout.strip() or "unknown GitHub error").splitlines()[0][:300])
-        return GoalTransitionProviderError(f"GitHub did not confirm the goal transition: {detail}")
+        return GoalTransitionProviderError(f"GitHub did not confirm the goal operation: {detail}")
 
     def ensure_identity(self) -> None:
         if self._identity_checked:
@@ -277,6 +280,26 @@ class GitHubGoalTransitionAdapter:
         if not isinstance(issue, dict):
             raise GoalTransitionProviderError(
                 "GitHub returned an incomplete goal-transition response; success was not assumed."
+            )
+        return issue
+
+    def create_issue(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.ensure_identity()
+        result = self._run(
+            ["api", "--method", "POST", f"repos/{self.repository}/issues", "--input", "-"],
+            input_text=json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+        )
+        if result.returncode:
+            raise self._provider_error(result)
+        try:
+            issue = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise GoalTransitionProviderError(
+                "GitHub returned an invalid goal-create response; success was not assumed."
+            ) from exc
+        if not isinstance(issue, dict):
+            raise GoalTransitionProviderError(
+                "GitHub returned an incomplete goal-create response; success was not assumed."
             )
         return issue
 
@@ -1645,8 +1668,10 @@ def main() -> int:
     portfolio_parser.add_argument("--include-done", action="store_true", help="Include terminal goals in summary output")
     portfolio_parser.add_argument("--compare", type=Path, help="Prior JSON snapshot used only to report digest/revision drift")
     portfolio_parser.add_argument("--include-feedback", action="store_true", help="Include specially tagged feedback goals")
-    goal_command = commands.add_parser("goal", help="Apply validated GitHub-backed goal transitions")
+    goal_command = commands.add_parser("goal", help="Create, transition, or inspect validated GitHub-backed goals")
     goal_commands = goal_command.add_subparsers(dest="goal_command", required=True)
+    create_goal_command = goal_commands.add_parser("create", help="Create one goal from a validated UTF-8 request file")
+    create_goal_command.add_argument("--input", type=Path, required=True, help="UTF-8 goal create JSON file")
     transition_command = goal_commands.add_parser("transition", help="Apply one file-backed managed-goal transition")
     transition_command.add_argument("--goal", type=int, required=True)
     transition_command.add_argument("--input", type=Path, required=True, help="UTF-8 transition JSON file")
@@ -1737,7 +1762,14 @@ def main() -> int:
         elif args.command == "goal":
             project = reviewed_project_state(repo)
             repository = _project_repository_identity(project)
-            if args.goal_command == "transition":
+            if args.goal_command == "create":
+                request = load_goal_create(args.input)
+                errors = validate_goal_create(request)
+                if errors:
+                    raise ValueError("Invalid goal create request: " + "; ".join(errors))
+                adapter = GitHubGoalTransitionAdapter(repo, repository)
+                result = apply_goal_create(adapter, repository, request)
+            elif args.goal_command == "transition":
                 transition = load_goal_transition(args.input)
                 adapter = GitHubGoalTransitionAdapter(repo, repository)
                 result = apply_goal_transition(adapter, repository, args.goal, transition)

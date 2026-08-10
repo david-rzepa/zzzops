@@ -29,6 +29,8 @@ GOAL_DIFFICULTIES = {"unknown", "XS", "S", "M", "L", "XL"}
 GOAL_CONFIDENCES = {"low", "medium", "high"}
 GOAL_TRANSITION_SCHEMA_VERSION = 1
 GOAL_TRANSITION_FIELDS = {"schema_version", "expected_revision", "expected_digest", "goal"}
+GOAL_CREATE_SCHEMA_VERSION = 1
+GOAL_CREATE_FIELDS = {"schema_version", "title", "body", "labels", "goal"}
 BLOCKER_CATEGORIES = {"specification", "decision", "access-approval", "human-action", "external-dependency", "technical-unknown", "safety-compliance"}
 REDUNDANT_GOAL_TITLE_PREFIX = re.compile(r"^\[G-\d{8}-\d{3}-[^\]]+\]\s*")
 HISTORICAL_HUMAN_SECTIONS = {
@@ -40,7 +42,7 @@ _text_present: Callable[[Any], bool] | None = None
 
 
 class GoalTransitionProviderError(ValueError):
-    """The provider did not produce a safe, confirmed goal transition result."""
+    """The provider did not produce a safe, confirmed goal-operation result."""
 
 def configure_entrypoint(*, normalize_resources: Callable[[Any], list[str]], text_present: Callable[[Any], bool]) -> None:
     global _normalize_resources, _text_present
@@ -393,6 +395,115 @@ def github_archived_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def validate_goal_create(request: Any) -> list[str]:
+    if not isinstance(request, dict):
+        return ["goal create request must be an object"]
+    errors = []
+    unknown = sorted(set(request) - GOAL_CREATE_FIELDS)
+    missing = sorted(GOAL_CREATE_FIELDS - set(request))
+    if unknown:
+        errors.append("unknown goal create fields: " + ", ".join(unknown))
+    if missing:
+        errors.append("missing goal create fields: " + ", ".join(missing))
+    if request.get("schema_version") != GOAL_CREATE_SCHEMA_VERSION:
+        errors.append(f"goal create schema_version must be {GOAL_CREATE_SCHEMA_VERSION}")
+    title = request.get("title")
+    if not isinstance(title, str) or not title.strip():
+        errors.append("title is required")
+    elif title != title.strip():
+        errors.append("title must be trimmed")
+    elif len(title) > 256:
+        errors.append("title must be at most 256 characters")
+    elif REDUNDANT_GOAL_TITLE_PREFIX.match(title):
+        errors.append("title must not include a generated goal identifier")
+    body = request.get("body")
+    if not isinstance(body, str) or not body.strip():
+        errors.append("body is required")
+    elif GOAL_BLOCK_START in body or GOAL_BLOCK_END in body:
+        errors.append("body must not contain a managed goal block")
+    labels = request.get("labels")
+    if not isinstance(labels, list):
+        errors.append("labels must be a list")
+    else:
+        invalid_labels = [
+            label for label in labels
+            if not isinstance(label, str) or not label.strip() or label != label.strip() or len(label) > 50
+            or label == "zzzops" or label.startswith("zzzops:")
+        ]
+        if invalid_labels:
+            errors.append("labels must be trimmed non-ZzzOps label names")
+        if len({label.casefold() for label in labels if isinstance(label, str)}) != len(labels):
+            errors.append("labels must be unique")
+    goal = request.get("goal")
+    errors.extend(validate_managed_goal(goal))
+    if isinstance(goal, dict):
+        if goal.get("status") != "new":
+            errors.append("newly created goals must have status new")
+        if goal.get("revision") != 1:
+            errors.append("newly created goals must have revision 1")
+        if goal.get("claim") is not None:
+            errors.append("newly created goals must not have a claim")
+        if goal.get("implementation") is not None:
+            errors.append("newly created goals must not have implementation state")
+    return errors
+
+
+def load_goal_create(path: Path) -> dict[str, Any]:
+    try:
+        return json.loads(path.resolve().read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Could not read goal create request: {type(exc).__name__}") from exc
+
+
+def apply_goal_create(adapter: Any, repository: str, request: dict[str, Any]) -> dict[str, Any]:
+    errors = validate_goal_create(request)
+    if errors:
+        raise ValueError("Invalid goal create request: " + "; ".join(errors))
+    if adapter.repository.casefold() != repository.casefold():
+        raise GoalTransitionProviderError("Repository identity changed; no goal was created.")
+    goal = request["goal"]
+    body = render_managed_goal(goal, request["body"])
+    if len(body) > 65536:
+        raise ValueError("Rendered goal body exceeds GitHub's issue limit")
+    labels = [
+        "zzzops", *request["labels"], current_goal_schema_label(),
+        f"zzzops:status:{goal['status']}", f"zzzops:priority:{goal['priority']}",
+    ]
+    created = adapter.create_issue({"title": request["title"], "body": body, "labels": labels})
+    if not isinstance(created, dict):
+        raise GoalTransitionProviderError(
+            "GitHub returned an unexpected goal-create response; success was not assumed."
+        )
+    number = created.get("number")
+    expected_url = f"https://github.com/{repository}/issues/{number}"
+    returned_label_items = created.get("labels")
+    returned_labels = None if not isinstance(returned_label_items, list) else {
+        label["name"] for label in returned_label_items
+        if isinstance(label, dict) and isinstance(label.get("name"), str)
+    }
+    try:
+        returned_goal = parse_managed_goal(created.get("body"), number)
+    except (TypeError, ValueError) as exc:
+        raise GoalTransitionProviderError(
+            "GitHub returned an unexpected goal-create response; success was not assumed."
+        ) from exc
+    if (
+        not isinstance(number, int) or isinstance(number, bool) or number < 1
+        or created.get("title") != request["title"]
+        or created.get("body") != body
+        or str(created.get("state", "")).casefold() != "open"
+        or returned_labels != set(labels)
+        or created.get("html_url") != expected_url
+        or returned_goal != goal
+    ):
+        raise GoalTransitionProviderError(
+            "GitHub returned an unexpected goal-create response; success was not assumed."
+        )
+    return {
+        "number": number, "revision": 1, "state": "open", "status": "new", "url": expected_url,
+    }
+
+
 def validate_goal_transition(transition: Any, issue_number: int) -> list[str]:
     if not isinstance(transition, dict):
         return ["transition must be an object"]
@@ -601,4 +712,3 @@ def migrate_open_goal_schemas(
         "migrated": migrated, "already_current": already_current,
         "remaining": remaining, "complete": remaining == 0,
     }
-

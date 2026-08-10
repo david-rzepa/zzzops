@@ -63,7 +63,8 @@ class GoalsModuleTests(unittest.TestCase):
             "parse_managed_goal", "validate_managed_goal", "render_managed_goal",
             "github_goal_record", "github_archived_goal_record", "current_goal_schema_label",
             "validate_github_issue_goal", "validate_goal_transition", "load_goal_transition",
-            "apply_goal_transition", "ensure_current_goal_schema", "migrate_open_goal_schemas",
+            "apply_goal_transition", "validate_goal_create", "load_goal_create", "apply_goal_create",
+            "ensure_current_goal_schema", "migrate_open_goal_schemas",
             "GoalTransitionProviderError",
         ):
             self.assertIs(getattr(zzzops, name), getattr(goals, name))
@@ -951,6 +952,20 @@ class FakeGoalTransitionAdapter:
             self.response_mutation(response)
         return response
 
+    def create_issue(self, payload):
+        self.updates.append(json.loads(json.dumps(payload)))
+        if self.failure:
+            raise zzzops.GoalTransitionProviderError(self.failure)
+        number = 42
+        issue = {
+            "number": number, "title": payload["title"], "body": payload["body"], "state": "open",
+            "html_url": f"https://github.com/owner/repo/issues/{number}",
+            "labels": [{"name": label} for label in payload["labels"]],
+        }
+        if self.response_mutation:
+            self.response_mutation(issue)
+        return issue
+
     def get_issue_comments(self, number):
         self.assert_number(number)
         return json.loads(json.dumps(self.comments))
@@ -972,6 +987,136 @@ class FakeGoalTransitionAdapter:
     def assert_number(number):
         if number != 42:
             raise AssertionError(number)
+
+
+class GoalCreateTests(unittest.TestCase):
+    def request(self):
+        return {
+            "schema_version": 1,
+            "title": "Capture Unicode safely",
+            "body": "## Outcome\n\nPreserve café — and multiline text.\n",
+            "labels": ["documentation"],
+            "goal": {
+                "schema_version": 1, "status": "new", "priority": "P2", "value": "high",
+                "difficulty": "S", "confidence": "high", "parent": None, "depends_on": [],
+                "claim": None, "blockers": [], "evidence": ["Observed baseline."],
+                "next_action": "Triage the captured goal.", "revision": 1,
+                "implementation": None, "resources": [],
+            },
+        }
+
+    def test_create_preserves_unicode_and_derives_managed_labels(self):
+        adapter = FakeGoalTransitionAdapter({})
+        request = self.request()
+
+        result = zzzops.apply_goal_create(adapter, "owner/repo", request)
+
+        self.assertEqual(1, len(adapter.updates))
+        payload = adapter.updates[0]
+        self.assertEqual("Capture Unicode safely", payload["title"])
+        self.assertIn("Preserve café — and multiline text.", payload["body"])
+        self.assertEqual(request["goal"], zzzops.parse_managed_goal(payload["body"], 42))
+        self.assertEqual(
+            {"zzzops", "documentation", "zzzops:schema:v1", "zzzops:status:new", "zzzops:priority:P2"},
+            set(payload["labels"]),
+        )
+        self.assertEqual(
+            {"number": 42, "revision": 1, "state": "open", "status": "new",
+             "url": "https://github.com/owner/repo/issues/42"},
+            result,
+        )
+
+    def test_create_rejects_malformed_input_before_provider_write(self):
+        for change in ("title", "marker", "reserved_label", "long_label", "status", "revision", "implementation"):
+            adapter = FakeGoalTransitionAdapter({})
+            request = self.request()
+            if change == "title":
+                request["title"] = " "
+            elif change == "marker":
+                request["body"] += zzzops._goals.GOAL_BLOCK_START
+            elif change == "reserved_label":
+                request["labels"] = ["zzzops:status:ready"]
+            elif change == "long_label":
+                request["labels"] = ["x" * 51]
+            elif change == "status":
+                request["goal"]["status"] = "ready"
+            elif change == "revision":
+                request["goal"]["revision"] = 2
+            else:
+                request["goal"]["implementation"] = {
+                    "branch": None, "base": None, "target": None, "pr": None,
+                    "review": {"status": "not_started", "checkpoint": None},
+                }
+            with self.assertRaises(ValueError, msg=change):
+                zzzops.apply_goal_create(adapter, "owner/repo", request)
+            self.assertEqual([], adapter.updates)
+
+    def test_create_never_implies_success_on_provider_failure_or_bad_response(self):
+        adapter = FakeGoalTransitionAdapter({})
+        adapter.failure = "provider failed"
+        with self.assertRaisesRegex(zzzops.GoalTransitionProviderError, "provider failed"):
+            zzzops.apply_goal_create(adapter, "owner/repo", self.request())
+        self.assertEqual(1, len(adapter.updates))
+
+        adapter = FakeGoalTransitionAdapter({})
+        adapter.response_mutation = lambda issue: issue.update({"body": "unexpected"})
+        with self.assertRaisesRegex(zzzops.GoalTransitionProviderError, "unexpected"):
+            zzzops.apply_goal_create(adapter, "owner/repo", self.request())
+        self.assertEqual(1, len(adapter.updates))
+
+        adapter = FakeGoalTransitionAdapter({})
+        adapter.response_mutation = lambda issue: issue.update({"body": None})
+        with self.assertRaisesRegex(zzzops.GoalTransitionProviderError, "unexpected"):
+            zzzops.apply_goal_create(adapter, "owner/repo", self.request())
+
+        adapter = FakeGoalTransitionAdapter({})
+        adapter.response_mutation = lambda issue: issue.update({"labels": None})
+        with self.assertRaisesRegex(zzzops.GoalTransitionProviderError, "unexpected"):
+            zzzops.apply_goal_create(adapter, "owner/repo", self.request())
+
+    def test_create_file_is_bom_tolerant(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "create.json"
+            request = self.request()
+            path.write_bytes(b"\xef\xbb\xbf" + json.dumps(request, ensure_ascii=False).encode("utf-8"))
+            self.assertEqual(request, zzzops.load_goal_create(path))
+
+    @mock.patch.object(zzzops, "GitHubGoalTransitionAdapter")
+    @mock.patch.object(zzzops, "_project_repository_identity", return_value="owner/repo")
+    @mock.patch.object(zzzops, "reviewed_project_state", return_value={})
+    @mock.patch.object(zzzops, "load_goal_create", return_value={"schema_version": 1})
+    def test_create_cli_validates_before_constructing_provider_adapter(
+        self, _load, _project, _identity, adapter,
+    ):
+        argv = ["zzzops.py", "--repo", ".", "goal", "create", "--input", "create.json"]
+        with mock.patch.object(sys, "argv", argv), mock.patch("sys.stdout", new_callable=io.StringIO):
+            self.assertEqual(2, zzzops.main())
+        adapter.assert_not_called()
+
+    @mock.patch.object(zzzops.shutil, "which", return_value="gh")
+    @mock.patch.object(zzzops.subprocess, "run")
+    def test_github_create_adapter_uses_one_json_stdin_post(self, run, _which):
+        payload = {"title": "Create safely", "body": "Unicode — body", "labels": ["zzzops"]}
+        issue = {
+            "number": 42, "title": payload["title"], "body": payload["body"], "state": "open",
+            "html_url": "https://github.com/owner/repo/issues/42", "labels": [{"name": "zzzops"}],
+        }
+        run.side_effect = [
+            SimpleNamespace(returncode=0, stderr="", stdout=json.dumps({
+                "nameWithOwner": "owner/repo", "hasIssuesEnabled": True, "viewerPermission": "ADMIN",
+            })),
+            SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(issue)),
+        ]
+        adapter = zzzops.GitHubGoalTransitionAdapter(Path.cwd(), "owner/repo")
+
+        self.assertEqual(issue, adapter.create_issue(payload))
+
+        self.assertEqual(2, run.call_count)
+        self.assertEqual(
+            ["gh", "api", "--method", "POST", "repos/owner/repo/issues", "--input", "-"],
+            run.call_args_list[1].args[0],
+        )
+        self.assertEqual(payload, json.loads(run.call_args_list[1].kwargs["input"]))
 
 
 class GoalTransitionTests(unittest.TestCase):
