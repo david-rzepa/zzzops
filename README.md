@@ -8,14 +8,25 @@ ZzzOps gives agents an infinite, prioritized backlog so token FOMO stops at bedt
 
 ### 1. Install the Agent Plugin
 
-ZzzOps v2 is an [Agent Plugin](https://agent-plugins.org/) distributed through the Codex marketplace. Add the repository marketplace, then install the plugin:
+ZzzOps v2 is an [Agent Plugin](https://agent-plugins.org/). The recommended installation is from the [official ZzzOps listing in the Codex Plugins Directory](https://chatgpt.com/plugins/plugins_6a7892fe4c548191a9e0dbfb8ac2c987). Install it there, then open a new Codex task in the target project so its ZzzOps skills are discovered.
+
+As a secondary option, install a reproducible snapshot directly from a released Git tag:
 
 ```powershell
-codex plugin marketplace add david-rzepa/zzzops --ref main
+codex plugin marketplace add david-rzepa/zzzops@v2.0.0
 codex plugin add zzzops@zzzops
 ```
 
-You can perform the equivalent actions from Codex's `/plugins` interface. Codex owns discovery, installation, updates, and removal; ZzzOps no longer copies machinery into each project or maintains an installer lock. The package contains exactly six skills plus their shared rules, control CLI, and blank initialization templates. It never contains project policy, goals, repository instructions, or other project state.
+A tag-pinned Git marketplace stays on that tag. To move to a newer release, remove the installed plugin and pinned source, then add and install the newer released tag. For example, after `v2.0.1` is released:
+
+```powershell
+codex plugin remove zzzops@zzzops
+codex plugin marketplace remove zzzops
+codex plugin marketplace add david-rzepa/zzzops@v2.0.1
+codex plugin add zzzops@zzzops
+```
+
+Open a new Codex task after installing or upgrading. ZzzOps no longer copies machinery into each project or maintains an installer lock. The package contains exactly six skills plus their shared rules, control CLI, and blank initialization templates. It never contains project policy, goals, repository instructions, or other project state.
 
 ZzzOps v2 supports Codex. Claude Code users can remain on [v1.2.0, the final legacy installer release](https://github.com/david-rzepa/zzzops/releases/tag/v1.2.0); that line is retained for download but is not updated by the v2 marketplace workflow.
 
@@ -32,7 +43,7 @@ The apply command asks for an exact confirmation. It removes only machinery prov
 
 ZzzOps is independently developed and is not created, supported, certified, endorsed by, or affiliated with OpenAI. It uses your existing GitHub authentication to read and write GitHub Issues and, when your reviewed project policy authorizes implementation, to coordinate Git branches, commits, and pull requests. ZzzOps has no ZzzOps-operated server, telemetry, advertising, or commerce.
 
-Open a new Codex task in the target project after installation so its ZzzOps skills are discovered, then start the policy review workflow.
+After installation, start the policy review workflow.
 
 ### 3. Initialize the project
 
