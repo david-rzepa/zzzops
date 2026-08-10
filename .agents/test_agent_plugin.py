@@ -54,6 +54,17 @@ class AgentPluginTests(unittest.TestCase):
         ):
             self.assertFalse((ROOT / relative).exists(), relative)
 
+    def test_portal_package_contains_the_legacy_cleanup_tool(self) -> None:
+        script = PLUGIN / "scripts" / "cleanup_legacy.py"
+        catalog = PLUGIN / "assets" / "legacy_install_fingerprints.json"
+        self.assertTrue(script.is_file())
+        self.assertTrue(catalog.is_file())
+        self.assertIn("--apply", script.read_text(encoding="utf-8"))
+        self.assertEqual({"v1.0.0"}, set(json.loads(catalog.read_text(encoding="utf-8"))["releases"]))
+        package_module = (PLUGIN / "zzzops" / "package.py").read_text(encoding="utf-8")
+        self.assertIn('"scripts/cleanup_legacy.py"', package_module)
+        self.assertIn('"assets/legacy_install_fingerprints.json"', package_module)
+
     def test_published_compliance_disclosures_are_complete(self) -> None:
         privacy = (ROOT / "PRIVACY.md").read_text(encoding="utf-8")
         compliance = (ROOT / "docs" / "OPENAI_COMPLIANCE.md").read_text(encoding="utf-8")

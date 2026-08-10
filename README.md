@@ -19,6 +19,15 @@ You can perform the equivalent actions from Codex's `/plugins` interface. Codex 
 
 ZzzOps v2 supports Codex. Claude Code users can remain on [v1.2.0, the final legacy installer release](https://github.com/david-rzepa/zzzops/releases/tag/v1.2.0); that line is retained for download but is not updated by the v2 marketplace workflow.
 
+If a repository still contains a legacy per-project installation, use the cleanup utility shipped in the installed plugin. Its default is a read-only preview:
+
+```text
+<python> <installed-zzzops-plugin>/scripts/cleanup_legacy.py <target-repository>
+<python> <installed-zzzops-plugin>/scripts/cleanup_legacy.py <target-repository> --apply
+```
+
+The apply command asks for an exact confirmation. It removes only machinery proven by the legacy lock or manifest, or by the immutable v1.0.0 fingerprint catalog. Any modified, unknown, ambiguous, unsafe, or symlinked path blocks the whole operation. Durable `.zzzops` policy, audit, migration, and goal state is preserved, and tracked paths are reported without changing the Git index. See the [legacy cleanup contract](docs/LEGACY_CLEANUP.md).
+
 [Privacy policy](PRIVACY.md) · [OpenAI compliance review](docs/OPENAI_COMPLIANCE.md) · Support, privacy, and security: [zzzops.support@gmail.com](mailto:zzzops.support@gmail.com)
 
 ZzzOps is independently developed and is not created, supported, certified, endorsed by, or affiliated with OpenAI. It uses your existing GitHub authentication to read and write GitHub Issues and, when your reviewed project policy authorizes implementation, to coordinate Git branches, commits, and pull requests. ZzzOps has no ZzzOps-operated server, telemetry, advertising, or commerce.
@@ -118,6 +127,7 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 | Feature | Primary surface |
 | --- | --- |
 | Discover, install, update, and remove ZzzOps through Codex | `.agents/plugins/marketplace.json` / `plugins/zzzops/plugin.json` |
+| Safely preview and remove retired per-project installations | `plugins/zzzops/scripts/cleanup_legacy.py` / `plugins/zzzops/assets/legacy_install_fingerprints.json` |
 | Publish the privacy boundary, compliance review, and support contact | `PRIVACY.md` / `docs/OPENAI_COMPLIANCE.md` / `README.md` |
 | Initialize, summarize, and adjust reviewed project policy | `plugins/zzzops/skills/review-zzzops-policy/SKILL.md` |
 | Use GitHub Issues as the canonical goal backend | `plugins/zzzops/rules/BACKENDS.md` |
@@ -191,6 +201,7 @@ Maintainers: see [branch protection](docs/BRANCH_PROTECTION.md) for the required
 - `.zzzops/PROJECT_AUDIT.md` — digest-bound evidence, rationales, review metadata, and history for review or reconciliation.
 - GitHub Issues — canonical goals, blockers, evidence, relations, and history.
 - `plugins/zzzops/plugin.json` — Agent Plugins v1 manifest for the distributable package.
+- `plugins/zzzops/scripts/cleanup_legacy.py` — dry-run-first cleanup for proven retired per-project installations.
 - `.agents/plugins/marketplace.json` — Codex marketplace entry for the package.
 - `.zzzops/migration/STATE.json` — records reviewed import fingerprints so repeat migrations propose only new work.
 

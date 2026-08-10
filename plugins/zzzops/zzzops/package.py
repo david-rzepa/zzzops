@@ -22,9 +22,11 @@ SHIPPED_SKILLS = {
 }
 REQUIRED_FILES = {
     ".codex-plugin/plugin.json",
+    "assets/legacy_install_fingerprints.json",
     "rules/BACKENDS.md", "rules/BLOCKERS.md", "rules/CONTINUATION.md",
     "rules/EXECUTION_STRATEGY.md", "rules/FEEDBACK.md", "rules/GOAL_SYSTEM.md",
     "rules/INITIALIZATION.md", "zzzops/zzzops.py",
+    "scripts/cleanup_legacy.py",
     "zzzops/templates/project-goals/INIT_PLAN.json",
 }
 NAME_PATTERN = re.compile(r"^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$")
