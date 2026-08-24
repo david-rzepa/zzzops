@@ -1,5 +1,15 @@
 # Goal branches and review
 
+## Workflow adherence
+
+Reviewed workflow adherence controls how agent work reaches this execution loop; it is distinct from the rigor used to specify and verify that work.
+
+- `optional`: ZzzOps is available, but direct agent work is allowed.
+- `tracked`: substantial repository-changing agent work requires a durable goal, while otherwise-authorized implementation may run outside `$execute-zzzops`.
+- `managed`: repository-changing agent work uses the appropriate ZzzOps workflow, and tracked implementation runs through `$execute-zzzops`.
+
+Read-only investigation and ZzzOps administration are exempt. A user may authorize a narrowly scoped exception explicitly, but no adherence level weakens safety or other reviewed policy. Confirmation projects the reviewed level into a bounded `AGENTS.md` block. Repository-specific PR or CI checks may add deterministic enforcement when they can observe the contract; ZzzOps cannot observe or control direct human edits and does not promise a universal gate.
+
 Branch/review behavior is project policy, proposed during initialization from repository evidence. The first-release fallback uses one branch per source-changing goal, bases independent goals on the nearest authorized trunk, and waits for every dependency to be complete before writable implementation begins. Read-only agents may investigate later goals in advance without claiming, editing, branching, or marking them started. Repositories can replace this fallback through reviewed `git_review_release` settings, including explicitly allowing review-ready branch stacking.
 
 Where pull requests are supported, the fallback also uses one PR per source-changing goal. Being small, related, or selected in one run is not enough to bundle goals. Repository policy or an explicit user instruction may permit a shared PR, but every affected goal records the override, rationale, shared branch/PR, target, and review consequence before work is combined. Parent and child goals retain separate PRs targeting their resolved pseudo-trunks. PR granularity is independent of commit/squash policy, and capture-only goal creation remains Git-free.

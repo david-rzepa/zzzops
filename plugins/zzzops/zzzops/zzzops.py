@@ -1497,6 +1497,7 @@ cell = _policy.cell
 render_project = _policy.render_project
 render_policy_sections = _policy.render_policy_sections
 render_project_audit = _policy.render_project_audit
+reconcile_workflow_adherence_agents = _policy.reconcile_workflow_adherence_agents
 
 
 def atomic_text(path: Path, text: str) -> None:
@@ -1634,6 +1635,16 @@ def confirm_project(repo: Path, digest: str, reviewer: str, section_ids: list[st
     atomic_text(project_path(repo), updated)
     atomic_text(project_audit_path(repo), audit_text)
     atomic_text(path, json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
+    agents_path = repo / "AGENTS.md"
+    try:
+        agents_text = agents_path.read_text(encoding="utf-8-sig")
+    except FileNotFoundError:
+        agents_text = ""
+    except (OSError, UnicodeError) as exc:
+        raise ValueError(f"Cannot reconcile reviewed workflow adherence in {agents_path}: {exc}") from exc
+    reconciled_agents = reconcile_workflow_adherence_agents(agents_text, policy)
+    if reconciled_agents != agents_text:
+        atomic_text(agents_path, reconciled_agents)
     return {
         "changed": True,
         "path": str(project_path(repo)),
