@@ -1,22 +1,22 @@
 ---
 name: review-zzzops-policy
-description: Review, initialize, summarize, reconcile, or adjust ZzzOps policy. Preferred first workflow; always re-summarizes existing policy.
+description: Review, initialize, summarize, reconcile, or adjust ZzzOps project policy. Preferred first workflow; always re-summarizes existing policy.
 ---
 
 # Review ZzzOps Policy
 
 Follow `../../rules/INITIALIZATION.md`; only this workflow changes or confirms policy.
 
-Checkpoint readiness, never goals/history.
-
 Before optional tools, reuse capabilities; never invoke an unavailable path—use an alternative or block once.
 
-Run `init inspect` once; summarize choices and invite adjustments with privacy-safe execution reports (default enabled). For a missing automated-design section, propose enabled/disabled without inferring approval. For missing workflow-adherence sections, explain `optional`/`tracked`/`managed`; propose `tracked` for adherence.
+Run `init inspect` once; offer privacy-safe execution reports. For a missing automated-design section propose enabled/disabled; for missing workflow-adherence sections explain `optional`/`tracked`/`managed` and propose `tracked` for adherence; for missing rigor explain `vibe`/`structured`/`agentic` and propose `structured`—all without inferring approval.
 
-Compare default IDs/digests first. Changed/stale: load full old/new snapshots only for changed or selected sections. Missing legacy provenance stays unknown. Replace only when effective value matches stored snapshot and default changed; report customized values without replacement.
+Review rigor defaults/escalation/minimums/overrides/interview depth. More rigor costs upfront but cuts ambiguity/rework/regressions; never silently lower or undercut a minimum.
 
-When every required section has valid approval, say `The policy is already approved.` Do not ask for approval or run `init confirm`; invite adjustments and checkpoint. Otherwise require explicit approval of the current digest (the approval digest), then `init confirm`. Ask only consequential questions. Ask separately before policy commits/PRs.
+Compare default IDs/digests first. Changed/stale: load full old/new snapshots only for changed or selected sections. Missing legacy provenance stays unknown. Replace matching stored defaults only; report customized values without replacement.
 
-For approved adherence, reconcile a bounded `AGENTS.md` block marked `BEGIN ZZZOPS WORKFLOW ADHERENCE`; preserve all unrelated instructions. Include level/exemptions and limits.
+If every required section has valid approval, say `The policy is already approved.` Do not ask for approval or run `init confirm`. Else require explicit approval of the current digest (`approval digest`), then `init confirm`. Ask separately before policy commits/PRs.
+
+Approved adherence: reconcile a bounded `AGENTS.md` block (`BEGIN ZZZOPS WORKFLOW ADHERENCE`); preserve all unrelated instructions.
 
 Before stopping or handing off, apply `../../rules/FEEDBACK.md`.
