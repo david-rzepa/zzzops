@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and validate deterministic OpenAI skills-only submission artifacts."""
+"""Build deterministic, validated OpenAI and Claude release artifacts."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ import struct
 import sys
 import tempfile
 from typing import Any
-from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
+from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile, ZipInfo
 import zlib
 
 
@@ -188,7 +188,9 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
     plugin = root / "plugins" / "zzzops"
     renderer = runpy.run_path(str(plugin / "zzzops" / "package.py"))["render_skill_metadata"]
     result: dict[str, bytes] = {}
-    allowed_top_level = {".codex-plugin", "assets", "plugin.json", "rules", "scripts", "skills", "zzzops"}
+    allowed_top_level = {
+        ".claude-plugin", ".codex-plugin", "assets", "plugin.json", "rules", "scripts", "skills", "zzzops",
+    }
     for path in sorted(plugin.rglob("*"), key=lambda item: item.relative_to(plugin).as_posix()):
         relative = path.relative_to(plugin).as_posix()
         if PurePosixPath(relative).parts[0] not in allowed_top_level:
@@ -200,7 +202,7 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
         data = path.read_bytes()
         if path.suffix.casefold() in {".json", ".md", ".py", ".yaml", ".yml"}:
             data = data.replace(b"\r\n", b"\n")
-        if relative in {"plugin.json", ".codex-plugin/plugin.json"}:
+        if relative in {"plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json"}:
             manifest = json.loads(data.decode("utf-8-sig"))
             manifest["version"] = version
             data = canonical_json(manifest)
@@ -211,7 +213,7 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
         scan_for_secrets(relative, data)
         result[relative] = data
     required = {
-        "plugin.json", ".codex-plugin/plugin.json", "assets/logo.png", "assets/logo-dark.png",
+        "plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "assets/logo.png", "assets/logo-dark.png",
         "assets/composer-icon.png", "assets/composer-icon-dark.png", "scripts/cleanup_legacy.py",
     }
     missing = sorted(required - set(result))
@@ -326,13 +328,26 @@ def tests_markdown(tests: dict[str, Any]) -> str:
 
 
 def validate_archive(data: bytes, expected: dict[str, bytes], label: str) -> None:
-    temporary = io.BytesIO(data)
-    with ZipFile(temporary) as archive:
-        if archive.namelist() != sorted(expected):
-            raise BundleError(f"{label} archive file tree is not deterministic")
-        for relative, content in expected.items():
-            if archive.read(relative) != content:
-                raise BundleError(f"{label} archive content mismatch: {relative}")
+    try:
+        temporary = io.BytesIO(data)
+        with ZipFile(temporary) as archive:
+            if archive.namelist() != sorted(expected):
+                raise BundleError(f"{label} archive file tree is not deterministic")
+            for relative, content in expected.items():
+                if archive.read(relative) != content:
+                    raise BundleError(f"{label} archive content mismatch: {relative}")
+    except BadZipFile as exc:
+        raise BundleError(f"{label} archive is not a valid ZIP") from exc
+
+
+def validate_release_artifacts(directory: Path, expected: dict[str, tuple[dict[str, bytes], str]]) -> None:
+    actual = {path.name for path in directory.iterdir() if path.is_file()}
+    if actual != set(expected):
+        missing = sorted(set(expected) - actual)
+        stale = sorted(actual - set(expected))
+        raise BundleError(f"release artifacts are missing or stale: missing={missing}, stale={stale}")
+    for filename, (contents, label) in expected.items():
+        validate_archive((directory / filename).read_bytes(), contents, label)
 
 
 def build_bundles(root: Path, output: Path, version: str, release_notes: str) -> dict[str, Path]:
@@ -340,6 +355,8 @@ def build_bundles(root: Path, output: Path, version: str, release_notes: str) ->
     output = output.resolve()
     if not SEMVER.fullmatch(version):
         raise BundleError("version must be a concrete semantic release version")
+    if output.exists() and any(output.iterdir()):
+        raise BundleError("output directory must be empty before release preparation")
     release_notes = require_text(release_notes, "release notes").replace("\r\n", "\n").rstrip() + "\n"
     listing, tests, attestations = validate_sources(root)
     plugin_contents = plugin_files(root, version)
@@ -382,26 +399,44 @@ def build_bundles(root: Path, output: Path, version: str, release_notes: str) ->
     }
     packet_contents["manifest.json"] = canonical_json(manifest)
     submission_data = zip_bytes(packet_contents)
+    claude_marketplace_contents = claude_marketplace_files(root, version)
+    claude_plugin_contents = {
+        relative.removeprefix("zzzops/"): data
+        for relative, data in claude_marketplace_contents.items()
+        if relative.startswith("zzzops/")
+    }
+    claude_plugin_data = zip_bytes(claude_plugin_contents)
     validate_archive(plugin_data, plugin_contents, "plugin")
     validate_archive(submission_data, packet_contents, "submission")
-    output.mkdir(parents=True, exist_ok=True)
+    validate_archive(claude_plugin_data, claude_plugin_contents, "Claude plugin")
+    output.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix="zzzops-marketplace-", dir=output.parent))
     try:
         plugin_path = staging / plugin_name
         submission_path = staging / f"zzzops-openai-submission-v{version}.zip"
+        claude_plugin_path = staging / f"zzzops-claude-plugin-v{version}.zip"
         plugin_path.write_bytes(plugin_data)
         submission_path.write_bytes(submission_data)
-        final_plugin = output / plugin_path.name
-        final_submission = output / submission_path.name
-        plugin_path.replace(final_plugin)
-        submission_path.replace(final_submission)
+        claude_plugin_path.write_bytes(claude_plugin_data)
+        validate_release_artifacts(staging, {
+            plugin_path.name: (plugin_contents, "written plugin"),
+            submission_path.name: (packet_contents, "written submission"),
+            claude_plugin_path.name: (claude_plugin_contents, "written Claude plugin"),
+        })
+        if output.exists():
+            output.rmdir()
+        staging.replace(output)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
-    return {"plugin": final_plugin, "submission": final_submission}
+    return {
+        "plugin": output / plugin_path.name,
+        "submission": output / submission_path.name,
+        "claude_plugin": output / claude_plugin_path.name,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build validated OpenAI marketplace submission artifacts")
+    parser = argparse.ArgumentParser(description="Build validated OpenAI and Claude marketplace release artifacts")
     parser.add_argument("--version", required=True)
     parser.add_argument("--release-notes-file", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)

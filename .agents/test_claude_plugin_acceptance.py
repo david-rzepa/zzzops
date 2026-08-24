@@ -6,6 +6,7 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+from zipfile import ZipFile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +37,8 @@ class ClaudePluginAcceptanceTests(unittest.TestCase):
             "version": "2.0.0", "source": "./zzzops", "description": "ZzzOps",
         }]
         self.harness.validate_available(available, "2.0.0")
+        available[0]["source"] = "./plugins/zzzops"
+        self.harness.validate_available(available, "2.0.0", "./plugins/zzzops")
         details = "Skills (9)  " + ", ".join(sorted(EXPECTED_SKILLS)) + "\n  Agents (0)"
         self.harness.validate_details(details)
         with self.assertRaisesRegex(self.harness.AcceptanceError, "skill inventory"):
@@ -54,6 +57,14 @@ class ClaudePluginAcceptanceTests(unittest.TestCase):
             record[0]["installPath"] = str(Path(directory) / "source")
             with self.assertRaisesRegex(self.harness.AcceptanceError, "isolated Claude cache"):
                 self.harness.validate_install(record, config, "2.0.0")
+
+    def test_release_archive_extraction_rejects_traversal(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / "unsafe.zip"
+            with ZipFile(archive, "w") as output:
+                output.writestr("../escape", "unsafe")
+            with self.assertRaisesRegex(self.harness.AcceptanceError, "unsafe path"):
+                self.harness.extract_archive(archive, Path(directory) / "output")
 
 
 if __name__ == "__main__":

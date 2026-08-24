@@ -27,7 +27,7 @@ async function prepare(_pluginConfig, context) {
       ], { cwd: context.cwd, encoding: "utf8" });
       last = result;
       if (!result.error && result.status === 0) {
-        context.logger.log(`Built validated OpenAI marketplace bundles for v${version}.`);
+        context.logger.log(`Built validated OpenAI and Claude release bundles for v${version}.`);
         return;
       }
       if (!result.error || result.error.code !== "ENOENT") {

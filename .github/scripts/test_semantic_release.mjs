@@ -29,7 +29,8 @@ test("marketplace bundles gate publication and become GitHub release assets", ()
   assert.equal(githubPlugin, "@semantic-release/github");
   assert.deepEqual(githubOptions.assets.map(({ path }) => path), [
     "dist/marketplace/zzzops-plugin-v*.zip",
-    "dist/marketplace/zzzops-openai-submission-v*.zip"
+    "dist/marketplace/zzzops-openai-submission-v*.zip",
+    "dist/marketplace/zzzops-claude-plugin-v*.zip"
   ]);
 });
 

@@ -50,12 +50,24 @@ class MarketplaceBundleTests(unittest.TestCase):
             notes = "Initial skills-only submission.\n"
             one = self.builder.build_bundles(ROOT, Path(first), "2.0.0", notes)
             two = self.builder.build_bundles(ROOT, Path(second), "2.0.0", notes)
-            for key in ("plugin", "submission"):
+            self.assertEqual({"plugin", "submission", "claude_plugin"}, set(one))
+            for key in ("plugin", "submission", "claude_plugin"):
                 self.assertEqual(
                     hashlib.sha256(one[key].read_bytes()).hexdigest(),
                     hashlib.sha256(two[key].read_bytes()).hexdigest(),
                 )
 
+            self.assertEqual("zzzops-claude-plugin-v2.0.0.zip", one["claude_plugin"].name)
+            with ZipFile(one["claude_plugin"]) as archive:
+                names = archive.namelist()
+                self.assertIn(".claude-plugin/plugin.json", names)
+                self.assertIn("zzzops/zzzops.py", names)
+                self.assertNotIn(".claude-plugin/marketplace.json", names)
+                packaged_manifest = json.loads(archive.read(".claude-plugin/plugin.json"))
+                committed_manifest = json.loads(
+                    (ROOT / "plugins" / "zzzops" / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+                )
+                self.assertEqual(committed_manifest, packaged_manifest)
             with ZipFile(one["plugin"]) as archive:
                 names = archive.namelist()
                 self.assertIn("plugin.json", names)
@@ -121,6 +133,28 @@ class MarketplaceBundleTests(unittest.TestCase):
         with self.assertRaisesRegex(self.builder.BundleError, "truncated|checksum|decoded"):
             self.builder.validate_portal_png("assets/logo.png", image[:-20])
 
+    def test_stale_release_output_is_rejected_before_any_partial_refresh(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "marketplace"
+            output.mkdir()
+            stale = output / "zzzops-claude-plugin-v1.9.0.zip"
+            stale.write_bytes(b"stale")
+            with self.assertRaisesRegex(self.builder.BundleError, "output directory must be empty"):
+                self.builder.build_bundles(ROOT, output, "2.0.0", "notes")
+            self.assertEqual({stale.name}, {path.name for path in output.iterdir()})
+
+    def test_release_validation_rejects_missing_divergent_and_invalid_archives(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(self.builder.BundleError, "missing or stale"):
+                self.builder.validate_release_artifacts(
+                    Path(directory), {"required.zip": ({"file": b"expected"}, "required")},
+                )
+        divergent = self.builder.zip_bytes({"file": b"observed"})
+        with self.assertRaisesRegex(self.builder.BundleError, "content mismatch"):
+            self.builder.validate_archive(divergent, {"file": b"expected"}, "Claude plugin")
+        with self.assertRaisesRegex(self.builder.BundleError, "not a valid ZIP"):
+            self.builder.validate_archive(b"invalid", {}, "Claude plugin")
+
     def test_claude_marketplace_is_derived_from_the_canonical_plugin(self) -> None:
         files = self.builder.claude_marketplace_files(ROOT, "2.0.0")
         manifest = json.loads(files["zzzops/.claude-plugin/plugin.json"])
@@ -137,6 +171,27 @@ class MarketplaceBundleTests(unittest.TestCase):
         canonical = self.builder.plugin_files(ROOT, "2.0.0")
         for relative, content in canonical.items():
             self.assertEqual(content, files[f"zzzops/{relative}"], relative)
+
+    def test_committed_claude_marketplace_targets_the_canonical_plugin_tree(self) -> None:
+        canonical = json.loads((ROOT / "plugins" / "zzzops" / "plugin.json").read_text(encoding="utf-8"))
+        marketplace = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
+        manifest = json.loads(
+            (ROOT / "plugins" / "zzzops" / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+        )
+
+        self.assertEqual("./plugins/zzzops", marketplace["plugins"][0]["source"])
+        self.assertEqual(canonical["name"], marketplace["name"])
+        self.assertEqual(canonical["author"], marketplace["owner"])
+        self.assertEqual(
+            {"description": canonical["description"], "version": canonical["version"]},
+            marketplace["metadata"],
+        )
+        self.assertEqual(canonical["name"], marketplace["plugins"][0]["name"])
+        self.assertEqual(canonical["description"], marketplace["plugins"][0]["description"])
+        self.assertEqual(canonical["version"], marketplace["plugins"][0]["version"])
+        self.assertEqual(canonical["name"], manifest["name"])
+        for field in ("version", "description", "author", "homepage", "repository", "license", "keywords"):
+            self.assertEqual(canonical[field], manifest[field], field)
 
     def test_claude_generation_rejects_missing_or_invalid_canonical_input(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

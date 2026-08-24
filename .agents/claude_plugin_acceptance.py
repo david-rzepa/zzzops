@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 from typing import Any
+from zipfile import ZipFile
 
 
 EXPECTED_SKILLS = {
@@ -41,16 +42,16 @@ def json_output(command: list[str], *, env: dict[str, str] | None = None) -> Any
         raise AcceptanceError(f"command returned invalid JSON: {command[0]} {command[1]}") from exc
 
 
-def validate_available(records: Any, version: str) -> None:
+def validate_available(records: Any, version: str, source: str = "./zzzops") -> None:
     expected = {
         "pluginId": "zzzops@zzzops", "name": "zzzops", "marketplaceName": "zzzops",
-        "version": version, "source": "./zzzops",
+        "version": version, "source": source,
     }
     if (
         not isinstance(records, list) or len(records) != 1 or not isinstance(records[0], dict)
         or any(records[0].get(key) != value for key, value in expected.items())
     ):
-        raise AcceptanceError("available plugin inventory does not match the generated marketplace")
+        raise AcceptanceError("available plugin inventory does not match the expected marketplace")
 
 
 def validate_details(details: str) -> None:
@@ -81,6 +82,15 @@ def validate_install(records: Any, config: Path, version: str) -> Path:
     return install
 
 
+def extract_archive(archive_path: Path, destination: Path) -> None:
+    with ZipFile(archive_path) as archive:
+        for name in archive.namelist():
+            relative = Path(name)
+            if relative.is_absolute() or ".." in relative.parts:
+                raise AcceptanceError(f"release archive contains an unsafe path: {name}")
+        archive.extractall(destination)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate generated ZzzOps through an isolated Claude installation")
     parser.add_argument("--claude-version", required=True)
@@ -94,25 +104,37 @@ def main(argv: list[str] | None = None) -> int:
     try:
         with tempfile.TemporaryDirectory(prefix="zzzops-claude-acceptance-") as directory:
             workspace = Path(directory)
-            marketplace = workspace / "marketplace"
+            plugin = workspace / "plugin"
+            artifacts = workspace / "artifacts"
             config = workspace / "config"
             project = workspace / "project"
+            release_notes = workspace / "RELEASE_NOTES.md"
             config.mkdir()
             project.mkdir()
+            release_notes.write_text("Claude release artifact acceptance.\n", encoding="utf-8")
             env = os.environ.copy()
             env["CLAUDE_CONFIG_DIR"] = str(config)
             observed_version = run(["claude", "--version"], env=env).strip()
             if not observed_version.startswith(args.claude_version + " "):
                 raise AcceptanceError(f"Claude CLI version drift: expected {args.claude_version}, observed {observed_version}")
-            run([
-                sys.executable, str(root / ".github" / "scripts" / "build_claude_plugin.py"),
-                "--version", version, "--output", str(marketplace),
+            built = json_output([
+                sys.executable, str(root / ".github" / "scripts" / "build_marketplace_bundle.py"),
+                "--version", version, "--release-notes-file", str(release_notes),
+                "--output", str(artifacts),
             ])
-            run(["claude", "plugin", "validate", str(marketplace), "--strict"], env=env)
-            run(["claude", "plugin", "validate", str(marketplace / "zzzops"), "--strict"], env=env)
-            run(["claude", "plugin", "marketplace", "add", str(marketplace), "--scope", "user"], env=env)
+            claude_plugin = Path(built.get("claude_plugin", "")) if isinstance(built, dict) else Path()
+            if not claude_plugin.is_file():
+                raise AcceptanceError("release builder did not produce the Claude plugin archive")
+            extract_archive(claude_plugin, plugin)
+            run(["claude", "plugin", "validate", str(root), "--strict"], env=env)
+            run(["claude", "plugin", "validate", str(plugin), "--strict"], env=env)
+            run(["claude", "plugin", "marketplace", "add", str(root), "--scope", "user"], env=env)
             available = json_output(["claude", "plugin", "list", "--available", "--json"], env=env)
-            validate_available(available.get("available") if isinstance(available, dict) else None, version)
+            validate_available(
+                available.get("available") if isinstance(available, dict) else None,
+                version,
+                "./plugins/zzzops",
+            )
             run(["claude", "plugin", "install", "zzzops@zzzops", "--scope", "user", "--yes"], env=env)
             install = validate_install(json_output(["claude", "plugin", "list", "--json"], env=env), config, version)
             details = run(["claude", "plugin", "details", "zzzops@zzzops"], env=env)
