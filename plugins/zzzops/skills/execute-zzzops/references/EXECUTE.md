@@ -4,44 +4,41 @@
 
 ## Select
 
-1. Read the charter and use the current BACKENDS checkpoint portfolio; never reread it. Require `complete:true` and `valid:true`; resolve findings instead of selecting from an invalid graph, and use its compact relationships/claims/reviews rather than rereading goals. If the human queue is non-empty, run `UNBLOCK.md` to order and persist consequential gates, then continue independently actionable work.
-   `zzzops-feedback` goals appear only with current-session approval covering the whole queue; never ask per issue, and keep `--include-feedback` on every checkpoint refresh.
-   Treat that complete checkpoint as the current queue read until a local state mutation, provider failure, explicit freshness requirement, or observed drift requires one refresh. Do not run an extra portfolio command merely to rediscover the same goals.
-2. Route `work_state: triage|prepare` through `CREATE.md`. It may update goal state or justified children, never claim, branch, edit source, or start implementation.
-3. `write` permits reservation and source changes only with valid effective engineering rigor. `wait_dependency` permits policy-authorized read-only investigation; `wait_human`, `blocked`, and `terminal` wait. PROJECT dependency policy derives `write`, including permitted review-checkpoint stacking; no other state grants it.
-4. Obey authority and explicit PROJECT priority first. Within the same effective priority, prefer evidenced charter/KPI value, safety/risk reduction, and unlocks: choose high-value, risk-reducing or unlocking work over low-value easy or fast work. Then prefer confidence, faster observable feedback, and lower difficulty; difficulty is cost, not value and never a reason to maximize item count. Unmeasured KPIs may support qualitative rationale, but never invent a baseline, score, or precision. On an exact tie use PROJECT resume policy, then the lowest goal key.
+1. Use the charter and current BACKENDS checkpoint; require `complete:true`/`valid:true` and resolve findings before selecting. Use compact relationships/claims/reviews without rereading goals. If the human queue exists, use `UNBLOCK.md` to persist/order gates, then continue independent work. Include `zzzops-feedback` only with queue-wide current-session approval and preserve `--include-feedback` on refresh. Treat it as the current queue read until mutation, provider failure, required freshness, or drift permits one refresh; do not rediscover via `portfolio`.
+2. Route `work_state: triage|prepare` through `CREATE.md`; it may update state/justified children, never claim, branch, edit, or implement.
+3. `write` alone permits reservation/source changes, with valid effective engineering rigor. `wait_dependency` permits policy-authorized read-only investigation; `wait_human`, `blocked`, and `terminal` wait. PROJECT alone derives `write`, including allowed review-checkpoint stacking.
+4. Obey authority and explicit PROJECT priority first. At equal priority choose risk-reducing or unlocking work over low-value easy or fast work; then confidence, feedback speed, and lower difficulty; difficulty is cost, not value. Never invent a baseline, score, or precision. Exact tie: PROJECT resume policy, then the lowest goal key.
 
-Execution assumes the user is absent and never asks an interactive question. Persist each unanswered consequential question with category, evidence, recommendation, boundary, safe work, and trigger. Never infer approval; stop only affected work and continue authorized goals until true queue exhaustion.
+Execution assumes the user is absent and never asks an interactive question. Persist each unanswered consequential question with category, evidence, recommendation, boundary, safe work, and trigger. Never infer approval; stop affected work only and continue to true queue exhaustion.
 
-Before substantive work on a newly selected goal or later-turn resume, tell the user in one plain sentence the intended outcome and immediate scope. Do this before reservation, edits, or implementation commands; do not repeat it for same-turn tool progress or make it an approval gate.
+Before substantive work on a newly selected goal or resume, state outcome/scope before reservation/edits; do not repeat or make it an approval gate.
 
 Update the user only for a new result, decision, risk, changed assumption, required action, or long-operation heartbeat; never recap unchanged state.
 
 ## Execute
 
-1. Re-read only the selected goal and selection-critical parent/dependencies; compare revision/digest, declare known resources, then reserve the bundle per `GOAL_SYSTEM.md`. On contention refresh once and choose other work; only the winner claims or begins work.
-   If it lacks the current schema label or compact body, run `goal inspect`, refresh it, and never sweep other bodies/comments.
-2. For source changes, establish/resume the policy-selected topology from `BRANCH_REVIEW.md` and persist branch/base/target before editing. Then follow `../../../rules/EXECUTION_STRATEGY.md`: capture baseline; implement one smallest falsifiable chunk; run/inspect/record the real probe before continuing; widen only after proof, leaving exact-equivalent broad validation to required CI.
-3. Work to a verified checkpoint without silent scope expansion. Classify discoveries as scope, checklist, child, dependency, or root. Apply PROJECT test-bug policy; never hide a failure, weaken the test, or expand authority silently.
-4. At checkpoints append material assumptions, new constraints, and plan deviations—not tool logs—to history. Resolve in-scope decisions under automated-design policy or record one blocker; never interview live.
-5. Persist evidence at natural checkpoints. Follow PROJECT-limited parallel/worktree rules; coordinator owns ZzzOps state and integration.
+1. Re-read only the selected goal and critical parent/dependencies; match revision/digest, declare resources, then reserve per `GOAL_SYSTEM.md`. On contention refresh once and switch; only the winner starts. If schema/body is legacy, `goal inspect` it and refresh—never sweep others.
+2. For source changes, establish `BRANCH_REVIEW.md` topology and persist branch/base/target before editing. Follow `../../../rules/EXECUTION_STRATEGY.md`: baseline, one smallest falsifiable chunk, then run/inspect/record its real probe; widen only after proof and leave exact-equivalent broad checks to required CI.
+3. Work to a verified checkpoint without scope expansion. Classify discoveries as scope, checklist, child, dependency, or root. Apply PROJECT test-bug policy; never hide failures, weaken tests, or expand authority.
+4. At checkpoints append material assumptions, new constraints, and plan deviations—not tool logs. Resolve in-scope decisions under automated-design policy or record one blocker; never interview live.
+5. Persist evidence naturally. Follow PROJECT parallel/worktree limits; coordinator owns state/integration.
 
 ## GitHub read budget
 
-- Use one consolidated PR-state read per review checkpoint: request the PR state, exact head, checks, review decision, and comments together. Reuse that result for the matching checkpoint rather than issuing separate status, checks, and review reads.
-- Poll only through an enabled bounded watch or heartbeat. Each unchanged poll uses one consolidated PR-state read; do not poll while implementing, and stop the watch as soon as a terminal state or a human decision is reached.
-- Exact-head, permission, merge, and transition readbacks remain mandatory at their safety boundaries. Reuse reduces equivalent reads; it never authorizes stale cached state.
+- Use one consolidated PR-state read per review checkpoint for state, exact head, checks, review decision, and comments; reuse it.
+- Poll only through enabled bounded watch/heartbeat using that consolidated read; never while implementing, and stop at terminal/human decision.
+- Exact-head, permission, merge, and transition readbacks remain mandatory; reuse never authorizes stale state.
 
 ## Block, complete, cycle
 
-- On a blocker, follow `../../../rules/BLOCKERS.md`: record the unanswered request and continuation, do only bounded safe work, then keep active or block/release claim and reservation before switching.
+- On blockers use `../../../rules/BLOCKERS.md`: persist request/continuation, do bounded safe work, then stay active or block/release claim/reservation before switching.
 - Before `done`, apply effective engineering rigor: `vibe` may accept observed behavior when policy permits; `structured` requires observable criteria, targeted checks, and canonical verification; `agentic` requires relevant deterministic gates, regressions, architecture guardrails, and security/data/recovery/operations evidence. Created-but-unrun machinery is not proof. Cite each criterion, verify children/blockers/checks, and state gaps; build/lint/types/review prove only themselves. Apply `SELF_REVIEW.md` and `BRANCH_REVIEW.md`; `human_after_checks` still requires approval.
-- Follow PROJECT Git/review/commit policy, staging only authorized implementation and pending local ZzzOps state; a GitHub-only state change never causes an empty commit. Refresh the batch after state mutation, recheck parent/unlocks, then select again.
+- Follow PROJECT Git/review/commit policy; stage only authorized implementation/pending local state, never an empty commit for GitHub-only state. After mutation refresh, recheck parents/unlocks, and select again.
 
 ## Exhaustion and handoff
 
-When no goal has `work_state: triage|prepare|write`, rebuild the human queue through `UNBLOCK.md`, leave every request durable, and hand off the highest-leverage required actions without asking for a live response. On a later invocation, resolve any supplied answers and retry when policy restores work. Do not poll or watch for human input during execution.
+When no goal has `work_state: triage|prepare|write`, rebuild the durable human queue via `UNBLOCK.md` and hand off highest-leverage actions without asking live. Later resolve supplied answers and retry when policy restores work; never poll for human input.
 
-If still empty, invoke `$suggest-zzzops-work` in apply mode only when reviewed PROJECT policy explicitly enables refill. Use its category and count limits; never loop-refill or enable policy yourself.
+If empty, `$suggest-zzzops-work` may apply only under explicit reviewed refill policy and its limits; never enable or loop-refill.
 
-Stop only for user stop, runtime boundary, required authority/risk, unavailable/unresolved human/external blocker, or no qualifying refill. First make touched goals resumable (next action, evidence, blockers, claim, links, index, history). Apply INITIALIZATION's user-facing contract: report outcome, any one required action, and what remains; summarize checks and keep resume mechanics internal.
+Stop only for user stop, runtime boundary, authority/risk, unresolved human/external blocker, or no refill. First make touched goals resumable (action, evidence, blockers, claim, links/history). Report outcome, one required action, remaining work, and checks; keep mechanics internal.

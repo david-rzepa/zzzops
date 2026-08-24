@@ -1,20 +1,20 @@
 # Branch and human-review lifecycle
 
-Apply reviewed PROJECT Git/review policy to source-changing goals. Capture stays Git-free. Never absorb unrelated work, duplicate a live goal branch/PR, or branch without safe repository support.
+Apply PROJECT Git/review policy to source goals. Capture stays Git-free. Never absorb unrelated work, duplicate a live goal branch/PR, or branch without safe support.
 
 ## Topology and overlap
 
 1. Record/reuse one `implementation` identity per goal: branch, base, target, PR, review state/checkpoint.
-2. Resolve bases/dependencies from PROJECT. The fallback waits for dependencies to be `done`, then branches from the nearest authorized trunk containing them; read-only preparation cannot claim, edit, branch, or mark work started. `stack_from_reviewed_checkpoint` preserves the edge/exact reviewed ancestry and merges dependency before child. Unresolved dependencies, change requests, missing checkpoints, or conflicting parent changes block writes.
-3. Apply `parent_pseudo_trunk`/`child_target` recursively. By default a parent with children owns their pseudo-trunk; children target the nearest parent and may base on a sibling dependency. Integrate reviewed children there in dependency order, then run combined checks/parent criteria before presenting upstream.
+2. Resolve bases/dependencies from PROJECT. Fallback waits for `done`, then branches from the nearest authorized trunk containing them; read-only preparation cannot start work. `stack_from_reviewed_checkpoint` preserves exact reviewed ancestry and merges dependency first. Unresolved dependencies, change requests, absent checkpoints, or parent conflicts block writes.
+3. Apply `parent_pseudo_trunk`/`child_target` recursively. A parent normally owns the pseudo-trunk; children target it and may base on sibling dependencies. Integrate reviewed children in dependency order, then run combined parent checks before upstream review.
 
 Create/resume the recorded branch before edits. Stop on unattributable dirt; record authorized topology exceptions.
 
 Before implementation inspect open PRs overlapping advisory paths/target. Compare each PR with its immediate base; inherited upstream commits are not child overlap. Branches stay exclusive. Sibling/chained PRs may share an eventual target; a child may target its reviewed parent/dependency.
 
-When upstream changes/merges, update or retarget downstream branches, recompute immediate-base diffs, resolve conflicts, and rerun affected checks. Repeat target, mergeability, overlap, conflict, and risk inspection before review/integration. Advisory overlap never waives reconciliation/regression proof.
+After upstream changes, update/retarget downstream branches, recompute immediate-base diffs, resolve conflicts, and rerun affected checks. Recheck target, mergeability, overlap, conflict, and risk before review/integration; advisory overlap waives no proof.
 
-Under `pull_request_unit: per_goal`, each source goal owns one branch/PR; size or one run never implies bundling. Combine only under authorized `shared_pull_request`, recording rationale, identity, target, and review effect on every goal. Reuse identities after blockers. Parent/child PRs remain distinct and follow resolved topology. A PR may hold coherent commits; commit policy is separate. Without PR capability, follow PROJECT integration policy or block on missing required authority/capability.
+With `pull_request_unit: per_goal`, each source goal owns one branch/PR; size/run does not imply bundling. Combine only under authorized `shared_pull_request`, recording rationale, identity, target, and review effect per goal. Reuse after blockers; parent/child PRs stay distinct. Commit policy is separate. Without PR capability follow PROJECT or block.
 
 ## Issue links
 
@@ -22,7 +22,7 @@ Use `Tracks #N`; default-branch closing keywords are insufficient. Only after th
 
 ## Review gate
 
-At each checkpoint, perform PROJECT `review_state_reads_per_checkpoint` bounded consolidated reads of review state, unresolved inline threads, relevant comments, PR checks, and exact head. Prefer thread-aware data; classify actionable, resolved/outdated, discussion-only, automated, ambiguous, or unauthorized. Reuse the one result for that checkpoint instead of issuing equivalent separate reads. Record actionable file/line context. Poll only under an enabled human-unblock watch.
+At each checkpoint, use PROJECT bounded consolidated reads for review, unresolved threads/comments, checks, and exact head. Classify actionable, resolved/outdated, discussion, automated, ambiguous, or unauthorized; reuse the result and record actionable file/line. Poll only under enabled human-unblock watch.
 
 Change only authorized actionable feedback on the recorded branch/PR. Re-read head/threads first; after each verified change rerun self-review/checks, record the new exact checkpoint, and invalidate approval. Ambiguous, expanding, conflicting, or unauthorized feedback becomes a categorized blocker. Code changes do not resolve provider threads.
 
