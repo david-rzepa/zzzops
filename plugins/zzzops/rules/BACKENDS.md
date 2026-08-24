@@ -1,25 +1,21 @@
 # GitHub goal backend
 
-Canonical policy makes GitHub Issues goal authority; `.zzzops/PROJECT.md` summarizes it.
-
-Require checkpoint `complete:true`/`valid:true`; never rerun `portfolio`. Stage reads from minimal indexes, to selected bodies, then material comments. Re-read only a selected goal and match revision/digest; inspect a closed goal before using its history. Refresh once after mutation/drift; standalone `portfolio` is comparison-only.
-
-Ordinary checkpoints omit `zzzops-feedback`. `--include-feedback` requires one explicit current-session approval covering the whole queue; never persist it or ask per issue.
+GitHub Issues is goal authority; `.zzzops/PROJECT.md` summarizes policy. Require checkpoint `complete:true`/`valid:true`; never rerun `portfolio`. Read minimal indexes, selected bodies, then material comments. Match the selected revision/digest; inspect closed goals before using history. Refresh once after mutation/drift; standalone `portfolio` only compares. Ordinary checkpoints omit `zzzops-feedback`; `--include-feedback` needs one current-session queue-wide approval—never persist or ask per issue.
 
 ## GitHub Issues (`github_issues`)
 
-`checkpoint` confirms identity, auth, Issues, and management permission in one paginated process. Use `gh` only for targeted operations and apply INITIALIZATION's authenticated-context rule.
+`checkpoint` confirms identity, auth, Issues, and management permission once. Use `gh` only for targeted operations under INITIALIZATION's authenticated-context rule.
 
-- Identity is repository plus issue number/URL. Use a plain title and concise human sections without generated IDs, metadata, frontmatter, or repeated title. Goals inherit repository visibility; forbid secrets/raw sensitive data.
-- Create with `<python> <zzzops-cli> --repo . goal create --input FILE`. Its UTF-8 JSON contains exactly `schema_version`, plain human `title`/`body`, optional non-ZzzOps `labels`, and a complete revision-1 `new` `goal` without claim/implementation. The CLI validates, renders/labels, makes one JSON-stdin create, and confirms identity. Preserve unknowns as blockers; derive inverse edges/queue.
+- Identity is repository plus issue number/URL. Use a plain title and concise human sections without generated IDs/frontmatter/repeated title. Goals inherit visibility; forbid secrets/raw sensitive data.
+- Create via `<python> <zzzops-cli> --repo . goal create --input FILE`. UTF-8 JSON has exactly `schema_version`, human `title`/`body`, optional non-ZzzOps `labels`, and a complete revision-1 `new` goal without claim/implementation. The CLI validates, labels, creates via JSON stdin, and confirms identity. Preserve unknowns as blockers; derive inverse edges/queue.
 - Parent/dependencies are same-repository positive issue numbers; derive inverse edges portfolio-wide.
-- Keep bodies current-only: active human sections plus relationships, open blockers, next action, and compact managed state. Before replacement, confirm one lossless content-addressed history comment containing the prior body and requested transition. Retries reuse its transition ID and never duplicate confirmed history.
-- Derive `zzzops`, current `zzzops:schema:v*`, one status, and one priority label. New goals start current; `goal inspect` repairs one selected legacy goal and `goal migrate-open` is bounded/open-only.
-- Reservations use transient goal/resource labels; GitHub name uniqueness chooses one Issues-permitted winner. Metadata binds repository, goal/revision, owner/run, expiry; renew/recover by immutable node ID and exact readback so delayed cleanup cannot delete a replacement. Drift, conflict, malformed state, provider failure, or uncertainty denies ownership; no fallback lock.
-- Apply updates via `<python> <zzzops-cli> goal transition --goal N --input FILE`. UTF-8 input binds expected revision/digest to the next goal, preserves human text, derives labels/state, and validates the write.
-- Capability/auth/permission/Issues/label drift is an explicit blocker; never invent fallback authority.
+- Bodies keep current human sections, relationships, open blockers, next action, and compact state. Before replacement confirm one lossless content-addressed history comment with prior body/requested transition. Retries reuse its transition ID without duplicate history.
+- Derive `zzzops`, current schema, one status, and one priority label. `goal inspect` repairs one selected legacy goal; `goal migrate-open` is bounded/open-only.
+- Transient goal/resource labels reserve one GitHub-name-unique winner. Bind repository, goal/revision, owner/run, expiry; renew/recover by immutable node ID and exact readback. Drift, conflict, malformed/provider failure, or uncertainty denies ownership; no fallback lock.
+- Update via `<python> <zzzops-cli> goal transition --goal N --input FILE`; input binds expected revision/digest, preserves human text, derives labels/state, and validates the write.
+- Capability/auth/permission/Issues/label drift blocks explicitly; invent no fallback authority.
 
 ## Git boundary
 
-- Capture (`$add-zzzops-goal`, migrate apply, suggest apply) never creates a branch, commit, push, or PR. GitHub issue writes need no empty commit.
-- Execute reads Git/review/commit behavior from reviewed PROJECT policy. Before source work, checkpoint only pending local ZzzOps state if needed; never include unrelated changes. Link implementation commits/PRs to the canonical goal when policy uses them.
+- Capture/migrate/suggest writes never create branch, commit, push, PR, or empty checkpoint.
+- Execute takes Git/review/commit behavior from PROJECT. Before source work checkpoint only pending local ZzzOps state, exclude unrelated changes, and link commits/PRs when policy requires.
