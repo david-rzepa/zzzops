@@ -256,10 +256,11 @@ If a new test discovers a real bug, ZzzOps files a separate TODO and asks you be
 
 ## Prompt budget
 
-`<python> .agents/prompt_stats.py` prints a stable estimate: `ceil(canonical UTF-8 bytes / 4)`, with line endings normalized to LF. It is useful for prompt-budget regression, not billing. CI enforces the committed ceiling; inspect it after any prompt change:
+`<python> .agents/prompt_stats.py` prints a stable estimate: `ceil(canonical UTF-8 bytes / 4)`, with line endings normalized to LF. It is useful for prompt-size regression, not billing. CI enforces committed limits for always-loaded `AGENTS.md` context and the frequently routed goal-capture and execution paths. The complete inventory and other routed workflows remain advisory, so mutually exclusive one-off workflows do not compete for a misleading global allowance. Inspect the relevant reports after any prompt change:
 
 ```powershell
 <python> .agents/prompt_stats.py
+<python> .agents/prompt_stats.py --profiles
 <python> .agents/prompt_stats.py --check
 ```
 

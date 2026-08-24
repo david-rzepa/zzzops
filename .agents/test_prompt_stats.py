@@ -32,9 +32,52 @@ class PromptStatsTests(unittest.TestCase):
         self.assertIn("| `AGENTS.md` | 8 | 2 |", report)
         self.assertIn("| **Total** | **8** | **2** |", report)
 
-    def test_budget_boundary_is_explicit(self) -> None:
-        self.assertTrue(prompt_stats.within_budget([("a", 4, 2)], limit=2))
-        self.assertFalse(prompt_stats.within_budget([("a", 4, 3)], limit=2))
+    def test_only_always_loaded_and_hot_path_contexts_are_enforced(self) -> None:
+        root = SCRIPT.parents[1]
+        measurements = prompt_stats.enforced_context_profiles(root)
+        self.assertEqual(
+            {"always-loaded/codex", "capture/codex", "execution/codex"},
+            set(measurements),
+        )
+        self.assertEqual(
+            prompt_stats.workflow_profile(root, "capture", "codex")[:2],
+            measurements["capture/codex"],
+        )
+
+    def test_cold_path_growth_is_advisory_but_hot_path_growth_fails(self) -> None:
+        limits = {
+            "always-loaded/codex": 700,
+            "capture/codex": 3_800,
+            "execution/codex": 9_600,
+        }
+        within_limits = {
+            "always-loaded/codex": (2_499, 625),
+            "capture/codex": (14_776, 3_694),
+            "execution/codex": (37_621, 9_406),
+            "bootstrap-greenfield/codex": (4_000_000, 1_000_000),
+        }
+        self.assertEqual([], prompt_stats.budget_overruns(within_limits, limits))
+
+        for context, limit in limits.items():
+            with self.subTest(context=context):
+                over_limit = dict(within_limits)
+                over_limit[context] = (4 * (limit + 1), limit + 1)
+                self.assertEqual(
+                    [(context, limit + 1, limit)],
+                    prompt_stats.budget_overruns(over_limit, limits),
+                )
+
+    def test_enforced_report_distinguishes_advisory_inventory(self) -> None:
+        report = prompt_stats.render_enforced_budget_report(
+            {"always-loaded/codex": (2_499, 625)},
+            {"always-loaded/codex": 700},
+            prompt_count=29,
+            inventory_bytes=81_165,
+            inventory_tokens=20_302,
+        )
+        self.assertIn("# Enforced prompt budgets", report)
+        self.assertIn("| always-loaded/codex | 2499 | 625 | 700 | PASS |", report)
+        self.assertIn("Advisory total inventory: 29 prompts", report)
 
     def test_workflow_profiles_cover_codex(self) -> None:
         root = SCRIPT.parents[1]
@@ -45,6 +88,7 @@ class PromptStatsTests(unittest.TestCase):
         )
         self.assertEqual(set(prompt_stats.WORKFLOW_PROMPTS), set(prompt_stats.WORKFLOW_SIGNALS))
         self.assertIn("| Workflow | Codex bytes | Codex est. tokens |", report)
+        self.assertIn("Advisory routed workflow", report)
         self.assertEqual({"codex"}, set(prompt_stats.HARNESS_PROMPTS))
         for workflow in prompt_stats.WORKFLOW_PROMPTS:
             self.assertIn(f"| {workflow} |", report)
