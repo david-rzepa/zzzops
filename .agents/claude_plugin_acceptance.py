@@ -42,16 +42,16 @@ def json_output(command: list[str], *, env: dict[str, str] | None = None) -> Any
         raise AcceptanceError(f"command returned invalid JSON: {command[0]} {command[1]}") from exc
 
 
-def validate_available(records: Any, version: str) -> None:
+def validate_available(records: Any, version: str, source: str = "./zzzops") -> None:
     expected = {
         "pluginId": "zzzops@zzzops", "name": "zzzops", "marketplaceName": "zzzops",
-        "version": version, "source": "./zzzops",
+        "version": version, "source": source,
     }
     if (
         not isinstance(records, list) or len(records) != 1 or not isinstance(records[0], dict)
         or any(records[0].get(key) != value for key, value in expected.items())
     ):
-        raise AcceptanceError("available plugin inventory does not match the generated marketplace")
+        raise AcceptanceError("available plugin inventory does not match the expected marketplace")
 
 
 def validate_details(details: str) -> None:
@@ -104,7 +104,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         with tempfile.TemporaryDirectory(prefix="zzzops-claude-acceptance-") as directory:
             workspace = Path(directory)
-            marketplace = workspace / "marketplace"
             plugin = workspace / "plugin"
             artifacts = workspace / "artifacts"
             config = workspace / "config"
@@ -127,18 +126,15 @@ def main(argv: list[str] | None = None) -> int:
             if not claude_plugin.is_file():
                 raise AcceptanceError("release builder did not produce the Claude plugin archive")
             extract_archive(claude_plugin, plugin)
-            generated = json_output([
-                sys.executable, str(root / ".github" / "scripts" / "build_claude_plugin.py"),
-                "--version", version, "--output", str(marketplace),
-            ])
-            generated_marketplace = Path(generated.get("marketplace", "")) if isinstance(generated, dict) else Path()
-            if generated_marketplace.resolve() != marketplace.resolve() or not marketplace.is_dir():
-                raise AcceptanceError("Claude marketplace generator did not produce the requested temporary layout")
-            run(["claude", "plugin", "validate", str(marketplace), "--strict"], env=env)
+            run(["claude", "plugin", "validate", str(root), "--strict"], env=env)
             run(["claude", "plugin", "validate", str(plugin), "--strict"], env=env)
-            run(["claude", "plugin", "marketplace", "add", str(marketplace), "--scope", "user"], env=env)
+            run(["claude", "plugin", "marketplace", "add", str(root), "--scope", "user"], env=env)
             available = json_output(["claude", "plugin", "list", "--available", "--json"], env=env)
-            validate_available(available.get("available") if isinstance(available, dict) else None, version)
+            validate_available(
+                available.get("available") if isinstance(available, dict) else None,
+                version,
+                "./plugins/zzzops",
+            )
             run(["claude", "plugin", "install", "zzzops@zzzops", "--scope", "user", "--yes"], env=env)
             install = validate_install(json_output(["claude", "plugin", "list", "--json"], env=env), config, version)
             details = run(["claude", "plugin", "details", "zzzops@zzzops"], env=env)

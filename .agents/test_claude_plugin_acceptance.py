@@ -37,6 +37,8 @@ class ClaudePluginAcceptanceTests(unittest.TestCase):
             "version": "2.0.0", "source": "./zzzops", "description": "ZzzOps",
         }]
         self.harness.validate_available(available, "2.0.0")
+        available[0]["source"] = "./plugins/zzzops"
+        self.harness.validate_available(available, "2.0.0", "./plugins/zzzops")
         details = "Skills (9)  " + ", ".join(sorted(EXPECTED_SKILLS)) + "\n  Agents (0)"
         self.harness.validate_details(details)
         with self.assertRaisesRegex(self.harness.AcceptanceError, "skill inventory"):

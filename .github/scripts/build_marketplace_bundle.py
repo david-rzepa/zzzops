@@ -188,7 +188,9 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
     plugin = root / "plugins" / "zzzops"
     renderer = runpy.run_path(str(plugin / "zzzops" / "package.py"))["render_skill_metadata"]
     result: dict[str, bytes] = {}
-    allowed_top_level = {".codex-plugin", "assets", "plugin.json", "rules", "scripts", "skills", "zzzops"}
+    allowed_top_level = {
+        ".claude-plugin", ".codex-plugin", "assets", "plugin.json", "rules", "scripts", "skills", "zzzops",
+    }
     for path in sorted(plugin.rglob("*"), key=lambda item: item.relative_to(plugin).as_posix()):
         relative = path.relative_to(plugin).as_posix()
         if PurePosixPath(relative).parts[0] not in allowed_top_level:
@@ -200,7 +202,7 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
         data = path.read_bytes()
         if path.suffix.casefold() in {".json", ".md", ".py", ".yaml", ".yml"}:
             data = data.replace(b"\r\n", b"\n")
-        if relative in {"plugin.json", ".codex-plugin/plugin.json"}:
+        if relative in {"plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json"}:
             manifest = json.loads(data.decode("utf-8-sig"))
             manifest["version"] = version
             data = canonical_json(manifest)
@@ -211,7 +213,7 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
         scan_for_secrets(relative, data)
         result[relative] = data
     required = {
-        "plugin.json", ".codex-plugin/plugin.json", "assets/logo.png", "assets/logo-dark.png",
+        "plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "assets/logo.png", "assets/logo-dark.png",
         "assets/composer-icon.png", "assets/composer-icon-dark.png", "scripts/cleanup_legacy.py",
     }
     missing = sorted(required - set(result))

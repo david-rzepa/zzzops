@@ -63,7 +63,11 @@ class MarketplaceBundleTests(unittest.TestCase):
                 self.assertIn(".claude-plugin/plugin.json", names)
                 self.assertIn("zzzops/zzzops.py", names)
                 self.assertNotIn(".claude-plugin/marketplace.json", names)
-                self.assertEqual("2.0.0", json.loads(archive.read(".claude-plugin/plugin.json"))["version"])
+                packaged_manifest = json.loads(archive.read(".claude-plugin/plugin.json"))
+                committed_manifest = json.loads(
+                    (ROOT / "plugins" / "zzzops" / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+                )
+                self.assertEqual(committed_manifest, packaged_manifest)
             with ZipFile(one["plugin"]) as archive:
                 names = archive.namelist()
                 self.assertIn("plugin.json", names)
@@ -167,6 +171,27 @@ class MarketplaceBundleTests(unittest.TestCase):
         canonical = self.builder.plugin_files(ROOT, "2.0.0")
         for relative, content in canonical.items():
             self.assertEqual(content, files[f"zzzops/{relative}"], relative)
+
+    def test_committed_claude_marketplace_targets_the_canonical_plugin_tree(self) -> None:
+        canonical = json.loads((ROOT / "plugins" / "zzzops" / "plugin.json").read_text(encoding="utf-8"))
+        marketplace = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
+        manifest = json.loads(
+            (ROOT / "plugins" / "zzzops" / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+        )
+
+        self.assertEqual("./plugins/zzzops", marketplace["plugins"][0]["source"])
+        self.assertEqual(canonical["name"], marketplace["name"])
+        self.assertEqual(canonical["author"], marketplace["owner"])
+        self.assertEqual(
+            {"description": canonical["description"], "version": canonical["version"]},
+            marketplace["metadata"],
+        )
+        self.assertEqual(canonical["name"], marketplace["plugins"][0]["name"])
+        self.assertEqual(canonical["description"], marketplace["plugins"][0]["description"])
+        self.assertEqual(canonical["version"], marketplace["plugins"][0]["version"])
+        self.assertEqual(canonical["name"], manifest["name"])
+        for field in ("version", "description", "author", "homepage", "repository", "license", "keywords"):
+            self.assertEqual(canonical[field], manifest[field], field)
 
     def test_claude_generation_rejects_missing_or_invalid_canonical_input(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
