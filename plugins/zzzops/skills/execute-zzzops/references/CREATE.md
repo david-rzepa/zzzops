@@ -2,7 +2,7 @@
 
 1. Use the complete BACKENDS portfolio and project evidence for duplicates/facts. Capture outcome, value, constraints, owner, dates, evidence, and non-goals; refine rather than duplicate.
 2. Create one provisional human-first canonical issue through `BACKENDS.md`; use PROJECT defaults unless evidence overrides them.
-3. Investigate outcome/proof/scope/decisions/dependencies/risks/authority and goal-versus-checklist/duplicate/child. If unfamiliarity or decision risk could alter architecture, scope, acceptance, or quality, run a bounded blind-spot pass for known unknowns, tacit criteria, and blind spots. Use the cheapest research, high-fidelity reference, alternatives, or disposable prototype; return actionable questions/risks/experiments. Skip well-understood work; persist findings, not logs.
+3. Investigate outcome/proof/scope/decisions/dependencies/risks/authority and goal shape. Persist evidenced rigor-risk inputs/authorized override and require a valid effective level; ambiguous metadata blocks preparation. When unfamiliarity or decision risk could alter architecture, scope, acceptance, or quality, run a bounded blind-spot pass for known unknowns, tacit criteria, and blind spots. Use the cheapest useful evidence or disposable prototype; persist findings, not logs.
 4. For consequential ambiguity apply `BLOCKERS.md`: record recommendation and continuation boundary, expose the human queue, and continue independent work without asking live. Only assume reversible cosmetics; never foundational choices.
 5. Write explicit scope and verifiable criteria.
 6. Map parent/dependencies; use a child only for distinct verifiable, prioritized/blocked/claimed work or risk, otherwise a checklist. Obey PROJECT depth, derive inverse edges, reject cycles.
