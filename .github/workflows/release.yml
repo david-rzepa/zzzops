@@ -58,9 +58,25 @@ jobs:
       - name: Run the shared Windows plugin validation leg
         run: python .github/scripts/run_product_validation.py --platform windows
 
+  validate-claude:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.14.0'
+      - name: Install pinned Claude Code
+        run: npm install --global @anthropic-ai/claude-code@2.1.241
+      - name: Test generated marketplace installation and discovery
+        run: python .agents/claude_plugin_acceptance.py --claude-version 2.1.241
+
   release:
     if: github.ref == 'refs/heads/main'
-    needs: [validate-linux, validate-windows]
+    needs: [validate-linux, validate-windows, validate-claude]
     runs-on: ubuntu-latest
     permissions:
       contents: write
