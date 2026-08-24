@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 PORTFOLIO_SCHEMA_VERSION = 2
 AVAILABLE_WORK_STATES = {"triage", "prepare", "write"}
+ENGINEERING_RIGOR_LEVELS = ("vibe", "structured", "agentic")
 _exclusive_resources: Callable[[list[str], Any], list[str]] | None = None
 _normalize_resource_policy: Callable[[Any], dict[str, Any]] | None = None
 _text_present: Callable[[Any], bool] | None = None
@@ -59,6 +60,66 @@ def _cycle_nodes(records: list[dict[str, Any]], relation: str) -> set[Any]:
 
 def _portfolio_key(value: Any) -> tuple[int, Any]:
     return (0, value) if isinstance(value, int) and not isinstance(value, bool) else (1, str(value))
+
+
+def derive_engineering_rigor(persisted: Any, policy: Any) -> dict[str, Any]:
+    inputs = persisted if isinstance(persisted, dict) else {}
+    raw_categories = inputs.get("risk_categories", [])
+    categories = list(raw_categories) if isinstance(raw_categories, list) else []
+    override = inputs.get("override") if isinstance(inputs.get("override"), dict) else None
+    errors: list[str] = []
+    if persisted is not None and not isinstance(persisted, dict):
+        errors.append("metadata_invalid")
+    elif isinstance(persisted, dict):
+        if not isinstance(raw_categories, list):
+            errors.append("risk_categories_invalid")
+        if persisted.get("override") is not None and override is None:
+            errors.append("override_invalid")
+    projection = {
+        "risk_categories": categories, "override": override, "effective": None,
+        "valid": not errors, "errors": errors,
+    }
+    if not isinstance(policy, dict) or policy.get("decision") not in ENGINEERING_RIGOR_LEVELS:
+        projection["provenance"] = {"status": "legacy_policy", "project_default": None, "matched_minimums": {}}
+        return projection
+    settings = policy.get("settings") if isinstance(policy.get("settings"), dict) else {}
+    minimums = settings.get("minimums") if isinstance(settings.get("minimums"), dict) else {}
+    overrides = settings.get("overrides") if isinstance(settings.get("overrides"), dict) else {}
+    rank = {level: index for index, level in enumerate(ENGINEERING_RIGOR_LEVELS)}
+    unknown_categories = sorted({category for category in categories if category not in minimums})
+    if unknown_categories:
+        errors.append("unknown_risk_categories")
+    matched = {category: minimums[category] for category in categories if minimums.get(category) in rank}
+    default = policy["decision"]
+    risk_floor = max(matched.values(), key=rank.get) if matched else None
+    floor = max((default, risk_floor), key=rank.get) if risk_floor else default
+    effective = floor
+    if override is not None and override.get("level") in rank:
+        requested = override["level"]
+        if overrides.get("per_goal") is not True:
+            errors.append("per_goal_override_disabled")
+        elif rank[requested] >= rank[floor]:
+            if rank[requested] > rank[floor] and overrides.get("raising") != "allowed":
+                errors.append("override_raising_disabled")
+            else:
+                effective = requested
+        elif risk_floor is not None and rank[requested] < rank[risk_floor]:
+            errors.append("override_below_risk_minimum")
+        elif overrides.get("lowering") != "explicit_user_authority":
+            errors.append("override_lowering_disabled")
+        elif override.get("authority") != "explicit_user":
+            errors.append("override_authority_required")
+        else:
+            effective = requested
+    projection.update({
+        "effective": effective, "valid": not errors, "errors": errors,
+        "provenance": {
+            "status": "derived", "project_default": default, "matched_minimums": matched,
+            "unknown_risk_categories": unknown_categories,
+            "rule": "reviewed_default_risk_minimum_and_authorized_override",
+        },
+    })
+    return projection
 
 
 def _review_ready_dependency(record: dict[str, Any]) -> bool:
@@ -186,6 +247,14 @@ def audit_portfolio(
             terminal = record["status"] in {"done", "cancelled"}
             if terminal != (record.get("state") == "closed"):
                 findings.append({"code": "issue_state_drift", "goal": key, "detail": f"goal={record['status']}; issue={record.get('state')}"})
+        rigor = record.get("engineering_rigor")
+        if isinstance(rigor, dict):
+            for error in rigor.get("errors", []):
+                detail = error
+                if error == "unknown_risk_categories":
+                    unknown = rigor.get("provenance", {}).get("unknown_risk_categories", [])
+                    detail = "unknown risk categories: " + ", ".join(unknown)
+                findings.append({"code": f"engineering_rigor_{error}", "goal": key, "detail": detail})
     for relation in ("depends_on", "parent"):
         for key in sorted(_cycle_nodes(records, relation), key=_portfolio_key):
             findings.append({"code": f"{relation}_cycle", "goal": key, "detail": "cycle member"})
@@ -195,7 +264,7 @@ def audit_portfolio(
 def build_portfolio_snapshot(
     backend: str, records: list[dict[str, Any]], *, reads: int, raw_bytes: int,
     ignored: int = 0, as_of: datetime | None = None, git_policy: dict[str, Any] | None = None,
-    resource_policy: Any = None,
+    resource_policy: Any = None, rigor_policy: Any = None,
 ) -> dict[str, Any]:
     _, normalize_resource_policy, _ = _require_configured()
     for record in records:
@@ -211,6 +280,7 @@ def build_portfolio_snapshot(
     for record in records:
         record["children"].sort(key=_portfolio_key)
         record["blocks"].sort(key=_portfolio_key)
+        record["engineering_rigor"] = derive_engineering_rigor(record.get("engineering_rigor"), rigor_policy)
     resource_policy = normalize_resource_policy(resource_policy)
     findings = audit_portfolio(records, backend, as_of, resource_policy)
     terminal = {"done", "cancelled"}
@@ -226,6 +296,7 @@ def build_portfolio_snapshot(
         (
             "git_policy:" + json.dumps(git_policy, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
             + "resource_policy:" + json.dumps(resource_policy, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+            + "rigor_policy:" + json.dumps(rigor_policy, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
             + "\n".join(
                 f"{record['key']}:{record['revision']}:{record['digest']}"
                 for record in sorted(records, key=lambda item: _portfolio_key(item["key"]))

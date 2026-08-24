@@ -923,6 +923,25 @@ class ManagedGoalTests(unittest.TestCase):
             candidate[field] = value
             self.assertIn(f"{field} is invalid", zzzops.validate_managed_goal(candidate))
 
+    def test_managed_goal_persists_only_risk_inputs_not_derived_rigor(self):
+        goal = self.goal()
+        goal["engineering_rigor"] = {
+            "risk_categories": ["authentication", "security_sensitive"],
+            "override": {"level": "agentic", "authority": "goal_requirement", "evidence": "Public authentication boundary."},
+        }
+        self.assertEqual([], zzzops.validate_managed_goal(goal))
+        self.assertEqual(goal, zzzops.parse_managed_goal(zzzops.render_managed_goal(goal, "## Outcome\n\nRisky work.\n")))
+
+        for mutation, expected in (
+            (lambda value: value.update({"effective": "agentic"}), "unknown engineering_rigor fields"),
+            (lambda value: value.update({"risk_categories": ["Authentication"]}), "risk_categories entries"),
+            (lambda value: value.update({"risk_categories": ["payments", "payments"]}), "risk_categories must be unique"),
+            (lambda value: value.update({"override": {"level": "extreme", "authority": "goal_requirement", "evidence": "Reason"}}), "override.level"),
+        ):
+            invalid = json.loads(json.dumps(goal))
+            mutation(invalid["engineering_rigor"])
+            self.assertTrue(any(expected in error for error in zzzops.validate_managed_goal(invalid)), expected)
+
 
 class FakeGoalTransitionAdapter:
     def __init__(self, issue):
@@ -1129,6 +1148,10 @@ class GoalTransitionTests(unittest.TestCase):
             "implementation": {"branch": None, "base": None, "target": None, "pr": None,
                                "review": {"status": "not_started", "checkpoint": None}},
             "resources": [],
+            "engineering_rigor": {
+                "risk_categories": ["authentication"],
+                "override": None,
+            },
         }
 
     def issue(self):
@@ -1172,6 +1195,11 @@ class GoalTransitionTests(unittest.TestCase):
         self.assertEqual(issue["body"], history["prior_body"])
         self.assertEqual(["Baseline."], history["requested_goal"]["evidence"])
         self.assertEqual([], zzzops.parse_managed_goal(payload["body"], 42)["evidence"])
+        self.assertEqual(
+            {"risk_categories": ["authentication"], "override": None},
+            zzzops.parse_managed_goal(payload["body"], 42)["engineering_rigor"],
+        )
+        self.assertNotIn("effective", history["requested_goal"]["engineering_rigor"])
 
         adapter = FakeGoalTransitionAdapter(issue)
         transition = self.transition(issue)
@@ -1491,6 +1519,57 @@ class PortfolioTests(unittest.TestCase):
         self.assertEqual(4, snapshot["summary"]["available"])
         self.assertEqual(2, snapshot["summary"]["writable"])
         self.assertEqual(1, snapshot["summary"]["waiting"])
+
+    def test_snapshot_derives_effective_rigor_and_auditable_provenance(self):
+        plan = json.loads((PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        rigor_policy = next(item for item in plan["policy"]["sections"] if item["id"] == "engineering_rigor")
+        records = [
+            zzzops.github_goal_record(self.issue(1)),
+            zzzops.github_goal_record(self.issue(2, engineering_rigor={"risk_categories": ["authentication"], "override": None})),
+            zzzops.github_goal_record(self.issue(3, engineering_rigor={
+                "risk_categories": ["throwaway_prototypes"],
+                "override": {"level": "vibe", "authority": "explicit_user", "evidence": "User authorized a disposable spike."},
+            })),
+            zzzops.github_goal_record(self.issue(4, engineering_rigor={
+                "risk_categories": ["payments"],
+                "override": {"level": "structured", "authority": "explicit_user", "evidence": "Requested lower rigor."},
+            })),
+            zzzops.github_goal_record(self.issue(5, engineering_rigor={
+                "risk_categories": [],
+                "override": {"level": "agentic", "authority": "goal_requirement", "evidence": "Goal requires stronger evidence."},
+            })),
+            zzzops.github_goal_record(self.issue(6, engineering_rigor={
+                "risk_categories": ["unreviewed_category"], "override": None,
+            })),
+        ]
+        snapshot = zzzops.build_portfolio_snapshot(
+            "github_issues", records, reads=1, raw_bytes=100, rigor_policy=rigor_policy,
+        )
+        by_key = {item["key"]: item["engineering_rigor"] for item in snapshot["goals"]}
+        self.assertEqual("structured", by_key[1]["effective"])
+        self.assertEqual("agentic", by_key[2]["effective"])
+        self.assertEqual({"authentication": "agentic"}, by_key[2]["provenance"]["matched_minimums"])
+        self.assertEqual("vibe", by_key[3]["effective"])
+        self.assertEqual("agentic", by_key[4]["effective"])
+        self.assertFalse(by_key[4]["valid"])
+        self.assertIn("override_below_risk_minimum", by_key[4]["errors"])
+        self.assertEqual("agentic", by_key[5]["effective"])
+        self.assertTrue(by_key[5]["valid"])
+        self.assertEqual("structured", by_key[6]["effective"])
+        self.assertFalse(by_key[6]["valid"])
+        self.assertIn("unknown_risk_categories", by_key[6]["errors"])
+        self.assertEqual(["unreviewed_category"], by_key[6]["provenance"]["unknown_risk_categories"])
+        self.assertIn("engineering_rigor_override_below_risk_minimum", {item["code"] for item in snapshot["findings"]})
+        self.assertIn(
+            "engineering_rigor_unknown_risk_categories",
+            {item["code"] for item in snapshot["findings"]},
+        )
+        self.assertFalse(snapshot["valid"])
+
+        legacy = zzzops.build_portfolio_snapshot("github_issues", records[:1], reads=1, raw_bytes=100)
+        legacy_rigor = legacy["goals"][0]["engineering_rigor"]
+        self.assertIsNone(legacy_rigor["effective"])
+        self.assertEqual("legacy_policy", legacy_rigor["provenance"]["status"])
 
     def test_snapshot_derives_graph_work_state_and_compact_summary(self):
         records = [

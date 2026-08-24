@@ -20,13 +20,15 @@ GOAL_SCHEMA_LABEL_PREFIX = "zzzops:schema:v"
 GOAL_FIELDS = {
     "schema_version", "status", "priority", "value", "difficulty", "confidence",
     "parent", "depends_on", "claim", "blockers", "evidence", "next_action",
-    "revision", "implementation", "resources",
+    "revision", "implementation", "resources", "engineering_rigor",
 }
 GOAL_STATUSES = {"new", "triaged", "ready", "in_progress", "blocked", "done", "cancelled"}
 GOAL_PRIORITIES = {"P0", "P1", "P2", "P3"}
 GOAL_VALUES = {"critical", "high", "medium", "low"}
 GOAL_DIFFICULTIES = {"unknown", "XS", "S", "M", "L", "XL"}
 GOAL_CONFIDENCES = {"low", "medium", "high"}
+ENGINEERING_RIGOR_LEVELS = {"vibe", "structured", "agentic"}
+ENGINEERING_RIGOR_OVERRIDE_AUTHORITIES = {"explicit_user", "goal_requirement"}
 GOAL_TRANSITION_SCHEMA_VERSION = 1
 GOAL_TRANSITION_FIELDS = {"schema_version", "expected_revision", "expected_digest", "goal"}
 GOAL_CREATE_SCHEMA_VERSION = 1
@@ -118,6 +120,37 @@ def validate_managed_goal(goal: Any, issue_number: int | None = None) -> list[st
                 errors.append(f"blockers[{index}] must be an object")
             elif blocker.get("status") == "open" and blocker.get("category") not in BLOCKER_CATEGORIES:
                 errors.append(f"blockers[{index}].category is invalid or missing")
+    rigor = goal.get("engineering_rigor")
+    if rigor is not None:
+        if not isinstance(rigor, dict):
+            errors.append("engineering_rigor must be an object or null")
+        else:
+            unknown_rigor = sorted(set(rigor) - {"risk_categories", "override"})
+            if unknown_rigor:
+                errors.append("unknown engineering_rigor fields: " + ", ".join(unknown_rigor))
+            categories = rigor.get("risk_categories")
+            if not isinstance(categories, list):
+                errors.append("engineering_rigor.risk_categories must be a list")
+            else:
+                if any(
+                    not isinstance(item, str) or not item or item.casefold() != item
+                    or not item.replace("_", "").isalnum()
+                    for item in categories
+                ):
+                    errors.append("engineering_rigor.risk_categories entries must be lowercase identifiers")
+                if len(categories) != len(set(categories)):
+                    errors.append("engineering_rigor.risk_categories must be unique")
+            override = rigor.get("override")
+            if override is not None:
+                if not isinstance(override, dict) or set(override) != {"level", "authority", "evidence"}:
+                    errors.append("engineering_rigor.override must contain level, authority, and evidence")
+                else:
+                    if override.get("level") not in ENGINEERING_RIGOR_LEVELS:
+                        errors.append("engineering_rigor.override.level is invalid")
+                    if override.get("authority") not in ENGINEERING_RIGOR_OVERRIDE_AUTHORITIES:
+                        errors.append("engineering_rigor.override.authority is invalid")
+                    if not _text_present(override.get("evidence")):
+                        errors.append("engineering_rigor.override.evidence is required")
     if not isinstance(goal.get("revision"), int) or isinstance(goal.get("revision"), bool) or goal.get("revision", 0) < 1:
         errors.append("revision must be a positive integer")
     implementation = goal.get("implementation")
@@ -354,6 +387,7 @@ def github_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
         "next_action": goal["next_action"], "revision": goal["revision"],
         "digest": hashlib.sha256(digest_source.encode("utf-8")).hexdigest(),
         "updated_at": issue.get("updated_at"), "implementation": goal.get("implementation"),
+        "engineering_rigor": goal.get("engineering_rigor"),
         "labels": label_names, "schema_version": schema_versions[0] if len(schema_versions) == 1 else None,
         "state": issue.get("state"), "url": issue.get("html_url"),
     }
@@ -392,6 +426,7 @@ def github_archived_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
         "revision": None, "digest": hashlib.sha256(digest_source.encode("utf-8")).hexdigest(),
         "updated_at": None, "implementation": None, "labels": labels, "state": "closed",
         "url": issue.get("html_url"), "schema_version": issue.get("schema_version"),
+        "engineering_rigor": None,
     }
 
 
