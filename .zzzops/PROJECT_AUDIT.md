@@ -1,6 +1,6 @@
 # ZzzOps project policy audit
 
-Status: complete. Reviewer: user. Revision: 19.
+Status: complete. Reviewer: user. Revision: 21.
 
 ## Evidence and decisions
 
@@ -50,9 +50,9 @@ Status: complete. Reviewer: user. Revision: 19.
   - Exceptions: none
   - Unresolved: none
 - [x] `[policy:dependencies_tooling]` **Dependencies, tooling, and generated artifacts** (applicable)
-  - Decision: Use project-native tooling; do not hand-edit generated or dependency-owned files.
-  - Rationale: Keeps deterministic mechanics portable and ownership clear.
-  - Sources: E-001: .zzzops/PROJECT.md — The existing confirmed charter defines the outcome, KPIs, acceptance criteria, and value constraints.
+  - Decision: Use project-native tooling; do not hand-edit generated or dependency-owned files; generate supported platform distributions from shared canonical sources and verify them with platform-native validation and acceptance evidence.
+  - Rationale: Keeps deterministic mechanics portable, ownership clear, and Codex/Claude support aligned without divergent implementations.
+  - Sources: E-001: .zzzops/PROJECT.md — The existing confirmed charter defines the outcome, KPIs, acceptance criteria, and value constraints.; E-012: user decision and goal #300 on 2026-08-24 — Support generated, acceptance-gated Claude Code plugin artifacts derived from shared canonical sources; preserve removal of the retired per-project installer and prohibit divergent platform implementations.
   - Confidence/default: medium; ZzzOps default → accepted
   - Provenance: default origin unknown
   - Settings: `{"dependency_changes": "explicit_scope", "generated_files": "source_or_generator_only", "tooling": "project_native"}`
@@ -113,5 +113,7 @@ Status: complete. Reviewer: user. Revision: 19.
 | 2026-08-09 | ZzzOps initialization | Created pending revision 17 | Confirmed agent-generated draft; explicit policy review still required. |
 | 2026-08-09 | ZzzOps initialization | Created pending revision 18 | Confirmed agent-generated draft; explicit policy review still required. |
 | 2026-08-09 | user | Reviewed policy revision 19 | Approved: automated_design; source digest sha256:334572a80f28915d6759f1cd4c896cc6c7ea5b1f3c37a6d2c7e910d424aed4b8. |
+| 2026-08-24 | ZzzOps initialization | Created pending revision 20 | Confirmed agent-generated draft; explicit policy review still required. |
+| 2026-08-24 | user | Reviewed policy revision 21 | Approved: dependencies_tooling; source digest sha256:bba4a1c6f56f647dbf146676e340a481d26b9afc729e3944848b8b3279c75ad6. |
 
 The machine-readable authority is [POLICY.json](POLICY.json); this file is its human audit view.
