@@ -226,8 +226,9 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
     if shipped_skills != {
         "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
         "review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
+        "validate-zzzops-installation",
     }:
-        raise BundleError("plugin archive must contain exactly the eight product skills")
+        raise BundleError("plugin archive must contain exactly the nine product skills")
     missing_metadata = sorted(
         f"skills/{skill}/{relative}"
         for skill in shipped_skills

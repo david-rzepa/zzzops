@@ -51,6 +51,7 @@ def main() -> int:
             "plugins/zzzops/skills/review-zzzops-policy", "plugins/zzzops/skills/suggest-zzzops-work",
             "plugins/zzzops/skills/execute-zzzops", "plugins/zzzops/skills/review-agentic-engineering",
             "plugins/zzzops/skills/send-zzzops-feedback",
+            "plugins/zzzops/skills/validate-zzzops-installation",
         ]
         mapped = {path for item in items for path in item["paths"]}
         missing = [path for path in required if not any(entry == path or entry.startswith(path + "/") for entry in mapped)]

@@ -26,6 +26,13 @@ _package = importlib.util.module_from_spec(_PACKAGE_MODULE_SPEC)
 sys.modules[_PACKAGE_MODULE_SPEC.name] = _package
 _PACKAGE_MODULE_SPEC.loader.exec_module(_package)
 
+_INSTALLATION_MODULE_PATH = Path(__file__).with_name("installation.py")
+_INSTALLATION_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_installation", _INSTALLATION_MODULE_PATH)
+assert _INSTALLATION_MODULE_SPEC and _INSTALLATION_MODULE_SPEC.loader
+_installation = importlib.util.module_from_spec(_INSTALLATION_MODULE_SPEC)
+sys.modules[_INSTALLATION_MODULE_SPEC.name] = _installation
+_INSTALLATION_MODULE_SPEC.loader.exec_module(_installation)
+
 _POLICY_MODULE_PATH = Path(__file__).with_name("policy.py")
 _POLICY_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_policy", _POLICY_MODULE_PATH)
 assert _POLICY_MODULE_SPEC and _POLICY_MODULE_SPEC.loader
@@ -128,6 +135,7 @@ REPOSITORY_SIZE_THRESHOLD_BYTES = 100 * 1024 * 1024
 MANAGED_SKILLS = (
     "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
     "review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
+    "validate-zzzops-installation",
 )
 GITHUB_MANAGEMENT_PERMISSIONS = {"TRIAGE", "WRITE", "MAINTAIN", "ADMIN"}
 RESERVATION_COLOR = "5319E7"
@@ -1678,6 +1686,13 @@ def main() -> int:
     confirm_command.add_argument("--all", action="store_true", help="Approve every current policy section")
     checkpoint_parser = commands.add_parser("checkpoint", help="Validate initialized state, GitHub capability, and the goal portfolio once")
     checkpoint_parser.add_argument("--include-feedback", action="store_true", help="Include specially tagged feedback goals for this session")
+    installation = commands.add_parser("installation", help="Check or record per-repository plugin validation")
+    installation_commands = installation.add_subparsers(dest="installation_command", required=True)
+    installation_commands.add_parser("status", help="Report whether this installed package needs repository validation")
+    installation_commands.add_parser("audit", help="Audit fingerprint-owned legacy repository machinery")
+    installation_record = installation_commands.add_parser("record", help="Record a confirmed current-package validation outcome")
+    installation_record.add_argument("--outcome", choices=sorted(_installation.OUTCOMES), required=True)
+    installation_record.add_argument("--audit-signature", required=True)
     portfolio_parser = commands.add_parser("portfolio", help="Read and audit the canonical goal portfolio once")
     portfolio_parser.add_argument("--format", dest="output_format", choices=("summary", "json"), default="summary")
     portfolio_parser.add_argument("--include-done", action="store_true", help="Include terminal goals in summary output")
@@ -1743,7 +1758,19 @@ def main() -> int:
         print(str(package.get("detail") or "The ZzzOps Agent Plugin package is invalid."))
         return 2
     try:
-        if args.command == "checkpoint":
+        if args.command == "installation":
+            provenance = {"version": package["version"], "revision": package["revision"]}
+            if args.installation_command == "status":
+                result = _installation.validation_status(repo, provenance)
+            elif args.installation_command == "audit":
+                result = _installation.installation_audit(repo)
+            else:
+                result = _installation.record_validation(
+                    repo, provenance, outcome=args.outcome, audit_signature=args.audit_signature,
+                )
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+            return 0
+        elif args.command == "checkpoint":
             result = decision_checkpoint(repo, args.include_feedback)
             print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 0 if result["ready"] else 2

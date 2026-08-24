@@ -19,6 +19,7 @@ SHIPPED_SKILLS = {
     "review-agentic-engineering",
     "send-zzzops-feedback",
     "suggest-zzzops-work",
+    "validate-zzzops-installation",
 }
 SUPPORT_EMAIL = "zzzops.support@gmail.com"
 DEV_INSTALLER = ROOT / ".agents" / "skills" / "install-zzzops-dev" / "scripts" / "install_dev.py"
@@ -89,7 +90,7 @@ class AgentPluginTests(unittest.TestCase):
         self.assertEqual("AVAILABLE", entry["policy"]["installation"])
         self.assertEqual("ON_USE", entry["policy"]["authentication"])
 
-    def test_package_contains_exactly_the_eight_product_skills(self) -> None:
+    def test_package_contains_exactly_the_nine_product_skills(self) -> None:
         actual = {path.name for path in (PLUGIN / "skills").iterdir() if (path / "SKILL.md").is_file()}
         self.assertEqual(SHIPPED_SKILLS, actual)
         self.assertFalse((PLUGIN / "skills" / "run-zzzops-acceptance").exists())

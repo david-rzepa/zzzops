@@ -17,6 +17,7 @@ BUILDER = ROOT / ".github" / "scripts" / "build_marketplace_bundle.py"
 SHIPPED_SKILLS = {
     "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
     "review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
+    "validate-zzzops-installation",
 }
 
 

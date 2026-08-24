@@ -1,10 +1,16 @@
 # Legacy per-project cleanup
 
-ZzzOps v2 is installed as a Codex plugin. Repositories upgraded from the retired installer releases may still contain copied skills, control code, shared rules, and installer metadata. The plugin ships a cross-platform Python cleaner for only that retired per-project machinery.
+ZzzOps v2 is installed as a Codex plugin. Repositories upgraded from the retired installer releases may still contain copied skills, control code, shared rules, and installer metadata. `$validate-zzzops-installation` automatically audits once per repository and installed package, while the plugin's cross-platform Python cleaner exclusively owns removal of that retired per-project machinery.
 
 ## Preview and apply
 
-Run the script from the installed ZzzOps plugin package. The first command is always read-only:
+Prefer the user-facing skill, which records the installed version and package digest and resumes the original workflow:
+
+```text
+Use $validate-zzzops-installation to validate this repository.
+```
+
+Maintainers can run the underlying script from the installed ZzzOps plugin package. The first command is always read-only:
 
 ```text
 <python> <installed-zzzops-plugin>/scripts/cleanup_legacy.py <target-repository>

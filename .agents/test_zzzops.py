@@ -2982,6 +2982,7 @@ class WorkflowContractTests(unittest.TestCase):
             "review-zzzops-policy": ("review", "initialize", "summarize", "reconcile", "adjust", "policy", "preferred first workflow", "always re-summarizes"),
             "send-zzzops-feedback": ("preview", "send", "feedback", "execution reports", "exact-payload confirmation"),
             "suggest-zzzops-work": ("suggest", "discover", "audit", '"dry run"', '"preview"', '"plan"', '"apply"', '"refill"'),
+            "validate-zzzops-installation": ("validate", "repository", "installation", "upgrade", "legacy", "confirmation"),
         }
         self.assertEqual(set(contracts), {path.name for path in root.iterdir() if (path / "SKILL.md").is_file()})
         for name, phrases in contracts.items():
@@ -2996,13 +2997,14 @@ class WorkflowContractTests(unittest.TestCase):
         names = (
             "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
             "review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
+            "validate-zzzops-installation",
         )
         self.assertEqual(names, zzzops.MANAGED_SKILLS)
         for name in names:
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
             if name != "review-agentic-engineering":
                 self.assertIn("INITIALIZATION.md", text, name)
-            if name not in {"review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback"}:
+            if name not in {"review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback", "validate-zzzops-installation"}:
                 self.assertIn("BACKENDS.md", text, name)
 
         initialization = (root / "rules" / "INITIALIZATION.md").read_text(encoding="utf-8")

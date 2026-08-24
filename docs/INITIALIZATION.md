@@ -6,6 +6,8 @@ Resolve one Python 3.10 or newer interpreter first (`python3`, `python`, Windows
 
 ```text
 <python> <zzzops-cli> --repo . init inspect
+<python> <zzzops-cli> --repo . installation status
+<python> <zzzops-cli> --repo . installation audit
 <python> <zzzops-cli> --repo . init validate --plan .zzzops/init/plan.json
 <python> <zzzops-cli> --repo . init apply --plan .zzzops/init/plan.json
 <python> <zzzops-cli> --repo . init confirm --policy-digest DIGEST --reviewer NAME --all
@@ -13,6 +15,8 @@ Resolve one Python 3.10 or newer interpreter first (`python3`, `python`, Windows
 ```
 
 Apply creates a concise pending `.zzzops/PROJECT.md`, the detailed `.zzzops/PROJECT_AUDIT.md`, and the canonical `.zzzops/POLICY.json`. The agent summarizes the meaningful choices and invites adjustments; it cannot approve them or continue ordinary work. Explicit user approval of the current policy digest may confirm all sections or selected stable IDs. Any bound charter, audit, or policy edit invalidates approval, and every required unchecked section remains a categorized `decision` blocker.
+
+Before ordinary initialization, `installation status` compares the installed manifest version and complete package digest with ignored state in the repository's Git metadata. A missing, malformed, or stale record routes once through `$validate-zzzops-installation`; a current `clean` or user-declined record continues without another audit. The validation skill composes the existing fingerprint-based cleaner, requires explicit confirmation before removal, and resumes the originally requested workflow exactly once. Interrupted or unsafe validation writes no success record.
 
 Workflow adherence is reviewed separately from engineering or verification rigor. `optional` makes ZzzOps available without requiring it; `tracked` requires a durable goal for substantial agent work while allowing otherwise-authorized execution outside `$execute-zzzops`; `managed` requires repository-changing agent work to use the appropriate ZzzOps workflow and tracked implementation to run through `$execute-zzzops`. Read-only investigation and ZzzOps administration remain exempt, and only explicit user authority grants a scoped exception. Existing policies keep their prior behavior until this new section is reviewed; new policy drafts propose `tracked`.
 
