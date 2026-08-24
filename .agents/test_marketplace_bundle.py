@@ -50,10 +50,27 @@ class MarketplaceBundleTests(unittest.TestCase):
             notes = "Initial skills-only submission.\n"
             one = self.builder.build_bundles(ROOT, Path(first), "2.0.0", notes)
             two = self.builder.build_bundles(ROOT, Path(second), "2.0.0", notes)
-            for key in ("plugin", "submission"):
+            for key in ("plugin", "submission", "claude_plugin", "claude_submission"):
                 self.assertEqual(
                     hashlib.sha256(one[key].read_bytes()).hexdigest(),
                     hashlib.sha256(two[key].read_bytes()).hexdigest(),
+                )
+
+            self.assertEqual("zzzops-claude-plugin-v2.0.0.zip", one["claude_plugin"].name)
+            self.assertEqual("zzzops-claude-submission-v2.0.0.zip", one["claude_submission"].name)
+            with ZipFile(one["claude_plugin"]) as archive:
+                names = archive.namelist()
+                self.assertIn(".claude-plugin/plugin.json", names)
+                self.assertIn("zzzops/zzzops.py", names)
+                self.assertNotIn(".claude-plugin/marketplace.json", names)
+                self.assertEqual("2.0.0", json.loads(archive.read(".claude-plugin/plugin.json"))["version"])
+            with ZipFile(one["claude_submission"]) as archive:
+                names = archive.namelist()
+                self.assertIn(".claude-plugin/marketplace.json", names)
+                self.assertIn("zzzops/.claude-plugin/plugin.json", names)
+                self.assertEqual(
+                    "2.0.0",
+                    json.loads(archive.read(".claude-plugin/marketplace.json"))["metadata"]["version"],
                 )
 
             with ZipFile(one["plugin"]) as archive:
@@ -120,6 +137,28 @@ class MarketplaceBundleTests(unittest.TestCase):
             self.builder.validate_portal_png("assets/logo.png", image.replace(b"\r\n", b"\n"))
         with self.assertRaisesRegex(self.builder.BundleError, "truncated|checksum|decoded"):
             self.builder.validate_portal_png("assets/logo.png", image[:-20])
+
+    def test_stale_release_output_is_rejected_before_any_partial_refresh(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "marketplace"
+            output.mkdir()
+            stale = output / "zzzops-claude-plugin-v1.9.0.zip"
+            stale.write_bytes(b"stale")
+            with self.assertRaisesRegex(self.builder.BundleError, "output directory must be empty"):
+                self.builder.build_bundles(ROOT, output, "2.0.0", "notes")
+            self.assertEqual({stale.name}, {path.name for path in output.iterdir()})
+
+    def test_release_validation_rejects_missing_divergent_and_invalid_archives(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(self.builder.BundleError, "missing or stale"):
+                self.builder.validate_release_artifacts(
+                    Path(directory), {"required.zip": ({"file": b"expected"}, "required")},
+                )
+        divergent = self.builder.zip_bytes({"file": b"observed"})
+        with self.assertRaisesRegex(self.builder.BundleError, "content mismatch"):
+            self.builder.validate_archive(divergent, {"file": b"expected"}, "Claude plugin")
+        with self.assertRaisesRegex(self.builder.BundleError, "not a valid ZIP"):
+            self.builder.validate_archive(b"invalid", {}, "Claude plugin")
 
     def test_claude_marketplace_is_derived_from_the_canonical_plugin(self) -> None:
         files = self.builder.claude_marketplace_files(ROOT, "2.0.0")
