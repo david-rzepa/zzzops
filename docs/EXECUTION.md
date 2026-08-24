@@ -32,6 +32,10 @@ Execute-all intent may remain active across a same-task yield or queue-exhausted
 
 Goal capture uses the project policy's adaptive requirements-interview depth before creating the canonical issue. The default `standard` depth establishes outcome and observable acceptance, checks scope, and explores constraints, dependencies, risks, authority, or verification only when they can materially change the goal. It treats the requesting user as the requirements and acceptance owner; multi-party stakeholder discovery is outside this behavior.
 
+Engineering rigor supplies that depth rather than adding a second quality knob. Capture records evidenced risk categories and any authorized override; the portfolio derives the effective level and maps `vibe`, `structured`, and `agentic` to `light`, `standard`, and `thorough`. Authentication or payment work can therefore escalate a structured project goal to agentic without changing the project default, while an unknown risk label or forbidden downgrade blocks instead of silently lowering the bar. Legacy reviewed policies retain their existing capture depth until reconciled.
+
+The same effective level controls completion. Vibe work may rely on observed behavior where policy permits. Structured work requires observable acceptance, targeted automation, and the repository's canonical verification contract. Agentic work additionally requires every relevant deterministic gate, regression check, architectural constraint, and security, data, recovery, or operations signal. Checks must be run and observed; merely adding CI or a verification script is not evidence. Work suggestion compares those declared expectations with the real harness and proposes evidenced gap-closing goals rather than editing the repository silently.
+
 Execution assumes no user is present. It never pauses to ask an interactive question: consequential unknowns, including authority and safety gates, are recorded as categorized issue blockers with recommendations and recheck triggers. Independent goals continue, and the durable blocker queue is summarized at handoff.
 
 ## Adaptive discovery of unknowns
