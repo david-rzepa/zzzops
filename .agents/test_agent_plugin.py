@@ -16,6 +16,7 @@ SHIPPED_SKILLS = {
     "execute-zzzops",
     "migrate-to-zzzops",
     "review-zzzops-policy",
+    "review-agentic-engineering",
     "send-zzzops-feedback",
     "suggest-zzzops-work",
 }
@@ -88,10 +89,14 @@ class AgentPluginTests(unittest.TestCase):
         self.assertEqual("AVAILABLE", entry["policy"]["installation"])
         self.assertEqual("ON_USE", entry["policy"]["authentication"])
 
-    def test_package_contains_exactly_the_seven_product_skills(self) -> None:
+    def test_package_contains_exactly_the_eight_product_skills(self) -> None:
         actual = {path.name for path in (PLUGIN / "skills").iterdir() if (path / "SKILL.md").is_file()}
         self.assertEqual(SHIPPED_SKILLS, actual)
         self.assertFalse((PLUGIN / "skills" / "run-zzzops-acceptance").exists())
+
+    def test_agentic_coaching_requires_explicit_invocation(self) -> None:
+        metadata = (PLUGIN / "skills" / "review-agentic-engineering" / "agents" / "openai.yaml").read_text(encoding="utf-8")
+        self.assertIn("allow_implicit_invocation: false", metadata)
 
     def test_legacy_installer_surfaces_are_absent(self) -> None:
         for relative in (

@@ -8,7 +8,7 @@ from typing import Any
 
 
 COACHING_SCHEMA_VERSION = 1
-ENGINEERING_RIGOR = {"vibe": 0, "structured": 1, "agentic": 2}
+ENGINEERING_RIGOR = {"unknown": -1, "vibe": 0, "structured": 1, "agentic": 2}
 CONTEXT_STATES = {
     "not_available", "static_available", "static_missing", "dynamic_available",
     "dynamic_missing", "reasonably_discoverable", "not_applicable", "unknown",
@@ -122,8 +122,10 @@ def attribute_agent_work(request: Any) -> dict[str, Any]:
             if context not in CONTEXT_STATES:
                 raise ValueError("observation.context is invalid")
             occurrences = _bounded_occurrences(observation["occurrences"])
-            minimum = SIGNAL_MINIMUM_RIGOR.get(signal, "vibe")
-            if ENGINEERING_RIGOR[rigor] < ENGINEERING_RIGOR[minimum]:
+            minimum = SIGNAL_MINIMUM_RIGOR.get(signal)
+            if minimum is not None and (
+                rigor == "unknown" or ENGINEERING_RIGOR[rigor] < ENGINEERING_RIGOR[minimum]
+            ):
                 ignored += 1
                 continue
             signal_occurrences[signal] += occurrences

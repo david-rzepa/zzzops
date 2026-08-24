@@ -9,16 +9,21 @@ import time
 from pathlib import Path
 
 
-# Goals #282/#283 add one independently routed repository-bootstrap skill, its four mode-specific
-# references, and the bounded attribution privacy contract. The 4,600-token increase accounts for
-# those shipped surfaces without weakening profiles or excluding progressive-disclosure prompts.
-MAX_ESTIMATED_TOKENS = 19_000
+# Goals #282-#284 add repository bootstrap, bounded attribution, and explicit-only agent-use
+# coaching with their progressive references. The 6,000-token increase accounts for those shipped
+# surfaces without weakening profiles or excluding progressive-disclosure prompts.
+MAX_ESTIMATED_TOKENS = 20_400
 
 HARNESS_PROMPTS = {
     "codex": ("AGENTS.md",),
 }
 
 WORKFLOW_PROMPTS = {
+    "agentic-coaching": (
+        "plugins/zzzops/skills/review-agentic-engineering/SKILL.md",
+        "plugins/zzzops/skills/review-agentic-engineering/references/ATTRIBUTION.md",
+        "plugins/zzzops/rules/FEEDBACK.md",
+    ),
     "bootstrap-greenfield": (
         "plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md",
         "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
@@ -74,6 +79,7 @@ WORKFLOW_PROMPTS = {
 }
 
 WORKFLOW_SIGNALS = {
+    "agentic-coaching": ("Run only when explicitly invoked", "at most two", "Only genuine `prompt_specification_gap`", "Remain read-only", "Do not resolve `ambiguous` candidates by guessing", "$send-zzzops-feedback"),
     "bootstrap-greenfield": ("never silently de-escalate", "Classify greenfield", "ordinary managed goal", "canonical verification", "substantive product work requires its own goal execution authority"),
     "bootstrap-brownfield": ("evidence-led harness audit", "reconcile it in place", "$migrate-to-zzzops", "canonical verification", "substantive product work requires its own goal execution authority"),
     "capture": ("duplicate/relationship checks", "adaptive requirements interview", "sole stakeholder", "active same-task execute intent", "effective engineering rigor", "vibe → light", "never silently de-escalate"),

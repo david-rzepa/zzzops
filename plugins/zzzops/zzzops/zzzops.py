@@ -126,8 +126,8 @@ GOAL_SCHEMA_LABEL = re.compile(r"^zzzops:schema:v(?P<version>[1-9][0-9]*)$")
 GOAL_HYDRATION_BATCH_SIZE = 100
 REPOSITORY_SIZE_THRESHOLD_BYTES = 100 * 1024 * 1024
 MANAGED_SKILLS = (
-    "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops", "review-zzzops-policy",
-    "send-zzzops-feedback", "suggest-zzzops-work",
+    "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
+    "review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
 )
 GITHUB_MANAGEMENT_PERMISSIONS = {"TRIAGE", "WRITE", "MAINTAIN", "ADMIN"}
 RESERVATION_COLOR = "5319E7"

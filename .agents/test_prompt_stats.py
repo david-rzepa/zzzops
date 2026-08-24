@@ -40,7 +40,7 @@ class PromptStatsTests(unittest.TestCase):
         root = SCRIPT.parents[1]
         report = prompt_stats.render_workflow_report(root)
         self.assertEqual(
-            {"bootstrap-greenfield", "bootstrap-brownfield", "capture", "execution", "policy-review", "migration", "suggestion", "acceptance", "feedback"},
+            {"agentic-coaching", "bootstrap-greenfield", "bootstrap-brownfield", "capture", "execution", "policy-review", "migration", "suggestion", "acceptance", "feedback"},
             set(prompt_stats.WORKFLOW_PROMPTS),
         )
         self.assertEqual(set(prompt_stats.WORKFLOW_PROMPTS), set(prompt_stats.WORKFLOW_SIGNALS))
