@@ -17,7 +17,7 @@ PLUGIN_FIELDS = {
     "repository", "license", "keywords", "extensions",
 }
 SHIPPED_SKILLS = {
-    "add-zzzops-goal", "execute-zzzops", "migrate-to-zzzops",
+    "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
     "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
 }
 REQUIRED_FILES = {

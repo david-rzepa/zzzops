@@ -26,7 +26,7 @@ codex plugin marketplace add david-rzepa/zzzops@v2.0.1
 codex plugin add zzzops@zzzops
 ```
 
-Open a new Codex task after installing or upgrading. ZzzOps no longer copies machinery into each project or maintains an installer lock. The package contains exactly six skills plus their shared rules, control CLI, and blank initialization templates. It never contains project policy, goals, repository instructions, or other project state.
+Open a new Codex task after installing or upgrading. ZzzOps no longer copies machinery into each project or maintains an installer lock. The package contains exactly seven skills plus their shared rules, control CLI, and blank initialization templates. It never contains project policy, goals, repository instructions, or other project state.
 
 ZzzOps v2 supports Codex. Claude Code users can remain on [v1.2.0, the final legacy installer release](https://github.com/david-rzepa/zzzops/releases/tag/v1.2.0); that line is retained for download but is not updated by the v2 marketplace workflow.
 
@@ -67,7 +67,23 @@ The plugin CLI requires Python 3.10 or newer. CLI examples use `<python>` for on
 
 Maintainers: see the [initialization and policy contract](docs/INITIALIZATION.md).
 
-### 4. Migrate existing work
+### 4. Bootstrap a repository
+
+For a new project, supply the initial specification:
+
+```text
+Use $bootstrap-zzzops-repository to create this project from the following specification: <purpose, stack, deployment target, constraints, and first milestone>.
+```
+
+For an established project:
+
+```text
+Use $bootstrap-zzzops-repository to make this existing repository agent-ready.
+```
+
+Bootstrap derives greenfield, early-scaffold, or brownfield behavior from repository evidence. It establishes proportionate harness goals, reconciles eligible unstarted product-goal dependencies, executes and verifies the harness through ordinary ZzzOps, and leaves substantive product goals unimplemented. Brownfield work preserves intentional architecture and strengthens evidenced gaps instead of re-scaffolding.
+
+### 5. Migrate existing work
 
 From the target project in Codex:
 
@@ -77,7 +93,7 @@ Use $migrate-to-zzzops to inspect and migrate existing TODOs.
 
 The agent uses section-aware inventory hints to find work hidden under completed-looking headings, reads the surrounding source itself, and performs one completeness review before presenting a human-readable plan. Similar mentions remain advisory rather than being merged automatically. Migration happens only after approval into GitHub Issues; inline TODO comments keep their useful context and gain the created issue link, while dedicated backlog files retire only after verified coverage.
 
-### 5. Add new work
+### 6. Add new work
 
 ```text
 Use $add-zzzops-goal to capture <the thing we should eventually do>.
@@ -87,7 +103,7 @@ ZzzOps checks duplicates, asks important questions, relates value to the charter
 
 When you remember “one last thing,” capture it instead of opening six files and seeing sunrise.
 
-### 6. Execute—and go to bed
+### 7. Execute—and go to bed
 
 For a normal Codex run:
 
@@ -105,7 +121,7 @@ This is the point of ZzzOps: stop babysitting agents. When work runs dry, the ag
 
 Source-changing goals follow the reviewed project branch/review policy and pause at a human review blocker after checks. Maintainers: see the [branch topology and review lifecycle](docs/EXECUTION.md).
 
-### 7. Send ZzzOps feedback
+### 8. Send ZzzOps feedback
 
 ```text
 Use $send-zzzops-feedback to send <feedback about the ZzzOps workflow>.
@@ -141,6 +157,7 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 | Safely preview and remove retired per-project installations | `plugins/zzzops/scripts/cleanup_legacy.py` / `plugins/zzzops/assets/legacy_install_fingerprints.json` |
 | Publish the privacy boundary, compliance review, and support contact | `PRIVACY.md` / `docs/OPENAI_COMPLIANCE.md` / `README.md` |
 | Initialize, summarize, and adjust reviewed project policy | `plugins/zzzops/skills/review-zzzops-policy/SKILL.md` |
+| Bootstrap a new or existing repository into an agent-ready harness | `plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md` |
 | Use GitHub Issues as the canonical goal backend | `plugins/zzzops/rules/BACKENDS.md` |
 | Capture durable work | `plugins/zzzops/skills/add-zzzops-goal/SKILL.md` |
 | Migrate repository TODOs and backlogs | `plugins/zzzops/skills/migrate-to-zzzops/SKILL.md` |
