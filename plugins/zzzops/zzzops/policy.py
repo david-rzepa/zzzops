@@ -29,6 +29,7 @@ POLICY_SECTION_IDS = (
     "security_privacy_compliance",
     "documentation_style",
     "deployment_resources",
+    "workflow_adherence",
     "automated_design",
     "autonomy_approval_parallelism",
 )
@@ -43,6 +44,17 @@ AUTOMATED_DESIGN_SETTINGS = {
         "deployment", "external_write", "human_review", "safety_authority", "higher_authority",
     ],
     "insufficient_evidence": "durable_design_blocker",
+}
+
+WORKFLOW_ADHERENCE_SETTINGS = {
+    "levels": {
+        "optional": "direct_agent_work_allowed",
+        "tracked": "durable_goal_required_for_substantial_agent_work",
+        "managed": "zzzops_workflow_required_for_repository_changes",
+    },
+    "exemptions": ["read_only_investigation", "zzzops_administration"],
+    "scoped_exception": "explicit_scoped_user_authority",
+    "agents_projection": "review_workflow_reconciliation",
 }
 
 POLICY_DEFAULT_CONTENT_FIELDS = ("decision", "settings")
@@ -545,6 +557,12 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                 errors.append(f"{prefix}.source_ids missing citations: {', '.join(missing_sources)}")
         if not isinstance(section.get("settings"), dict):
             errors.append(f"{prefix}.settings must be an object")
+        elif section_id == "workflow_adherence":
+            settings = section["settings"]
+            if section.get("decision") not in WORKFLOW_ADHERENCE_SETTINGS["levels"]:
+                errors.append(f"{prefix}.workflow_adherence.decision must be optional, tracked, or managed")
+            if settings != WORKFLOW_ADHERENCE_SETTINGS:
+                errors.append(f"{prefix}.workflow_adherence.settings must preserve the bounded routing contract")
         elif section_id == "automated_design":
             settings = section["settings"]
             if section.get("decision") not in {"enabled", "disabled"}:
@@ -594,6 +612,7 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
     required_sections = set(POLICY_SECTION_IDS)
     if not require_pending:
         required_sections.remove("automated_design")  # Existing reviewed policies opt in only after an explicit proposal.
+        required_sections.remove("workflow_adherence")  # Existing reviewed policies retain their behavior until review.
     missing = sorted(required_sections - seen)
     if missing:
         errors.append("missing sections: " + ", ".join(missing))

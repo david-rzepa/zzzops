@@ -146,6 +146,22 @@
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {
+        "id": "workflow_adherence", "default_id": "zzzops.policy.workflow_adherence", "title": "ZzzOps workflow adherence", "required": true, "applicable": true,
+        "decision": "tracked", "rationale": "Require durable goal context for substantial agent work while allowing projects to review stricter or lighter routing.",
+        "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps tracked-work fallback", "default_disposition": "accepted",
+        "settings": {
+          "levels": {
+            "optional": "direct_agent_work_allowed",
+            "tracked": "durable_goal_required_for_substantial_agent_work",
+            "managed": "zzzops_workflow_required_for_repository_changes"
+          },
+          "exemptions": ["read_only_investigation", "zzzops_administration"],
+          "scoped_exception": "explicit_scoped_user_authority",
+          "agents_projection": "review_workflow_reconciliation"
+        },
+        "exceptions": [], "unresolved": [], "review": {"approved": false}
+      },
+      {
         "id": "automated_design", "default_id": "zzzops.policy.automated_design", "title": "Automated design authority", "required": true, "applicable": true,
         "decision": "enabled", "rationale": "Allow unattended execution to resolve reversible in-scope design choices when reviewed project evidence is decisive, while retaining consequential authority gates.",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps bounded automated-design fallback", "default_disposition": "accepted",

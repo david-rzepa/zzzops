@@ -2621,6 +2621,61 @@ class WorkflowContractTests(unittest.TestCase):
             mutate(next(item for item in invalid["sections"] if item["id"] == "automated_design"))
             self.assertTrue(any(field in error for error in zzzops.validate_policy(invalid, True)), field)
 
+    def test_workflow_adherence_policy_is_structured_compatible_and_review_owned(self):
+        root = PLUGIN_ROOT
+        plan = json.loads((root / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        section = next(item for item in plan["policy"]["sections"] if item["id"] == "workflow_adherence")
+        self.assertEqual("tracked", section["decision"])
+        self.assertEqual(
+            {
+                "optional": "direct_agent_work_allowed",
+                "tracked": "durable_goal_required_for_substantial_agent_work",
+                "managed": "zzzops_workflow_required_for_repository_changes",
+            },
+            section["settings"]["levels"],
+        )
+        self.assertEqual(
+            ["read_only_investigation", "zzzops_administration"],
+            section["settings"]["exemptions"],
+        )
+        self.assertEqual("explicit_scoped_user_authority", section["settings"]["scoped_exception"])
+        self.assertEqual("review_workflow_reconciliation", section["settings"]["agents_projection"])
+        self.assertEqual([], zzzops.validate_policy(plan["policy"], True))
+
+        rendered = zzzops.render_project({
+            "initialized": False, "approval": None, "charter": plan["charter"], "policy": plan["policy"],
+        })
+        self.assertIn("[policy:workflow_adherence]", rendered)
+
+        legacy = json.loads(json.dumps(plan["policy"]))
+        legacy["evidence"] = plan["evidence"]
+        legacy["sections"] = [item for item in legacy["sections"] if item["id"] != "workflow_adherence"]
+        self.assertEqual([], zzzops.validate_policy(legacy, False))
+        self.assertTrue(any("missing sections: workflow_adherence" in error for error in zzzops.validate_policy(legacy, True)))
+
+        for level in ("optional", "tracked", "managed"):
+            candidate = json.loads(json.dumps(plan["policy"]))
+            next(item for item in candidate["sections"] if item["id"] == "workflow_adherence")["decision"] = level
+            self.assertEqual([], zzzops.validate_policy(candidate, True), level)
+
+        invalid = json.loads(json.dumps(plan["policy"]))
+        next(item for item in invalid["sections"] if item["id"] == "workflow_adherence")["decision"] = "strict"
+        self.assertTrue(any("workflow_adherence.decision" in error for error in zzzops.validate_policy(invalid, True)))
+
+        review = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
+        initialization = (Path(__file__).parents[1] / "docs" / "INITIALIZATION.md").read_text(encoding="utf-8")
+        execution = (Path(__file__).parents[1] / "docs" / "EXECUTION.md").read_text(encoding="utf-8")
+        self.assertIn("workflow-adherence sections", review)
+        self.assertIn("propose `tracked` for adherence", review)
+        self.assertIn("reconcile a bounded `AGENTS.md` block", review)
+        self.assertIn("preserve all unrelated instructions", review)
+        self.assertIn("BEGIN ZZZOPS WORKFLOW ADHERENCE", review)
+        for text in (initialization, execution):
+            self.assertIn("`optional`", text)
+            self.assertIn("`tracked`", text)
+            self.assertIn("`managed`", text)
+        self.assertIn("cannot observe or control direct human edits", execution)
+
     def test_automated_design_execution_and_review_contracts_preserve_boundaries(self):
         root = PLUGIN_ROOT
         unblock = (root / "skills" / "execute-zzzops" / "references" / "UNBLOCK.md").read_text(encoding="utf-8")
