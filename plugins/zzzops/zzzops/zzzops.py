@@ -77,11 +77,7 @@ policy_default_catalog = _policy.policy_default_catalog
 policy_content_digest = _policy.policy_content_digest
 prepare_policy_defaults = _policy.prepare_policy_defaults
 compare_policy_defaults = _policy.compare_policy_defaults
-GOAL_FIELDS = {
-    "schema_version", "status", "priority", "value", "difficulty", "confidence",
-    "parent", "depends_on", "claim", "blockers",
-    "evidence", "next_action", "revision", "implementation", "resources",
-}
+GOAL_FIELDS = _goals.GOAL_FIELDS
 GOAL_TRANSITION_FIELDS = {"schema_version", "expected_revision", "expected_digest", "goal"}
 BLOCKER_CATEGORIES = {
     "specification", "decision", "access-approval", "human-action",
@@ -154,6 +150,7 @@ _portfolio_key = _portfolio._portfolio_key
 audit_portfolio = _portfolio.audit_portfolio
 build_portfolio_snapshot = _portfolio.build_portfolio_snapshot
 compact_portfolio_output = _portfolio.compact_portfolio_output
+derive_engineering_rigor = _portfolio.derive_engineering_rigor
 
 parse_managed_goal = _goals.parse_managed_goal
 validate_managed_goal = _goals.validate_managed_goal
@@ -853,6 +850,14 @@ def github_repository_portfolio_snapshot(
             {},
         ),
         resource_policy=project_resource_policy(project),
+        rigor_policy=next(
+            (
+                section for section in ((project.get("policy") or {}).get("sections") or [])
+                if isinstance(section, dict) and section.get("id") == "engineering_rigor"
+                and isinstance(section.get("review"), dict) and section["review"].get("approved") is True
+            ),
+            None,
+        ),
     )
     snapshot["findings"] = sorted(snapshot["findings"] + findings, key=lambda item: (item["code"], str(item["goal"])))
     snapshot["summary"]["findings"] = len(snapshot["findings"])
