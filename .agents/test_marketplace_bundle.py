@@ -50,29 +50,20 @@ class MarketplaceBundleTests(unittest.TestCase):
             notes = "Initial skills-only submission.\n"
             one = self.builder.build_bundles(ROOT, Path(first), "2.0.0", notes)
             two = self.builder.build_bundles(ROOT, Path(second), "2.0.0", notes)
-            for key in ("plugin", "submission", "claude_plugin", "claude_submission"):
+            self.assertEqual({"plugin", "submission", "claude_plugin"}, set(one))
+            for key in ("plugin", "submission", "claude_plugin"):
                 self.assertEqual(
                     hashlib.sha256(one[key].read_bytes()).hexdigest(),
                     hashlib.sha256(two[key].read_bytes()).hexdigest(),
                 )
 
             self.assertEqual("zzzops-claude-plugin-v2.0.0.zip", one["claude_plugin"].name)
-            self.assertEqual("zzzops-claude-submission-v2.0.0.zip", one["claude_submission"].name)
             with ZipFile(one["claude_plugin"]) as archive:
                 names = archive.namelist()
                 self.assertIn(".claude-plugin/plugin.json", names)
                 self.assertIn("zzzops/zzzops.py", names)
                 self.assertNotIn(".claude-plugin/marketplace.json", names)
                 self.assertEqual("2.0.0", json.loads(archive.read(".claude-plugin/plugin.json"))["version"])
-            with ZipFile(one["claude_submission"]) as archive:
-                names = archive.namelist()
-                self.assertIn(".claude-plugin/marketplace.json", names)
-                self.assertIn("zzzops/.claude-plugin/plugin.json", names)
-                self.assertEqual(
-                    "2.0.0",
-                    json.loads(archive.read(".claude-plugin/marketplace.json"))["metadata"]["version"],
-                )
-
             with ZipFile(one["plugin"]) as archive:
                 names = archive.namelist()
                 self.assertIn("plugin.json", names)

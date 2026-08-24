@@ -397,34 +397,29 @@ def build_bundles(root: Path, output: Path, version: str, release_notes: str) ->
     }
     packet_contents["manifest.json"] = canonical_json(manifest)
     submission_data = zip_bytes(packet_contents)
-    claude_submission_contents = claude_marketplace_files(root, version)
+    claude_marketplace_contents = claude_marketplace_files(root, version)
     claude_plugin_contents = {
         relative.removeprefix("zzzops/"): data
-        for relative, data in claude_submission_contents.items()
+        for relative, data in claude_marketplace_contents.items()
         if relative.startswith("zzzops/")
     }
     claude_plugin_data = zip_bytes(claude_plugin_contents)
-    claude_submission_data = zip_bytes(claude_submission_contents)
     validate_archive(plugin_data, plugin_contents, "plugin")
     validate_archive(submission_data, packet_contents, "submission")
     validate_archive(claude_plugin_data, claude_plugin_contents, "Claude plugin")
-    validate_archive(claude_submission_data, claude_submission_contents, "Claude submission")
     output.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix="zzzops-marketplace-", dir=output.parent))
     try:
         plugin_path = staging / plugin_name
         submission_path = staging / f"zzzops-openai-submission-v{version}.zip"
         claude_plugin_path = staging / f"zzzops-claude-plugin-v{version}.zip"
-        claude_submission_path = staging / f"zzzops-claude-submission-v{version}.zip"
         plugin_path.write_bytes(plugin_data)
         submission_path.write_bytes(submission_data)
         claude_plugin_path.write_bytes(claude_plugin_data)
-        claude_submission_path.write_bytes(claude_submission_data)
         validate_release_artifacts(staging, {
             plugin_path.name: (plugin_contents, "written plugin"),
             submission_path.name: (packet_contents, "written submission"),
             claude_plugin_path.name: (claude_plugin_contents, "written Claude plugin"),
-            claude_submission_path.name: (claude_submission_contents, "written Claude submission"),
         })
         if output.exists():
             output.rmdir()
@@ -435,7 +430,6 @@ def build_bundles(root: Path, output: Path, version: str, release_notes: str) ->
         "plugin": output / plugin_path.name,
         "submission": output / submission_path.name,
         "claude_plugin": output / claude_plugin_path.name,
-        "claude_submission": output / claude_submission_path.name,
     }
 
 

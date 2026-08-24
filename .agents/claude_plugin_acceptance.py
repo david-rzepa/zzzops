@@ -124,11 +124,16 @@ def main(argv: list[str] | None = None) -> int:
                 "--output", str(artifacts),
             ])
             claude_plugin = Path(built.get("claude_plugin", "")) if isinstance(built, dict) else Path()
-            claude_submission = Path(built.get("claude_submission", "")) if isinstance(built, dict) else Path()
-            if not claude_plugin.is_file() or not claude_submission.is_file():
-                raise AcceptanceError("release builder did not produce both Claude archives")
+            if not claude_plugin.is_file():
+                raise AcceptanceError("release builder did not produce the Claude plugin archive")
             extract_archive(claude_plugin, plugin)
-            extract_archive(claude_submission, marketplace)
+            generated = json_output([
+                sys.executable, str(root / ".github" / "scripts" / "build_claude_plugin.py"),
+                "--version", version, "--output", str(marketplace),
+            ])
+            generated_marketplace = Path(generated.get("marketplace", "")) if isinstance(generated, dict) else Path()
+            if generated_marketplace.resolve() != marketplace.resolve() or not marketplace.is_dir():
+                raise AcceptanceError("Claude marketplace generator did not produce the requested temporary layout")
             run(["claude", "plugin", "validate", str(marketplace), "--strict"], env=env)
             run(["claude", "plugin", "validate", str(plugin), "--strict"], env=env)
             run(["claude", "plugin", "marketplace", "add", str(marketplace), "--scope", "user"], env=env)
