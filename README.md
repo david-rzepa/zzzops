@@ -28,7 +28,16 @@ codex plugin add zzzops@zzzops
 
 Open a new Codex task after installing or upgrading. ZzzOps no longer copies machinery into each project or maintains an installer lock. The package contains exactly nine skills plus their shared rules, control CLI, and blank initialization templates. It never contains project policy, goals, repository instructions, or other project state.
 
-ZzzOps v2 supports Codex. Claude Code users can remain on [v1.2.0, the final legacy installer release](https://github.com/david-rzepa/zzzops/releases/tag/v1.2.0); that line is retained for download but is not updated by the v2 marketplace workflow.
+### Claude Code
+
+Install ZzzOps for Claude Code directly from this repository:
+
+```powershell
+claude plugin marketplace add david-rzepa/zzzops
+claude plugin install zzzops@zzzops
+```
+
+Claude and Codex use the same canonical plugin implementation; only their small platform manifests differ. Direct repository installation does not imply Anthropic directory approval. See the [Claude marketplace and submission handoff](docs/CLAUDE_MARKETPLACE.md).
 
 On the first ZzzOps use in each repository after installation or upgrade, ZzzOps automatically routes once through its installation validator. It checks the installed version and package digest, audits for retired per-project machinery, and then resumes the workflow you originally requested. Repeated workflows use a cheap Git-local record and do not rerun the audit.
 
