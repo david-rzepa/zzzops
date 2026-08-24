@@ -140,6 +140,7 @@ The feedback skill combines your text with archived reports, shows the exact iss
 | `policy.py` | Reviewed project state, policy validation, initialization, and resource policy. |
 | `reservation.py` | GitHub-backed goal and resource reservation coordination. |
 | `feedback.py` | Privacy-safe execution reports, provenance, payload preparation, and submission. |
+| `coaching.py` | Bounded, privacy-safe attribution of completed software-agent work. |
 | `goals.py` | Managed-goal parsing, validation, rendering, GitHub record projection, and guarded transitions. |
 | `portfolio.py` | Goal graph audits, actionability, and canonical portfolio snapshots. |
 | `package.py` | Agent Plugin package validation and deterministic package provenance. |

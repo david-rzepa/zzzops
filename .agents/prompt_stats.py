@@ -9,10 +9,10 @@ import time
 from pathlib import Path
 
 
-# Goal #282 adds one independently routed repository-bootstrap skill plus four mode-specific
-# references. The 4,400-token increase accounts for that shipped value without weakening the
-# per-workflow profiles or silently excluding progressive-disclosure prompts from inventory.
-MAX_ESTIMATED_TOKENS = 18_800
+# Goals #282/#283 add one independently routed repository-bootstrap skill, its four mode-specific
+# references, and the bounded attribution privacy contract. The 4,600-token increase accounts for
+# those shipped surfaces without weakening profiles or excluding progressive-disclosure prompts.
+MAX_ESTIMATED_TOKENS = 19_000
 
 HARNESS_PROMPTS = {
     "codex": ("AGENTS.md",),
