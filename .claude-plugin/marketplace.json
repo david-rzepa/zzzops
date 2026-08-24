@@ -1,0 +1,19 @@
+{
+  "name": "zzzops",
+  "owner": {
+    "name": "David Rzepa",
+    "url": "https://github.com/david-rzepa"
+  },
+  "metadata": {
+    "description": "Durable autonomous project goals for coding agents",
+    "version": "2.0.0"
+  },
+  "plugins": [
+    {
+      "name": "zzzops",
+      "source": "./plugins/zzzops",
+      "description": "Durable autonomous project goals for coding agents",
+      "version": "2.0.0"
+    }
+  ]
+}

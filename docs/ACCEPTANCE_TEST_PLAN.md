@@ -4,6 +4,8 @@ Run this plan conversationally: ask for the next item, perform its human action,
 
 This plan, the `run-zzzops-acceptance` skill, and `.agents/manual_acceptance.py` belong only to the ZzzOps base repository's maintenance and release process. The Agent Plugin also ships `validate-zzzops-installation` alongside the goal, bootstrap, execution, migration, coaching, policy, feedback, and suggestion skills.
 
+Claude distribution has a separate automated installed-cache contract. CI installs the exact Claude Code version named in `.github/workflows/validate.yml`, then runs `python .agents/claude_plugin_acceptance.py --claude-version VERSION` in a disposable configuration. The probe strictly validates the committed repository marketplace and the generated release ZIP, adds the repository marketplace, installs the canonical plugin tree into Claude's cache, verifies the nine-skill inventory, and runs the packaged ZzzOps initialization inspection without using the source tree as runtime fallback.
+
 Maintainers must map each shipped user-facing surface to a human item. For ZzzOps that means Codex marketplace/package behavior and the nine plugin skills. Internal control commands, backend mechanics, policy plumbing, reservations, prompt accounting, CI, documentation, and individual test cases are not separate human acceptance surfaces; inspect or automate them proportionately instead. Reusable acceptance-harness behavior needs focused regression coverage, but no human item unless the harness itself ships to users. Run `<python> .agents/manual_acceptance.py coverage` with one resolved Python 3.10 or newer interpreter to report required unmapped user surfaces without changing the plan.
 
 <!-- zzzops-acceptance-plan
