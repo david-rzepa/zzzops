@@ -60,6 +60,7 @@ class MarketplaceBundleTests(unittest.TestCase):
                 self.assertIn("zzzops/references/bootstrap/ANALYZE.md", names)
                 self.assertIn("zzzops/references/bootstrap/PLAN.md", names)
                 self.assertIn("zzzops/references/bootstrap/GREENFIELD.md", names)
+                self.assertIn("zzzops/references/bootstrap/BROWNFIELD.md", names)
                 self.assertFalse(any("__pycache__" in name or name.endswith((".pyc", ".pyo")) for name in names))
                 self.assertEqual("2.0.0", json.loads(archive.read("plugin.json"))["version"])
                 self.assertEqual("2.0.0", json.loads(archive.read(".codex-plugin/plugin.json"))["version"])
