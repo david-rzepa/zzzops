@@ -14,6 +14,16 @@ from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILDER = ROOT / ".github" / "scripts" / "build_marketplace_bundle.py"
+SHIPPED_SKILLS = {
+    "add-zzzops-goal", "execute-zzzops", "migrate-to-zzzops",
+    "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
+}
+
+
+def quoted_yaml_value(data: bytes, field: str) -> str:
+    prefix = field + ":"
+    line = next(line for line in data.decode("utf-8").splitlines() if line.lstrip().startswith(prefix))
+    return json.loads(line.split(":", 1)[1].strip())
 
 
 def load_builder():
@@ -50,6 +60,11 @@ class MarketplaceBundleTests(unittest.TestCase):
                 self.assertFalse(any("__pycache__" in name or name.endswith((".pyc", ".pyo")) for name in names))
                 self.assertEqual("2.0.0", json.loads(archive.read("plugin.json"))["version"])
                 self.assertEqual("2.0.0", json.loads(archive.read(".codex-plugin/plugin.json"))["version"])
+                for skill in SHIPPED_SKILLS:
+                    description = quoted_yaml_value(archive.read(f"skills/{skill}/SKILL.md"), "description")
+                    short = quoted_yaml_value(archive.read(f"skills/{skill}/agents/openai.yaml"), "short_description")
+                    self.assertTrue(description.startswith("ZzzOps v2.0.0 — official plugin. "), skill)
+                    self.assertTrue(short.startswith("ZzzOps v2.0.0 [official] · "), skill)
                 for name in (
                     "assets/composer-icon-dark.png", "assets/composer-icon.png",
                     "assets/logo-dark.png", "assets/logo.png",

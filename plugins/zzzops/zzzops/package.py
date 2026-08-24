@@ -36,6 +36,74 @@ class PluginPackageError(ValueError):
     """The loaded package is incomplete or not the supported Agent Plugin."""
 
 
+SKILL_PROVENANCE = re.compile(r"^ZzzOps v\S+ — (?:official|development) plugin\. ")
+SHORT_PROVENANCE = re.compile(r"^ZzzOps v\S+ \[(?:official|development)\] · ")
+
+
+def _yaml_text_value(value: str, field: str) -> str:
+    if value.startswith('"'):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise PluginPackageError(f"{field} is not valid quoted text") from exc
+        if not isinstance(parsed, str):
+            raise PluginPackageError(f"{field} must be text")
+        return parsed
+    if value.startswith("'") and value.endswith("'"):
+        return value[1:-1].replace("''", "'")
+    if value:
+        return value
+    raise PluginPackageError(f"{field} must be non-empty text")
+
+
+def _replace_yaml_text(data: bytes, field: str, prefix: str, prior: re.Pattern[str]) -> bytes:
+    try:
+        text = data.decode("utf-8-sig").replace("\r\n", "\n").replace("\r", "\n")
+    except UnicodeError as exc:
+        raise PluginPackageError(f"{field} metadata is not UTF-8") from exc
+    trailing = text.endswith("\n")
+    lines = text.splitlines()
+    index = next((i for i, line in enumerate(lines) if line.lstrip().startswith(field + ":")), None)
+    if index is None:
+        raise PluginPackageError(f"{field} metadata is missing")
+    line = lines[index]
+    indent = line[:len(line) - len(line.lstrip())]
+    value = line.split(":", 1)[1].strip()
+    end = index + 1
+    if value in {">", ">-", "|", "|-"}:
+        continuation = []
+        while end < len(lines) and (not lines[end].strip() or lines[end][:1].isspace()):
+            if lines[end].strip():
+                continuation.append(lines[end].strip())
+            end += 1
+        original = " ".join(continuation)
+        if not original:
+            raise PluginPackageError(f"{field} must be non-empty text")
+    else:
+        original = _yaml_text_value(value, field)
+    rendered = prefix + prior.sub("", original)
+    lines[index:end] = [f"{indent}{field}: {json.dumps(rendered, ensure_ascii=False)}"]
+    return ("\n".join(lines) + ("\n" if trailing else "")).encode("utf-8")
+
+
+def render_skill_metadata(relative: str, data: bytes, version: str, channel: str) -> bytes:
+    """Project build provenance into discovery metadata without changing source prompts."""
+    if not isinstance(version, str) or not version or any(character.isspace() for character in version):
+        raise PluginPackageError("skill metadata version must be non-empty text without whitespace")
+    if channel not in {"official", "development"}:
+        raise PluginPackageError("skill metadata channel must be official or development")
+    parts = Path(relative).as_posix().split("/")
+    if len(parts) == 3 and parts[0] == "skills" and parts[2] == "SKILL.md":
+        return _replace_yaml_text(
+            data, "description", f"ZzzOps v{version} — {channel} plugin. ", SKILL_PROVENANCE,
+        )
+    if len(parts) == 4 and parts[0] == "skills" and parts[2:] == ["agents", "openai.yaml"]:
+        return _replace_yaml_text(
+            data, "short_description", f"ZzzOps v{version} [{channel}] · ", SHORT_PROVENANCE,
+        )
+    return data
+
+
 def read_plugin_manifest() -> dict[str, Any]:
     try:
         manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8-sig"))
@@ -88,6 +156,10 @@ def package_status() -> dict[str, Any]:
         missing.extend(
             f"skills/{name}/SKILL.md" for name in sorted(SHIPPED_SKILLS)
             if not (PLUGIN_ROOT / "skills" / name / "SKILL.md").is_file()
+        )
+        missing.extend(
+            f"skills/{name}/agents/openai.yaml" for name in sorted(SHIPPED_SKILLS)
+            if not (PLUGIN_ROOT / "skills" / name / "agents" / "openai.yaml").is_file()
         )
         if missing:
             raise PluginPackageError("missing package files: " + ", ".join(missing))

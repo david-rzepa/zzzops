@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import importlib.util
+import runpy
+import sys
 import unittest
 from pathlib import Path
 
@@ -16,9 +19,55 @@ SHIPPED_SKILLS = {
     "suggest-zzzops-work",
 }
 SUPPORT_EMAIL = "zzzops.support@gmail.com"
+DEV_INSTALLER = ROOT / ".agents" / "skills" / "install-zzzops-dev" / "scripts" / "install_dev.py"
+
+
+def load_dev_installer():
+    spec = importlib.util.spec_from_file_location("install_zzzops_dev", DEV_INSTALLER)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def quoted_yaml_value(data: bytes, field: str) -> str:
+    prefix = field + ":"
+    line = next(line for line in data.decode("utf-8").splitlines() if line.lstrip().startswith(prefix))
+    return json.loads(line.split(":", 1)[1].strip())
 
 
 class AgentPluginTests(unittest.TestCase):
+    def test_skill_provenance_replaces_stale_values_idempotently(self) -> None:
+        render = runpy.run_path(str(PLUGIN / "zzzops" / "package.py"))["render_skill_metadata"]
+        stale = '---\nname: example\ndescription: "ZzzOps v1.0.0 — official plugin. Purpose"\n---\n'.encode("utf-8")
+        expected = "ZzzOps v2.1.0 — official plugin. Purpose"
+        rendered = render("skills/example/SKILL.md", stale, "2.1.0", "official")
+        self.assertEqual(expected, quoted_yaml_value(rendered, "description"))
+        self.assertEqual(rendered, render("skills/example/SKILL.md", rendered, "2.1.0", "official"))
+
+    def test_development_projection_versions_every_skill_description(self) -> None:
+        projected = load_dev_installer().development_plugin_files(PLUGIN, "local-20260824-010203")
+        manifest_paths = (PLUGIN / "plugin.json", PLUGIN / ".codex-plugin" / "plugin.json")
+        for path in manifest_paths:
+            self.assertEqual("2.0.0+codex.local-20260824-010203", json.loads(projected[path])["version"])
+        for skill in SHIPPED_SKILLS:
+            skill_path = PLUGIN / "skills" / skill / "SKILL.md"
+            agent_path = PLUGIN / "skills" / skill / "agents" / "openai.yaml"
+            self.assertTrue(
+                quoted_yaml_value(projected[skill_path], "description").startswith(
+                    "ZzzOps v2.0.0-dev — development plugin. "
+                ),
+                skill,
+            )
+            self.assertTrue(
+                quoted_yaml_value(projected[agent_path], "short_description").startswith(
+                    "ZzzOps v2.0.0-dev [development] · "
+                ),
+                skill,
+            )
+            self.assertNotIn(b"ZzzOps v2.0.0-dev", skill_path.read_bytes())
+
     def test_open_and_codex_manifests_describe_the_same_release(self) -> None:
         open_manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))
         codex_manifest = json.loads((PLUGIN / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
