@@ -29,6 +29,7 @@ POLICY_SECTION_IDS = (
     "security_privacy_compliance",
     "documentation_style",
     "deployment_resources",
+    "engineering_rigor",
     "workflow_adherence",
     "automated_design",
     "autonomy_approval_parallelism",
@@ -55,6 +56,11 @@ WORKFLOW_ADHERENCE_SETTINGS = {
     "exemptions": ["read_only_investigation", "zzzops_administration"],
     "scoped_exception": "explicit_scoped_user_authority",
     "agents_projection": "review_workflow_reconciliation",
+}
+
+ENGINEERING_RIGOR_LEVELS = ("vibe", "structured", "agentic")
+ENGINEERING_RIGOR_INTERVIEW_DEPTH = {
+    "vibe": "light", "structured": "standard", "agentic": "thorough",
 }
 
 POLICY_DEFAULT_CONTENT_FIELDS = ("decision", "settings")
@@ -557,6 +563,59 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                 errors.append(f"{prefix}.source_ids missing citations: {', '.join(missing_sources)}")
         if not isinstance(section.get("settings"), dict):
             errors.append(f"{prefix}.settings must be an object")
+        elif section_id == "engineering_rigor":
+            settings = section["settings"]
+            if section.get("decision") not in ENGINEERING_RIGOR_LEVELS:
+                errors.append(f"{prefix}.engineering_rigor.decision must be vibe, structured, or agentic")
+            if set(settings) != {"escalation", "minimums", "overrides", "requirements_interview"}:
+                errors.append(f"{prefix}.engineering_rigor.settings must contain the bounded rigor contract")
+            escalation = settings.get("escalation")
+            if not isinstance(escalation, dict) or set(escalation) != {
+                "enabled", "allow_automatic_escalation", "allow_automatic_deescalation",
+            }:
+                errors.append(f"{prefix}.engineering_rigor.escalation is invalid")
+            else:
+                for field in ("enabled", "allow_automatic_escalation"):
+                    if not isinstance(escalation.get(field), bool):
+                        errors.append(f"{prefix}.engineering_rigor.escalation.{field} must be boolean")
+                if escalation.get("allow_automatic_escalation") is True and escalation.get("enabled") is not True:
+                    errors.append(f"{prefix}.engineering_rigor.escalation enabled conflicts with automatic escalation")
+                if escalation.get("allow_automatic_deescalation") is not False:
+                    errors.append(f"{prefix}.engineering_rigor.allow_automatic_deescalation must remain false")
+            minimums = settings.get("minimums")
+            if not isinstance(minimums, dict):
+                errors.append(f"{prefix}.engineering_rigor.minimums must be an object")
+            else:
+                for category, level in minimums.items():
+                    if (
+                        not isinstance(category, str) or not text_present(category)
+                        or category.casefold() != category or not category.replace("_", "").isalnum()
+                    ):
+                        errors.append(f"{prefix}.engineering_rigor.minimums category is invalid")
+                    if level not in ENGINEERING_RIGOR_LEVELS:
+                        errors.append(f"{prefix}.engineering_rigor.minimums {category!r} level is invalid")
+            overrides = settings.get("overrides")
+            if not isinstance(overrides, dict) or set(overrides) != {
+                "per_goal", "raising", "lowering", "may_undercut_risk_minimum",
+            }:
+                errors.append(f"{prefix}.engineering_rigor.overrides is invalid")
+            else:
+                if not isinstance(overrides.get("per_goal"), bool):
+                    errors.append(f"{prefix}.engineering_rigor.overrides.per_goal must be boolean")
+                if overrides.get("raising") != "allowed":
+                    errors.append(f"{prefix}.engineering_rigor.overrides.raising must be allowed")
+                if overrides.get("lowering") != "explicit_user_authority":
+                    errors.append(f"{prefix}.engineering_rigor.overrides.lowering requires explicit user authority")
+                if overrides.get("may_undercut_risk_minimum") is not False:
+                    errors.append(f"{prefix}.engineering_rigor.may_undercut_risk_minimum must remain false")
+            interview = settings.get("requirements_interview")
+            if not isinstance(interview, dict) or set(interview) != {"source", "level_mapping"}:
+                errors.append(f"{prefix}.engineering_rigor.requirements_interview is invalid")
+            else:
+                if interview.get("source") != "effective_engineering_rigor":
+                    errors.append(f"{prefix}.engineering_rigor.requirements_interview.source is invalid")
+                if interview.get("level_mapping") != ENGINEERING_RIGOR_INTERVIEW_DEPTH:
+                    errors.append(f"{prefix}.engineering_rigor.requirements_interview.level_mapping is invalid")
         elif section_id == "workflow_adherence":
             settings = section["settings"]
             if section.get("decision") not in WORKFLOW_ADHERENCE_SETTINGS["levels"]:
@@ -613,9 +672,24 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
     if not require_pending:
         required_sections.remove("automated_design")  # Existing reviewed policies opt in only after an explicit proposal.
         required_sections.remove("workflow_adherence")  # Existing reviewed policies retain their behavior until review.
+        required_sections.remove("engineering_rigor")  # Existing reviewed policies retain their behavior until review.
     missing = sorted(required_sections - seen)
     if missing:
         errors.append("missing sections: " + ", ".join(missing))
+    rigor = next((item for item in sections if isinstance(item, dict) and item.get("id") == "engineering_rigor"), None)
+    autonomy = next((item for item in sections if isinstance(item, dict) and item.get("id") == "autonomy_approval_parallelism"), None)
+    if isinstance(rigor, dict) and isinstance(autonomy, dict):
+        rigor_settings = rigor.get("settings") if isinstance(rigor.get("settings"), dict) else {}
+        rigor_interview = rigor_settings.get("requirements_interview")
+        rigor_interview = rigor_interview if isinstance(rigor_interview, dict) else {}
+        mapping = rigor_interview.get("level_mapping", {})
+        expected_depth = mapping.get(rigor.get("decision")) if isinstance(mapping, dict) else None
+        autonomy_settings = autonomy.get("settings") if isinstance(autonomy.get("settings"), dict) else {}
+        autonomy_interview = autonomy_settings.get("requirements_interview")
+        autonomy_interview = autonomy_interview if isinstance(autonomy_interview, dict) else {}
+        actual_depth = autonomy_interview.get("capture_depth")
+        if expected_depth is not None and actual_depth != expected_depth:
+            errors.append("engineering_rigor capture_depth conflicts with the reviewed default level")
     return errors
 
 

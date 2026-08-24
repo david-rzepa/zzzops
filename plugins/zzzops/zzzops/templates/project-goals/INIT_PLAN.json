@@ -146,6 +146,26 @@
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {
+        "id": "engineering_rigor", "default_id": "zzzops.policy.engineering_rigor", "title": "Engineering rigor", "required": true, "applicable": true,
+        "decision": "structured", "rationale": "Balance production-oriented specification and verification with escalation-ready harness investment; higher-risk work can automatically require agentic evidence.",
+        "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps production-oriented fallback", "default_disposition": "accepted",
+        "settings": {
+          "escalation": {"enabled": true, "allow_automatic_escalation": true, "allow_automatic_deescalation": false},
+          "minimums": {
+            "authentication": "agentic", "authorization": "agentic", "payments": "agentic", "secrets": "agentic",
+            "destructive_data_migrations": "agentic", "security_sensitive": "agentic", "throwaway_prototypes": "vibe"
+          },
+          "overrides": {
+            "per_goal": true, "raising": "allowed", "lowering": "explicit_user_authority", "may_undercut_risk_minimum": false
+          },
+          "requirements_interview": {
+            "source": "effective_engineering_rigor",
+            "level_mapping": {"vibe": "light", "structured": "standard", "agentic": "thorough"}
+          }
+        },
+        "exceptions": [], "unresolved": [], "review": {"approved": false}
+      },
+      {
         "id": "workflow_adherence", "default_id": "zzzops.policy.workflow_adherence", "title": "ZzzOps workflow adherence", "required": true, "applicable": true,
         "decision": "tracked", "rationale": "Require durable goal context for substantial agent work while allowing projects to review stricter or lighter routing.",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps tracked-work fallback", "default_disposition": "accepted",

@@ -2676,6 +2676,59 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn("`managed`", text)
         self.assertIn("cannot observe or control direct human edits", execution)
 
+    def test_engineering_rigor_policy_is_reviewed_escalating_and_interview_aligned(self):
+        root = PLUGIN_ROOT
+        plan = json.loads((root / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        section = next(item for item in plan["policy"]["sections"] if item["id"] == "engineering_rigor")
+        self.assertEqual("structured", section["decision"])
+        self.assertEqual(
+            {"vibe": "light", "structured": "standard", "agentic": "thorough"},
+            section["settings"]["requirements_interview"]["level_mapping"],
+        )
+        self.assertTrue(section["settings"]["escalation"]["allow_automatic_escalation"])
+        self.assertFalse(section["settings"]["escalation"]["allow_automatic_deescalation"])
+        self.assertEqual("agentic", section["settings"]["minimums"]["authentication"])
+        self.assertEqual("vibe", section["settings"]["minimums"]["throwaway_prototypes"])
+        self.assertEqual("explicit_user_authority", section["settings"]["overrides"]["lowering"])
+        self.assertFalse(section["settings"]["overrides"]["may_undercut_risk_minimum"])
+        self.assertEqual([], zzzops.validate_policy(plan["policy"], True))
+
+        legacy = json.loads(json.dumps(plan["policy"]))
+        legacy["evidence"] = plan["evidence"]
+        legacy["sections"] = [item for item in legacy["sections"] if item["id"] != "engineering_rigor"]
+        self.assertEqual([], zzzops.validate_policy(legacy, False))
+        self.assertTrue(any("missing sections: engineering_rigor" in error for error in zzzops.validate_policy(legacy, True)))
+
+        for level, depth in (("vibe", "light"), ("structured", "standard"), ("agentic", "thorough")):
+            candidate = json.loads(json.dumps(plan["policy"]))
+            next(item for item in candidate["sections"] if item["id"] == "engineering_rigor")["decision"] = level
+            autonomy = next(item for item in candidate["sections"] if item["id"] == "autonomy_approval_parallelism")
+            autonomy["settings"]["requirements_interview"]["capture_depth"] = depth
+            self.assertEqual([], zzzops.validate_policy(candidate, True), level)
+
+        mutations = {
+            "decision": lambda item, _autonomy: item.update({"decision": "maximum"}),
+            "allow_automatic_deescalation": lambda item, _autonomy: item["settings"]["escalation"].update({"allow_automatic_deescalation": True}),
+            "may_undercut_risk_minimum": lambda item, _autonomy: item["settings"]["overrides"].update({"may_undercut_risk_minimum": True}),
+            "minimums": lambda item, _autonomy: item["settings"]["minimums"].update({"payments": "extreme"}),
+            "category": lambda item, _autonomy: item["settings"]["minimums"].update({7: "agentic"}),
+            "capture_depth conflicts": lambda _item, autonomy: autonomy["settings"]["requirements_interview"].update({"capture_depth": "light"}),
+        }
+        for field, mutate in mutations.items():
+            invalid = json.loads(json.dumps(plan["policy"]))
+            item = next(entry for entry in invalid["sections"] if entry["id"] == "engineering_rigor")
+            autonomy = next(entry for entry in invalid["sections"] if entry["id"] == "autonomy_approval_parallelism")
+            mutate(item, autonomy)
+            self.assertTrue(any(field in error for error in zzzops.validate_policy(invalid, True)), field)
+
+        review = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
+        initialization = (Path(__file__).parents[1] / "docs" / "INITIALIZATION.md").read_text(encoding="utf-8")
+        for text in (review, initialization):
+            self.assertIn("`vibe`", text)
+            self.assertIn("`structured`", text)
+            self.assertIn("`agentic`", text)
+        self.assertIn("never silently lower", review)
+
     def test_automated_design_execution_and_review_contracts_preserve_boundaries(self):
         root = PLUGIN_ROOT
         unblock = (root / "skills" / "execute-zzzops" / "references" / "UNBLOCK.md").read_text(encoding="utf-8")
