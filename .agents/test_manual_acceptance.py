@@ -40,6 +40,7 @@ class ManualAcceptanceTests(unittest.TestCase):
             self.assertIn(".agents/plugins/marketplace.json", json.loads(result.stdout)["unmapped_required_surfaces"])
             self.assertIn("plugins/zzzops/skills/add-zzzops-goal", json.loads(result.stdout)["unmapped_required_surfaces"])
             self.assertIn("plugins/zzzops/skills/bootstrap-zzzops-repository", json.loads(result.stdout)["unmapped_required_surfaces"])
+            self.assertIn("plugins/zzzops/skills/review-agentic-engineering", json.loads(result.stdout)["unmapped_required_surfaces"])
             self.assertIn("plugins/zzzops/skills/send-zzzops-feedback", json.loads(result.stdout)["unmapped_required_surfaces"])
             self.assertEqual(path.read_text(encoding="utf-8"), "<!-- zzzops-acceptance-plan\n" + json.dumps(plan) + "\nzzzops-acceptance-plan -->\n")
 
@@ -52,7 +53,8 @@ class ManualAcceptanceTests(unittest.TestCase):
                 "plugins/zzzops/skills/add-zzzops-goal", "plugins/zzzops/skills/bootstrap-zzzops-repository",
                 "plugins/zzzops/skills/migrate-to-zzzops",
                 "plugins/zzzops/skills/review-zzzops-policy", "plugins/zzzops/skills/suggest-zzzops-work",
-                "plugins/zzzops/skills/execute-zzzops", "plugins/zzzops/skills/send-zzzops-feedback",
+                "plugins/zzzops/skills/execute-zzzops", "plugins/zzzops/skills/review-agentic-engineering",
+                "plugins/zzzops/skills/send-zzzops-feedback",
             ]
             plan = {
                 "version": 1,

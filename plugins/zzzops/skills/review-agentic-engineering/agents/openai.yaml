@@ -1,0 +1,6 @@
+interface:
+  display_name: "Review Agentic Engineering"
+  short_description: "Improve how you work with software agents"
+  default_prompt: "Use $review-agentic-engineering to review my recent completed software-agent work and suggest up to two evidence-based improvements."
+policy:
+  allow_implicit_invocation: false

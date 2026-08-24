@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BUILDER = ROOT / ".github" / "scripts" / "build_marketplace_bundle.py"
 SHIPPED_SKILLS = {
     "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
-    "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
+    "review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
 }
 
 

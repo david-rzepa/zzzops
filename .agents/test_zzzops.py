@@ -134,6 +134,16 @@ class CoachingAttributionTests(unittest.TestCase):
         self.assertEqual([], lower_rigor["attributions"])
         self.assertEqual(1, lower_rigor["ignored_observations"])
 
+        unknown_rigor = zzzops.attribute_agent_work({
+            "schema_version": 1,
+            "completions": [
+                self.completion("implementation_defect", rigor="unknown", occurrences=2),
+                self.completion("agentic_risk_behavior_unspecified", rigor="unknown", occurrences=2),
+            ],
+        })
+        self.assertEqual("implementation_error", unknown_rigor["attributions"][0]["category"])
+        self.assertEqual(1, unknown_rigor["ignored_observations"])
+
         mixed = zzzops.attribute_agent_work({
             "schema_version": 1,
             "completions": [self.completion("specification_constraint_missing", context="unknown", occurrences=2)],
@@ -2968,6 +2978,7 @@ class WorkflowContractTests(unittest.TestCase):
             "bootstrap-zzzops-repository": ("bootstrap", "empty", "established", "specification", "agent-ready", "stops before substantive product implementation"),
             "execute-zzzops": ("execute", "work all goals", "continue", "resume", "triage", "prioritize", "reprioritize", "unblock", '"dry run"', '"preview"', '"plan"', "default executes"),
             "migrate-to-zzzops": ("discover", "plan", "migrate", "import", "todos/backlogs", '"dry run"', '"preview"', '"apply"', "default builds review artifacts"),
+            "review-agentic-engineering": ("review", "completed", "explicit request", "one or two", "overall agentic-engineering", "read-only", "not a scorecard"),
             "review-zzzops-policy": ("review", "initialize", "summarize", "reconcile", "adjust", "policy", "preferred first workflow", "always re-summarizes"),
             "send-zzzops-feedback": ("preview", "send", "feedback", "execution reports", "exact-payload confirmation"),
             "suggest-zzzops-work": ("suggest", "discover", "audit", '"dry run"', '"preview"', '"plan"', '"apply"', '"refill"'),
@@ -2984,13 +2995,14 @@ class WorkflowContractTests(unittest.TestCase):
         root = PLUGIN_ROOT
         names = (
             "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
-            "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
+            "review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
         )
         self.assertEqual(names, zzzops.MANAGED_SKILLS)
         for name in names:
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
-            self.assertIn("INITIALIZATION.md", text, name)
-            if name not in {"review-zzzops-policy", "send-zzzops-feedback"}:
+            if name != "review-agentic-engineering":
+                self.assertIn("INITIALIZATION.md", text, name)
+            if name not in {"review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback"}:
                 self.assertIn("BACKENDS.md", text, name)
 
         initialization = (root / "rules" / "INITIALIZATION.md").read_text(encoding="utf-8")

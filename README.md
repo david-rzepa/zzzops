@@ -26,7 +26,7 @@ codex plugin marketplace add david-rzepa/zzzops@v2.0.1
 codex plugin add zzzops@zzzops
 ```
 
-Open a new Codex task after installing or upgrading. ZzzOps no longer copies machinery into each project or maintains an installer lock. The package contains exactly seven skills plus their shared rules, control CLI, and blank initialization templates. It never contains project policy, goals, repository instructions, or other project state.
+Open a new Codex task after installing or upgrading. ZzzOps no longer copies machinery into each project or maintains an installer lock. The package contains exactly eight skills plus their shared rules, control CLI, and blank initialization templates. It never contains project policy, goals, repository instructions, or other project state.
 
 ZzzOps v2 supports Codex. Claude Code users can remain on [v1.2.0, the final legacy installer release](https://github.com/david-rzepa/zzzops/releases/tag/v1.2.0); that line is retained for download but is not updated by the v2 marketplace workflow.
 
@@ -131,6 +131,16 @@ ZzzOps workflows record only constrained machinery categories, cause codes, and 
 
 The feedback skill combines your text with archived reports, shows the exact issue payload, warns that `david-rzepa/zzzops` is public, and asks you to confirm that payload. Only then does it create a managed issue tagged `zzzops-feedback`. Execute excludes these issues by default; one explicit approval includes the entire feedback queue for that execution session, with no per-issue prompts. Successfully submitted reports are deleted; cancellation or failure retains them.
 
+### 9. Review how you use software agents
+
+On request, ZzzOps can review several completed pieces of agent work and suggest up to two improvements to your overall agentic-engineering practice:
+
+```text
+Use $review-agentic-engineering to review my recent completed software-agent work.
+```
+
+This skill is explicit-only and read-only. It distinguishes genuine specification gaps from repository or specialist context, tooling, verification, implementation, and external failures before coaching. It does not grade prompt length, change the repository, create goals, or submit ZzzOps feedback.
+
 ## Control-module boundaries
 
 `plugins/zzzops/zzzops/zzzops.py` is the stable installed executable and CLI composition layer. It loads focused, acyclic implementation modules and preserves the public command surface:
@@ -159,6 +169,7 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 | Publish the privacy boundary, compliance review, and support contact | `PRIVACY.md` / `docs/OPENAI_COMPLIANCE.md` / `README.md` |
 | Initialize, summarize, and adjust reviewed project policy | `plugins/zzzops/skills/review-zzzops-policy/SKILL.md` |
 | Bootstrap a new or existing repository into an agent-ready harness | `plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md` |
+| Review completed software-agent work and suggest concise practice improvements | `plugins/zzzops/skills/review-agentic-engineering/SKILL.md` |
 | Use GitHub Issues as the canonical goal backend | `plugins/zzzops/rules/BACKENDS.md` |
 | Capture durable work | `plugins/zzzops/skills/add-zzzops-goal/SKILL.md` |
 | Migrate repository TODOs and backlogs | `plugins/zzzops/skills/migrate-to-zzzops/SKILL.md` |
