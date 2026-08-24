@@ -10,14 +10,22 @@ ZzzOps gives agents an infinite, prioritized backlog so token FOMO stops at bedt
 
 ZzzOps v2 is an [Agent Plugin](https://agent-plugins.org/). The recommended installation is from the [official ZzzOps listing in the Codex Plugins Directory](https://chatgpt.com/plugins/plugins_6a7892fe4c548191a9e0dbfb8ac2c987). Install it there, then open a new Codex task in the target project so its ZzzOps skills are discovered.
 
-As a secondary option, install a reproducible snapshot directly from a released Git tag:
+As a secondary option, install from the Git marketplace's moving `latest` release channel:
 
 ```powershell
-codex plugin marketplace add david-rzepa/zzzops@v2.0.0
+codex plugin marketplace add david-rzepa/zzzops@latest
 codex plugin add zzzops@zzzops
 ```
 
-A tag-pinned Git marketplace stays on that tag. To move to a newer release, remove the installed plugin and pinned source, then add and install the newer released tag. For example, after `v2.0.1` is released:
+CI moves `latest` only after a successful semantic release. To refresh an existing `latest` installation, update the marketplace snapshot and reinstall the plugin:
+
+```powershell
+codex plugin remove zzzops@zzzops
+codex plugin marketplace upgrade zzzops
+codex plugin add zzzops@zzzops
+```
+
+For a reproducible snapshot, pin an immutable release tag instead, such as `david-rzepa/zzzops@v2.0.1`. A pinned marketplace stays on that version. To move it to another release, remove the plugin and marketplace source before adding the new tag:
 
 ```powershell
 codex plugin remove zzzops@zzzops
