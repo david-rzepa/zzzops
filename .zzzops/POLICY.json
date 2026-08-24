@@ -1,26 +1,26 @@
 {
   "approval": {
-    "date": "2026-08-09",
-    "digest": "sha256:9d0f831aff51b653bdc85f839a5fb2a0f7e2cc54fbaec66c25c0a6c4a5b5f636",
+    "date": "2026-08-24",
+    "digest": "sha256:c7e608653e0503853f51b4500c959f44590c6290bd64da64fc91454c7709a683",
     "reviewer": "user"
   },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:fe78c07e75ab63cc6fc354a81de6703600787190810b5463b8a5759b3fb94a99",
+      "digest": "sha256:2c2af6b5603056219e5f5b9d30db3c712d45d5e813bec2a89b2274f7020ced13",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
-      "digest": "sha256:101ae8132983939f5f8806951c6eac21f294a18cd073860850b24658fd3f66d0",
+      "digest": "sha256:c959d713ee58579ff743fbdb537a6d20006fff95da6fcbb3d18018556a0d06dc",
       "path": ".zzzops/PROJECT.md"
     }
   },
   "charter": {
     "acceptance_criteria": [
-      "A clean Codex Agent Plugin installation can be agent-initialized and capture a canonical goal without manual form filling.",
+      "A clean supported Agent Plugin installation can be agent-initialized and capture a canonical goal without manual form filling.",
       "An execution run can prioritize, unblock, verify, checkpoint, and cycle across durable goals without losing state.",
       "Unsupported capabilities and human-only decisions become explicit categorized blockers rather than invented behavior.",
-      "Codex receives concise, discoverable Agent Plugin workflow semantics.",
+      "Supported coding agents receive concise, discoverable Agent Plugin workflow semantics.",
       "Tests prove Agent Plugin packaging and marketplace discovery, backend invariants, fast observable feedback, and prompt-budget accounting."
     ],
     "beneficiaries": [
@@ -30,7 +30,8 @@
       "Remain primarily agent-driven and keep deterministic scripts narrow and cross-platform.",
       "Do not silently dual-write, fail over, invent user decisions, or expose secrets.",
       "Keep installed prompts distilled and prompt counts current.",
-      "Use available subscription capacity to advance evidenced project goals and safe valuable backlog work; do not let quota maximization override value, safety, or user authority."
+      "Use available subscription capacity to advance evidenced project goals and safe valuable backlog work; do not let quota maximization override value, safety, or user authority.",
+      "Keep Codex and Claude Code distributions generated from shared canonical sources; claim platform support only after platform-native validation and install/discovery/workflow acceptance evidence."
     ],
     "kpis": [
       {
@@ -44,9 +45,9 @@
       {
         "baseline": "Not yet measured.",
         "cadence": "Each release",
-        "evidence": "Timed Codex marketplace installation and initialization acceptance run.",
+        "evidence": "Timed supported-platform plugin installation and initialization acceptance run.",
         "name": "Time to usable backlog",
-        "target": "Marketplace install to initialized, capturable backlog in under 10 minutes.",
+        "target": "Supported plugin install to initialized, capturable backlog in under 10 minutes.",
         "why": "Setup friction increases babysitting."
       },
       {
@@ -61,10 +62,10 @@
     "non_goals": [
       "Replace general-purpose project management suites.",
       "Guarantee capabilities that Codex does not expose.",
-      "Maintain v2 compatibility with Claude Code or the retired per-project installer.",
+      "Restore or maintain the retired per-project installer, or maintain divergent Codex and Claude Code workflow implementations.",
       "Spend tokens on work with no evidenced link to project value."
     ],
-    "outcome": "ZzzOps lets Codex manage long-term project work autonomously with durable state, minimal babysitting, and explicit human control.",
+    "outcome": "ZzzOps lets supported coding agents manage long-term project work autonomously with durable state, minimal babysitting, and explicit human control.",
     "precedence": "user authority and safety, correctness, privacy, verified project value, autonomy, then prompt savings",
     "time_horizon": "ongoing, reviewed monthly",
     "unacceptable_tradeoffs": [
@@ -103,6 +104,18 @@
       "change": "Reviewed policy revision 19",
       "date": "2026-08-09",
       "reason": "Approved: automated_design; source digest sha256:334572a80f28915d6759f1cd4c896cc6c7ea5b1f3c37a6d2c7e910d424aed4b8."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 20",
+      "date": "2026-08-24",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "user",
+      "change": "Reviewed policy revision 21",
+      "date": "2026-08-24",
+      "reason": "Approved: dependencies_tooling; source digest sha256:bba4a1c6f56f647dbf146676e340a481d26b9afc729e3944848b8b3279c75ad6."
     }
   ],
   "initialized": true,
@@ -173,6 +186,12 @@
         "id": "E-011",
         "kind": "proposed",
         "source": "user decision 2026-08-09"
+      },
+      {
+        "finding": "Support generated, acceptance-gated Claude Code plugin artifacts derived from shared canonical sources; preserve removal of the retired per-project installer and prohibit divergent platform implementations.",
+        "id": "E-012",
+        "kind": "proposed",
+        "source": "user decision and goal #300 on 2026-08-24"
       }
     ],
     "schema_version": 1,
@@ -369,17 +388,17 @@
       {
         "applicable": true,
         "confidence": "medium",
-        "decision": "Use project-native tooling; do not hand-edit generated or dependency-owned files.",
+        "decision": "Use project-native tooling; do not hand-edit generated or dependency-owned files; generate supported platform distributions from shared canonical sources and verify them with platform-native validation and acceptance evidence.",
         "default_disposition": "accepted",
         "default_origin": "ZzzOps default",
         "exceptions": [],
         "id": "dependencies_tooling",
-        "rationale": "Keeps deterministic mechanics portable and ownership clear.",
+        "rationale": "Keeps deterministic mechanics portable, ownership clear, and Codex/Claude support aligned without divergent implementations.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
+          "date": "2026-08-24",
+          "reviewed_digest": "sha256:bba4a1c6f56f647dbf146676e340a481d26b9afc729e3944848b8b3279c75ad6",
           "reviewer": "user"
         },
         "settings": {
@@ -388,7 +407,8 @@
           "tooling": "project_native"
         },
         "source_ids": [
-          "E-001"
+          "E-001",
+          "E-012"
         ],
         "title": "Dependencies, tooling, and generated artifacts",
         "unresolved": []
@@ -635,6 +655,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 19,
+  "revision": 21,
   "schema_version": 1
 }
