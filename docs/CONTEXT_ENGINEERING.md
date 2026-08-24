@@ -20,3 +20,17 @@ This historical audit applies Anthropic's July 2026 [context-engineering guidanc
 The historical baseline was 56,766 canonical prompt bytes, approximately 14,200 estimated tokens. Current Codex Agent Plugin prompt accounting is reported by `.agents/prompt_stats.py`. Its blocking limits cover the always-loaded repository instructions and the frequently routed goal-capture and execution contexts. Per-workflow profiles and the complete prompt inventory remain advisory: mutually exclusive, explicitly invoked workflows do not consume one artificial shared allowance. Each blocking limit records its baseline and justified headroom in the checker; changing one requires explicit value justification.
 
 Context-only changes must remain separate from Agent Plugin skills, runtime rules, policy validators, initialization templates, and downstream behavior. Required CI at the exact final PR head supplies the shipped-behavior regression evidence.
+
+## Hot-path distillation ([goal #302](https://github.com/david-rzepa/zzzops/issues/302))
+
+The deterministic Codex route measurement includes `AGENTS.md` and normalizes prompt line endings before estimating `ceil(bytes / 4)` tokens.
+
+| Context | Baseline bytes / tokens | Final bytes / tokens | Reduction |
+| --- | ---: | ---: | ---: |
+| Always loaded | 2,499 / 625 | 2,499 / 625 | unchanged |
+| Goal capture | 15,041 / 3,761 | 13,294 / 3,324 | 1,747 bytes / 437 tokens (11.6%) |
+| Goal execution | 37,886 / 9,472 | 33,850 / 8,463 | 4,036 bytes / 1,009 tokens (10.7%) |
+
+Capture savings came from shared `BACKENDS.md` (527 bytes), `CONTINUATION.md` (295), `FEEDBACK.md` (504), and the capture skill (421). Execution receives the same 1,326 shared bytes and additionally saves 1,584 from `EXECUTE.md`, 531 from `BRANCH_REVIEW.md`, and 595 from `SELF_REVIEW.md`. `AGENTS.md`, initialization, goal-state semantics, and execution strategy were retained because they carry distinct always-loaded, authority, state, verification, and parallelism behavior.
+
+The first new fixture made the routed evaluation fail on the previously prose-only `Git-free creation` invariant before the compact replacement restored it. Broader contract tests also rejected tempting paraphrases that lost exact unattended-question, priority, work-state, review-read, unknown-discovery, self-review, or provenance signals; those behaviors were retained. Final deterministic evaluation passes 10/10 workflows in about 3–5 ms with zero tool calls and retries. Prompt-budget tests, 147 workflow/runtime tests, three manual-acceptance tests, and Agent Plugin schema validation also pass locally; required cross-platform CI remains the final exact-head gate.

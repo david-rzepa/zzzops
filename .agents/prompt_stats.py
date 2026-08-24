@@ -14,14 +14,13 @@ HARNESS_PROMPTS = {
 }
 
 # These limits protect context paid on every Codex turn and the two frequent ZzzOps paths. At the
-# goal #297 baseline, always-loaded/codex is 625 tokens, capture/codex is 3,694, and
-# execution/codex is 9,406. The round ceilings leave room for roughly one concise invariant in
-# AGENTS.md, capture, or execution respectively, without making mutually exclusive cold paths
-# compete for one aggregate allowance.
+# goal #297 baseline, always-loaded/codex is 625 tokens. Goal #302 reduced capture/execution to
+# 3,324/8,452 tokens; their ceilings retain only the measured 13-token execution margin. Cold
+# mutually exclusive workflows remain advisory rather than competing for one aggregate allowance.
 ENFORCED_PROMPT_BUDGETS = {
     "always-loaded/codex": 700,
-    "capture/codex": 3_800,
-    "execution/codex": 9_600,
+    "capture/codex": 3_324,
+    "execution/codex": 8_465,
 }
 
 WORKFLOW_PROMPTS = {
@@ -88,7 +87,7 @@ WORKFLOW_SIGNALS = {
     "agentic-coaching": ("Run only when explicitly invoked", "at most two", "Only genuine `prompt_specification_gap`", "Remain read-only", "Do not resolve `ambiguous` candidates by guessing", "$send-zzzops-feedback"),
     "bootstrap-greenfield": ("never silently de-escalate", "Classify greenfield", "ordinary managed goal", "canonical verification", "substantive product work requires its own goal execution authority"),
     "bootstrap-brownfield": ("evidence-led harness audit", "reconcile it in place", "$migrate-to-zzzops", "canonical verification", "substantive product work requires its own goal execution authority"),
-    "capture": ("duplicate/relationship checks", "adaptive requirements interview", "sole stakeholder", "active same-task execute intent", "effective engineering rigor", "vibe → light", "never silently de-escalate"),
+    "capture": ("duplicate/relationship checks", "adaptive requirements interview", "sole stakeholder", "active same-task execute intent", "effective engineering rigor", "vibe → light", "never silently de-escalate", "Git-free creation"),
     "execution": ("complete:true", "smallest falsifiable chunk", "difficulty is cost, not value", "human_after_checks", "Execution assumes the user is absent", "Before substantive work on a newly selected goal", "continue while policy permits safe useful work", "effective engineering rigor", "Created-but-unrun machinery is not proof"),
     "policy-review": ("only this workflow changes or confirms policy", "explicit approval of the current digest", "The policy is already approved", "privacy-safe execution reports"),
     "migration": ("explicit completeness review", "preserve every source location", "apply only after explicit approval"),

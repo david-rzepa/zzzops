@@ -47,13 +47,13 @@ class PromptStatsTests(unittest.TestCase):
     def test_cold_path_growth_is_advisory_but_hot_path_growth_fails(self) -> None:
         limits = {
             "always-loaded/codex": 700,
-            "capture/codex": 3_800,
-            "execution/codex": 9_600,
+            "capture/codex": 3_324,
+            "execution/codex": 8_465,
         }
         within_limits = {
             "always-loaded/codex": (2_499, 625),
-            "capture/codex": (14_776, 3_694),
-            "execution/codex": (37_621, 9_406),
+            "capture/codex": (13_295, 3_324),
+            "execution/codex": (33_806, 8_452),
             "bootstrap-greenfield/codex": (4_000_000, 1_000_000),
         }
         self.assertEqual([], prompt_stats.budget_overruns(within_limits, limits))
