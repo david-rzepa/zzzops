@@ -47,6 +47,13 @@ _feedback = importlib.util.module_from_spec(_FEEDBACK_MODULE_SPEC)
 sys.modules[_FEEDBACK_MODULE_SPEC.name] = _feedback
 _FEEDBACK_MODULE_SPEC.loader.exec_module(_feedback)
 
+_COACHING_MODULE_PATH = Path(__file__).with_name("coaching.py")
+_COACHING_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_coaching", _COACHING_MODULE_PATH)
+assert _COACHING_MODULE_SPEC and _COACHING_MODULE_SPEC.loader
+_coaching = importlib.util.module_from_spec(_COACHING_MODULE_SPEC)
+sys.modules[_COACHING_MODULE_SPEC.name] = _coaching
+_COACHING_MODULE_SPEC.loader.exec_module(_coaching)
+
 _GOALS_MODULE_PATH = Path(__file__).with_name("goals.py")
 _GOALS_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_goals", _GOALS_MODULE_PATH)
 assert _GOALS_MODULE_SPEC and _GOALS_MODULE_SPEC.loader
@@ -200,6 +207,9 @@ EXECUTION_REPORT_FIELDS = _feedback.EXECUTION_REPORT_FIELDS
 EXECUTION_REPORT_ID = _feedback.EXECUTION_REPORT_ID
 ZZZOPS_VERSION = _feedback.ZZZOPS_VERSION
 ZZZOPS_REVISION = _feedback.ZZZOPS_REVISION
+attribute_agent_work = _coaching.attribute_agent_work
+COACHING_SCHEMA_VERSION = _coaching.COACHING_SCHEMA_VERSION
+COACHING_SIGNAL_CATEGORIES = _coaching.COACHING_SIGNAL_CATEGORIES
 
 
 GitHubReservationAdapter = _reservation.GitHubReservationAdapter
@@ -1697,6 +1707,10 @@ def main() -> int:
         reserve_command.add_argument("--format", dest="output_format", choices=("summary", "json"), default="summary")
         if name != "release":
             reserve_command.add_argument("--ttl-seconds", type=int, help="Override reviewed claim_ttl_hours")
+    coaching = commands.add_parser("coaching", help="Attribute bounded software-agent work evidence without writes")
+    coaching_commands = coaching.add_subparsers(dest="coaching_command", required=True)
+    coaching_attribute = coaching_commands.add_parser("attribute", help="Classify a bounded attribution request")
+    coaching_attribute.add_argument("--input", type=Path, required=True, help="UTF-8 bounded attribution JSON file")
     report = commands.add_parser("report", help="Record or inspect privacy-safe machinery execution reports")
     report_commands = report.add_subparsers(dest="report_command", required=True)
     report_record = report_commands.add_parser("record", help="Record one constrained machinery observation")
@@ -1824,6 +1838,10 @@ def main() -> int:
                 )
             else:
                 result = {"reports": load_execution_reports(repo, args.report or None)}
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+        elif args.command == "coaching":
+            request = json.loads(args.input.resolve().read_text(encoding="utf-8-sig"))
+            result = attribute_agent_work(request)
             print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
         elif args.command == "feedback":
             prompt = read_cli_text(args.prompt_file)

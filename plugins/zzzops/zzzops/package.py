@@ -26,6 +26,7 @@ REQUIRED_FILES = {
     "rules/BACKENDS.md", "rules/BLOCKERS.md", "rules/CONTINUATION.md",
     "rules/EXECUTION_STRATEGY.md", "rules/FEEDBACK.md", "rules/GOAL_SYSTEM.md",
     "rules/INITIALIZATION.md", "zzzops/zzzops.py",
+    "zzzops/coaching.py",
     "scripts/cleanup_legacy.py",
     "zzzops/references/bootstrap/ANALYZE.md",
     "zzzops/references/bootstrap/PLAN.md",

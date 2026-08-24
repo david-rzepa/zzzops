@@ -56,6 +56,121 @@ class FeedbackModuleTests(unittest.TestCase):
             self.assertIs(getattr(zzzops, name), getattr(feedback, name))
 
 
+class CoachingAttributionTests(unittest.TestCase):
+    def completion(self, signal, *, rigor="structured", context="not_available", occurrences=1, substantial=True):
+        return {
+            "substantial": substantial,
+            "effective_rigor": rigor,
+            "observations": [{"signal": signal, "context": context, "occurrences": occurrences}],
+        }
+
+    def test_entry_point_reexports_coaching_contract(self):
+        self.assertIs(zzzops.attribute_agent_work, zzzops._coaching.attribute_agent_work)
+
+    def test_guardrail_and_implementation_failures_do_not_blame_prompt(self):
+        result = zzzops.attribute_agent_work({
+            "schema_version": 1,
+            "completions": [
+                self.completion("missing_guardrail", occurrences=2),
+                self.completion("implementation_defect"),
+            ],
+        })
+        self.assertEqual("ready", result["status"])
+        self.assertEqual(
+            {"tooling_or_guardrail_gap", "implementation_error"},
+            {item["category"] for item in result["attributions"]},
+        )
+        self.assertFalse(any(item["user_coaching_candidate"] for item in result["attributions"]))
+
+    def test_every_bounded_category_is_attributable(self):
+        fixtures = {
+            "specification_outcome_ambiguous": "prompt_specification_gap",
+            "repeated_repository_fact": "static_repository_context_gap",
+            "specialist_procedure_missing": "dynamic_context_or_skill_gap",
+            "missing_guardrail": "tooling_or_guardrail_gap",
+            "canonical_verification_incomplete": "verification_gap",
+            "implementation_defect": "implementation_error",
+            "external_service_failure": "external_failure",
+        }
+        for signal, expected in fixtures.items():
+            with self.subTest(signal=signal):
+                result = zzzops.attribute_agent_work({
+                    "schema_version": 1,
+                    "completions": [self.completion(signal, occurrences=2)],
+                })
+                self.assertEqual(expected, result["attributions"][0]["category"])
+
+    def test_thresholds_mixed_causes_rigor_and_discoverable_context(self):
+        insufficient = zzzops.attribute_agent_work({
+            "schema_version": 1,
+            "completions": [self.completion("specification_outcome_ambiguous")],
+        })
+        self.assertEqual("insufficient_evidence", insufficient["status"])
+        self.assertFalse(insufficient["attributions"][0]["user_coaching_candidate"])
+
+        three = zzzops.attribute_agent_work({
+            "schema_version": 1,
+            "completions": [self.completion("specification_outcome_ambiguous") for _ in range(3)],
+        })
+        self.assertEqual("three_substantial_completions", three["basis"])
+        self.assertTrue(three["attributions"][0]["user_coaching_candidate"])
+
+        repeated = zzzops.attribute_agent_work({
+            "schema_version": 1,
+            "completions": [self.completion("specification_acceptance_subjective", occurrences=2)],
+        })
+        self.assertEqual("strong_repeated_pattern", repeated["basis"])
+
+        discoverable = zzzops.attribute_agent_work({
+            "schema_version": 1,
+            "completions": [self.completion("specification_constraint_missing", context="reasonably_discoverable", occurrences=2)],
+        })
+        self.assertEqual("implementation_error", discoverable["attributions"][0]["category"])
+
+        lower_rigor = zzzops.attribute_agent_work({
+            "schema_version": 1,
+            "completions": [self.completion("agentic_risk_behavior_unspecified", rigor="structured", occurrences=2)],
+        })
+        self.assertEqual([], lower_rigor["attributions"])
+        self.assertEqual(1, lower_rigor["ignored_observations"])
+
+        mixed = zzzops.attribute_agent_work({
+            "schema_version": 1,
+            "completions": [self.completion("specification_constraint_missing", context="unknown", occurrences=2)],
+        })
+        self.assertEqual(["implementation_error", "prompt_specification_gap"], mixed["ambiguous"][0]["candidates"])
+
+    def test_schema_rejects_raw_or_identifying_content(self):
+        request = {
+            "schema_version": 1,
+            "completions": [{
+                **self.completion("implementation_defect"),
+                "prompt": "SECRET user wording",
+            }],
+        }
+        with self.assertRaisesRegex(ValueError, "unknown completion fields"):
+            zzzops.attribute_agent_work(request)
+        self.assertNotIn("SECRET", json.dumps(zzzops.COACHING_SIGNAL_CATEGORIES))
+
+    def test_cli_is_read_only_and_emits_only_bounded_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = root / "bounded.json"
+            request.write_text(json.dumps({
+                "schema_version": 1,
+                "completions": [self.completion("implementation_defect", occurrences=2)],
+            }), encoding="utf-8")
+            before = {path.relative_to(root).as_posix(): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+            result = subprocess.run(
+                [sys.executable, str(MODULE_PATH), "--repo", str(root), "coaching", "attribute", "--input", str(request)],
+                text=True, capture_output=True, check=True,
+            )
+            output = json.loads(result.stdout)
+            self.assertEqual("implementation_error", output["attributions"][0]["category"])
+            after = {path.relative_to(root).as_posix(): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+            self.assertEqual(before, after)
+
+
 class GoalsModuleTests(unittest.TestCase):
     def test_entry_point_reexports_managed_goal_contract(self):
         goals = zzzops._goals
