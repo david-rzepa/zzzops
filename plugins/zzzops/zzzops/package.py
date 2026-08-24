@@ -29,6 +29,7 @@ REQUIRED_FILES = {
     "scripts/cleanup_legacy.py",
     "zzzops/references/bootstrap/ANALYZE.md",
     "zzzops/references/bootstrap/PLAN.md",
+    "zzzops/references/bootstrap/GREENFIELD.md",
     "zzzops/templates/project-goals/INIT_PLAN.json",
 }
 NAME_PATTERN = re.compile(r"^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$")
