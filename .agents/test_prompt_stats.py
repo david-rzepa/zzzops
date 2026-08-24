@@ -19,6 +19,14 @@ class PromptStatsTests(unittest.TestCase):
         self.assertEqual(prompt_stats.canonical_size(b"one\r\ntwo\r\n"), expected)
         self.assertEqual(prompt_stats.canonical_size(b"one\rtwo\r"), expected)
 
+    def test_unrouted_internal_references_are_not_loaded_prompts(self) -> None:
+        root = SCRIPT.parents[1]
+        paths = {path.relative_to(root).as_posix() for path in prompt_stats.prompt_files(root)}
+        self.assertNotIn(
+            "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
+            paths,
+        )
+
     def test_report_includes_rows_and_total(self) -> None:
         report = prompt_stats.render_report([("AGENTS.md", 8, 2)])
         self.assertIn("| `AGENTS.md` | 8 | 2 |", report)

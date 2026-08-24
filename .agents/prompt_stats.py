@@ -80,8 +80,10 @@ def canonical_size(data: bytes) -> int:
 def prompt_files(root: Path) -> list[Path]:
     files = [root / "AGENTS.md"]
     files.extend((root / "plugins" / "zzzops" / "rules").glob("*.md"))
-    files.extend((root / "plugins" / "zzzops" / "skills").glob("*/SKILL.md"))
-    files.extend((root / "plugins" / "zzzops" / "skills").glob("*/references/*.md"))
+    product_skills = list((root / "plugins" / "zzzops" / "skills").glob("*/SKILL.md"))
+    files.extend(product_skills)
+    for skill in product_skills:
+        files.extend((skill.parent / "references").glob("*.md"))
     files.extend((root / "plugins" / "zzzops" / "zzzops" / "templates" / "project-goals").glob("*.md"))
     files.extend((root / ".agents" / "skills").glob("*/SKILL.md"))
     files.extend((root / ".agents" / "skills").glob("*/references/*.md"))
