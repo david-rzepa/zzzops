@@ -30,7 +30,7 @@ Open a new Codex task after installing or upgrading. ZzzOps no longer copies mac
 
 ### Claude Code
 
-After the release containing Claude support reaches the repository's default branch, install ZzzOps directly from this repository:
+Install ZzzOps for Claude Code directly from this repository:
 
 ```powershell
 claude plugin marketplace add david-rzepa/zzzops
