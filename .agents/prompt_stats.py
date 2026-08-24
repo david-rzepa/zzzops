@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print and enforce a stable Codex plugin prompt-budget estimate."""
+"""Report prompt inventory and enforce representative Codex context budgets."""
 
 from __future__ import annotations
 
@@ -9,13 +9,19 @@ import time
 from pathlib import Path
 
 
-# Goals #282-#284 add repository bootstrap, bounded attribution, and explicit-only agent-use
-# coaching with their progressive references. The 6,000-token increase accounts for those shipped
-# surfaces without weakening profiles or excluding progressive-disclosure prompts.
-MAX_ESTIMATED_TOKENS = 20_400
-
 HARNESS_PROMPTS = {
     "codex": ("AGENTS.md",),
+}
+
+# These limits protect context paid on every Codex turn and the two frequent ZzzOps paths. At the
+# goal #297 baseline, always-loaded/codex is 625 tokens, capture/codex is 3,694, and
+# execution/codex is 9,406. The round ceilings leave room for roughly one concise invariant in
+# AGENTS.md, capture, or execution respectively, without making mutually exclusive cold paths
+# compete for one aggregate allowance.
+ENFORCED_PROMPT_BUDGETS = {
+    "always-loaded/codex": 700,
+    "capture/codex": 3_800,
+    "execution/codex": 9_600,
 }
 
 WORKFLOW_PROMPTS = {
@@ -120,9 +126,9 @@ def render_report(rows: list[tuple[str, int, int]]) -> str:
     total_bytes = sum(row[1] for row in rows)
     total_tokens = sum(row[2] for row in rows)
     table = [
-        "# Prompt budget report",
+        "# Advisory prompt inventory",
         "",
-        "Stable Codex estimate: `ceil(canonical UTF-8 bytes / 4)`; line endings normalize to LF. This is prompt-size regression evidence, not billing.",
+        "Stable Codex estimate: `ceil(canonical UTF-8 bytes / 4)`; line endings normalize to LF. This is prompt-size telemetry, not a blocking budget or billing.",
         "",
         "| Prompt | Bytes | Est. tokens |",
         "| --- | ---: | ---: |",
@@ -132,22 +138,70 @@ def render_report(rows: list[tuple[str, int, int]]) -> str:
     return "\n".join(table) + "\n"
 
 
-def within_budget(rows: list[tuple[str, int, int]], limit: int = MAX_ESTIMATED_TOKENS) -> bool:
-    return sum(row[2] for row in rows) <= limit
-
-
-def workflow_profile(root: Path, workflow: str, harness: str) -> tuple[int, int, str]:
-    paths = dict.fromkeys((*HARNESS_PROMPTS[harness], *WORKFLOW_PROMPTS[workflow]))
-    data = b"\n".join((root / path).read_bytes() for path in paths)
+def prompt_profile(root: Path, paths: tuple[str, ...]) -> tuple[int, int, str]:
+    unique_paths = dict.fromkeys(paths)
+    data = b"\n".join((root / path).read_bytes() for path in unique_paths)
     size = canonical_size(data)
     return size, math.ceil(size / 4), data.decode("utf-8")
 
 
+def workflow_profile(root: Path, workflow: str, harness: str) -> tuple[int, int, str]:
+    return prompt_profile(root, (*HARNESS_PROMPTS[harness], *WORKFLOW_PROMPTS[workflow]))
+
+
+def enforced_context_profiles(root: Path) -> dict[str, tuple[int, int]]:
+    profiles = {}
+    for harness, paths in HARNESS_PROMPTS.items():
+        profiles[f"always-loaded/{harness}"] = prompt_profile(root, paths)[:2]
+    for workflow in ("capture", "execution"):
+        for harness in HARNESS_PROMPTS:
+            profiles[f"{workflow}/{harness}"] = workflow_profile(root, workflow, harness)[:2]
+    return profiles
+
+
+def budget_overruns(
+    measurements: dict[str, tuple[int, int]],
+    limits: dict[str, int] = ENFORCED_PROMPT_BUDGETS,
+) -> list[tuple[str, int, int]]:
+    return [
+        (context, measurements[context][1], limit)
+        for context, limit in limits.items()
+        if measurements[context][1] > limit
+    ]
+
+
+def render_enforced_budget_report(
+    measurements: dict[str, tuple[int, int]],
+    limits: dict[str, int],
+    *,
+    prompt_count: int,
+    inventory_bytes: int,
+    inventory_tokens: int,
+) -> str:
+    table = [
+        "# Enforced prompt budgets",
+        "",
+        "Only always-loaded context and frequent routed workflows are blocking. Other workflows and total inventory are advisory.",
+        "",
+        "| Context | Bytes | Est. tokens | Limit | Status |",
+        "| --- | ---: | ---: | ---: | --- |",
+    ]
+    for context, limit in limits.items():
+        size, tokens = measurements[context]
+        status = "PASS" if tokens <= limit else "FAIL"
+        table.append(f"| {context} | {size} | {tokens} | {limit} | {status} |")
+    table.extend((
+        "",
+        f"Advisory total inventory: {prompt_count} prompts, {inventory_bytes} bytes, ~{inventory_tokens} tokens.",
+    ))
+    return "\n".join(table) + "\n"
+
+
 def render_workflow_report(root: Path) -> str:
     table = [
-        "# Routed workflow prompt report",
+        "# Advisory routed workflow prompt report",
         "",
-        "Directly routed plugin prompts plus the Codex repository root; conditional execution create/unblock documents are excluded.",
+        "Directly routed plugin prompts plus the Codex repository root; conditional execution create/unblock documents are excluded. Capture and execution also have blocking limits in `--check`.",
         "",
         "| Workflow | Codex bytes | Codex est. tokens |",
         "| --- | ---: | ---: |",
@@ -171,8 +225,8 @@ def evaluate_workflows(root: Path) -> tuple[list[str], float]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Print or enforce the prompt-budget estimate")
-    parser.add_argument("--check", action="store_true", help="Fail when the estimated prompt budget exceeds its committed ceiling")
+    parser = argparse.ArgumentParser(description="Report prompt inventory or enforce routed context budgets")
+    parser.add_argument("--check", action="store_true", help="Fail when always-loaded, capture, or execution context exceeds its committed ceiling")
     parser.add_argument("--profiles", action="store_true", help="Print per-workflow prompt loads for Codex")
     parser.add_argument("--eval", action="store_true", help="Run deterministic routed-workflow success fixtures")
     args = parser.parse_args()
@@ -195,10 +249,20 @@ def main() -> int:
         size = canonical_size(path.read_bytes())
         rows.append((relative, size, math.ceil(size / 4)))
     if args.check:
-        if not within_budget(rows):
-            print(f"Prompt budget exceeds {MAX_ESTIMATED_TOKENS} estimated tokens; reduce prompts or deliberately raise the ceiling.")
+        measurements = enforced_context_profiles(root)
+        print(render_enforced_budget_report(
+            measurements,
+            ENFORCED_PROMPT_BUDGETS,
+            prompt_count=len(rows),
+            inventory_bytes=sum(row[1] for row in rows),
+            inventory_tokens=sum(row[2] for row in rows),
+        ), end="")
+        overruns = budget_overruns(measurements)
+        if overruns:
+            for context, tokens, limit in overruns:
+                print(f"FAIL: {context} uses {tokens} estimated tokens; committed limit is {limit}.")
             return 1
-        print(f"Current: {len(rows)} prompts, {sum(row[1] for row in rows)} bytes, ~{sum(row[2] for row in rows)} tokens")
+        print("PASS: all enforced prompt contexts are within their committed limits.")
         return 0
     print(render_report(rows), end="")
     return 0

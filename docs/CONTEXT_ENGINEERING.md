@@ -17,6 +17,6 @@ This historical audit applies Anthropic's July 2026 [context-engineering guidanc
 
 ## Verification boundary
 
-The historical baseline was 56,766 canonical prompt bytes, approximately 14,200 estimated tokens. Current Codex Agent Plugin prompt accounting is reported by `.agents/prompt_stats.py`; the committed ceiling remains unchanged unless an explicit value justification approves a change.
+The historical baseline was 56,766 canonical prompt bytes, approximately 14,200 estimated tokens. Current Codex Agent Plugin prompt accounting is reported by `.agents/prompt_stats.py`. Its blocking limits cover the always-loaded repository instructions and the frequently routed goal-capture and execution contexts. Per-workflow profiles and the complete prompt inventory remain advisory: mutually exclusive, explicitly invoked workflows do not consume one artificial shared allowance. Each blocking limit records its baseline and justified headroom in the checker; changing one requires explicit value justification.
 
 Context-only changes must remain separate from Agent Plugin skills, runtime rules, policy validators, initialization templates, and downstream behavior. Required CI at the exact final PR head supplies the shipped-behavior regression evidence.
