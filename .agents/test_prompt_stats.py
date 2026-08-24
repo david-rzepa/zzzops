@@ -19,10 +19,10 @@ class PromptStatsTests(unittest.TestCase):
         self.assertEqual(prompt_stats.canonical_size(b"one\r\ntwo\r\n"), expected)
         self.assertEqual(prompt_stats.canonical_size(b"one\rtwo\r"), expected)
 
-    def test_unrouted_internal_references_are_not_loaded_prompts(self) -> None:
+    def test_routed_bootstrap_references_are_counted_as_prompts(self) -> None:
         root = SCRIPT.parents[1]
         paths = {path.relative_to(root).as_posix() for path in prompt_stats.prompt_files(root)}
-        self.assertNotIn(
+        self.assertIn(
             "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
             paths,
         )
@@ -40,7 +40,7 @@ class PromptStatsTests(unittest.TestCase):
         root = SCRIPT.parents[1]
         report = prompt_stats.render_workflow_report(root)
         self.assertEqual(
-            {"capture", "execution", "policy-review", "migration", "suggestion", "acceptance", "feedback"},
+            {"bootstrap-greenfield", "bootstrap-brownfield", "capture", "execution", "policy-review", "migration", "suggestion", "acceptance", "feedback"},
             set(prompt_stats.WORKFLOW_PROMPTS),
         )
         self.assertEqual(set(prompt_stats.WORKFLOW_PROMPTS), set(prompt_stats.WORKFLOW_SIGNALS))

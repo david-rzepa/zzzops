@@ -46,7 +46,8 @@ def main() -> int:
     if args.command == "coverage":
         required = [
             "plugins/zzzops/plugin.json", ".agents/plugins/marketplace.json",
-            "plugins/zzzops/skills/add-zzzops-goal", "plugins/zzzops/skills/migrate-to-zzzops",
+            "plugins/zzzops/skills/add-zzzops-goal", "plugins/zzzops/skills/bootstrap-zzzops-repository",
+            "plugins/zzzops/skills/migrate-to-zzzops",
             "plugins/zzzops/skills/review-zzzops-policy", "plugins/zzzops/skills/suggest-zzzops-work",
             "plugins/zzzops/skills/execute-zzzops", "plugins/zzzops/skills/send-zzzops-feedback",
         ]

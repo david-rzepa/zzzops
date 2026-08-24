@@ -2850,6 +2850,7 @@ class WorkflowContractTests(unittest.TestCase):
         root = PLUGIN_ROOT / "skills"
         contracts = {
             "add-zzzops-goal": ("capture", "add", "create", "record", "goal/todo", "writes canonical goal state by default"),
+            "bootstrap-zzzops-repository": ("bootstrap", "empty", "established", "specification", "agent-ready", "stops before substantive product implementation"),
             "execute-zzzops": ("execute", "work all goals", "continue", "resume", "triage", "prioritize", "reprioritize", "unblock", '"dry run"', '"preview"', '"plan"', "default executes"),
             "migrate-to-zzzops": ("discover", "plan", "migrate", "import", "todos/backlogs", '"dry run"', '"preview"', '"apply"', "default builds review artifacts"),
             "review-zzzops-policy": ("review", "initialize", "summarize", "reconcile", "adjust", "policy", "preferred first workflow", "always re-summarizes"),
@@ -2867,7 +2868,7 @@ class WorkflowContractTests(unittest.TestCase):
     def test_installed_skills_share_preflight_and_backend_rules(self):
         root = PLUGIN_ROOT
         names = (
-            "add-zzzops-goal", "execute-zzzops", "migrate-to-zzzops",
+            "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
             "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
         )
         self.assertEqual(names, zzzops.MANAGED_SKILLS)

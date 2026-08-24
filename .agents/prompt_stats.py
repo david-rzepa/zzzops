@@ -9,15 +9,32 @@ import time
 from pathlib import Path
 
 
-# Goal #129 adds the privacy boundary itself: shared immutable-report rules, exact public-
-# payload consent, and one session gate that prevents feedback issues entering execution silently.
-MAX_ESTIMATED_TOKENS = 14_400
+# Goal #282 adds one independently routed repository-bootstrap skill plus four mode-specific
+# references. The 4,400-token increase accounts for that shipped value without weakening the
+# per-workflow profiles or silently excluding progressive-disclosure prompts from inventory.
+MAX_ESTIMATED_TOKENS = 18_800
 
 HARNESS_PROMPTS = {
     "codex": ("AGENTS.md",),
 }
 
 WORKFLOW_PROMPTS = {
+    "bootstrap-greenfield": (
+        "plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md",
+        "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
+        "plugins/zzzops/zzzops/references/bootstrap/PLAN.md",
+        "plugins/zzzops/zzzops/references/bootstrap/GREENFIELD.md",
+        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
+        "plugins/zzzops/rules/FEEDBACK.md",
+    ),
+    "bootstrap-brownfield": (
+        "plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md",
+        "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
+        "plugins/zzzops/zzzops/references/bootstrap/PLAN.md",
+        "plugins/zzzops/zzzops/references/bootstrap/BROWNFIELD.md",
+        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
+        "plugins/zzzops/rules/FEEDBACK.md",
+    ),
     "capture": (
         "plugins/zzzops/skills/add-zzzops-goal/SKILL.md",
         "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
@@ -57,6 +74,8 @@ WORKFLOW_PROMPTS = {
 }
 
 WORKFLOW_SIGNALS = {
+    "bootstrap-greenfield": ("never silently de-escalate", "Classify greenfield", "ordinary managed goal", "canonical verification", "substantive product work requires its own goal execution authority"),
+    "bootstrap-brownfield": ("evidence-led harness audit", "reconcile it in place", "$migrate-to-zzzops", "canonical verification", "substantive product work requires its own goal execution authority"),
     "capture": ("duplicate/relationship checks", "adaptive requirements interview", "sole stakeholder", "active same-task execute intent", "effective engineering rigor", "vibe → light", "never silently de-escalate"),
     "execution": ("complete:true", "smallest falsifiable chunk", "difficulty is cost, not value", "human_after_checks", "Execution assumes the user is absent", "Before substantive work on a newly selected goal", "continue while policy permits safe useful work", "effective engineering rigor", "Created-but-unrun machinery is not proof"),
     "policy-review": ("only this workflow changes or confirms policy", "explicit approval of the current digest", "The policy is already approved", "privacy-safe execution reports"),
@@ -84,6 +103,7 @@ def prompt_files(root: Path) -> list[Path]:
     files.extend(product_skills)
     for skill in product_skills:
         files.extend((skill.parent / "references").glob("*.md"))
+    files.extend((root / "plugins" / "zzzops" / "zzzops" / "references" / "bootstrap").glob("*.md"))
     files.extend((root / "plugins" / "zzzops" / "zzzops" / "templates" / "project-goals").glob("*.md"))
     files.extend((root / ".agents" / "skills").glob("*/SKILL.md"))
     files.extend((root / ".agents" / "skills").glob("*/references/*.md"))

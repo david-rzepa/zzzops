@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bootstrap ZzzOps Repository"
+  short_description: "Create or strengthen an agent-ready repository"
+  default_prompt: "Use $bootstrap-zzzops-repository to create this project from my specification or make this existing repository agent-ready."

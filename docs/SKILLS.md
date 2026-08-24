@@ -2,11 +2,12 @@
 
 ZzzOps uses the Agent Plugins skill contract: the `name` and `description` frontmatter in each `SKILL.md`. Put likely user verbs, nouns, boundaries, and exact mode phrases in `description`; do not invent alias or keyword metadata. Codex's optional `agents/openai.yaml` supplies UI text but does not replace the common description.
 
-The table below is the exact six-skill Agent Plugin package. `run-zzzops-acceptance` is deliberately absent: that skill, `docs/ACCEPTANCE_TEST_PLAN.md`, and `.agents/manual_acceptance.py` are base-repository maintenance and release infrastructure used to validate the shipped workflows, not plugin features.
+The table below is the exact seven-skill Agent Plugin package. `run-zzzops-acceptance` is deliberately absent: that skill, `docs/ACCEPTANCE_TEST_PLAN.md`, and `.agents/manual_acceptance.py` are base-repository maintenance and release infrastructure used to validate the shipped workflows, not plugin features.
 
 | Skill | Discovery terms | Default | Explicit modes |
 | --- | --- | --- | --- |
 | `add-zzzops-goal` | add, create, capture, record; goal, TODO, backlog item | Write one canonical goal | None |
+| `bootstrap-zzzops-repository` | bootstrap, create project; repository, agent-ready, specification | Analyze, plan, and execute verified harness goals; stop before product implementation | Greenfield, early scaffold, and brownfield are evidence-derived rather than user-selected |
 | `execute-zzzops` | execute, work all goals, continue, triage, prioritize, reprioritize, unblock | Execute authorized work; exclude feedback issues | `dry run`, `preview`, `plan`: read-only; session approval includes all `zzzops-feedback` issues |
 | `migrate-to-zzzops` | discover, plan, migrate, import; TODOs, backlog | Build review artifacts; apply only after approval | `dry run`, `preview`, `plan`: report only; `apply`, `migrate`, `import`: approved write |
 | `review-zzzops-policy` | review, initialize, summarize, reconcile, adjust; policy | Summarize current policy and invite adjustments | Explicit approval confirms the current reviewed policy |

@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugins" / "zzzops"
 SHIPPED_SKILLS = {
     "add-zzzops-goal",
+    "bootstrap-zzzops-repository",
     "execute-zzzops",
     "migrate-to-zzzops",
     "review-zzzops-policy",
@@ -87,7 +88,7 @@ class AgentPluginTests(unittest.TestCase):
         self.assertEqual("AVAILABLE", entry["policy"]["installation"])
         self.assertEqual("ON_USE", entry["policy"]["authentication"])
 
-    def test_package_contains_exactly_the_six_product_skills(self) -> None:
+    def test_package_contains_exactly_the_seven_product_skills(self) -> None:
         actual = {path.name for path in (PLUGIN / "skills").iterdir() if (path / "SKILL.md").is_file()}
         self.assertEqual(SHIPPED_SKILLS, actual)
         self.assertFalse((PLUGIN / "skills" / "run-zzzops-acceptance").exists())
