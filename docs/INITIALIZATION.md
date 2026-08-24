@@ -16,7 +16,7 @@ Apply creates a concise pending `.zzzops/PROJECT.md`, the detailed `.zzzops/PROJ
 
 Workflow adherence is reviewed separately from engineering or verification rigor. `optional` makes ZzzOps available without requiring it; `tracked` requires a durable goal for substantial agent work while allowing otherwise-authorized execution outside `$execute-zzzops`; `managed` requires repository-changing agent work to use the appropriate ZzzOps workflow and tracked implementation to run through `$execute-zzzops`. Read-only investigation and ZzzOps administration remain exempt, and only explicit user authority grants a scoped exception. Existing policies keep their prior behavior until this new section is reviewed; new policy drafts propose `tracked`.
 
-After the workflow-adherence section is approved, confirmation reconciles a bounded block in `AGENTS.md` without overwriting repository instructions. The canonical policy remains authoritative. ZzzOps may use repository-specific CI or PR checks where they can reliably observe adherence, but it does not claim a universal enforcement mechanism.
+After workflow adherence is approved, `$review-zzzops-policy` reconciles a bounded block in `AGENTS.md` without overwriting repository instructions. This is an agent workflow action, not a policy-runtime write or universal enforcement mechanism; the canonical policy remains authoritative.
 
 `PROJECT.md` remains the concise human charter and policy summary. `POLICY.json` is the one canonical machine representation, while digest-bound `PROJECT_AUDIT.md` keeps evidence, rationales, and review history off the ordinary workflow path. Every invocation of `$review-zzzops-policy` re-reads and re-summarizes meaningful current choices, even when policy is already valid.
 

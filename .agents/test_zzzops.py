@@ -31,7 +31,6 @@ class PolicyModuleTests(unittest.TestCase):
             "validate_policy", "render_project", "render_project_audit",
             "normalize_resource_policy", "policy_default_catalog", "policy_content_digest",
             "prepare_policy_defaults", "compare_policy_defaults",
-            "reconcile_workflow_adherence_agents",
         ):
             self.assertIs(getattr(zzzops, name), getattr(policy, name))
 
@@ -558,23 +557,6 @@ class InitializationTests(unittest.TestCase):
     def test_project_state_path_is_stable(self):
         self.assertEqual(self.repo / ".zzzops" / "PROJECT.md", zzzops.project_path(self.repo))
         self.assertEqual(self.repo / ".zzzops" / "POLICY.json", zzzops.project_policy_path(self.repo))
-
-    def test_confirm_project_reconciles_reviewed_adherence_without_overwriting_agents(self):
-        (self.repo / "AGENTS.md").write_text("# Local instructions\n\nKeep this text.\n", encoding="utf-8")
-        plan = self.plan()
-        adherence = next(item for item in plan["policy"]["sections"] if item["id"] == "workflow_adherence")
-        adherence["decision"] = "managed"
-        adherence["default_disposition"] = "changed"
-        applied = zzzops.apply_plan(self.repo, plan)
-        zzzops.confirm_project(self.repo, applied["policy_digest"], "test-user", [], True)
-
-        agents = (self.repo / "AGENTS.md").read_text(encoding="utf-8")
-        self.assertIn("# Local instructions", agents)
-        self.assertIn("Keep this text.", agents)
-        self.assertIn("BEGIN ZZZOPS WORKFLOW ADHERENCE", agents)
-        self.assertIn("Reviewed level: `managed`", agents)
-        self.assertIn("tracked implementation must run through `$execute-zzzops`", agents)
-        self.assertEqual(agents, zzzops.reconcile_workflow_adherence_agents(agents, zzzops.read_project_state(self.repo)[2]["policy"]))
 
     @mock.patch.object(zzzops.shutil, "which", return_value="gh")
     @mock.patch.object(zzzops.subprocess, "run")
@@ -2639,7 +2621,7 @@ class WorkflowContractTests(unittest.TestCase):
             mutate(next(item for item in invalid["sections"] if item["id"] == "automated_design"))
             self.assertTrue(any(field in error for error in zzzops.validate_policy(invalid, True)), field)
 
-    def test_workflow_adherence_policy_is_structured_compatible_and_rendered(self):
+    def test_workflow_adherence_policy_is_structured_compatible_and_review_owned(self):
         root = PLUGIN_ROOT
         plan = json.loads((root / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         section = next(item for item in plan["policy"]["sections"] if item["id"] == "workflow_adherence")
@@ -2657,6 +2639,7 @@ class WorkflowContractTests(unittest.TestCase):
             section["settings"]["exemptions"],
         )
         self.assertEqual("explicit_scoped_user_authority", section["settings"]["scoped_exception"])
+        self.assertEqual("review_workflow_reconciliation", section["settings"]["agents_projection"])
         self.assertEqual([], zzzops.validate_policy(plan["policy"], True))
 
         rendered = zzzops.render_project({
@@ -2684,7 +2667,9 @@ class WorkflowContractTests(unittest.TestCase):
         execution = (Path(__file__).parents[1] / "docs" / "EXECUTION.md").read_text(encoding="utf-8")
         self.assertIn("workflow-adherence sections", review)
         self.assertIn("propose `tracked` for adherence", review)
-        self.assertIn("writes approved adherence to a bounded `AGENTS.md` block", review)
+        self.assertIn("reconcile a bounded `AGENTS.md` block", review)
+        self.assertIn("preserve all unrelated instructions", review)
+        self.assertIn("BEGIN ZZZOPS WORKFLOW ADHERENCE", review)
         for text in (initialization, execution):
             self.assertIn("`optional`", text)
             self.assertIn("`tracked`", text)

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from pathlib import Path
 from typing import Any, Callable
 
@@ -55,11 +54,8 @@ WORKFLOW_ADHERENCE_SETTINGS = {
     },
     "exemptions": ["read_only_investigation", "zzzops_administration"],
     "scoped_exception": "explicit_scoped_user_authority",
-    "agents_projection": "managed_block_after_review",
-    "deterministic_enforcement": "when_supported",
+    "agents_projection": "review_workflow_reconciliation",
 }
-WORKFLOW_ADHERENCE_START = "<!-- BEGIN ZZZOPS WORKFLOW ADHERENCE -->"
-WORKFLOW_ADHERENCE_END = "<!-- END ZZZOPS WORKFLOW ADHERENCE -->"
 
 POLICY_DEFAULT_CONTENT_FIELDS = ("decision", "settings")
 _package_provenance: Callable[[Path | None], dict[str, str]] | None = None
@@ -642,61 +638,6 @@ def reviewed_project_state(repo: Path) -> dict[str, Any]:
     if errors or project.get("initialized") is not True or policy_blockers(project.get("policy")):
         raise ValueError("Project policy is not ready")
     return project
-
-
-def reviewed_workflow_adherence(policy: Any) -> str | None:
-    if not isinstance(policy, dict) or not isinstance(policy.get("sections"), list):
-        return None
-    section = next(
-        (
-            item for item in policy["sections"]
-            if isinstance(item, dict) and item.get("id") == "workflow_adherence"
-        ),
-        None,
-    )
-    if (
-        not isinstance(section, dict)
-        or section.get("applicable") is not True
-        or not isinstance(section.get("review"), dict)
-        or section["review"].get("approved") is not True
-        or section.get("decision") not in WORKFLOW_ADHERENCE_SETTINGS["levels"]
-    ):
-        return None
-    return section["decision"]
-
-
-def render_workflow_adherence_agents(policy: Any) -> str:
-    level = reviewed_workflow_adherence(policy)
-    if level is None:
-        return ""
-    behavior = {
-        "optional": "ZzzOps is available for repository work but is not required.",
-        "tracked": "Substantial repository-changing agent work requires a durable ZzzOps goal; otherwise-authorized execution may occur outside `$execute-zzzops`.",
-        "managed": "Repository-changing agent work must use the appropriate ZzzOps workflow; tracked implementation must run through `$execute-zzzops`.",
-    }[level]
-    return (
-        f"{WORKFLOW_ADHERENCE_START}\n"
-        "## ZzzOps workflow adherence\n\n"
-        f"Reviewed level: `{level}`. {behavior}\n"
-        "Read-only investigation and ZzzOps administration are exempt. Only explicit user authority may grant a scoped exception.\n"
-        f"{WORKFLOW_ADHERENCE_END}\n"
-    )
-
-
-def reconcile_workflow_adherence_agents(existing: str, policy: Any) -> str:
-    rendered = render_workflow_adherence_agents(policy)
-    if not rendered:
-        return existing
-    pattern = re.compile(
-        re.escape(WORKFLOW_ADHERENCE_START) + r".*?" + re.escape(WORKFLOW_ADHERENCE_END) + r"\n?",
-        re.DOTALL,
-    )
-    if pattern.search(existing):
-        return pattern.sub(rendered, existing, count=1)
-    separator = "\n" if existing.endswith("\n") else "\n\n"
-    if not existing:
-        separator = ""
-    return f"{existing}{separator}{rendered}"
 
 
 def cell(value: str) -> str:

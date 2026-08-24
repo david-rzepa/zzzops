@@ -157,8 +157,7 @@
           },
           "exemptions": ["read_only_investigation", "zzzops_administration"],
           "scoped_exception": "explicit_scoped_user_authority",
-          "agents_projection": "managed_block_after_review",
-          "deterministic_enforcement": "when_supported"
+          "agents_projection": "review_workflow_reconciliation"
         },
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
