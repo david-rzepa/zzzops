@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import runpy
 import shutil
 import struct
 import sys
@@ -185,6 +186,7 @@ def scan_for_secrets(relative: str, data: bytes) -> None:
 
 def plugin_files(root: Path, version: str) -> dict[str, bytes]:
     plugin = root / "plugins" / "zzzops"
+    renderer = runpy.run_path(str(plugin / "zzzops" / "package.py"))["render_skill_metadata"]
     result: dict[str, bytes] = {}
     allowed_top_level = {".codex-plugin", "assets", "plugin.json", "rules", "scripts", "skills", "zzzops"}
     for path in sorted(plugin.rglob("*"), key=lambda item: item.relative_to(plugin).as_posix()):
@@ -202,6 +204,10 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
             manifest = json.loads(data.decode("utf-8-sig"))
             manifest["version"] = version
             data = canonical_json(manifest)
+        try:
+            data = renderer(relative, data, version, "official")
+        except ValueError as exc:
+            raise BundleError(f"invalid skill discovery metadata in {relative}: {exc}") from exc
         scan_for_secrets(relative, data)
         result[relative] = data
     required = {
@@ -222,6 +228,14 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
         "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
     }:
         raise BundleError("plugin archive must contain exactly the six product skills")
+    missing_metadata = sorted(
+        f"skills/{skill}/{relative}"
+        for skill in shipped_skills
+        for relative in ("SKILL.md", "agents/openai.yaml")
+        if f"skills/{skill}/{relative}" not in result
+    )
+    if missing_metadata:
+        raise BundleError("skill discovery metadata is incomplete: " + ", ".join(missing_metadata))
     return result
 
 

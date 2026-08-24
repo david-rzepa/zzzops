@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import runpy
 import shutil
 import subprocess
 import sys
@@ -67,6 +68,41 @@ def cachebusted_manifest(original: bytes, manifest_path: Path, cachebuster: str)
     return (json.dumps(payload, indent=2) + "\n").encode("utf-8")
 
 
+def development_plugin_files(plugin_path: Path, cachebuster: str) -> dict[Path, bytes]:
+    manifest_paths = [plugin_path / "plugin.json", plugin_path / ".codex-plugin/plugin.json"]
+    originals = {path: path.read_bytes() for path in manifest_paths}
+    bases = set()
+    for path, original in originals.items():
+        version = json.loads(original.decode("utf-8")).get("version")
+        if not isinstance(version, str) or not version:
+            raise RuntimeError(f"missing version in {path}")
+        bases.add(version.split("+", 1)[0])
+    if len(bases) != 1:
+        raise RuntimeError("plugin manifests disagree on the development base version")
+    base_version = bases.pop()
+    package = runpy.run_path(str(plugin_path / "zzzops" / "package.py"))
+    renderer = package["render_skill_metadata"]
+    expected_skills = set(package["SHIPPED_SKILLS"])
+    actual_skills = {
+        path.name for path in (plugin_path / "skills").iterdir()
+        if (path / "SKILL.md").is_file()
+    }
+    if actual_skills != expected_skills:
+        raise RuntimeError("development plugin does not contain the exact shipped skill set")
+    projected = {
+        path: cachebusted_manifest(original, path, cachebuster)
+        for path, original in originals.items()
+    }
+    display_version = base_version if base_version.endswith("-dev") else f"{base_version}-dev"
+    for skill in sorted(actual_skills):
+        for relative in (Path("skills") / skill / "SKILL.md", Path("skills") / skill / "agents" / "openai.yaml"):
+            path = plugin_path / relative
+            if not path.is_file():
+                raise RuntimeError(f"missing development skill metadata: {relative.as_posix()}")
+            projected[path] = renderer(relative.as_posix(), path.read_bytes(), display_version, "development")
+    return projected
+
+
 def main() -> int:
     repo_root = find_repo_root(Path.cwd())
     marketplace_name, plugin_path = load_marketplace(repo_root)
@@ -100,23 +136,20 @@ def main() -> int:
             "remove and re-add it only after confirming the other checkout can be disconnected"
         )
 
-    manifest_paths = [plugin_path / "plugin.json", plugin_path / ".codex-plugin/plugin.json"]
-    originals = {path: path.read_bytes() for path in manifest_paths}
     cachebuster = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-    temporary = {
-        path: cachebusted_manifest(originals[path], path, cachebuster) for path in manifest_paths
-    }
+    temporary = development_plugin_files(plugin_path, cachebuster)
+    originals = {path: path.read_bytes() for path in temporary}
     try:
-        for path in manifest_paths:
-            path.write_bytes(temporary[path])
+        for path, data in temporary.items():
+            path.write_bytes(data)
         result = run([codex, "plugin", "add", f"{PLUGIN_NAME}@{marketplace_name}", "--json"], cwd=repo_root)
         if result.stdout.strip():
             print(result.stdout.strip())
     finally:
-        for path in manifest_paths:
-            path.write_bytes(originals[path])
+        for path, data in originals.items():
+            path.write_bytes(data)
 
-    installed_version = json.loads(temporary[manifest_paths[0]].decode("utf-8"))["version"]
+    installed_version = json.loads(temporary[plugin_path / "plugin.json"].decode("utf-8"))["version"]
     print(f"Installed {PLUGIN_NAME}@{marketplace_name} from {plugin_path} as {installed_version}.")
     print("Start a new Codex task to load the refreshed skills.")
     return 0
