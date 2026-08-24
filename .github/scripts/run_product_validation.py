@@ -28,6 +28,7 @@ def linux_validation() -> None:
 def windows_validation() -> None:
     run(sys.executable, ".agents/test_zzzops.py")
     run(sys.executable, ".agents/test_legacy_cleanup.py")
+    run(sys.executable, ".agents/test_installation_validation.py")
     run(sys.executable, ".agents/test_marketplace_bundle.py")
     run(sys.executable, "-m", "unittest", "discover", "-s", "plugins/zzzops/skills/migrate-to-zzzops/scripts", "-p", "test_*.py")
 
@@ -35,6 +36,7 @@ def windows_validation() -> None:
 def macos_validation() -> None:
     run(sys.executable, ".agents/test_zzzops.py")
     run(sys.executable, ".agents/test_legacy_cleanup.py")
+    run(sys.executable, ".agents/test_installation_validation.py")
     run(sys.executable, ".agents/test_marketplace_bundle.py")
     run(sys.executable, "-m", "unittest", "discover", "-s", "plugins/zzzops/skills/migrate-to-zzzops/scripts", "-p", "test_*.py")
 

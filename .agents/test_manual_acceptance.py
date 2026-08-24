@@ -42,6 +42,7 @@ class ManualAcceptanceTests(unittest.TestCase):
             self.assertIn("plugins/zzzops/skills/bootstrap-zzzops-repository", json.loads(result.stdout)["unmapped_required_surfaces"])
             self.assertIn("plugins/zzzops/skills/review-agentic-engineering", json.loads(result.stdout)["unmapped_required_surfaces"])
             self.assertIn("plugins/zzzops/skills/send-zzzops-feedback", json.loads(result.stdout)["unmapped_required_surfaces"])
+            self.assertIn("plugins/zzzops/skills/validate-zzzops-installation", json.loads(result.stdout)["unmapped_required_surfaces"])
             self.assertEqual(path.read_text(encoding="utf-8"), "<!-- zzzops-acceptance-plan\n" + json.dumps(plan) + "\nzzzops-acceptance-plan -->\n")
 
     def test_coverage_accepts_plugin_manifests_and_packaged_skills(self):
@@ -55,6 +56,7 @@ class ManualAcceptanceTests(unittest.TestCase):
                 "plugins/zzzops/skills/review-zzzops-policy", "plugins/zzzops/skills/suggest-zzzops-work",
                 "plugins/zzzops/skills/execute-zzzops", "plugins/zzzops/skills/review-agentic-engineering",
                 "plugins/zzzops/skills/send-zzzops-feedback",
+                "plugins/zzzops/skills/validate-zzzops-installation",
             ]
             plan = {
                 "version": 1,

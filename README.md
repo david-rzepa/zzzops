@@ -26,18 +26,17 @@ codex plugin marketplace add david-rzepa/zzzops@v2.0.1
 codex plugin add zzzops@zzzops
 ```
 
-Open a new Codex task after installing or upgrading. ZzzOps no longer copies machinery into each project or maintains an installer lock. The package contains exactly eight skills plus their shared rules, control CLI, and blank initialization templates. It never contains project policy, goals, repository instructions, or other project state.
+Open a new Codex task after installing or upgrading. ZzzOps no longer copies machinery into each project or maintains an installer lock. The package contains exactly nine skills plus their shared rules, control CLI, and blank initialization templates. It never contains project policy, goals, repository instructions, or other project state.
 
 ZzzOps v2 supports Codex. Claude Code users can remain on [v1.2.0, the final legacy installer release](https://github.com/david-rzepa/zzzops/releases/tag/v1.2.0); that line is retained for download but is not updated by the v2 marketplace workflow.
 
-If a repository still contains a legacy per-project installation, use the cleanup utility shipped in the installed plugin. Its default is a read-only preview:
+On the first ZzzOps use in each repository after installation or upgrade, ZzzOps automatically routes once through its installation validator. It checks the installed version and package digest, audits for retired per-project machinery, and then resumes the workflow you originally requested. Repeated workflows use a cheap Git-local record and do not rerun the audit.
 
 ```text
-<python> <installed-zzzops-plugin>/scripts/cleanup_legacy.py <target-repository>
-<python> <installed-zzzops-plugin>/scripts/cleanup_legacy.py <target-repository> --apply
+Use $validate-zzzops-installation to revalidate this repository explicitly.
 ```
 
-The apply command asks for an exact confirmation. It removes only machinery proven by the legacy lock or manifest, or by the immutable v1.0.0 fingerprint catalog. Any modified, unknown, ambiguous, unsafe, or symlinked path blocks the whole operation. Durable `.zzzops` policy, audit, migration, and goal state is preserved, and tracked paths are reported without changing the Git index. See the [legacy cleanup contract](docs/LEGACY_CLEANUP.md).
+If proven legacy content exists, the validator shows the exact cleanup plan and asks before removing anything. Declining leaves every file untouched and suppresses repeat prompts for that package; explicit revalidation remains available. Modified, unknown, ambiguous, unsafe, or symlinked paths fail closed. Durable `.zzzops` state and the Git index are preserved. See the [legacy cleanup contract](docs/LEGACY_CLEANUP.md).
 
 [Privacy policy](PRIVACY.md) · [OpenAI compliance review](docs/OPENAI_COMPLIANCE.md) · Support, privacy, and security: [zzzops.support@gmail.com](mailto:zzzops.support@gmail.com)
 
@@ -154,6 +153,7 @@ This skill is explicit-only and read-only. It distinguishes genuine specificatio
 | `goals.py` | Managed-goal parsing, validation, rendering, GitHub record projection, and guarded transitions. |
 | `portfolio.py` | Goal graph audits, actionability, and canonical portfolio snapshots. |
 | `package.py` | Agent Plugin package validation and deterministic package provenance. |
+| `installation.py` | Per-repository package validation state and composition of the legacy cleanup audit. |
 | `zzzops.py` | CLI parsing/dispatch, provider probes/adapters, package validation, and stable re-exports. |
 
 The package checkpoint validates the installed manifest, required surfaces, and deterministic SHA-256 provenance before provider access. Keep cross-module dependencies one-way: focused modules may use explicitly configured entry-point callbacks, while callers continue to invoke the stable `zzzops.py` command or re-exported API.
@@ -165,6 +165,7 @@ This is the complete list of shipped user-facing ZzzOps features. It is a catalo
 | Feature | Primary surface |
 | --- | --- |
 | Discover, install, update, and remove ZzzOps through Codex | `.agents/plugins/marketplace.json` / `plugins/zzzops/plugin.json` |
+| Validate each repository once per installed package and confirm legacy cleanup | `plugins/zzzops/skills/validate-zzzops-installation/SKILL.md` |
 | Safely preview and remove retired per-project installations | `plugins/zzzops/scripts/cleanup_legacy.py` / `plugins/zzzops/assets/legacy_install_fingerprints.json` |
 | Publish the privacy boundary, compliance review, and support contact | `PRIVACY.md` / `docs/OPENAI_COMPLIANCE.md` / `README.md` |
 | Initialize, summarize, and adjust reviewed project policy | `plugins/zzzops/skills/review-zzzops-policy/SKILL.md` |

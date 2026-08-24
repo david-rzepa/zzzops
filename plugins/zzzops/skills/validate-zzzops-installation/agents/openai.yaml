@@ -1,0 +1,4 @@
+interface:
+  display_name: "Validate ZzzOps Installation"
+  short_description: "Validate one repository after install or upgrade"
+  default_prompt: "Use $validate-zzzops-installation to verify this repository has one coherent ZzzOps installation."

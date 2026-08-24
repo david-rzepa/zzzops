@@ -19,13 +19,14 @@ PLUGIN_FIELDS = {
 SHIPPED_SKILLS = {
     "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
     "review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
+    "validate-zzzops-installation",
 }
 REQUIRED_FILES = {
     ".codex-plugin/plugin.json",
     "assets/legacy_install_fingerprints.json",
     "rules/BACKENDS.md", "rules/BLOCKERS.md", "rules/CONTINUATION.md",
     "rules/EXECUTION_STRATEGY.md", "rules/FEEDBACK.md", "rules/GOAL_SYSTEM.md",
-    "rules/INITIALIZATION.md", "zzzops/zzzops.py",
+    "rules/INITIALIZATION.md", "zzzops/installation.py", "zzzops/zzzops.py",
     "zzzops/coaching.py",
     "scripts/cleanup_legacy.py",
     "zzzops/references/bootstrap/ANALYZE.md",

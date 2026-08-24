@@ -39,6 +39,7 @@ class ReleaseValidationTests(unittest.TestCase):
         self.assertIn("python .github/scripts/run_product_validation.py --platform windows", workflow)
         runner = RUNNER_PATH.read_text(encoding="utf-8")
         self.assertEqual(2, runner.count('run(sys.executable, ".agents/test_legacy_cleanup.py")'))
+        self.assertEqual(2, runner.count('run(sys.executable, ".agents/test_installation_validation.py")'))
         self.assertEqual(2, runner.count('run(sys.executable, ".agents/test_marketplace_bundle.py")'))
         release_job = workflow.split("  release:", 1)[1]
         self.assertIn("actions/setup-python@v5", release_job)
