@@ -240,6 +240,52 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
     return result
 
 
+def claude_marketplace_files(root: Path, version: str) -> dict[str, bytes]:
+    """Render a self-contained Claude marketplace from the canonical plugin."""
+    if not SEMVER.fullmatch(version):
+        raise BundleError("version must be a concrete semantic release version")
+    canonical_manifest = read_json(root / "plugins" / "zzzops" / "plugin.json")
+    required_manifest = {
+        "name", "description", "author", "homepage", "repository", "license", "keywords",
+    }
+    if not isinstance(canonical_manifest, dict) or not required_manifest.issubset(canonical_manifest):
+        raise BundleError("canonical plugin manifest is incomplete for Claude generation")
+    for field in ("name", "description", "homepage", "repository", "license"):
+        require_text(canonical_manifest[field], f"plugin.{field}")
+    author = canonical_manifest["author"]
+    if not isinstance(author, dict) or not require_text(author.get("name"), "plugin.author.name"):
+        raise BundleError("plugin.author is incomplete")
+    keywords = canonical_manifest["keywords"]
+    if not isinstance(keywords, list) or not keywords or any(not require_text(item, "plugin.keywords") for item in keywords):
+        raise BundleError("plugin.keywords must contain non-empty text")
+    canonical = plugin_files(root, version)
+    manifest_fields = (
+        "name", "description", "author", "homepage", "repository", "license", "keywords",
+    )
+    manifest = {field: canonical_manifest[field] for field in manifest_fields}
+    manifest["version"] = version
+    marketplace = {
+        "name": canonical_manifest["name"],
+        "owner": canonical_manifest["author"],
+        "metadata": {
+            "description": canonical_manifest["description"],
+            "version": version,
+        },
+        "plugins": [{
+            "name": canonical_manifest["name"],
+            "source": "./zzzops",
+            "description": canonical_manifest["description"],
+            "version": version,
+        }],
+    }
+    result = {f"zzzops/{relative}": data for relative, data in canonical.items()}
+    result["zzzops/.claude-plugin/plugin.json"] = canonical_json(manifest)
+    result[".claude-plugin/marketplace.json"] = canonical_json(marketplace)
+    for relative, data in result.items():
+        scan_for_secrets(relative, data)
+    return result
+
+
 def zip_bytes(files: dict[str, bytes]) -> bytes:
     temporary = io.BytesIO()
     with ZipFile(temporary, "w", compression=ZIP_DEFLATED, compresslevel=9) as archive:
