@@ -53,10 +53,30 @@ def main() -> int:
             "plugins/zzzops/skills/send-zzzops-feedback",
             "plugins/zzzops/skills/validate-zzzops-installation",
         ]
-        mapped = {path for item in items for path in item["paths"]}
+        mapped = {
+            surface
+            for item in items
+            for surface in item.get("surfaces", item["paths"])
+        }
+        automated_without_evidence = []
+        for contract in data.get("automated_surfaces", []):
+            evidence = contract.get("evidence", [])
+            missing_evidence = [
+                path for path in evidence if not (repo / path).is_file()
+            ]
+            if not evidence or missing_evidence:
+                automated_without_evidence.append({
+                    "surface": contract["surface"],
+                    "missing": missing_evidence,
+                })
+            else:
+                mapped.add(contract["surface"])
         missing = [path for path in required if not any(entry == path or entry.startswith(path + "/") for entry in mapped)]
-        print(json.dumps({"unmapped_required_surfaces": missing}))
-        return 1 if missing else 0
+        print(json.dumps({
+            "unmapped_required_surfaces": missing,
+            "automated_surfaces_without_evidence": automated_without_evidence,
+        }))
+        return 1 if missing or automated_without_evidence else 0
     if args.command == "audit":
         changed = []
         for item in items:
