@@ -167,6 +167,12 @@ class MarketplaceBundleTests(unittest.TestCase):
         self.assertEqual("2.0.0", marketplace["metadata"]["version"])
         self.assertEqual("./zzzops", marketplace["plugins"][0]["source"])
         self.assertEqual("2.0.0", marketplace["plugins"][0]["version"])
+        self.assertEqual(manifest["keywords"], marketplace["plugins"][0]["keywords"])
+        self.assertEqual("development", marketplace["plugins"][0]["category"])
+        self.assertEqual(
+            ["agentic-engineering", "coding-agents", "repository-bootstrap"],
+            marketplace["plugins"][0]["tags"],
+        )
 
         canonical = self.builder.plugin_files(ROOT, "2.0.0")
         for relative, content in canonical.items():
@@ -192,6 +198,38 @@ class MarketplaceBundleTests(unittest.TestCase):
         self.assertEqual(canonical["name"], manifest["name"])
         for field in ("version", "description", "author", "homepage", "repository", "license", "keywords"):
             self.assertEqual(canonical[field], manifest[field], field)
+
+    def test_public_discovery_metadata_keeps_one_truthful_positioning(self) -> None:
+        canonical = json.loads((ROOT / "plugins" / "zzzops" / "plugin.json").read_text(encoding="utf-8"))
+        codex = json.loads(
+            (ROOT / "plugins" / "zzzops" / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8")
+        )
+        claude = json.loads(
+            (ROOT / "plugins" / "zzzops" / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+        )
+        claude_marketplace = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
+        openai = json.loads((ROOT / "marketplace" / "listing.json").read_text(encoding="utf-8"))
+        readme_opening = (ROOT / "README.md").read_text(encoding="utf-8")[:1200].casefold()
+
+        expected_keywords = [
+            "agentic-engineering", "coding-agents", "autonomous-development", "repository-bootstrap",
+            "goal-management", "github-issues", "codex", "claude-code",
+        ]
+        self.assertEqual("Agentic engineering with durable goals for autonomous coding agents", canonical["description"])
+        self.assertEqual(expected_keywords, canonical["keywords"])
+        for manifest in (codex, claude):
+            self.assertEqual(canonical["description"], manifest["description"])
+            self.assertEqual(expected_keywords, manifest["keywords"])
+
+        entry = claude_marketplace["plugins"][0]
+        self.assertEqual(expected_keywords, entry["keywords"])
+        self.assertEqual("development", entry["category"])
+        self.assertEqual(["agentic-engineering", "coding-agents", "repository-bootstrap"], entry["tags"])
+        self.assertEqual("Agentic engineering goals", openai["listing"]["short_description"])
+        for phrase in ("agentic engineering", "autonomous coding agents", "repository bootstrapping"):
+            self.assertIn(phrase, openai["listing"]["long_description"].casefold())
+        for phrase in ("agentic-engineering", "autonomous coding agents", "bootstrap repositories"):
+            self.assertIn(phrase, readme_opening)
 
     def test_claude_generation_rejects_missing_or_invalid_canonical_input(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

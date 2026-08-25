@@ -38,7 +38,7 @@ Every release prepares three validated versioned assets before GitHub publicatio
 - `zzzops-openai-submission-v<version>.zip` — OpenAI listing copy, assets, tests, availability, notes, manifests, and attestation checklist;
 - `zzzops-claude-plugin-v<version>.zip` — self-contained Claude Code plugin bundle.
 
-A build or validation failure stops publication. Successful artifacts attach to the matching GitHub Release. OpenAI portal upload, attestation, review submission, approval, and final directory publication remain explicit human actions; see the [marketplace sources](../marketplace/README.md). Claude submission guidance lives in [Claude Code marketplace notes](CLAUDE_MARKETPLACE.md).
+A build or validation failure stops publication. Successful artifacts attach to the matching GitHub Release. OpenAI portal upload, attestation, review submission, approval, and final directory publication remain explicit human actions; see the [marketplace sources](../marketplace/README.md). Claude submission guidance lives in [Claude Code marketplace notes](CLAUDE_MARKETPLACE.md), and the shared language and intent map live in [product discovery positioning](DISCOVERY.md).
 
 Semantic commits since the latest reachable `vMAJOR.MINOR.PATCH` tag are the release-history source. A breaking marker produces a major release, `feat` produces minor, and `fix`, `perf`, or `revert` produces patch. Documentation, style, chores, refactors, tests, builds, and CI do not release and are omitted from notes. The highest change wins.
 

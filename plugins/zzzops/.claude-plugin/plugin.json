@@ -1,6 +1,6 @@
 {
   "name": "zzzops",
-  "description": "Durable autonomous project goals for coding agents",
+  "description": "Agentic engineering with durable goals for autonomous coding agents",
   "author": {
     "name": "David Rzepa",
     "url": "https://github.com/david-rzepa"
@@ -9,10 +9,14 @@
   "repository": "https://github.com/david-rzepa/zzzops",
   "license": "Apache-2.0",
   "keywords": [
+    "agentic-engineering",
+    "coding-agents",
+    "autonomous-development",
+    "repository-bootstrap",
+    "goal-management",
+    "github-issues",
     "codex",
-    "goals",
-    "automation",
-    "project-management"
+    "claude-code"
   ],
   "version": "2.0.0"
 }
