@@ -30,27 +30,25 @@ claude plugin install zzzops@zzzops
 
 Claude and Codex use the same canonical implementation. See the [Claude Code installation and submission notes](docs/CLAUDE_MARKETPLACE.md).
 
-### 2. Review the project policy
+### 2. Bootstrap the repository
 
-In the target repository, start here:
-
-```text
-Use $review-zzzops-policy to initialize and summarize this project's policy.
-```
-
-ZzzOps inspects the repository, proposes a concise project charter and operating policy, and asks only about consequential choices. You review and approve that policy before ordinary goal work begins. The result tells later agents what success means, how much engineering rigor is expected, what they may do autonomously, and when they must stop for you.
-
-### 3. Give ZzzOps work
-
-For a new project or a repository that needs a stronger engineering harness:
+In the target repository, start with the initial project specification:
 
 ```text
 Use $bootstrap-zzzops-repository to create this project from the following specification: <purpose, stack, deployment target, constraints, and first milestone>.
 ```
 
+For an existing repository:
+
 ```text
 Use $bootstrap-zzzops-repository to make this existing repository agent-ready.
 ```
+
+Bootstrap inspects the repository and automatically hands off to `$review-zzzops-policy` when the project policy needs review, then resumes cleanly. You approve the consequential choices before ZzzOps creates and executes ordinary goals for the engineering harness; it does not silently implement the whole product.
+
+Use `$review-zzzops-policy` directly later whenever you want to review or adjust policy without bootstrapping the repository again.
+
+### 3. Add or import more work
 
 To import an existing backlog:
 
