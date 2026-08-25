@@ -16,4 +16,6 @@ Deterministic fixtures require a valid initialized checkpoint's reported decisio
 
 Agents still perform one targeted concurrency re-read before mutating the selected goal.
 
+Execution performs no scheduled entropy scan, completion bookkeeping, or changed-line analysis. Only a concrete observation already exposed by ordinary work causes one small atomic Git-local file creation. Every explicit work-suggestion run reads the compact inbox once and spends audit tokens only validating policy-eligible observations; excluded categories remain unread in the returned evidence set.
+
 The utility reports malformed records, duplicate/self/missing/cyclic relations, status/dependency conflicts, stale claims, review checkpoint errors, GitHub label/state drift, and snapshot changes. It never prioritizes, repairs, mutates, caches, or replaces agent judgment.

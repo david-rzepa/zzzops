@@ -36,6 +36,14 @@ Engineering rigor supplies that depth rather than adding a second quality knob. 
 
 The same effective level controls completion. Vibe work may rely on observed behavior where policy permits. Structured work requires observable acceptance, targeted automation, and the repository's canonical verification contract. Agentic work additionally requires every relevant deterministic gate, regression check, architectural constraint, and security, data, recovery, or operations signal. Checks must be run and observed; merely adding CI or a verification script is not evidence. Work suggestion compares those declared expectations with the real harness and proposes evidenced gap-closing goals rather than editing the repository silently.
 
+## Incidental entropy observations
+
+Ordinary execution never schedules a broad entropy review. When work already exposes concrete repository decay outside the current goal—such as stale context, a repeated pattern, an obsolete prose-only guardrail, or verification drift—the agent may record one compact evidence fact and one to four relevant paths. It must not pause implementation to search for observations or design future work.
+
+The inbox lives under the repository's common Git directory, so worktrees share it and plugin upgrades do not erase it. Each observation is an atomically created, fingerprint-named file, so concurrent duplicates collapse without a global counter or lock. Every `$suggest-zzzops-work` invocation checks observations permitted by the existing refill `allowed_categories` policy and validates them against the current repository. Shipped defaults enable documentation, tests, and non-behavioral code-quality observations; projects can exclude those categories through the same policy.
+
+Stale or duplicate observations are dismissed. Supported observations remain through dry-run preview and are consumed only after an ordinary goal is confirmed. The inbox is not a second backlog, health score, automatic repair mechanism, or grant of goal-write authority. A user can request a wider repository entropy review through `$suggest-zzzops-work` without another skill or setting.
+
 Execution assumes no user is present. It never pauses to ask an interactive question: consequential unknowns, including authority and safety gates, are recorded as categorized issue blockers with recommendations and recheck triggers. Independent goals continue, and the durable blocker queue is summarized at handoff.
 
 ## Adaptive discovery of unknowns

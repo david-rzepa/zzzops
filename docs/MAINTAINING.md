@@ -18,6 +18,7 @@ The distributable Agent Plugin lives in `plugins/zzzops`; `.agents/plugins/marke
 | `portfolio.py` | Goal graph audits, actionability, and canonical portfolio snapshots. |
 | `package.py` | Agent Plugin package validation and deterministic package provenance. |
 | `installation.py` | Per-repository package validation state and composition of the cleanup audit. |
+| `entropy.py` | Atomic, compact Git-local entropy observations and suggestion-category filtering. |
 | `zzzops.py` | CLI parsing and dispatch, provider probes and adapters, package validation, and stable re-exports. |
 
 The package checkpoint validates the installed manifest, required surfaces, and deterministic SHA-256 provenance before provider access. Keep cross-module dependencies one-way: focused modules may use explicitly configured entry-point callbacks, while callers continue to invoke the stable `zzzops.py` command or re-exported API.
