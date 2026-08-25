@@ -2,7 +2,7 @@
 
 ## Observable work
 
-Before editing record baseline, falsifiable hypothesis, observation surface, expected signal, and smallest chunk. Change one variable; run and inspect the narrowest real probe before continuing, then widen as PROJECT requires. Prefer public/native hooks; for hidden behavior build the smallest least-privileged adapter. Avoid secrets/production mutation, retain only regression value, and remember build/lint/types prove only themselves. Block if required behavior cannot be observed within authority.
+Before editing record baseline, falsifiable hypothesis, observation surface, expected signal, and smallest chunk. Change one variable; inspect the narrowest real probe, then widen per PROJECT. Prefer public/native hooks or the smallest least-privileged adapter. Avoid secrets/production mutation; retain only regression value. Build/lint/types prove only themselves. Block if required behavior is unobservable.
 
 Apply reviewed PROJECT verification policy first. When it does not specify artifact handling, classify the changed surface and use this fallback:
 
@@ -15,38 +15,42 @@ If documentation/tests also alter runtime behavior, use the runtime rule. Record
 
 ## CI-aware widening
 
-Run the smallest local falsifiable probe. Map broader commands to the project's required CI; when CI runs the same command and coverage at the pushed head, do not duplicate it locally. CI counts only after inspected completion at that exact head. Diagnose failures from logs and reprobe narrowly; cancellation, timeout, skipped jobs, provider failure, or head drift is not success. If required CI is unavailable, block durably rather than skip or substitute. Derive equivalence from project commands and checks, not provider names.
+Run the smallest local falsifiable probe. Map broad commands to required CI; when the same command/coverage runs at the pushed exact head, do not duplicate it locally. CI counts only after inspected completion; cancellation, timeout, skips, provider failure, or head drift is not success. Diagnose logs and reprobe narrowly. If required CI is unavailable, block—never skip or substitute. Derive equivalence from project commands/checks, not provider names.
 
 ## Test-discovered bugs
 
-Preserve the smallest reproduction and distinguish product from test/environment failure. Never hide the bug, weaken/delete its test, expand scope silently, or encode broken behavior. Follow PROJECT test-bug policy; without authorization capture a linked human-blocked goal and do not fix it until later input resolves the blocker. Correct test-only defects normally and record why.
+Preserve the smallest reproduction; distinguish product from test/environment failure. Never hide the bug, weaken/delete its test, expand scope silently, or encode broken behavior. Follow PROJECT test-bug policy; without authorization capture a linked human-blocked goal and wait for input. Correct test-only defects normally and record why.
 
 ## Delegation and parallelism
 
-PROJECT resource/autonomy policy is a permission ceiling, not a target. The installed default measures existing Git-tracked working-tree bytes via `git ls-files` (excluding `.git`, ignored/untracked artifacts, and other worktrees): below 104857600 bytes it permits up to three worktree workers; otherwise up to three read-only workers. Reviewed policy may override these operational defaults, never safety/authority.
+PROJECT resource/autonomy is a ceiling. Default measures Git-tracked bytes via `git ls-files`, excluding `.git`, ignored/untracked files and other worktrees: below 104857600 bytes permits three worktree workers, else three read-only workers. Policy may change operations, never safety/authority.
 
 - `sequential`: no parallel execution; a wait monitor may keep the main thread free.
 - `read_only`: bounded inspections/proposals/waits; only main writes.
 - `worktrees`: additionally permits isolated writable sub-goals below.
 
-Parallelize only independent, verifiable scopes with disjoint exclusive resources, worthwhile latency benefit, permitted dependencies, and capacity. Advisory overlap requires pre-edit PR inspection, recording, and base coordination. Stop on exclusive contention, merge conflict, conflicting assumptions, or poor value. Read-only workers may investigate within cap but never claim/edit/branch/start implementation; main reconciles and writes.
+Parallelize only independent, verifiable scopes with disjoint exclusive resources, permitted dependencies/capacity, and worthwhile latency benefit. Inspect and coordinate advisory overlap first; stop on exclusive contention, conflict, conflicting assumptions, or poor value. Read-only workers never claim/edit/branch/start implementation; main reconciles and writes.
 
-Sub-agents may create isolated disposable output/logs or assigned-port processes. They may not install, rewrite tracked files, deploy/migrate, change Git, or mutate shared external systems unless `worktrees` permits that source work.
+Sub-agents may create isolated disposable output/logs or assigned-port processes. Unless `worktrees` permits source work, they may not install, rewrite tracked files, deploy/migrate, change Git, or mutate shared external systems.
 
 ### Writable worktrees
 
-Use only for Git-backed, independently verifiable sub-goals with disjoint exclusive resources. Advisory text overlap requires coordinator-inspected PRs and an explicit reconciliation order.
+Use only for Git-backed, independently verifiable sub-goals with disjoint exclusive resources. Advisory text overlap needs coordinator-inspected PRs and a reconciliation order.
 
 1. Coordinator claims, reviews the base, and creates one clean worktree/branch per child.
-2. Assign paths, criteria, baseline/probe, prohibited shared files, resource bound, and stop condition.
-3. Worker stays in its worktree, tests observable chunks, commits once, and reports hash/evidence/risk/discoveries; it never edits goal/project state, root instructions, or shared systems.
-4. Coordinator reviews/integrates sequentially and probes each commit plus combined behavior; only it updates ZzzOps state.
-5. Remove the worktree afterward, or verify it clean and record reuse. Before reassignment restore reviewed base, branch, resources, and ownership; never carry prior changes/claims/assumptions. Forbid dirty, abandoned, or ambiguously owned worktrees.
+2. Assign paths, criteria, baseline/probe, prohibited shared files, resources, and stop.
+3. Worker stays isolated, tests observable chunks, commits once, and reports hash/evidence/risk/discoveries; it never edits goal/project state, root instructions, or shared systems.
+4. Coordinator sequentially integrates and probes each commit plus combined behavior; only it updates ZzzOps state.
+5. Remove afterward, or verify clean and record reuse. Before reassignment restore reviewed base, branch, resources, and ownership; never carry prior work. Forbid dirty, abandoned, or ambiguously owned worktrees.
 
-Do not use worktrees for coupled work, generated collisions, shared services/devices/data, policy-exclusive binary/hard-to-merge paths, or prohibited work. Broad advisory overlap needs a reconciliation plan and stays sequential when merge risk outweighs latency benefit.
+Do not use worktrees for coupled work, generated collisions, shared services/devices/data, exclusive binary/hard-to-merge paths, or prohibited work. Broad overlap needs a plan and stays sequential when merge risk outweighs latency benefit.
+
+## Final-state commit history
+
+Before review, keep commits only when independently useful and revertible; fold iteration-only commits. Use semantic Conventional Commit messages; PR/controlled merge titles describe outcomes. Rewrite only an exclusively owned, unintegrated goal branch after checking exact local/remote/base state; if pushed use `--force-with-lease`. Never rewrite shared, upstream, default-branch, user-owned, or integrated history. Preserve stacked goal ancestry, boundaries, dependencies, and evidence; block on doubt. Cleanup is agent-led; automate only reliable violations.
 
 ## Waits, commits, resources
 
-Delegate waits/human watches at the PROJECT threshold. Resume yielded handles; poll boundedly, never relaunch deferred work. Send quote-heavy/multiline cross-shell payloads through secure UTF-8 files or byte-preserving stdin and verify bytes before external writes. Read-only monitors stop on input/drift.
+Delegate waits at the PROJECT threshold. Resume yielded handles and poll boundedly; never relaunch. Send multiline cross-shell payloads through secure UTF-8 files or byte-preserving stdin and verify before external writes. Read-only monitors stop on input/drift.
 
-Follow PROJECT Git/commit policy; never absorb unrelated changes. Record fan-out, latency benefit, resource evidence, and contention; revert to sequential when parallel cost lacks value.
+Follow PROJECT Git/commit policy; never absorb unrelated changes. Record parallelism evidence and go sequential when it lacks value.

@@ -3065,6 +3065,32 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("bounded consolidated reads", review)
         self.assertIn("exact head", review)
 
+    def test_execute_presents_final_state_commit_history_for_review(self):
+        strategy = (PLUGIN_ROOT / "rules" / "EXECUTION_STRATEGY.md").read_text(encoding="utf-8").lower()
+        review = (
+            PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "BRANCH_REVIEW.md"
+        ).read_text(encoding="utf-8").lower()
+        scenarios = {
+            "clean multi-commit PR": "independently useful and revertible",
+            "iteration is folded": "fold iteration-only commits",
+            "semantic commit messages": "semantic conventional commit messages",
+            "review titles state outcomes": "pr/controlled merge titles describe outcomes",
+            "owned unintegrated branch": "exclusively owned, unintegrated goal branch",
+            "safe published rewrite": "force-with-lease",
+            "non-owned history is refused": "never rewrite shared, upstream, default-branch, user-owned, or integrated history",
+            "stacked ancestry survives": "preserve stacked goal ancestry",
+        }
+        for scenario, expected in scenarios.items():
+            with self.subTest(scenario=scenario):
+                self.assertIn(expected, strategy)
+        for expected in (
+            "immediate-base history",
+            "before opening a pr and each review checkpoint",
+            "after review feedback",
+            "invalidate approval",
+        ):
+            self.assertIn(expected, review)
+
     def test_execute_persists_questions_without_live_interaction(self):
         execute = (PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "EXECUTE.md").read_text(encoding="utf-8")
         unblock = (PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "UNBLOCK.md").read_text(encoding="utf-8")
