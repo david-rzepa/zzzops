@@ -4,8 +4,8 @@
   "official_submission_docs": "https://developers.openai.com/plugins/deploy/submission",
   "listing": {
     "name": "ZzzOps",
-    "short_description": "Durable autonomous goals",
-    "long_description": "ZzzOps gives Codex a reviewed, prioritized, and resumable project-goal loop. It captures durable work in GitHub Issues, coordinates implementation under reviewed project policy, and keeps human approval at consequential review and release boundaries.",
+    "short_description": "Agentic engineering goals",
+    "long_description": "ZzzOps is an agentic engineering workflow for autonomous coding agents. It supports repository bootstrapping, captures durable goals in GitHub Issues, and executes prioritized work under reviewed project policy with verification, resumability, explicit blockers, and human approval at consequential boundaries.",
     "category": "Developer Tools",
     "developer_name": "David Rzepa",
     "website_url": "https://github.com/david-rzepa/zzzops",

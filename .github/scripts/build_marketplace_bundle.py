@@ -278,6 +278,9 @@ def claude_marketplace_files(root: Path, version: str) -> dict[str, bytes]:
             "source": "./zzzops",
             "description": canonical_manifest["description"],
             "version": version,
+            "keywords": canonical_manifest["keywords"],
+            "category": "development",
+            "tags": ["agentic-engineering", "coding-agents", "repository-bootstrap"],
         }],
     }
     result = {f"zzzops/{relative}": data for relative, data in canonical.items()}

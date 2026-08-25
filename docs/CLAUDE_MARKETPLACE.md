@@ -58,7 +58,7 @@ Use these repository-derived values when the live form requests them:
 | Plugin source | `./plugins/zzzops` |
 | Plugin manifest | `plugins/zzzops/.claude-plugin/plugin.json` |
 | Current manifest version | `2.0.0` |
-| Description | Durable autonomous project goals for coding agents |
+| Description | Agentic engineering with durable goals for autonomous coding agents |
 | License | Apache-2.0 |
 | Homepage | `https://github.com/david-rzepa/zzzops` |
 | Privacy | `https://github.com/david-rzepa/zzzops/blob/main/PRIVACY.md` |

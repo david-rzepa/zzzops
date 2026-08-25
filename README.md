@@ -2,7 +2,7 @@
 
 **Infinite backlog for agents. Finite bedtime for token-addicted humans.**
 
-ZzzOps is an agentic-engineering workflow for developers who want coding agents to handle substantial work without constant supervision. It turns project policy, specifications, TODOs, dependencies, verification evidence, and blockers into a durable goal graph backed by GitHub Issues—then gives agents a reliable loop for working through it.
+ZzzOps is an agentic-engineering workflow for developers who want autonomous coding agents to bootstrap repositories and handle substantial work without constant supervision. It turns project policy, specifications, TODOs, dependencies, verification evidence, and blockers into a durable goal graph backed by GitHub Issues—then gives agents a reliable loop for working through it.
 
 Use ZzzOps when a task is too important or too long-lived to exist only in one chat. The goal is simple: make the repository and its feedback loops clear enough that agents can keep moving, stop safely, and resume without you reconstructing the plan.
 
