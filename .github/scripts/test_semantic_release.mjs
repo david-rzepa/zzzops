@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { PassThrough } from "node:stream";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -15,6 +15,7 @@ import semanticRelease from "semantic-release";
 const require = createRequire(import.meta.url);
 const releaseConfig = require("../../release.config.cjs");
 const bundlePlugin = require("./semantic_release_bundle.cjs");
+const { reconcileLatest } = require("./sync_latest_release_branch.cjs");
 const releaseTestConfig = { ...releaseConfig, plugins: releaseConfig.plugins.slice(0, 2) };
 const [analyzerName, analyzerOptions] = releaseTestConfig.plugins[0];
 const [notesName, notesOptions] = releaseTestConfig.plugins[1];
@@ -161,4 +162,75 @@ test("semantic-release dry-run honors the latest tag boundary and does not publi
     { stdio: "ignore" }
   );
   assert.notEqual(unpublishedTag.status, 0);
+});
+
+test("main release workflow reconciles latest after semantic-release succeeds", () => {
+  const workflow = readFileSync(".github/workflows/release.yml", "utf8");
+  const publish = workflow.indexOf("run: npx semantic-release");
+  const reconcile = workflow.indexOf("run: node .github/scripts/sync_latest_release_branch.cjs");
+  assert.ok(publish >= 0);
+  assert.ok(reconcile > publish);
+});
+
+test("latest branch advances only to the current published release and retries safely", async () => {
+  const root = mkdtempSync(join(tmpdir(), "zzzops-latest-release-"));
+  const remote = join(root, "remote.git");
+  const work = join(root, "work");
+  const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+
+  execFileSync("git", ["init", "--bare", "--initial-branch=main", remote], { stdio: "ignore" });
+  execFileSync("git", ["clone", remote, work], { stdio: "ignore" });
+  git(work, "config", "user.name", "ZzzOps test");
+  git(work, "config", "user.email", "test@zzzops.invalid");
+  git(work, "commit", "--allow-empty", "-m", "feat: first release");
+  git(work, "tag", "v1.0.0");
+  git(work, "push", "--follow-tags", "origin", "main");
+
+  const first = await reconcileLatest({ cwd: work, isLatestPublished: async tag => tag === "v1.0.0" });
+  assert.deepEqual(first, { outcome: "updated", tag: "v1.0.0", head: git(work, "rev-parse", "HEAD") });
+  assert.equal(git(remote, "rev-parse", "refs/heads/latest"), git(work, "rev-parse", "HEAD"));
+
+  const retry = await reconcileLatest({ cwd: work, isLatestPublished: async () => true });
+  assert.deepEqual(retry, { outcome: "unchanged", tag: "v1.0.0", head: git(work, "rev-parse", "HEAD") });
+
+  git(work, "commit", "--allow-empty", "-m", "feat: second release");
+  git(work, "tag", "v2.0.0");
+  git(work, "push", "--follow-tags", "origin", "main");
+  const secondHead = git(work, "rev-parse", "HEAD");
+
+  const unpublished = await reconcileLatest({ cwd: work, isLatestPublished: async () => false });
+  assert.deepEqual(unpublished, { outcome: "not-latest-release", tag: "v2.0.0", head: secondHead });
+  assert.notEqual(git(remote, "rev-parse", "refs/heads/latest"), secondHead);
+
+  const second = await reconcileLatest({ cwd: work, isLatestPublished: async tag => tag === "v2.0.0" });
+  assert.deepEqual(second, { outcome: "updated", tag: "v2.0.0", head: secondHead });
+  assert.equal(git(remote, "rev-parse", "refs/heads/latest"), secondHead);
+});
+
+test("latest reconciliation is a no-op when the workflow commit has no release tag", async () => {
+  const root = mkdtempSync(join(tmpdir(), "zzzops-latest-no-release-"));
+  const remote = join(root, "remote.git");
+  const work = join(root, "work");
+  const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+
+  execFileSync("git", ["init", "--bare", "--initial-branch=main", remote], { stdio: "ignore" });
+  execFileSync("git", ["clone", remote, work], { stdio: "ignore" });
+  git(work, "config", "user.name", "ZzzOps test");
+  git(work, "config", "user.email", "test@zzzops.invalid");
+  git(work, "commit", "--allow-empty", "-m", "docs: no release");
+  git(work, "push", "origin", "main");
+
+  let queried = false;
+  const result = await reconcileLatest({
+    cwd: work,
+    isLatestPublished: async () => {
+      queried = true;
+      return true;
+    }
+  });
+
+  assert.deepEqual(result, { outcome: "no-release-tag", tag: null, head: git(work, "rev-parse", "HEAD") });
+  assert.equal(queried, false);
+  const latest = spawnSync("git", ["--git-dir", remote, "show-ref", "--verify", "refs/heads/latest"]);
+  assert.notEqual(latest.status, 0);
 });
