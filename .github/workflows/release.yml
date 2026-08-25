@@ -100,3 +100,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
         run: npx semantic-release
+      - name: Update latest Git marketplace channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/sync_latest_release_branch.cjs
