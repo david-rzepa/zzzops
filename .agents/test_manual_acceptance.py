@@ -75,6 +75,65 @@ class ManualAcceptanceTests(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             self.assertEqual([], json.loads(result.stdout)["unmapped_required_surfaces"])
 
+    def test_coverage_accepts_automated_contracts_only_with_present_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            (repo / "docs").mkdir()
+            evidence = repo / "tests" / "test_marketplace.py"
+            evidence.parent.mkdir()
+            evidence.write_text("# automated contract\n", encoding="utf-8")
+            plan = {
+                "version": 2,
+                "items": [{
+                    "id": "UX-1", "status": "unchecked",
+                    "paths": ["plugins/zzzops/plugin.json"],
+                    "surfaces": ["plugins/zzzops/plugin.json"],
+                    "fingerprint": None, "notes": "",
+                }],
+                "automated_surfaces": [{
+                    "surface": ".agents/plugins/marketplace.json",
+                    "evidence": ["tests/test_marketplace.py"],
+                }],
+            }
+            plan_path = repo / "docs" / "ACCEPTANCE_TEST_PLAN.md"
+            plan_path.write_text(
+                "<!-- zzzops-acceptance-plan\n" + json.dumps(plan) + "\nzzzops-acceptance-plan -->\n",
+                encoding="utf-8",
+            )
+
+            def coverage():
+                return subprocess.run(
+                    [sys.executable, str(SCRIPT), "coverage", "--repo", str(repo)],
+                    text=True, capture_output=True,
+                )
+
+            present = coverage()
+            present_data = json.loads(present.stdout)
+            self.assertNotIn(".agents/plugins/marketplace.json", present_data["unmapped_required_surfaces"])
+            self.assertEqual([], present_data["automated_surfaces_without_evidence"])
+
+            evidence.unlink()
+            missing = coverage()
+            missing_data = json.loads(missing.stdout)
+            self.assertEqual(1, missing.returncode)
+            self.assertIn(".agents/plugins/marketplace.json", missing_data["unmapped_required_surfaces"])
+            self.assertEqual(
+                [{"surface": ".agents/plugins/marketplace.json", "missing": ["tests/test_marketplace.py"]}],
+                missing_data["automated_surfaces_without_evidence"],
+            )
+
+            plan["automated_surfaces"][0]["evidence"] = []
+            plan_path.write_text(
+                "<!-- zzzops-acceptance-plan\n" + json.dumps(plan) + "\nzzzops-acceptance-plan -->\n",
+                encoding="utf-8",
+            )
+            undeclared = coverage()
+            self.assertEqual(1, undeclared.returncode)
+            self.assertEqual(
+                [{"surface": ".agents/plugins/marketplace.json", "missing": []}],
+                json.loads(undeclared.stdout)["automated_surfaces_without_evidence"],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
