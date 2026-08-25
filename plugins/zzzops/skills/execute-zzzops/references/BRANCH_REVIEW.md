@@ -1,6 +1,6 @@
 # Branch and human-review lifecycle
 
-Apply PROJECT Git/review policy to source goals. Capture stays Git-free. Never absorb unrelated work, duplicate a live goal branch/PR, or branch without safe support.
+Apply PROJECT Git/review policy; capture stays Git-free. Never absorb unrelated work, duplicate a live goal branch/PR, or branch without safe support.
 
 ## Topology and overlap
 
@@ -10,7 +10,7 @@ Apply PROJECT Git/review policy to source goals. Capture stays Git-free. Never a
 
 Create/resume the recorded branch before edits. Stop on unattributable dirt; record authorized topology exceptions.
 
-Before implementation inspect open PRs overlapping advisory paths/target. Compare each PR with its immediate base; inherited upstream commits are not child overlap. Branches stay exclusive. Sibling/chained PRs may share an eventual target; a child may target its reviewed parent/dependency.
+Compare overlapping PRs to their immediate base; inherited commits are not overlap. Branches stay exclusive. Sibling/chained PRs may share a target; a child may target its reviewed parent/dependency. Before opening a PR and each review checkpoint, inspect immediate-base history and apply `EXECUTION_STRATEGY.md` final-state cleanup.
 
 After upstream changes, update/retarget downstream branches, recompute immediate-base diffs, resolve conflicts, and rerun affected checks. Recheck target, mergeability, overlap, conflict, and risk before review/integration; advisory overlap waives no proof.
 
@@ -24,7 +24,7 @@ Use `Tracks #N`; default-branch closing keywords are insufficient. Only after th
 
 At each checkpoint, use PROJECT bounded consolidated reads for review, unresolved threads/comments, checks, and exact head. Classify actionable, resolved/outdated, discussion, automated, ambiguous, or unauthorized; reuse the result and record actionable file/line. Poll only under enabled human-unblock watch.
 
-Change only authorized actionable feedback on the recorded branch/PR. Re-read head/threads first; after each verified change rerun self-review/checks, record the new exact checkpoint, and invalidate approval. Ambiguous, expanding, conflicting, or unauthorized feedback becomes a categorized blocker. Code changes do not resolve provider threads.
+Change only authorized actionable feedback after re-reading the recorded head/threads. After review feedback, reverify, clean immediate-base history, record the new exact checkpoint, and invalidate approval; code changes do not resolve provider threads. Persist ambiguous, expanding, conflicting, or unauthorized feedback as a categorized blocker.
 
 After implementation, checks, comments, and self-review pass, apply PROJECT `review_gate`. `human_after_checks` means record links/checks/risks and present the review action/resume condition, but do not merge or mark done. Omit hashes/mechanics unless useful or requested.
 
