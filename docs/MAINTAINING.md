@@ -42,6 +42,8 @@ A build or validation failure stops publication. Successful artifacts attach to 
 
 Semantic commits since the latest reachable `vMAJOR.MINOR.PATCH` tag are the release-history source. A breaking marker produces a major release, `feat` produces minor, and `fix`, `perf`, or `revert` produces patch. Documentation, style, chores, refactors, tests, builds, and CI do not release and are omitted from notes. The highest change wins.
 
+Release-type analysis examines the complete semantic history. For user-facing notes, a release-visible two-parent PR merge ending in `(#N)` is the canonical entry for commits structurally introduced through that merge's second parent. `.github/scripts/semantic_release_notes.cjs` proves that ancestry with Git before delegating rendering to the official release-notes generator; similar direct commits remain distinct. If an introduced commit carries a breaking change that the merge message does not represent, the adapter keeps the detailed commits instead of hiding the compatibility warning.
+
 After GitHub publishes a semantic release, CI moves the `latest` branch to that release tag's exact commit. Immutable version tags remain reproducible installation sources. No-release runs leave `latest` unchanged, and an older workflow rerun cannot move it behind GitHub's current latest published release.
 
 Release notes live on GitHub Releases rather than in a generated `CHANGELOG.md`. Exact Node and semantic-release plugin versions are pinned in `package-lock.json`; no repository secret is required beyond GitHub's job token.

@@ -6,15 +6,16 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { analyzeCommits } from "@semantic-release/commit-analyzer";
-import { generateNotes } from "@semantic-release/release-notes-generator";
 import semanticRelease from "semantic-release";
 
 const require = createRequire(import.meta.url);
+const notesPluginPath = fileURLToPath(new URL("./semantic_release_notes.cjs", import.meta.url));
 const releaseConfig = require("../../release.config.cjs");
 const bundlePlugin = require("./semantic_release_bundle.cjs");
+const notesPlugin = require("./semantic_release_notes.cjs");
 const { reconcileLatest } = require("./sync_latest_release_branch.cjs");
 const releaseTestConfig = { ...releaseConfig, plugins: releaseConfig.plugins.slice(0, 2) };
 const [analyzerName, analyzerOptions] = releaseTestConfig.plugins[0];
@@ -22,7 +23,8 @@ const [notesName, notesOptions] = releaseTestConfig.plugins[1];
 const logger = { log() {}, error() {} };
 
 assert.equal(analyzerName, "@semantic-release/commit-analyzer");
-assert.equal(notesName, "@semantic-release/release-notes-generator");
+assert.equal(notesName, "./.github/scripts/semantic_release_notes.cjs");
+assert.equal(notesPlugin.generatorPackage, "@semantic-release/release-notes-generator");
 
 test("marketplace bundles gate publication and become GitHub release assets", () => {
   assert.equal(releaseConfig.plugins[2], "./.github/scripts/semantic_release_bundle.cjs");
@@ -74,7 +76,7 @@ test("semantic commits select the highest release type", async () => {
 });
 
 test("release notes distinguish breaking changes, features, fixes, and performance", async () => {
-  const notes = await generateNotes(notesOptions, {
+  const notes = await notesPlugin.generateNotes(notesOptions, {
     branch: { name: "main" },
     commits: commits(
       "fix!: remove legacy API",
@@ -98,6 +100,87 @@ test("release notes distinguish breaking changes, features, fixes, and performan
   assert.ok(notes.indexOf("Features") < notes.indexOf("Bug Fixes"));
   assert.ok(notes.indexOf("Bug Fixes") < notes.indexOf("Performance Improvements"));
   assert.ok(notes.indexOf("add queue") < notes.indexOf("zebra queue"));
+});
+
+test("release notes collapse structurally introduced commits into canonical PR merges", async () => {
+  const root = mkdtempSync(join(tmpdir(), "zzzops-release-notes-"));
+  const work = join(root, "work");
+  const git = (...args) => execFileSync("git", args, {
+    cwd: work,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"]
+  }).trim();
+  const commit = message => git("commit", "--allow-empty", "-m", message);
+  const mergePullRequest = (branch, messages, title) => {
+    git("switch", "-c", branch);
+    for (const message of messages) commit(message);
+    git("switch", "main");
+    git("merge", "--no-ff", branch, "-m", title);
+  };
+
+  execFileSync("git", ["init", "--initial-branch=main", work], { stdio: "ignore" });
+  git("config", "user.name", "ZzzOps test");
+  git("config", "user.email", "test@zzzops.invalid");
+  commit("chore: release baseline");
+  git("tag", "v1.0.0");
+  mergePullRequest("feature", ["feat: add queue", "fix: repair internal queue"], "feat: add queue (#42)");
+  mergePullRequest("fix", ["fix: repair timeout"], "fix: repair timeout (#43)");
+  mergePullRequest("performance", ["perf: reduce scans"], "perf: reduce scans (#44)");
+  commit("feat: add queue");
+
+  const fields = execFileSync(
+    "git",
+    ["log", "v1.0.0..HEAD", "--format=%H%x00%B%x00"],
+    { cwd: work, encoding: "utf8" }
+  ).split("\0").map(value => value.trim()).filter(Boolean);
+  const history = [];
+  for (let index = 0; index < fields.length; index += 2) {
+    history.push({ hash: fields[index], message: fields[index + 1] });
+  }
+
+  const notes = await notesPlugin.generateNotes(notesOptions, {
+    branch: { name: "main" },
+    commits: history,
+    cwd: work,
+    lastRelease: { gitTag: "v1.0.0", gitHead: "0".repeat(40), version: "1.0.0" },
+    logger,
+    nextRelease: { gitTag: "v1.1.0", gitHead: "f".repeat(40), version: "1.1.0" },
+    options: { repositoryUrl: "https://github.com/david-rzepa/zzzops" }
+  });
+
+  assert.equal(notes.match(/add queue/g)?.length, 2, "keep the PR merge and unrelated direct commit");
+  assert.equal(notes.match(/repair timeout/g)?.length, 1);
+  assert.equal(notes.match(/reduce scans/g)?.length, 1);
+  assert.doesNotMatch(notes, /repair internal queue/);
+  for (const pull of [42, 43, 44]) assert.match(notes, new RegExp(`issues/${pull}`));
+});
+
+test("release-note canonicalization never hides an unrepresented breaking change", () => {
+  const commits = [
+    { hash: "m".repeat(40), message: "fix: summarize protocol work (#45)" },
+    { hash: "b".repeat(40), message: "fix: alter protocol\n\nBREAKING CHANGE: clients must reconnect" }
+  ];
+  const runGit = (_cwd, command, ...args) => {
+    if (command === "show") return `${"1".repeat(40)} ${"2".repeat(40)}`;
+    if (command === "rev-list") return commits[1].hash;
+    throw new Error(`Unexpected git command: ${[command, ...args].join(" ")}`);
+  };
+
+  assert.deepEqual(notesPlugin.canonicalReleaseCommits(commits, { cwd: ".", runGit }), commits);
+});
+
+test("release-note canonicalization ignores non-releasing and single-parent commits", () => {
+  const commits = [
+    { hash: "c".repeat(40), message: "chore: integrate feature (#46)" },
+    { hash: "f".repeat(40), message: "feat: retain visible feature" },
+    { hash: "d".repeat(40), message: "fix: direct correction (#47)" }
+  ];
+  const runGit = (_cwd, command, ...args) => {
+    if (command === "show") return "1".repeat(40);
+    throw new Error(`Unexpected git command: ${[command, ...args].join(" ")}`);
+  };
+
+  assert.deepEqual(notesPlugin.canonicalReleaseCommits(commits, { cwd: ".", runGit }), commits);
 });
 
 test("semantic-release dry-run honors the latest tag boundary and does not publish", async () => {
@@ -135,6 +218,7 @@ test("semantic-release dry-run honors the latest tag boundary and does not publi
   const result = await semanticRelease(
     {
       ...releaseTestConfig,
+      plugins: [releaseTestConfig.plugins[0], [notesPluginPath, notesOptions]],
       ci: false,
       dryRun: true,
       repositoryUrl: pathToFileURL(remote).href

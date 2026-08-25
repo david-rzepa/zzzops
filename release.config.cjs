@@ -21,7 +21,7 @@ const analyzer = [
 ];
 
 const notes = [
-  "@semantic-release/release-notes-generator",
+  "./.github/scripts/semantic_release_notes.cjs",
   {
     preset: "conventionalcommits",
     presetConfig: {},
