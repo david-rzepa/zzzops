@@ -1,4 +1,4 @@
 interface:
-  display_name: "Add ZzzOps Goal"
+  display_name: "[ZzzOps 0.0.0-dev] Add Goal"
   short_description: "Capture one durable project goal safely"
   default_prompt: "Use $add-zzzops-goal to capture this work as a durable ZzzOps goal."

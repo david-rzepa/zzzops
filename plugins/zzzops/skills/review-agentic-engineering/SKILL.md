@@ -1,6 +1,6 @@
 ---
 name: review-agentic-engineering
-description: Review completed software-agent work on explicit request and suggest one or two evidence-based improvements to the user's overall agentic-engineering practice. Read-only; not a scorecard, automatic coaching, repository mutation, or ZzzOps feedback submission.
+description: ZzzOps v0.0.0-dev — development plugin. Review completed software-agent work on explicit request and suggest one or two evidence-based improvements to the user's overall agentic-engineering practice. Read-only; not a scorecard, automatic coaching, repository mutation, or ZzzOps feedback submission.
 ---
 
 # Review Agentic Engineering

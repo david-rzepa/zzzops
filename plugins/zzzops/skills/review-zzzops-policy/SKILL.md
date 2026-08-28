@@ -1,6 +1,6 @@
 ---
 name: review-zzzops-policy
-description: Review, initialize, summarize, reconcile, or adjust ZzzOps project policy. Preferred first workflow; always re-summarizes existing policy.
+description: ZzzOps v0.0.0-dev — development plugin. Review, initialize, summarize, reconcile, or adjust ZzzOps project policy. Preferred first workflow; always re-summarizes existing policy.
 ---
 
 # Review ZzzOps Policy

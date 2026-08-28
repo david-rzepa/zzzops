@@ -186,6 +186,13 @@ def scan_for_secrets(relative: str, data: bytes) -> None:
 
 def plugin_files(root: Path, version: str) -> dict[str, bytes]:
     plugin = root / "plugins" / "zzzops"
+    development_version = "0.0.0-dev"
+    for relative in ("plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json"):
+        manifest = read_json(plugin / relative)
+        if not isinstance(manifest, dict) or manifest.get("version") != development_version:
+            raise BundleError(
+                f"canonical development manifest must use {development_version}: {relative}"
+            )
     renderer = runpy.run_path(str(plugin / "zzzops" / "package.py"))["render_skill_metadata"]
     result: dict[str, bytes] = {}
     allowed_top_level = {

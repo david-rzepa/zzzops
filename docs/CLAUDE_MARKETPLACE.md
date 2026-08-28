@@ -57,7 +57,7 @@ Use these repository-derived values when the live form requests them:
 | Marketplace manifest | `.claude-plugin/marketplace.json` |
 | Plugin source | `./plugins/zzzops` |
 | Plugin manifest | `plugins/zzzops/.claude-plugin/plugin.json` |
-| Current manifest version | `2.0.0` |
+| Canonical source version | `0.0.0-dev` (release artifacts render the semantic release version) |
 | Description | Agentic engineering with durable goals for autonomous coding agents |
 | License | Apache-2.0 |
 | Homepage | `https://github.com/david-rzepa/zzzops` |

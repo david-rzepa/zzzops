@@ -29,6 +29,19 @@ Develop on branches created from `dev` and open ordinary PRs against `dev`. PR v
 
 Source-changing goals use one branch and PR per goal, Conventional Commits, human review after checks, and dependency merge order. `main` is reserved for intentional owner releases. See [execution and review](EXECUTION.md) and [branch protection](BRANCH_PROTECTION.md).
 
+### Test a pushed development commit in Codex
+
+Development installs use Codex's normal Git marketplace path. Commit and push the state you want to test, copy its full immutable Git SHA, then replace any existing ZzzOps development marketplace and plugin:
+
+```powershell
+codex plugin remove zzzops@zzzops
+codex plugin marketplace remove zzzops
+codex plugin marketplace add david-rzepa/zzzops --ref <full-commit-sha>
+codex plugin add zzzops@zzzops
+```
+
+Open a new Codex task so skill discovery reloads the plugin. The installed manifests and every skill description identify this source channel as `0.0.0-dev`; the immutable SHA identifies the exact build. Dirty or uncommitted working-tree installation is intentionally unsupported—use repository tests before pushing those changes.
+
 ## Semantic releases
 
 Each push to `dev` runs `semantic-release --dry-run` with read-only repository permission. Dry runs skip tag creation and publication. An intended owner update to `main` runs the full product-validation matrix before semantic-release receives `contents: write`.
@@ -38,6 +51,8 @@ Every release prepares three validated versioned assets before GitHub publicatio
 - `zzzops-plugin-v<version>.zip` — OpenAI portal skills bundle;
 - `zzzops-openai-submission-v<version>.zip` — OpenAI listing copy, assets, tests, availability, notes, manifests, and attestation checklist;
 - `zzzops-claude-plugin-v<version>.zip` — self-contained Claude Code plugin bundle.
+
+Canonical repository metadata stays at `0.0.0-dev`. Release preparation renders the semantic release version and official channel into temporary OpenAI and Claude artifacts; CI never commits generated release metadata back to `dev`.
 
 A build or validation failure stops publication. Successful artifacts attach to the matching GitHub Release. OpenAI portal upload, attestation, review submission, approval, and final directory publication remain explicit human actions; see the [marketplace sources](../marketplace/README.md). Claude submission guidance lives in [Claude Code marketplace notes](CLAUDE_MARKETPLACE.md), and the shared language and intent map live in [product discovery positioning](DISCOVERY.md).
 

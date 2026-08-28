@@ -1,6 +1,6 @@
 ---
 name: send-zzzops-feedback
-description: Preview and send user feedback plus privacy-safe archived ZzzOps execution reports to the public ZzzOps repository. Requires exact-payload confirmation before the external write.
+description: ZzzOps v0.0.0-dev — development plugin. Preview and send user feedback plus privacy-safe archived ZzzOps execution reports to the public ZzzOps repository. Requires exact-payload confirmation before the external write.
 ---
 
 # Send ZzzOps Feedback

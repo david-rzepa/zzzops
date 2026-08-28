@@ -1,10 +1,11 @@
 ---
 name: execute-zzzops
 description: >-
-  Execute the primary ZzzOps goal loop: work all goals, continue, resume, triage,
-  prioritize, reprioritize, unblock, verify, commit, refill, and report. Default
-  executes authorized work. "dry run", "preview", or "plan" performs read-only
-  queue analysis with no writes. Not one-off untracked work.
+  ZzzOps v0.0.0-dev — development plugin. Execute the primary ZzzOps goal loop:
+  work all goals, continue, resume, triage, prioritize, reprioritize, unblock,
+  verify, commit, refill, and report. Default executes authorized work. "dry run",
+  "preview", or "plan" performs read-only queue analysis with no writes. Not
+  one-off untracked work.
 ---
 
 # Execute ZzzOps
@@ -14,7 +15,7 @@ Mode: `dry run`, `preview`, or `plan` means read-only inventory, triage simulati
 First run `../../rules/INITIALIZATION.md`, then route through `../../rules/BACKENDS.md`. Read `../../rules/GOAL_SYSTEM.md` and the initialized charter; load only what applies.
 Track execute intent through `../../rules/CONTINUATION.md` so additive capture can safely resume without nested loops.
 
-Feedback goals labeled `zzzops-feedback` are excluded by default. Include them only when the user explicitly approves inclusion for the current execution session; approval in the invocation counts, one approval covers every feedback goal in that session, and it expires with the session. Never ask per issue. Preserve the choice on every checkpoint/portfolio refresh by using `--include-feedback` only in an approved session.
+Goals labeled `zzzops-feedback` are excluded by default. Include them only when the user explicitly approves inclusion for the current execution session; invocation approval counts, one approval covers all feedback goals, and expires with the session. Never ask per issue. Preserve the choice on every checkpoint/portfolio refresh by using `--include-feedback` only in an approved session.
 
 
 - Create/triage/decompose: [CREATE.md](references/CREATE.md).

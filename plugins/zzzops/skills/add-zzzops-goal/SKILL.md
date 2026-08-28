@@ -1,11 +1,11 @@
 ---
 name: add-zzzops-goal
-description: Capture, add, create, or record one durable ZzzOps goal/TODO. Use for new project work or backlog items; writes canonical goal state by default. Not migration, suggestion, triage, or execution.
+description: ZzzOps v0.0.0-dev — development plugin. Capture, add, create, or record one durable ZzzOps goal/TODO. Use for new project work or backlog items; writes canonical goal state by default. Not migration, suggestion, triage, or execution.
 ---
 
 # Add Goal
 
-Run `../../rules/INITIALIZATION.md`, then `../../rules/BACKENDS.md`. For duplicate/relationship checks hydrate likely matches; read comments only if needed. Persist evidenced risk and any authorized override, then run an adaptive requirements interview at effective engineering rigor: `vibe → light`, `structured → standard`, `agentic → thorough`. This is the sole depth control; legacy policy uses reviewed `requirements_interview.capture_depth` or `standard`. Escalate when required; never silently de-escalate or undercut a risk minimum.
+Run `../../rules/INITIALIZATION.md`, then `../../rules/BACKENDS.md`. For duplicate/relationship checks, hydrate likely matches; read comments as needed. Persist risk/overrides; run an adaptive requirements interview at effective engineering rigor: `vibe → light`, `structured → standard`, `agentic → thorough`. This is the depth control; legacy policy uses reviewed `requirements_interview.capture_depth` or `standard`. Escalate as required; never silently de-escalate below a risk minimum.
 
 Reuse request, repository evidence, related goals, and answers. Ask 1–3 consequential gaps with recommendations. `light` establishes outcome, observable acceptance, and critical constraints. `standard` adds scope/non-goals, examples, dependencies, risks, authority, and verification. `thorough` adds applicable architecture, security, data lifecycle, failure/recovery, operations, rollout, accessibility, compatibility, and governance. Challenge subjective success/contradictions. The current user is sole stakeholder/acceptance owner; no multi-party sign-off.
 
