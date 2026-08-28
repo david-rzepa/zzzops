@@ -281,7 +281,7 @@ def build_portfolio_snapshot(
         record["children"].sort(key=_portfolio_key)
         record["blocks"].sort(key=_portfolio_key)
         record["engineering_rigor"] = derive_engineering_rigor(record.get("engineering_rigor"), rigor_policy)
-    resource_policy = normalize_resource_policy(resource_policy)
+    resource_policy = normalize_resource_policy(resource_policy) if resource_policy is not None else None
     findings = audit_portfolio(records, backend, as_of, resource_policy)
     terminal = {"done", "cancelled"}
     terminal_keys = {record["key"] for record in records if record["status"] in terminal}

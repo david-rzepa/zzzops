@@ -98,6 +98,7 @@ policy_default_catalog = _policy.policy_default_catalog
 policy_content_digest = _policy.policy_content_digest
 prepare_policy_defaults = _policy.prepare_policy_defaults
 compare_policy_defaults = _policy.compare_policy_defaults
+missing_policy_settings = _policy.missing_policy_settings
 policy_review_rows = _policy.policy_review_rows
 render_policy_review_table = _policy.render_policy_review_table
 GOAL_FIELDS = _goals.GOAL_FIELDS
@@ -140,7 +141,6 @@ query($owner:String!,$name:String!,$number:Int!,$endCursor:String){
 """.strip()
 GOAL_SCHEMA_LABEL = re.compile(r"^zzzops:schema:v(?P<version>[1-9][0-9]*)$")
 GOAL_HYDRATION_BATCH_SIZE = 100
-REPOSITORY_SIZE_THRESHOLD_BYTES = 100 * 1024 * 1024
 MANAGED_SKILLS = (
     "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
     "review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
@@ -1023,13 +1023,12 @@ def command_probe(command: list[str], repo: Path) -> dict[str, Any]:
 
 
 def repository_size_profile(repo: Path) -> dict[str, Any]:
-    """Select the default worker mode from existing Git-tracked file bytes."""
+    """Measure existing Git-tracked file bytes without selecting a policy value."""
     executable = shutil.which("git")
     if not executable:
         return {
             "available": False, "measurement": "existing_git_tracked_worktree_bytes",
-            "threshold_bytes": REPOSITORY_SIZE_THRESHOLD_BYTES, "max_workers": 3,
-            "mode": "read_only", "detail": "git executable not found",
+            "detail": "git executable not found",
         }
     try:
         result = subprocess.run(
@@ -1039,14 +1038,12 @@ def repository_size_profile(repo: Path) -> dict[str, Any]:
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {
             "available": False, "measurement": "existing_git_tracked_worktree_bytes",
-            "threshold_bytes": REPOSITORY_SIZE_THRESHOLD_BYTES, "max_workers": 3,
-            "mode": "read_only", "detail": type(exc).__name__,
+            "detail": type(exc).__name__,
         }
     if result.returncode:
         return {
             "available": False, "measurement": "existing_git_tracked_worktree_bytes",
-            "threshold_bytes": REPOSITORY_SIZE_THRESHOLD_BYTES, "max_workers": 3,
-            "mode": "read_only", "detail": "git ls-files failed",
+            "detail": "git ls-files failed",
         }
     total = 0
     files = 0
@@ -1064,9 +1061,7 @@ def repository_size_profile(repo: Path) -> dict[str, Any]:
         files += 1
     return {
         "available": True, "measurement": "existing_git_tracked_worktree_bytes",
-        "bytes": total, "files": files, "threshold_bytes": REPOSITORY_SIZE_THRESHOLD_BYTES,
-        "mode": "worktrees" if total < REPOSITORY_SIZE_THRESHOLD_BYTES else "read_only",
-        "max_workers": 3,
+        "bytes": total, "files": files,
     }
 
 

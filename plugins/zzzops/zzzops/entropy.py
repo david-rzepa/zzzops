@@ -102,7 +102,7 @@ def _read_observation(path: Path) -> dict[str, Any]:
 
 
 def enabled_categories(project: dict[str, Any]) -> frozenset[str]:
-    """Use the existing suggestion/refill category policy, with shipped defaults."""
+    """Use only explicitly reviewed suggestion/refill categories."""
     sections = project.get("policy", {}).get("sections", []) if isinstance(project, dict) else []
     autonomy = next(
         (section for section in sections if isinstance(section, dict) and section.get("id") == "autonomy_approval_parallelism"),
@@ -112,7 +112,7 @@ def enabled_categories(project: dict[str, Any]) -> frozenset[str]:
     refill = settings.get("refill") if isinstance(settings, dict) else None
     configured = refill.get("allowed_categories") if isinstance(refill, dict) else None
     if configured is None:
-        return ENTROPY_CATEGORIES
+        raise EntropyObservationError("reviewed work-suggestion categories are required")
     if not isinstance(configured, list) or any(not isinstance(item, str) for item in configured):
         raise EntropyObservationError("reviewed work-suggestion categories are invalid")
     return frozenset(configured) & ENTROPY_CATEGORIES

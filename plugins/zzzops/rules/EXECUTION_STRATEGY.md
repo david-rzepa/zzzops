@@ -4,7 +4,7 @@
 
 Before editing record baseline, falsifiable hypothesis, observation surface, expected signal, and smallest chunk. Change one variable; inspect the narrowest real probe, then widen per PROJECT. Prefer public/native hooks or the smallest least-privileged adapter. Avoid secrets/production mutation; retain only regression value. Build/lint/types prove only themselves. Block if required behavior is unobservable.
 
-Apply reviewed PROJECT verification policy first. When it does not specify artifact handling, classify the changed surface and use this fallback:
+Apply PROJECT artifact-verification settings; missing settings defer verification to policy review. Interpret selected values:
 
 - Product/runtime: prove affected behavior with a risk-proportionate real probe/test.
 - Documentation/examples: inspect/render/check the artifact as relevant; do not add feature tests solely for prose.
@@ -23,7 +23,7 @@ Preserve the smallest reproduction; distinguish product from test/environment fa
 
 ## Delegation and parallelism
 
-PROJECT resource/autonomy is a ceiling. Default measures Git-tracked bytes via `git ls-files`, excluding `.git`, ignored/untracked files and other worktrees: below 104857600 bytes permits three worktree workers, else three read-only workers. Policy may change operations, never safety/authority.
+PROJECT resource/autonomy ceilings set measurement, threshold, mode, and worker cap; missing settings defer delegation to policy review. Policy never weakens safety/authority.
 
 - `sequential`: no parallel execution; a wait monitor may keep the main thread free.
 - `read_only`: bounded inspections/proposals/waits; only main writes.
