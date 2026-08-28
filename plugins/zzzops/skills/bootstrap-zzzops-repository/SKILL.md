@@ -1,6 +1,6 @@
 ---
 name: bootstrap-zzzops-repository
-description: Bootstrap an empty, early-stage, or established software repository from a project specification into an agent-ready ZzzOps harness and executable goal DAG. Use to create a project or make an existing repository agent-ready; stops before substantive product implementation.
+description: ZzzOps v0.0.0-dev — development plugin. Bootstrap an empty, early-stage, or established software repository from a project specification into an agent-ready ZzzOps harness and executable goal DAG. Use to create a project or make an existing repository agent-ready; stops before substantive product implementation.
 ---
 
 # Bootstrap a ZzzOps Repository

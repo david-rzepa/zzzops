@@ -1,6 +1,6 @@
 ---
 name: validate-zzzops-installation
-description: Validate one repository after ZzzOps installation or upgrade, detect retired local machinery, and remove only fingerprint-proven legacy files after confirmation.
+description: ZzzOps v0.0.0-dev — development plugin. Validate one repository after ZzzOps installation or upgrade, detect retired local machinery, and remove only fingerprint-proven legacy files after confirmation.
 ---
 
 # Validate ZzzOps Installation

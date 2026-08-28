@@ -44,7 +44,8 @@ class PluginPackageError(ValueError):
 
 
 SKILL_PROVENANCE = re.compile(r"^ZzzOps v\S+ — (?:official|development) plugin\. ")
-SHORT_PROVENANCE = re.compile(r"^ZzzOps v\S+ \[(?:official|development)\] · ")
+SHORT_PROVENANCE = re.compile(r"^ZzzOps v\S+(?: \[(?:official|development)\])? · ")
+DISPLAY_PROVENANCE = re.compile(r"^\[ZzzOps(?: \S+)?\] ")
 
 
 def _yaml_text_value(value: str, field: str) -> str:
@@ -105,9 +106,11 @@ def render_skill_metadata(relative: str, data: bytes, version: str, channel: str
             data, "description", f"ZzzOps v{version} — {channel} plugin. ", SKILL_PROVENANCE,
         )
     if len(parts) == 4 and parts[0] == "skills" and parts[2:] == ["agents", "openai.yaml"]:
-        return _replace_yaml_text(
-            data, "short_description", f"ZzzOps v{version} [{channel}] · ", SHORT_PROVENANCE,
+        title_prefix = f"[ZzzOps {version}] " if channel == "development" else "[ZzzOps] "
+        rendered = _replace_yaml_text(
+            data, "display_name", title_prefix, DISPLAY_PROVENANCE,
         )
+        return _replace_yaml_text(rendered, "short_description", "", SHORT_PROVENANCE)
     return data
 
 
@@ -170,6 +173,18 @@ def package_status() -> dict[str, Any]:
         )
         if missing:
             raise PluginPackageError("missing package files: " + ", ".join(missing))
+        channel = "development" if manifest["version"] == "0.0.0-dev" else "official"
+        for name in sorted(SHIPPED_SKILLS):
+            skill_relative = f"skills/{name}/SKILL.md"
+            skill_text = (PLUGIN_ROOT / skill_relative).read_text(encoding="utf-8-sig")
+            separator = f"ZzzOps v{manifest['version']} — {channel} plugin. "
+            pattern = rf"(?m)^\s*description:\s*(?:[\"']?{re.escape(separator)}|(?:>|>-|\||\|-)\s*\n\s+{re.escape(separator)})"
+            if len(re.findall(pattern, skill_text)) != 1:
+                raise PluginPackageError(f"skill discovery metadata does not match the plugin build: {skill_relative}")
+            agent_relative = f"skills/{name}/agents/openai.yaml"
+            agent_data = (PLUGIN_ROOT / agent_relative).read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+            if render_skill_metadata(agent_relative, agent_data, manifest["version"], channel) != agent_data:
+                raise PluginPackageError(f"skill discovery metadata does not match the plugin build: {agent_relative}")
         provenance = package_provenance()
     except (OSError, UnicodeError, json.JSONDecodeError, PluginPackageError) as exc:
         return {

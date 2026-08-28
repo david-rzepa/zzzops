@@ -1,4 +1,4 @@
 interface:
-  display_name: "Suggest ZzzOps Work"
+  display_name: "[ZzzOps 0.0.0-dev] Suggest Work"
   short_description: "Audit project gaps and suggest durable work"
   default_prompt: "Use $suggest-zzzops-work in dry-run mode to audit this project and suggest valuable new goals."

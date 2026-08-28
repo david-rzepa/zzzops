@@ -1,6 +1,6 @@
 ---
 name: suggest-zzzops-work
-description: Suggest, discover, or audit valuable ZzzOps work from project code, tests, docs, config, and state. "dry run", "preview", or "plan" is the no-write default; "apply" writes approved goals, and "refill" writes only when authorized by reviewed exhausted-queue policy.
+description: ZzzOps v0.0.0-dev — development plugin. Suggest, discover, or audit valuable ZzzOps work from project code, tests, docs, config, and state. "dry run", "preview", or "plan" is the no-write default; "apply" writes approved goals, and "refill" writes only when authorized by reviewed exhausted-queue policy.
 ---
 
 # Suggest ZzzOps Work

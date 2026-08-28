@@ -1,6 +1,6 @@
 ---
 name: migrate-to-zzzops
-description: Discover, plan, migrate, or import repository TODOs/backlogs into durable ZzzOps goals. "dry run", "preview", or "plan" gives a no-write report. Default builds review artifacts and applies only after approval; "apply", "migrate", or "import" requests that workflow. Not installation or goal execution.
+description: ZzzOps v0.0.0-dev — development plugin. Discover, plan, migrate, or import repository TODOs/backlogs into durable ZzzOps goals. "dry run", "preview", or "plan" gives a no-write report. Default builds review artifacts and applies only after approval; "apply", "migrate", or "import" requests that workflow. Not installation or goal execution.
 ---
 
 # Migrate to ZzzOps

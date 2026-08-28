@@ -1,4 +1,0 @@
-interface:
-  display_name: "Install ZzzOps Dev"
-  short_description: "Install an unreleased local ZzzOps build"
-  default_prompt: "Use $install-zzzops-dev to install this checkout as the active local ZzzOps plugin."

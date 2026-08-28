@@ -17,11 +17,18 @@ from zipfile import ZipFile
 ROOT = Path(__file__).resolve().parents[1]
 BUILDER = ROOT / ".github" / "scripts" / "build_marketplace_bundle.py"
 CLAUDE_BUILDER = ROOT / ".github" / "scripts" / "build_claude_plugin.py"
-SHIPPED_SKILLS = {
-    "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
-    "review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
-    "validate-zzzops-installation",
+SKILL_UI = {
+    "add-zzzops-goal": ("Add Goal", "Capture one durable project goal safely"),
+    "bootstrap-zzzops-repository": ("Bootstrap Repository", "Create or strengthen an agent-ready repository"),
+    "execute-zzzops": ("Execute", "Run the primary autonomous ZzzOps goal loop"),
+    "migrate-to-zzzops": ("Migrate TODOs", "Discover and migrate repository TODOs safely"),
+    "review-agentic-engineering": ("Review Agentic Engineering", "Improve how you work with software agents"),
+    "review-zzzops-policy": ("Review Policy", "Initialize or review project operating policy"),
+    "send-zzzops-feedback": ("Send Feedback", "Preview and send privacy-safe ZzzOps feedback"),
+    "suggest-zzzops-work": ("Suggest Work", "Audit project gaps and suggest durable work"),
+    "validate-zzzops-installation": ("Validate Installation", "Validate one repository after install or upgrade"),
 }
+SHIPPED_SKILLS = set(SKILL_UI)
 
 
 def quoted_yaml_value(data: bytes, field: str) -> str:
@@ -67,7 +74,8 @@ class MarketplaceBundleTests(unittest.TestCase):
                 committed_manifest = json.loads(
                     (ROOT / "plugins" / "zzzops" / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
                 )
-                self.assertEqual(committed_manifest, packaged_manifest)
+                expected_manifest = {**committed_manifest, "version": "2.0.0"}
+                self.assertEqual(expected_manifest, packaged_manifest)
             with ZipFile(one["plugin"]) as archive:
                 names = archive.namelist()
                 self.assertIn("plugin.json", names)
@@ -83,9 +91,13 @@ class MarketplaceBundleTests(unittest.TestCase):
                 self.assertEqual("2.0.0", json.loads(archive.read(".codex-plugin/plugin.json"))["version"])
                 for skill in SHIPPED_SKILLS:
                     description = quoted_yaml_value(archive.read(f"skills/{skill}/SKILL.md"), "description")
-                    short = quoted_yaml_value(archive.read(f"skills/{skill}/agents/openai.yaml"), "short_description")
+                    agent = archive.read(f"skills/{skill}/agents/openai.yaml")
+                    display = quoted_yaml_value(agent, "display_name")
+                    short = quoted_yaml_value(agent, "short_description")
                     self.assertTrue(description.startswith("ZzzOps v2.0.0 — official plugin. "), skill)
-                    self.assertTrue(short.startswith("ZzzOps v2.0.0 [official] · "), skill)
+                    action, expected_short = SKILL_UI[skill]
+                    self.assertEqual(f"[ZzzOps] {action}", display, skill)
+                    self.assertEqual(expected_short, short, skill)
                 for name in (
                     "assets/composer-icon-dark.png", "assets/composer-icon.png",
                     "assets/logo-dark.png", "assets/logo.png",
@@ -132,6 +144,16 @@ class MarketplaceBundleTests(unittest.TestCase):
             self.builder.validate_portal_png("assets/logo.png", image.replace(b"\r\n", b"\n"))
         with self.assertRaisesRegex(self.builder.BundleError, "truncated|checksum|decoded"):
             self.builder.validate_portal_png("assets/logo.png", image[:-20])
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copytree(ROOT / "plugins" / "zzzops", root / "plugins" / "zzzops")
+            manifest_path = root / "plugins" / "zzzops" / "plugin.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["version"] = "2.0.0"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(self.builder.BundleError, "canonical development manifest"):
+                self.builder.plugin_files(root, "2.0.0")
 
     def test_stale_release_output_is_rejected_before_any_partial_refresh(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

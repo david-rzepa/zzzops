@@ -1,37 +1,26 @@
 from __future__ import annotations
 
 import json
-import importlib.util
 import runpy
-import sys
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugins" / "zzzops"
-SHIPPED_SKILLS = {
-    "add-zzzops-goal",
-    "bootstrap-zzzops-repository",
-    "execute-zzzops",
-    "migrate-to-zzzops",
-    "review-zzzops-policy",
-    "review-agentic-engineering",
-    "send-zzzops-feedback",
-    "suggest-zzzops-work",
-    "validate-zzzops-installation",
+SKILL_UI = {
+    "add-zzzops-goal": ("Add Goal", "Capture one durable project goal safely"),
+    "bootstrap-zzzops-repository": ("Bootstrap Repository", "Create or strengthen an agent-ready repository"),
+    "execute-zzzops": ("Execute", "Run the primary autonomous ZzzOps goal loop"),
+    "migrate-to-zzzops": ("Migrate TODOs", "Discover and migrate repository TODOs safely"),
+    "review-agentic-engineering": ("Review Agentic Engineering", "Improve how you work with software agents"),
+    "review-zzzops-policy": ("Review Policy", "Initialize or review project operating policy"),
+    "send-zzzops-feedback": ("Send Feedback", "Preview and send privacy-safe ZzzOps feedback"),
+    "suggest-zzzops-work": ("Suggest Work", "Audit project gaps and suggest durable work"),
+    "validate-zzzops-installation": ("Validate Installation", "Validate one repository after install or upgrade"),
 }
+SHIPPED_SKILLS = set(SKILL_UI)
 SUPPORT_EMAIL = "zzzops.support@gmail.com"
-DEV_INSTALLER = ROOT / ".agents" / "skills" / "install-zzzops-dev" / "scripts" / "install_dev.py"
-
-
-def load_dev_installer():
-    spec = importlib.util.spec_from_file_location("install_zzzops_dev", DEV_INSTALLER)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def quoted_yaml_value(data: bytes, field: str) -> str:
@@ -49,27 +38,42 @@ class AgentPluginTests(unittest.TestCase):
         self.assertEqual(expected, quoted_yaml_value(rendered, "description"))
         self.assertEqual(rendered, render("skills/example/SKILL.md", rendered, "2.1.0", "official"))
 
-    def test_development_projection_versions_every_skill_description(self) -> None:
-        projected = load_dev_installer().development_plugin_files(PLUGIN, "local-20260824-010203")
-        manifest_paths = (PLUGIN / "plugin.json", PLUGIN / ".codex-plugin" / "plugin.json")
+        stale_agent = (
+            'interface:\n  display_name: "[ZzzOps 1.0.0-dev] Example"\n'
+            '  short_description: "ZzzOps v1.0.0 [development] · Purpose"\n'
+        ).encode("utf-8")
+        rendered_agent = render("skills/example/agents/openai.yaml", stale_agent, "2.1.0", "official")
+        self.assertEqual("[ZzzOps] Example", quoted_yaml_value(rendered_agent, "display_name"))
+        self.assertEqual("Purpose", quoted_yaml_value(rendered_agent, "short_description"))
+        self.assertEqual(
+            rendered_agent,
+            render("skills/example/agents/openai.yaml", rendered_agent, "2.1.0", "official"),
+        )
+
+    def test_canonical_source_identifies_every_skill_as_development(self) -> None:
+        package = runpy.run_path(str(PLUGIN / "zzzops" / "package.py"))
+        manifest_paths = (
+            PLUGIN / "plugin.json",
+            PLUGIN / ".codex-plugin" / "plugin.json",
+            PLUGIN / ".claude-plugin" / "plugin.json",
+        )
         for path in manifest_paths:
-            self.assertEqual("2.0.0+codex.local-20260824-010203", json.loads(projected[path])["version"])
+            self.assertEqual("0.0.0-dev", json.loads(path.read_text(encoding="utf-8"))["version"])
+        marketplace = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
+        self.assertEqual("0.0.0-dev", marketplace["metadata"]["version"])
+        self.assertEqual("0.0.0-dev", marketplace["plugins"][0]["version"])
         for skill in SHIPPED_SKILLS:
             skill_path = PLUGIN / "skills" / skill / "SKILL.md"
             agent_path = PLUGIN / "skills" / skill / "agents" / "openai.yaml"
-            self.assertTrue(
-                quoted_yaml_value(projected[skill_path], "description").startswith(
-                    "ZzzOps v2.0.0-dev — development plugin. "
-                ),
-                skill,
-            )
-            self.assertTrue(
-                quoted_yaml_value(projected[agent_path], "short_description").startswith(
-                    "ZzzOps v2.0.0-dev [development] · "
-                ),
-                skill,
-            )
-            self.assertNotIn(b"ZzzOps v2.0.0-dev", skill_path.read_bytes())
+            skill_data = skill_path.read_bytes().replace(b"\r\n", b"\n")
+            agent_data = agent_path.read_bytes().replace(b"\r\n", b"\n")
+            self.assertIn(b"ZzzOps v0.0.0-dev \xe2\x80\x94 development plugin. ", skill_data, skill)
+            action, short = SKILL_UI[skill]
+            self.assertEqual(f"[ZzzOps 0.0.0-dev] {action}", quoted_yaml_value(agent_data, "display_name"), skill)
+            self.assertEqual(short, quoted_yaml_value(agent_data, "short_description"), skill)
+        status = package["package_status"]()
+        self.assertTrue(status["ok"], status["detail"])
+        self.assertEqual("0.0.0-dev", status["version"])
 
     def test_open_and_codex_manifests_describe_the_same_release(self) -> None:
         open_manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))
@@ -105,6 +109,7 @@ class AgentPluginTests(unittest.TestCase):
             "install.sh",
             "CLAUDE.md",
             ".zzzops/ZZZOPS_LOCK.json",
+            ".agents/skills/install-zzzops-dev",
             "plugins/zzzops/zzzops/installer.py",
             "plugins/zzzops/zzzops/install_lock.py",
         ):

@@ -740,7 +740,7 @@ class InitializationTests(unittest.TestCase):
     def test_plugin_package_status_and_provenance_are_valid(self):
         status = zzzops.machinery_commit_status(self.repo)
         self.assertTrue(status["ok"])
-        self.assertEqual("2.0.0", status["version"])
+        self.assertEqual("0.0.0-dev", status["version"])
         self.assertRegex(status["revision"], r"^[0-9a-f]{64}$")
         self.assertEqual(0, status["processes"])
 
@@ -978,7 +978,7 @@ class ExecutionReportTests(unittest.TestCase):
 
     def test_feedback_provenance_uses_validated_plugin_package(self):
         provenance = zzzops.zzzops_provenance(self.repo)
-        self.assertEqual("2.0.0", provenance["version"])
+        self.assertEqual("0.0.0-dev", provenance["version"])
         self.assertRegex(provenance["revision"], r"^[0-9a-f]{64}$")
 
     def test_feedback_keeps_distinct_causes_separate_and_aggregates_matching_causes(self):
@@ -3124,7 +3124,7 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn("privacy-safe execution reports", text)
         manifest = json.loads((root / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual("zzzops", manifest["name"])
-        self.assertEqual("2.0.0", manifest["version"])
+        self.assertEqual("0.0.0-dev", manifest["version"])
 
     def test_skills_apply_shared_privacy_safe_feedback_handoff(self):
         root = PLUGIN_ROOT / "skills"

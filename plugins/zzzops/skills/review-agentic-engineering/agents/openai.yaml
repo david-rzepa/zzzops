@@ -1,5 +1,5 @@
 interface:
-  display_name: "Review Agentic Engineering"
+  display_name: "[ZzzOps 0.0.0-dev] Review Agentic Engineering"
   short_description: "Improve how you work with software agents"
   default_prompt: "Use $review-agentic-engineering to review my recent completed software-agent work and suggest up to two evidence-based improvements."
 policy:
