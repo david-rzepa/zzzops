@@ -18,7 +18,7 @@ With `pull_request_unit: per_goal`, each source goal owns one branch/PR; size/ru
 
 ## Issue links
 
-Use `Tracks #N`; default-branch closing keywords are insufficient. Only after the target contains the exact head: re-read the issue, record done/merge evidence, run `gh issue close N --reason completed`, and verify. Never close stacked/incomplete work.
+Use `Tracks #N`; default-branch closing keywords are insufficient. Only after the target contains the [[exact head]](../../../concepts/exact-head.md): re-read the issue, record done/merge evidence, run `gh issue close N --reason completed`, and verify. Never close stacked/incomplete work.
 
 ## Review gate
 

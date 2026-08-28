@@ -18,6 +18,6 @@ Without skill discovery, install the ZzzOps Agent Plugin through Codex, then rea
 
 The distributable Agent Plugin lives in `plugins/zzzops`; `.agents/plugins/marketplace.json` publishes it to Codex. Plugin installation never copies project state or target instructions.
 
-Git: pure goal capture never automates Git. Execute from current `dev` and open ordinary PRs to `dev`, never `main` unless the user explicitly retains an existing branch. Separate independently useful/revertible commits; squash changes valid only together. Only owner `david-rzepa` may intentionally release-force-push `main` after preconditions; every `main` update runs release CI.
+Git: goal capture is Git-free. Execute from `dev`; ordinary PRs target `dev`, never `main` unless the user keeps another branch. Each independent commit must be a useful [[bounded commitment]](plugins/zzzops/concepts/bounded-commitment.md); squash changes valid only together. Only `david-rzepa` may release-force-push `main` after preconditions; `main` updates run release CI.
 
 After prompt Markdown changes, inspect `.agents/prompt_stats.py` and run `--check`; never commit generated counts or raise the ceiling without explicit value justification.

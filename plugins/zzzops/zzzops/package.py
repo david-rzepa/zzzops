@@ -34,6 +34,7 @@ REQUIRED_FILES = {
     ".codex-plugin/plugin.json",
     "assets/legacy_install_fingerprints.json",
     "concepts/bounded-commitment.md",
+    "concepts/effective-engineering-rigor.md", "concepts/exact-head.md", "concepts/safe-useful-work.md",
     "rules/BACKENDS.md", "rules/BLOCKERS.md", "rules/CONTINUATION.md",
     "rules/EXECUTION_STRATEGY.md", "rules/FEEDBACK.md", "rules/GOAL_SYSTEM.md",
     "rules/INITIALIZATION.md", "zzzops/installation.py", "zzzops/entropy.py", "zzzops/zzzops.py",
