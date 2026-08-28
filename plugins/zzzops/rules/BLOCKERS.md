@@ -22,7 +22,7 @@ Keep stable IDs (`B-001`) and resolved records:
 
 ## Continue or stop
 
-Choose `continue-bounded` only if the work is reversible/read-only, does not assume a foundational answer, likely reduces uncertainty or batches blockers, has a cheap stop point, and stays authorized. Otherwise use `stop-affected-work`, especially when answers would invalidate work; the step is destructive/external/expensive/privileged; safety is material; or investigation has stopped producing evidence.
+Choose `continue-bounded` only for read-only work or a [[bounded commitment]](../concepts/bounded-commitment.md) that assumes no foundational answer, reduces uncertainty or batches blockers, has a cheap stop, and stays authorized. Otherwise use `stop-affected-work`, especially when an answer could invalidate work; the step is destructive, external, expensive, privileged, or safety-sensitive; or investigation stopped producing evidence.
 
 Stop only the affected work. Mark the goal `blocked` only when nothing useful remains; update the human queue, release the claim, and select another goal.
 

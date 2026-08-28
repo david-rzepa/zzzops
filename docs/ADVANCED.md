@@ -62,12 +62,14 @@ You do not fill out a blank wizard. The agent summarizes meaningful choices and 
 
 `$bootstrap-zzzops-repository` derives greenfield, early-scaffold, or brownfield behavior from repository evidence.
 
-Bootstrap is the primary first workflow after installation. If project policy is missing or needs review, it hands off to `$review-zzzops-policy` and resumes after approval rather than duplicating policy initialization. Use the policy-review skill directly when you only need to inspect or change an established policy.
+Bootstrap is the primary first workflow after installation. It begins with an adaptive product interview so purpose, beneficiaries, observable success, scope, the first milestone, constraints, and consequential unknowns are clear before it chooses a harness. If the technology stack is unknown, it compares supported options and may run a disposable isolated spike; it proceeds only when evidence clearly favors an option, otherwise it records a durable decision blocker.
+
+If project policy is missing or needs review, bootstrap hands off to `$review-zzzops-policy` and resumes after approval rather than duplicating policy initialization. This policy decision is the one mandatory conversational approval before ordinary work. Use the policy-review skill directly when you only need to inspect or change an established policy.
 
 - Greenfield bootstrap proposes proportionate architecture and creates ordinary ZzzOps goals for the toolchain, structure, tests, analysis, canonical verification, CI, agent context, documentation, and first product milestone.
 - Brownfield bootstrap treats existing repository evidence as stronger than generic scaffolding preferences. It audits and strengthens the harness, preserves intentional architecture, and captures verified gap closure as ordinary goals.
 
-Bootstrap creates and configures the factory; it does not implement the whole product or maintain a parallel private checklist. Existing unstarted product goals can be made dependent on the harness goals so execution establishes reliable feedback before substantial implementation.
+Both journeys create or reconcile exactly one parentless product-outcome goal, attach harness and product milestones beneath it, and execute the authorized DAG. Bootstrap continues from harness work into safe product implementation through separate stacked PRs until the queue is exhausted; finishing the harness alone is not completion. Its final handoff presents the ordered PR review queue and any genuinely blocked or unauthorized product scope.
 
 ## Goals and execution
 

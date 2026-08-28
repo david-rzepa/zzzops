@@ -44,7 +44,7 @@ For an existing repository:
 Use $bootstrap-zzzops-repository to make this existing repository agent-ready.
 ```
 
-Bootstrap inspects the repository and automatically hands off to `$review-zzzops-policy` when the project policy needs review, then resumes cleanly. You approve the consequential choices before ZzzOps creates and executes ordinary goals for the engineering harness; it does not silently implement the whole product.
+Bootstrap first clarifies the product outcome, initial milestone, constraints, and consequential unknowns, then automatically hands off to `$review-zzzops-policy` when policy needs review. That policy review is the one mandatory approval before ordinary work. Bootstrap creates exactly one top-level product goal and continues from the engineering harness into safe product milestones through distinct stacked PRs until no useful authorized work remains.
 
 Use `$review-zzzops-policy` directly later whenever you want to review or adjust policy without bootstrapping the repository again.
 
@@ -76,7 +76,7 @@ For a persistent Codex run:
 /goal Use $execute-zzzops to work through all available project goals until complete or genuinely blocked.
 ```
 
-ZzzOps prioritizes available work, follows the reviewed repository policy, verifies each change, preserves resumable state, and turns unanswered decisions into explicit blockers. Source-changing work follows the project's branch and review rules; passing checks do not silently replace required human approval.
+ZzzOps prioritizes available work, follows the reviewed repository policy, verifies each change, preserves resumable state, and turns unanswered decisions into explicit blockers. By default, source-changing goals produce separate verified stacked PRs without conversational approval prompts; once safe work is exhausted, ZzzOps presents the PRs in dependency order for human review. Passing checks never replace required PR approval, merge authority, or release gates, and policy review can select stricter per-goal gating.
 
 When you remember “one last thing,” add a goal instead of opening six files and seeing sunrise.
 

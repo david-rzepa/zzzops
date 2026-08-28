@@ -36,7 +36,16 @@ POLICY_SECTION_IDS = (
 )
 
 AUTOMATED_DESIGN_SETTINGS = {
-    "scope": "reversible_in_scope_implementation",
+    "scope": "bounded_commitment_in_scope_implementation",
+    "commitment": {
+        "low": "replace_verify_and_clean_within_one_goal_before_fanout",
+        "high": "compare_evidence_cost_signal_or_explicit_current_design_review",
+        "structural_cost_signals": [
+            "affected_goal_units", "started_descendant_branches", "started_descendant_prs",
+            "durable_data", "public_or_integration_contracts", "external_state",
+            "compatibility_paths", "verification_breadth", "clean_removal_path",
+        ],
+    },
     "selection_basis": ["project_objectives", "kpi_evidence", "constraints", "precedence"],
     "decision_record": ["alternatives", "rationale", "assumptions", "falsifiable_validation_signal"],
     "privacy_security": "unambiguously_risk_reducing_without_material_behavior_change",
@@ -46,6 +55,13 @@ AUTOMATED_DESIGN_SETTINGS = {
     ],
     "insufficient_evidence": "durable_design_blocker",
 }
+
+GIT_REVIEW_SETTING_VALUES = {
+    "review_pending_dependency": {"wait_for_completed_dependencies", "stack_from_reviewed_checkpoint"},
+    "review_gate": {"human_after_checks", "human_at_exhaustion"},
+    "conversational_approval": {"allowed_otherwise", "never_for_goal_progress"},
+}
+DEPENDENCY_IMPLEMENTATION_GATES = {"dependencies_done", "stack_from_reviewed_checkpoint"}
 
 WORKFLOW_ADHERENCE_SETTINGS = {
     "levels": {
@@ -563,6 +579,19 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                 errors.append(f"{prefix}.source_ids missing citations: {', '.join(missing_sources)}")
         if not isinstance(section.get("settings"), dict):
             errors.append(f"{prefix}.settings must be an object")
+        elif section_id == "git_review_release":
+            settings = section["settings"]
+            for field, allowed in GIT_REVIEW_SETTING_VALUES.items():
+                if settings.get(field) not in allowed:
+                    errors.append(f"{prefix}.git_review_release.settings.{field} is invalid")
+            if settings.get("review_gate") == "human_at_exhaustion" and (
+                settings.get("review_pending_dependency") != "stack_from_reviewed_checkpoint"
+                or settings.get("conversational_approval") != "never_for_goal_progress"
+            ):
+                errors.append(
+                    f"{prefix}.git_review_release exhaustion review requires checkpoint stacking "
+                    "and no conversational goal approval"
+                )
         elif section_id == "engineering_rigor":
             settings = section["settings"]
             if section.get("decision") not in ENGINEERING_RIGOR_LEVELS:
@@ -631,6 +660,8 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                     errors.append(f"{prefix}.automated_design.settings.{field} must preserve the bounded default")
         elif section_id == "autonomy_approval_parallelism":
             settings = section["settings"]
+            if settings.get("dependency_implementation_gate") not in DEPENDENCY_IMPLEMENTATION_GATES:
+                errors.append(f"{prefix}.settings.dependency_implementation_gate is invalid")
             if "execution_reports" in settings:
                 reporting = settings["execution_reports"]
                 if not isinstance(reporting, dict):

@@ -2787,13 +2787,34 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("per_goal", git_policy["execution_branch"])
         self.assertEqual("nearest_authorized_trunk", git_policy["branch_base"])
         self.assertEqual("dependency_branch", git_policy["dependency_base"])
-        self.assertEqual("wait_for_completed_dependencies", git_policy["review_pending_dependency"])
+        self.assertEqual("stack_from_reviewed_checkpoint", git_policy["review_pending_dependency"])
         self.assertEqual("allowed_before_completion", git_policy["read_only_dependency_investigation"])
         self.assertTrue(git_policy["parent_pseudo_trunk"])
         self.assertEqual("per_goal", git_policy["pull_request_unit"])
         self.assertEqual("explicit_reviewed_override", git_policy["shared_pull_request"])
-        self.assertEqual("human_after_checks", git_policy["review_gate"])
+        self.assertEqual("human_at_exhaustion", git_policy["review_gate"])
+        self.assertEqual("never_for_goal_progress", git_policy["conversational_approval"])
         self.assertEqual(1, git_policy["review_state_reads_per_checkpoint"])
+
+        strict = json.loads(json.dumps(plan["policy"]))
+        strict_git = next(section for section in strict["sections"] if section["id"] == "git_review_release")
+        strict_autonomy = next(
+            section for section in strict["sections"] if section["id"] == "autonomy_approval_parallelism"
+        )
+        strict_git["settings"].update({
+            "review_pending_dependency": "wait_for_completed_dependencies",
+            "review_gate": "human_after_checks",
+            "conversational_approval": "allowed_otherwise",
+        })
+        strict_autonomy["settings"]["dependency_implementation_gate"] = "dependencies_done"
+        self.assertEqual([], zzzops.validate_policy(strict, True))
+
+        invalid = json.loads(json.dumps(plan["policy"]))
+        invalid_git = next(section for section in invalid["sections"] if section["id"] == "git_review_release")
+        invalid_git["settings"]["review_pending_dependency"] = "wait_for_completed_dependencies"
+        self.assertTrue(any(
+            "exhaustion review requires" in error for error in zzzops.validate_policy(invalid, True)
+        ))
 
     def test_parallel_and_refill_defaults_are_structured(self):
         root = PLUGIN_ROOT / "zzzops"
@@ -2815,7 +2836,7 @@ class WorkflowContractTests(unittest.TestCase):
             },
             settings["refill"],
         )
-        self.assertEqual("dependencies_done", settings["dependency_implementation_gate"])
+        self.assertEqual("stack_from_reviewed_checkpoint", settings["dependency_implementation_gate"])
         self.assertTrue(settings["read_only_dependency_investigation"])
         self.assertEqual({"enabled": True}, settings["execution_reports"])
         self.assertEqual(
@@ -2880,6 +2901,16 @@ class WorkflowContractTests(unittest.TestCase):
             ["project_objectives", "kpi_evidence", "constraints", "precedence"],
             section["settings"]["selection_basis"],
         )
+        self.assertEqual("bounded_commitment_in_scope_implementation", section["settings"]["scope"])
+        self.assertEqual(
+            "replace_verify_and_clean_within_one_goal_before_fanout",
+            section["settings"]["commitment"]["low"],
+        )
+        self.assertEqual(
+            "compare_evidence_cost_signal_or_explicit_current_design_review",
+            section["settings"]["commitment"]["high"],
+        )
+        self.assertIn("durable_data", section["settings"]["commitment"]["structural_cost_signals"])
         self.assertEqual(
             ["alternatives", "rationale", "assumptions", "falsifiable_validation_signal"],
             section["settings"]["decision_record"],
@@ -2906,6 +2937,7 @@ class WorkflowContractTests(unittest.TestCase):
 
         mutations = {
             "decision": lambda item: item.update({"decision": "ask_agent"}),
+            "commitment": lambda item: item["settings"]["commitment"].update({"low": "eventually_reversible"}),
             "selection_basis": lambda item: item["settings"]["selection_basis"].remove("kpi_evidence"),
             "privacy_security": lambda item: item["settings"].update({"privacy_security": "agent_discretion"}),
             "hard_stops": lambda item: item["settings"]["hard_stops"].remove("destructive_migration"),
@@ -3029,14 +3061,55 @@ class WorkflowContractTests(unittest.TestCase):
         review = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
         for phrase in (
             "objectives, KPI evidence, constraints, and precedence",
-            "alternatives, rationale, assumptions, and a falsifiable validation signal",
-            "unambiguously reduces exposure, privilege, collection, or retention",
+            "credible alternatives, early evidence when useful, structural cost signals, assumptions, and a falsifiable validation signal",
+            "unambiguously lower exposure, privilege, collection, or retention",
             "product scope, incompatible public contracts, destructive migrations, external spending, deployment",
             "durable design blocker",
         ):
             self.assertIn(phrase, unblock)
         self.assertIn("missing automated-design section", review)
         self.assertIn("without inferring approval", review)
+        self.assertIn("human explicitly reviewed the exact current design", unblock)
+        self.assertIn("never infer it from policy approval, an ordinary PR, or unrelated review", unblock)
+
+    def test_exhaustion_review_and_bootstrap_contracts_are_explicit(self):
+        root = PLUGIN_ROOT
+        review = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
+        review_queue = (
+            root / "skills" / "execute-zzzops" / "references" / "REVIEW_QUEUE.md"
+        ).read_text(encoding="utf-8")
+        bootstrap = (root / "skills" / "bootstrap-zzzops-repository" / "SKILL.md").read_text(encoding="utf-8")
+        analyze = (root / "zzzops" / "references" / "bootstrap" / "ANALYZE.md").read_text(encoding="utf-8")
+        plan = (root / "zzzops" / "references" / "bootstrap" / "PLAN.md").read_text(encoding="utf-8")
+        greenfield = (root / "zzzops" / "references" / "bootstrap" / "GREENFIELD.md").read_text(encoding="utf-8")
+        brownfield = (root / "zzzops" / "references" / "bootstrap" / "BROWNFIELD.md").read_text(encoding="utf-8")
+
+        for phrase in ("human_at_exhaustion", "human_after_checks", "policy approval gates execution once"):
+            self.assertIn(phrase, review)
+        for phrase in (
+            "Do not request conversational approval",
+            "dependency/merge order",
+            "ancestor checkpoint changes",
+            "invalidate every affected descendant checkpoint and approval",
+            "recompute each immediate-base diff",
+        ):
+            self.assertIn(phrase, review_queue)
+        for phrase in (
+            "adaptive product interview",
+            "exactly one canonical top-level product-outcome goal",
+            "Continue from harness outcomes into product milestones",
+        ):
+            self.assertIn(phrase, bootstrap)
+        for phrase in ("no stack preference", "disposable spike", "high-commitment choice", "clearly dominates", "authority_blocker"):
+            self.assertIn(phrase, analyze)
+        for phrase in ("exactly one top-level product-outcome goal", "Reconcile and reuse it", "second top-level"):
+            self.assertIn(phrase, plan)
+        self.assertIn("safe greeting behavior remains unimplemented", greenfield)
+        self.assertIn("until exhaustion", brownfield)
+
+        for path in root.rglob("*.md"):
+            text = path.read_text(encoding="utf-8").lower()
+            self.assertNotRegex(text, r"\brevertible\b|\breversible\b", str(path))
 
     def test_continuation_policy_defaults_are_structured(self):
         root = PLUGIN_ROOT / "zzzops"
@@ -3065,7 +3138,7 @@ class WorkflowContractTests(unittest.TestCase):
         root = PLUGIN_ROOT / "skills"
         contracts = {
             "add-zzzops-goal": ("capture", "add", "create", "record", "goal/todo", "writes canonical goal state by default"),
-            "bootstrap-zzzops-repository": ("bootstrap", "empty", "established", "specification", "agent-ready", "stops before substantive product implementation"),
+            "bootstrap-zzzops-repository": ("bootstrap", "empty", "established", "product specification", "agent-ready", "execute", "safe pr-gated work"),
             "execute-zzzops": ("execute", "work all goals", "continue", "resume", "triage", "prioritize", "reprioritize", "unblock", '"dry run"', '"preview"', '"plan"', "default executes"),
             "migrate-to-zzzops": ("discover", "plan", "migrate", "import", "todos/backlogs", '"dry run"', '"preview"', '"apply"', "default builds review artifacts"),
             "review-agentic-engineering": ("review", "completed", "explicit request", "one or two", "overall agentic-engineering", "read-only", "not a scorecard"),
@@ -3112,7 +3185,7 @@ class WorkflowContractTests(unittest.TestCase):
         ):
             self.assertIn(phrase, initialization)
         review_skill = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("Ask separately", review_skill)
+        self.assertIn("Approved policy artifacts may enter ordinary PR review without another conversational gate", review_skill)
         for text in (review_skill, initialization):
             self.assertIn("The policy is already approved.", text)
             self.assertIn("Do not ask for approval", text)
@@ -3152,7 +3225,7 @@ class WorkflowContractTests(unittest.TestCase):
             "Exact-head, permission, merge, and transition readbacks remain mandatory",
         ):
             self.assertIn(phrase, execute)
-        self.assertIn("bounded consolidated reads", review)
+        self.assertIn("PROJECT-bounded consolidated read", review)
         self.assertIn("exact head", review)
 
     def test_execute_presents_final_state_commit_history_for_review(self):
@@ -3161,7 +3234,7 @@ class WorkflowContractTests(unittest.TestCase):
             PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "BRANCH_REVIEW.md"
         ).read_text(encoding="utf-8").lower()
         scenarios = {
-            "clean multi-commit PR": "independently useful and revertible",
+            "clean multi-commit PR": "independently useful",
             "iteration is folded": "fold iteration-only commits",
             "semantic commit messages": "semantic conventional commit messages",
             "review titles state outcomes": "pr/controlled merge titles describe outcomes",
@@ -3176,8 +3249,8 @@ class WorkflowContractTests(unittest.TestCase):
         for expected in (
             "immediate-base history",
             "before opening a pr and each review checkpoint",
-            "after review feedback",
-            "invalidate approval",
+            "ancestor feedback",
+            "invalidate stale approval",
         ):
             self.assertIn(expected, review)
 

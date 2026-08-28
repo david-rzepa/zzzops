@@ -33,12 +33,12 @@ Update only for a new result, decision, risk, changed assumption, required actio
 
 - On blockers use `../../../rules/BLOCKERS.md`: persist request/continuation, do bounded safe work, then stay active or block/release claim/reservation before switching.
 - Out-of-scope decay: record [evidence](ENTROPY_OBSERVATIONS.md); do not audit.
-- Before `done`, apply effective engineering rigor: `vibe` may accept observed behavior when policy permits; `structured` requires observable criteria, targeted checks, and canonical verification; `agentic` requires relevant deterministic gates, regressions, architecture guardrails, and security/data/recovery/operations evidence. Created-but-unrun machinery is not proof. Cite each criterion, verify children/blockers/checks, and state gaps; build/lint/types/review prove only themselves. Apply `SELF_REVIEW.md` and `BRANCH_REVIEW.md`; `human_after_checks` still requires approval.
+- Before `done`, apply effective engineering rigor: `vibe` may accept observed behavior when policy permits; `structured` requires observable criteria, targeted checks, and canonical verification; `agentic` requires relevant deterministic gates, regressions, architecture guardrails, and security/data/recovery/operations evidence. Created-but-unrun machinery is not proof. Cite each criterion, verify children/blockers/checks, and state gaps; build/lint/types/review prove only themselves. Apply `SELF_REVIEW.md` and `BRANCH_REVIEW.md`; pending human review is never `done`.
 - Follow PROJECT Git/review/commit policy; stage only authorized implementation/pending local state, never an empty commit for GitHub-only state. After mutation refresh, recheck parents/unlocks, and select again.
 
 ## Exhaustion and handoff
 
-When no goal has `work_state: triage|prepare|write`, rebuild the durable human queue via `UNBLOCK.md` and hand off highest-leverage actions without asking live. Later resolve supplied answers and retry when policy restores work; never poll for human input.
+When no goal has `work_state: triage|prepare|write`, rebuild blockers through `UNBLOCK.md`, then follow [the PR review queue](REVIEW_QUEUE.md) for an ordered exhaustion handoff. Later resolve supplied input and resume; never poll for humans.
 
 If empty, `$suggest-zzzops-work` may apply only under explicit reviewed refill policy and its limits; never enable or loop-refill.
 
