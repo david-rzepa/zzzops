@@ -4,16 +4,16 @@
 
 ## Select
 
-1. Use the charter and current BACKENDS checkpoint; require `complete:true`/`valid:true` and resolve findings before selecting. Use compact relationships/claims/reviews without rereading goals. If the human queue exists, use `UNBLOCK.md` to persist/order gates, then continue independent work. Include `zzzops-feedback` only with queue-wide current-session approval and preserve `--include-feedback` on refresh. Treat it as the current queue read until mutation, provider failure, required freshness, or drift permits one refresh; do not rediscover via `portfolio`.
+1. Use the charter and current BACKENDS checkpoint; require `complete:true`/`valid:true` and resolve findings before selecting. Use compact relationships/claims/reviews; do not reread goals. If the human queue exists, use `UNBLOCK.md` to persist/order gates, then continue independent work. Include `zzzops-feedback` only with queue-wide current-session approval and preserve `--include-feedback` on refresh. It is the current queue read until mutation/failure/freshness/drift permits one refresh; do not rerun `portfolio`.
 2. Route `work_state: triage|prepare` through `CREATE.md`; it may update state/justified children, never claim, branch, edit, or implement.
 3. `write` alone permits reservation/source changes, with valid effective engineering rigor. `wait_dependency` permits policy-authorized read-only investigation; `wait_human`, `blocked`, and `terminal` wait. PROJECT alone derives `write`, including allowed review-checkpoint stacking.
 4. Obey authority and explicit PROJECT priority first. At equal priority choose risk-reducing or unlocking work over low-value easy or fast work; then confidence, feedback speed, and lower difficulty; difficulty is cost, not value. Never invent a baseline, score, or precision. Exact tie: PROJECT resume policy, then the lowest goal key.
 
 Execution assumes the user is absent and never asks an interactive question. Persist each unanswered consequential question with category, evidence, recommendation, boundary, safe work, and trigger. Never infer approval; stop affected work only and continue to true queue exhaustion.
 
-Before substantive work on a newly selected goal or resume, state outcome/scope before reservation/edits; do not repeat or make it an approval gate.
+Before substantive work on a newly selected goal/resume, state outcome/scope before edits; do not repeat it.
 
-Update the user only for a new result, decision, risk, changed assumption, required action, or long-operation heartbeat; never recap unchanged state.
+Update only for a new result, decision, risk, changed assumption, required action, or long-operation heartbeat; never recap unchanged state.
 
 ## Execute
 
@@ -32,6 +32,7 @@ Update the user only for a new result, decision, risk, changed assumption, requi
 ## Block, complete, cycle
 
 - On blockers use `../../../rules/BLOCKERS.md`: persist request/continuation, do bounded safe work, then stay active or block/release claim/reservation before switching.
+- Out-of-scope decay: record [evidence](ENTROPY_OBSERVATIONS.md); do not audit.
 - Before `done`, apply effective engineering rigor: `vibe` may accept observed behavior when policy permits; `structured` requires observable criteria, targeted checks, and canonical verification; `agentic` requires relevant deterministic gates, regressions, architecture guardrails, and security/data/recovery/operations evidence. Created-but-unrun machinery is not proof. Cite each criterion, verify children/blockers/checks, and state gaps; build/lint/types/review prove only themselves. Apply `SELF_REVIEW.md` and `BRANCH_REVIEW.md`; `human_after_checks` still requires approval.
 - Follow PROJECT Git/review/commit policy; stage only authorized implementation/pending local state, never an empty commit for GitHub-only state. After mutation refresh, recheck parents/unlocks, and select again.
 

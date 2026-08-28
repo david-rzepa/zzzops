@@ -33,6 +33,13 @@ _installation = importlib.util.module_from_spec(_INSTALLATION_MODULE_SPEC)
 sys.modules[_INSTALLATION_MODULE_SPEC.name] = _installation
 _INSTALLATION_MODULE_SPEC.loader.exec_module(_installation)
 
+_ENTROPY_MODULE_PATH = Path(__file__).with_name("entropy.py")
+_ENTROPY_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_entropy", _ENTROPY_MODULE_PATH)
+assert _ENTROPY_MODULE_SPEC and _ENTROPY_MODULE_SPEC.loader
+_entropy = importlib.util.module_from_spec(_ENTROPY_MODULE_SPEC)
+sys.modules[_ENTROPY_MODULE_SPEC.name] = _entropy
+_ENTROPY_MODULE_SPEC.loader.exec_module(_entropy)
+
 _POLICY_MODULE_PATH = Path(__file__).with_name("policy.py")
 _POLICY_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_policy", _POLICY_MODULE_PATH)
 assert _POLICY_MODULE_SPEC and _POLICY_MODULE_SPEC.loader
@@ -189,6 +196,13 @@ load_goal_create = _goals.load_goal_create
 apply_goal_create = _goals.apply_goal_create
 ensure_current_goal_schema = _goals.ensure_current_goal_schema
 migrate_open_goal_schemas = _goals.migrate_open_goal_schemas
+
+entropy_observation_directory = _entropy.observation_directory
+enabled_entropy_categories = _entropy.enabled_categories
+list_entropy_observations = _entropy.list_observations
+record_entropy_observation = _entropy.record_observation
+resolve_entropy_observations = _entropy.resolve_observations
+EntropyObservationError = _entropy.EntropyObservationError
 
 execution_reports_enabled = _feedback.execution_reports_enabled
 execution_report_directory = _feedback.execution_report_directory
@@ -1693,6 +1707,18 @@ def main() -> int:
     installation_record = installation_commands.add_parser("record", help="Record a confirmed current-package validation outcome")
     installation_record.add_argument("--outcome", choices=sorted(_installation.OUTCOMES), required=True)
     installation_record.add_argument("--audit-signature", required=True)
+    entropy = commands.add_parser("entropy", help="Track compact repository entropy observations")
+    entropy_commands = entropy.add_subparsers(dest="entropy_command", required=True)
+    entropy_commands.add_parser("list", help="List observations enabled by existing suggestion policy")
+    entropy_observe = entropy_commands.add_parser("observe", help="Record one bounded entropy observation")
+    entropy_observe.add_argument("--category", choices=sorted(_entropy.ENTROPY_CATEGORIES), required=True)
+    entropy_observe.add_argument("--path", action="append", dest="paths", required=True)
+    entropy_observe.add_argument("--evidence", required=True)
+    entropy_observe.add_argument("--goal", type=int, required=True)
+    entropy_observe.add_argument("--revision", type=int, required=True)
+    entropy_resolve = entropy_commands.add_parser("resolve", help="Remove observations after validation")
+    entropy_resolve.add_argument("--fingerprint", action="append", dest="fingerprints", required=True)
+    entropy_resolve.add_argument("--outcome", choices=("captured", "dismissed"), required=True)
     portfolio_parser = commands.add_parser("portfolio", help="Read and audit the canonical goal portfolio once")
     portfolio_parser.add_argument("--format", dest="output_format", choices=("summary", "json"), default="summary")
     portfolio_parser.add_argument("--include-done", action="store_true", help="Include terminal goals in summary output")
@@ -1767,6 +1793,25 @@ def main() -> int:
             else:
                 result = _installation.record_validation(
                     repo, provenance, outcome=args.outcome, audit_signature=args.audit_signature,
+                )
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+            return 0
+        elif args.command == "entropy":
+            project = reviewed_project_state(repo)
+            if args.entropy_command == "list":
+                result = list_entropy_observations(repo, project)
+            elif args.entropy_command == "observe":
+                result = record_entropy_observation(
+                    repo,
+                    category=args.category,
+                    paths=args.paths,
+                    evidence=args.evidence,
+                    goal=args.goal,
+                    revision=args.revision,
+                )
+            else:
+                result = resolve_entropy_observations(
+                    repo, fingerprints=args.fingerprints, outcome=args.outcome,
                 )
             print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 0

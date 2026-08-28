@@ -35,6 +35,96 @@ class PolicyModuleTests(unittest.TestCase):
             self.assertIs(getattr(zzzops, name), getattr(policy, name))
 
 
+class EntropyModuleTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.temp.name)
+        subprocess.run(["git", "init", "-q", str(self.repo)], check=True)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def project(self, categories=None):
+        categories = categories if categories is not None else [
+            "documentation", "tests", "code_quality_non_behavioral",
+        ]
+        return {
+            "policy": {
+                "sections": [{
+                    "id": "autonomy_approval_parallelism",
+                    "settings": {
+                        "refill": {"enabled": True, "allowed_categories": categories, "max_per_run": 3},
+                    },
+                }],
+            },
+        }
+
+    def test_entry_point_reexports_entropy_contract(self):
+        self.assertIs(zzzops.entropy_observation_directory, zzzops._entropy.observation_directory)
+        self.assertIs(zzzops.enabled_entropy_categories, zzzops._entropy.enabled_categories)
+        self.assertIs(zzzops.list_entropy_observations, zzzops._entropy.list_observations)
+        self.assertIs(zzzops.record_entropy_observation, zzzops._entropy.record_observation)
+        self.assertIs(zzzops.resolve_entropy_observations, zzzops._entropy.resolve_observations)
+
+    def observe(self, goal=1, evidence="AGENTS.md repeats a rule already enforced by CI.", category="documentation"):
+        return zzzops.record_entropy_observation(
+            self.repo, category=category, paths=["AGENTS.md", ".github/workflows/ci.yml"],
+            evidence=evidence, goal=goal, revision=2,
+        )
+
+    def test_observation_is_compact_deduplicated_and_policy_filtered(self):
+        first = self.observe()
+        duplicate = self.observe(goal=2)
+        listed = zzzops.list_entropy_observations(self.repo, self.project())
+        excluded = zzzops.list_entropy_observations(self.repo, self.project(["tests"]))
+        self.assertTrue(first["recorded"])
+        self.assertFalse(duplicate["recorded"])
+        self.assertEqual("already_recorded", duplicate["reason"])
+        self.assertEqual(1, listed["eligible"])
+        self.assertEqual(0, excluded["eligible"])
+        self.assertEqual(1, excluded["excluded"])
+        self.assertLessEqual(len(listed["observations"][0]["evidence"]), 280)
+
+    def test_legacy_policy_uses_shipped_enabled_categories(self):
+        listed = zzzops.list_entropy_observations(self.repo, {"policy": {"sections": []}})
+        self.assertEqual(
+            ["code_quality_non_behavioral", "documentation", "tests"],
+            listed["enabled_categories"],
+        )
+
+    def test_concurrent_observations_are_atomic_and_fingerprint_deduplicated(self):
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            results = list(executor.map(
+                lambda goal: self.observe(goal=goal, evidence=f"Duplicate helper family {goal % 4} is visible."),
+                range(1, 9),
+            ))
+        self.assertEqual(4, sum(result["recorded"] for result in results))
+        self.assertEqual(4, zzzops.list_entropy_observations(self.repo, self.project())["pending"])
+
+    def test_resolution_is_idempotent_and_preserves_concurrent_new_work(self):
+        first = self.observe()
+        fingerprint = first["observation"]["fingerprint"]
+        self.observe(goal=2, evidence="A second stale instruction is visible.")
+        resolved = zzzops.resolve_entropy_observations(
+            self.repo, fingerprints=[fingerprint], outcome="dismissed",
+        )
+        repeated = zzzops.resolve_entropy_observations(
+            self.repo, fingerprints=[fingerprint], outcome="dismissed",
+        )
+        self.assertEqual(1, resolved["resolved"])
+        self.assertEqual(1, resolved["pending"])
+        self.assertEqual(0, repeated["resolved"])
+        self.assertEqual(1, repeated["pending"])
+
+    def test_invalid_or_oversized_observations_stop_without_state(self):
+        with self.assertRaisesRegex(ValueError, "bounded fact"):
+            zzzops.record_entropy_observation(
+                self.repo, category="documentation", paths=["../AGENTS.md"],
+                evidence="x" * 281, goal=1, revision=2,
+            )
+        self.assertFalse(zzzops.entropy_observation_directory(self.repo).exists())
+
+
 class ReservationModuleTests(unittest.TestCase):
     def test_entry_point_reexports_reservation_contract(self):
         reservation = zzzops._reservation
@@ -3134,6 +3224,25 @@ class WorkflowContractTests(unittest.TestCase):
             ["zzzops", "zzzops-feedback", "zzzops:schema:v1", "zzzops:status:new", "zzzops:priority:P2"],
             zzzops.EXECUTION_REPORT_LABELS,
         )
+
+    def test_entropy_observation_workflow_is_incidental_and_authority_bounded(self):
+        root = PLUGIN_ROOT
+        execute = (root / "skills" / "execute-zzzops" / "references" / "EXECUTE.md").read_text(encoding="utf-8")
+        entropy = (root / "skills" / "execute-zzzops" / "references" / "ENTROPY_OBSERVATIONS.md").read_text(encoding="utf-8")
+        suggest = (root / "skills" / "suggest-zzzops-work" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("ENTROPY_OBSERVATIONS.md", execute)
+        for phrase in (
+            "entropy observe", "Never pause", "one to four normalized",
+            "at most 280 characters", "not an audit, backlog, or completion requirement",
+        ):
+            self.assertIn(phrase, entropy)
+        for phrase in (
+            "Always run", "entropy list", "allowed_categories", "stay pending",
+            "resolve", "only after an ordinary goal is confirmed", "not authority or a second backlog",
+        ):
+            self.assertIn(phrase, suggest)
+        self.assertNotIn("record-completion", execute + entropy + suggest)
+        self.assertNotIn("completion_interval", execute + entropy + suggest)
 
 if __name__ == "__main__":
     unittest.main()
