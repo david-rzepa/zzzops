@@ -14,6 +14,8 @@ Resolve one Python 3.10 or newer interpreter first (`python3`, `python`, Windows
 <python> <zzzops-cli> --repo . checkpoint
 ```
 
+Inspection includes one plain-language table with every policy, its current choice, relationship to the ZzzOps default, staleness, exact approval state, applicability, and any action needed. The detailed audit retains rationale, evidence, settings, provenance, and review history.
+
 Apply creates a concise pending `.zzzops/PROJECT.md`, the detailed `.zzzops/PROJECT_AUDIT.md`, and the canonical `.zzzops/POLICY.json`. The agent summarizes the meaningful choices and invites adjustments; it cannot approve them or continue ordinary work. Explicit user approval of the current policy digest may confirm all sections or selected stable IDs. Any bound charter, audit, or policy edit invalidates approval, and every required unchecked section remains a categorized `decision` blocker.
 
 Before ordinary initialization, `installation status` compares the installed manifest version and complete package digest with ignored state in the repository's Git metadata. A missing, malformed, or stale record routes once through `$validate-zzzops-installation`; a current `clean` or user-declined record continues without another audit. The validation skill composes the existing fingerprint-based cleaner, requires explicit confirmation before removal, and resumes the originally requested workflow exactly once. Interrupted or unsafe validation writes no success record.
