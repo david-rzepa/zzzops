@@ -3,10 +3,19 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
+
+_CONCEPTS_MODULE_PATH = Path(__file__).with_name("concepts.py")
+_CONCEPTS_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_concepts", _CONCEPTS_MODULE_PATH)
+assert _CONCEPTS_MODULE_SPEC and _CONCEPTS_MODULE_SPEC.loader
+_concepts = importlib.util.module_from_spec(_CONCEPTS_MODULE_SPEC)
+sys.modules[_CONCEPTS_MODULE_SPEC.name] = _concepts
+_CONCEPTS_MODULE_SPEC.loader.exec_module(_concepts)
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = PLUGIN_ROOT / "plugin.json"
@@ -24,10 +33,11 @@ SHIPPED_SKILLS = {
 REQUIRED_FILES = {
     ".codex-plugin/plugin.json",
     "assets/legacy_install_fingerprints.json",
+    "concepts/bounded-commitment.md",
     "rules/BACKENDS.md", "rules/BLOCKERS.md", "rules/CONTINUATION.md",
     "rules/EXECUTION_STRATEGY.md", "rules/FEEDBACK.md", "rules/GOAL_SYSTEM.md",
     "rules/INITIALIZATION.md", "zzzops/installation.py", "zzzops/entropy.py", "zzzops/zzzops.py",
-    "zzzops/coaching.py",
+    "zzzops/coaching.py", "zzzops/concepts.py",
     "skills/execute-zzzops/references/ENTROPY_OBSERVATIONS.md",
     "scripts/cleanup_legacy.py",
     "zzzops/references/bootstrap/ANALYZE.md",
@@ -185,8 +195,10 @@ def package_status() -> dict[str, Any]:
             agent_data = (PLUGIN_ROOT / agent_relative).read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
             if render_skill_metadata(agent_relative, agent_data, manifest["version"], channel) != agent_data:
                 raise PluginPackageError(f"skill discovery metadata does not match the plugin build: {agent_relative}")
+        concepts = _concepts.load_catalog((PLUGIN_ROOT / "concepts",), require_concepts=True)
+        _concepts.validate_skill_documents(PLUGIN_ROOT, concepts)
         provenance = package_provenance()
-    except (OSError, UnicodeError, json.JSONDecodeError, PluginPackageError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError, PluginPackageError, _concepts.ConceptError) as exc:
         return {
             "available": True, "ok": False, "paths": [], "processes": 0,
             "detail": f"{exc}; reinstall ZzzOps from its Codex marketplace.",

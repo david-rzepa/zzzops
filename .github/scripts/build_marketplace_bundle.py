@@ -193,10 +193,11 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
             raise BundleError(
                 f"canonical development manifest must use {development_version}: {relative}"
             )
-    renderer = runpy.run_path(str(plugin / "zzzops" / "package.py"))["render_skill_metadata"]
+    package = runpy.run_path(str(plugin / "zzzops" / "package.py"))
+    renderer = package["render_skill_metadata"]
     result: dict[str, bytes] = {}
     allowed_top_level = {
-        ".claude-plugin", ".codex-plugin", "assets", "plugin.json", "rules", "scripts", "skills", "zzzops",
+        ".claude-plugin", ".codex-plugin", "assets", "concepts", "plugin.json", "rules", "scripts", "skills", "zzzops",
     }
     for path in sorted(plugin.rglob("*"), key=lambda item: item.relative_to(plugin).as_posix()):
         relative = path.relative_to(plugin).as_posix()
@@ -221,7 +222,8 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
         result[relative] = data
     required = {
         "plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "assets/logo.png", "assets/logo-dark.png",
-        "assets/composer-icon.png", "assets/composer-icon-dark.png", "scripts/cleanup_legacy.py",
+        "assets/composer-icon.png", "assets/composer-icon-dark.png", "concepts/bounded-commitment.md",
+        "scripts/cleanup_legacy.py", "zzzops/concepts.py",
     }
     missing = sorted(required - set(result))
     if missing:
@@ -246,6 +248,11 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
     )
     if missing_metadata:
         raise BundleError("skill discovery metadata is incomplete: " + ", ".join(missing_metadata))
+    try:
+        concepts = package["_concepts"].load_catalog((plugin / "concepts",), require_concepts=True)
+        package["_concepts"].validate_skill_documents(plugin, concepts)
+    except ValueError as exc:
+        raise BundleError(f"canonical concept package is invalid: {exc}") from exc
     return result
 
 
