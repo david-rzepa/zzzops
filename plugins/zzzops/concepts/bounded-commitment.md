@@ -10,7 +10,7 @@ A change whose replacement, verification, and cleanup can be completed within on
 
 ## Decision rule
 
-Treat a choice as low commitment only when a credible replacement can be implemented, verified, and cleaned up within one goal-sized change before fan-out. Otherwise treat it as high commitment and preserve the alternatives, assumptions, evidence, and a falsifiable validation signal before committing descendants.
+Treat a choice as low commitment only when a credible replacement can be implemented, verified, and cleaned up within one goal-sized change before fan-out. Otherwise keep it classified as high commitment and preserve alternatives, assumptions, evidence, structural cost, and a falsifiable validation signal before committing descendants. High fan-out is a cost signal, not a permanent prohibition: proceed when one option clearly dominates under reviewed policy or when a human explicitly reviews the exact design decision. Record that review and invalidate it after a material design change; never infer design approval from policy approval, an ordinary PR, or unrelated review.
 
 ## Scope and authority
 
@@ -23,12 +23,12 @@ This concept classifies engineering change cost. It grants no authority and cann
 
 ## Counterexamples
 
-- A durable-data migration, published interface, foundational project architecture, or change already inherited by stacked descendants is not bounded merely because Git can revert it.
+- A durable-data migration, published interface, foundational project architecture, or change already inherited by stacked descendants is not bounded merely because Git can revert it or because a human reviewed the design.
 - A choice requiring long-lived compatibility code, external spending, deployment, or weakened safeguards is not bounded.
 
 ## Parameters and invariants
 
-Projects may define what fits one goal-sized change and which structural fan-out signals apply. The recovery bound, complete cleanup requirement, and authority constraints are fixed invariants.
+Projects may define what fits one goal-sized change and which structural fan-out signals apply. Explicit review can authorize commitment to an acknowledged high-cost design but cannot make it low commitment. The recovery bound, complete cleanup requirement, current exact-design review, and authority constraints are fixed invariants.
 
 ## Aliases and related concepts
 

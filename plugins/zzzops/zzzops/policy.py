@@ -39,7 +39,7 @@ AUTOMATED_DESIGN_SETTINGS = {
     "scope": "bounded_commitment_in_scope_implementation",
     "commitment": {
         "low": "replace_verify_and_clean_within_one_goal_before_fanout",
-        "high": "compare_alternatives_evidence_cost_assumptions_and_falsifiable_signal",
+        "high": "compare_evidence_cost_signal_or_explicit_current_design_review",
         "structural_cost_signals": [
             "affected_goal_units", "started_descendant_branches", "started_descendant_prs",
             "durable_data", "public_or_integration_contracts", "external_state",

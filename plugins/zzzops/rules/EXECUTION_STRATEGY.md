@@ -47,7 +47,7 @@ Do not use worktrees for coupled work, generated collisions, shared services/dev
 
 ## Final-state commit history
 
-Before review, keep commits only when independently useful and a [[bounded commitment]](../concepts/bounded-commitment.md); fold iteration-only commits. Use semantic Conventional Commit messages; PR/controlled merge titles describe outcomes. Rewrite only an exclusively owned, unintegrated goal branch after checking exact local/remote/base state; if pushed use `--force-with-lease`. Never rewrite shared, upstream, default-branch, user-owned, or integrated history. Preserve stacked goal ancestry, boundaries, dependencies, and evidence; block on doubt. Cleanup is agent-led; automate only reliable violations.
+Before review, keep commits only when independently useful; fold iteration-only commits and changes valid only together. Use semantic Conventional Commit messages; PR/controlled merge titles describe outcomes. Rewrite only an exclusively owned, unintegrated goal branch after checking exact local/remote/base state; if pushed use `--force-with-lease`. Never rewrite shared, upstream, default-branch, user-owned, or integrated history. Preserve stacked goal ancestry, boundaries, dependencies, and evidence; block on doubt. Cleanup is agent-led; automate only reliable violations.
 
 ## Waits, commits, resources
 

@@ -55,6 +55,10 @@ class ConceptTests(unittest.TestCase):
             plugin / "skills" / "execute-zzzops" / "SKILL.md", (plugin / "concepts",),
         )
         self.assertEqual(["bounded-commitment"], [item.identifier for item in resolved])
+        bounded = catalog.by_id["bounded-commitment"].path.read_text(encoding="utf-8")
+        self.assertIn("human explicitly reviews the exact design decision", bounded)
+        self.assertIn("never infer design approval from policy approval", bounded)
+        self.assertIn("cannot make it low commitment", bounded)
 
     def test_unlinked_or_late_first_use_fails_but_later_plain_use_passes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

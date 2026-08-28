@@ -25,7 +25,7 @@ Classify each unknown as:
 
 Use effective rigor as the depth control. Vibe establishes purpose, critical constraints, and a small low-commitment milestone. Structured also resolves material stack/version, target, public interface, persistence, verification, and architecture boundaries. Agentic covers applicable security, sensitive data, compatibility, recovery, operations, rollout, and deterministic enforcement. Never turn absent dimensions into ceremony.
 
-If the user has no stack preference, evaluate credible supported options against the product brief. Use the cheapest isolated disposable spike when evidence could change the choice. Proceed when one option clearly dominates under reviewed policy; otherwise carry the high-commitment choice into the canonical goal as a durable blocker and preserve independent safe work.
+If the user has no stack preference, evaluate credible supported options against the product brief. Use the cheapest isolated disposable spike when evidence could change the choice. Proceed when one option clearly dominates under reviewed policy or the human explicitly reviews the exact current design. Record that review and invalidate it after a material design change; never infer it from policy approval, an ordinary PR, or unrelated review. Otherwise carry the high-commitment choice into the canonical goal as a durable blocker and preserve independent safe work.
 
 ## Product brief
 

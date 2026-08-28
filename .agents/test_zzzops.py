@@ -2906,6 +2906,10 @@ class WorkflowContractTests(unittest.TestCase):
             "replace_verify_and_clean_within_one_goal_before_fanout",
             section["settings"]["commitment"]["low"],
         )
+        self.assertEqual(
+            "compare_evidence_cost_signal_or_explicit_current_design_review",
+            section["settings"]["commitment"]["high"],
+        )
         self.assertIn("durable_data", section["settings"]["commitment"]["structural_cost_signals"])
         self.assertEqual(
             ["alternatives", "rationale", "assumptions", "falsifiable_validation_signal"],
@@ -3065,6 +3069,8 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn(phrase, unblock)
         self.assertIn("missing automated-design section", review)
         self.assertIn("without inferring approval", review)
+        self.assertIn("human explicitly reviewed the exact current design", unblock)
+        self.assertIn("never infer it from policy approval, an ordinary PR, or unrelated review", unblock)
 
     def test_exhaustion_review_and_bootstrap_contracts_are_explicit(self):
         root = PLUGIN_ROOT
