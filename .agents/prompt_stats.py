@@ -159,6 +159,28 @@ def enforced_context_profiles(root: Path) -> dict[str, tuple[int, int]]:
     return profiles
 
 
+def policy_context_profiles(root: Path) -> dict[str, tuple[int, int]]:
+    cold_review_skill = "plugins/zzzops/skills/review-zzzops-policy/SKILL.md"
+    static_hot = tuple(
+        path.relative_to(root).as_posix()
+        for path in prompt_files(root)
+        if path.relative_to(root).as_posix() != cold_review_skill
+    )
+    project_policy = tuple(
+        path for path in (".zzzops/PROJECT.md", ".zzzops/POLICY.json")
+        if (root / path).is_file()
+    )
+    cold_review = (
+        *WORKFLOW_PROMPTS["policy-review"],
+        "plugins/zzzops/zzzops/templates/project-goals/INIT_PLAN.json",
+    )
+    return {
+        "static-hot-prompts": prompt_profile(root, static_hot)[:2],
+        "current-project-policy": prompt_profile(root, project_policy)[:2] if project_policy else (0, 0),
+        "cold-default-review": prompt_profile(root, cold_review)[:2],
+    }
+
+
 def budget_overruns(
     measurements: dict[str, tuple[int, int]],
     limits: dict[str, int] = ENFORCED_PROMPT_BUDGETS,
@@ -177,6 +199,7 @@ def render_enforced_budget_report(
     prompt_count: int,
     inventory_bytes: int,
     inventory_tokens: int,
+    policy_context: dict[str, tuple[int, int]] | None = None,
 ) -> str:
     table = [
         "# Enforced prompt budgets",
@@ -194,6 +217,20 @@ def render_enforced_budget_report(
         "",
         f"Advisory total inventory: {prompt_count} prompts, {inventory_bytes} bytes, ~{inventory_tokens} tokens.",
     ))
+    if policy_context is not None:
+        table.extend((
+            "",
+            "## Policy context boundary",
+            "",
+            "Public documentation is excluded. Static prompts, the current project policy, and cold default/review context are counted separately.",
+            "",
+            "| Context class | Bytes | Est. tokens |",
+            "| --- | ---: | ---: |",
+        ))
+        table.extend(
+            f"| {name} | {size} | {tokens} |"
+            for name, (size, tokens) in policy_context.items()
+        )
     return "\n".join(table) + "\n"
 
 
@@ -256,6 +293,7 @@ def main() -> int:
             prompt_count=len(rows),
             inventory_bytes=sum(row[1] for row in rows),
             inventory_tokens=sum(row[2] for row in rows),
+            policy_context=policy_context_profiles(root),
         ), end="")
         overruns = budget_overruns(measurements)
         if overruns:

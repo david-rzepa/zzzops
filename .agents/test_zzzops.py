@@ -22,6 +22,12 @@ zzzops = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader
 SPEC.loader.exec_module(zzzops)
 
+TEST_RESOURCE_POLICY = {
+    "mode": "conflict_tolerant",
+    "exclusive_prefixes": ["generated", "external"],
+    "exclusive_resources": [],
+}
+
 
 class PolicyModuleTests(unittest.TestCase):
     def test_entry_point_reexports_policy_state_contract(self):
@@ -30,7 +36,7 @@ class PolicyModuleTests(unittest.TestCase):
             "project_digest", "read_project_state", "validate_project_state",
             "validate_policy", "render_project", "render_project_audit",
             "normalize_resource_policy", "policy_default_catalog", "policy_content_digest",
-            "prepare_policy_defaults", "compare_policy_defaults", "policy_review_rows",
+            "prepare_policy_defaults", "compare_policy_defaults", "missing_policy_settings", "policy_review_rows",
             "render_policy_review_table",
         ):
             self.assertIs(getattr(zzzops, name), getattr(policy, name))
@@ -86,12 +92,9 @@ class EntropyModuleTests(unittest.TestCase):
         self.assertEqual(1, excluded["excluded"])
         self.assertLessEqual(len(listed["observations"][0]["evidence"]), 280)
 
-    def test_legacy_policy_uses_shipped_enabled_categories(self):
-        listed = zzzops.list_entropy_observations(self.repo, {"policy": {"sections": []}})
-        self.assertEqual(
-            ["code_quality_non_behavioral", "documentation", "tests"],
-            listed["enabled_categories"],
-        )
+    def test_legacy_policy_without_categories_routes_to_policy_review(self):
+        with self.assertRaisesRegex(zzzops.EntropyObservationError, "categories are required"):
+            zzzops.list_entropy_observations(self.repo, {"policy": {"sections": []}})
 
     def test_concurrent_observations_are_atomic_and_fingerprint_deduplicated(self):
         with ThreadPoolExecutor(max_workers=4) as executor:
@@ -413,6 +416,23 @@ class InitializationTests(unittest.TestCase):
         workflow = missing[zzzops.POLICY_SECTION_IDS.index("workflow_adherence")]
         self.assertEqual("Not configured", workflow["current_choice"])
         self.assertEqual("Add and review this policy", workflow["needs_attention"])
+
+        missing_setting = json.loads(json.dumps(policy))
+        autonomy = next(item for item in missing_setting["sections"] if item["id"] == "autonomy_approval_parallelism")
+        autonomy["settings"].pop("execution_reports")
+        missing_paths = zzzops.missing_policy_settings(missing_setting, catalog)
+        self.assertEqual(
+            ["settings.execution_reports"],
+            missing_paths["autonomy_approval_parallelism"],
+        )
+        self.assertTrue(any(
+            "settings.execution_reports" in error
+            for error in zzzops.validate_policy(missing_setting, False)
+        ))
+        stale_rows = zzzops.policy_review_rows(missing_setting, catalog)
+        autonomy_row = stale_rows[zzzops.POLICY_SECTION_IDS.index("autonomy_approval_parallelism")]
+        self.assertIn("reviewed policy is missing settings.execution_reports", autonomy_row["stale"])
+        self.assertEqual("Review the affected choice", autonomy_row["needs_attention"])
 
     @mock.patch.object(zzzops, "command_probe", return_value={"available": False, "ok": False, "detail": "test"})
     @mock.patch.object(zzzops, "github_repository_probe", return_value={"available": False, "usable": False})
@@ -781,29 +801,25 @@ class InitializationTests(unittest.TestCase):
 
     @mock.patch.object(zzzops.shutil, "which", return_value="git")
     @mock.patch.object(zzzops.subprocess, "run")
-    def test_repository_size_uses_only_existing_git_tracked_bytes(self, run, _which):
+    def test_repository_size_reports_only_existing_git_tracked_evidence(self, run, _which):
         tracked = self.repo / "tracked.bin"
         ignored = self.repo / "ignored.bin"
         tracked.write_bytes(b"123456789")
         ignored.write_bytes(b"x" * 100)
         run.return_value = subprocess.CompletedProcess([], 0, stdout=b"tracked.bin\0missing.bin\0", stderr=b"")
-        with mock.patch.object(zzzops, "REPOSITORY_SIZE_THRESHOLD_BYTES", 10):
-            small = zzzops.repository_size_profile(self.repo)
-            self.assertEqual("worktrees", small["mode"])
-            self.assertEqual(9, small["bytes"])
-            tracked.write_bytes(b"1234567890")
-            boundary = zzzops.repository_size_profile(self.repo)
-            self.assertEqual("read_only", boundary["mode"])
-            self.assertEqual(10, boundary["bytes"])
-        self.assertEqual(3, boundary["max_workers"])
-        self.assertEqual("existing_git_tracked_worktree_bytes", boundary["measurement"])
+        profile = zzzops.repository_size_profile(self.repo)
+        self.assertEqual(9, profile["bytes"])
+        self.assertEqual(1, profile["files"])
+        self.assertEqual("existing_git_tracked_worktree_bytes", profile["measurement"])
+        for policy_choice in ("mode", "threshold_bytes", "max_workers"):
+            self.assertNotIn(policy_choice, profile)
 
     @mock.patch.object(zzzops.shutil, "which", return_value=None)
-    def test_repository_size_falls_back_to_read_only_when_git_is_unavailable(self, _which):
+    def test_repository_size_does_not_choose_policy_when_git_is_unavailable(self, _which):
         profile = zzzops.repository_size_profile(self.repo)
         self.assertFalse(profile["available"])
-        self.assertEqual("read_only", profile["mode"])
-        self.assertEqual(3, profile["max_workers"])
+        self.assertNotIn("mode", profile)
+        self.assertNotIn("max_workers", profile)
 
     def test_plugin_package_status_and_provenance_are_valid(self):
         status = zzzops.machinery_commit_status(self.repo)
@@ -963,6 +979,14 @@ class ExecutionReportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "must be an object"):
             zzzops.record_execution_report(
                 self.repo, invalid, workflow="execute-zzzops", agent="codex",
+                issue="redundant_update", cause="redundant_state_summary", phase="handoff",
+            )
+
+        missing = json.loads(json.dumps(self.project))
+        missing["policy"]["sections"][0]["settings"].pop("execution_reports")
+        with self.assertRaisesRegex(ValueError, "execution_reports must be an object"):
+            zzzops.record_execution_report(
+                self.repo, missing, workflow="execute-zzzops", agent="codex",
                 issue="redundant_update", cause="redundant_state_summary", phase="handoff",
             )
 
@@ -1948,7 +1972,7 @@ class PortfolioTests(unittest.TestCase):
     @mock.patch.object(zzzops.subprocess, "run")
     @mock.patch.object(zzzops, "validate_project_artifacts", return_value=[])
     @mock.patch.object(zzzops, "validate_project_state", return_value=[])
-    @mock.patch.object(zzzops, "read_project_state", return_value=(Path("POLICY.json"), "state", {"initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"}}))
+    @mock.patch.object(zzzops, "read_project_state", return_value=(Path("POLICY.json"), "state", {"initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {"sections": [{"id": "autonomy_approval_parallelism", "settings": {"resource_reservations": TEST_RESOURCE_POLICY}}]}}))
     def test_github_adapter_stages_minimal_discovery_and_targeted_bodies(self, _read_state, _validate, _artifacts, run, _which):
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary)
@@ -1995,7 +2019,8 @@ class PortfolioTests(unittest.TestCase):
             ]
             snapshot = zzzops.portfolio_snapshot(repo)
             _, included = zzzops.github_repository_portfolio_snapshot(
-                repo, {"backend": "github_issues", "repository": {"identity": "owner/repo"}},
+                repo, {"backend": "github_issues", "repository": {"identity": "owner/repo"},
+                       "policy": {"sections": [{"id": "autonomy_approval_parallelism", "settings": {"resource_reservations": TEST_RESOURCE_POLICY}}]}},
                 include_feedback=True,
             )
         self.assertEqual([1, 3], [goal["key"] for goal in snapshot["goals"]])
@@ -2039,7 +2064,10 @@ class PortfolioTests(unittest.TestCase):
     ):
         state = {
             "initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"},
-            "policy": {"sections": []},
+            "policy": {"sections": [{
+                "id": "autonomy_approval_parallelism",
+                "settings": {"resource_reservations": TEST_RESOURCE_POLICY},
+            }]},
         }
         read_state.return_value = (Path("POLICY.json"), "state", state)
         issue = self.issue(1)
@@ -2129,7 +2157,7 @@ class PortfolioTests(unittest.TestCase):
     @mock.patch.object(zzzops.subprocess, "run", return_value=SimpleNamespace(returncode=1, stdout="", stderr="API rate limit exceeded; partial page rejected"))
     @mock.patch.object(zzzops, "validate_project_artifacts", return_value=[])
     @mock.patch.object(zzzops, "validate_project_state", return_value=[])
-    @mock.patch.object(zzzops, "read_project_state", return_value=(Path("POLICY.json"), "state", {"initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"}}))
+    @mock.patch.object(zzzops, "read_project_state", return_value=(Path("POLICY.json"), "state", {"initialized": True, "backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {"sections": [{"id": "autonomy_approval_parallelism", "settings": {"resource_reservations": TEST_RESOURCE_POLICY}}]}}))
     def test_github_adapter_reports_partial_or_rate_limit_failure(self, _read_state, _validate, _artifacts, _run, _which):
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary)
@@ -2257,7 +2285,10 @@ class PortfolioTests(unittest.TestCase):
             {**common, "key": 1, "title": "One", "claim": {"owner": "a"}, "digest": "a"},
             {**common, "key": 2, "title": "Two", "claim": {"owner": "b"}, "digest": "b"},
         ]
-        snapshot = zzzops.build_portfolio_snapshot("github_issues", records, reads=1, raw_bytes=10)
+        snapshot = zzzops.build_portfolio_snapshot(
+            "github_issues", records, reads=1, raw_bytes=10,
+            resource_policy=TEST_RESOURCE_POLICY,
+        )
         collisions = [finding["detail"] for finding in snapshot["findings"] if finding["code"] == "resource_collision"]
         self.assertEqual(["branch:shared: 1,2"], collisions)
 
@@ -2501,7 +2532,7 @@ class ReservationTests(unittest.TestCase):
             futures = [
                 pool.submit(
                     zzzops.acquire_reservation_bundle, adapter, "owner/repo", goal, 4,
-                    f"agent-{goal}", f"run-{goal}", shared, 120, self.now,
+                    f"agent-{goal}", f"run-{goal}", shared, 120, self.now, TEST_RESOURCE_POLICY,
                 )
                 for goal in (12, 13)
             ]
@@ -2566,12 +2597,10 @@ class ReservationTests(unittest.TestCase):
             )
 
     def test_policy_can_make_paths_exclusive_and_strict_mode_reserves_everything(self):
-        self.assertEqual(
-            ["branch:topic", "external:device", "generated:dist"],
+        with self.assertRaisesRegex(ValueError, "resource_reservations policy is required"):
             zzzops.exclusive_resources([
                 "path:src/app.py", "integration:dev", "generated:dist", "external:device", "branch:topic",
-            ]),
-        )
+            ])
         configured = {
             "mode": "conflict_tolerant", "exclusive_prefixes": ["generated", "external"],
             "exclusive_resources": ["path:assets/logo.png"],
@@ -2594,18 +2623,22 @@ class ReservationTests(unittest.TestCase):
         adapter = FakeReservationAdapter()
         first = zzzops.acquire_reservation_bundle(
             adapter, "owner/repo", 12, 4, "agent-a", "run-a", ["generated:dist/a"], 120, self.now,
+            TEST_RESOURCE_POLICY,
         )
         second = zzzops.acquire_reservation_bundle(
             adapter, "owner/repo", 13, 4, "agent-b", "run-b", ["generated:dist/b"], 120, self.now,
+            TEST_RESOURCE_POLICY,
         )
         self.assertTrue(first["acquired"] and second["acquired"])
         adapter.revision = 5
         renewed = zzzops.renew_reservation_bundle(
             adapter, "owner/repo", 12, 5, "agent-a", "run-a", ["generated:dist/a"], 180, self.now,
+            TEST_RESOURCE_POLICY,
         )
         self.assertTrue(renewed["acquired"])
         released = zzzops.release_reservation_bundle(
             adapter, "owner/repo", 12, 5, "agent-a", "run-a", ["generated:dist/a"],
+            TEST_RESOURCE_POLICY,
         )
         self.assertTrue(released["released"])
         self.assertIsNone(adapter.get_label(zzzops.resource_label_name("generated:dist/a")))
@@ -2616,6 +2649,7 @@ class ReservationTests(unittest.TestCase):
         resources = ["branch:topic", "generated:dist/a"]
         acquired = zzzops.acquire_reservation_bundle(
             adapter, "owner/repo", 12, 4, "agent-a", "run-a", resources, 120, self.now,
+            TEST_RESOURCE_POLICY,
         )
         self.assertTrue(acquired["acquired"])
 
@@ -2752,6 +2786,7 @@ class ReservationTests(unittest.TestCase):
         self.assertTrue(acquired["acquired"])
         released = zzzops.release_reservation_bundle(
             adapter, "owner/repo", 12, 4, "agent-a", "run-a", ["path:shared.txt"],
+            strict,
         )
         self.assertTrue(released["released"])
         self.assertIsNone(adapter.get_label(zzzops.resource_label_name("path:shared.txt")))
@@ -2995,7 +3030,7 @@ class WorkflowContractTests(unittest.TestCase):
         legacy = json.loads(json.dumps(plan["policy"]))
         legacy["evidence"] = plan["evidence"]
         legacy["sections"] = [item for item in legacy["sections"] if item["id"] != "automated_design"]
-        self.assertEqual([], zzzops.validate_policy(legacy, False))
+        self.assertTrue(any("missing sections: automated_design" in error for error in zzzops.validate_policy(legacy, False)))
         self.assertTrue(any("missing sections: automated_design" in error for error in zzzops.validate_policy(legacy, True)))
 
         for decision in ("enabled", "disabled"):
@@ -3044,7 +3079,7 @@ class WorkflowContractTests(unittest.TestCase):
         legacy = json.loads(json.dumps(plan["policy"]))
         legacy["evidence"] = plan["evidence"]
         legacy["sections"] = [item for item in legacy["sections"] if item["id"] != "workflow_adherence"]
-        self.assertEqual([], zzzops.validate_policy(legacy, False))
+        self.assertTrue(any("missing sections: workflow_adherence" in error for error in zzzops.validate_policy(legacy, False)))
         self.assertTrue(any("missing sections: workflow_adherence" in error for error in zzzops.validate_policy(legacy, True)))
 
         for level in ("optional", "tracked", "managed"):
@@ -3090,7 +3125,7 @@ class WorkflowContractTests(unittest.TestCase):
         legacy = json.loads(json.dumps(plan["policy"]))
         legacy["evidence"] = plan["evidence"]
         legacy["sections"] = [item for item in legacy["sections"] if item["id"] != "engineering_rigor"]
-        self.assertEqual([], zzzops.validate_policy(legacy, False))
+        self.assertTrue(any("missing sections: engineering_rigor" in error for error in zzzops.validate_policy(legacy, False)))
         self.assertTrue(any("missing sections: engineering_rigor" in error for error in zzzops.validate_policy(legacy, True)))
 
         for level, depth in (("vibe", "light"), ("structured", "standard"), ("agentic", "thorough")):

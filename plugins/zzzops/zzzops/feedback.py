@@ -136,10 +136,10 @@ def execution_reports_enabled(project: dict[str, Any]) -> bool:
     sections = ((project.get("policy") or {}).get("sections") if isinstance(project.get("policy"), dict) else None)
     section = next((item for item in sections or [] if isinstance(item, dict) and item.get("id") == "autonomy_approval_parallelism"), None)
     settings = section.get("settings") if isinstance(section, dict) else None
-    configured = settings.get("execution_reports") if isinstance(settings, dict) and "execution_reports" in settings else None
-    if configured is not None and not isinstance(configured, dict):
+    configured = settings.get("execution_reports") if isinstance(settings, dict) else None
+    if not isinstance(configured, dict):
         raise ValueError("Reviewed project policy execution_reports must be an object")
-    enabled = configured.get("enabled") if isinstance(configured, dict) and "enabled" in configured else True
+    enabled = configured.get("enabled")
     if not isinstance(enabled, bool):
         raise ValueError("Reviewed project policy execution_reports.enabled must be boolean")
     return enabled

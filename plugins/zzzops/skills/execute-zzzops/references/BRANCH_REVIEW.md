@@ -5,7 +5,7 @@ Apply PROJECT Git/review policy; capture stays Git-free. Never absorb unrelated 
 ## Topology and overlap
 
 1. Record/reuse one `implementation` identity per goal: branch, base, target, PR, review state/checkpoint.
-2. Resolve bases/dependencies from PROJECT. Fallback waits for `done`, then branches from the nearest authorized trunk containing them; read-only preparation cannot start work. `stack_from_reviewed_checkpoint` preserves exact reviewed ancestry and merges dependency first. Unresolved dependencies, change requests, absent checkpoints, or parent conflicts block writes.
+2. Resolve bases/dependencies from PROJECT. Missing dependency gates or base rules block affected writes for policy review; read-only preparation cannot start work. `stack_from_reviewed_checkpoint` preserves exact reviewed ancestry and merges dependency first. Unresolved dependencies, change requests, absent checkpoints, or parent conflicts block writes.
 3. Apply `parent_pseudo_trunk`/`child_target` recursively. A parent normally owns the pseudo-trunk; children target it and may base on sibling dependencies. Integrate reviewed children in dependency order, then run combined parent checks before upstream review.
 
 Create/resume the recorded branch before edits. Stop on unattributable dirt; record authorized topology exceptions.

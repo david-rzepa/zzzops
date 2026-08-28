@@ -79,6 +79,22 @@ class PromptStatsTests(unittest.TestCase):
         self.assertIn("| always-loaded/codex | 2499 | 625 | 700 | PASS |", report)
         self.assertIn("Advisory total inventory: 29 prompts", report)
 
+    def test_policy_context_accounting_separates_hot_project_and_cold_content(self) -> None:
+        root = SCRIPT.parents[1]
+        profiles = prompt_stats.policy_context_profiles(root)
+        self.assertEqual(
+            {"static-hot-prompts", "current-project-policy", "cold-default-review"},
+            set(profiles),
+        )
+        self.assertGreater(profiles["static-hot-prompts"][0], 0)
+        self.assertGreater(profiles["cold-default-review"][0], 0)
+        report = prompt_stats.render_enforced_budget_report(
+            {"always-loaded/codex": (1, 1)}, {"always-loaded/codex": 2},
+            prompt_count=1, inventory_bytes=1, inventory_tokens=1, policy_context=profiles,
+        )
+        self.assertIn("## Policy context boundary", report)
+        self.assertIn("| current-project-policy |", report)
+
     def test_workflow_profiles_cover_codex(self) -> None:
         root = SCRIPT.parents[1]
         report = prompt_stats.render_workflow_report(root)

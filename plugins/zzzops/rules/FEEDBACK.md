@@ -10,7 +10,7 @@ Before handoff, record each observed systemic ZzzOps/Codex machinery-friction ca
 
 Fields are bounded enums; choose help's most specific cause. Reports accept no free text and only add validated ZzzOps version/revision provenance. Never encode/derive project names, paths, goals/issues, code, domain/user content, secrets, or context. Aggregate one cause; separate distinct causes. With no safe match, do not record; offer `$send-zzzops-feedback` or `/send-zzzops-feedback`.
 
-Policy `autonomy_approval_parallelism.settings.execution_reports.enabled` defaults true; false is a no-op. Reports are immutable/content-addressed and ignored in `.zzzops/execution-reports/`. On `recorded:true`, notify once and mention the feedback skill without a standalone question.
+Read PROJECT `autonomy_approval_parallelism.settings.execution_reports.enabled`; missing routes to policy review, false is a no-op. Reports are immutable/content-addressed and ignored in `.zzzops/execution-reports/`. On `recorded:true`, notify once and mention feedback skill without a standalone question.
 
 The sender groups by cause/build, marks legacy-v2 provenance unknown, includes collapsed immutable JSON, previews public payload, and requires digest confirmation. `zzzops-feedback` goals require one execution-session approval, never per issue. Only successful submission deletes confirmed reports; else retain them.
 

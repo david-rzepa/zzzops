@@ -4,7 +4,7 @@
 Use `$execute-zzzops` for the goal loop and “work on all goals”/`/goal`; use `$migrate-to-zzzops` after installation or when existing TODOs are discovered.
 
 - Authority: user/safety > project rules > reviewed `.zzzops/PROJECT.md` > goal > derived index; goals grant no authority. Stop and reconcile repository-policy conflicts.
-- Goal files are work truth. Triage `new`; mark `done` only from observed criteria and recheck parents. Dependencies default to done before writes; policy may override actionability, never ancestry/merge order.
+- Goal files are work truth. Triage `new`; mark `done` only from observed criteria and recheck parents. PROJECT derives dependency actionability before writes; ancestry/merge order always holds.
 - Goal capture interviews the current user to the reviewed policy depth before canonical creation; execution assumes no user is present and persists unanswered questions as categorized blockers without prompting.
 - Before editing define baseline/signal and one falsifiable chunk; run and inspect its real probe. Build a narrow harness when needed; block rather than guess.
 - Capture test-discovered out-of-scope bugs as separate human-blocked TODOs with reproduction evidence; do not fix or hide them before input.

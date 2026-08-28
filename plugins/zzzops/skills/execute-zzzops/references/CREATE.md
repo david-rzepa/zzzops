@@ -1,7 +1,7 @@
 # Create and triage
 
 1. Use the complete BACKENDS portfolio and project evidence for duplicates/facts. Capture outcome, value, constraints, owner, dates, evidence, and non-goals; refine rather than duplicate.
-2. Create one provisional human-first canonical issue through `BACKENDS.md`; use PROJECT defaults unless evidence overrides them.
+2. Create one provisional human-first canonical issue through `BACKENDS.md`; use reviewed PROJECT values unless evidence requires a reviewed change.
 3. Investigate outcome/proof/scope/decisions/dependencies/risks/authority and goal shape. Persist evidenced rigor-risk inputs/authorized override and require a valid effective level; ambiguous metadata blocks preparation. When unfamiliarity or decision risk could alter architecture, scope, acceptance, or quality, run a bounded blind-spot pass for known unknowns, tacit criteria, and blind spots. Use the cheapest useful evidence or disposable prototype; persist findings, not logs.
 4. For consequential ambiguity apply `BLOCKERS.md`: record recommendation and continuation boundary, expose the human queue, and continue independent work without asking live. Assume only a [[bounded commitment]](../../../concepts/bounded-commitment.md) supported by reviewed policy; never invent foundational choices.
 5. Write explicit scope and verifiable criteria.

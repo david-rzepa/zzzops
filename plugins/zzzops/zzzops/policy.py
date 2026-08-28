@@ -369,16 +369,16 @@ def normalize_resources(resources: Any) -> list[str]:
 
 def normalize_resource_policy(policy: Any = None) -> dict[str, Any]:
     if policy is None:
-        policy = {}
+        raise ValueError("reviewed resource_reservations policy is required")
     if not isinstance(policy, dict):
         raise ValueError("resource_reservations must be an object")
     unknown = sorted(set(policy) - {"mode", "exclusive_prefixes", "exclusive_resources"})
     if unknown:
         raise ValueError("resource_reservations has unknown fields: " + ", ".join(unknown))
-    mode = policy.get("mode", "conflict_tolerant")
+    mode = policy.get("mode")
     if mode not in {"conflict_tolerant", "strict"}:
         raise ValueError("resource_reservations.mode must be conflict_tolerant or strict")
-    prefixes = policy.get("exclusive_prefixes", ["generated", "external"])
+    prefixes = policy.get("exclusive_prefixes")
     supported = {"path", "integration", "generated", "external"}
     if (
         not isinstance(prefixes, list)
@@ -386,12 +386,18 @@ def normalize_resource_policy(policy: Any = None) -> dict[str, Any]:
         or len(prefixes) != len(set(prefixes))
     ):
         raise ValueError("resource_reservations.exclusive_prefixes must contain unique supported prefixes")
-    resources = normalize_resources(policy.get("exclusive_resources", []))
+    if "exclusive_resources" not in policy:
+        raise ValueError("resource_reservations.exclusive_resources is required")
+    resources = normalize_resources(policy["exclusive_resources"])
     return {"mode": mode, "exclusive_prefixes": sorted(prefixes), "exclusive_resources": resources}
 
 
 def exclusive_resources(resources: Any, policy: Any = None) -> list[str]:
     resources = normalize_resources(resources)
+    if not resources:
+        return []
+    if policy is None and all(resource.startswith("branch:") for resource in resources):
+        return resources  # Branch identity is invariant, not a project-policy selection.
     policy = normalize_resource_policy(policy)
     if policy["mode"] == "strict":
         return resources
@@ -401,6 +407,42 @@ def exclusive_resources(resources: Any, policy: Any = None) -> list[str]:
         resource for resource in resources
         if resource.startswith("branch:") or resource in exact or resource.partition(":")[0] in prefixes
     ]
+
+
+def _missing_setting_paths(current: Any, expected: Any, prefix: str = "settings") -> list[str]:
+    if not isinstance(expected, dict):
+        return []
+    if not isinstance(current, dict):
+        return [prefix]
+    missing = []
+    for key, value in expected.items():
+        path = f"{prefix}.{key}"
+        if key not in current:
+            missing.append(path)
+        else:
+            missing.extend(_missing_setting_paths(current[key], value, path))
+    return missing
+
+
+def missing_policy_settings(
+    policy: dict[str, Any], catalog: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, list[str]]:
+    """Return absent operational settings without filling them from shipped defaults."""
+    catalog = policy_default_catalog() if catalog is None else catalog
+    by_section = {
+        entry["section_id"]: entry for entry in catalog.values()
+        if isinstance(entry, dict) and entry.get("section_id") in POLICY_SECTION_IDS
+    }
+    result = {}
+    for section in policy.get("sections", []):
+        if not isinstance(section, dict) or section.get("id") not in by_section:
+            continue
+        section_id = section["id"]
+        expected = by_section[section_id].get("content", {}).get("settings", {})
+        missing = _missing_setting_paths(section.get("settings"), expected)
+        if missing:
+            result[section_id] = missing
+    return result
 
 
 def project_digest(text: str) -> str:
@@ -672,7 +714,7 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                 errors.append(f"{prefix}.decision must be enabled or disabled")
             for field, expected in AUTOMATED_DESIGN_SETTINGS.items():
                 if settings.get(field) != expected:
-                    errors.append(f"{prefix}.automated_design.settings.{field} must preserve the bounded default")
+                    errors.append(f"{prefix}.automated_design.settings.{field} must preserve the bounded contract")
         elif section_id == "autonomy_approval_parallelism":
             settings = section["settings"]
             if settings.get("dependency_implementation_gate") not in DEPENDENCY_IMPLEMENTATION_GATES:
@@ -715,13 +757,11 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
             errors.append(f"{prefix}.rationale is required for not applicable")
         errors.extend(validate_default_provenance(section, prefix))
     required_sections = set(POLICY_SECTION_IDS)
-    if not require_pending:
-        required_sections.remove("automated_design")  # Existing reviewed policies opt in only after an explicit proposal.
-        required_sections.remove("workflow_adherence")  # Existing reviewed policies retain their behavior until review.
-        required_sections.remove("engineering_rigor")  # Existing reviewed policies retain their behavior until review.
     missing = sorted(required_sections - seen)
     if missing:
         errors.append("missing sections: " + ", ".join(missing))
+    for section_id, paths in missing_policy_settings(policy).items():
+        errors.append(f"section {section_id} is missing operational policy settings: {', '.join(paths)}")
     rigor = next((item for item in sections if isinstance(item, dict) and item.get("id") == "engineering_rigor"), None)
     autonomy = next((item for item in sections if isinstance(item, dict) and item.get("id") == "autonomy_approval_parallelism"), None)
     if isinstance(rigor, dict) and isinstance(autonomy, dict):
@@ -791,7 +831,13 @@ def policy_review_rows(
         section.get("id"): section for section in policy.get("sections", [])
         if isinstance(section, dict) and section.get("id") in POLICY_SECTION_IDS
     }
-    stale_reasons = stale_reasons or {}
+    missing_settings = missing_policy_settings(policy, catalog)
+    derived_stale_reasons = {
+        section_id: "reviewed policy is missing " + ", ".join(paths)
+        for section_id, paths in missing_settings.items()
+    }
+    derived_stale_reasons.update(stale_reasons or {})
+    stale_reasons = derived_stale_reasons
     rows = []
     relationship = {
         "current": "Yes — current ZzzOps default",

@@ -49,4 +49,4 @@ The brief informs policy review and the canonical top-level product goal; it is 
 | Empty tree; disposable CLI spike; reviewed vibe | `greenfield`; outcome/constraints plus low-commitment stack evidence; no enterprise questionnaire unless another risk escalates it. |
 | Manifest, pinned runtime, generated skeleton, no behavior/tests/CI | `early_scaffold`; preserve the selected stack, resolve only architecture-blocking choices, and propose the missing structured harness. |
 | Established source/tests/CI/architecture with one incomplete verify command | `brownfield`; existing conventions win, proposal is a gap audit, and canonical-verification repair is identified without re-scaffolding. |
-| Structured default plus authentication and sensitive data | Effective agentic depth; surface security, data lifecycle, failure/recovery, operations, and enforcement decisions before architecture commitment. |
+| Reviewed structured rigor plus authentication and sensitive data | Effective agentic depth; surface security, data lifecycle, failure/recovery, operations, and enforcement decisions before architecture commitment. |
