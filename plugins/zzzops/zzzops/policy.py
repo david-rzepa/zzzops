@@ -34,6 +34,21 @@ POLICY_SECTION_IDS = (
     "automated_design",
     "autonomy_approval_parallelism",
 )
+POLICY_SECTION_TITLES = {
+    "backend": "Goal storage",
+    "git_review_release": "Git, review, and release",
+    "execution_continuation": "Work continuation",
+    "verification_testing": "Verification and testing",
+    "code_quality": "Code quality and refactoring",
+    "dependencies_tooling": "Dependencies and tooling",
+    "security_privacy_compliance": "Security, privacy, and compliance",
+    "documentation_style": "Documentation and communication",
+    "deployment_resources": "Deployment and resources",
+    "engineering_rigor": "Engineering rigor",
+    "workflow_adherence": "ZzzOps workflow use",
+    "automated_design": "Automated design",
+    "autonomy_approval_parallelism": "Autonomy, approvals, and parallel work",
+}
 
 AUTOMATED_DESIGN_SETTINGS = {
     "scope": "bounded_commitment_in_scope_implementation",
@@ -746,7 +761,118 @@ def reviewed_project_state(repo: Path) -> dict[str, Any]:
 
 
 def cell(value: str) -> str:
-    return value.replace("|", "\\|").replace("\n", " ")
+    return " ".join(str(value).replace("|", "\\|").replace("\r", " ").replace("\n", " ").split())
+
+
+def _plain_policy_choice(section: dict[str, Any], limit: int = 140) -> str:
+    decision = " ".join(str(section.get("decision") or "Not configured").split())
+    if decision and " " not in decision:
+        decision = decision.replace("_", " ").capitalize()
+        if decision == "Github issues":
+            decision = "GitHub Issues"
+    if len(decision) <= limit:
+        return decision
+    boundary = decision.rfind(" ", 0, limit - 20)
+    boundary = boundary if boundary >= 50 else limit - 20
+    return decision[:boundary].rstrip(" ,;:") + "… (details in audit)"
+
+
+def policy_review_rows(
+    policy: dict[str, Any], catalog: dict[str, dict[str, Any]] | None = None,
+    stale_reasons: dict[str, str] | None = None, *, proposal: bool = False,
+) -> list[dict[str, str]]:
+    """Build the complete plain-language policy-review view without changing audit truth."""
+    comparisons = {
+        item["section_id"]: item
+        for item in compare_policy_defaults(policy, catalog)
+        if item.get("section_id") in POLICY_SECTION_IDS
+    }
+    sections = {
+        section.get("id"): section for section in policy.get("sections", [])
+        if isinstance(section, dict) and section.get("id") in POLICY_SECTION_IDS
+    }
+    stale_reasons = stale_reasons or {}
+    rows = []
+    relationship = {
+        "current": "Yes — current ZzzOps default",
+        "customized": "No — customized for this project",
+        "declined": "No — newer ZzzOps default was declined",
+        "unknown_origin": "Unknown — origin was not recorded",
+        "unknown_default": "Unknown — recorded default is unavailable",
+        "update_available": "Yes — an older ZzzOps default",
+    }
+    for section_id in POLICY_SECTION_IDS:
+        section = sections.get(section_id)
+        if section is None:
+            rows.append({
+                "policy": POLICY_SECTION_TITLES[section_id], "current_choice": "Not configured",
+                "default_relationship": "Unknown — policy is missing",
+                "stale": "Yes — this policy is missing", "approved": "Not yet",
+                "applies": "Unknown", "needs_attention": "Add and review this policy",
+            })
+            continue
+        comparison = comparisons.get(section_id, {"status": "unknown_origin"})
+        status = comparison["status"]
+        if proposal and section.get("default_id"):
+            default_relationship = {
+                "accepted": "Proposed ZzzOps default",
+                "changed": "Proposed project customization",
+                "rejected": "Proposed rejection of the ZzzOps default",
+            }.get(section.get("default_disposition"), "Proposed choice — origin needs review")
+            stale = "No — new proposal"
+        else:
+            default_relationship = relationship.get(status, "Unknown — review needed")
+            stale = {
+                "current": "No",
+                "customized": "No",
+                "declined": "No — latest default was reviewed and declined",
+                "unknown_origin": "Unknown — earlier policy did not record its origin",
+                "unknown_default": "Yes — recorded default is no longer available",
+                "update_available": "Yes — ZzzOps changed its recommended choice",
+            }.get(status, "Unknown — review needed")
+        if section_id in stale_reasons:
+            stale = "Yes — " + " ".join(stale_reasons[section_id].split())
+        approved = section.get("review", {}).get("approved") is True
+        unresolved = section.get("unresolved") or []
+        if section_id in stale_reasons:
+            attention = "Review the affected choice"
+        elif status == "update_available":
+            attention = "Review the changed ZzzOps recommendation"
+        elif status in {"unknown_origin", "unknown_default"} and not proposal:
+            attention = "Confirm whether to keep this choice"
+        elif unresolved:
+            attention = "Resolve: " + str(unresolved[0])
+        elif not approved:
+            attention = "Approve this policy"
+        else:
+            attention = "—"
+        rows.append({
+            "policy": POLICY_SECTION_TITLES[section_id],
+            "current_choice": _plain_policy_choice(section),
+            "default_relationship": default_relationship, "stale": stale,
+            "approved": "✅ Yes" if approved else "Not yet",
+            "applies": "Yes" if section.get("applicable") is True else "No",
+            "needs_attention": attention,
+        })
+    return rows
+
+
+def render_policy_review_table(
+    policy: dict[str, Any], catalog: dict[str, dict[str, Any]] | None = None,
+    stale_reasons: dict[str, str] | None = None, *, proposal: bool = False,
+) -> str:
+    rows = policy_review_rows(policy, catalog, stale_reasons, proposal=proposal)
+    header = (
+        "| Policy | Current choice | ZzzOps default? | Stale? | Approved | Applies? | Needs attention |\n"
+        "| --- | --- | --- | --- | --- | --- | --- |"
+    )
+    body = "\n".join(
+        "| {policy} | {current_choice} | {default_relationship} | {stale} | {approved} | {applies} | {needs_attention} |".format(
+            **{key: cell(value) for key, value in row.items()}
+        )
+        for row in rows
+    )
+    return header + "\n" + body
 
 
 def render_project(state: dict[str, Any]) -> str:

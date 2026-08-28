@@ -98,6 +98,8 @@ policy_default_catalog = _policy.policy_default_catalog
 policy_content_digest = _policy.policy_content_digest
 prepare_policy_defaults = _policy.prepare_policy_defaults
 compare_policy_defaults = _policy.compare_policy_defaults
+policy_review_rows = _policy.policy_review_rows
+render_policy_review_table = _policy.render_policy_review_table
 GOAL_FIELDS = _goals.GOAL_FIELDS
 GOAL_TRANSITION_FIELDS = {"schema_version", "expected_revision", "expected_digest", "goal"}
 BLOCKER_CATEGORIES = {
@@ -1116,6 +1118,18 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
     git_remote = command_probe(["git", "remote", "get-url", "origin"], repo)
     github_auth = command_probe(["gh", "auth", "status"], repo)
     github_repository = github_repository_probe(repo)
+    if state and isinstance(state.get("policy"), dict):
+        review_policy = state["policy"]
+        review_is_proposal = False
+    elif (repo / _policy.PROJECT_POLICY_RELATIVE).exists():
+        review_policy = {"sections": []}
+        review_is_proposal = False
+    else:
+        template = json.loads(
+            (Path(__file__).parent / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8-sig")
+        )
+        review_policy = template["policy"]
+        review_is_proposal = True
     return {
         "schema_version": PLAN_SCHEMA_VERSION,
         "project_path": str(path),
@@ -1127,6 +1141,7 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         "missing_charter_fields": charter_missing_fields(text),
         "decision_blockers": policy_blockers(state.get("policy")) if state else ["policy:missing"],
         "policy_defaults": compare_policy_defaults(state["policy"]) if state and isinstance(state.get("policy"), dict) else [],
+        "policy_review_table": render_policy_review_table(review_policy, proposal=review_is_proposal),
         "backend_constraints": {
             "github_issues": "requires a usable GitHub repository probe",
         },

@@ -30,7 +30,8 @@ class PolicyModuleTests(unittest.TestCase):
             "project_digest", "read_project_state", "validate_project_state",
             "validate_policy", "render_project", "render_project_audit",
             "normalize_resource_policy", "policy_default_catalog", "policy_content_digest",
-            "prepare_policy_defaults", "compare_policy_defaults",
+            "prepare_policy_defaults", "compare_policy_defaults", "policy_review_rows",
+            "render_policy_review_table",
         ):
             self.assertIs(getattr(zzzops, name), getattr(policy, name))
 
@@ -349,7 +350,69 @@ class InitializationTests(unittest.TestCase):
         self.assertFalse(result["initialized"])
         self.assertFalse(result["valid_state"])
         self.assertIn("outcome", result["missing_charter_fields"])
+        table = result["policy_review_table"]
+        self.assertEqual(1, table.count("| Policy | Current choice | ZzzOps default? |"))
+        rows = [line for line in table.splitlines()[2:] if line.startswith("|")]
+        self.assertEqual(len(zzzops.POLICY_SECTION_IDS), len(rows))
+        expected_titles = [zzzops._policy.POLICY_SECTION_TITLES[item] for item in zzzops.POLICY_SECTION_IDS]
+        self.assertEqual(expected_titles, [line.split(" | ")[0].removeprefix("| ") for line in rows])
+        self.assertNotIn("sha256:", table)
+        self.assertNotIn("default_disposition", table)
+        self.assertIn("Proposed ZzzOps default", table)
+        self.assertIn(
+            "Proposed project customization",
+            zzzops.render_policy_review_table(self.plan()["policy"], proposal=True),
+        )
         self.assertFalse(project.exists())
+
+    def test_policy_review_table_explains_defaults_staleness_approval_and_missing_rows(self):
+        applied = zzzops.apply_plan(self.repo, self.plan())
+        zzzops.confirm_project(self.repo, applied["policy_digest"], "reviewer", [], True)
+        policy = zzzops.read_project_state(self.repo)[2]["policy"]
+        catalog = zzzops.policy_default_catalog()
+        changed_id = "zzzops.policy.dependencies_tooling"
+        catalog[changed_id]["content"]["decision"] = "New recommendation"
+        catalog[changed_id]["digest"] = zzzops.policy_content_digest(catalog[changed_id]["content"])
+        documentation = next(item for item in policy["sections"] if item["id"] == "documentation_style")
+        documentation["decision"] = "Readable | concise\ncommunication " + "with context " * 20
+        security = next(item for item in policy["sections"] if item["id"] == "security_privacy_compliance")
+        security.pop("default_provenance")
+        deployment = next(item for item in policy["sections"] if item["id"] == "deployment_resources")
+        deployment["applicable"] = False
+        table = zzzops.render_policy_review_table(
+            policy, catalog, {"code_quality": "repository evidence conflicts with this choice"},
+        )
+        rows = [line for line in table.splitlines()[2:] if line.startswith("|")]
+        self.assertEqual(len(zzzops.POLICY_SECTION_IDS), len(rows))
+        self.assertIn("ZzzOps changed its recommended choice", table)
+        self.assertIn("earlier policy did not record its origin", table)
+        self.assertIn("repository evidence conflicts with this choice", table)
+        self.assertIn("✅ Yes", table)
+        self.assertIn("Readable \\| concise communication", table)
+        self.assertIn("… (details in audit)", table)
+        self.assertIn("| Deployment and resources |", table)
+        self.assertIn("| No |", table)
+
+        declined_policy = json.loads(json.dumps(policy))
+        dependencies = next(item for item in declined_policy["sections"] if item["id"] == "dependencies_tooling")
+        dependencies["default_provenance"]["declined_digest"] = catalog[changed_id]["digest"]
+        declined = zzzops.policy_review_rows(declined_policy, catalog)
+        dependency_row = declined[zzzops.POLICY_SECTION_IDS.index("dependencies_tooling")]
+        self.assertIn("newer ZzzOps default was declined", dependency_row["default_relationship"])
+
+        missing_catalog = json.loads(json.dumps(catalog))
+        missing_catalog.pop("zzzops.policy.deployment_resources")
+        unknown_default = zzzops.policy_review_rows(policy, missing_catalog)
+        deployment_row = unknown_default[zzzops.POLICY_SECTION_IDS.index("deployment_resources")]
+        self.assertIn("recorded default is unavailable", deployment_row["default_relationship"])
+
+        legacy = json.loads(json.dumps(policy))
+        legacy["sections"] = [item for item in legacy["sections"] if item["id"] != "workflow_adherence"]
+        missing = zzzops.policy_review_rows(legacy, catalog)
+        self.assertEqual(len(zzzops.POLICY_SECTION_IDS), len(missing))
+        workflow = missing[zzzops.POLICY_SECTION_IDS.index("workflow_adherence")]
+        self.assertEqual("Not configured", workflow["current_choice"])
+        self.assertEqual("Add and review this policy", workflow["needs_attention"])
 
     @mock.patch.object(zzzops, "command_probe", return_value={"available": False, "ok": False, "detail": "test"})
     @mock.patch.object(zzzops, "github_repository_probe", return_value={"available": False, "usable": False})
@@ -614,6 +677,8 @@ class InitializationTests(unittest.TestCase):
             "load full old/new snapshots only for changed or selected sections",
             "Missing legacy provenance stays unknown",
             "report customized values without replacement",
+            "`policy_review_table` exactly once",
+            "never filter rows",
         ):
             self.assertIn(phrase, review)
 
@@ -702,6 +767,9 @@ class InitializationTests(unittest.TestCase):
             result = zzzops.inspect_initialization(self.repo)
         self.assertFalse(result["valid_state"])
         self.assertIn("Invalid canonical policy JSON", result["state_error"])
+        self.assertEqual(
+            len(zzzops.POLICY_SECTION_IDS), result["policy_review_table"].count("| Not configured |"),
+        )
 
     def test_atomic_text_cleans_temporary_file_on_replace_failure(self):
         path = self.repo / ".zzzops" / "failure.md"
