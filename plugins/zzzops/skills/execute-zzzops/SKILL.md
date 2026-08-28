@@ -26,7 +26,7 @@ Goals labeled `zzzops-feedback` are excluded by default. Include them only when 
 - Tests, delegation, parallelism, or long commands: `../../rules/EXECUTION_STRATEGY.md`.
 - Exhausted-queue backlog suggestions: `$suggest-zzzops-work` when explicitly enabled by reviewed PROJECT policy.
 
-Apply reviewed PROJECT policy throughout. Assess [[bounded commitment]](../../concepts/bounded-commitment.md) before each write; persist resumable state before switching or stopping; continue while policy permits safe useful work. Optimize verified value, not item count.
+Apply PROJECT throughout. Before writes assess [[bounded commitment]](../../concepts/bounded-commitment.md); before switching/stopping persist resumable state. Continue while policy permits [[safe useful work]](../../concepts/safe-useful-work.md); optimize verified value, not count.
 
 Before source work, read PROJECT Git/review/continuation policy and checkpoint only pending local ZzzOps state when required; never absorb unrelated changes or create an empty GitHub-state commit.
 

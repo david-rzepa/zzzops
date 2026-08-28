@@ -16,6 +16,13 @@ concepts = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = concepts
 SPEC.loader.exec_module(concepts)
 
+INVENTORY_MODULE = ROOT / ".agents" / "concept_inventory.py"
+INVENTORY_SPEC = importlib.util.spec_from_file_location("zzzops_concept_inventory_test", INVENTORY_MODULE)
+assert INVENTORY_SPEC and INVENTORY_SPEC.loader
+concept_inventory = importlib.util.module_from_spec(INVENTORY_SPEC)
+sys.modules[INVENTORY_SPEC.name] = concept_inventory
+INVENTORY_SPEC.loader.exec_module(concept_inventory)
+
 
 def definition(identifier: str, term: str, aliases: list[str] | None = None) -> str:
     metadata = {
@@ -43,18 +50,42 @@ def definition(identifier: str, term: str, aliases: list[str] | None = None) -> 
 
 
 class ConceptTests(unittest.TestCase):
+    def test_migration_inventory_is_reproducible_and_keeps_semantic_stopping_rule(self) -> None:
+        report = concept_inventory.inventory()
+        rows = {row["term"]: row for row in report["candidates"]}
+        self.assertEqual("derived from canonical plugin sources", report["generated_distributions"])
+        self.assertIn("semantic or authority ambiguity", report["stopping_rule"])
+        for term in ("bounded commitment", "exact head", "safe useful work", "effective engineering rigor"):
+            self.assertEqual("migrated", rows[term]["disposition"])
+            self.assertGreater(rows[term]["occurrences"], 0)
+            self.assertGreater(rows[term]["score"], 0)
+        for term in ("actionable", "authority boundary", "progressive disclosure"):
+            self.assertEqual("retained", rows[term]["disposition"])
+        vague = {row["term"]: row for row in report["vague_language_audit"]}
+        self.assertEqual("bounded commitment", vague["reversible"]["replacement"])
+        self.assertEqual("pending-user-owned-overlap", vague["reversible"]["disposition"])
+        self.assertEqual(
+            ["docs/ACCEPTANCE_TEST_PLAN.md"],
+            [item["path"] for item in vague["reversible"]["documents"]],
+        )
+        self.assertEqual(0, vague["revertible"]["occurrences"])
+        self.assertEqual("retain-contextually", vague["simple"]["disposition"])
+
     def test_shipped_definition_and_first_use_resolve_once(self) -> None:
         plugin = ROOT / "plugins" / "zzzops"
         catalog = concepts.load_catalog((plugin / "concepts",), require_concepts=True)
-        self.assertEqual({"bounded-commitment"}, set(catalog.by_id))
+        self.assertEqual(
+            {"bounded-commitment", "effective-engineering-rigor", "exact-head", "safe-useful-work"},
+            set(catalog.by_id),
+        )
         links = concepts.validate_document(
             plugin / "skills" / "execute-zzzops" / "SKILL.md", catalog, (plugin / "concepts",),
         )
-        self.assertEqual(["bounded commitment"], [link.display for link in links])
+        self.assertEqual(["bounded commitment", "safe useful work"], [link.display for link in links])
         resolved = concepts.resolve_document_concepts(
             plugin / "skills" / "execute-zzzops" / "SKILL.md", (plugin / "concepts",),
         )
-        self.assertEqual(["bounded-commitment"], [item.identifier for item in resolved])
+        self.assertEqual(["bounded-commitment", "safe-useful-work"], [item.identifier for item in resolved])
         bounded = catalog.by_id["bounded-commitment"].path.read_text(encoding="utf-8")
         self.assertIn("human explicitly reviews the exact design decision", bounded)
         self.assertIn("never infer design approval from policy approval", bounded)
