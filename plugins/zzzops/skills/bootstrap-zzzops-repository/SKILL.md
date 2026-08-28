@@ -1,18 +1,18 @@
 ---
 name: bootstrap-zzzops-repository
-description: ZzzOps v0.0.0-dev — development plugin. Bootstrap an empty, early-stage, or established software repository from a project specification into an agent-ready ZzzOps harness and executable goal DAG. Use to create a project or make an existing repository agent-ready; stops before substantive product implementation.
+description: ZzzOps v0.0.0-dev — development plugin. Bootstrap an empty, early-stage, or established software repository from a product specification into an agent-ready harness and executable product goal DAG. Use to discover, structure, and execute a project through safe PR-gated work.
 ---
 
 # Bootstrap a ZzzOps Repository
 
-Establish the proportionate engineering harness that later agents need. Bootstrap coordinates reviewed policy, ordinary goals, execution, verification, and migration; it does not duplicate them or implement the product.
+Establish a clear product outcome and the proportionate engineering harness agents need, then execute the authorized product DAG. Bootstrap coordinates policy, ordinary goals, execution, verification, and migration rather than duplicating them.
 
-1. Inspect initialization through `../../rules/INITIALIZATION.md` and use `../../rules/BACKENDS.md` for canonical portfolio operations. If project policy is not reviewed, hand off to `$review-zzzops-policy`, persist the resume point, and continue after approval. Effective engineering rigor and risk escalation set the harness bar; never silently de-escalate.
-2. Read [repository analysis](../../zzzops/references/bootstrap/ANALYZE.md). Classify greenfield, early scaffold, or brownfield from evidence and resolve only consequential unknowns. Present an architecture/harness proposal when reviewed autonomy does not cover a material choice.
-3. Read [goal-DAG planning](../../zzzops/references/bootstrap/PLAN.md). Create meaningful bootstrap outcomes as canonical goals, reconcile eligible unstarted product-goal dependencies, and seed—but do not implement—the agreed first product milestone.
+1. Read [repository and product analysis](../../zzzops/references/bootstrap/ANALYZE.md). Before harness commitment, run the adaptive product interview to establish beneficiaries, observable success, scope/non-goals, initial milestone, constraints, and applicable risk/governance facts. This is discovery, not an approval gate. Classify the repository from evidence and use [[bounded commitment]](../../concepts/bounded-commitment.md) for unknown technical choices.
+2. Use `../../rules/INITIALIZATION.md` and `../../rules/BACKENDS.md` after the product brief can inform policy. `$review-zzzops-policy` remains the one mandatory approval before work; persist the brief/resume point and continue after approval. Effective rigor sets discovery and harness depth; never silently de-escalate.
+3. Read [goal-DAG planning](../../zzzops/references/bootstrap/PLAN.md). Create or reconcile exactly one canonical top-level product-outcome goal before harness goals, then place justified harness outcomes and initial product milestones beneath it with only their real dependencies.
 4. For an empty or minimal repository, follow the [greenfield journey](../../zzzops/references/bootstrap/GREENFIELD.md). For an established repository, follow the [brownfield audit and closure journey](../../zzzops/references/bootstrap/BROWNFIELD.md). Early scaffolds use the parts justified by their evidence.
-5. Invoke `$execute-zzzops` to implement the authorized harness/scaffolding goals and observe their real verification output. The skill invocation authorizes those approved bootstrap outcomes only; substantive product work requires its own goal execution authority.
-6. Report classification, preserved decisions, assumptions and blockers, created/reused goals and dependencies, exact verification evidence, review gates, deferred work, and the next unimplemented product goal. A repeat run must reuse canonical state and avoid gratuitous repository changes.
+5. Invoke `$execute-zzzops` for the authorized canonical DAG. Continue from harness outcomes into product milestones through distinct stacked PRs until no safe useful work remains. Unresolved product authority or high commitment blocks only the affected chain; required checks, PR review, merge, external-write, deployment, and release gates remain.
+6. Report the product goal, classification evidence, created/reused goals, observed verification, ordered PR review queue, hard blockers, and deferred unauthorized scope. Bootstrap is incomplete if the root goal is absent, canonical verification was not observed, or safe authorized product work was left merely because the harness finished. A repeat run reuses canonical state.
 
 Keep `AGENTS.md` compact and reconcile it in place. `$review-zzzops-policy` owns its ZzzOps-adherence block; bootstrap may update stable repository context around that block. Put specialist knowledge in linked dynamic context, and add deterministic guardrails only when their value justifies their machinery.
 

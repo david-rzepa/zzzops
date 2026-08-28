@@ -1,18 +1,24 @@
 # Plan bootstrap as ordinary ZzzOps goals
 
-Use this stage only after the repository analysis and any consequential proposal review. It configures the factory; it does not scaffold the repository, execute goals, or maintain a private checklist.
+Use this stage only after the product brief and policy approval. It creates the canonical product/harness DAG; it does not scaffold, execute goals, or maintain a private checklist. Classification and harness planning add no approval gate.
+
+## Establish one product root
+
+1. Refresh the canonical portfolio and find an adequate parentless goal that owns the supplied product outcome and measurable acceptance boundary. Reconcile and reuse it when its human scope matches; do not duplicate or silently choose between divergent near-matches.
+2. If none exists, create exactly one top-level product-outcome goal before any harness goal. Record beneficiaries, observable success, scope/non-goals, initial milestone, critical constraints, effective-rigor risks, high-commitment choices, and authority blockers. The root is durable product context, not a private bootstrap record.
+3. Put harness outcomes and product milestones beneath this root. A second top-level product goal, a harness goal without the root, or a root that only says “bootstrap repository” is invalid.
 
 ## Build the harness DAG
 
-1. Refresh the canonical portfolio once and reuse it for duplicate, ancestry, cycle, status, claim, and implementation checks. Treat the approved proposal and repository evidence as inputs, not a generic template.
+1. Reuse the refreshed portfolio for duplicate, ancestry, cycle, status, claim, and implementation checks. Treat the product brief, reviewed policy, and repository evidence as inputs, not a generic template.
 2. Select only justified, independently useful outcomes. Possible outcomes include pinned toolchain, repository structure, architecture boundaries, tests, formatting/lint/types, dependency/security checks, canonical verification, CI equivalence, deterministic guardrails, concise `AGENTS.md`, architecture context, and an initial product milestone. Omit anything without a beneficiary, risk reduction, or feedback value.
 3. Express every selected outcome as an ordinary managed goal using `$add-zzzops-goal` semantics. Each leaf needs observable acceptance evidence, the smallest real probe, resources, explicit dependencies, and risk inputs from which effective rigor is derived. Never persist a second effective-rigor value.
 4. Order dependencies by usable outcomes, not implementation steps. Canonical verification depends on the checks it composes; CI depends on canonical verification; product implementation depends on the harness outcomes it needs. Bootstrap goals must not depend on the product goals they unlock.
-5. Seed only the agreed first milestone as product goals. Do not implement it. Existing TODO/backlog import belongs to `$migrate-to-zzzops`.
+5. Create the smallest executable initial product milestone under the root. PLAN does not implement it; the following ordinary execution loop does. Existing TODO/backlog import belongs to `$migrate-to-zzzops`.
 
 ## Reconcile existing goals
 
-After all harness goals have stable identities, inspect each open goal and add the minimum required harness dependencies when all are true:
+After the root and harness goals have stable identities, inspect each open goal. Attach an unparented, unstarted goal to the root only when it clearly implements the same product outcome; preserve existing valid parents. Add the minimum required harness dependencies when all are true:
 
 - it represents product/repository implementation affected by the harness;
 - implementation has not started: no claim, branch, checkpoint, or completed source work;
@@ -27,7 +33,7 @@ Before each write, recheck exact revision/digest and duplicate intent. Create go
 
 ## Fixtures
 
-Greenfield structured API:
+Greenfield structured API beneath one product root:
 
 ```text
 Pin runtime
@@ -35,7 +41,7 @@ Pin runtime
     → Establish tests and static analysis
       → Establish canonical verification
         → Add equivalent CI
-          → Seed first product milestone (unimplemented)
+          → Implement first product milestone through ordinary execution
 ```
 
 Brownfield library with working build/tests/CI but an incomplete verification command:

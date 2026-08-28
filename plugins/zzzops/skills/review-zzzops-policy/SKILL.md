@@ -11,11 +11,13 @@ Before optional tools, reuse capabilities; never invoke an unavailable path—us
 
 Run `init inspect` once; offer privacy-safe execution reports. For a missing automated-design section propose enabled/disabled; for missing workflow-adherence sections explain `optional`/`tracked`/`managed` and propose `tracked` for adherence; for missing rigor explain `vibe`/`structured`/`agentic` and propose `structured`—all without inferring approval.
 
+Always foreground approval timing. Recommend `human_at_exhaustion`: policy approval gates execution once, verified per-goal PRs stack until safe work is exhausted, then the user reviews the ordered queue. Explain `human_after_checks` plus completed-dependency gating as the stricter per-goal alternative. Describe [[bounded commitment]](../../concepts/bounded-commitment.md) before automated-design authority; neither option bypasses checks, PR approval, merge authority, or release policy.
+
 Review rigor defaults/escalation/minimums/overrides/interview depth. More rigor costs upfront but cuts ambiguity/rework/regressions; never silently lower or undercut a minimum.
 
 Compare default IDs/digests first. Changed/stale: load full old/new snapshots only for changed or selected sections. Missing legacy provenance stays unknown. Replace matching stored defaults only; report customized values without replacement.
 
-If every required section has valid approval, say `The policy is already approved.` Do not ask for approval or run `init confirm`. Else require explicit approval of the current digest (`approval digest`), then `init confirm`. Ask separately before policy commits/PRs.
+If every required section has valid approval, say `The policy is already approved.` Do not ask for approval or run `init confirm`. Else require explicit approval of the current digest (`approval digest`), then `init confirm`. Approved policy artifacts may enter ordinary PR review without another conversational gate.
 
 Approved adherence: reconcile a bounded `AGENTS.md` block (`BEGIN ZZZOPS WORKFLOW ADHERENCE`); preserve all unrelated instructions.
 

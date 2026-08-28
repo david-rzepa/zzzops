@@ -39,6 +39,7 @@ REQUIRED_FILES = {
     "rules/INITIALIZATION.md", "zzzops/installation.py", "zzzops/entropy.py", "zzzops/zzzops.py",
     "zzzops/coaching.py", "zzzops/concepts.py",
     "skills/execute-zzzops/references/ENTROPY_OBSERVATIONS.md",
+    "skills/execute-zzzops/references/REVIEW_QUEUE.md",
     "scripts/cleanup_legacy.py",
     "zzzops/references/bootstrap/ANALYZE.md",
     "zzzops/references/bootstrap/PLAN.md",

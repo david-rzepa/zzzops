@@ -9,7 +9,7 @@ Run this before ordinary installed workflows. Defer invalid/unreviewed policy to
 5. Summarize evidence, conflicts, default provenance/changes, capability, unknowns, and privacy-safe execution reports. Interview once; evidence wins and unavailable decisions block.
 6. If canonical artifacts have a current approval digest and every required section is approved, say `The policy is already approved.` Do not ask for approval or run `init confirm`; invite adjustments, then checkpoint.
 7. Otherwise, after proposal approval run `init validate` and `init apply`, summarize pending policy, and invite adjustment. Changed/stale state, a pending required section, or a proposal requires explicit confirmation, then `init confirm --policy-digest DIGEST --reviewer NAME --all` (or `--section ID`). Bound changes stale approval; hide digests unless needed.
-8. Run `checkpoint`. Ask separately before committing changed policy/instructions; initialization itself makes no Git/GitHub writes. Later reviews resummarize.
+8. Run `checkpoint`. Initialization makes no Git/GitHub writes; ordinary execution may commit approved policy without another gate. Later reviews resummarize.
 
 Unsupported state, identity drift, or policy-evidence conflict stops affected work. Never reset or invent fallback authority.
 
