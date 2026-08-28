@@ -99,6 +99,13 @@ class AgentPluginTests(unittest.TestCase):
         self.assertEqual(SHIPPED_SKILLS, actual)
         self.assertFalse((PLUGIN / "skills" / "run-zzzops-acceptance").exists())
 
+    def test_package_contains_valid_progressively_disclosed_concepts(self) -> None:
+        package = runpy.run_path(str(PLUGIN / "zzzops" / "package.py"))
+        status = package["package_status"]()
+        self.assertTrue(status["ok"], status["detail"])
+        self.assertTrue((PLUGIN / "concepts" / "bounded-commitment.md").is_file())
+        self.assertTrue((PLUGIN / "zzzops" / "concepts.py").is_file())
+
     def test_agentic_coaching_requires_explicit_invocation(self) -> None:
         metadata = (PLUGIN / "skills" / "review-agentic-engineering" / "agents" / "openai.yaml").read_text(encoding="utf-8")
         self.assertIn("allow_implicit_invocation: false", metadata)

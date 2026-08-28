@@ -1,5 +1,7 @@
 # Repository context-engineering audit
 
+Reusable decision vocabulary uses [progressively disclosed concept references](CONCEPTS.md), keeping definitions precise without adding an eager glossary to routed workflows.
+
 This historical audit applies Anthropic's July 2026 [context-engineering guidance](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models) only to the context used by agents maintaining this repository. It does not prescribe Agent Plugin behavior.
 
 | Guideline | Disposition | Repository evidence or decision |

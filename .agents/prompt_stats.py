@@ -116,6 +116,7 @@ def prompt_files(root: Path) -> list[Path]:
         files.extend((skill.parent / "references").glob("*.md"))
     files.extend((root / "plugins" / "zzzops" / "zzzops" / "references" / "bootstrap").glob("*.md"))
     files.extend((root / "plugins" / "zzzops" / "zzzops" / "templates" / "project-goals").glob("*.md"))
+    files.extend((root / "plugins" / "zzzops" / "concepts").glob("*.md"))
     files.extend((root / ".agents" / "skills").glob("*/SKILL.md"))
     files.extend((root / ".agents" / "skills").glob("*/references/*.md"))
     return sorted({path for path in files if path.is_file()}, key=lambda path: path.relative_to(root).as_posix())
