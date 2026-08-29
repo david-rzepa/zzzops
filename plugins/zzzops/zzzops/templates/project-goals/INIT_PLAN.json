@@ -54,13 +54,16 @@
       },
       {
         "id": "git_review_release", "default_id": "zzzops.policy.git_review_release", "title": "Git, review, and release", "required": true, "applicable": true,
-        "decision": "Follow repository rules; otherwise keep one branch and PR per source-changing goal, continue descendants from each exact verified predecessor checkpoint, collect human PR approval at true queue exhaustion, and integrate in dependency order. Policy review remains required before execution; required checks, human merge approval, and release authority are never bypassed.", "rationale": "maximizes safe unattended progress while preserving independently reviewable PR gates and an explicit stricter per-goal alternative",
+        "decision": "Follow repository rules; otherwise keep one branch and PR per source-changing goal, prefer verified GitHub-native stacked PRs, and explicitly use chained PRs when native stacks are unavailable or unverified. Continue descendants from exact verified predecessor checkpoints, collect human PR approval at true queue exhaustion, and integrate in dependency order. Policy review, required checks, human merge approval, and release authority are never bypassed.", "rationale": "uses provider-native stack context when proven while preserving independently reviewable PR gates and a named compatible fallback",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps exhaustion-time review fallback", "default_disposition": "accepted",
         "settings": {
           "execution_branch": "per_goal", "branch_base": "nearest_authorized_trunk", "dependency_base": "dependency_branch",
           "review_pending_dependency": "stack_from_reviewed_checkpoint", "read_only_dependency_investigation": "allowed_before_completion",
           "multiple_dependency_base": "reviewed_base_containing_all", "parent_pseudo_trunk": true, "child_target": "nearest_parent_branch",
           "pull_request_unit": "per_goal", "shared_pull_request": "explicit_reviewed_override",
+          "pull_request_mode": "github_stacked_when_verified_else_chained",
+          "stacked_capability": "official_gh_stack_extension_with_provider_membership_verification",
+          "stacked_tool_installation": "explicit_user_approval", "stacked_unavailable_fallback": "chained_prs",
           "commit_unit": "verified_subgoal", "commit_style": "conventional", "review_gate": "human_at_exhaustion",
           "review_state_reads_per_checkpoint": 1,
           "pr_approval": "required_when_repository_requires_pr", "conversational_approval": "never_for_goal_progress", "merge_after_approval": "when_authorized"

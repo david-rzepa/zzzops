@@ -19,7 +19,7 @@ After an ancestor checkpoint changes:
 1. stop writes on affected descendants and read the ancestor feedback/exact head once;
 2. implement only authorized feedback, reverify the ancestor, and record its new checkpoint;
 3. invalidate every affected descendant checkpoint and approval;
-4. update bases and PR targets in dependency order, recompute each immediate-base diff, and resolve conflicts when authorized;
+4. update bases and PR targets in dependency order, using noninteractive `gh stack rebase`/`push` when locally tracked, otherwise guarded Git rebase/push; re-link and require provider readback for native stacks, and keep chained PRs explicit; recompute each immediate-base diff and resolve conflicts only when authorized;
 5. rerun each affected narrow probe and required check, then record replacement checkpoints; and
 6. block only the affected chain when reconciliation is unsafe, unauthorized, ambiguous, or fails, while continuing unrelated work.
 

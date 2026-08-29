@@ -75,6 +75,10 @@ GIT_REVIEW_SETTING_VALUES = {
     "review_pending_dependency": {"wait_for_completed_dependencies", "stack_from_reviewed_checkpoint"},
     "review_gate": {"human_after_checks", "human_at_exhaustion"},
     "conversational_approval": {"allowed_otherwise", "never_for_goal_progress"},
+    "pull_request_mode": {"github_stacked_when_verified_else_chained", "chained_prs"},
+    "stacked_capability": {"official_gh_stack_extension_with_provider_membership_verification"},
+    "stacked_tool_installation": {"explicit_user_approval"},
+    "stacked_unavailable_fallback": {"chained_prs"},
 }
 DEPENDENCY_IMPLEMENTATION_GATES = {"dependencies_done", "stack_from_reviewed_checkpoint"}
 

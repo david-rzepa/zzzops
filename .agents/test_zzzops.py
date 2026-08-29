@@ -2877,7 +2877,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(list(zzzops.POLICY_SECTION_IDS), project_ids)
         self.assertTrue(all(section["required"] and not section["review"]["approved"] for section in plan["policy"]["sections"]))
 
-    def test_required_pr_validation_includes_chained_targets(self):
+    def test_required_pr_validation_includes_stacked_targets(self):
         workflow = (Path(__file__).parents[1] / ".github" / "workflows" / "validate.yml").read_text(encoding="utf-8")
         trigger = workflow.split("permissions:", 1)[0]
         self.assertIn("pull_request:", trigger)
@@ -2894,6 +2894,13 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("allowed_before_completion", git_policy["read_only_dependency_investigation"])
         self.assertTrue(git_policy["parent_pseudo_trunk"])
         self.assertEqual("per_goal", git_policy["pull_request_unit"])
+        self.assertEqual("github_stacked_when_verified_else_chained", git_policy["pull_request_mode"])
+        self.assertEqual(
+            "official_gh_stack_extension_with_provider_membership_verification",
+            git_policy["stacked_capability"],
+        )
+        self.assertEqual("explicit_user_approval", git_policy["stacked_tool_installation"])
+        self.assertEqual("chained_prs", git_policy["stacked_unavailable_fallback"])
         self.assertEqual("explicit_reviewed_override", git_policy["shared_pull_request"])
         self.assertEqual("human_at_exhaustion", git_policy["review_gate"])
         self.assertEqual("never_for_goal_progress", git_policy["conversational_approval"])
@@ -2918,6 +2925,29 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertTrue(any(
             "exhaustion review requires" in error for error in zzzops.validate_policy(invalid, True)
         ))
+
+        invalid_mode = json.loads(json.dumps(plan["policy"]))
+        invalid_mode_git = next(
+            section for section in invalid_mode["sections"] if section["id"] == "git_review_release"
+        )
+        invalid_mode_git["settings"]["pull_request_mode"] = "pretend_native_stack"
+        self.assertTrue(any(
+            "pull_request_mode" in error for error in zzzops.validate_policy(invalid_mode, True)
+        ))
+
+    def test_branch_review_requires_native_stack_readback_and_named_fallback(self):
+        reference = (
+            PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "BRANCH_REVIEW.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("gh stack link", reference)
+        self.assertIn("provider readback", reference)
+        self.assertIn("chained PR", reference)
+        self.assertIn("explicit approval", reference)
+        review_queue = (
+            PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "REVIEW_QUEUE.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("gh stack rebase", review_queue)
+        self.assertIn("provider readback", review_queue)
 
     def test_parallel_and_refill_defaults_are_structured(self):
         root = PLUGIN_ROOT / "zzzops"
