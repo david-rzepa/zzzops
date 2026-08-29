@@ -1,17 +1,17 @@
 {
   "approval": {
-    "date": "2026-08-28",
-    "digest": "sha256:54bcff7f2de27b2eba968a0921224e511c52179057a5a1e1dade61fb90fc2a4b",
+    "date": "2026-08-29",
+    "digest": "sha256:7ad19af1efd43f040bd4c224a0bea04315a1074bb1a408e23e5c46cd4bac7811",
     "reviewer": "user"
   },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:bec3fd9c63c9777c52f1a65694889abd1f3b454046831c4894d939c1ba120f84",
+      "digest": "sha256:151f72eb79cdfaf754e74118502eaaf5892d9d7728e47301520ebaafaff1159a",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
-      "digest": "sha256:a5b4b4d36250ab07129799d33a15aab935c04c7f6a912b9b1456a90d1c6e3267",
+      "digest": "sha256:011828c7d4e743c9b18074657a69066875f0e12d435d2eccce31e4bf1a3e74c0",
       "path": ".zzzops/PROJECT.md"
     }
   },
@@ -128,6 +128,18 @@
       "change": "Reviewed policy revision 23",
       "date": "2026-08-28",
       "reason": "Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, workflow_adherence, autonomy_approval_parallelism, automated_design; source digest sha256:c9c5d663dce7b421d5d9f5ce666fcd3974609a715706af315c53431d4dc3ef86."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 24",
+      "date": "2026-08-28",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "user",
+      "change": "Reviewed policy revision 25",
+      "date": "2026-08-29",
+      "reason": "Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, workflow_adherence, autonomy_approval_parallelism, automated_design; source digest sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e."
     }
   ],
   "initialized": true,
@@ -204,6 +216,12 @@
         "id": "E-012",
         "kind": "proposed",
         "source": "user decision and goal #300 on 2026-08-24"
+      },
+      {
+        "finding": "Prefer GitHub-native stacked pull requests when the official capability is installed and stack membership can be verified; require approval before installing or upgrading host tooling, and explicitly use chained pull requests when native stacking is declined, unavailable, or unverified.",
+        "id": "E-013",
+        "kind": "proposed",
+        "source": "user decisions and goal #345 on 2026-08-28"
       }
     ],
     "schema_version": 1,
@@ -220,8 +238,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-28",
-          "reviewed_digest": "sha256:c9c5d663dce7b421d5d9f5ce666fcd3974609a715706af315c53431d4dc3ef86",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -243,17 +261,17 @@
       {
         "applicable": true,
         "confidence": "high",
-        "decision": "Use one chained branch and PR per goal: start from dev, then stack each subsequent goal from the preceding exact reviewed checkpoint and merge in dependency order. Use Conventional Commits, collect human PR approval when safe work is exhausted, and retain owner-only main releases.",
+        "decision": "Use one branch and PR per goal. Prefer GitHub-native stacked PRs when the official capability is installed and provider stack membership is verified; otherwise explicitly use chained PRs from exact reviewed checkpoints. Merge in dependency order, use Conventional Commits, collect human PR approval when safe work is exhausted, and retain owner-only main releases.",
         "default_disposition": "changed",
         "default_origin": "repository policy",
         "exceptions": [],
         "id": "git_review_release",
-        "rationale": "The user explicitly selected chained PRs while retaining per-goal review units and ordered integration.",
+        "rationale": "The user selected GitHub-native stacked PRs as the preferred mode and named chained PRs as the safe fallback, while retaining per-goal review units, checks, ordered integration, and human authority.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-28",
-          "reviewed_digest": "sha256:c9c5d663dce7b421d5d9f5ce666fcd3974609a715706af315c53431d4dc3ef86",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -268,6 +286,7 @@
           "multiple_dependency_base": "reviewed_base_containing_all",
           "parent_pseudo_trunk": true,
           "pr_approval": "required_when_repository_requires_pr",
+          "pull_request_mode": "github_stacked_when_verified_else_chained",
           "pull_request_target": "preceding_goal_branch_then_dev",
           "pull_request_unit": "per_goal",
           "read_only_dependency_investigation": "allowed_before_completion",
@@ -278,13 +297,17 @@
           "review_gate": "human_at_exhaustion",
           "review_pending_dependency": "stack_from_reviewed_checkpoint",
           "review_state_reads_per_checkpoint": 1,
-          "shared_pull_request": "explicit_reviewed_override"
+          "shared_pull_request": "explicit_reviewed_override",
+          "stacked_capability": "official_gh_stack_extension_with_provider_membership_verification",
+          "stacked_tool_installation": "explicit_user_approval",
+          "stacked_unavailable_fallback": "chained_prs"
         },
         "source_ids": [
           "E-002",
           "E-005",
           "E-007",
-          "E-008"
+          "E-008",
+          "E-013"
         ],
         "title": "Git, review, and release",
         "unresolved": []
@@ -301,8 +324,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-28",
-          "reviewed_digest": "sha256:c9c5d663dce7b421d5d9f5ce666fcd3974609a715706af315c53431d4dc3ef86",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -351,8 +374,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-28",
-          "reviewed_digest": "sha256:c9c5d663dce7b421d5d9f5ce666fcd3974609a715706af315c53431d4dc3ef86",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -393,8 +416,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-28",
-          "reviewed_digest": "sha256:c9c5d663dce7b421d5d9f5ce666fcd3974609a715706af315c53431d4dc3ef86",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -424,8 +447,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-28",
-          "reviewed_digest": "sha256:c9c5d663dce7b421d5d9f5ce666fcd3974609a715706af315c53431d4dc3ef86",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -452,8 +475,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-28",
-          "reviewed_digest": "sha256:c9c5d663dce7b421d5d9f5ce666fcd3974609a715706af315c53431d4dc3ef86",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -479,8 +502,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-28",
-          "reviewed_digest": "sha256:c9c5d663dce7b421d5d9f5ce666fcd3974609a715706af315c53431d4dc3ef86",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -514,8 +537,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-28",
-          "reviewed_digest": "sha256:c9c5d663dce7b421d5d9f5ce666fcd3974609a715706af315c53431d4dc3ef86",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -585,8 +608,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-28",
-          "reviewed_digest": "sha256:c9c5d663dce7b421d5d9f5ce666fcd3974609a715706af315c53431d4dc3ef86",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -664,8 +687,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-28",
-          "reviewed_digest": "sha256:c9c5d663dce7b421d5d9f5ce666fcd3974609a715706af315c53431d4dc3ef86",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -700,8 +723,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-28",
-          "reviewed_digest": "sha256:c9c5d663dce7b421d5d9f5ce666fcd3974609a715706af315c53431d4dc3ef86",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -803,8 +826,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-28",
-          "reviewed_digest": "sha256:c9c5d663dce7b421d5d9f5ce666fcd3974609a715706af315c53431d4dc3ef86",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -863,6 +886,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 23,
+  "revision": 25,
   "schema_version": 1
 }
