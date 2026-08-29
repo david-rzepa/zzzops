@@ -46,13 +46,11 @@ Open a new Codex task so skill discovery reloads the plugin. The installed manif
 
 Each push to `dev` runs `semantic-release --dry-run` with read-only repository permission. Dry runs skip tag creation and publication. An intended owner update to `main` runs the full product-validation matrix before semantic-release receives `contents: write`.
 
-Every release prepares three validated versioned assets before GitHub publication:
+Every release prepares one validated versioned marketplace asset before GitHub publication:
 
-- `zzzops-plugin-v<version>.zip` — OpenAI portal skills bundle;
-- `zzzops-openai-submission-v<version>.zip` — OpenAI listing copy, assets, tests, availability, notes, manifests, and attestation checklist;
-- `zzzops-claude-plugin-v<version>.zip` — self-contained Claude Code plugin bundle.
+- `zzzops-plugin-v<version>.zip` — OpenAI portal skills bundle.
 
-Canonical repository metadata stays at `0.0.0-dev`. Release preparation renders the semantic release version and official channel into temporary OpenAI and Claude artifacts; CI never commits generated release metadata back to `dev`.
+Canonical repository metadata stays at `0.0.0-dev`. Release preparation renders the semantic release version and official channel into the temporary OpenAI bundle; CI never commits generated release metadata back to `dev`. Claude marketplace validation and installed-cache acceptance run directly from repository state and do not publish a duplicate archive.
 
 A build or validation failure stops publication. Successful artifacts attach to the matching GitHub Release. OpenAI portal upload, attestation, review submission, approval, and final directory publication remain explicit human actions; see the [marketplace sources](../marketplace/README.md). Claude submission guidance lives in [Claude Code marketplace notes](CLAUDE_MARKETPLACE.md), and the shared language and intent map live in [product discovery positioning](DISCOVERY.md).
 

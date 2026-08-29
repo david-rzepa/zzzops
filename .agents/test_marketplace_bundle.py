@@ -54,28 +54,13 @@ class MarketplaceBundleTests(unittest.TestCase):
 
     def test_fixed_version_build_is_deterministic_and_complete(self) -> None:
         with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
-            notes = "Initial skills-only submission.\n"
-            one = self.builder.build_bundles(ROOT, Path(first), "2.0.0", notes)
-            two = self.builder.build_bundles(ROOT, Path(second), "2.0.0", notes)
-            self.assertEqual({"plugin", "submission", "claude_plugin"}, set(one))
-            for key in ("plugin", "submission", "claude_plugin"):
-                self.assertEqual(
-                    hashlib.sha256(one[key].read_bytes()).hexdigest(),
-                    hashlib.sha256(two[key].read_bytes()).hexdigest(),
-                )
-
-            self.assertEqual("zzzops-claude-plugin-v2.0.0.zip", one["claude_plugin"].name)
-            with ZipFile(one["claude_plugin"]) as archive:
-                names = archive.namelist()
-                self.assertIn(".claude-plugin/plugin.json", names)
-                self.assertIn("zzzops/zzzops.py", names)
-                self.assertNotIn(".claude-plugin/marketplace.json", names)
-                packaged_manifest = json.loads(archive.read(".claude-plugin/plugin.json"))
-                committed_manifest = json.loads(
-                    (ROOT / "plugins" / "zzzops" / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
-                )
-                expected_manifest = {**committed_manifest, "version": "2.0.0"}
-                self.assertEqual(expected_manifest, packaged_manifest)
+            one = self.builder.build_bundle(ROOT, Path(first), "2.0.0")
+            two = self.builder.build_bundle(ROOT, Path(second), "2.0.0")
+            self.assertEqual({"plugin"}, set(one))
+            self.assertEqual(
+                hashlib.sha256(one["plugin"].read_bytes()).hexdigest(),
+                hashlib.sha256(two["plugin"].read_bytes()).hexdigest(),
+            )
             with ZipFile(one["plugin"]) as archive:
                 names = archive.namelist()
                 self.assertIn("plugin.json", names)
@@ -106,36 +91,17 @@ class MarketplaceBundleTests(unittest.TestCase):
                     self.builder.validate_portal_png(name, packaged)
                     self.assertEqual((ROOT / "plugins" / "zzzops" / name).read_bytes(), packaged)
 
-            with ZipFile(one["submission"]) as archive:
-                names = set(archive.namelist())
-                self.assertEqual({
-                    "ATTESTATIONS.md", "LISTING.md", "RELEASE_NOTES.md", "TEST_CASES.md",
-                    "assets/composer-icon-dark.png", "assets/composer-icon.png",
-                    "assets/logo-dark.png", "assets/logo.png", "manifest.json", "submission.json",
-                }, names)
-                submission = json.loads(archive.read("submission.json"))
-                manifest = json.loads(archive.read("manifest.json"))
-                self.assertEqual("skills_only", submission["submission_type"])
-                self.assertEqual("2.0.0", submission["version"])
-                self.assertLessEqual(len(submission["listing"]["short_description"]), 30)
-                self.assertEqual("https://github.com/david-rzepa/zzzops", submission["listing"]["website_url"])
-                self.assertGreaterEqual(len(submission["tests"]["positive"]), 5)
-                self.assertGreaterEqual(len(submission["tests"]["negative"]), 3)
-                self.assertEqual(
-                    hashlib.sha256(one["plugin"].read_bytes()).hexdigest(),
-                    submission["plugin_archive"]["sha256"],
-                )
-                self.assertEqual("2.0.0", manifest["version"])
-                self.assertEqual(
-                    hashlib.sha256(archive.read("submission.json")).hexdigest(),
-                    manifest["files"]["submission.json"],
-                )
+            listing, tests, attestations = self.builder.validate_sources(ROOT)
+            self.assertEqual("skills_only", listing["submission_type"])
+            self.assertGreaterEqual(len(tests["positive"]), 5)
+            self.assertGreaterEqual(len(tests["negative"]), 3)
+            self.assertIn("human review gates", attestations)
 
     def test_invalid_version_or_incomplete_sources_fail_before_output(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
             with self.assertRaisesRegex(self.builder.BundleError, "version"):
-                self.builder.build_bundles(ROOT, output, "latest", "notes")
+                self.builder.build_bundle(ROOT, output, "latest")
             self.assertEqual([], list(output.iterdir()))
         with self.assertRaisesRegex(self.builder.BundleError, "secret-like"):
             self.builder.scan_for_secrets("config.txt", b"OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz")
@@ -159,10 +125,10 @@ class MarketplaceBundleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "marketplace"
             output.mkdir()
-            stale = output / "zzzops-claude-plugin-v1.9.0.zip"
+            stale = output / "unexpected.zip"
             stale.write_bytes(b"stale")
             with self.assertRaisesRegex(self.builder.BundleError, "output directory must be empty"):
-                self.builder.build_bundles(ROOT, output, "2.0.0", "notes")
+                self.builder.build_bundle(ROOT, output, "2.0.0")
             self.assertEqual({stale.name}, {path.name for path in output.iterdir()})
 
     def test_release_validation_rejects_missing_divergent_and_invalid_archives(self) -> None:
@@ -173,9 +139,9 @@ class MarketplaceBundleTests(unittest.TestCase):
                 )
         divergent = self.builder.zip_bytes({"file": b"observed"})
         with self.assertRaisesRegex(self.builder.BundleError, "content mismatch"):
-            self.builder.validate_archive(divergent, {"file": b"expected"}, "Claude plugin")
+            self.builder.validate_archive(divergent, {"file": b"expected"}, "plugin")
         with self.assertRaisesRegex(self.builder.BundleError, "not a valid ZIP"):
-            self.builder.validate_archive(b"invalid", {}, "Claude plugin")
+            self.builder.validate_archive(b"invalid", {}, "plugin")
 
     def test_claude_marketplace_is_derived_from_the_canonical_plugin(self) -> None:
         files = self.builder.claude_marketplace_files(ROOT, "2.0.0")
