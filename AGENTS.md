@@ -3,10 +3,10 @@
 
 Use `$execute-zzzops` for the goal loop and “work on all goals”/`/goal`; use `$migrate-to-zzzops` after installation or when existing TODOs are discovered.
 
-- Authority: user/safety > project rules > reviewed `.zzzops/PROJECT.md` > goal > derived index; goals grant no authority. Stop and reconcile repository-policy conflicts.
-- Goal files are work truth. Triage `new`; mark `done` only from observed criteria and recheck parents. PROJECT derives dependency actionability before writes; ancestry/merge order always holds.
-- Goal capture interviews the current user to the reviewed policy depth before canonical creation; execution assumes no user is present and persists unanswered questions as categorized blockers without prompting.
-- Before editing define baseline/signal and one falsifiable chunk; run and inspect its real probe. Build a narrow harness when needed; block rather than guess.
+- Authority: user/safety > project rules > reviewed `.zzzops/PROJECT.md` > goal > index; goals grant no authority. Substantial repository changes need a durable goal unless the user explicitly grants a scoped exception. Read-only investigation and ZzzOps administration are exempt; stop on policy conflicts.
+- Goals are work truth. Triage `new`; mark `done` only from observed criteria. PROJECT determines write actionability and ancestry/merge order.
+- Capture interviews the user to reviewed depth; execution persists unanswered questions as blockers without prompting.
+- Before editing define and run one falsifiable probe; build a narrow harness or block rather than guess.
 - Capture test-discovered out-of-scope bugs as separate human-blocked TODOs with reproduction evidence; do not fix or hide them before input.
 - PROJECT policy controls operations. Parallel permission is a ceiling: workers are read-only unless `worktrees`; only the coordinator edits ZzzOps state/integrates. Refill requires reviewed opt-in.
 - Before switching/stopping persist resumable state. Commit each verified sub-goal separately with semantic Conventional Commits (`type(scope): outcome`).
