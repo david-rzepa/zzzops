@@ -17,6 +17,5 @@
     "github-issues",
     "codex",
     "claude-code"
-  ],
-  "version": "0.0.0-dev"
+  ]
 }

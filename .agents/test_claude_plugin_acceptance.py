@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,6 +45,12 @@ class ClaudePluginAcceptanceTests(unittest.TestCase):
         with self.assertRaisesRegex(self.harness.AcceptanceError, "skill inventory"):
             self.harness.validate_details(details.replace("validate-zzzops-installation", "unexpected"))
 
+        del available[0]["version"]
+        self.harness.validate_available(available, None, "./plugins/zzzops")
+        available[0]["version"] = "stale"
+        with self.assertRaisesRegex(self.harness.AcceptanceError, "inventory mismatch"):
+            self.harness.validate_available(available, None, "./plugins/zzzops")
+
     def test_install_must_resolve_inside_isolated_cache_with_runtime(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / "config"
@@ -56,6 +64,22 @@ class ClaudePluginAcceptanceTests(unittest.TestCase):
             record[0]["installPath"] = str(Path(directory) / "source")
             with self.assertRaisesRegex(self.harness.AcceptanceError, "isolated Claude cache"):
                 self.harness.validate_install(record, config, "2.0.0")
+
+    def test_versionless_validation_allows_only_claudes_documented_sha_warning(self) -> None:
+        warning = (
+            "Found 1 warning\nplugins[0] plugin.json → " + self.harness.NO_VERSION_WARNING
+            + "\nValidation failed (--strict treats warnings as errors)\n"
+        )
+        strict = subprocess.CompletedProcess(["claude"], 1, warning, "")
+        accepted = subprocess.CompletedProcess(["claude"], 0, "valid\n", "")
+        with mock.patch.object(self.harness.subprocess, "run", side_effect=[strict, accepted]) as run:
+            self.harness.validate_versionless(Path("marketplace"), env={})
+        self.assertEqual(2, run.call_count)
+
+        extra = subprocess.CompletedProcess(["claude"], 1, warning.replace("Found 1 warning", "Found 2 warnings"), "")
+        with mock.patch.object(self.harness.subprocess, "run", return_value=extra):
+            with self.assertRaisesRegex(self.harness.AcceptanceError, "beyond"):
+                self.harness.validate_versionless(Path("marketplace"), env={})
 
 if __name__ == "__main__":
     unittest.main()

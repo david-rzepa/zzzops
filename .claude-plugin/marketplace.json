@@ -5,15 +5,13 @@
     "url": "https://github.com/david-rzepa"
   },
   "metadata": {
-    "description": "Agentic engineering with durable goals for autonomous coding agents",
-    "version": "0.0.0-dev"
+    "description": "Agentic engineering with durable goals for autonomous coding agents"
   },
   "plugins": [
     {
       "name": "zzzops",
       "source": "./plugins/zzzops",
       "description": "Agentic engineering with durable goals for autonomous coding agents",
-      "version": "0.0.0-dev",
       "keywords": [
         "agentic-engineering",
         "coding-agents",

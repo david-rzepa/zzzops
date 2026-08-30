@@ -182,12 +182,15 @@ def scan_for_secrets(relative: str, data: bytes) -> None:
 def plugin_files(root: Path, version: str) -> dict[str, bytes]:
     plugin = root / "plugins" / "zzzops"
     development_version = "0.0.0-dev"
-    for relative in ("plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json"):
+    for relative in ("plugin.json", ".codex-plugin/plugin.json"):
         manifest = read_json(plugin / relative)
         if not isinstance(manifest, dict) or manifest.get("version") != development_version:
             raise BundleError(
                 f"canonical development manifest must use {development_version}: {relative}"
             )
+    claude_manifest = read_json(plugin / ".claude-plugin" / "plugin.json")
+    if not isinstance(claude_manifest, dict) or "version" in claude_manifest:
+        raise BundleError("canonical Claude manifest must omit version so Git commits drive updates")
     package = runpy.run_path(str(plugin / "zzzops" / "package.py"))
     renderer = package["render_skill_metadata"]
     result: dict[str, bytes] = {}
@@ -207,7 +210,8 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
             data = data.replace(b"\r\n", b"\n")
         if relative in {"plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json"}:
             manifest = json.loads(data.decode("utf-8-sig"))
-            manifest["version"] = version
+            if relative != ".claude-plugin/plugin.json":
+                manifest["version"] = version
             data = canonical_json(manifest)
         try:
             data = renderer(relative, data, version, "official")
@@ -274,19 +278,16 @@ def claude_marketplace_files(root: Path, version: str) -> dict[str, bytes]:
         "name", "description", "author", "homepage", "repository", "license", "keywords",
     )
     manifest = {field: canonical_manifest[field] for field in manifest_fields}
-    manifest["version"] = version
     marketplace = {
         "name": canonical_manifest["name"],
         "owner": canonical_manifest["author"],
         "metadata": {
             "description": canonical_manifest["description"],
-            "version": version,
         },
         "plugins": [{
             "name": canonical_manifest["name"],
             "source": "./zzzops",
             "description": canonical_manifest["description"],
-            "version": version,
             "keywords": canonical_manifest["keywords"],
             "category": "development",
             "tags": ["agentic-engineering", "coding-agents", "repository-bootstrap"],

@@ -52,16 +52,17 @@ class AgentPluginTests(unittest.TestCase):
 
     def test_canonical_source_identifies_every_skill_as_development(self) -> None:
         package = runpy.run_path(str(PLUGIN / "zzzops" / "package.py"))
-        manifest_paths = (
+        versioned_manifest_paths = (
             PLUGIN / "plugin.json",
             PLUGIN / ".codex-plugin" / "plugin.json",
-            PLUGIN / ".claude-plugin" / "plugin.json",
         )
-        for path in manifest_paths:
+        for path in versioned_manifest_paths:
             self.assertEqual("0.0.0-dev", json.loads(path.read_text(encoding="utf-8"))["version"])
+        claude = json.loads((PLUGIN / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        self.assertNotIn("version", claude)
         marketplace = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
-        self.assertEqual("0.0.0-dev", marketplace["metadata"]["version"])
-        self.assertEqual("0.0.0-dev", marketplace["plugins"][0]["version"])
+        self.assertNotIn("version", marketplace["metadata"])
+        self.assertNotIn("version", marketplace["plugins"][0])
         for skill in SHIPPED_SKILLS:
             skill_path = PLUGIN / "skills" / skill / "SKILL.md"
             agent_path = PLUGIN / "skills" / skill / "agents" / "openai.yaml"
