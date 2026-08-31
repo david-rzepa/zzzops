@@ -559,6 +559,26 @@ def validate_goal_transition(transition: Any, issue_number: int) -> list[str]:
         errors.append("expected_digest must be the 64-character checkpoint goal digest")
     goal = transition.get("goal")
     errors.extend(validate_managed_goal(goal, issue_number))
+    implementation = goal.get("implementation") if isinstance(goal, dict) else None
+    review = implementation.get("review") if isinstance(implementation, dict) else None
+    if isinstance(review, dict) and review.get("status") == "pending":
+        if goal.get("status") != "blocked":
+            errors.append("pending review checkpoint transition must use blocked status")
+        if goal.get("claim") is not None:
+            errors.append("pending review checkpoint transition must release the claim")
+        blockers = goal.get("blockers")
+        if not isinstance(blockers, list) or not any(
+            isinstance(blocker, dict)
+            and blocker.get("status") == "open"
+            and blocker.get("category") == "human-action"
+            for blocker in blockers
+        ):
+            errors.append("pending review checkpoint transition must include an open human-action blocker")
+        for field in ("branch", "base", "target", "pr"):
+            if not _text_present(implementation.get(field)):
+                errors.append(f"pending review checkpoint transition requires implementation.{field}")
+        if not _text_present(review.get("checkpoint")):
+            errors.append("pending review checkpoint transition requires an exact checkpoint")
     if (
         isinstance(goal, dict) and isinstance(expected_revision, int)
         and not isinstance(expected_revision, bool) and goal.get("revision") != expected_revision + 1

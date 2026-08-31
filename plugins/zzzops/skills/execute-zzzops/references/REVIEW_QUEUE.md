@@ -4,7 +4,7 @@ Load this only after a verified PR checkpoint, at true queue exhaustion, or when
 
 ## Verified checkpoint
 
-For `human_at_exhaustion`, record the [[exact head]](../../../concepts/exact-head.md), checks, immediate base/target, material risks, PR, and a `human-action` review blocker with `continue-bounded`. Release the goal reservation and continue every descendant whose policy-derived `work_state` permits checkpoint stacking. Do not request conversational approval or wait merely because review is pending.
+`human_at_exhaustion` uses one canonical checkpoint transition: `status: blocked`, no claim, [[exact head]](../../../concepts/exact-head.md), pending review, checks/base/risks/PR, `human-action`/`continue-bounded`; release reservation. Continue permitted descendants. Do not request conversational approval or wait for review.
 
 For `human_after_checks`, surface that goal's review action immediately. A separate `stack_from_reviewed_checkpoint` setting may still permit descendants; completed-dependency policy waits. Neither mode marks the goal done, self-approves, merges, bypasses checks, or weakens release authority.
 

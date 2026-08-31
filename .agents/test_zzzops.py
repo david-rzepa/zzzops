@@ -1569,6 +1569,32 @@ class ManagedGoalTests(unittest.TestCase):
         goal["implementation"]["review"]["status"] = "self_approved"
         self.assertIn("implementation.review.status is invalid", zzzops.validate_managed_goal(goal))
 
+    def test_transition_requires_canonical_blocked_pending_review_checkpoint(self):
+        goal = self.goal()
+        goal.update({
+            "status": "in_progress", "revision": 2, "claim": None,
+            "blockers": [{"id": "B-001", "status": "open", "category": "human-action"}],
+            "implementation": {
+                "branch": "goal/example", "base": "dev", "target": "dev", "pr": "https://example.test/pull/1",
+                "review": {"status": "pending", "checkpoint": "abc123"},
+            },
+        })
+        transition = {
+            "schema_version": 1, "expected_revision": 1, "expected_digest": "a" * 64,
+            "goal": goal,
+        }
+        self.assertIn(
+            "pending review checkpoint transition must use blocked status",
+            zzzops.validate_goal_transition(transition, 42),
+        )
+        goal["status"] = "blocked"
+        self.assertEqual([], zzzops.validate_goal_transition(transition, 42))
+        goal["claim"] = {"owner": "codex"}
+        self.assertIn(
+            "pending review checkpoint transition must release the claim",
+            zzzops.validate_goal_transition(transition, 42),
+        )
+
     def test_managed_goal_rejects_invented_lifecycle_enums(self):
         goal = self.goal()
         for field, value in (("status", "almost-done"), ("priority", "urgent"), ("value", "priceless"), ("difficulty", "heroic"), ("confidence", "vibes")):
@@ -2298,6 +2324,28 @@ class PortfolioTests(unittest.TestCase):
         )
         self.assertEqual(0, unsafe["summary"]["available"])
         self.assertEqual(1, unsafe["summary"]["waiting"])
+
+    def test_pending_review_checkpoint_is_defensively_non_writable_for_legacy_status(self):
+        pending = {
+            "branch": "goal/legacy", "base": "dev", "target": "dev",
+            "pr": "https://example.test/pull/9",
+            "review": {"status": "pending", "checkpoint": "abc123"},
+        }
+        records = [zzzops.github_goal_record(self.issue(
+            9, status="in_progress", claim=None, implementation=pending,
+            blockers=[{"id": "B-001", "status": "open", "category": "human-action"}],
+        ))]
+
+        snapshot = zzzops.build_portfolio_snapshot("github_issues", records, reads=1, raw_bytes=100)
+
+        self.assertEqual("wait_human", snapshot["goals"][0]["work_state"])
+        self.assertEqual(0, snapshot["summary"]["writable"])
+        self.assertEqual(1, snapshot["summary"]["blocked"])
+        self.assertTrue(snapshot["valid"])
+
+        records[0]["implementation"]["review"] = {"status": "not_started", "checkpoint": None}
+        active = zzzops.build_portfolio_snapshot("github_issues", records, reads=1, raw_bytes=100)
+        self.assertEqual("write", active["goals"][0]["work_state"])
 
     def test_audit_reports_graph_state_claim_review_and_label_drift(self):
         stale = {"owner": "Codex", "expires_at": "2026-07-16T00:00:00Z"}
@@ -3223,6 +3271,17 @@ class WorkflowContractTests(unittest.TestCase):
         for state in ("write", "wait_dependency", "wait_human", "blocked", "terminal"):
             self.assertIn(f"`{state}`", execute)
         self.assertIn("no goal has `work_state: triage|prepare|write`", execute)
+
+    def test_review_checkpoint_guidance_requires_one_canonical_non_writable_transition(self):
+        execute = (PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "EXECUTE.md").read_text(encoding="utf-8")
+        review = (PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "REVIEW_QUEUE.md").read_text(encoding="utf-8")
+        docs = (PLUGIN_ROOT.parent.parent / "docs" / "EXECUTION.md").read_text(encoding="utf-8")
+        for phrase in (
+            "one canonical checkpoint transition", "`status: blocked`", "no claim",
+            "Complete pending review always projects `wait_human`",
+            "repair only that selected goal", "permitted descendants",
+        ):
+            self.assertIn(phrase, execute + review + docs)
         self.assertNotIn("portfolio's PROJECT-derived `actionable` field", execute)
 
     def test_github_schema_is_issue_native(self):
