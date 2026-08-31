@@ -40,6 +40,13 @@ _entropy = importlib.util.module_from_spec(_ENTROPY_MODULE_SPEC)
 sys.modules[_ENTROPY_MODULE_SPEC.name] = _entropy
 _ENTROPY_MODULE_SPEC.loader.exec_module(_entropy)
 
+_DIAGNOSTICS_MODULE_PATH = Path(__file__).with_name("diagnostics.py")
+_DIAGNOSTICS_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_diagnostics", _DIAGNOSTICS_MODULE_PATH)
+assert _DIAGNOSTICS_MODULE_SPEC and _DIAGNOSTICS_MODULE_SPEC.loader
+_diagnostics = importlib.util.module_from_spec(_DIAGNOSTICS_MODULE_SPEC)
+sys.modules[_DIAGNOSTICS_MODULE_SPEC.name] = _diagnostics
+_DIAGNOSTICS_MODULE_SPEC.loader.exec_module(_diagnostics)
+
 _POLICY_MODULE_PATH = Path(__file__).with_name("policy.py")
 _POLICY_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_policy", _POLICY_MODULE_PATH)
 assert _POLICY_MODULE_SPEC and _POLICY_MODULE_SPEC.loader
@@ -205,6 +212,14 @@ list_entropy_observations = _entropy.list_observations
 record_entropy_observation = _entropy.record_observation
 resolve_entropy_observations = _entropy.resolve_observations
 EntropyObservationError = _entropy.EntropyObservationError
+
+TimingSession = _diagnostics.TimingSession
+diagnostic_directory = _diagnostics.diagnostic_directory
+validate_diagnostic = _diagnostics.validate_diagnostic
+record_diagnostic = _diagnostics.record_diagnostic
+list_diagnostics = _diagnostics.list_diagnostics
+purge_diagnostics = _diagnostics.purge_diagnostics
+DiagnosticError = _diagnostics.DiagnosticError
 
 execution_reports_enabled = _feedback.execution_reports_enabled
 execution_report_directory = _feedback.execution_report_directory

@@ -19,9 +19,12 @@ The distributable Agent Plugin lives in `plugins/zzzops`; `.agents/plugins/marke
 | `package.py` | Agent Plugin package validation and deterministic package provenance. |
 | `installation.py` | Per-repository package validation state and composition of the cleanup audit. |
 | `entropy.py` | Atomic, compact Git-local entropy observations and suggestion-category filtering. |
+| `diagnostics.py` | Opt-in, privacy-safe timing aggregation and bounded Git-local diagnostic retention. |
 | `zzzops.py` | CLI parsing and dispatch, provider probes and adapters, package validation, and stable re-exports. |
 
 The package checkpoint validates the installed manifest, required surfaces, and deterministic SHA-256 provenance before provider access. Keep cross-module dependencies one-way: focused modules may use explicitly configured entry-point callbacks, while callers continue to invoke the stable `zzzops.py` command or re-exported API.
+
+Timing diagnostics are inert unless an explicit caller creates a session and records its snapshot. The diagnostic schema accepts only fixed phase and provenance enums plus bounded integers—never repository identity, paths, prompts, user content, or raw output. Records live under `zzzops/timing-diagnostics` in Git's ignored common directory, are content-addressed, retain at most 32 aggregates, and can be removed with the stable `purge_diagnostics` API. This local store has no transmission path; confirmed feedback sharing is a separate workflow.
 
 ## Development and review
 

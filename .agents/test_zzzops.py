@@ -149,6 +149,102 @@ class EntropyModuleTests(unittest.TestCase):
         self.assertFalse(zzzops.entropy_observation_directory(self.repo).exists())
 
 
+class DiagnosticsModuleTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.temp.name)
+        subprocess.run(["git", "init", "-q", str(self.repo)], check=True)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_entry_point_reexports_diagnostics_contract(self):
+        diagnostics = zzzops._diagnostics
+        for name in (
+            "TimingSession", "diagnostic_directory", "validate_diagnostic",
+            "record_diagnostic", "list_diagnostics", "purge_diagnostics",
+        ):
+            self.assertIs(getattr(zzzops, name), getattr(diagnostics, name))
+
+    def test_injected_clock_records_exact_measured_and_failed_spans(self):
+        ticks = iter([10.0, 10.125, 20.0, 20.009]).__next__
+        session = zzzops.TimingSession(clock=ticks)
+        with session.span("github_discovery"):
+            pass
+        with self.assertRaisesRegex(RuntimeError, "probe failed"):
+            with session.span("goal_hydration"):
+                raise RuntimeError("probe failed")
+        session.mark("context_compaction", provenance="unavailable")
+
+        phases = session.snapshot()["phases"]
+        self.assertEqual(
+            {"provenance": "measured", "count": 1, "total_ms": 125,
+             "min_ms": 125, "max_ms": 125, "failures": 0},
+            phases["github_discovery"],
+        )
+        self.assertEqual(1, phases["goal_hydration"]["failures"])
+        self.assertEqual(9, phases["goal_hydration"]["total_ms"])
+        self.assertEqual(
+            {"provenance": "unavailable", "count": 0, "total_ms": None,
+             "min_ms": None, "max_ms": None, "failures": 0},
+            phases["context_compaction"],
+        )
+
+    def test_schema_rejects_free_form_or_identifying_fields(self):
+        valid = zzzops.TimingSession(clock=iter([1.0, 1.001]).__next__)
+        with valid.span("startup"):
+            pass
+        artifact = valid.snapshot()
+        self.assertEqual([], zzzops.validate_diagnostic(artifact))
+
+        for field, value in (
+            ("path", "C:/private/repository"),
+            ("repository", "owner/name"),
+            ("prompt", "raw user content"),
+        ):
+            invalid = {**artifact, field: value}
+            self.assertRegex("; ".join(zzzops.validate_diagnostic(invalid)), "fields")
+        invalid_phase = json.loads(json.dumps(artifact))
+        invalid_phase["phases"]["arbitrary-user-label"] = invalid_phase["phases"].pop("startup")
+        self.assertRegex("; ".join(zzzops.validate_diagnostic(invalid_phase)), "phase")
+
+    def test_nested_spans_are_rejected_and_original_failures_are_preserved(self):
+        session = zzzops.TimingSession(clock=iter([1.0, 1.010]).__next__)
+        with self.assertRaisesRegex(zzzops.DiagnosticError, "overlap or nest"):
+            with session.span("startup"):
+                with session.span("package"):
+                    pass
+        self.assertEqual(1, session.snapshot()["phases"]["startup"]["failures"])
+
+        broken_clock = zzzops.TimingSession(clock=iter([2.0, 1.0]).__next__)
+        with self.assertRaisesRegex(RuntimeError, "original workload failure"):
+            with broken_clock.span("startup"):
+                raise RuntimeError("original workload failure")
+
+    def test_local_records_are_content_addressed_bounded_and_purgeable(self):
+        for duration in range(zzzops._diagnostics.MAX_RECORDS + 2):
+            session = zzzops.TimingSession(clock=iter([1.0, 1.0 + duration / 1000]).__next__)
+            with session.span("startup"):
+                pass
+            zzzops.record_diagnostic(self.repo, session.snapshot())
+
+        listed = zzzops.list_diagnostics(self.repo)
+        self.assertEqual(zzzops._diagnostics.MAX_RECORDS, listed["count"])
+        common = Path(subprocess.run(
+            ["git", "-C", str(self.repo), "rev-parse", "--git-common-dir"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip())
+        if not common.is_absolute():
+            common = self.repo / common
+        self.assertEqual(
+            zzzops.diagnostic_directory(self.repo),
+            common.resolve() / zzzops._diagnostics.DIRECTORY_RELATIVE,
+        )
+        purged = zzzops.purge_diagnostics(self.repo)
+        self.assertEqual(zzzops._diagnostics.MAX_RECORDS, purged["purged"])
+        self.assertEqual(0, zzzops.list_diagnostics(self.repo)["count"])
+
+
 class ReservationModuleTests(unittest.TestCase):
     def test_entry_point_reexports_reservation_contract(self):
         reservation = zzzops._reservation
