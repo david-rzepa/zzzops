@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,9 @@ EXPECTED_SKILLS = {
 
 class AcceptanceError(ValueError):
     """The generated plugin failed an observable Claude acceptance boundary."""
+
+
+NO_VERSION_WARNING = "version: No version specified. Consider adding a version following semver"
 
 
 def run(command: list[str], *, env: dict[str, str] | None = None) -> str:
@@ -41,16 +45,67 @@ def json_output(command: list[str], *, env: dict[str, str] | None = None) -> Any
         raise AcceptanceError(f"command returned invalid JSON: {command[0]} {command[1]}") from exc
 
 
-def validate_available(records: Any, version: str, source: str = "./zzzops") -> None:
+def validate_versionless(path: Path, *, env: dict[str, str]) -> None:
+    """Keep strict validation except for Claude's warning about its documented SHA mode."""
+    command = ["claude", "plugin", "validate", str(path), "--strict"]
+    result = subprocess.run(command, env=env, text=True, capture_output=True, check=False)
+    if result.returncode == 0:
+        return
+    detail = "\n".join(part for part in (result.stdout, result.stderr) if part)
+    if (
+        detail.count(NO_VERSION_WARNING) != 1
+        or "Found 1 warning" not in detail
+        or "Validation failed (--strict treats warnings as errors)" not in detail
+    ):
+        raise AcceptanceError("strict Claude validation failed beyond the documented SHA-version warning")
+    run(["claude", "plugin", "validate", str(path)], env=env)
+
+
+def commit_marketplace(marketplace: Path, marker: str, *, initialize: bool = False) -> str:
+    """Commit one observable marketplace revision and return its Git identity."""
+    if initialize:
+        run(["git", "init", "--initial-branch", "main", str(marketplace)])
+    (marketplace / "zzzops" / ".acceptance-revision").write_text(marker + "\n", encoding="utf-8")
+    run(["git", "-C", str(marketplace), "add", "."])
+    run([
+        "git", "-C", str(marketplace), "-c", "user.name=ZzzOps Acceptance",
+        "-c", "user.email=acceptance@invalid.example", "commit", "-m", f"revision {marker}",
+    ])
+    revision = run(["git", "-C", str(marketplace), "rev-parse", "HEAD"]).strip()
+    if not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise AcceptanceError("generated marketplace has no full Git commit identity")
+    return revision
+
+
+def write_repository_marketplace(root: Path, output: Path) -> Path:
+    """Create the repository-native marketplace shape used by the Git revision probe."""
+    output.mkdir()
+    shutil.copytree(
+        root / "plugins" / "zzzops", output / "zzzops",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+    )
+    catalog = json.loads((root / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8-sig"))
+    catalog["plugins"][0]["source"] = "./zzzops"
+    manifest = output / ".claude-plugin" / "marketplace.json"
+    manifest.parent.mkdir()
+    manifest.write_text(json.dumps(catalog, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return output
+
+
+def validate_available(records: Any, version: str | None, source: str = "./zzzops") -> None:
     expected = {
         "pluginId": "zzzops@zzzops", "name": "zzzops", "marketplaceName": "zzzops",
-        "version": version, "source": source,
+        "source": source,
     }
+    if version is not None:
+        expected["version"] = version
     if (
         not isinstance(records, list) or len(records) != 1 or not isinstance(records[0], dict)
         or any(records[0].get(key) != value for key, value in expected.items())
+        or (version is None and "version" in records[0])
     ):
-        raise AcceptanceError("available plugin inventory does not match the expected marketplace")
+        observed = records[0] if isinstance(records, list) and len(records) == 1 else records
+        raise AcceptanceError(f"available plugin inventory mismatch: expected {expected!r}, observed {observed!r}")
 
 
 def validate_details(details: str) -> None:
@@ -67,7 +122,10 @@ def validate_install(records: Any, config: Path, version: str) -> Path:
         raise AcceptanceError("installed plugin inventory must contain exactly ZzzOps")
     record = records[0]
     if record.get("id") != "zzzops@zzzops" or record.get("version") != version or record.get("enabled") is not True:
-        raise AcceptanceError("installed ZzzOps identity, version, or enabled state is invalid")
+        raise AcceptanceError(
+            f"installed ZzzOps identity, version, or enabled state is invalid: "
+            f"expected version {version!r}, observed {record!r}"
+        )
     install_text = record.get("installPath")
     if not isinstance(install_text, str) or not install_text:
         raise AcceptanceError("installed ZzzOps has no cache path")
@@ -87,14 +145,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     root = Path(__file__).resolve().parents[1]
     manifest = json.loads((root / "plugins" / "zzzops" / "plugin.json").read_text(encoding="utf-8-sig"))
-    version = manifest.get("version") if isinstance(manifest, dict) else None
-    if not isinstance(version, str) or not version:
+    product_version = manifest.get("version") if isinstance(manifest, dict) else None
+    if not isinstance(product_version, str) or not product_version:
         print("Claude plugin acceptance failed: canonical plugin version is missing", file=sys.stderr)
         return 2
     try:
         with tempfile.TemporaryDirectory(prefix="zzzops-claude-acceptance-") as directory:
             workspace = Path(directory)
             marketplace = workspace / "marketplace"
+            generated_marketplace = workspace / "generated"
             config = workspace / "config"
             project = workspace / "project"
             config.mkdir()
@@ -106,24 +165,44 @@ def main(argv: list[str] | None = None) -> int:
                 raise AcceptanceError(f"Claude CLI version drift: expected {args.claude_version}, observed {observed_version}")
             built = json_output([
                 sys.executable, str(root / ".github" / "scripts" / "build_claude_plugin.py"),
-                "--version", version, "--output", str(marketplace),
+                "--version", product_version, "--output", str(generated_marketplace),
             ])
             generated = Path(built.get("marketplace", "")) if isinstance(built, dict) else Path()
-            plugin = generated / "zzzops"
-            if generated.resolve() != marketplace.resolve() or not plugin.is_dir():
+            generated_plugin = generated / "zzzops"
+            if generated.resolve() != generated_marketplace.resolve() or not generated_plugin.is_dir():
                 raise AcceptanceError("Claude generator did not produce the expected repository marketplace")
-            run(["claude", "plugin", "validate", str(root), "--strict"], env=env)
-            run(["claude", "plugin", "validate", str(generated), "--strict"], env=env)
-            run(["claude", "plugin", "validate", str(plugin), "--strict"], env=env)
-            run(["claude", "plugin", "marketplace", "add", str(root), "--scope", "user"], env=env)
+            write_repository_marketplace(root, marketplace)
+            plugin = marketplace / "zzzops"
+            first_revision = commit_marketplace(marketplace, "first", initialize=True)
+            first_cache_version = first_revision[:12]
+            validate_versionless(root, env=env)
+            validate_versionless(generated, env=env)
+            validate_versionless(generated_plugin, env=env)
+            validate_versionless(marketplace, env=env)
+            validate_versionless(plugin, env=env)
+            run(["claude", "plugin", "marketplace", "add", str(marketplace), "--scope", "user"], env=env)
             available = json_output(["claude", "plugin", "list", "--available", "--json"], env=env)
             validate_available(
                 available.get("available") if isinstance(available, dict) else None,
-                version,
-                "./plugins/zzzops",
+                None,
             )
             run(["claude", "plugin", "install", "zzzops@zzzops", "--scope", "user", "--yes"], env=env)
-            install = validate_install(json_output(["claude", "plugin", "list", "--json"], env=env), config, version)
+            install = validate_install(
+                json_output(["claude", "plugin", "list", "--json"], env=env), config, first_cache_version,
+            )
+            if (install / ".acceptance-revision").read_text(encoding="utf-8").strip() != "first":
+                raise AcceptanceError("first installed cache does not contain the first Git revision")
+
+            second_revision = commit_marketplace(marketplace, "second")
+            second_cache_version = second_revision[:12]
+            run(["claude", "plugin", "marketplace", "update", "zzzops"], env=env)
+            run(["claude", "plugin", "update", "zzzops@zzzops", "--scope", "user"], env=env)
+            updated = validate_install(
+                json_output(["claude", "plugin", "list", "--json"], env=env), config, second_cache_version,
+            )
+            if updated == install or (updated / ".acceptance-revision").read_text(encoding="utf-8").strip() != "second":
+                raise AcceptanceError("Claude did not install the second Git-backed plugin revision")
+            install = updated
             details = run(["claude", "plugin", "details", "zzzops@zzzops"], env=env)
             validate_details(details)
             cached_skills = {path.name for path in (install / "skills").iterdir() if path.is_dir()}
@@ -133,12 +212,17 @@ def main(argv: list[str] | None = None) -> int:
                 sys.executable, str(install / "zzzops" / "zzzops.py"), "--repo", str(project), "init", "inspect",
             ])
             package = inspection.get("capabilities", {}).get("plugin_package", {}) if isinstance(inspection, dict) else {}
-            if package.get("ok") is not True or package.get("version") != version:
+            if package.get("ok") is not True or package.get("version") != product_version:
                 raise AcceptanceError("packaged ZzzOps runtime cannot validate its installed cache copy")
     except (AcceptanceError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         print(f"Claude plugin acceptance failed: {exc}", file=sys.stderr)
         return 2
-    print(json.dumps({"accepted": True, "claude_version": args.claude_version, "plugin_version": version, "skills": sorted(EXPECTED_SKILLS)}))
+    print(json.dumps({
+        "accepted": True, "claude_version": args.claude_version,
+        "plugin_version": product_version,
+        "claude_cache_versions": [first_cache_version, second_cache_version],
+        "skills": sorted(EXPECTED_SKILLS),
+    }))
     return 0
 
 

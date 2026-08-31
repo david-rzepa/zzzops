@@ -24,11 +24,11 @@ See [advanced installation options](docs/ADVANCED.md#alternative-installations) 
 Claude Code users can install from this repository:
 
 ```powershell
-claude plugin marketplace add david-rzepa/zzzops
+claude plugin marketplace add david-rzepa/zzzops@latest
 claude plugin install zzzops@zzzops
 ```
 
-Claude and Codex use the same canonical implementation. See the [Claude Code installation and submission notes](docs/CLAUDE_MARKETPLACE.md).
+The release-only `latest` branch gives each Claude update a new Git-derived cache version. Claude and Codex use the same canonical implementation. See the [Claude Code installation and submission notes](docs/CLAUDE_MARKETPLACE.md).
 
 ### 2. Bootstrap the repository
 

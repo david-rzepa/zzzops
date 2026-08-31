@@ -50,7 +50,7 @@ Every release prepares one validated versioned marketplace asset before GitHub p
 
 - `zzzops-plugin-v<version>.zip` — OpenAI portal skills bundle.
 
-Canonical repository metadata stays at `0.0.0-dev`. Release preparation renders the semantic release version and official channel into the temporary OpenAI bundle; CI never commits generated release metadata back to `dev`. Claude marketplace validation and installed-cache acceptance run directly from repository state and do not publish a duplicate archive.
+Canonical Agent Plugin and Codex metadata stays at `0.0.0-dev`. Release preparation renders the semantic release version and official channel into the temporary OpenAI bundle; CI never commits generated release metadata back to `dev`. Claude metadata omits an explicit plugin version so Claude derives its cache identity from the Git source commit. The release-only `latest` branch controls update cadence, and installed-cache acceptance proves a real two-commit update without publishing a duplicate archive or writing release metadata back to the repository.
 
 A build or validation failure stops publication. Successful artifacts attach to the matching GitHub Release. OpenAI portal upload, attestation, review submission, approval, and final directory publication remain explicit human actions; see the [marketplace sources](../marketplace/README.md). Claude submission guidance lives in [Claude Code marketplace notes](CLAUDE_MARKETPLACE.md), and the shared language and intent map live in [product discovery positioning](DISCOVERY.md).
 

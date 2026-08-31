@@ -121,6 +121,16 @@ class MarketplaceBundleTests(unittest.TestCase):
             with self.assertRaisesRegex(self.builder.BundleError, "canonical development manifest"):
                 self.builder.plugin_files(root, "2.0.0")
 
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copytree(ROOT / "plugins" / "zzzops", root / "plugins" / "zzzops")
+            manifest_path = root / "plugins" / "zzzops" / ".claude-plugin" / "plugin.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["version"] = "0.0.0-dev"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(self.builder.BundleError, "Claude manifest must omit version"):
+                self.builder.plugin_files(root, "2.0.0")
+
     def test_stale_release_output_is_rejected_before_any_partial_refresh(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "marketplace"
@@ -153,12 +163,12 @@ class MarketplaceBundleTests(unittest.TestCase):
         marketplace = json.loads(files[".claude-plugin/marketplace.json"])
 
         self.assertEqual("zzzops", manifest["name"])
-        self.assertEqual("2.0.0", manifest["version"])
+        self.assertNotIn("version", manifest)
         self.assertEqual("zzzops", marketplace["name"])
         self.assertEqual(manifest["description"], marketplace["metadata"]["description"])
-        self.assertEqual("2.0.0", marketplace["metadata"]["version"])
+        self.assertNotIn("version", marketplace["metadata"])
         self.assertEqual("./zzzops", marketplace["plugins"][0]["source"])
-        self.assertEqual("2.0.0", marketplace["plugins"][0]["version"])
+        self.assertNotIn("version", marketplace["plugins"][0])
         self.assertEqual(manifest["keywords"], marketplace["plugins"][0]["keywords"])
         self.assertEqual("development", marketplace["plugins"][0]["category"])
         self.assertEqual(
@@ -180,15 +190,13 @@ class MarketplaceBundleTests(unittest.TestCase):
         self.assertEqual("./plugins/zzzops", marketplace["plugins"][0]["source"])
         self.assertEqual(canonical["name"], marketplace["name"])
         self.assertEqual(canonical["author"], marketplace["owner"])
-        self.assertEqual(
-            {"description": canonical["description"], "version": canonical["version"]},
-            marketplace["metadata"],
-        )
+        self.assertEqual({"description": canonical["description"]}, marketplace["metadata"])
         self.assertEqual(canonical["name"], marketplace["plugins"][0]["name"])
         self.assertEqual(canonical["description"], marketplace["plugins"][0]["description"])
-        self.assertEqual(canonical["version"], marketplace["plugins"][0]["version"])
+        self.assertNotIn("version", marketplace["plugins"][0])
         self.assertEqual(canonical["name"], manifest["name"])
-        for field in ("version", "description", "author", "homepage", "repository", "license", "keywords"):
+        self.assertNotIn("version", manifest)
+        for field in ("description", "author", "homepage", "repository", "license", "keywords"):
             self.assertEqual(canonical[field], manifest[field], field)
 
     def test_public_discovery_metadata_keeps_one_truthful_positioning(self) -> None:

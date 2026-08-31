@@ -9,14 +9,16 @@ ZzzOps keeps one plugin implementation in `plugins/zzzops`. Claude-specific repo
 - `.claude-plugin/marketplace.json`, which points to `./plugins/zzzops`;
 - `plugins/zzzops/.claude-plugin/plugin.json`, which describes that canonical plugin directory.
 
-Skills, rules, scripts, and the ZzzOps runtime are not copied into a second Claude tree or release archive. Anthropic review and normal marketplace installation consume repository state. CI still generates a disposable marketplace to prove strict Claude validation, then performs isolated installation and installed-cache runtime acceptance from the repository marketplace.
+Skills, rules, scripts, and the ZzzOps runtime are not copied into a second Claude tree or release archive. Anthropic review and normal marketplace installation consume repository state. CI still generates a disposable marketplace, applies the strict validator with the documented SHA-version warning isolated, then performs installed-cache runtime acceptance from a disposable Git-backed repository marketplace.
+
+Claude's cache version comes from the plugin source Git commit. The Claude plugin manifest and marketplace entry intentionally omit `version`; Anthropic documents that `plugin.json` otherwise wins and an unchanged explicit value suppresses updates. Users follow the release-only `latest` branch, so semantic-release remains the product release authority while each published commit naturally has a distinct Claude cache identity. CI does not write or commit a second semantic version.
 
 ## Direct Claude Code installation
 
 After the release containing Claude support reaches the repository's default branch, users can install directly from this repository:
 
 ```powershell
-claude plugin marketplace add david-rzepa/zzzops
+claude plugin marketplace add david-rzepa/zzzops@latest
 claude plugin install zzzops@zzzops
 ```
 
@@ -24,6 +26,7 @@ Refresh the repository marketplace without uninstalling the plugin:
 
 ```powershell
 claude plugin marketplace update zzzops
+claude plugin update zzzops@zzzops --scope user
 ```
 
 These commands use ZzzOps's own marketplace and do not imply Anthropic review or directory placement.
@@ -57,7 +60,8 @@ Use these repository-derived values when the live form requests them:
 | Marketplace manifest | `.claude-plugin/marketplace.json` |
 | Plugin source | `./plugins/zzzops` |
 | Plugin manifest | `plugins/zzzops/.claude-plugin/plugin.json` |
-| Canonical source version | `0.0.0-dev` (release artifacts render the semantic release version) |
+| Claude cache version | Git source commit (Claude displays its 12-character abbreviation) |
+| Canonical Agent Plugin version | `0.0.0-dev` (`latest` and immutable tags define published repository revisions) |
 | Description | Agentic engineering with durable goals for autonomous coding agents |
 | License | Apache-2.0 |
 | Homepage | `https://github.com/david-rzepa/zzzops` |
@@ -76,7 +80,9 @@ python .agents/claude_plugin_acceptance.py --claude-version 2.1.241
 python .agents/test_marketplace_bundle.py
 ```
 
-The installed-cache acceptance adds the committed repository marketplace in an isolated Claude configuration, installs `zzzops@zzzops`, verifies exactly nine skills, and runs ZzzOps initialization from Claude's cache. The marketplace-bundle tests require committed Claude metadata to agree with the canonical Agent Plugin manifest and require the released Claude ZIP to contain the same Claude plugin manifest. Required CI repeats the contract on Linux, Windows, and macOS before review.
+The installed-cache acceptance creates a disposable Git-backed marketplace in an isolated Claude configuration, installs revision A, advances the repository to revision B, refreshes and updates the plugin, and proves Claude uses a new cache path and the second revision's contents. It also verifies exactly nine skills and runs ZzzOps initialization from Claude's cache.
+
+Claude's strict validator currently warns when `version` is omitted even though Anthropic documents omission as the commit-SHA mode. The acceptance harness allows exactly that one warning, requires the same artifact to pass native non-strict validation, and rejects every additional strict-validation warning or error. Required CI repeats the complete contract with a pinned Claude CLI before review.
 
 ## Owner checklist
 
@@ -86,7 +92,7 @@ Before submitting:
 - [ ] Confirm parent goal #300 is integrated and all required checks pass at the exact candidate commit.
 - [ ] Confirm the public repository and candidate commit contain both Claude manifests and the complete canonical plugin tree.
 - [ ] Run the verification commands above and retain links to the exact-head CI evidence.
-- [ ] Verify the repository, homepage, privacy, support, license, description, and version values against the live files.
+- [ ] Verify the repository, homepage, privacy, support, license, description, and Git-derived cache version behavior against the live files.
 - [ ] Read every identity, ownership, security, licensing, privacy, and legal attestation in the live form and personally confirm only statements the owner can support.
 - [ ] Map every required form field to reviewed repository evidence; preserve unknown fields rather than inventing answers.
 - [ ] Review the exact payload and attestations before pressing submit.
