@@ -40,6 +40,13 @@ _entropy = importlib.util.module_from_spec(_ENTROPY_MODULE_SPEC)
 sys.modules[_ENTROPY_MODULE_SPEC.name] = _entropy
 _ENTROPY_MODULE_SPEC.loader.exec_module(_entropy)
 
+_ENTROPY_REVIEW_MODULE_PATH = Path(__file__).with_name("entropy_review.py")
+_ENTROPY_REVIEW_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_entropy_review", _ENTROPY_REVIEW_MODULE_PATH)
+assert _ENTROPY_REVIEW_MODULE_SPEC and _ENTROPY_REVIEW_MODULE_SPEC.loader
+_entropy_review = importlib.util.module_from_spec(_ENTROPY_REVIEW_MODULE_SPEC)
+sys.modules[_ENTROPY_REVIEW_MODULE_SPEC.name] = _entropy_review
+_ENTROPY_REVIEW_MODULE_SPEC.loader.exec_module(_entropy_review)
+
 _DIAGNOSTICS_MODULE_PATH = Path(__file__).with_name("diagnostics.py")
 _DIAGNOSTICS_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_diagnostics", _DIAGNOSTICS_MODULE_PATH)
 assert _DIAGNOSTICS_MODULE_SPEC and _DIAGNOSTICS_MODULE_SPEC.loader
@@ -212,6 +219,15 @@ list_entropy_observations = _entropy.list_observations
 record_entropy_observation = _entropy.record_observation
 resolve_entropy_observations = _entropy.resolve_observations
 EntropyObservationError = _entropy.EntropyObservationError
+
+entropy_review_directory = _entropy_review.review_directory
+normalize_entropy_review_event = _entropy_review.normalize_review_event
+record_entropy_review_event = _entropy_review.record_review_event
+entropy_review_status = _entropy_review.entropy_review_status
+plan_entropy_review = _entropy_review.plan_entropy_review
+complete_entropy_review = _entropy_review.complete_entropy_review
+load_entropy_review_json = _entropy_review.load_review_json
+EntropyReviewError = _entropy_review.EntropyReviewError
 
 TimingSession = _diagnostics.TimingSession
 diagnostic_directory = _diagnostics.diagnostic_directory
@@ -1548,6 +1564,17 @@ def main() -> int:
     entropy_resolve = entropy_commands.add_parser("resolve", help="Remove observations after validation")
     entropy_resolve.add_argument("--fingerprint", action="append", dest="fingerprints", required=True)
     entropy_resolve.add_argument("--outcome", choices=("captured", "dismissed"), required=True)
+    entropy_review = entropy_commands.add_parser("review", help="Track exact entropy-review batches and coverage")
+    entropy_review_commands = entropy_review.add_subparsers(dest="entropy_review_command", required=True)
+    entropy_review_status_parser = entropy_review_commands.add_parser("status", help="Report uncovered exact review work")
+    entropy_review_status_parser.add_argument("--current-event", action="append", default=None)
+    entropy_review_mark = entropy_review_commands.add_parser("mark", help="Record one exact goal-change event")
+    entropy_review_mark.add_argument("--input", type=Path, required=True)
+    entropy_review_plan = entropy_review_commands.add_parser("plan", help="Freeze one recent or full review batch")
+    entropy_review_plan.add_argument("--mode", choices=("recent", "full"), required=True)
+    entropy_review_plan.add_argument("--current-event", action="append", default=None)
+    entropy_review_complete = entropy_review_commands.add_parser("complete", help="Record successful exact review coverage")
+    entropy_review_complete.add_argument("--input", type=Path, required=True)
     diagnostics = commands.add_parser("diagnostics", help="Inspect privacy-safe local timing diagnostics")
     diagnostics_commands = diagnostics.add_subparsers(dest="diagnostics_command", required=True)
     diagnostics_commands.add_parser("list", help="List validated local timing aggregates")
@@ -1651,8 +1678,8 @@ def main() -> int:
             print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 0
         elif args.command == "entropy":
-            project = reviewed_project_state(repo)
             if args.entropy_command == "list":
+                project = reviewed_project_state(repo)
                 result = list_entropy_observations(repo, project)
             elif args.entropy_command == "observe":
                 result = record_entropy_observation(
@@ -1663,10 +1690,40 @@ def main() -> int:
                     goal=args.goal,
                     revision=args.revision,
                 )
-            else:
+            elif args.entropy_command == "resolve":
                 result = resolve_entropy_observations(
                     repo, fingerprints=args.fingerprints, outcome=args.outcome,
                 )
+            else:
+                project = reviewed_project_state(repo)
+                repository_identity = _project_repository_identity(project)
+                eligible = list_entropy_observations(repo, project)["observations"]
+                observation_fingerprints = [_entropy._fingerprint(item) for item in eligible]
+                if args.entropy_review_command == "status":
+                    result = entropy_review_status(
+                        repo,
+                        current_event_fingerprints=args.current_event,
+                        observation_fingerprints=observation_fingerprints,
+                        expected_repository=repository_identity,
+                    )
+                elif args.entropy_review_command == "mark":
+                    event = load_entropy_review_json(args.input.resolve())
+                    if not isinstance(event.get("repository"), str) or event["repository"].casefold() != repository_identity.casefold():
+                        raise EntropyReviewError("entropy-review event repository does not match project policy")
+                    result = record_entropy_review_event(repo, event)
+                elif args.entropy_review_command == "plan":
+                    result = plan_entropy_review(
+                        repo,
+                        mode=args.mode,
+                        current_event_fingerprints=args.current_event,
+                        observation_fingerprints=observation_fingerprints,
+                        expected_repository=repository_identity,
+                    )
+                else:
+                    result = complete_entropy_review(
+                        repo, load_entropy_review_json(args.input.resolve()),
+                        expected_repository=repository_identity,
+                    )
             print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 0
         elif args.command == "diagnostics":

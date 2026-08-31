@@ -4,6 +4,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -96,6 +97,12 @@ class EntropyModuleTests(unittest.TestCase):
         self.assertIs(zzzops.record_entropy_observation, zzzops._entropy.record_observation)
         self.assertIs(zzzops.resolve_entropy_observations, zzzops._entropy.resolve_observations)
         self.assertEqual(zzzops._policy.WORK_SUGGESTION_CATEGORIES, zzzops._entropy.ENTROPY_CATEGORIES)
+        self.assertIs(zzzops.entropy_review_directory, zzzops._entropy_review.review_directory)
+        self.assertIs(zzzops.record_entropy_review_event, zzzops._entropy_review.record_review_event)
+        self.assertIs(zzzops.entropy_review_status, zzzops._entropy_review.entropy_review_status)
+        self.assertIs(zzzops.plan_entropy_review, zzzops._entropy_review.plan_entropy_review)
+        self.assertIs(zzzops.complete_entropy_review, zzzops._entropy_review.complete_entropy_review)
+        self.assertIn("zzzops/entropy_review.py", zzzops._package.REQUIRED_FILES)
 
     def observe(self, goal=1, evidence="AGENTS.md repeats a rule already enforced by CI.", category="documentation"):
         return zzzops.record_entropy_observation(
@@ -170,6 +177,279 @@ class EntropyModuleTests(unittest.TestCase):
                 evidence="x" * 281, goal=1, revision=2,
             )
         self.assertFalse(zzzops.entropy_observation_directory(self.repo).exists())
+
+    def review_event(self, *, revision=2, head="2" * 40, kind="verified_checkpoint", status="blocked"):
+        return {
+            "schema_version": 1,
+            "repository": "owner/repo",
+            "goal": 7,
+            "revision": revision,
+            "goal_digest": f"{revision % 10}" * 64,
+            "status": status,
+            "kind": kind,
+            "pr": 11,
+            "base_oid": "1" * 40,
+            "head_oid": head,
+            "merge_oid": "3" * 40 if kind == "integrated_change" else None,
+        }
+
+    def test_entropy_review_exact_lifecycle_is_idempotent_and_changed_heads_stay_due(self):
+        first = zzzops.record_entropy_review_event(self.repo, self.review_event())
+        duplicate = zzzops.record_entropy_review_event(self.repo, self.review_event())
+        self.assertTrue(first["recorded"])
+        self.assertFalse(duplicate["recorded"])
+        current = [first["event_id"]]
+        recovered = zzzops.entropy_review_status(self.repo)
+        self.assertTrue(recovered["due"])
+        self.assertEqual(current, recovered["pending_events"])
+
+        planned = zzzops.plan_entropy_review(self.repo, mode="recent")
+        repeated_plan = zzzops.plan_entropy_review(self.repo, mode="recent", current_event_fingerprints=current)
+        self.assertTrue(planned["due"])
+        self.assertEqual(self.review_event(), {key: value for key, value in planned["event_records"][0].items() if key != "event_id"})
+        self.assertEqual(planned["batch_id"], repeated_plan["batch_id"])
+        self.assertFalse(repeated_plan["recorded"])
+        self.assertTrue(zzzops.entropy_review_status(self.repo, current)["due"])
+
+        completed = zzzops.complete_entropy_review(self.repo, {
+            "schema_version": 1,
+            "batch_id": planned["batch_id"],
+            "outcome": "clean",
+            "current_events": [first["event_id"]],
+        })
+        repeated_completion = zzzops.complete_entropy_review(self.repo, {
+            "schema_version": 1,
+            "batch_id": planned["batch_id"],
+            "outcome": "clean",
+            "current_events": [first["event_id"]],
+        })
+        self.assertTrue(completed["recorded"])
+        self.assertFalse(repeated_completion["recorded"])
+        self.assertFalse(zzzops.entropy_review_status(self.repo, current)["due"])
+
+        amended = zzzops.record_entropy_review_event(
+            self.repo, self.review_event(revision=3, head="4" * 40),
+        )
+        status = zzzops.entropy_review_status(self.repo, [amended["event_id"]])
+        self.assertTrue(status["due"])
+        self.assertEqual([amended["event_id"]], status["pending_events"])
+
+    def test_entropy_review_interruption_late_events_and_concurrent_receipts_preserve_union(self):
+        first = zzzops.record_entropy_review_event(self.repo, self.review_event())
+        first_batch = zzzops.plan_entropy_review(
+            self.repo, mode="recent", current_event_fingerprints=[first["event_id"]],
+        )
+        self.assertTrue(
+            zzzops.entropy_review_status(self.repo, [first["event_id"]])["due"],
+            "planning alone must not advance coverage",
+        )
+
+        second = zzzops.record_entropy_review_event(
+            self.repo,
+            {**self.review_event(revision=3, head="4" * 40), "goal": 8},
+        )
+        current = [first["event_id"], second["event_id"]]
+        combined_batch = zzzops.plan_entropy_review(
+            self.repo, mode="recent", current_event_fingerprints=current,
+        )
+        requests = [
+            {"schema_version": 1, "batch_id": first_batch["batch_id"], "outcome": "clean", "current_events": current},
+            {"schema_version": 1, "batch_id": combined_batch["batch_id"], "outcome": "findings", "current_events": current},
+        ]
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(lambda request: zzzops.complete_entropy_review(self.repo, request), requests))
+        self.assertTrue(all(result["completed"] for result in results))
+        status = zzzops.entropy_review_status(self.repo, current)
+        self.assertFalse(status["due"])
+        self.assertEqual(2, status["receipt_count"])
+
+        late = zzzops.record_entropy_review_event(
+            self.repo,
+            {**self.review_event(revision=4, head="5" * 40), "goal": 9},
+        )
+        self.assertEqual(
+            [late["event_id"]],
+            zzzops.entropy_review_status(self.repo, current + [late["event_id"]])["pending_events"],
+        )
+
+    def test_entropy_review_rejects_stale_completion_and_malformed_state(self):
+        with self.assertRaisesRegex(zzzops.EntropyReviewError, "content-addressed"):
+            zzzops.entropy_review_status(self.repo, [{}])
+        first = zzzops.record_entropy_review_event(self.repo, self.review_event())
+        batch = zzzops.plan_entropy_review(
+            self.repo, mode="recent", current_event_fingerprints=[first["event_id"]],
+        )
+        amended = zzzops.record_entropy_review_event(
+            self.repo, self.review_event(revision=3, head="4" * 40),
+        )
+        with self.assertRaisesRegex(zzzops.EntropyReviewError, "stale"):
+            zzzops.complete_entropy_review(self.repo, {
+                "schema_version": 1,
+                "batch_id": batch["batch_id"],
+                "outcome": "clean",
+                "current_events": [amended["event_id"]],
+            })
+        with self.assertRaisesRegex(zzzops.EntropyReviewError, "not the latest"):
+            zzzops.complete_entropy_review(self.repo, {
+                "schema_version": 1,
+                "batch_id": batch["batch_id"],
+                "outcome": "clean",
+                "current_events": [first["event_id"]],
+            })
+        completed_goal = self.review_event(revision=4, kind="completed_goal", status="done")
+        completed_goal.update({"pr": None, "base_oid": None, "head_oid": None, "merge_oid": None})
+        done = zzzops.record_entropy_review_event(self.repo, completed_goal)
+        self.assertIn(done["event_id"], zzzops.entropy_review_status(self.repo, [done["event_id"]])["pending_events"])
+
+        with self.assertRaisesRegex(zzzops.EntropyReviewError, "multiple revisions"):
+            zzzops.entropy_review_status(self.repo, [first["event_id"], amended["event_id"]])
+        with self.assertRaisesRegex(zzzops.EntropyReviewError, "does not exist"):
+            zzzops.entropy_review_status(self.repo, ["e" * 64])
+        with self.assertRaisesRegex(zzzops.EntropyReviewError, "does not match project repository"):
+            zzzops.entropy_review_status(self.repo, expected_repository="different/repository")
+        with self.assertRaisesRegex(zzzops.EntropyReviewError, "without a pull request"):
+            zzzops.normalize_entropy_review_event({
+                **completed_goal, "head_oid": "9" * 40,
+            })
+
+        oversized = self.repo / "oversized.json"
+        oversized.write_text(" " * (zzzops._entropy_review.MAX_REQUEST_BYTES + 1), encoding="utf-8")
+        with self.assertRaisesRegex(zzzops.EntropyReviewError, "size limit"):
+            zzzops.load_entropy_review_json(oversized)
+
+        receipts = zzzops.entropy_review_directory(self.repo) / "receipts"
+        receipts.mkdir(parents=True, exist_ok=True)
+        (receipts / ("f" * 64 + ".json")).write_text("{}\n", encoding="utf-8")
+        with self.assertRaisesRegex(zzzops.EntropyReviewError, "receipt"):
+            zzzops.entropy_review_status(self.repo, [done["event_id"]])
+
+    def test_entropy_review_observations_follow_event_trigger_and_full_mode_is_always_plannable(self):
+        observation = "a" * 64
+        self.assertFalse(zzzops.entropy_review_status(self.repo, [], [observation])["due"])
+        self.assertFalse(zzzops.plan_entropy_review(
+            self.repo, mode="recent", observation_fingerprints=[observation],
+        )["due"])
+        full = zzzops.plan_entropy_review(
+            self.repo, mode="full", observation_fingerprints=[observation],
+        )
+        self.assertTrue(full["due"])
+        self.assertEqual([], full["events"])
+        self.assertEqual([observation], full["observations"])
+        self.assertFalse(zzzops.entropy_review_status(self.repo, [], [observation])["due"])
+        zzzops.complete_entropy_review(self.repo, {
+            "schema_version": 1,
+            "batch_id": full["batch_id"],
+            "outcome": "clean",
+            "current_events": [],
+        })
+        self.assertFalse(zzzops.entropy_review_status(self.repo, [], [observation])["due"])
+        self.assertTrue(zzzops.plan_entropy_review(self.repo, mode="full", observation_fingerprints=[observation])["due"])
+
+        event = zzzops.record_entropy_review_event(self.repo, self.review_event())
+        recent = zzzops.plan_entropy_review(
+            self.repo, mode="recent", current_event_fingerprints=[event["event_id"]],
+            observation_fingerprints=[observation],
+        )
+        self.assertEqual([observation], recent["observations"])
+        zzzops.complete_entropy_review(self.repo, {
+            "schema_version": 1, "batch_id": recent["batch_id"], "outcome": "clean",
+            "current_events": [event["event_id"]],
+        })
+        later = zzzops.record_entropy_review_event(
+            self.repo, {**self.review_event(revision=3, head="4" * 40), "goal": 8},
+        )
+        next_recent = zzzops.plan_entropy_review(
+            self.repo, mode="recent", current_event_fingerprints=[event["event_id"], later["event_id"]],
+            observation_fingerprints=[observation],
+        )
+        self.assertEqual([observation], next_recent["observations"])
+
+    def test_entropy_review_one_batch_cannot_record_conflicting_outcomes(self):
+        event = zzzops.record_entropy_review_event(self.repo, self.review_event())
+        batch = zzzops.plan_entropy_review(
+            self.repo, mode="recent", current_event_fingerprints=[event["event_id"]],
+        )
+        request = {
+            "schema_version": 1, "batch_id": batch["batch_id"], "outcome": "clean",
+            "current_events": [event["event_id"]],
+        }
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            results = list(executor.map(
+                lambda _index: zzzops.complete_entropy_review(self.repo, request), range(4),
+            ))
+        self.assertEqual(1, sum(result["recorded"] for result in results))
+        with self.assertRaisesRegex(zzzops.EntropyReviewError, "different outcome"):
+            zzzops.complete_entropy_review(self.repo, {**request, "outcome": "findings"})
+
+    def test_entropy_review_cli_marks_plans_and_completes_file_backed_state(self):
+        source_state = PLUGIN_ROOT.parent.parent / ".zzzops"
+        target_state = self.repo / ".zzzops"
+        target_state.mkdir()
+        for name in ("PROJECT.md", "PROJECT_AUDIT.md", "POLICY.json"):
+            shutil.copy2(source_state / name, target_state / name)
+        event_path = self.repo / "event.json"
+        event_path.write_text(json.dumps(self.review_event()), encoding="utf-8")
+        rejected = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "--repo", str(self.repo), "entropy", "review", "mark", "--input", str(event_path)],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(2, rejected.returncode)
+        self.assertIn("does not match project policy", rejected.stdout)
+        event_path.write_text(json.dumps({**self.review_event(), "repository": "david-rzepa/zzzops"}), encoding="utf-8")
+        mark_command = [
+            sys.executable, str(MODULE_PATH), "--repo", str(self.repo),
+            "entropy", "review", "mark", "--input", str(event_path),
+        ]
+        workers = [subprocess.Popen(mark_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for _ in range(3)]
+        mark_results = [worker.communicate() + (worker.returncode,) for worker in workers]
+        self.assertTrue(all(returncode == 0 for _stdout, _stderr, returncode in mark_results))
+        marked_payloads = [json.loads(stdout) for stdout, _stderr, _returncode in mark_results]
+        self.assertEqual(1, sum(payload["recorded"] for payload in marked_payloads))
+        event_id = marked_payloads[0]["event_id"]
+        planned = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "--repo", str(self.repo), "entropy", "review", "plan", "--mode", "recent"],
+            capture_output=True, text=True, check=True,
+        )
+        batch_id = json.loads(planned.stdout)["batch_id"]
+        completion_path = self.repo / "completion.json"
+        completion_path.write_text(json.dumps({
+            "schema_version": 1, "batch_id": batch_id, "outcome": "clean", "current_events": [event_id],
+        }), encoding="utf-8")
+        complete_command = [
+            sys.executable, str(MODULE_PATH), "--repo", str(self.repo),
+            "entropy", "review", "complete", "--input", str(completion_path),
+        ]
+        workers = [subprocess.Popen(complete_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for _ in range(3)]
+        complete_results = [worker.communicate() + (worker.returncode,) for worker in workers]
+        self.assertTrue(all(returncode == 0 for _stdout, _stderr, returncode in complete_results))
+        completed_payloads = [json.loads(stdout) for stdout, _stderr, _returncode in complete_results]
+        self.assertEqual(1, sum(payload["recorded"] for payload in completed_payloads))
+
+        event_path.write_text(json.dumps({
+            **self.review_event(revision=3, head="4" * 40),
+            "repository": "david-rzepa/zzzops", "goal": 8,
+        }), encoding="utf-8")
+        second = json.loads(subprocess.run(mark_command, capture_output=True, text=True, check=True).stdout)
+        second_batch = json.loads(subprocess.run(
+            [sys.executable, str(MODULE_PATH), "--repo", str(self.repo), "entropy", "review", "plan", "--mode", "recent"],
+            capture_output=True, text=True, check=True,
+        ).stdout)
+        conflict_paths = []
+        for outcome in ("clean", "findings"):
+            path = self.repo / f"completion-{outcome}.json"
+            path.write_text(json.dumps({
+                "schema_version": 1, "batch_id": second_batch["batch_id"], "outcome": outcome,
+                "current_events": [event_id, second["event_id"]],
+            }), encoding="utf-8")
+            conflict_paths.append(path)
+        conflict_commands = [
+            [sys.executable, str(MODULE_PATH), "--repo", str(self.repo), "entropy", "review", "complete", "--input", str(path)]
+            for path in conflict_paths
+        ]
+        workers = [subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for command in conflict_commands]
+        conflict_results = [worker.communicate() + (worker.returncode,) for worker in workers]
+        self.assertEqual([0, 2], sorted(returncode for _stdout, _stderr, returncode in conflict_results))
+        self.assertIn("different outcome", "".join(stdout for stdout, _stderr, returncode in conflict_results if returncode == 2))
 
 
 class DiagnosticsModuleTests(unittest.TestCase):
