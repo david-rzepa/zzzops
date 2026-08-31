@@ -1,3 +1,4 @@
+import ast
 import importlib.util
 import io
 import json
@@ -40,6 +41,28 @@ class PolicyModuleTests(unittest.TestCase):
             "render_policy_review_table",
         ):
             self.assertIs(getattr(zzzops, name), getattr(policy, name))
+        self.assertIs(zzzops._goals._text_present, policy.text_present)
+        self.assertIs(zzzops._portfolio._text_present, policy.text_present)
+
+    def test_entry_point_has_no_local_definitions_overwritten_by_policy_exports(self):
+        tree = ast.parse(MODULE_PATH.read_text(encoding="utf-8"))
+        local_definitions = {
+            node.name
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        policy_exports = {
+            node.targets[0].id
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Attribute)
+            and isinstance(node.value.value, ast.Name)
+            and node.value.value.id == "_policy"
+            and node.targets[0].id == node.value.attr
+        }
+        self.assertEqual(set(), local_definitions & policy_exports)
 
 
 class EntropyModuleTests(unittest.TestCase):
