@@ -244,6 +244,15 @@ class DiagnosticsModuleTests(unittest.TestCase):
             with broken_clock.span("startup"):
                 raise RuntimeError("original workload failure")
 
+    def test_command_total_can_contain_sequential_leaf_spans(self):
+        session = zzzops.TimingSession(clock=iter([1.0, 1.1, 1.2, 1.3]).__next__)
+        with session.command():
+            with session.span("startup"):
+                pass
+        phases = session.snapshot()["phases"]
+        self.assertEqual(100, phases["startup"]["total_ms"])
+        self.assertEqual(300, phases["command_total"]["total_ms"])
+
     def test_local_records_are_content_addressed_bounded_and_purgeable(self):
         for duration in range(zzzops._diagnostics.MAX_RECORDS + 2):
             session = zzzops.TimingSession(clock=iter([1.0, 1.0 + duration / 1000]).__next__)
@@ -266,6 +275,42 @@ class DiagnosticsModuleTests(unittest.TestCase):
         purged = zzzops.purge_diagnostics(self.repo)
         self.assertEqual(zzzops._diagnostics.MAX_RECORDS, purged["purged"])
         self.assertEqual(0, zzzops.list_diagnostics(self.repo)["count"])
+
+    def test_profile_flag_preserves_checkpoint_output_and_records_only_when_enabled(self):
+        checkpoint = {"ready": True, "schema_version": 1, "value": "unchanged"}
+        with (
+            mock.patch.object(zzzops, "configure_cli_stdout"),
+            mock.patch.object(zzzops._package, "package_status", return_value={"ok": True}),
+            mock.patch.object(zzzops, "decision_checkpoint", return_value=checkpoint),
+            mock.patch.object(zzzops, "record_diagnostic") as record,
+        ):
+            plain_stream = io.StringIO()
+            with mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "checkpoint"]), mock.patch.object(sys, "stdout", plain_stream):
+                self.assertEqual(0, zzzops.main())
+            self.assertFalse(record.called)
+
+            profiled_stream = io.StringIO()
+            with mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "checkpoint", "--profile"]), mock.patch.object(sys, "stdout", profiled_stream):
+                self.assertEqual(0, zzzops.main())
+            self.assertEqual(plain_stream.getvalue(), profiled_stream.getvalue())
+            diagnostic = record.call_args.args[1]
+            self.assertIn("package", diagnostic["phases"])
+            self.assertIn("rendering", diagnostic["phases"])
+            self.assertIn("command_total", diagnostic["phases"])
+
+    def test_profiled_interrupt_preserves_cli_behavior_and_records_failed_total(self):
+        with (
+            mock.patch.object(zzzops, "configure_cli_stdout"),
+            mock.patch.object(zzzops._package, "package_status", return_value={"ok": True}),
+            mock.patch.object(zzzops, "decision_checkpoint", side_effect=KeyboardInterrupt),
+            mock.patch.object(zzzops, "record_diagnostic") as record,
+        ):
+            stream = io.StringIO()
+            with mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "checkpoint", "--profile"]), mock.patch.object(sys, "stdout", stream):
+                self.assertEqual(0, zzzops.main())
+        self.assertEqual("\nNo further changes made.\n", stream.getvalue())
+        diagnostic = record.call_args.args[1]
+        self.assertEqual(1, diagnostic["phases"]["command_total"]["failures"])
 
 
 class ReservationModuleTests(unittest.TestCase):
@@ -2157,10 +2202,11 @@ class PortfolioTests(unittest.TestCase):
                 SimpleNamespace(returncode=0, stdout=json.dumps(body_payload(issue_one, feedback)), stderr=""),
             ]
             snapshot = zzzops.portfolio_snapshot(repo)
+            timing = zzzops.TimingSession(clock=iter([10.0, 10.125, 20.0, 20.009, 30.0, 30.050]).__next__)
             _, included = zzzops.github_repository_portfolio_snapshot(
                 repo, {"backend": "github_issues", "repository": {"identity": "owner/repo"},
                        "policy": {"sections": [{"id": "autonomy_approval_parallelism", "settings": {"resource_reservations": TEST_RESOURCE_POLICY}}]}},
-                include_feedback=True,
+                include_feedback=True, timing=timing,
             )
         self.assertEqual([1, 3], [goal["key"] for goal in snapshot["goals"]])
         self.assertEqual([1, 2, 3], [goal["key"] for goal in included["goals"]])
@@ -2187,6 +2233,25 @@ class PortfolioTests(unittest.TestCase):
         self.assertEqual("https://example.test/owner/repo/issues/1", snapshot["goals"][0]["url"])
         self.assertLess(snapshot["summary"]["discovery_raw_bytes"], snapshot["summary"]["raw_bytes"])
         self.assertEqual(4, run.call_count)
+        phases = timing.snapshot()["phases"]
+        self.assertEqual(125, phases["github_discovery"]["total_ms"])
+        self.assertEqual(9, phases["goal_hydration"]["total_ms"])
+        self.assertEqual(50, phases["graph_validation"]["total_ms"])
+
+    @mock.patch.object(zzzops.shutil, "which", return_value="gh")
+    @mock.patch.object(zzzops.subprocess, "run")
+    def test_github_timing_preserves_provider_failure_without_retaining_error_text(self, run, _which):
+        run.return_value = SimpleNamespace(returncode=1, stdout="", stderr="private provider detail")
+        timing = zzzops.TimingSession(clock=iter([1.0, 1.050]).__next__)
+        project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}}
+
+        with self.assertRaisesRegex(ValueError, "private provider detail"):
+            zzzops.github_repository_portfolio_snapshot(Path("."), project, timing=timing)
+
+        diagnostic = timing.snapshot()
+        self.assertEqual(1, diagnostic["phases"]["github_discovery"]["failures"])
+        self.assertNotIn("private", json.dumps(diagnostic))
+        self.assertNotIn("owner/repo", json.dumps(diagnostic))
 
     @mock.patch.object(zzzops.shutil, "which", side_effect=lambda command: command)
     @mock.patch.object(zzzops.subprocess, "run")
