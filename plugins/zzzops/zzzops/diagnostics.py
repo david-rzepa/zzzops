@@ -16,6 +16,7 @@ from typing import Any, Callable, Iterator
 SCHEMA_VERSION = 1
 DIRECTORY_RELATIVE = "zzzops/timing-diagnostics"
 MAX_RECORDS = 32
+MAX_SUGGESTION_AGE_SECONDS = 7 * 24 * 60 * 60
 MAX_DURATION_MS = 86_400_000
 MAX_TOTAL_MS = MAX_DURATION_MS * 1_000_000
 PHASES = frozenset({
@@ -269,6 +270,7 @@ def record_diagnostic(repo: Path, value: dict[str, Any]) -> dict[str, Any]:
             recorded = True
         except FileExistsError:
             recorded = False
+            target.touch()
         confirmed = _read_diagnostic(target)
         pruned = _prune(directory)
         return {"recorded": recorded, "id": identifier, "pruned": pruned, "diagnostic": confirmed}
@@ -283,6 +285,45 @@ def list_diagnostics(repo: Path) -> dict[str, Any]:
         for path in sorted(directory.glob("*.json")):
             items.append({"id": path.stem, "diagnostic": _read_diagnostic(path)})
     return {"schema_version": SCHEMA_VERSION, "count": len(items), "diagnostics": items}
+
+
+def timing_suggestion(repo: Path, *, now: float | None = None) -> dict[str, Any]:
+    """Return one current, fixed-field bottleneck candidate without mutating local state."""
+    directory = diagnostic_directory(repo)
+    paths = list(directory.glob("*.json")) if directory.exists() else []
+    if not paths:
+        return {"schema_version": SCHEMA_VERSION, "available": False, "reason": "missing"}
+    records: list[tuple[int, str, dict[str, Any]]] = []
+    try:
+        for path in paths:
+            records.append((path.stat().st_mtime_ns, path.name, _read_diagnostic(path)))
+    except (OSError, DiagnosticError):
+        return {"schema_version": SCHEMA_VERSION, "available": False, "reason": "malformed"}
+    modified_ns, _name, diagnostic = max(records)
+    observed_now = time.time() if now is None else now
+    if not isinstance(observed_now, (int, float)) or isinstance(observed_now, bool):
+        raise DiagnosticError("current time must be numeric")
+    age_seconds = observed_now - modified_ns / 1_000_000_000
+    if age_seconds < 0:
+        return {"schema_version": SCHEMA_VERSION, "available": False, "reason": "malformed"}
+    if age_seconds > MAX_SUGGESTION_AGE_SECONDS:
+        return {"schema_version": SCHEMA_VERSION, "available": False, "reason": "stale"}
+    candidates = [
+        (aggregate["total_ms"], phase, aggregate)
+        for phase, aggregate in diagnostic["phases"].items()
+        if phase != "command_total" and aggregate["provenance"] != "unavailable"
+    ]
+    if not candidates:
+        return {"schema_version": SCHEMA_VERSION, "available": False, "reason": "no_measured_phase"}
+    _total, phase, aggregate = max(candidates, key=lambda item: (item[0], item[1]))
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "available": True,
+        "reason": "available",
+        "freshness": "current",
+        "dominant_phase": phase,
+        "aggregate": json.loads(json.dumps(aggregate, sort_keys=True)),
+    }
 
 
 def purge_diagnostics(repo: Path) -> dict[str, int]:

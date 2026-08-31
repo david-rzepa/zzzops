@@ -186,6 +186,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
         for name in (
             "TimingSession", "diagnostic_directory", "validate_diagnostic",
             "record_diagnostic", "list_diagnostics", "purge_diagnostics",
+            "timing_suggestion",
         ):
             self.assertIs(getattr(zzzops, name), getattr(diagnostics, name))
 
@@ -275,6 +276,88 @@ class DiagnosticsModuleTests(unittest.TestCase):
         purged = zzzops.purge_diagnostics(self.repo)
         self.assertEqual(zzzops._diagnostics.MAX_RECORDS, purged["purged"])
         self.assertEqual(0, zzzops.list_diagnostics(self.repo)["count"])
+
+    def test_repeated_identical_profile_refreshes_freshness_without_duplication(self):
+        session = zzzops.TimingSession()
+        session.mark("github_discovery", provenance="measured", milliseconds=250)
+        diagnostic = session.snapshot()
+        first = zzzops.record_diagnostic(self.repo, diagnostic)
+        path = zzzops.diagnostic_directory(self.repo) / f'{first["id"]}.json'
+        os.utime(path, (1, 1))
+
+        repeated = zzzops.record_diagnostic(self.repo, diagnostic)
+
+        self.assertFalse(repeated["recorded"])
+        self.assertGreater(path.stat().st_mtime, 1)
+        self.assertEqual(1, zzzops.list_diagnostics(self.repo)["count"])
+
+    def test_timing_suggestion_fails_closed_for_missing_malformed_and_stale_data(self):
+        missing = zzzops.timing_suggestion(self.repo, now=1_000_000)
+        self.assertEqual(
+            {"schema_version": 1, "available": False, "reason": "missing"},
+            missing,
+        )
+
+        directory = zzzops.diagnostic_directory(self.repo)
+        directory.mkdir(parents=True)
+        (directory / ("0" * 64 + ".json")).write_text('{"repository":"private"}', encoding="utf-8")
+        malformed = zzzops.timing_suggestion(self.repo, now=1_000_000)
+        self.assertEqual("malformed", malformed["reason"])
+        self.assertNotIn("repository", json.dumps(malformed))
+
+        zzzops.purge_diagnostics(self.repo)
+        session = zzzops.TimingSession()
+        session.mark("github_discovery", provenance="measured", milliseconds=250)
+        recorded = zzzops.record_diagnostic(self.repo, session.snapshot())
+        path = directory / f'{recorded["id"]}.json'
+        stale_time = 1_000_000 - zzzops._diagnostics.MAX_SUGGESTION_AGE_SECONDS - 1
+        os.utime(path, (stale_time, stale_time))
+        stale = zzzops.timing_suggestion(self.repo, now=1_000_000)
+        self.assertEqual("stale", stale["reason"])
+
+    def test_timing_suggestion_returns_only_the_dominant_fixed_phase(self):
+        session = zzzops.TimingSession()
+        session.mark("command_total", provenance="measured", milliseconds=2_500)
+        session.mark("github_discovery", provenance="measured", milliseconds=1_500)
+        session.mark("goal_hydration", provenance="measured", milliseconds=800)
+        session.mark("context_compaction", provenance="unavailable")
+        recorded = zzzops.record_diagnostic(self.repo, session.snapshot())
+        path = zzzops.diagnostic_directory(self.repo) / f'{recorded["id"]}.json'
+        os.utime(path, (1_000_000, 1_000_000))
+
+        result = zzzops.timing_suggestion(self.repo, now=1_000_001)
+
+        self.assertEqual(
+            {
+                "schema_version": 1,
+                "available": True,
+                "reason": "available",
+                "freshness": "current",
+                "dominant_phase": "github_discovery",
+                "aggregate": {
+                    "provenance": "measured", "count": 1, "total_ms": 1_500,
+                    "min_ms": 1_500, "max_ms": 1_500, "failures": 0,
+                },
+            },
+            result,
+        )
+        self.assertNotIn("command_total", json.dumps(result))
+
+    def test_diagnostics_suggest_cli_is_read_only_when_no_data_exists(self):
+        no_data = {"schema_version": 1, "available": False, "reason": "missing"}
+        with (
+            mock.patch.object(zzzops, "configure_cli_stdout"),
+            mock.patch.object(zzzops._package, "package_status", return_value={"ok": True}),
+            mock.patch.object(zzzops, "timing_suggestion", return_value=no_data),
+            mock.patch.object(zzzops, "record_diagnostic") as record,
+            mock.patch.object(zzzops, "purge_diagnostics") as purge,
+            mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "diagnostics", "suggest"]),
+            mock.patch.object(sys, "stdout", io.StringIO()) as stream,
+        ):
+            self.assertEqual(0, zzzops.main())
+        self.assertEqual(no_data, json.loads(stream.getvalue()))
+        record.assert_not_called()
+        purge.assert_not_called()
 
     def test_profile_flag_preserves_checkpoint_output_and_records_only_when_enabled(self):
         checkpoint = {"ready": True, "schema_version": 1, "value": "unchanged"}
@@ -3702,6 +3785,23 @@ class WorkflowContractTests(unittest.TestCase):
             "unrestricted command execution", "explicit size/retention limits",
         ):
             self.assertIn(phrase, reference)
+
+    def test_timing_suggestions_are_local_optional_and_never_refill_work(self):
+        suggest = (
+            PLUGIN_ROOT / "skills" / "suggest-zzzops-work" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        performance = (PLUGIN_ROOT.parent.parent / "docs" / "PERFORMANCE.md").read_text(encoding="utf-8")
+        for phrase in (
+            "diagnostics suggest", "available:true", "missing", "malformed", "stale",
+            "no_measured_phase", "never enter exhausted-queue refill", "never submitted",
+            "explicit `apply`",
+        ):
+            self.assertIn(phrase, suggest)
+        for phrase in (
+            "Workflow timing capability audit", "Codex", "Claude Code", "Tool wait",
+            "Model work", "Context compaction", "unavailable", "older than seven days",
+        ):
+            self.assertIn(phrase, performance)
 
     def test_entropy_observation_workflow_is_incidental_and_authority_bounded(self):
         root = PLUGIN_ROOT

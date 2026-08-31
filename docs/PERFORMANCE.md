@@ -29,6 +29,27 @@ The profile uses fixed phase and provenance enums plus bounded integer milliseco
 
 Four process-cold Windows checkpoint samples on 2026-08-31 recorded internal command totals of 2,343–2,640 ms. GitHub discovery was the largest measured phase at 1,250–1,687 ms, followed by goal hydration at 735–875 ms; graph validation was 0–16 ms, two package validations totaled 109–110 ms, Git origin was 47–62 ms, and repository-size measurement was 46–62 ms. Three externally measured invocations took 2,554–2,872 ms. The difference includes interpreter/import startup and final diagnostic persistence, which the in-process profiler does not pretend to attribute; `startup` is therefore recorded as `unavailable`. These samples establish a diagnostic baseline, not a CI threshold.
 
+### Workflow timing capability audit
+
+ZzzOps distributes skills to Codex and Claude Code, but its plugin manifest contains no MCP server, runtime hook, hosted service, or telemetry path. The repository can therefore consume only its own explicit local CLI profiles. It does not treat host UI timestamps, conversation text, or model estimates as diagnostic events.
+
+| Interval | Codex | Claude Code | Diagnostic treatment |
+| --- | --- | --- | --- |
+| Checkpoint/portfolio command total | Explicit `--profile` | Explicit `--profile` | Measured in process; excludes interpreter/import startup and persistence. |
+| Package, policy, Git, GitHub discovery/hydration, graph, size, and rendering phases | Explicit `--profile` | Explicit `--profile` | Measured at stable repository-owned boundaries. |
+| Interpreter/import startup | No repository-readable start event | No repository-readable start event | `unavailable`; an external process timer may explain a benchmark gap but is not retained as phase evidence. |
+| Tool wait outside the CLI process | No plugin event source | No plugin event source | `unavailable`; never inferred from command or conversation elapsed time. |
+| Model work | No plugin event source | No plugin event source | `unavailable`; never inferred from response timing. |
+| Context compaction | No documented plugin event consumed by this package | No documented plugin event consumed by this package | `unavailable`; prompt-size estimates are not compaction timing. |
+
+Read the newest local candidate without changing it:
+
+```powershell
+<python> <zzzops-cli> --repo . diagnostics suggest
+```
+
+The command fails closed with a fixed `missing`, `malformed`, `stale`, or `no_measured_phase` reason. A record older than seven days is stale. A current result contains only the dominant fixed phase and its validated aggregate; command totals are excluded so the candidate points to an actionable leaf boundary. The suggestion workflow may use that result as optional evidence for a preview, but it cannot submit diagnostics, add performance work during exhausted-queue refill, or create a goal without explicit `apply`.
+
 Execution performs no scheduled entropy scan, completion bookkeeping, or changed-line analysis. Only a concrete observation already exposed by ordinary work causes one small atomic Git-local file creation. Every explicit work-suggestion run reads the compact inbox once and spends audit tokens only validating policy-eligible observations; excluded categories remain unread in the returned evidence set.
 
 The utility reports malformed records, duplicate/self/missing/cyclic relations, status/dependency conflicts, stale claims, review checkpoint errors, GitHub label/state drift, and snapshot changes. It never prioritizes, repairs, mutates, caches, or replaces agent judgment.
