@@ -219,6 +219,7 @@ validate_diagnostic = _diagnostics.validate_diagnostic
 record_diagnostic = _diagnostics.record_diagnostic
 list_diagnostics = _diagnostics.list_diagnostics
 purge_diagnostics = _diagnostics.purge_diagnostics
+timing_suggestion = _diagnostics.timing_suggestion
 DiagnosticError = _diagnostics.DiagnosticError
 
 
@@ -1855,6 +1856,9 @@ def main() -> int:
     entropy_resolve = entropy_commands.add_parser("resolve", help="Remove observations after validation")
     entropy_resolve.add_argument("--fingerprint", action="append", dest="fingerprints", required=True)
     entropy_resolve.add_argument("--outcome", choices=("captured", "dismissed"), required=True)
+    diagnostics = commands.add_parser("diagnostics", help="Inspect privacy-safe local timing diagnostics")
+    diagnostics_commands = diagnostics.add_subparsers(dest="diagnostics_command", required=True)
+    diagnostics_commands.add_parser("suggest", help="Read one current bounded bottleneck candidate")
     portfolio_parser = commands.add_parser("portfolio", help="Read and audit the canonical goal portfolio once")
     portfolio_parser.add_argument("--format", dest="output_format", choices=("summary", "json"), default="summary")
     portfolio_parser.add_argument("--include-done", action="store_true", help="Include terminal goals in summary output")
@@ -1966,6 +1970,10 @@ def main() -> int:
                 result = resolve_entropy_observations(
                     repo, fingerprints=args.fingerprints, outcome=args.outcome,
                 )
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+            return 0
+        elif args.command == "diagnostics":
+            result = timing_suggestion(repo)
             print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 0
         elif args.command == "checkpoint":
