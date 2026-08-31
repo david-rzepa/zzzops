@@ -9,7 +9,7 @@ ZzzOps keeps one plugin implementation in `plugins/zzzops`. Claude-specific repo
 - `.claude-plugin/marketplace.json`, which points to `./plugins/zzzops`;
 - `plugins/zzzops/.claude-plugin/plugin.json`, which describes that canonical plugin directory.
 
-Skills, rules, scripts, and the ZzzOps runtime are not copied into a second Claude tree. The release process additionally creates one directly installable `zzzops-claude-plugin-v<version>.zip`; there is no Claude submission archive because Anthropic reviews repository state.
+Skills, rules, scripts, and the ZzzOps runtime are not copied into a second Claude tree or release archive. Anthropic review and normal marketplace installation consume repository state. CI still generates a disposable marketplace to prove strict Claude validation, then performs isolated installation and installed-cache runtime acceptance from the repository marketplace.
 
 ## Direct Claude Code installation
 

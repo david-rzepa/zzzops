@@ -42,9 +42,7 @@ module.exports = {
       "@semantic-release/github",
       {
         assets: [
-          { path: "dist/marketplace/zzzops-plugin-v*.zip", label: "OpenAI portal skills bundle" },
-          { path: "dist/marketplace/zzzops-openai-submission-v*.zip", label: "OpenAI submission packet" },
-          { path: "dist/marketplace/zzzops-claude-plugin-v*.zip", label: "Claude Code plugin bundle" }
+          { path: "dist/marketplace/zzzops-plugin-v*.zip", label: "OpenAI portal skills bundle" }
         ]
       }
     ]

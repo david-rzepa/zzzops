@@ -12,7 +12,6 @@ import subprocess
 import sys
 import tempfile
 from typing import Any
-from zipfile import ZipFile
 
 
 EXPECTED_SKILLS = {
@@ -82,15 +81,6 @@ def validate_install(records: Any, config: Path, version: str) -> Path:
     return install
 
 
-def extract_archive(archive_path: Path, destination: Path) -> None:
-    with ZipFile(archive_path) as archive:
-        for name in archive.namelist():
-            relative = Path(name)
-            if relative.is_absolute() or ".." in relative.parts:
-                raise AcceptanceError(f"release archive contains an unsafe path: {name}")
-        archive.extractall(destination)
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate generated ZzzOps through an isolated Claude installation")
     parser.add_argument("--claude-version", required=True)
@@ -104,29 +94,26 @@ def main(argv: list[str] | None = None) -> int:
     try:
         with tempfile.TemporaryDirectory(prefix="zzzops-claude-acceptance-") as directory:
             workspace = Path(directory)
-            plugin = workspace / "plugin"
-            artifacts = workspace / "artifacts"
+            marketplace = workspace / "marketplace"
             config = workspace / "config"
             project = workspace / "project"
-            release_notes = workspace / "RELEASE_NOTES.md"
             config.mkdir()
             project.mkdir()
-            release_notes.write_text("Claude release artifact acceptance.\n", encoding="utf-8")
             env = os.environ.copy()
             env["CLAUDE_CONFIG_DIR"] = str(config)
             observed_version = run(["claude", "--version"], env=env).strip()
             if not observed_version.startswith(args.claude_version + " "):
                 raise AcceptanceError(f"Claude CLI version drift: expected {args.claude_version}, observed {observed_version}")
             built = json_output([
-                sys.executable, str(root / ".github" / "scripts" / "build_marketplace_bundle.py"),
-                "--version", version, "--release-notes-file", str(release_notes),
-                "--output", str(artifacts),
+                sys.executable, str(root / ".github" / "scripts" / "build_claude_plugin.py"),
+                "--version", version, "--output", str(marketplace),
             ])
-            claude_plugin = Path(built.get("claude_plugin", "")) if isinstance(built, dict) else Path()
-            if not claude_plugin.is_file():
-                raise AcceptanceError("release builder did not produce the Claude plugin archive")
-            extract_archive(claude_plugin, plugin)
+            generated = Path(built.get("marketplace", "")) if isinstance(built, dict) else Path()
+            plugin = generated / "zzzops"
+            if generated.resolve() != marketplace.resolve() or not plugin.is_dir():
+                raise AcceptanceError("Claude generator did not produce the expected repository marketplace")
             run(["claude", "plugin", "validate", str(root), "--strict"], env=env)
+            run(["claude", "plugin", "validate", str(generated), "--strict"], env=env)
             run(["claude", "plugin", "validate", str(plugin), "--strict"], env=env)
             run(["claude", "plugin", "marketplace", "add", str(root), "--scope", "user"], env=env)
             available = json_output(["claude", "plugin", "list", "--available", "--json"], env=env)
