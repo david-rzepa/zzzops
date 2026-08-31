@@ -99,7 +99,7 @@ class PromptStatsTests(unittest.TestCase):
         root = SCRIPT.parents[1]
         report = prompt_stats.render_workflow_report(root)
         self.assertEqual(
-            {"agentic-coaching", "bootstrap-greenfield", "bootstrap-brownfield", "capture", "execution", "policy-review", "migration", "suggestion", "acceptance", "feedback"},
+            {"agentic-coaching", "bootstrap-greenfield", "bootstrap-brownfield", "capture", "execution", "policy-review", "migration", "suggestion", "installation-validation", "acceptance", "feedback"},
             set(prompt_stats.WORKFLOW_PROMPTS),
         )
         self.assertEqual(set(prompt_stats.WORKFLOW_PROMPTS), set(prompt_stats.WORKFLOW_SIGNALS))
@@ -108,6 +108,25 @@ class PromptStatsTests(unittest.TestCase):
         self.assertEqual({"codex"}, set(prompt_stats.HARNESS_PROMPTS))
         for workflow in prompt_stats.WORKFLOW_PROMPTS:
             self.assertIn(f"| {workflow} |", report)
+
+    def test_proactive_delegation_signal_reaches_every_applicable_workflow(self) -> None:
+        root = SCRIPT.parents[1]
+        for workflow in prompt_stats.PROACTIVE_DELEGATION_WORKFLOWS:
+            self.assertIn(prompt_stats.DELEGATION_PROMPT, prompt_stats.WORKFLOW_PROMPTS[workflow])
+        delegation = (root / prompt_stats.DELEGATION_PROMPT).read_text(encoding="utf-8")
+        for phrase in (
+            "authority/safety", "conflict/coupling", "triviality", "overhead",
+            "record why", "sequential fallback", "concise evidence-linked summaries",
+            "Only the coordinator owns", "claims/reservations", "external writes",
+            "Read-only never write", "disjoint worktrees",
+        ):
+            self.assertIn(phrase, delegation)
+        missing = [
+            workflow for workflow in sorted(prompt_stats.PROACTIVE_DELEGATION_WORKFLOWS)
+            if prompt_stats.PROACTIVE_DELEGATION_SIGNAL
+            not in prompt_stats.workflow_profile(root, workflow, "codex")[2]
+        ]
+        self.assertEqual([], missing)
 
     def test_workflow_eval_reports_missing_signal(self) -> None:
         root = SCRIPT.parents[1]

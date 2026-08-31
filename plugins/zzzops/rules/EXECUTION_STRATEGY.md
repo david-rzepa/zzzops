@@ -23,27 +23,19 @@ Preserve the smallest reproduction; distinguish product from test/environment fa
 
 ## Delegation and parallelism
 
-PROJECT resource/autonomy ceilings set measurement, threshold, mode, and worker cap; missing settings defer delegation to policy review. Policy never weakens safety/authority.
-
-- `sequential`: no parallel execution; a wait monitor may keep the main thread free.
-- `read_only`: bounded inspections/proposals/waits; only main writes.
-- `worktrees`: additionally permits isolated writable sub-goals below.
-
-Parallelize only independent, verifiable scopes with disjoint exclusive resources, permitted dependencies/capacity, and worthwhile latency benefit. Inspect and coordinate advisory overlap first; stop on exclusive contention, conflict, conflicting assumptions, or poor value. Read-only workers never claim/edit/branch/start implementation; main reconciles and writes.
-
-Sub-agents may create isolated disposable output/logs or assigned-port processes. Unless `worktrees` permits source work, they may not install, rewrite tracked files, deploy/migrate, change Git, or mutate shared external systems.
+Apply the shared [delegation contract](DELEGATION.md) and PROJECT ceilings; missing settings defer to policy review. Inspect advisory overlap; stop on contention/conflict. Assigned disposable output/processes are allowed, but without `worktrees` workers never install, edit, deploy, change Git, or mutate shared systems.
 
 ### Writable worktrees
 
-Use only for Git-backed, independently verifiable sub-goals with disjoint exclusive resources. Advisory text overlap needs coordinator-inspected PRs and a reconciliation order.
+Use only for Git-backed, independently verifiable sub-goals with disjoint exclusive resources.
 
-1. Coordinator claims, reviews the base, and creates one clean worktree/branch per child.
-2. Assign paths, criteria, baseline/probe, prohibited shared files, resources, and stop.
-3. Worker stays isolated, tests observable chunks, commits once, and reports hash/evidence/risk/discoveries; it never edits goal/project state, root instructions, or shared systems.
-4. Coordinator sequentially integrates and probes each commit plus combined behavior; only it updates ZzzOps state.
-5. Remove afterward, or verify clean and record reuse. Before reassignment restore reviewed base, branch, resources, and ownership; never carry prior work. Forbid dirty, abandoned, or ambiguously owned worktrees.
+1. Coordinator claims, reviews the base, and creates a clean worktree/branch per child.
+2. Assign paths, criteria, probe, prohibited files, resources, and stop.
+3. Worker stays isolated, tests chunks, commits once, and reports hash/evidence/risks; it never edits goal/project state or shared systems.
+4. Coordinator integrates sequentially, probes each commit and the combination, then updates state.
+5. Remove afterward or verify clean reuse. Before reassignment restore base/branch/resources/owner; never carry prior work.
 
-Do not use worktrees for coupled work, generated collisions, shared services/devices/data, exclusive binary/hard-to-merge paths, or prohibited work. Broad overlap needs a plan and stays sequential when merge risk outweighs latency benefit.
+Keep coupled work, generated collisions, shared systems/data, binary conflicts, and broad risky overlap sequential.
 
 ## Final-state commit history
 
@@ -51,6 +43,6 @@ Before review, keep commits only when independently useful; fold iteration-only 
 
 ## Waits, commits, resources
 
-Delegate waits at the PROJECT threshold. Resume yielded handles and poll boundedly; never relaunch. Send multiline cross-shell payloads through secure UTF-8 files or byte-preserving stdin and verify before external writes. Read-only monitors stop on input/drift.
+Delegate eligible waits. Resume yielded handles and poll boundedly; never relaunch. Send multiline cross-shell payloads through secure UTF-8 files or byte-preserving stdin and verify before external writes. Read-only monitors stop on input/drift.
 
 Follow PROJECT Git/commit policy; never absorb unrelated changes. Record parallelism evidence and go sequential when it lacks value.

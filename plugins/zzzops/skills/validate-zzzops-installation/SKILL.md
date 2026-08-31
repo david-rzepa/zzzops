@@ -9,7 +9,7 @@ Read `../../rules/COMMUNICATION.md` for user-facing messages.
 
 This workflow owns the installation check, so skip `INITIALIZATION.md`'s validation handoff and do not recurse. Resolve Python and the installed package CLI as described there.
 
-1. Run `installation status`. Automatic routing stops immediately when the current package record is `clean` or `declined`; explicit invocation continues to a fresh audit.
+1. Read `../../rules/DELEGATION.md` for isolated read-only inspection, then run `installation status`. Automatic routing stops immediately when the current package record is `clean` or `declined`; explicit invocation continues to a fresh audit.
 2. Run `installation audit`. Also inspect root agent-instruction files for stale repository-local ZzzOps paths and confirm the package exposes only plugin installation plus the narrowly retained cleanup support. Treat repository evidence as authoritative; do not choose between official and development host installations.
 3. If the audit is unsafe or ambiguous, show the exact hazards and stop. Never record success, delete, edit instructions, touch host caches, or change Git state.
 4. With no cleanup candidates or instruction conflicts, record `clean` using the exact audit signature.
