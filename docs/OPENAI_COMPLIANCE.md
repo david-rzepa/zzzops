@@ -23,8 +23,8 @@ Re-read the live sources before each marketplace submission and after a material
 | Accurate name, description, capabilities, and side effects | The Codex manifest declares `Write`; its long description and the README disclose GitHub Issue writes, existing GitHub authentication, and policy-governed Git/PR operations. |
 | MCP tool annotations and server security | Not applicable: ZzzOps is skills-only and ships no MCP server, tools, API, hosted backend, or UI. Reassess before adding any such surface. |
 | Authentication and minimum permissions | ZzzOps requests no separate credential. It uses the user's existing Codex, Git, and GitHub environment, and deterministic checkpoints fail when required access is unavailable. |
-| Privacy notice and minimization | [The privacy policy](../PRIVACY.md) lists processed data, purposes, recipients, retention, controls, restricted-data exclusions, and the optional exactly confirmed public feedback flow. |
-| Surveillance, profiling, advertising, and commerce | Not applicable: ZzzOps has no telemetry, behavioral profiling, advertising, checkout, sale, subscription, or payment path. |
+| Privacy notice and minimization | [The privacy policy](../PRIVACY.md) lists processed data, purposes, recipients, retention, controls, restricted-data exclusions, and the optional exactly confirmed public feedback flow, including one explicitly selected fixed-schema timing aggregate. |
+| Surveillance, profiling, advertising, and commerce | Not applicable: ZzzOps has no automatic telemetry, behavioral profiling, advertising, checkout, sale, subscription, or payment path. Local timing capture is opt-in and cannot leave the machine outside an exact user-confirmed feedback payload. |
 | External writes and user intent | GitHub and Git side effects are disclosed. Goal capture is bounded; public feedback shows the exact payload and requires fresh confirmation; reviewed project policy and higher authority govern implementation writes. |
 | Restricted and sensitive data | Shipped goal and feedback instructions reject credentials, payment data, health data, government identifiers, and other restricted/raw sensitive data. The privacy policy provides accidental-disclosure guidance. |
 | Safety and general audience | User and safety authority outrank goals. ZzzOps is not directed to children under 13 and must not receive children's personal data. OpenAI Usage Policy compliance remains required for every use. |
@@ -40,7 +40,7 @@ Re-read the live sources before each marketplace submission and after a material
 - [ ] Confirm `zzzops.support@gmail.com` is monitored and can receive support, privacy, and security requests.
 - [ ] Confirm the listing and manifest accurately describe GitHub authentication, external writes, capabilities, limitations, and independent-developer status.
 - [ ] Confirm the necessary rights to every submitted name, logo, icon, description, and other asset.
-- [ ] Confirm the plugin contains no MCP server, hosted service, UI, telemetry, advertising, commerce, or new data flow; otherwise stop and reassess every affected disposition.
+- [ ] Confirm the plugin contains no MCP server, hosted service, UI, automatic telemetry, advertising, or commerce, and that any confirmed feedback data flow still matches the privacy notice and exact-preview contract; otherwise stop and reassess every affected disposition.
 - [ ] Inspect the release archive and submission materials for secrets, personal data, repository-only tooling, stale versions, and unintended files.
 - [ ] Run the required plugin, cross-platform, prompt-budget, and release validation at the exact submitted commit.
 - [ ] Supply reviewer-runnable positive and negative tests, starter prompts, availability, release notes, and attestations from the portal-ready sources tracked by [#256](https://github.com/david-rzepa/zzzops/issues/256).
