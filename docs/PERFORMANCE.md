@@ -42,6 +42,12 @@ ZzzOps distributes skills to Codex and Claude Code, but its plugin manifest cont
 | Model work | No plugin event source | No plugin event source | `unavailable`; never inferred from response timing. |
 | Context compaction | No documented plugin event consumed by this package | No documented plugin event consumed by this package | `unavailable`; prompt-size estimates are not compaction timing. |
 
+### Delegation measurement limits
+
+Deterministic acceptance fixtures can prove structural overlap from injected task spans and compare serialized worker-input bytes with the coordinator's bounded evidence summary. They do not prove live model latency, actual context-window occupancy, or context-compaction pauses. The repository has no host event source for worker launch/status, worker tool waits, model work, setup/synthesis overhead, actual context occupancy, or compaction.
+
+A supported-host journey therefore records only visible capability, dispatch, fallback, authority, summary, and cleanup evidence. External elapsed samples may be reported with their provenance and noise, but never become a fixed CI threshold or get attributed to model, tool-wait, or compaction phases. `context_compaction` remains `unavailable`; fewer payload bytes are context evidence, not compaction evidence. Sequential fallback claims no concurrency gain, and setup/synthesis/cleanup time stays unavailable unless it was measured externally.
+
 Read the newest local candidate without changing it:
 
 ```powershell
