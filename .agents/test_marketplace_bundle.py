@@ -23,6 +23,7 @@ SKILL_UI = {
     "execute-zzzops": ("Execute", "Run the primary autonomous ZzzOps goal loop"),
     "migrate-to-zzzops": ("Migrate TODOs", "Discover and migrate repository TODOs safely"),
     "review-agentic-engineering": ("Review Agentic Engineering", "Improve how you work with software agents"),
+    "review-zzzops-entropy": ("Review Entropy", "Review recent or full repository entropy"),
     "review-zzzops-policy": ("Review Policy", "Initialize or review project operating policy"),
     "send-zzzops-feedback": ("Send Feedback", "Preview and send privacy-safe ZzzOps feedback"),
     "suggest-zzzops-work": ("Suggest Work", "Audit project gaps and suggest durable work"),

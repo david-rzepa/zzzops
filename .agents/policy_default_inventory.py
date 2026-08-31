@@ -18,7 +18,7 @@ prompt_stats = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = prompt_stats
 SPEC.loader.exec_module(prompt_stats)
 
-COLD_ONLY_PROMPT_PATHS = {"plugins/zzzops/skills/review-zzzops-policy/SKILL.md"}
+COLD_ONLY_PROMPT_PATHS = prompt_stats.COLD_ONLY_PROMPTS
 DEFAULT_CATALOG_PATH = "plugins/zzzops/zzzops/templates/project-goals/INIT_PLAN.json"
 PUBLIC_DOCUMENTATION_ROOT = "docs"
 RUNTIME_ROOT = "plugins/zzzops/zzzops"

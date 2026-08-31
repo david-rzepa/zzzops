@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HARNESS = ROOT / ".agents" / "claude_plugin_acceptance.py"
 EXPECTED_SKILLS = {
     "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
-    "review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
+    "review-agentic-engineering", "review-zzzops-entropy", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
     "validate-zzzops-installation",
 }
 
@@ -40,7 +40,7 @@ class ClaudePluginAcceptanceTests(unittest.TestCase):
         self.harness.validate_available(available, "2.0.0")
         available[0]["source"] = "./plugins/zzzops"
         self.harness.validate_available(available, "2.0.0", "./plugins/zzzops")
-        details = "Skills (9)  " + ", ".join(sorted(EXPECTED_SKILLS)) + "\n  Agents (0)"
+        details = "Skills (10)  " + ", ".join(sorted(EXPECTED_SKILLS)) + "\n  Agents (0)"
         self.harness.validate_details(details)
         with self.assertRaisesRegex(self.harness.AcceptanceError, "skill inventory"):
             self.harness.validate_details(details.replace("validate-zzzops-installation", "unexpected"))
