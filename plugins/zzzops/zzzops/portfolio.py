@@ -145,6 +145,21 @@ def _review_ready_dependency(record: dict[str, Any]) -> bool:
     )
 
 
+def _pending_review_checkpoint(record: dict[str, Any]) -> bool:
+    """Recognize a complete pending checkpoint even in a contradictory legacy lifecycle state."""
+    _, _, text_present = _require_configured()
+    implementation = record.get("implementation")
+    if not isinstance(implementation, dict):
+        return False
+    review = implementation.get("review")
+    return (
+        all(text_present(implementation.get(field)) for field in ("branch", "base", "target", "pr"))
+        and isinstance(review, dict)
+        and review.get("status") == "pending"
+        and text_present(review.get("checkpoint"))
+    )
+
+
 def _dependencies_allow_write(
     record: dict[str, Any], by_key: dict[Any, dict[str, Any]], git_policy: dict[str, Any],
 ) -> bool:
@@ -172,6 +187,8 @@ def _work_state(
     status = record["status"]
     if status in {"done", "cancelled"}:
         return "terminal"
+    if _pending_review_checkpoint(record):
+        return "wait_human"
     if status == "blocked":
         return "wait_human" if record.get("needs_human") else "blocked"
     if status == "new":
