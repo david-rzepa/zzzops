@@ -5,6 +5,8 @@ description: ZzzOps v0.0.0-dev — development plugin. Review completed software
 
 # Review Agentic Engineering
 
+Read `../../rules/COMMUNICATION.md` for user-facing messages.
+
 Run only when explicitly invoked. Help the user improve how they use software agents across projects without assuming that friction was their prompting fault.
 
 1. Read [evidence and attribution](references/ATTRIBUTION.md). Inspect several substantial completed work items when available, using evidence already visible in the current environment. Do not create a prompt archive or copy raw project content into attribution input or output.

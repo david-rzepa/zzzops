@@ -13,6 +13,8 @@ HARNESS_PROMPTS = {
     "codex": ("AGENTS.md",),
 }
 
+COMMUNICATION_PROMPT = "plugins/zzzops/rules/COMMUNICATION.md"
+
 # These limits protect context paid on every Codex turn and the two frequent ZzzOps paths. At the
 # goal #297 baseline, always-loaded/codex is 625 tokens. Goal #302 reduced capture/execution to
 # 3,324/8,452 tokens; their ceilings retain only the measured 13-token execution margin. Cold
@@ -27,14 +29,14 @@ WORKFLOW_PROMPTS = {
     "agentic-coaching": (
         "plugins/zzzops/skills/review-agentic-engineering/SKILL.md",
         "plugins/zzzops/skills/review-agentic-engineering/references/ATTRIBUTION.md",
-        "plugins/zzzops/rules/FEEDBACK.md",
+        COMMUNICATION_PROMPT, "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "bootstrap-greenfield": (
         "plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md",
         "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
         "plugins/zzzops/zzzops/references/bootstrap/PLAN.md",
         "plugins/zzzops/zzzops/references/bootstrap/GREENFIELD.md",
-        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
+        COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
         "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "bootstrap-brownfield": (
@@ -42,12 +44,12 @@ WORKFLOW_PROMPTS = {
         "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
         "plugins/zzzops/zzzops/references/bootstrap/PLAN.md",
         "plugins/zzzops/zzzops/references/bootstrap/BROWNFIELD.md",
-        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
+        COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
         "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "capture": (
         "plugins/zzzops/skills/add-zzzops-goal/SKILL.md",
-        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
+        COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
         "plugins/zzzops/rules/CONTINUATION.md", "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "execution": (
@@ -55,22 +57,22 @@ WORKFLOW_PROMPTS = {
         "plugins/zzzops/skills/execute-zzzops/references/EXECUTE.md",
         "plugins/zzzops/skills/execute-zzzops/references/BRANCH_REVIEW.md",
         "plugins/zzzops/skills/execute-zzzops/references/SELF_REVIEW.md",
-        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
+        COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
         "plugins/zzzops/rules/GOAL_SYSTEM.md", "plugins/zzzops/rules/CONTINUATION.md",
         "plugins/zzzops/rules/EXECUTION_STRATEGY.md", "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "policy-review": (
         "plugins/zzzops/skills/review-zzzops-policy/SKILL.md",
-        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
+        COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "migration": (
         "plugins/zzzops/skills/migrate-to-zzzops/SKILL.md",
-        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
+        COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
         "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "suggestion": (
         "plugins/zzzops/skills/suggest-zzzops-work/SKILL.md",
-        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
+        COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
         "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "acceptance": (
@@ -79,7 +81,7 @@ WORKFLOW_PROMPTS = {
     ),
     "feedback": (
         "plugins/zzzops/skills/send-zzzops-feedback/SKILL.md",
-        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
+        COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
     ),
 }
 

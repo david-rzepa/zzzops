@@ -5,16 +5,14 @@ description: ZzzOps v0.0.0-dev — development plugin. Capture, add, create, or 
 
 # Add Goal
 
-Run `../../rules/INITIALIZATION.md`, then `../../rules/BACKENDS.md`. Hydrate likely duplicate/relationship matches and needed comments. Persist risk/overrides; interview at [[effective engineering rigor]](../../concepts/effective-engineering-rigor.md): `vibe → light`, `structured → standard`, `agentic → thorough`. This controls depth; legacy policy uses reviewed `requirements_interview.capture_depth` or `standard`. Escalate as required; never silently de-escalate below a risk minimum.
+Read `../../rules/COMMUNICATION.md` for user-facing messages.
 
-Reuse request, repository, goal, and answer evidence. Ask 1–3 consequential gaps; recommend answers. `light`: outcome, observable acceptance, critical constraints. `standard` adds scope/non-goals, examples, dependencies, risks, authority, verification. `thorough` adds architecture, security, data lifecycle, recovery, operations, rollout, accessibility, compatibility, governance. Challenge subjective success/contradictions. Current user owns requirements/acceptance; no multi-party sign-off.
+Run `../../rules/INITIALIZATION.md`, then `../../rules/BACKENDS.md`; hydrate likely duplicate/relationship matches and needed comments.
 
-When unfamiliarity/risk could change architecture, scope, acceptance, or quality, run a bounded blind-spot pass for known unknowns, tacit criteria, and blind spots using the cheapest useful reference, research, alternative, or disposable prototype. Skip well-understood work and fixed ceremony.
+Then interview at [[effective engineering rigor]](../../concepts/effective-engineering-rigor.md): `vibe → light`, `structured → standard`, `agentic → thorough`; use legacy reviewed depth or `standard`. Persist risks/overrides and never silently de-escalate. Reuse request, repository, goal, and answer evidence. Ask 1–3 consequential gaps with recommendations. `light` covers outcome, observable acceptance, and critical constraints; `standard` adds scope, examples, dependencies, risks, authority, and verification; `thorough` adds applicable architecture, security, data lifecycle, recovery, operations, rollout, accessibility, compatibility, and governance. The current user owns requirements/acceptance.
 
-Stop when independently actionable/verifiable at that depth or unknowns are explicit blockers. Create one human-first current-schema goal with applicable source/value evidence; never invent answers. Use `$execute-zzzops`.
+Run a bounded blind-spot pass for known unknowns, tacit criteria, using a disposable prototype when useful. Skip well-understood work. Stop at an independently actionable/verifiable goal or explicit blockers. Create one human-first current-schema goal with source/value evidence; never invent answers.
 
-Git-free creation: capture makes no branch, commit, push, PR, or empty checkpoint.
-
-Apply `../../rules/CONTINUATION.md`; active same-task execute intent may resume once, while capture-only/replacement/stop wins. Confirm outcome/link and only next-affecting relationships/unknowns.
+Git-free creation: no branch, commit, push, PR, or empty checkpoint. Apply `../../rules/CONTINUATION.md`; active same-task execute intent may resume once unless capture-only/replacement/stop wins. Use `$execute-zzzops` for implementation.
 
 Before stopping or handing off, apply `../../rules/FEEDBACK.md`.
