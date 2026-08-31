@@ -25,7 +25,7 @@ The package checkpoint validates the installed manifest, required surfaces, and 
 
 ## Development and review
 
-Develop on branches created from `dev` and open ordinary PRs against `dev`. PR validation runs for every target branch so chained PRs receive exact-head evidence before retargeting. The read-only **PR validation / dev-required-tests** job must pass before merge.
+Develop on branches created from `dev` and open PRs against `dev`. PR validation runs for every target branch so each stacked layer—or explicitly chained fallback PR—receives exact-head evidence before retargeting. The read-only **PR validation / dev-required-tests** job must pass before merge.
 
 Source-changing goals use one branch and PR per goal, Conventional Commits, human review after checks, and dependency merge order. `main` is reserved for intentional owner releases. See [execution and review](EXECUTION.md) and [branch protection](BRANCH_PROTECTION.md).
 
