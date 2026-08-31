@@ -16,6 +16,19 @@ Deterministic fixtures require a valid initialized checkpoint's reported decisio
 
 Agents still perform one targeted concurrency re-read before mutating the selected goal.
 
+## Opt-in timing diagnostics
+
+Add `--profile` to an explicit checkpoint or portfolio command to retain one local timing aggregate while preserving the command's ordinary stdout, exit behavior, and reported process counts:
+
+```powershell
+<python> <zzzops-cli> --repo . checkpoint --profile
+<python> <zzzops-cli> --repo . portfolio --format json --profile
+```
+
+The profile uses fixed phase and provenance enums plus bounded integer milliseconds. It records no repository identity, paths, prompts, goal content, raw output, secrets, hostnames, or usernames. Aggregates are content-addressed under `zzzops/timing-diagnostics` in Git's ignored common directory, shared safely across worktrees, capped at 32 records, and removable through the stable `purge_diagnostics` API. Profiling performs one extra local Git-common-directory lookup only after the normal result and process counts have been constructed. It has no submission path.
+
+Four process-cold Windows checkpoint samples on 2026-08-31 recorded internal command totals of 2,343–2,640 ms. GitHub discovery was the largest measured phase at 1,250–1,687 ms, followed by goal hydration at 735–875 ms; graph validation was 0–16 ms, two package validations totaled 109–110 ms, Git origin was 47–62 ms, and repository-size measurement was 46–62 ms. Three externally measured invocations took 2,554–2,872 ms. The difference includes interpreter/import startup and final diagnostic persistence, which the in-process profiler does not pretend to attribute; `startup` is therefore recorded as `unavailable`. These samples establish a diagnostic baseline, not a CI threshold.
+
 Execution performs no scheduled entropy scan, completion bookkeeping, or changed-line analysis. Only a concrete observation already exposed by ordinary work causes one small atomic Git-local file creation. Every explicit work-suggestion run reads the compact inbox once and spends audit tokens only validating policy-eligible observations; excluded categories remain unread in the returned evidence set.
 
 The utility reports malformed records, duplicate/self/missing/cyclic relations, status/dependency conflicts, stale claims, review checkpoint errors, GitHub label/state drift, and snapshot changes. It never prioritizes, repairs, mutates, caches, or replaces agent judgment.

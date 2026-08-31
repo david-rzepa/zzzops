@@ -19,7 +19,7 @@ MAX_RECORDS = 32
 MAX_DURATION_MS = 86_400_000
 MAX_TOTAL_MS = MAX_DURATION_MS * 1_000_000
 PHASES = frozenset({
-    "startup", "package", "policy_validation", "git_origin", "repository_size",
+    "command_total", "startup", "package", "policy_validation", "git_origin", "repository_size",
     "github_discovery", "goal_hydration", "graph_validation", "rendering",
     "tool_wait", "model", "context_compaction",
 })
@@ -183,6 +183,23 @@ class TimingSession:
         if not isinstance(started, (int, float)) or not isinstance(ended, (int, float)) or ended < started:
             raise DiagnosticError("monotonic clock returned an invalid interval")
         self.mark(phase, provenance="measured", milliseconds=round((ended - started) * 1000), failed=failed)
+
+    @contextmanager
+    def command(self) -> Iterator[None]:
+        """Record one command total while allowing sequential leaf spans inside it."""
+        started = self._clock()
+        failed = False
+        try:
+            yield
+        except BaseException:
+            failed = True
+            raise
+        finally:
+            try:
+                self._finish_span("command_total", started, failed=failed)
+            except DiagnosticError:
+                if not failed:
+                    raise
 
     def snapshot(self) -> dict[str, Any]:
         value = {

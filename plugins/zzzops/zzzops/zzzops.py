@@ -221,6 +221,13 @@ list_diagnostics = _diagnostics.list_diagnostics
 purge_diagnostics = _diagnostics.purge_diagnostics
 DiagnosticError = _diagnostics.DiagnosticError
 
+
+def _timed_call(timing: Any, phase: str, operation: Any) -> Any:
+    if timing is None:
+        return operation()
+    with timing.span(phase):
+        return operation()
+
 execution_reports_enabled = _feedback.execution_reports_enabled
 execution_report_directory = _feedback.execution_report_directory
 execution_report_id = _feedback.execution_report_id
@@ -853,21 +860,12 @@ def github_repository_goal_index(
     )
 
 
-def github_repository_portfolio_snapshot(
-    repo: Path, project: dict[str, Any], include_feedback: bool = False,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    identity = _project_repository_identity(project)
-    owner, name = identity.split("/", 1)
-    executable = shutil.which("gh")
-    if not executable:
-        raise ValueError("GitHub CLI is unavailable")
-    repository_probe, selected, findings, discovery_bytes, discovery_reads, excluded = github_repository_goal_index(
-        repo, project, include_feedback,
-    )
+def _portfolio_from_hydrated_goals(
+    project: dict[str, Any], selected: list[dict[str, Any]], bodies: dict[int, dict[str, Any]],
+    findings: list[dict[str, Any]], discovery_bytes: int, discovery_reads: int,
+    hydration_bytes: int, hydration_processes: int, excluded: int,
+) -> dict[str, Any]:
     open_selected = [issue for issue in selected if issue["state"] == "open"]
-    bodies, hydration_bytes, hydration_processes = _github_goal_bodies(
-        repo, executable, owner, name, [issue["number"] for issue in open_selected],
-    )
     managed = []
     for issue in open_selected:
         hydrated = bodies[issue["number"]]
@@ -915,10 +913,36 @@ def github_repository_portfolio_snapshot(
     snapshot["summary"]["discovery_raw_bytes"] = discovery_bytes
     snapshot["summary"]["hydration_raw_bytes"] = hydration_bytes
     snapshot["summary"]["processes"] = 1 + hydration_processes
-    return repository_probe, compact_portfolio_output(snapshot)
+    return compact_portfolio_output(snapshot)
 
 
-def portfolio_snapshot(repo: Path, include_feedback: bool = False) -> dict[str, Any]:
+def github_repository_portfolio_snapshot(
+    repo: Path, project: dict[str, Any], include_feedback: bool = False, *, timing: Any = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    identity = _project_repository_identity(project)
+    owner, name = identity.split("/", 1)
+    executable = shutil.which("gh")
+    if not executable:
+        raise ValueError("GitHub CLI is unavailable")
+    repository_probe, selected, findings, discovery_bytes, discovery_reads, excluded = _timed_call(
+        timing, "github_discovery", lambda: github_repository_goal_index(repo, project, include_feedback),
+    )
+    open_selected = [issue for issue in selected if issue["state"] == "open"]
+    bodies, hydration_bytes, hydration_processes = _timed_call(
+        timing, "goal_hydration", lambda: _github_goal_bodies(
+            repo, executable, owner, name, [issue["number"] for issue in open_selected],
+        ),
+    )
+    snapshot = _timed_call(
+        timing, "graph_validation", lambda: _portfolio_from_hydrated_goals(
+            project, selected, bodies, findings, discovery_bytes, discovery_reads,
+            hydration_bytes, hydration_processes, excluded,
+        ),
+    )
+    return repository_probe, snapshot
+
+
+def _validated_portfolio_project(repo: Path) -> dict[str, Any]:
     _path, _text, project = read_project_state(repo)
     if project is None:
         raise ValueError("Project policy is missing; run the review-zzzops-policy skill")
@@ -926,7 +950,14 @@ def portfolio_snapshot(repo: Path, include_feedback: bool = False) -> dict[str, 
     errors.extend(validate_project_artifacts(repo, project))
     if errors or not project or not project.get("initialized"):
         raise ValueError("Project policy is not initialized: " + "; ".join(errors or ["review pending"]))
-    _repository, snapshot = github_repository_portfolio_snapshot(repo, project, include_feedback)
+    return project
+
+
+def portfolio_snapshot(repo: Path, include_feedback: bool = False, *, timing: Any = None) -> dict[str, Any]:
+    project = _timed_call(timing, "policy_validation", lambda: _validated_portfolio_project(repo))
+    _repository, snapshot = github_repository_portfolio_snapshot(
+        repo, project, include_feedback, timing=timing,
+    )
     return snapshot
 
 
@@ -1165,7 +1196,7 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
     }
 
 
-def decision_checkpoint(repo: Path, include_feedback: bool = False) -> dict[str, Any]:
+def _checkpoint_policy_state(repo: Path) -> tuple[Path, str, dict[str, Any] | None, str | None, list[str], bool]:
     path, text = read_project(repo)
     error = None
     try:
@@ -1179,7 +1210,16 @@ def decision_checkpoint(repo: Path, include_feedback: bool = False) -> dict[str,
         error = str(exc)
     blockers = policy_blockers(state.get("policy")) if state else ["policy:missing"]
     initialized = bool(state and state.get("initialized") is True and not blockers and error is None)
-    git_remote = command_probe(["git", "remote", "get-url", "origin"], repo)
+    return path, text, state, error, blockers, initialized
+
+
+def decision_checkpoint(repo: Path, include_feedback: bool = False, *, timing: Any = None) -> dict[str, Any]:
+    path, text, state, error, blockers, initialized = _timed_call(
+        timing, "policy_validation", lambda: _checkpoint_policy_state(repo),
+    )
+    git_remote = _timed_call(
+        timing, "git_origin", lambda: command_probe(["git", "remote", "get-url", "origin"], repo),
+    )
     github_available = shutil.which("gh") is not None
     github_processes = 0
     plugin_package = {
@@ -1206,11 +1246,13 @@ def decision_checkpoint(repo: Path, include_feedback: bool = False) -> dict[str,
         "detail": "initialization required",
     }
     if initialized and state:
-        plugin_package = _package.package_status()
+        plugin_package = _timed_call(timing, "package", _package.package_status)
     if initialized and state and plugin_package.get("ok") is True:
         github_processes = 1 if github_available else 0
         try:
-            github_repository, portfolio = github_repository_portfolio_snapshot(repo, state, include_feedback)
+            github_repository, portfolio = github_repository_portfolio_snapshot(
+                repo, state, include_feedback, timing=timing,
+            )
             github_processes = int(portfolio.get("summary", {}).get("processes", github_processes))
             github_auth = {"available": True, "ok": True, "detail": "github.com"}
         except ValueError as exc:
@@ -1242,6 +1284,7 @@ def decision_checkpoint(repo: Path, include_feedback: bool = False) -> dict[str,
         and portfolio.get("complete") is True
         and portfolio.get("valid") is True
     )
+    repository_size = _timed_call(timing, "repository_size", lambda: repository_size_profile(repo))
     return {
         "schema_version": PLAN_SCHEMA_VERSION,
         "project_path": str(path),
@@ -1257,7 +1300,7 @@ def decision_checkpoint(repo: Path, include_feedback: bool = False) -> dict[str,
             "github_auth": github_auth,
             "github_repository": github_repository,
         },
-        "repository_size": repository_size_profile(repo),
+        "repository_size": repository_size,
         "portfolio": portfolio,
         "processes": {
             "total": (
@@ -1706,6 +1749,73 @@ def confirm_project(repo: Path, digest: str, reviewer: str, section_ids: list[st
     }
 
 
+def _run_profiled(repo: Path, operation: Any) -> tuple[int, str]:
+    timing = TimingSession()
+    failed = False
+    try:
+        with timing.command():
+            return operation(timing)
+    except BaseException:
+        failed = True
+        raise
+    finally:
+        try:
+            record_diagnostic(repo, timing.snapshot())
+        except DiagnosticError:
+            if not failed:
+                raise
+
+
+def _profiled_checkpoint_cli(repo: Path, args: argparse.Namespace) -> tuple[int, str]:
+    def operation(timing: Any) -> tuple[int, str]:
+        timing.mark("startup", provenance="unavailable")
+        package = _timed_call(timing, "package", _package.package_status)
+        if package.get("ok") is not True:
+            return 2, str(package.get("detail") or "The ZzzOps Agent Plugin package is invalid.")
+        result = decision_checkpoint(repo, args.include_feedback, timing=timing)
+        rendered = _timed_call(
+            timing, "rendering",
+            lambda: json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+        )
+        return (0 if result["ready"] else 2), rendered
+
+    try:
+        return _run_profiled(repo, operation)
+    except ValueError as exc:
+        return 2, f"Could not continue: {exc}"
+
+
+def _profiled_portfolio_cli(repo: Path, args: argparse.Namespace) -> tuple[int, str]:
+    def operation(timing: Any) -> tuple[int, str]:
+        timing.mark("startup", provenance="unavailable")
+        package = _timed_call(timing, "package", _package.package_status)
+        if package.get("ok") is not True:
+            return 2, str(package.get("detail") or "The ZzzOps Agent Plugin package is invalid.")
+        result = portfolio_snapshot(repo, args.include_feedback, timing=timing)
+        if args.compare:
+            prior = json.loads(args.compare.resolve().read_text(encoding="utf-8-sig"))
+            result["changes"] = compare_portfolios(result, prior)
+        rendered = _timed_call(
+            timing, "rendering",
+            lambda: (
+                json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                if args.output_format == "json"
+                else render_portfolio_summary(result, args.include_done)
+            ),
+        )
+        return 0, rendered
+
+    try:
+        return _run_profiled(repo, operation)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        if args.output_format == "json":
+            return 2, json.dumps(
+                {"schema_version": PORTFOLIO_SCHEMA_VERSION, "complete": False, "valid": False, "error": str(exc)},
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            )
+        return 2, f"Could not load goals: {exc}"
+
+
 def main() -> int:
     configure_cli_stdout()
     parser = argparse.ArgumentParser(description="ZzzOps project control CLI")
@@ -1725,6 +1835,7 @@ def main() -> int:
     confirm_command.add_argument("--all", action="store_true", help="Approve every current policy section")
     checkpoint_parser = commands.add_parser("checkpoint", help="Validate initialized state, GitHub capability, and the goal portfolio once")
     checkpoint_parser.add_argument("--include-feedback", action="store_true", help="Include specially tagged feedback goals for this session")
+    checkpoint_parser.add_argument("--profile", action="store_true", help="Record one local privacy-safe timing aggregate")
     installation = commands.add_parser("installation", help="Check or record per-repository plugin validation")
     installation_commands = installation.add_subparsers(dest="installation_command", required=True)
     installation_commands.add_parser("status", help="Report whether this installed package needs repository validation")
@@ -1749,6 +1860,7 @@ def main() -> int:
     portfolio_parser.add_argument("--include-done", action="store_true", help="Include terminal goals in summary output")
     portfolio_parser.add_argument("--compare", type=Path, help="Prior JSON snapshot used only to report digest/revision drift")
     portfolio_parser.add_argument("--include-feedback", action="store_true", help="Include specially tagged feedback goals")
+    portfolio_parser.add_argument("--profile", action="store_true", help="Record one local privacy-safe timing aggregate")
     goal_command = commands.add_parser("goal", help="Create, transition, or inspect validated GitHub-backed goals")
     goal_commands = goal_command.add_subparsers(dest="goal_command", required=True)
     create_goal_command = goal_commands.add_parser("create", help="Create one goal from a validated UTF-8 request file")
@@ -1804,6 +1916,22 @@ def main() -> int:
             feedback_command.add_argument("--confirm", required=True, help="Exact digest shown by feedback prepare")
     args = parser.parse_args()
     repo = args.repo.resolve()
+    if args.command == "checkpoint" and args.profile:
+        try:
+            code, output = _profiled_checkpoint_cli(repo, args)
+            print(output)
+            return code
+        except (EOFError, KeyboardInterrupt):
+            print("\nNo further changes made.")
+            return 0
+    if args.command == "portfolio" and args.profile:
+        try:
+            code, output = _profiled_portfolio_cli(repo, args)
+            print(output)
+            return code
+        except (EOFError, KeyboardInterrupt):
+            print("\nNo further changes made.")
+            return 0
     package = _package.package_status()
     if package.get("ok") is not True:
         print(str(package.get("detail") or "The ZzzOps Agent Plugin package is invalid."))
