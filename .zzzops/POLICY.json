@@ -1,17 +1,17 @@
 {
   "approval": {
-    "date": "2026-08-24",
-    "digest": "sha256:c7e608653e0503853f51b4500c959f44590c6290bd64da64fc91454c7709a683",
+    "date": "2026-08-29",
+    "digest": "sha256:7ad19af1efd43f040bd4c224a0bea04315a1074bb1a408e23e5c46cd4bac7811",
     "reviewer": "user"
   },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:2c2af6b5603056219e5f5b9d30db3c712d45d5e813bec2a89b2274f7020ced13",
+      "digest": "sha256:151f72eb79cdfaf754e74118502eaaf5892d9d7728e47301520ebaafaff1159a",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
-      "digest": "sha256:c959d713ee58579ff743fbdb537a6d20006fff95da6fcbb3d18018556a0d06dc",
+      "digest": "sha256:011828c7d4e743c9b18074657a69066875f0e12d435d2eccce31e4bf1a3e74c0",
       "path": ".zzzops/PROJECT.md"
     }
   },
@@ -116,6 +116,30 @@
       "change": "Reviewed policy revision 21",
       "date": "2026-08-24",
       "reason": "Approved: dependencies_tooling; source digest sha256:bba4a1c6f56f647dbf146676e340a481d26b9afc729e3944848b8b3279c75ad6."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 22",
+      "date": "2026-08-28",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "user",
+      "change": "Reviewed policy revision 23",
+      "date": "2026-08-28",
+      "reason": "Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, workflow_adherence, autonomy_approval_parallelism, automated_design; source digest sha256:c9c5d663dce7b421d5d9f5ce666fcd3974609a715706af315c53431d4dc3ef86."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 24",
+      "date": "2026-08-28",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "user",
+      "change": "Reviewed policy revision 25",
+      "date": "2026-08-29",
+      "reason": "Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, workflow_adherence, autonomy_approval_parallelism, automated_design; source digest sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e."
     }
   ],
   "initialized": true,
@@ -192,6 +216,12 @@
         "id": "E-012",
         "kind": "proposed",
         "source": "user decision and goal #300 on 2026-08-24"
+      },
+      {
+        "finding": "Prefer GitHub-native stacked pull requests when the official capability is installed and stack membership can be verified; require approval before installing or upgrading host tooling, and explicitly use chained pull requests when native stacking is declined, unavailable, or unverified.",
+        "id": "E-013",
+        "kind": "proposed",
+        "source": "user decisions and goal #345 on 2026-08-28"
       }
     ],
     "schema_version": 1,
@@ -208,8 +238,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -231,17 +261,17 @@
       {
         "applicable": true,
         "confidence": "high",
-        "decision": "Use one chained branch and PR per goal: start from dev, then stack each subsequent goal from the preceding exact reviewed checkpoint and merge in dependency order. Use Conventional Commits, human review after checks, and owner-only main releases.",
+        "decision": "Use one branch and PR per goal. Prefer GitHub-native stacked PRs when the official capability is installed and provider stack membership is verified; otherwise explicitly use chained PRs from exact reviewed checkpoints. Merge in dependency order, use Conventional Commits, collect human PR approval when safe work is exhausted, and retain owner-only main releases.",
         "default_disposition": "changed",
         "default_origin": "repository policy",
         "exceptions": [],
         "id": "git_review_release",
-        "rationale": "The user explicitly selected chained PRs while retaining per-goal review units and ordered integration.",
+        "rationale": "The user selected GitHub-native stacked PRs as the preferred mode and named chained PRs as the safe fallback, while retaining per-goal review units, checks, ordered integration, and human authority.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -249,13 +279,14 @@
           "child_target": "nearest_parent_branch",
           "commit_style": "conventional",
           "commit_unit": "verified_subgoal",
-          "conversational_approval": "allowed_otherwise",
+          "conversational_approval": "never_for_goal_progress",
           "dependency_base": "dependency_branch",
           "execution_branch": "per_goal",
           "merge_after_approval": "when_authorized",
           "multiple_dependency_base": "reviewed_base_containing_all",
           "parent_pseudo_trunk": true,
           "pr_approval": "required_when_repository_requires_pr",
+          "pull_request_mode": "github_stacked_when_verified_else_chained",
           "pull_request_target": "preceding_goal_branch_then_dev",
           "pull_request_unit": "per_goal",
           "read_only_dependency_investigation": "allowed_before_completion",
@@ -263,16 +294,20 @@
           "release_branch": "main",
           "release_update": "explicit_owner_force_push",
           "release_workflow": "main_update_runs_release_ci",
-          "review_gate": "human_after_checks",
+          "review_gate": "human_at_exhaustion",
           "review_pending_dependency": "stack_from_reviewed_checkpoint",
           "review_state_reads_per_checkpoint": 1,
-          "shared_pull_request": "explicit_reviewed_override"
+          "shared_pull_request": "explicit_reviewed_override",
+          "stacked_capability": "official_gh_stack_extension_with_provider_membership_verification",
+          "stacked_tool_installation": "explicit_user_approval",
+          "stacked_unavailable_fallback": "chained_prs"
         },
         "source_ids": [
           "E-002",
           "E-005",
           "E-007",
-          "E-008"
+          "E-008",
+          "E-013"
         ],
         "title": "Git, review, and release",
         "unresolved": []
@@ -289,8 +324,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -299,6 +334,14 @@
           "cross_task": "require_explicit_harness_signal",
           "execute_intent": "same_task_until_superseded",
           "exhausted_handoff_retains_intent": true,
+          "human_unblock_watch": {
+            "enabled": false,
+            "max_blockers": 1,
+            "max_seconds": 180,
+            "notify_once": true,
+            "poll_seconds": 30,
+            "trigger": "disabled_for_unattended_execution"
+          },
           "max_easy_wins": 2,
           "new_goal_checkpoint": "next_safe_checkpoint",
           "stop_reasons_clear_intent": [
@@ -331,8 +374,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -341,6 +384,13 @@
             "product_runtime": "risk_proportionate_behavioral_probe",
             "test_cases": "run_changed_tests_no_recursive_meta_test",
             "test_harness": "focused_behavioral_regression"
+          },
+          "ci_deduplication": {
+            "failure": "inspect_logs_and_reprobe",
+            "local_probe": "smallest_unique_falsifiable_signal",
+            "required_ci": "inspect_exact_pr_head",
+            "skip_broad_local_when": "same_command_required_ci",
+            "unavailable": "durable_blocker"
           },
           "mode": "chunk_probe",
           "test_bug": "capture_as_blocker",
@@ -366,8 +416,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -397,8 +447,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-24",
-          "reviewed_digest": "sha256:bba4a1c6f56f647dbf146676e340a481d26b9afc729e3944848b8b3279c75ad6",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -425,8 +475,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -452,8 +502,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -487,8 +537,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -506,6 +556,164 @@
       {
         "applicable": true,
         "confidence": "high",
+        "decision": "structured",
+        "default_disposition": "accepted",
+        "default_origin": "ZzzOps production-oriented fallback",
+        "default_provenance": {
+          "default_id": "zzzops.policy.engineering_rigor",
+          "digest": "sha256:b373fd8ee3e927e37fc252edd3556623574b334142ab19ed061566264b0223bf",
+          "schema_version": 1,
+          "snapshot": {
+            "decision": "structured",
+            "settings": {
+              "escalation": {
+                "allow_automatic_deescalation": false,
+                "allow_automatic_escalation": true,
+                "enabled": true
+              },
+              "minimums": {
+                "authentication": "agentic",
+                "authorization": "agentic",
+                "destructive_data_migrations": "agentic",
+                "payments": "agentic",
+                "secrets": "agentic",
+                "security_sensitive": "agentic",
+                "throwaway_prototypes": "vibe"
+              },
+              "overrides": {
+                "lowering": "explicit_user_authority",
+                "may_undercut_risk_minimum": false,
+                "per_goal": true,
+                "raising": "allowed"
+              },
+              "requirements_interview": {
+                "level_mapping": {
+                  "agentic": "thorough",
+                  "structured": "standard",
+                  "vibe": "light"
+                },
+                "source": "effective_engineering_rigor"
+              }
+            }
+          },
+          "source": {
+            "revision": "02507a7f783bc40828169a47bad4902112d692591c235101ec266591b79ad403",
+            "version": "0.0.0-dev"
+          },
+          "status": "adopted"
+        },
+        "exceptions": [],
+        "id": "engineering_rigor",
+        "rationale": "Balance production-oriented specification and verification with automatic escalation for high-risk work.",
+        "required": true,
+        "review": {
+          "approved": true,
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
+          "reviewer": "user"
+        },
+        "settings": {
+          "escalation": {
+            "allow_automatic_deescalation": false,
+            "allow_automatic_escalation": true,
+            "enabled": true
+          },
+          "minimums": {
+            "authentication": "agentic",
+            "authorization": "agentic",
+            "destructive_data_migrations": "agentic",
+            "payments": "agentic",
+            "secrets": "agentic",
+            "security_sensitive": "agentic",
+            "throwaway_prototypes": "vibe"
+          },
+          "overrides": {
+            "lowering": "explicit_user_authority",
+            "may_undercut_risk_minimum": false,
+            "per_goal": true,
+            "raising": "allowed"
+          },
+          "requirements_interview": {
+            "level_mapping": {
+              "agentic": "thorough",
+              "structured": "standard",
+              "vibe": "light"
+            },
+            "source": "effective_engineering_rigor"
+          }
+        },
+        "source_ids": [
+          "E-001",
+          "E-002"
+        ],
+        "title": "Engineering rigor",
+        "unresolved": []
+      },
+      {
+        "applicable": true,
+        "confidence": "high",
+        "decision": "tracked",
+        "default_disposition": "accepted",
+        "default_origin": "ZzzOps tracked-work fallback",
+        "default_provenance": {
+          "default_id": "zzzops.policy.workflow_adherence",
+          "digest": "sha256:dfbe065a419b6e3d781745b17dfef019d5b293b598394f1554c695ac54476313",
+          "schema_version": 1,
+          "snapshot": {
+            "decision": "tracked",
+            "settings": {
+              "agents_projection": "review_workflow_reconciliation",
+              "exemptions": [
+                "read_only_investigation",
+                "zzzops_administration"
+              ],
+              "levels": {
+                "managed": "zzzops_workflow_required_for_repository_changes",
+                "optional": "direct_agent_work_allowed",
+                "tracked": "durable_goal_required_for_substantial_agent_work"
+              },
+              "scoped_exception": "explicit_scoped_user_authority"
+            }
+          },
+          "source": {
+            "revision": "02507a7f783bc40828169a47bad4902112d692591c235101ec266591b79ad403",
+            "version": "0.0.0-dev"
+          },
+          "status": "adopted"
+        },
+        "exceptions": [],
+        "id": "workflow_adherence",
+        "rationale": "Require durable goal context for substantial agent work while preserving narrow administration and read-only exemptions.",
+        "required": true,
+        "review": {
+          "approved": true,
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
+          "reviewer": "user"
+        },
+        "settings": {
+          "agents_projection": "review_workflow_reconciliation",
+          "exemptions": [
+            "read_only_investigation",
+            "zzzops_administration"
+          ],
+          "levels": {
+            "managed": "zzzops_workflow_required_for_repository_changes",
+            "optional": "direct_agent_work_allowed",
+            "tracked": "durable_goal_required_for_substantial_agent_work"
+          },
+          "scoped_exception": "explicit_scoped_user_authority"
+        },
+        "source_ids": [
+          "E-001",
+          "E-002"
+        ],
+        "title": "ZzzOps workflow adherence",
+        "unresolved": []
+      },
+      {
+        "applicable": true,
+        "confidence": "high",
         "decision": "Interview adaptively during goal capture at the reviewed depth; treat the requesting user as the sole stakeholder; execute unattended by persisting consequential questions as durable blockers; repair in-scope CI failures without another approval; record privacy-safe execution reports; refill valuable bounded work; and use up to three size-aware workers.",
         "default_disposition": "changed",
         "default_origin": "user-selected ZzzOps defaults and project policy",
@@ -515,8 +723,8 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
@@ -566,6 +774,14 @@
             "mode": "adaptive",
             "stakeholder_model": "requesting_user_only"
           },
+          "resource_reservations": {
+            "exclusive_prefixes": [
+              "generated",
+              "external"
+            ],
+            "exclusive_resources": [],
+            "mode": "conflict_tolerant"
+          },
           "worktree_lifecycle": {
             "abandoned_or_dirty": "forbidden",
             "after_task": "remove_or_retain_clean_for_reuse",
@@ -610,11 +826,26 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-08-09",
-          "reviewed_digest": "sha256:334572a80f28915d6759f1cd4c896cc6c7ea5b1f3c37a6d2c7e910d424aed4b8",
+          "date": "2026-08-29",
+          "reviewed_digest": "sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e",
           "reviewer": "user"
         },
         "settings": {
+          "commitment": {
+            "high": "compare_evidence_cost_signal_or_explicit_current_design_review",
+            "low": "replace_verify_and_clean_within_one_goal_before_fanout",
+            "structural_cost_signals": [
+              "affected_goal_units",
+              "started_descendant_branches",
+              "started_descendant_prs",
+              "durable_data",
+              "public_or_integration_contracts",
+              "external_state",
+              "compatibility_paths",
+              "verification_breadth",
+              "clean_removal_path"
+            ]
+          },
           "decision_record": [
             "alternatives",
             "rationale",
@@ -634,7 +865,7 @@
           ],
           "insufficient_evidence": "durable_design_blocker",
           "privacy_security": "unambiguously_risk_reducing_without_material_behavior_change",
-          "scope": "reversible_in_scope_implementation",
+          "scope": "bounded_commitment_in_scope_implementation",
           "selection_basis": [
             "project_objectives",
             "kpi_evidence",
@@ -655,6 +886,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 21,
+  "revision": 25,
   "schema_version": 1
 }
