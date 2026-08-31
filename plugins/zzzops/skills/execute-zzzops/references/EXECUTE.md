@@ -11,7 +11,7 @@
 
 Execution assumes the user is absent and never asks an interactive question. Persist each unanswered consequential question with category, evidence, recommendation, boundary, safe work, and trigger. Never infer approval; stop affected work only and continue to true queue exhaustion.
 
-Update only for a new result, decision, risk, changed assumption, required action, or long-operation heartbeat; never recap unchanged state. Before substantive work on a new goal/resume, state outcome/scope before edits.
+Update only for a new result, decision, risk, changed assumption, required action, or long-operation heartbeat; never recap unchanged state. Before substantive work on a newly selected goal/resume, state outcome/scope before edits.
 
 ## Execute
 
