@@ -14,6 +14,12 @@ HARNESS_PROMPTS = {
 }
 
 COMMUNICATION_PROMPT = "plugins/zzzops/rules/COMMUNICATION.md"
+DELEGATION_PROMPT = "plugins/zzzops/rules/DELEGATION.md"
+PROACTIVE_DELEGATION_SIGNAL = "Eligible isolated work must be delegated"
+PROACTIVE_DELEGATION_WORKFLOWS = {
+    "bootstrap-greenfield", "bootstrap-brownfield", "capture", "execution",
+    "suggestion", "installation-validation",
+}
 
 # These limits protect context paid on every Codex turn and the two frequent ZzzOps paths. At the
 # goal #297 baseline, always-loaded/codex is 625 tokens. Goal #302 reduced capture/execution to
@@ -36,7 +42,7 @@ WORKFLOW_PROMPTS = {
         "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
         "plugins/zzzops/zzzops/references/bootstrap/PLAN.md",
         "plugins/zzzops/zzzops/references/bootstrap/GREENFIELD.md",
-        COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
+        COMMUNICATION_PROMPT, DELEGATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
         "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "bootstrap-brownfield": (
@@ -44,12 +50,12 @@ WORKFLOW_PROMPTS = {
         "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
         "plugins/zzzops/zzzops/references/bootstrap/PLAN.md",
         "plugins/zzzops/zzzops/references/bootstrap/BROWNFIELD.md",
-        COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
+        COMMUNICATION_PROMPT, DELEGATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
         "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "capture": (
         "plugins/zzzops/skills/add-zzzops-goal/SKILL.md",
-        COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
+        COMMUNICATION_PROMPT, DELEGATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
         "plugins/zzzops/rules/CONTINUATION.md", "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "execution": (
@@ -59,7 +65,7 @@ WORKFLOW_PROMPTS = {
         "plugins/zzzops/skills/execute-zzzops/references/SELF_REVIEW.md",
         COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
         "plugins/zzzops/rules/GOAL_SYSTEM.md", "plugins/zzzops/rules/CONTINUATION.md",
-        "plugins/zzzops/rules/EXECUTION_STRATEGY.md", "plugins/zzzops/rules/FEEDBACK.md",
+        "plugins/zzzops/rules/EXECUTION_STRATEGY.md", DELEGATION_PROMPT, "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "policy-review": (
         "plugins/zzzops/skills/review-zzzops-policy/SKILL.md",
@@ -72,8 +78,12 @@ WORKFLOW_PROMPTS = {
     ),
     "suggestion": (
         "plugins/zzzops/skills/suggest-zzzops-work/SKILL.md",
-        COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
+        COMMUNICATION_PROMPT, DELEGATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
         "plugins/zzzops/rules/FEEDBACK.md",
+    ),
+    "installation-validation": (
+        "plugins/zzzops/skills/validate-zzzops-installation/SKILL.md",
+        COMMUNICATION_PROMPT, DELEGATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "acceptance": (
         ".agents/skills/run-zzzops-acceptance/SKILL.md",
@@ -87,13 +97,14 @@ WORKFLOW_PROMPTS = {
 
 WORKFLOW_SIGNALS = {
     "agentic-coaching": ("Run only when explicitly invoked", "at most two", "Only genuine `prompt_specification_gap`", "Remain read-only", "Do not resolve `ambiguous` candidates by guessing", "$send-zzzops-feedback"),
-    "bootstrap-greenfield": ("never silently de-escalate", "adaptive product interview", "exactly one canonical top-level product-outcome goal", "canonical verification", "Continue from harness outcomes into product milestones", "ordered PR review queue"),
-    "bootstrap-brownfield": ("evidence-led product/harness audit", "top-level product-outcome goal", "reconcile it in place", "$migrate-to-zzzops", "canonical verification", "until exhaustion"),
-    "capture": ("duplicate/relationship matches", "interview at", "owns requirements/acceptance", "active same-task execute intent", "effective engineering rigor", "vibe → light", "never silently de-escalate", "Git-free creation"),
-    "execution": ("complete:true", "smallest falsifiable chunk", "difficulty is cost, not value", "human_at_exhaustion", "human_after_checks", "PR review queue", "Execution assumes the user is absent", "Before substantive work on a newly selected goal", "safe useful work", "effective engineering rigor", "created-but-unrun machinery is not proof"),
+    "bootstrap-greenfield": ("never silently de-escalate", "adaptive product interview", "exactly one canonical top-level product-outcome goal", "canonical verification", "Continue from harness outcomes into product milestones", "ordered PR review queue", PROACTIVE_DELEGATION_SIGNAL),
+    "bootstrap-brownfield": ("evidence-led product/harness audit", "top-level product-outcome goal", "reconcile it in place", "$migrate-to-zzzops", "canonical verification", "until exhaustion", PROACTIVE_DELEGATION_SIGNAL),
+    "capture": ("duplicate/relationship matches", "interview at", "owns requirements/acceptance", "active same-task execute intent", "effective engineering rigor", "vibe → light", "never silently de-escalate", "Git-free creation", PROACTIVE_DELEGATION_SIGNAL),
+    "execution": ("complete:true", "smallest falsifiable chunk", "difficulty is cost, not value", "human_at_exhaustion", "human_after_checks", "PR review queue", "Execution assumes the user is absent", "Before substantive work on a newly selected goal", "safe useful work", "effective engineering rigor", "created-but-unrun machinery is not proof", PROACTIVE_DELEGATION_SIGNAL),
     "policy-review": ("only this workflow changes or confirms policy", "explicit approval of the current digest", "The policy is already approved", "privacy-safe execution reports"),
     "migration": ("explicit completeness review", "preserve every source location", "apply only after explicit approval"),
-    "suggestion": ("no-write default", "zzzops-refill", "never copy source labels", "goal-effective engineering rigor", "incomplete canonical verification", "proposed goal—not a silent change"),
+    "suggestion": ("no-write default", "zzzops-refill", "never copy source labels", "goal-effective engineering rigor", "incomplete canonical verification", "proposed goal—not a silent change", PROACTIVE_DELEGATION_SIGNAL),
+    "installation-validation": ("installation status", "installation audit", "explicit removal confirmation", "resume that original workflow exactly once", PROACTIVE_DELEGATION_SIGNAL),
     "acceptance": ("exactly one active item", "Never infer an ID", "blockers unchecked"),
     "feedback": ("exact target, title, labels, and body", "public", "nothing was deleted"),
 }
