@@ -24,6 +24,8 @@ The active `dev` ruleset targets only `refs/heads/dev` and:
 
 `dev-required-tests` is the stable aggregate emitted on every PR to `dev`. It succeeds only when `Core validation (Linux, Python <version>)`, `Plugin core validation (Windows)`, and `Plugin core validation (macOS)` have all succeeded. The workflow has no path filters, dynamic check names, secrets, or write permission, so protection can rely on that one stable context.
 
+Native stacked PRs merge through GitHub's asynchronous stack operation, which does not support administrator bypass. If a fully verified stack is rejected only by a bypassable review rule, preserve it by default. An exact user authorization may permit unstacking after the metadata loss and non-atomic consequence are disclosed, followed by bottom-up `--admin` merges pinned to each head SHA. Failed or pending checks, changed heads, unresolved feedback, and release or safety gates are never bypassed.
+
 ## `main`
 
 The active `main` ruleset targets only `refs/heads/main` and blocks deletion, non-fast-forward updates, and direct updates. It currently has no bypass actors and no required-status-check rule.
