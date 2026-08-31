@@ -4380,6 +4380,128 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertTrue(after["due"], "preview/planning must not advance exact review coverage")
             self.assertEqual(before["receipt_count"], after["receipt_count"])
 
+    def test_execute_entropy_protocol_is_closed_ordered_and_runtime_backed(self):
+        reference = (
+            PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "REVIEW_QUEUE.md"
+        ).read_text(encoding="utf-8")
+        block = reference.split("<!-- entropy-exhaustion-protocol:start -->", 1)[1].split(
+            "<!-- entropy-exhaustion-protocol:end -->", 1,
+        )[0]
+        table_lines = [line.strip() for line in block.splitlines() if line.strip().startswith("|")]
+        self.assertEqual(
+            ["State", "Guard", "Operation", "Success", "Failure"],
+            [cell.strip() for cell in table_lines[0].strip("|").split("|")],
+        )
+        rows = {}
+        for line in table_lines[2:]:
+            cells = [cell.strip().strip("`") for cell in line.strip("|").split("|")]
+            self.assertEqual(5, len(cells))
+            self.assertNotIn(cells[0], rows)
+            rows[cells[0]] = dict(zip(("guard", "operation", "success", "failure"), cells[1:]))
+        self.assertEqual({"mark", "exhaustion", "review", "refill", "handoff"}, set(rows))
+
+        operations = {row["operation"] for row in rows.values()}
+        self.assertEqual({
+            "entropy_mark_exact", "entropy_status_recent", "entropy_review_automatic_recent_once",
+            "refill_gate_once", "final_review_handoff",
+        }, operations)
+        self.assertTrue(all(row["failure"] == "actionable_stop" for row in rows.values()))
+        self.assertNotIn("execute", operations)
+
+        def routes(state):
+            return dict(item.split(":", 1) for item in rows[state]["success"].split(","))
+
+        declared_targets = set(rows) | {"cycle", "stop", "actionable_stop"}
+        self.assertTrue(all(target in declared_targets for state in rows for target in routes(state).values()))
+        self.assertEqual({"recorded": "cycle", "duplicate": "cycle"}, routes("mark"))
+        self.assertEqual({
+            "due_unattempted": "review", "due_attempted": "actionable_stop",
+            "not_due": "refill",
+        }, routes("exhaustion"))
+        self.assertEqual({"clean": "refill", "findings": "refill"}, routes("review"))
+        self.assertEqual({
+            "work": "cycle", "empty": "handoff", "disabled": "handoff", "used": "handoff",
+        }, routes("refill"))
+        self.assertEqual({"ready": "stop"}, routes("handoff"))
+        self.assertEqual("observed=verified_checkpoint,integrated_change,completed_goal", rows["mark"]["guard"])
+        self.assertEqual("checkpoint_refreshed=true,safe_work=false", rows["exhaustion"]["guard"])
+        self.assertEqual("due=true,attempted_current_exact_state=false", rows["review"]["guard"])
+        self.assertEqual("review=clean,findings,not_due;refill_used=false,true", rows["refill"]["guard"])
+        self.assertEqual("safe_work=false,refill=used,disabled,empty", rows["handoff"]["guard"])
+
+        status_targets = routes("exhaustion")
+        self.assertEqual("refill", status_targets["not_due"])
+        self.assertEqual("refill", routes(status_targets["due_unattempted"])["clean"])
+        self.assertEqual("handoff", routes("refill")["used"])
+        self.assertEqual("stop", routes(routes("refill")["used"])["ready"])
+
+        meta_line = next(
+            line for line in block.splitlines()
+            if line.startswith("<!-- entropy-exhaustion-protocol:meta ")
+        )
+        meta = dict(
+            item.split("=", 1)
+            for item in meta_line.removeprefix("<!-- entropy-exhaustion-protocol:meta ")
+            .removesuffix(" -->").split(";")
+        )
+        self.assertEqual(zzzops._entropy_review.EVENT_KINDS, set(meta["qualifying"].split(",")))
+        self.assertEqual({
+            "claim", "reservation", "schema_repair", "blocker_update",
+            "administrative_transition", "new_suggested_goal",
+        }, set(meta["nonqualifying"].split(",")))
+        self.assertEqual("false", meta["review_may_call_execute"])
+        self.assertEqual("false", meta["same_exact_state_may_review_again"])
+        self.assertEqual("true", meta["mark_before_next_exhaustion"])
+        self.assertEqual(
+            "entropy_status_recent<entropy_review_automatic_recent_once<"
+            "refill_gate_once<final_review_handoff",
+            meta["order"],
+        )
+        self.assertEqual(zzzops._entropy_review.SUCCESS_OUTCOMES, set(routes("review")))
+
+        recent = (
+            PLUGIN_ROOT / "skills" / "review-zzzops-entropy" / "references" / "RECENT.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("only explicitly nonqualifying administration", recent)
+        self.assertIn("linked status and exact PR/base/head/merge evidence are unchanged", recent)
+        self.assertIn("ambiguous history", recent)
+
+        review_skill = (
+            PLUGIN_ROOT / "skills" / "review-zzzops-entropy" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        receipt_step = review_skill.index("6. Complete only after")
+        automatic_apply_step = review_skill.index(
+            "Automatic recent returns its fixed reviewed findings only after step 6"
+        )
+        self.assertLess(receipt_step, automatic_apply_step)
+        self.assertIn("If post-receipt capture fails", review_skill)
+        self.assertLess(
+            reference.index("Only after the exact completion receipt succeeds"),
+            reference.index("Post-receipt review capture consumes"),
+        )
+
+        for outcome in sorted(zzzops._entropy_review.SUCCESS_OUTCOMES):
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as directory:
+                repo = Path(directory)
+                subprocess.run(["git", "init", "-q", str(repo)], check=True)
+                event = zzzops.record_entropy_review_event(repo, {
+                    "schema_version": 1, "repository": "owner/repo", "goal": 9, "revision": 2,
+                    "goal_digest": "2" * 64, "status": "blocked", "kind": "verified_checkpoint",
+                    "pr": 12, "base_oid": "1" * 40, "head_oid": "2" * 40, "merge_oid": None,
+                })
+                current = [event["event_id"]]
+                self.assertTrue(zzzops.entropy_review_status(repo, current)["due"])
+                batch = zzzops.plan_entropy_review(repo, mode="recent", current_event_fingerprints=current)
+                zzzops.complete_entropy_review(repo, {
+                    "schema_version": 1, "batch_id": batch["batch_id"],
+                    "outcome": outcome, "current_events": current,
+                })
+                self.assertFalse(zzzops.entropy_review_status(repo, current)["due"])
+                repeated = zzzops.plan_entropy_review(
+                    repo, mode="recent", current_event_fingerprints=current,
+                )
+                self.assertEqual((False, None), (repeated["due"], repeated["batch_id"]))
+
     def test_entropy_observation_workflow_is_incidental_and_authority_bounded(self):
         root = PLUGIN_ROOT
         execute = (root / "skills" / "execute-zzzops" / "references" / "EXECUTE.md").read_text(encoding="utf-8")
@@ -4388,7 +4510,8 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("ENTROPY_OBSERVATIONS.md", execute)
         for phrase in (
             "entropy observe", "Never pause", "one to four normalized",
-            "at most 280 characters", "not an audit, backlog, or completion requirement",
+            "at most 280 characters", "not an audit or backlog", "this is required",
+            "next safe boundary",
         ):
             self.assertIn(phrase, entropy)
         for phrase in (

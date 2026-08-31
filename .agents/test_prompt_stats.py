@@ -107,6 +107,9 @@ class PromptStatsTests(unittest.TestCase):
         self.assertTrue(entropy_paths <= inventory)
         self.assertTrue(entropy_paths.isdisjoint(static_hot))
         self.assertTrue(entropy_paths <= set(prompt_stats.WORKFLOW_PROMPTS["entropy-review"]))
+        self.assertTrue(entropy_paths.isdisjoint(prompt_stats.WORKFLOW_PROMPTS["execution"]))
+        execution_text = prompt_stats.workflow_profile(root, "execution", "codex")[2]
+        self.assertNotIn("# Review ZzzOps Entropy", execution_text)
 
     def test_workflow_profiles_cover_codex(self) -> None:
         root = SCRIPT.parents[1]
