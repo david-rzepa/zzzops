@@ -31,13 +31,12 @@ Update only for a new result, decision, risk, changed assumption, required actio
 
 - On blockers use `../../../rules/BLOCKERS.md`: persist request/continuation, do bounded safe work, then stay active or block/release claim/reservation before switching.
 - Out-of-scope decay: record [evidence](ENTROPY_OBSERVATIONS.md); do not audit.
+- Immediately after a verified checkpoint, integrated change, or completed goal is observed, use [the exact entropy event contract](ENTROPY_OBSERVATIONS.md); administrative transitions and newly suggested goals do not qualify.
 - Before `done`, apply effective engineering rigor and observe its required evidence; created-but-unrun machinery is not proof. Cite each criterion, verify children/blockers/checks, and state gaps; build/lint/types/review prove only themselves. Apply `SELF_REVIEW.md` and `BRANCH_REVIEW.md`; pending human review is never `done`.
 - Follow PROJECT Git/review/commit policy; stage only authorized implementation/pending local state, never an empty commit for GitHub-only state. After mutation refresh, recheck parents/unlocks, and select again.
 
 ## Exhaustion and handoff
 
-When no goal has `work_state: triage|prepare|write`, rebuild blockers through `UNBLOCK.md`, then follow [the PR review queue](REVIEW_QUEUE.md) for an ordered exhaustion handoff. Later resolve supplied input and resume; never poll for humans.
-
-If empty, `$suggest-zzzops-work` may apply only under explicit reviewed refill policy and its limits; never enable or loop-refill.
+When no goal has `work_state: triage|prepare|write`, rebuild blockers through `UNBLOCK.md`, then follow [the PR review queue](REVIEW_QUEUE.md) for exact recent review, optional refill, and the ordered final handoff. Later resolve supplied input and resume; never poll for humans.
 
 Stop only for user stop, runtime boundary, authority/risk, unresolved human/external blocker, or no refill. First make touched goals resumable (action, evidence, blockers, claim, links/history). Report outcome, one required action, remaining work, and checks; keep mechanics internal.
