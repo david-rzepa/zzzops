@@ -28,6 +28,7 @@ Exhausted-queue apply honors independent opt-ins:
 - `documentation`: missing, stale, misleading, or inaccessible user/developer/operations docs.
 - `tests`: evidenced untested behavior, regression, boundary, or missing fast feedback—not percentage theater. Apply PROJECT `test_bug`; `capture_and_ask` records a separate human-blocked TODO before any fix.
 - `code_quality_non_behavioral`: behavior-preserving naming, extraction/decomposition, dead/duplicate code cleanup, or monolith splitting. Require unchanged-behavior evidence; exclude features, architecture rewrites, and style churn.
+- `agent_observability`: an evidenced diagnostic question cannot be answered without costly inference or user help. Load [the bounded category contract](references/AGENT_OBSERVABILITY.md); credit adequate signals and choose the smallest safe mechanism.
 
 Use only PROJECT-enabled categories and cap, then return to `$execute-zzzops`. Ask about material ambiguity; never manufacture work.
 
