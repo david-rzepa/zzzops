@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import time
@@ -26,6 +27,7 @@ PHASES = frozenset({
 })
 PROVENANCE = frozenset({"measured", "inferred", "unavailable"})
 PHASE_FIELDS = {"provenance", "count", "total_ms", "min_ms", "max_ms", "failures"}
+DIAGNOSTIC_ID = re.compile(r"^[0-9a-f]{64}$")
 
 
 class DiagnosticError(ValueError):
@@ -285,6 +287,24 @@ def list_diagnostics(repo: Path) -> dict[str, Any]:
         for path in sorted(directory.glob("*.json")):
             items.append({"id": path.stem, "diagnostic": _read_diagnostic(path)})
     return {"schema_version": SCHEMA_VERSION, "count": len(items), "diagnostics": items}
+
+
+def load_diagnostic(repo: Path, diagnostic_id: str) -> dict[str, Any]:
+    """Load one exact content-addressed diagnostic selected by its bounded identifier."""
+    if not isinstance(diagnostic_id, str) or not DIAGNOSTIC_ID.fullmatch(diagnostic_id):
+        raise DiagnosticError("diagnostic id is invalid")
+    path = diagnostic_directory(repo) / f"{diagnostic_id}.json"
+    if not path.is_file():
+        raise DiagnosticError("selected diagnostic is unavailable")
+    return {"id": diagnostic_id, "diagnostic": _read_diagnostic(path)}
+
+
+def delete_diagnostic(repo: Path, diagnostic_id: str) -> bool:
+    """Delete one exact selected diagnostic only after revalidating its content address."""
+    selected = load_diagnostic(repo, diagnostic_id)
+    path = diagnostic_directory(repo) / f"{selected['id']}.json"
+    path.unlink()
+    return True
 
 
 def timing_suggestion(repo: Path, *, now: float | None = None) -> dict[str, Any]:

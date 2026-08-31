@@ -13,7 +13,7 @@ ZzzOps may process the following data to perform a user-requested workflow:
 - Repository content and metadata available to Codex, including source files, documentation, configuration, Git history, branches, pull requests, checks, and repository instructions.
 - Project policy and local ZzzOps state stored under `.zzzops/` in the user's repository.
 - Goal content and metadata stored in GitHub Issues, including titles, descriptions, relationships, blockers, evidence, labels, comments, and GitHub-generated account or repository identifiers.
-- For optional public feedback, user-authored feedback and explicitly selected execution reports. Reports contain a content-derived identifier, creation timestamp, bounded workflow and cause codes, an agent category, numeric impact, and the installed ZzzOps version and revision. They are designed not to contain project names, paths, code, goals, domain facts, user content, or secrets.
+- For optional public feedback, user-authored feedback, explicitly selected execution reports, and at most one explicitly selected local timing diagnostic. Reports contain a content-derived identifier, creation timestamp, bounded workflow and cause codes, an agent category, numeric impact, and the installed ZzzOps version and revision. A timing payload contains only a content-derived identifier, fixed phase aggregates, measurement provenance, bounded agent/platform/Python categories, and validated ZzzOps feedback-build provenance. These structured payloads are designed not to contain project names, paths, code, goals, domain facts, user content, raw output, or secrets.
 
 ZzzOps does not need and must not be given authentication secrets, passwords, API keys, MFA or one-time codes, payment-card data, protected health information, government identifiers, or other restricted or regulated data.
 
@@ -32,8 +32,8 @@ ZzzOps does not sell personal data or disclose it to advertisers or data brokers
 
 ## Retention
 
-- Local `.zzzops/` state and execution reports remain in the user's repository until the user removes them or the documented workflow removes them.
-- An execution report selected for feedback is deleted locally only after successful submission. Cancellation, validation failure, or submission failure retains it for review or retry.
+- Local `.zzzops/` state, execution reports, and Git-local timing diagnostics remain in the user's environment until the user removes them or the documented workflow removes them.
+- An execution report or timing diagnostic selected for feedback is deleted locally only after successful submission. Cancellation, validation failure, or submission failure retains it for review or retry; unselected diagnostics are never removed by feedback submission.
 - Data written to GitHub remains according to the user's repository settings, actions, and [GitHub's privacy practices](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement). ZzzOps does not control GitHub backups, forks, caches, or copies made by repository viewers.
 - Public feedback issues are retained as project records. Requests for correction or deletion can be sent to the contact below and will be handled where technically and legally possible; removal cannot guarantee deletion of third-party copies.
 
@@ -46,6 +46,7 @@ Users can:
 - redact sensitive context or link to an approved private system instead of placing it in a goal;
 - review, edit, or remove local ZzzOps state and manage GitHub records using their normal repository controls;
 - disable local execution-report recording in reviewed ZzzOps policy;
+- leave timing profiling off, inspect or purge local timing diagnostics, and decline or omit diagnostic sharing;
 - inspect the exact public feedback payload, cancel submission, or remove content before confirming it; and
 - request privacy, support, or security assistance at [zzzops.support@gmail.com](mailto:zzzops.support@gmail.com).
 

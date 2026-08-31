@@ -163,7 +163,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
         for name in (
             "TimingSession", "diagnostic_directory", "validate_diagnostic",
             "record_diagnostic", "list_diagnostics", "purge_diagnostics",
-            "timing_suggestion",
+            "timing_suggestion", "load_diagnostic", "delete_diagnostic",
         ):
             self.assertIs(getattr(zzzops, name), getattr(diagnostics, name))
 
@@ -390,6 +390,7 @@ class FeedbackModuleTests(unittest.TestCase):
         for name in (
             "record_execution_report", "load_execution_reports", "prepare_feedback",
             "submit_feedback", "zzzops_provenance", "validate_execution_report",
+            "validate_timing_feedback",
         ):
             self.assertIs(getattr(zzzops, name), getattr(feedback, name))
 
@@ -1135,6 +1136,7 @@ class ExecutionReportTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.repo = Path(self.temp.name)
         (self.repo / ".zzzops").mkdir()
+        subprocess.run(["git", "init", "-q", str(self.repo)], check=True)
         self.project = {
             "policy": {"sections": [{
                 "id": "autonomy_approval_parallelism",
@@ -1162,6 +1164,83 @@ class ExecutionReportTests(unittest.TestCase):
         }
         values.update(overrides)
         return zzzops.record_execution_report(self.repo, self.project, **values)
+
+    def diagnostic(self, milliseconds=1_500):
+        session = zzzops.TimingSession()
+        session.mark("github_discovery", provenance="measured", milliseconds=milliseconds)
+        session.mark("context_compaction", provenance="unavailable")
+        return zzzops.record_diagnostic(self.repo, session.snapshot())
+
+    def diagnostic_runtime(self):
+        return {"agent": "codex", "platform": "windows", "python": "3.12"}
+
+    def test_timing_feedback_schema_rejects_identifying_and_arbitrary_fields(self):
+        selected = self.diagnostic()
+        diagnostic = selected["diagnostic"]
+        payload = {
+            "schema_version": 1,
+            "id": selected["id"],
+            "runtime": self.diagnostic_runtime(),
+            "zzzops": {"version": "v1.2.3", "revision": "a" * 40},
+            "phases": diagnostic["phases"],
+        }
+        self.assertEqual([], zzzops.validate_timing_feedback(payload))
+        for field in ("repository", "path", "prompt", "code", "output", "secret"):
+            invalid = {**payload, field: "private"}
+            self.assertRegex("; ".join(zzzops.validate_timing_feedback(invalid)), "fields")
+        invalid_runtime = json.loads(json.dumps(payload))
+        invalid_runtime["runtime"]["platform"] = "private-hostname"
+        self.assertRegex("; ".join(zzzops.validate_timing_feedback(invalid_runtime)), "platform")
+
+    def test_selected_timing_preview_confirmation_retention_and_exact_cleanup(self):
+        selected = self.diagnostic()
+        unselected = self.diagnostic(milliseconds=800)
+        preview = zzzops.prepare_feedback(
+            self.repo, "", diagnostic_id=selected["id"],
+            diagnostic_runtime=self.diagnostic_runtime(),
+        )
+        self.assertEqual([], preview["report_ids"])
+        self.assertEqual([selected["id"]], preview["diagnostic_ids"])
+        self.assertIn("<summary>Selected timing diagnostic</summary>", preview["body"])
+        self.assertIn('"github_discovery"', preview["body"])
+        self.assertIn('"agent":"codex"', preview["body"])
+        self.assertNotIn(str(self.repo), preview["body"])
+
+        with self.assertRaisesRegex(ValueError, "confirmation"):
+            zzzops.submit_feedback(
+                self.repo, "", "sha256:wrong", diagnostic_id=selected["id"],
+                diagnostic_runtime=self.diagnostic_runtime(),
+            )
+        changed_runtime = {**self.diagnostic_runtime(), "platform": "linux"}
+        with mock.patch.object(zzzops._feedback, "_create_feedback_issue") as create_issue:
+            with self.assertRaisesRegex(ValueError, "confirmation"):
+                zzzops.submit_feedback(
+                    self.repo, "", preview["digest"], diagnostic_id=selected["id"],
+                    diagnostic_runtime=changed_runtime,
+                )
+            create_issue.assert_not_called()
+        self.assertEqual(2, zzzops.list_diagnostics(self.repo)["count"])
+
+        with mock.patch.object(zzzops._feedback, "_create_feedback_issue") as create_issue:
+            create_issue.side_effect = ValueError("Feedback submission failed: provider failed")
+            with self.assertRaisesRegex(ValueError, "provider failed"):
+                zzzops.submit_feedback(
+                    self.repo, "", preview["digest"], diagnostic_id=selected["id"],
+                    diagnostic_runtime=self.diagnostic_runtime(),
+                )
+            self.assertEqual(2, zzzops.list_diagnostics(self.repo)["count"])
+
+            create_issue.side_effect = None
+            create_issue.return_value = "https://github.com/david-rzepa/zzzops/issues/376"
+            submitted = zzzops.submit_feedback(
+                self.repo, "", preview["digest"], diagnostic_id=selected["id"],
+                diagnostic_runtime=self.diagnostic_runtime(),
+            )
+        self.assertEqual([selected["id"]], submitted["deleted_diagnostic_ids"])
+        self.assertEqual([], submitted["retained_diagnostic_ids"])
+        self.assertEqual(preview["body"], create_issue.call_args.args[1]["body"])
+        remaining = zzzops.list_diagnostics(self.repo)
+        self.assertEqual([unselected["id"]], [item["id"] for item in remaining["diagnostics"]])
 
     def test_feedback_cli_text_normalizes_utf8_bom_for_file_and_stdin(self):
         prompt = self.repo / "prompt.txt"
@@ -3744,6 +3823,25 @@ class WorkflowContractTests(unittest.TestCase):
             "Model work", "Context compaction", "unavailable", "older than seven days",
         ):
             self.assertIn(phrase, performance)
+
+    def test_timing_feedback_requires_explicit_fixed_selection_and_exact_confirmation(self):
+        send = (
+            PLUGIN_ROOT / "skills" / "send-zzzops-feedback" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        feedback = (PLUGIN_ROOT / "rules" / "FEEDBACK.md").read_text(encoding="utf-8")
+        privacy = (PLUGIN_ROOT.parent.parent / "PRIVACY.md").read_text(encoding="utf-8")
+        for phrase in (
+            "diagnostics list", "exactly one user-selected diagnostic ID", "use `unknown`",
+            "never selected automatically", "public preview/digest", "digest confirmation",
+            "deletes only the submitted reports and selected diagnostic",
+        ):
+            self.assertIn(phrase, send + feedback)
+        for phrase in (
+            "at most one explicitly selected local timing diagnostic", "fixed phase aggregates",
+            "raw output", "deleted locally only after successful submission",
+            "unselected diagnostics are never removed",
+        ):
+            self.assertIn(phrase, privacy)
 
     def test_entropy_observation_workflow_is_incidental_and_authority_bounded(self):
         root = PLUGIN_ROOT

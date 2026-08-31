@@ -17,16 +17,26 @@ GOAL_SCHEMA_VERSION = 1
 _atomic_text: Callable[[Path, str], None] | None = None
 _render_managed_goal: Callable[[dict[str, Any], str], str] | None = None
 _package_provenance: Callable[[Path | None], dict[str, str]] | None = None
+_load_diagnostic: Callable[[Path, str], dict[str, Any]] | None = None
+_delete_diagnostic: Callable[[Path, str], bool] | None = None
+_validate_diagnostic: Callable[[Any], list[str]] | None = None
 
 def configure_entrypoint(
     *, atomic_text: Callable[[Path, str], None], render_managed_goal: Callable[[dict[str, Any], str], str],
     package_provenance: Callable[[Path | None], dict[str, str]],
+    load_diagnostic: Callable[[Path, str], dict[str, Any]],
+    delete_diagnostic: Callable[[Path, str], bool],
+    validate_diagnostic: Callable[[Any], list[str]],
 ) -> None:
     """Provide the core helpers required by this acyclic module."""
     global _atomic_text, _render_managed_goal, _package_provenance
+    global _load_diagnostic, _delete_diagnostic, _validate_diagnostic
     _atomic_text = atomic_text
     _render_managed_goal = render_managed_goal
     _package_provenance = package_provenance
+    _load_diagnostic = load_diagnostic
+    _delete_diagnostic = delete_diagnostic
+    _validate_diagnostic = validate_diagnostic
 
 def _require_configured() -> tuple[Callable[[Path, str], None], Callable[[dict[str, Any], str], str]]:
     if _atomic_text is None or _render_managed_goal is None:
@@ -131,6 +141,12 @@ EXECUTION_REPORT_FIELDS = EXECUTION_REPORT_V2_FIELDS | {"zzzops"}
 EXECUTION_REPORT_ID = re.compile(r"^report-[0-9a-f]{64}$")
 ZZZOPS_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$")
 ZZZOPS_REVISION = re.compile(r"^[0-9a-f]{40,64}$")
+TIMING_FEEDBACK_SCHEMA_VERSION = 1
+TIMING_FEEDBACK_FIELDS = {"schema_version", "id", "runtime", "zzzops", "phases"}
+TIMING_AGENTS = {"codex", "claude", "unknown"}
+TIMING_PLATFORMS = {"linux", "macos", "windows", "unknown"}
+TIMING_PYTHONS = {"3.10", "3.11", "3.12", "3.13", "3.14", "unknown"}
+TIMING_DIAGNOSTIC_ID = re.compile(r"^[0-9a-f]{64}$")
 
 def execution_reports_enabled(project: dict[str, Any]) -> bool:
     sections = ((project.get("policy") or {}).get("sections") if isinstance(project.get("policy"), dict) else None)
@@ -176,6 +192,66 @@ def zzzops_provenance(repo: Path) -> dict[str, str]:
     if _package_provenance is None:
         raise RuntimeError("Feedback module was not configured with Agent Plugin provenance")
     return _validated_zzzops_provenance(_package_provenance(repo))
+
+
+def validate_timing_feedback(value: Any) -> list[str]:
+    """Validate the fixed, project-free payload branch for one selected timing aggregate."""
+    if not isinstance(value, dict):
+        return ["timing feedback must be an object"]
+    errors: list[str] = []
+    if set(value) != TIMING_FEEDBACK_FIELDS:
+        errors.append("timing feedback fields are invalid")
+    if value.get("schema_version") != TIMING_FEEDBACK_SCHEMA_VERSION:
+        errors.append(f"timing feedback schema_version must be {TIMING_FEEDBACK_SCHEMA_VERSION}")
+    diagnostic_id = value.get("id")
+    if not isinstance(diagnostic_id, str) or not TIMING_DIAGNOSTIC_ID.fullmatch(diagnostic_id):
+        errors.append("timing feedback id is invalid")
+    runtime = value.get("runtime")
+    if not isinstance(runtime, dict) or set(runtime) != {"agent", "platform", "python"}:
+        errors.append("timing feedback runtime fields are invalid")
+    else:
+        for field, allowed in (
+            ("agent", TIMING_AGENTS), ("platform", TIMING_PLATFORMS), ("python", TIMING_PYTHONS),
+        ):
+            if runtime.get(field) not in allowed:
+                errors.append(f"timing feedback runtime {field} is invalid")
+    try:
+        _validated_zzzops_provenance(value.get("zzzops"))
+    except ValueError as exc:
+        errors.append(str(exc))
+    diagnostic = {"schema_version": 1, "phases": value.get("phases")}
+    if _validate_diagnostic is None:
+        errors.append("timing diagnostic validator is unavailable")
+    else:
+        errors.extend(_validate_diagnostic(diagnostic))
+    if isinstance(diagnostic_id, str) and TIMING_DIAGNOSTIC_ID.fullmatch(diagnostic_id):
+        canonical = json.dumps(diagnostic, sort_keys=True, separators=(",", ":"))
+        if diagnostic_id != hashlib.sha256(canonical.encode("utf-8")).hexdigest():
+            errors.append("timing feedback id must match the selected aggregate")
+    return errors
+
+
+def _selected_timing_feedback(
+    repo: Path, diagnostic_id: str | None, runtime: dict[str, str] | None,
+) -> list[dict[str, Any]]:
+    if diagnostic_id is None:
+        if runtime is not None:
+            raise ValueError("diagnostic runtime requires a selected diagnostic")
+        return []
+    if _load_diagnostic is None:
+        raise RuntimeError("Feedback module was not configured with timing diagnostics")
+    selected = _load_diagnostic(repo, diagnostic_id)
+    payload = {
+        "schema_version": TIMING_FEEDBACK_SCHEMA_VERSION,
+        "id": selected["id"],
+        "runtime": runtime,
+        "zzzops": zzzops_provenance(repo),
+        "phases": selected["diagnostic"]["phases"],
+    }
+    errors = validate_timing_feedback(payload)
+    if errors:
+        raise ValueError("Invalid timing feedback: " + "; ".join(errors))
+    return [payload]
 
 
 def validate_execution_report(report: Any) -> list[str]:
@@ -301,13 +377,18 @@ def load_execution_reports(repo: Path, report_ids: list[str] | None = None) -> l
     return reports
 
 
-def prepare_feedback(repo: Path, prompt: str, report_ids: list[str] | None = None) -> dict[str, Any]:
+def prepare_feedback(
+    repo: Path, prompt: str, report_ids: list[str] | None = None, *,
+    diagnostic_id: str | None = None, diagnostic_runtime: dict[str, str] | None = None,
+) -> dict[str, Any]:
     if not isinstance(prompt, str):
         raise ValueError("feedback prompt must be text")
     reports = load_execution_reports(repo, report_ids)
-    if not prompt.strip() and not reports:
-        raise ValueError("feedback requires prompt text or at least one execution report")
+    timing = _selected_timing_feedback(repo, diagnostic_id, diagnostic_runtime)
+    if not prompt.strip() and not reports and not timing:
+        raise ValueError("feedback requires prompt text, an execution report, or a timing diagnostic")
     report_json = json.dumps(reports, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    timing_json = json.dumps(timing, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     feedback_text = prompt if prompt.strip() else "(none)"
     grouped: dict[tuple[str, str], dict[str, int]] = {}
     for report in reports:
@@ -346,6 +427,17 @@ def prepare_feedback(repo: Path, prompt: str, report_ids: list[str] | None = Non
             f"**Suggested investigation:** {account['investigation']}"
         )
     narrative_text = "\n\n".join(narratives) if narratives else "No archived execution reports were included."
+    timing_section = ""
+    if timing:
+        timing_section = (
+            "\n## Timing diagnostic\n\n"
+            "A selected local aggregate is included only through the fixed timing schema shown below. "
+            "It contains no repository identity, paths, prompts, code, raw output, or secrets.\n\n"
+            "<details>\n<summary>Selected timing diagnostic</summary>\n\n"
+            "```json\n"
+            f"{timing_json}\n"
+            "```\n\n</details>\n"
+        )
     body = (
         "## User feedback\n\n"
         f"{feedback_text}\n\n"
@@ -357,6 +449,7 @@ def prepare_feedback(repo: Path, prompt: str, report_ids: list[str] | None = Non
         "```json\n"
         f"{report_json}\n"
         "```\n\n</details>\n"
+        f"{timing_section}"
     )
     feedback_goal = {
         "schema_version": GOAL_SCHEMA_VERSION,
@@ -370,26 +463,26 @@ def prepare_feedback(repo: Path, prompt: str, report_ids: list[str] | None = Non
     _, render_managed_goal = _require_configured()
     body = render_managed_goal(feedback_goal, body)
     selected = [report["id"] for report in reports]
-    canonical = json.dumps({
+    selected_diagnostics = [item["id"] for item in timing]
+    canonical_payload = {
         "target": EXECUTION_REPORT_TARGET, "title": EXECUTION_REPORT_TITLE,
         "body": body, "labels": EXECUTION_REPORT_LABELS, "report_ids": selected,
-    }, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    }
+    if selected_diagnostics:
+        canonical_payload["diagnostic_ids"] = selected_diagnostics
+    canonical = json.dumps(canonical_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return {
         "target": EXECUTION_REPORT_TARGET,
         "title": EXECUTION_REPORT_TITLE,
         "body": body,
         "labels": list(EXECUTION_REPORT_LABELS),
         "report_ids": selected,
+        "diagnostic_ids": selected_diagnostics,
         "digest": "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
     }
 
 
-def submit_feedback(
-    repo: Path, prompt: str, confirmation: str, report_ids: list[str] | None = None,
-) -> dict[str, Any]:
-    prepared = prepare_feedback(repo, prompt, report_ids)
-    if not isinstance(confirmation, str) or not hmac.compare_digest(confirmation, prepared["digest"]):
-        raise ValueError("feedback confirmation does not match the exact current payload")
+def _create_feedback_issue(repo: Path, prepared: dict[str, Any]) -> str:
     executable = shutil.which("gh")
     if not executable:
         raise ValueError("GitHub CLI is unavailable")
@@ -411,7 +504,21 @@ def submit_feedback(
     url = result.stdout.strip()
     expected_prefix = f"https://github.com/{prepared['target']}/issues/"
     if not url.startswith(expected_prefix):
-        raise ValueError("Feedback submission returned an unexpected issue URL; reports were retained")
+        raise ValueError("Feedback submission returned an unexpected issue URL; selected local artifacts were retained")
+    return url
+
+
+def submit_feedback(
+    repo: Path, prompt: str, confirmation: str, report_ids: list[str] | None = None, *,
+    diagnostic_id: str | None = None, diagnostic_runtime: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    prepared = prepare_feedback(
+        repo, prompt, report_ids,
+        diagnostic_id=diagnostic_id, diagnostic_runtime=diagnostic_runtime,
+    )
+    if not isinstance(confirmation, str) or not hmac.compare_digest(confirmation, prepared["digest"]):
+        raise ValueError("feedback confirmation does not match the exact current payload")
+    url = _create_feedback_issue(repo, prepared)
     deleted: list[str] = []
     retained: list[str] = []
     for report_id in prepared["report_ids"]:
@@ -421,7 +528,19 @@ def submit_feedback(
             deleted.append(report_id)
         except (OSError, ValueError):
             retained.append(report_id)
+    deleted_diagnostics: list[str] = []
+    retained_diagnostics: list[str] = []
+    for selected_id in prepared["diagnostic_ids"]:
+        try:
+            if _delete_diagnostic is None:
+                raise RuntimeError("timing diagnostic cleanup is unavailable")
+            _delete_diagnostic(repo, selected_id)
+            deleted_diagnostics.append(selected_id)
+        except (OSError, RuntimeError, ValueError):
+            retained_diagnostics.append(selected_id)
     return {
         "submitted": True, "url": url,
         "deleted_report_ids": deleted, "retained_report_ids": retained,
+        "deleted_diagnostic_ids": deleted_diagnostics,
+        "retained_diagnostic_ids": retained_diagnostics,
     }

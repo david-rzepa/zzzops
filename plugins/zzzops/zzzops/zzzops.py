@@ -220,6 +220,8 @@ record_diagnostic = _diagnostics.record_diagnostic
 list_diagnostics = _diagnostics.list_diagnostics
 purge_diagnostics = _diagnostics.purge_diagnostics
 timing_suggestion = _diagnostics.timing_suggestion
+load_diagnostic = _diagnostics.load_diagnostic
+delete_diagnostic = _diagnostics.delete_diagnostic
 DiagnosticError = _diagnostics.DiagnosticError
 
 
@@ -235,6 +237,7 @@ execution_report_id = _feedback.execution_report_id
 _validated_zzzops_provenance = _feedback._validated_zzzops_provenance
 zzzops_provenance = _feedback.zzzops_provenance
 validate_execution_report = _feedback.validate_execution_report
+validate_timing_feedback = _feedback.validate_timing_feedback
 record_execution_report = _feedback.record_execution_report
 load_execution_reports = _feedback.load_execution_reports
 prepare_feedback = _feedback.prepare_feedback
@@ -1858,6 +1861,7 @@ def main() -> int:
     entropy_resolve.add_argument("--outcome", choices=("captured", "dismissed"), required=True)
     diagnostics = commands.add_parser("diagnostics", help="Inspect privacy-safe local timing diagnostics")
     diagnostics_commands = diagnostics.add_subparsers(dest="diagnostics_command", required=True)
+    diagnostics_commands.add_parser("list", help="List validated local timing aggregates")
     diagnostics_commands.add_parser("suggest", help="Read one current bounded bottleneck candidate")
     portfolio_parser = commands.add_parser("portfolio", help="Read and audit the canonical goal portfolio once")
     portfolio_parser.add_argument("--format", dest="output_format", choices=("summary", "json"), default="summary")
@@ -1916,6 +1920,10 @@ def main() -> int:
             help="UTF-8 user feedback file, or - for stdin (default)",
         )
         feedback_command.add_argument("--report", action="append", default=[], help="Select a report id; repeat as needed")
+        feedback_command.add_argument("--diagnostic", help="Select one local timing diagnostic id")
+        feedback_command.add_argument("--diagnostic-agent", choices=sorted(_feedback.TIMING_AGENTS), default="unknown")
+        feedback_command.add_argument("--diagnostic-platform", choices=sorted(_feedback.TIMING_PLATFORMS), default="unknown")
+        feedback_command.add_argument("--diagnostic-python", choices=sorted(_feedback.TIMING_PYTHONS), default="unknown")
         if name == "submit":
             feedback_command.add_argument("--confirm", required=True, help="Exact digest shown by feedback prepare")
     args = parser.parse_args()
@@ -1973,7 +1981,7 @@ def main() -> int:
             print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 0
         elif args.command == "diagnostics":
-            result = timing_suggestion(repo)
+            result = list_diagnostics(repo) if args.diagnostics_command == "list" else timing_suggestion(repo)
             print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 0
         elif args.command == "checkpoint":
@@ -2079,10 +2087,21 @@ def main() -> int:
         elif args.command == "feedback":
             prompt = read_cli_text(args.prompt_file)
             selected = args.report or None
+            runtime = None if args.diagnostic is None else {
+                "agent": args.diagnostic_agent,
+                "platform": args.diagnostic_platform,
+                "python": args.diagnostic_python,
+            }
             if args.feedback_command == "prepare":
-                result = prepare_feedback(repo, prompt, selected)
+                result = prepare_feedback(
+                    repo, prompt, selected,
+                    diagnostic_id=args.diagnostic, diagnostic_runtime=runtime,
+                )
             else:
-                result = submit_feedback(repo, prompt, args.confirm, selected)
+                result = submit_feedback(
+                    repo, prompt, args.confirm, selected,
+                    diagnostic_id=args.diagnostic, diagnostic_runtime=runtime,
+                )
             print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
         else:
             parser.print_help()
@@ -2098,6 +2117,9 @@ _feedback.configure_entrypoint(
     atomic_text=atomic_text,
     render_managed_goal=render_managed_goal,
     package_provenance=_package.package_provenance,
+    load_diagnostic=_diagnostics.load_diagnostic,
+    delete_diagnostic=_diagnostics.delete_diagnostic,
+    validate_diagnostic=_diagnostics.validate_diagnostic,
 )
 
 
