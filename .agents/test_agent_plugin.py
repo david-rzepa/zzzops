@@ -97,8 +97,11 @@ class AgentPluginTests(unittest.TestCase):
         self.assertEqual("ON_USE", entry["policy"]["authentication"])
 
     def test_package_contains_exactly_the_ten_product_skills(self) -> None:
+        package = runpy.run_path(str(PLUGIN / "zzzops" / "package.py"))
         actual = {path.name for path in (PLUGIN / "skills").iterdir() if (path / "SKILL.md").is_file()}
         self.assertEqual(SHIPPED_SKILLS, actual)
+        self.assertEqual(SHIPPED_SKILLS, package["SHIPPED_SKILLS"])
+        self.assertIn("review-zzzops-entropy", actual)
         self.assertFalse((PLUGIN / "skills" / "run-zzzops-acceptance").exists())
 
     def test_all_product_skills_load_shared_communication_contract(self) -> None:

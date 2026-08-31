@@ -251,6 +251,7 @@ def main() -> int:
             "plugins/zzzops/skills/migrate-to-zzzops",
             "plugins/zzzops/skills/review-zzzops-policy", "plugins/zzzops/skills/suggest-zzzops-work",
             "plugins/zzzops/skills/execute-zzzops", "plugins/zzzops/skills/review-agentic-engineering",
+            "plugins/zzzops/skills/review-zzzops-entropy",
             "plugins/zzzops/skills/send-zzzops-feedback",
             "plugins/zzzops/skills/validate-zzzops-installation",
         ]

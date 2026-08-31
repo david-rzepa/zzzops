@@ -178,6 +178,17 @@ class MarketplaceBundleTests(unittest.TestCase):
         )
 
         canonical = self.builder.plugin_files(ROOT, "2.0.0")
+        canonical_skills = {
+            relative.split("/")[1] for relative in canonical
+            if relative.startswith("skills/") and relative.endswith("/SKILL.md")
+        }
+        generated_skills = {
+            relative.split("/")[2] for relative in files
+            if relative.startswith("zzzops/skills/") and relative.endswith("/SKILL.md")
+        }
+        self.assertEqual(SHIPPED_SKILLS, canonical_skills)
+        self.assertEqual(canonical_skills, generated_skills)
+        self.assertIn("review-zzzops-entropy", generated_skills)
         for relative, content in canonical.items():
             self.assertEqual(content, files[f"zzzops/{relative}"], relative)
 

@@ -19,4 +19,6 @@ The table below is the exact ten-skill Agent Plugin package. `run-zzzops-accepta
 
 Generic mode words are contextual: combine them with the task noun, such as “dry run TODO migration.” Host installation and updates remain Codex marketplace operations; the validation skill reconciles their repository-local aftermath. Keep descriptions concise and update contract tests when names, modes, or defaults change.
 
+Codex, marketplace, and generated Claude packages all derive this same exact skill inventory. Distribution validation rejects missing skills or divergent generated content; the human acceptance ledger separately maps user-visible lifecycle behavior.
+
 References: [Agent Plugins specification](https://agent-plugins.org/specification), [Codex skills](https://developers.openai.com/codex/skills).
