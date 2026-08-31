@@ -5,6 +5,8 @@ description: ZzzOps v0.0.0-dev — development plugin. Validate one repository a
 
 # Validate ZzzOps Installation
 
+Read `../../rules/COMMUNICATION.md` for user-facing messages.
+
 This workflow owns the installation check, so skip `INITIALIZATION.md`'s validation handoff and do not recurse. Resolve Python and the installed package CLI as described there.
 
 1. Run `installation status`. Automatic routing stops immediately when the current package record is `clean` or `declined`; explicit invocation continues to a fresh audit.

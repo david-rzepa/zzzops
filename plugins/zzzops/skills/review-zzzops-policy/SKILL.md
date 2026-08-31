@@ -5,6 +5,8 @@ description: ZzzOps v0.0.0-dev — development plugin. Review, initialize, summa
 
 # Review ZzzOps Policy
 
+Read `../../rules/COMMUNICATION.md` for user-facing messages.
+
 Follow `../../rules/INITIALIZATION.md`; only this workflow changes or confirms policy.
 
 Before optional tools, reuse capabilities; never invoke an unavailable path—use an alternative or block once.

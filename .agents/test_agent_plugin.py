@@ -100,6 +100,22 @@ class AgentPluginTests(unittest.TestCase):
         self.assertEqual(SHIPPED_SKILLS, actual)
         self.assertFalse((PLUGIN / "skills" / "run-zzzops-acceptance").exists())
 
+    def test_all_product_skills_load_shared_communication_contract(self) -> None:
+        guide = PLUGIN / "rules" / "COMMUNICATION.md"
+        self.assertTrue(guide.is_file(), "the shared communication guide is missing")
+        guide_text = guide.read_text(encoding="utf-8")
+        for signal in (
+            "[policy:documentation_style]",
+            "Lead with the outcome",
+            "Keep internal machinery internal",
+            "Do not hide",
+            "progressive detail",
+        ):
+            self.assertIn(signal, guide_text)
+        for skill in SHIPPED_SKILLS:
+            text = (PLUGIN / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("../../rules/COMMUNICATION.md", text, skill)
+
     def test_package_contains_valid_progressively_disclosed_concepts(self) -> None:
         package = runpy.run_path(str(PLUGIN / "zzzops" / "package.py"))
         status = package["package_status"]()

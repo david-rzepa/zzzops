@@ -5,6 +5,8 @@ description: ZzzOps v0.0.0-dev — development plugin. Preview and send user fee
 
 # Send ZzzOps Feedback
 
+Read `../../rules/COMMUNICATION.md` for user-facing messages.
+
 Run `../../rules/INITIALIZATION.md`, then read `../../rules/FEEDBACK.md`. Use the resolved Python interpreter for all CLI calls.
 
 Use checkpoint only for readiness; detailed inputs are local reports and explicit feedback, never goal bodies/history.

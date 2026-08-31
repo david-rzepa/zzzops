@@ -10,6 +10,8 @@ description: >-
 
 # Execute ZzzOps
 
+Read `../../rules/COMMUNICATION.md` for user-facing messages.
+
 Mode: `dry run`, `preview`, or `plan` means read-only inventory, triage simulation, ordering, and blocker reporting; do not initialize/apply, claim, update goals, edit source, run mutating commands, or change Git/external state. Otherwise run the live loop below.
 
 First run `../../rules/INITIALIZATION.md`, then route through `../../rules/BACKENDS.md`. Read `../../rules/GOAL_SYSTEM.md` and the initialized charter; load only what applies.
