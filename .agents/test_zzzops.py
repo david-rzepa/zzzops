@@ -72,6 +72,7 @@ class EntropyModuleTests(unittest.TestCase):
         self.assertIs(zzzops.list_entropy_observations, zzzops._entropy.list_observations)
         self.assertIs(zzzops.record_entropy_observation, zzzops._entropy.record_observation)
         self.assertIs(zzzops.resolve_entropy_observations, zzzops._entropy.resolve_observations)
+        self.assertEqual(zzzops._policy.WORK_SUGGESTION_CATEGORIES, zzzops._entropy.ENTROPY_CATEGORIES)
 
     def observe(self, goal=1, evidence="AGENTS.md repeats a rule already enforced by CI.", category="documentation"):
         return zzzops.record_entropy_observation(
@@ -95,6 +96,25 @@ class EntropyModuleTests(unittest.TestCase):
     def test_legacy_policy_without_categories_routes_to_policy_review(self):
         with self.assertRaisesRegex(zzzops.EntropyObservationError, "categories are required"):
             zzzops.list_entropy_observations(self.repo, {"policy": {"sections": []}})
+        with self.assertRaisesRegex(zzzops.EntropyObservationError, "categories are invalid"):
+            zzzops.list_entropy_observations(self.repo, self.project(["unreviewed_category"]))
+
+    def test_agent_observability_requires_explicit_policy_opt_in(self):
+        self.observe(
+            category="agent_observability",
+            evidence="A runtime failure cannot be localized without asking a user for an ad-hoc trace.",
+        )
+        legacy = zzzops.list_entropy_observations(self.repo, self.project())
+        enabled = zzzops.list_entropy_observations(
+            self.repo, self.project([
+                "documentation", "tests", "code_quality_non_behavioral", "agent_observability",
+            ]),
+        )
+        self.assertEqual(0, legacy["eligible"])
+        self.assertEqual(1, legacy["excluded"])
+        self.assertEqual([], legacy["observations"])
+        self.assertEqual(1, enabled["eligible"])
+        self.assertEqual("agent_observability", enabled["observations"][0]["category"])
 
     def test_concurrent_observations_are_atomic_and_fingerprint_deduplicated(self):
         with ThreadPoolExecutor(max_workers=4) as executor:
@@ -2964,13 +2984,26 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(
             {
                 "enabled": True,
-                "allowed_categories": ["documentation", "tests", "code_quality_non_behavioral"],
+                "allowed_categories": [
+                    "documentation", "tests", "code_quality_non_behavioral", "agent_observability",
+                ],
                 "max_per_run": 3,
             },
             settings["refill"],
         )
         self.assertEqual("stack_from_reviewed_checkpoint", settings["dependency_implementation_gate"])
         self.assertTrue(settings["read_only_dependency_investigation"])
+
+        invalid = json.loads(json.dumps(plan["policy"]))
+        invalid_settings = next(
+            section for section in invalid["sections"]
+            if section["id"] == "autonomy_approval_parallelism"
+        )["settings"]
+        invalid_settings["refill"]["allowed_categories"].append("unreviewed_category")
+        self.assertTrue(any(
+            "refill.allowed_categories is invalid" in error
+            for error in zzzops.validate_policy(invalid, True)
+        ))
         self.assertEqual({"enabled": True}, settings["execution_reports"])
         self.assertEqual(
             {
@@ -3430,6 +3463,26 @@ class WorkflowContractTests(unittest.TestCase):
             ["zzzops", "zzzops-feedback", "zzzops:schema:v1", "zzzops:status:new", "zzzops:priority:P2"],
             zzzops.EXECUTION_REPORT_LABELS,
         )
+
+    def test_agent_observability_suggestions_are_bounded_and_evidence_led(self):
+        skill = (
+            PLUGIN_ROOT / "skills" / "suggest-zzzops-work" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        reference = (
+            PLUGIN_ROOT / "skills" / "suggest-zzzops-work" / "references"
+            / "AGENT_OBSERVABILITY.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("references/AGENT_OBSERVABILITY.md", skill)
+        for phrase in (
+            "diagnostic question", "costly fallback or user-dependent reproduction",
+            "smallest proposed signal", "smallest falsifiable probe", "autonomous iteration",
+            "read-only MCP server or debug adapter", "structured filterable diagnostic logging",
+            "CPU/memory profiling", "proof that evidence is current rather than stale",
+            "pure test gap", "adequate diagnostics", "no suggestion",
+            "uncontrolled external telemetry", "credential or secret capture",
+            "unrestricted command execution", "explicit size/retention limits",
+        ):
+            self.assertIn(phrase, reference)
 
     def test_entropy_observation_workflow_is_incidental_and_authority_bounded(self):
         root = PLUGIN_ROOT

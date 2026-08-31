@@ -9,7 +9,7 @@ Record at most one bounded fact at a time:
 
 ```text
 <python> <zzzops-cli> --repo . entropy observe \
-  --category documentation|tests|code_quality_non_behavioral \
+  --category documentation|tests|code_quality_non_behavioral|agent_observability \
   --path REPOSITORY/PATH --evidence "ONE OBSERVED FACT" \
   --goal N --revision R
 ```

@@ -13,7 +13,9 @@ from typing import Any
 
 SCHEMA_VERSION = 1
 DIRECTORY_RELATIVE = "zzzops/entropy-observations"
-ENTROPY_CATEGORIES = frozenset({"documentation", "tests", "code_quality_non_behavioral"})
+ENTROPY_CATEGORIES = frozenset({
+    "documentation", "tests", "code_quality_non_behavioral", "agent_observability",
+})
 MAX_PATHS = 4
 MAX_PATH_LENGTH = 240
 MAX_EVIDENCE_LENGTH = 280
@@ -113,9 +115,14 @@ def enabled_categories(project: dict[str, Any]) -> frozenset[str]:
     configured = refill.get("allowed_categories") if isinstance(refill, dict) else None
     if configured is None:
         raise EntropyObservationError("reviewed work-suggestion categories are required")
-    if not isinstance(configured, list) or any(not isinstance(item, str) for item in configured):
+    if (
+        not isinstance(configured, list)
+        or any(not isinstance(item, str) for item in configured)
+        or len(configured) != len(set(configured))
+        or any(item not in ENTROPY_CATEGORIES for item in configured)
+    ):
         raise EntropyObservationError("reviewed work-suggestion categories are invalid")
-    return frozenset(configured) & ENTROPY_CATEGORIES
+    return frozenset(configured)
 
 
 def list_observations(repo: Path, project: dict[str, Any]) -> dict[str, Any]:

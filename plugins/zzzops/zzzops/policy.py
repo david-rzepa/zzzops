@@ -81,6 +81,9 @@ GIT_REVIEW_SETTING_VALUES = {
     "stacked_unavailable_fallback": {"chained_prs"},
 }
 DEPENDENCY_IMPLEMENTATION_GATES = {"dependencies_done", "stack_from_reviewed_checkpoint"}
+WORK_SUGGESTION_CATEGORIES = frozenset({
+    "documentation", "tests", "code_quality_non_behavioral", "agent_observability",
+})
 
 WORKFLOW_ADHERENCE_SETTINGS = {
     "levels": {
@@ -748,6 +751,25 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                     normalize_resource_policy(settings["resource_reservations"])
                 except ValueError as exc:
                     errors.append(f"{prefix}.settings.{exc}")
+            if "refill" in settings:
+                refill = settings["refill"]
+                if not isinstance(refill, dict):
+                    errors.append(f"{prefix}.settings.refill must be an object")
+                else:
+                    categories = refill.get("allowed_categories")
+                    if (
+                        not isinstance(categories, list)
+                        or not categories
+                        or any(not isinstance(category, str) for category in categories)
+                        or len(categories) != len(set(categories))
+                        or any(category not in WORK_SUGGESTION_CATEGORIES for category in categories)
+                    ):
+                        errors.append(f"{prefix}.settings.refill.allowed_categories is invalid")
+                    if not isinstance(refill.get("enabled"), bool):
+                        errors.append(f"{prefix}.settings.refill.enabled must be boolean")
+                    maximum = refill.get("max_per_run")
+                    if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum < 1:
+                        errors.append(f"{prefix}.settings.refill.max_per_run must be a positive integer")
         review = section.get("review")
         if not isinstance(review, dict) or not isinstance(review.get("approved"), bool):
             errors.append(f"{prefix}.review.approved must be boolean")

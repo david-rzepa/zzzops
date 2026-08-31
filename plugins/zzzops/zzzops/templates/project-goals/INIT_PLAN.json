@@ -232,7 +232,7 @@
             "after_task": "remove_or_retain_clean_for_reuse", "abandoned_or_dirty": "forbidden",
             "reuse_requires": ["clean_state", "reviewed_base", "new_goal_resources", "safe_branch_reassignment"]
           },
-          "refill": {"enabled": true, "allowed_categories": ["documentation", "tests", "code_quality_non_behavioral"], "max_per_run": 3},
+          "refill": {"enabled": true, "allowed_categories": ["documentation", "tests", "code_quality_non_behavioral", "agent_observability"], "max_per_run": 3},
           "capture_defaults": {"priority": "P2", "difficulty": "unknown", "confidence": "low"},
           "planning": {"decompose_at": "L", "max_depth": 3}
         },
