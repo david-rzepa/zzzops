@@ -30,6 +30,14 @@ Native stacks use GitHub's atomic asynchronous merge after every layer passes it
 
 The workflow remains agent-driven. ZzzOps deliberately has no universal branch-management script: repository instructions, hosting rules, dependency ancestry, dirty state, and merge authority require contextual inspection.
 
+## Delegation and sequential fallback
+
+Agents delegate when there are at least two independent bounded tasks, or one clearly beneficial long or context-heavy isolated task, capped by eligible work and reviewed worker capacity. Safety or authority boundaries, dependency/resource conflict, unavailable capability, tight coupling, trivial scope, and measured setup or synthesis overhead are fixed reasons to stay sequential. No workers is a normal fallback: complete the work sequentially, record the reason where the task reports its execution decision, and never claim delegation occurred.
+
+The coordinator alone owns canonical goal state, claims and reservations, integration, consequential decisions, external writes, approvals, and user communication. Read-only workers do not edit, install, or mutate Git or shared systems. Writable workers require reviewed worktree mode, disjoint assigned resources, and an isolated tree; the coordinator validates and integrates their result. A tree is removed after use or explicitly verified clean and reset for safe reuse.
+
+Workers return concise evidence-linked facts, risks, and discoveries rather than transcripts. The coordinator independently checks the relevant evidence and synthesizes the result. Delegation is not a promise of speed: conflict, trivial work, or setup and synthesis overhead can make the sequential path the correct one.
+
 ## Continuation after capture
 
 Execute-all intent may remain active across a same-task yield or queue-exhausted handoff. If the next turn merely captures unrelated work, ZzzOps completes that capture and re-enters ordinary inventory once, so the new goal joins the queue without jumping it. Explicit stop, pause, replacement, capture-only wording, authority/blocker boundaries, or loss of a trustworthy same-task signal wins. Time proximity alone is never evidence; separate tasks and unsupported harnesses do not share intent.

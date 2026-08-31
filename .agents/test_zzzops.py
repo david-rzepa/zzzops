@@ -23,6 +23,11 @@ SPEC = importlib.util.spec_from_file_location("zzzops", MODULE_PATH)
 zzzops = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader
 SPEC.loader.exec_module(zzzops)
+MANUAL_ACCEPTANCE_PATH = Path(__file__).parent / "manual_acceptance.py"
+MANUAL_ACCEPTANCE_SPEC = importlib.util.spec_from_file_location("manual_acceptance", MANUAL_ACCEPTANCE_PATH)
+manual_acceptance = importlib.util.module_from_spec(MANUAL_ACCEPTANCE_SPEC)
+assert MANUAL_ACCEPTANCE_SPEC.loader
+MANUAL_ACCEPTANCE_SPEC.loader.exec_module(manual_acceptance)
 
 TEST_RESOURCE_POLICY = {
     "mode": "conflict_tolerant",
@@ -64,6 +69,104 @@ class PolicyModuleTests(unittest.TestCase):
             and node.targets[0].id == node.value.attr
         }
         self.assertEqual(set(), local_definitions & policy_exports)
+
+
+class DelegationAcceptanceTests(unittest.TestCase):
+    def test_independent_fixture_proves_structural_overlap_and_bounded_context(self):
+        result = manual_acceptance.delegation_acceptance_report()["independent_read_only"]
+        self.assertTrue(result["delegated"])
+        self.assertEqual("parallel", result["execution"])
+        self.assertEqual(2, result["peak_active"])
+        self.assertTrue(result["overlap"])
+        self.assertLessEqual(result["worker_count"], result["capacity"])
+        first_finish = next(index for index, event in enumerate(result["events"]) if event["event"] == "finished")
+        self.assertEqual(2, sum(event["event"] == "started" for event in result["events"][:first_finish]))
+        self.assertEqual("deterministic_fixture_steps", result["latency"]["basis"])
+        self.assertLess(result["latency"]["critical_path_steps"], result["latency"]["sequential_steps"])
+        self.assertTrue(result["sentinel_excluded"])
+        self.assertLessEqual(result["summary_bytes"], result["summary_limit"])
+        self.assertGreater(result["coordinator_context_reduction_bytes"], 0)
+        self.assertEqual("serialized_fixture_bytes", result["context_basis"])
+        for fact in ("alpha:probe-failed", "alpha:fixture-added", "beta:docs-audited", "beta:no-conflict"):
+            self.assertIn(fact, result["summary"])
+        self.assertEqual(
+            {"provenance": "unavailable", "milliseconds": None}, result["context_compaction"],
+        )
+
+    def test_conflict_coupling_and_unavailable_workers_fall_back_honestly(self):
+        report = manual_acceptance.delegation_acceptance_report()
+        expected = {
+            "resource_conflict": "dependency_or_resource_conflict",
+            "tight_coupling": "tight_coupling",
+            "workers_unavailable": "unavailable_capacity_or_capability",
+        }
+        for scenario, reason in expected.items():
+            with self.subTest(scenario=scenario):
+                result = report[scenario]
+                self.assertFalse(result["delegated"])
+                self.assertEqual("sequential", result["execution"])
+                self.assertEqual(reason, result["skip_reason"])
+                self.assertEqual(1, result["peak_active"])
+                self.assertFalse(result["overlap"])
+                self.assertEqual(
+                    result["latency"]["sequential_steps"], result["latency"]["critical_path_steps"],
+                )
+
+    def test_authority_and_writable_cleanup_stay_with_coordinator(self):
+        report = manual_acceptance.delegation_acceptance_report()
+        for result in report.values():
+            if not isinstance(result, dict) or "worker_authority_calls" not in result:
+                continue
+            self.assertEqual([], result["worker_authority_calls"])
+            self.assertTrue(result["authority_valid"])
+            self.assertTrue(result["writes_valid"])
+            self.assertEqual(
+                set(manual_acceptance.COORDINATOR_OPERATIONS),
+                {call["operation"] for call in result["coordinator_calls"]},
+            )
+            self.assertTrue(all(call["actor"] == "coordinator" for call in result["coordinator_calls"]))
+        writable = report["writable_worktrees"]
+        self.assertTrue(writable["delegated"])
+        self.assertTrue(writable["disjoint_worktree_assignments"])
+        self.assertTrue(writable["cleanup_verified"])
+        self.assertEqual(2, writable["committed_worktrees"])
+
+        operation_mocks = {operation: mock.Mock() for operation in manual_acceptance.COORDINATOR_OPERATIONS}
+        injected = manual_acceptance.run_delegation_fixture(
+            manual_acceptance._delegation_tasks(), workers_available=True,
+            coordinator_operations=operation_mocks,
+        )
+        self.assertTrue(injected["authority_valid"])
+        for operation in manual_acceptance.COORDINATOR_OPERATIONS:
+            operation_mocks[operation].assert_called_once_with()
+
+        malicious = manual_acceptance._delegation_tasks()
+        malicious[0]["authority_attempts"] = list(manual_acceptance.COORDINATOR_OPERATIONS)
+        malicious[1]["write_attempts"] = ["path:beta"]
+        rejected = manual_acceptance.run_delegation_fixture(
+            malicious, workers_available=True, writable=False,
+        )
+        self.assertFalse(rejected["authority_valid"])
+        self.assertEqual(set(manual_acceptance.COORDINATOR_OPERATIONS), set(rejected["worker_authority_calls"]))
+        self.assertFalse(rejected["writes_valid"])
+
+    def test_summary_bound_fails_closed_instead_of_returning_worker_noise(self):
+        oversized = manual_acceptance._delegation_tasks()
+        oversized[0]["facts"] = ["x" * (manual_acceptance.DELEGATION_SUMMARY_LIMIT + 1)]
+        with self.assertRaisesRegex(ValueError, "summary exceeds"):
+            manual_acceptance.run_delegation_fixture(oversized, workers_available=True)
+
+    def test_delegation_cli_is_read_only_and_does_not_require_the_plan(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            before = sorted(repo.iterdir())
+            result = subprocess.run(
+                [sys.executable, str(MANUAL_ACCEPTANCE_PATH), "delegation", "--repo", str(repo)],
+                capture_output=True, text=True, check=True,
+            )
+            report = json.loads(result.stdout)
+            self.assertEqual("manual_supported_host_check_required", report["host_evidence"])
+            self.assertEqual(before, sorted(repo.iterdir()))
 
 
 class EntropyModuleTests(unittest.TestCase):
