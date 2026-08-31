@@ -18,7 +18,13 @@ DELEGATION_PROMPT = "plugins/zzzops/rules/DELEGATION.md"
 PROACTIVE_DELEGATION_SIGNAL = "Eligible isolated work must be delegated"
 PROACTIVE_DELEGATION_WORKFLOWS = {
     "bootstrap-greenfield", "bootstrap-brownfield", "capture", "execution",
-    "suggestion", "installation-validation",
+    "entropy-review", "suggestion", "installation-validation",
+}
+COLD_ONLY_PROMPTS = {
+    "plugins/zzzops/skills/review-zzzops-policy/SKILL.md",
+    "plugins/zzzops/skills/review-zzzops-entropy/SKILL.md",
+    "plugins/zzzops/skills/review-zzzops-entropy/references/RECENT.md",
+    "plugins/zzzops/skills/review-zzzops-entropy/references/FULL.md",
 }
 
 # These limits protect context paid on every Codex turn and the two frequent ZzzOps paths. At the
@@ -67,6 +73,13 @@ WORKFLOW_PROMPTS = {
         "plugins/zzzops/rules/GOAL_SYSTEM.md", "plugins/zzzops/rules/CONTINUATION.md",
         "plugins/zzzops/rules/EXECUTION_STRATEGY.md", DELEGATION_PROMPT, "plugins/zzzops/rules/FEEDBACK.md",
     ),
+    "entropy-review": (
+        "plugins/zzzops/skills/review-zzzops-entropy/SKILL.md",
+        "plugins/zzzops/skills/review-zzzops-entropy/references/RECENT.md",
+        "plugins/zzzops/skills/review-zzzops-entropy/references/FULL.md",
+        COMMUNICATION_PROMPT, DELEGATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
+        "plugins/zzzops/rules/FEEDBACK.md",
+    ),
     "policy-review": (
         "plugins/zzzops/skills/review-zzzops-policy/SKILL.md",
         COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
@@ -101,6 +114,7 @@ WORKFLOW_SIGNALS = {
     "bootstrap-brownfield": ("evidence-led product/harness audit", "top-level product-outcome goal", "reconcile it in place", "$migrate-to-zzzops", "canonical verification", "until exhaustion", PROACTIVE_DELEGATION_SIGNAL),
     "capture": ("duplicate/relationship matches", "interview at", "owns requirements/acceptance", "active same-task execute intent", "effective engineering rigor", "vibe → light", "never silently de-escalate", "Git-free creation", PROACTIVE_DELEGATION_SIGNAL),
     "execution": ("complete:true", "smallest falsifiable chunk", "difficulty is cost, not value", "human_at_exhaustion", "human_after_checks", "PR review queue", "Execution assumes the user is absent", "Before substantive work on a newly selected goal", "safe useful work", "effective engineering rigor", "created-but-unrun machinery is not proof", PROACTIVE_DELEGATION_SIGNAL),
+    "entropy-review": ("preview` is the default", "entropy review status", "do not call `entropy review plan`", "exact pending recent", "full review contract", "Never infer cleanliness from an empty inbox", "$add-zzzops-goal", "current_events", PROACTIVE_DELEGATION_SIGNAL),
     "policy-review": ("only this workflow changes or confirms policy", "explicit approval of the current digest", "The policy is already approved", "privacy-safe execution reports"),
     "migration": ("explicit completeness review", "preserve every source location", "apply only after explicit approval"),
     "suggestion": ("no-write default", "zzzops-refill", "never copy source labels", "goal-effective engineering rigor", "incomplete canonical verification", "proposed goal—not a silent change", PROACTIVE_DELEGATION_SIGNAL),
@@ -173,11 +187,10 @@ def enforced_context_profiles(root: Path) -> dict[str, tuple[int, int]]:
 
 
 def policy_context_profiles(root: Path) -> dict[str, tuple[int, int]]:
-    cold_review_skill = "plugins/zzzops/skills/review-zzzops-policy/SKILL.md"
     static_hot = tuple(
         path.relative_to(root).as_posix()
         for path in prompt_files(root)
-        if path.relative_to(root).as_posix() != cold_review_skill
+        if path.relative_to(root).as_posix() not in COLD_ONLY_PROMPTS
     )
     project_policy = tuple(
         path for path in (".zzzops/PROJECT.md", ".zzzops/POLICY.json")

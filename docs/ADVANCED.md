@@ -79,7 +79,7 @@ GitHub Issues is the canonical goal authority. Initialization requires working r
 
 `$migrate-to-zzzops` discovers existing TODOs and backlogs, reads their surrounding source context, performs a completeness review, and presents a migration plan. Migration occurs only after approval. Inline TODO comments retain useful context and gain issue links; dedicated backlog files retire only after verified coverage.
 
-`$suggest-zzzops-work` audits code, tests, documentation, configuration, and policy for evidence-backed improvements. Every run also validates compact entropy observations collected incidentally during execution. Suggestions are preview-only unless apply or a reviewed exhausted-queue refill policy authorizes goal creation; the existing allowed-category policy controls which observation categories are eligible.
+`$suggest-zzzops-work` audits code, tests, documentation, configuration, and policy for evidence-backed improvements. Every run also validates compact entropy observations collected incidentally during execution. Suggestions are preview-only unless apply or a reviewed exhausted-queue refill policy authorizes goal creation; the existing allowed-category policy controls which observation categories are eligible. Use `$review-zzzops-entropy` for a bounded recent entropy review or an explicit repository-wide audit.
 
 The same workflow reads at most one current, fixed-field local timing candidate with `diagnostics suggest`. A fresh aggregate can support a previewed performance goal, but never creates work by itself, never enters exhausted-queue refill, and never leaves the machine. Missing, malformed, stale, or wholly unavailable timing data produces no timing suggestion. Explicit `apply` remains the only route to capture a previewed performance goal.
 
@@ -87,9 +87,11 @@ The optional `agent_observability` category identifies a specific diagnostic que
 
 `$execute-zzzops` prioritizes goals against reviewed project value, coordinates dependencies and shared resources, verifies one observable chunk at a time, and preserves state before switching or stopping. Unanswered consequential decisions become categorized blockers. Source-changing goals use the reviewed branch, commit, CI, and human-review lifecycle described in [execution and review](EXECUTION.md).
 
-Execution does not schedule or perform entropy audits. If ordinary implementation already exposes concrete out-of-scope decay, it may append one compact fact and up to four repository paths to the ignored observation inbox without investigating further. The inbox contains no priority, solution, acceptance criteria, or designed goal. Each observation is an atomically created, fingerprint-named file, so concurrent duplicates collapse across worktrees without a global counter or lock.
+Ordinary implementation does not pause to perform entropy audits. If it already exposes concrete out-of-scope decay, it may append one compact fact and up to four repository paths to the ignored observation inbox without investigating further. The inbox contains no priority, solution, acceptance criteria, or designed goal. Each observation is an atomically created, fingerprint-named file, so concurrent duplicates collapse across worktrees without a global counter or lock.
 
-Every `$suggest-zzzops-work` run checks eligible observations against current repository evidence. Stale, disproved, or duplicate observations are dismissed; supported observations remain pending through preview and are removed only after corresponding goals are confirmed. A manual repository-wide entropy review uses the same skill and evidence standard. This is neither a background daemon nor an independent permission to create work.
+Every `$suggest-zzzops-work` run checks eligible observations against current repository evidence. `$review-zzzops-entropy` also checks them while reviewing either the exact pending recent batch or, when `full` is requested, the whole repository. Both default to read-only preview: stale, disproved, or duplicate observations are only dismissed with mutation authority, and supported observations are removed only after corresponding goals are confirmed. `apply` uses the existing suggestion and goal authority for the fixed reviewed findings; it does not edit source or launch a second discovery pass. This is neither a background daemon nor an independent permission to create work.
+
+Preview never records review coverage. An explicitly completed manual review—or one recent review explicitly invoked by execution after true exhaustion—records only its exact frozen manifest, so changed goal revisions or PR heads leave the review due rather than silently advancing it.
 
 Agents can investigate later goals read-only while writable dependencies remain gated. Depending on reviewed policy and repository size, independent work may use isolated worktrees or bounded read-only agents. Reservations prevent concurrent agents from claiming the same goal, branch, generated output, or exclusive external resource.
 
@@ -123,6 +125,7 @@ The durable project surfaces are:
 - GitHub Issues — goals, blockers, evidence, relationships, and goal history;
 - `.zzzops/migration/STATE.json` — reviewed migration fingerprints so later runs propose only new work.
 - `.git/zzzops/entropy-observations/` — ignored per-repository facts noticed incidentally for later validation by work suggestion.
+- `.git/zzzops/entropy-reviews/` — ignored exact manifests and receipts for completed recent/full entropy reviews.
 
 Goals inherit repository visibility. Never store credentials, payment-card data, protected health information, government identifiers, or raw sensitive data in them. The [privacy policy](../PRIVACY.md) and [OpenAI compliance review](OPENAI_COMPLIANCE.md) describe the complete boundary.
 
@@ -140,7 +143,7 @@ Verification is proportional to the artifact: documentation is inspected, change
 | Capture one durable goal | `$add-zzzops-goal` |
 | Migrate TODOs and backlogs | `$migrate-to-zzzops` |
 | Suggest evidence-backed work | `$suggest-zzzops-work` |
-| Review repository entropy and pending observations | `$suggest-zzzops-work` |
+| Review repository entropy and pending observations | `$review-zzzops-entropy` |
 | Execute, prioritize, unblock, verify, and resume goals | `$execute-zzzops` / [execution](EXECUTION.md) |
 | Send confirmed public feedback | `$send-zzzops-feedback` |
 | Record constrained, project-free execution friction with a policy opt-out | [feedback behavior](#feedback-and-agentic-engineering-coaching) |

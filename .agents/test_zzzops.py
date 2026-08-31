@@ -103,6 +103,8 @@ class EntropyModuleTests(unittest.TestCase):
         self.assertIs(zzzops.plan_entropy_review, zzzops._entropy_review.plan_entropy_review)
         self.assertIs(zzzops.complete_entropy_review, zzzops._entropy_review.complete_entropy_review)
         self.assertIn("zzzops/entropy_review.py", zzzops._package.REQUIRED_FILES)
+        self.assertIn("skills/review-zzzops-entropy/references/RECENT.md", zzzops._package.REQUIRED_FILES)
+        self.assertIn("skills/review-zzzops-entropy/references/FULL.md", zzzops._package.REQUIRED_FILES)
 
     def observe(self, goal=1, evidence="AGENTS.md repeats a rule already enforced by CI.", category="documentation"):
         return zzzops.record_entropy_observation(
@@ -4028,6 +4030,7 @@ class WorkflowContractTests(unittest.TestCase):
             "execute-zzzops": ("execute", "work all goals", "continue", "resume", "triage", "prioritize", "reprioritize", "unblock", '"dry run"', '"preview"', '"plan"', "default executes"),
             "migrate-to-zzzops": ("discover", "plan", "migrate", "import", "todos/backlogs", '"dry run"', '"preview"', '"apply"', "default builds review artifacts"),
             "review-agentic-engineering": ("review", "completed", "explicit request", "one or two", "overall agentic-engineering", "read-only", "not a scorecard"),
+            "review-zzzops-entropy": ("review", "entropy", "exact pending recent", "full audit", "preview-only", "completion", "suggestion", "goal authority"),
             "review-zzzops-policy": ("review", "initialize", "summarize", "reconcile", "adjust", "policy", "preferred first workflow", "always re-summarizes"),
             "send-zzzops-feedback": ("preview", "send", "feedback", "execution reports", "exact-payload confirmation"),
             "suggest-zzzops-work": ("suggest", "discover", "audit", '"dry run"', '"preview"', '"plan"', '"apply"', '"refill"'),
@@ -4045,7 +4048,7 @@ class WorkflowContractTests(unittest.TestCase):
         root = PLUGIN_ROOT
         names = (
             "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
-            "review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
+            "review-agentic-engineering", "review-zzzops-entropy", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
             "validate-zzzops-installation",
         )
         self.assertEqual(names, zzzops.MANAGED_SKILLS)
@@ -4239,6 +4242,40 @@ class WorkflowContractTests(unittest.TestCase):
             "unselected diagnostics are never removed",
         ):
             self.assertIn(phrase, privacy)
+
+    def test_entropy_review_skill_routes_exact_preview_full_and_authorized_handoff(self):
+        skill_root = PLUGIN_ROOT / "skills" / "review-zzzops-entropy"
+        skill = (skill_root / "SKILL.md").read_text(encoding="utf-8")
+        recent = (skill_root / "references" / "RECENT.md").read_text(encoding="utf-8")
+        full = (skill_root / "references" / "FULL.md").read_text(encoding="utf-8")
+        suggest = (PLUGIN_ROOT / "skills" / "suggest-zzzops-work" / "SKILL.md").read_text(encoding="utf-8")
+        for phrase in (
+            "`preview` is the default", "entropy review status", "do not call `entropy review plan`",
+            "Validate every returned record", "Never call the repository clean", "$add-zzzops-goal",
+            "Do not invoke `$suggest-zzzops-work` as a second broad audit", "current_events",
+            "stop and report if initialization would require", "Preview never calls `report record`",
+            "only when `$execute-zzzops` explicitly invokes this skill after true exhaustion",
+        ):
+            self.assertIn(phrase, skill)
+        self.assertIn("exact pending recent", skill)
+        self.assertIn("never call `plan`", recent)
+        self.assertIn("regardless of prior review coverage", full)
+        self.assertIn("Preview performs the audit without calling `entropy review plan`", full)
+        self.assertIn("Route explicit recent or repository-wide entropy reviews to `$review-zzzops-entropy`", suggest)
+
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            event = zzzops.record_entropy_review_event(repo, {
+                "schema_version": 1, "repository": "owner/repo", "goal": 7, "revision": 2,
+                "goal_digest": "2" * 64, "status": "blocked", "kind": "verified_checkpoint",
+                "pr": 11, "base_oid": "1" * 40, "head_oid": "2" * 40, "merge_oid": None,
+            })
+            before = zzzops.entropy_review_status(repo, [event["event_id"]])
+            zzzops.plan_entropy_review(repo, mode="recent", current_event_fingerprints=[event["event_id"]])
+            after = zzzops.entropy_review_status(repo, [event["event_id"]])
+            self.assertTrue(after["due"], "preview/planning must not advance exact review coverage")
+            self.assertEqual(before["receipt_count"], after["receipt_count"])
 
     def test_entropy_observation_workflow_is_incidental_and_authority_bounded(self):
         root = PLUGIN_ROOT

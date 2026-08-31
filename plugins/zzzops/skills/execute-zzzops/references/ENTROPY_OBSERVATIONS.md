@@ -25,4 +25,8 @@ test-bug policy instead.
 The ignored common-Git-dir inbox is shared by worktrees. Each fact is an atomically
 created, fingerprint-named file, so concurrent duplicates collapse without a global
 counter or lock. Recording grants no goal-write authority and needs no user
-notification. `$suggest-zzzops-work` owns later validation, dismissal, and capture.
+notification. `$review-zzzops-entropy` owns explicit recent/full review and always
+validates policy-eligible inbox leads. `$suggest-zzzops-work` continues to validate
+the same eligible leads during ordinary suggestion/refill and supplies the ranking,
+category, cap, and capture authority reused by entropy review. Neither workflow gains
+goal-write authority from the inbox itself.

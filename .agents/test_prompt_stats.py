@@ -95,11 +95,24 @@ class PromptStatsTests(unittest.TestCase):
         self.assertIn("## Policy context boundary", report)
         self.assertIn("| current-project-policy |", report)
 
+    def test_entropy_review_prompts_are_cold_and_have_a_dedicated_profile(self) -> None:
+        root = SCRIPT.parents[1]
+        entropy_paths = {
+            "plugins/zzzops/skills/review-zzzops-entropy/SKILL.md",
+            "plugins/zzzops/skills/review-zzzops-entropy/references/RECENT.md",
+            "plugins/zzzops/skills/review-zzzops-entropy/references/FULL.md",
+        }
+        inventory = {path.relative_to(root).as_posix() for path in prompt_stats.prompt_files(root)}
+        static_hot = inventory - prompt_stats.COLD_ONLY_PROMPTS
+        self.assertTrue(entropy_paths <= inventory)
+        self.assertTrue(entropy_paths.isdisjoint(static_hot))
+        self.assertTrue(entropy_paths <= set(prompt_stats.WORKFLOW_PROMPTS["entropy-review"]))
+
     def test_workflow_profiles_cover_codex(self) -> None:
         root = SCRIPT.parents[1]
         report = prompt_stats.render_workflow_report(root)
         self.assertEqual(
-            {"agentic-coaching", "bootstrap-greenfield", "bootstrap-brownfield", "capture", "execution", "policy-review", "migration", "suggestion", "installation-validation", "acceptance", "feedback"},
+            {"agentic-coaching", "bootstrap-greenfield", "bootstrap-brownfield", "capture", "execution", "entropy-review", "policy-review", "migration", "suggestion", "installation-validation", "acceptance", "feedback"},
             set(prompt_stats.WORKFLOW_PROMPTS),
         )
         self.assertEqual(set(prompt_stats.WORKFLOW_PROMPTS), set(prompt_stats.WORKFLOW_SIGNALS))

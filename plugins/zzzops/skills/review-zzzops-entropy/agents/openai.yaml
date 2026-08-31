@@ -1,0 +1,4 @@
+interface:
+  display_name: "[ZzzOps 0.0.0-dev] Review Entropy"
+  short_description: "Review recent or full repository entropy"
+  default_prompt: "Use $review-zzzops-entropy to perform a read-only full repository entropy review and show evidence-backed findings."

@@ -80,7 +80,7 @@ python .agents/claude_plugin_acceptance.py --claude-version 2.1.241
 python .agents/test_marketplace_bundle.py
 ```
 
-The installed-cache acceptance creates a disposable Git-backed marketplace in an isolated Claude configuration, installs revision A, advances the repository to revision B, refreshes and updates the plugin, and proves Claude uses a new cache path and the second revision's contents. It also verifies exactly nine skills and runs ZzzOps initialization from Claude's cache.
+The installed-cache acceptance creates a disposable Git-backed marketplace in an isolated Claude configuration, installs revision A, advances the repository to revision B, refreshes and updates the plugin, and proves Claude uses a new cache path and the second revision's contents. It also verifies exactly ten skills and runs ZzzOps initialization from Claude's cache.
 
 Claude's strict validator currently warns when `version` is omitted even though Anthropic documents omission as the commit-SHA mode. The acceptance harness allows exactly that one warning, requires the same artifact to pass native non-strict validation, and rejects every additional strict-validation warning or error. Required CI repeats the complete contract with a pinned Claude CLI before review.
 

@@ -14,6 +14,7 @@ SKILL_UI = {
     "execute-zzzops": ("Execute", "Run the primary autonomous ZzzOps goal loop"),
     "migrate-to-zzzops": ("Migrate TODOs", "Discover and migrate repository TODOs safely"),
     "review-agentic-engineering": ("Review Agentic Engineering", "Improve how you work with software agents"),
+    "review-zzzops-entropy": ("Review Entropy", "Review recent or full repository entropy"),
     "review-zzzops-policy": ("Review Policy", "Initialize or review project operating policy"),
     "send-zzzops-feedback": ("Send Feedback", "Preview and send privacy-safe ZzzOps feedback"),
     "suggest-zzzops-work": ("Suggest Work", "Audit project gaps and suggest durable work"),
@@ -95,7 +96,7 @@ class AgentPluginTests(unittest.TestCase):
         self.assertEqual("AVAILABLE", entry["policy"]["installation"])
         self.assertEqual("ON_USE", entry["policy"]["authentication"])
 
-    def test_package_contains_exactly_the_nine_product_skills(self) -> None:
+    def test_package_contains_exactly_the_ten_product_skills(self) -> None:
         actual = {path.name for path in (PLUGIN / "skills").iterdir() if (path / "SKILL.md").is_file()}
         self.assertEqual(SHIPPED_SKILLS, actual)
         self.assertFalse((PLUGIN / "skills" / "run-zzzops-acceptance").exists())
