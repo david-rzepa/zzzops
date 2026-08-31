@@ -2969,6 +2969,41 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("gh stack rebase", review_queue)
         self.assertIn("provider readback", review_queue)
 
+    def test_admin_stack_merge_fallback_is_guarded_and_recoverable(self):
+        root = PLUGIN_ROOT / "skills" / "execute-zzzops" / "references"
+        branch_review = (root / "BRANCH_REVIEW.md").read_text(encoding="utf-8")
+        fallback = (root / "ADMIN_STACK_MERGE.md").read_text(encoding="utf-8").lower()
+        provider_failures = {
+            "native atomic merge": "approving review is required",
+            "ordinary admin merge": "asynchronous merge endpoint",
+        }
+        for operation, failure in provider_failures.items():
+            with self.subTest(operation=operation):
+                self.assertIn(failure, fallback)
+        guarded_scenarios = {
+            "preferred atomic path": "merge-async",
+            "no scoped bypass authority": "preserve the stack",
+            "consequence disclosure": "stack metadata",
+            "immutable provider readback": "re-read",
+            "explicit unstack": "gh stack unstack",
+            "bottom-up integration": "bottom pr first",
+            "trunk ancestry proof": "exact head reached the trunk",
+            "independent next layer": "independently reviewed diff",
+            "partial failure recovery": "persist the actual provider state",
+            "changed head denied": "changed head",
+            "pending check denied": "pending check",
+            "failed check denied": "failed check",
+            "review feedback denied": "unresolved feedback",
+            "cross-repository topology denied": "cross-repository",
+            "ruleset workaround denied": "never change repository rules",
+        }
+        for scenario, expected in guarded_scenarios.items():
+            with self.subTest(scenario=scenario):
+                self.assertIn(expected, fallback)
+        self.assertIn("ADMIN_STACK_MERGE.md", branch_review)
+        review_queue = (root / "REVIEW_QUEUE.md").read_text(encoding="utf-8")
+        self.assertIn("ADMIN_STACK_MERGE.md", review_queue)
+
     def test_parallel_and_refill_defaults_are_structured(self):
         root = PLUGIN_ROOT / "zzzops"
         plan = json.loads((root / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))

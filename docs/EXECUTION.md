@@ -26,6 +26,8 @@ Canonical goal state records branch/base/target/PR and review checkpoint. After 
 
 Requested changes reuse the affected branch and create a new verified checkpoint. When an ancestor changes, execution pauses only its affected descendants, invalidates their stale checkpoints and approvals, retargets or rebases exclusively owned unintegrated branches in dependency order, recomputes every immediate-base diff, and reruns the relevant probes and required checks. Unsafe or unauthorized reconciliation blocks that chain while unrelated work continues. After approval, the agent merges only with authority, verifies the target, resolves the blocker, and completes the goal.
 
+Native stacks use GitHub's atomic asynchronous merge after every layer passes its exact-head, check, feedback, review, mergeability, and authority gates. If a repository rule rejects that operation, execution preserves the stack and reports the action needed. Only explicit administrator-bypass authority for that exact stack permits the non-atomic fallback: disclose that native stack metadata will be removed, re-read immutable provider state, unstack, then merge bottom-to-top while verifying and recording each result. A partial failure stops remaining layers with a recoverable next action; bypass never excuses a failed or pending check, changed head, unresolved feedback, or safety/release gate.
+
 The workflow remains agent-driven. ZzzOps deliberately has no universal branch-management script: repository instructions, hosting rules, dependency ancestry, dirty state, and merge authority require contextual inspection.
 
 ## Continuation after capture
