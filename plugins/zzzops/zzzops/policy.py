@@ -49,6 +49,10 @@ POLICY_SECTION_TITLES = {
     "automated_design": "Automated design",
     "autonomy_approval_parallelism": "Autonomy, approvals, and parallel work",
 }
+# New migration policy settings are introduced lazily so existing reviewed
+# projects can be read and re-reviewed without a schema migration. Missing
+# settings still invalidate execution until the policy is explicitly revisited.
+OPTIONAL_POLICY_SETTING_PREFIXES = {"git_review_release": ("settings.legacy_migration",)}
 
 AUTOMATED_DESIGN_SETTINGS = {
     "scope": "bounded_commitment_in_scope_implementation",
@@ -448,6 +452,8 @@ def missing_policy_settings(
         section_id = section["id"]
         expected = by_section[section_id].get("content", {}).get("settings", {})
         missing = _missing_setting_paths(section.get("settings"), expected)
+        optional_prefixes = OPTIONAL_POLICY_SETTING_PREFIXES.get(section_id, ())
+        missing = [path for path in missing if not path.startswith(optional_prefixes)]
         if missing:
             result[section_id] = missing
     return result
@@ -455,6 +461,58 @@ def missing_policy_settings(
 
 def project_digest(text: str) -> str:
     return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def classify_release_evidence(
+    *, visibility: str | None, github_releases: list[dict[str, Any]] | None,
+    owner_declaration: str | None = None,
+) -> dict[str, Any]:
+    """Classify release evidence without inferring a destructive migration choice."""
+    releases = github_releases if isinstance(github_releases, list) else None
+    published = [item for item in (releases or []) if isinstance(item, dict)
+                 and item.get("draft") is not True
+                 and (item.get("published_at") or item.get("publishedAt"))]
+    if visibility == "PUBLIC" and published:
+        return {
+            "status": "released", "released": True, "ambiguous": False,
+            "evidence": "github_public_release", "release_count": len(published),
+            "first_release_transition": owner_declaration == "never_released",
+        }
+    if owner_declaration == "never_released" and visibility == "PUBLIC" and releases == []:
+        return {
+            "status": "never_released", "released": False, "ambiguous": False,
+            "evidence": "explicit_owner_declaration", "release_count": 0,
+            "first_release_transition": False,
+        }
+    reason = "release_history_ambiguous"
+    if visibility == "PUBLIC" and releases == []:
+        reason = "public_repository_without_github_release"
+    elif releases is None:
+        reason = "release_history_unavailable"
+    return {
+        "status": "unknown", "released": None, "ambiguous": True,
+        "evidence": "none", "reason": reason,
+        "release_count": len(published), "first_release_transition": False,
+    }
+
+
+def legacy_migration_review(policy: dict[str, Any], release_status: dict[str, Any]) -> dict[str, Any]:
+    """Report whether the migration choice needs review after release evidence changes."""
+    section = next((item for item in policy.get("sections", [])
+                    if isinstance(item, dict) and item.get("id") == "git_review_release"), {})
+    settings = section.get("settings") if isinstance(section.get("settings"), dict) else {}
+    recorded = settings.get("legacy_migration")
+    if not isinstance(recorded, dict):
+        return {"status": "review_required", "reason": "migration_policy_missing", "affected_work_blocked": True}
+    chosen = recorded.get("release_status")
+    observed = release_status.get("status")
+    if observed == "unknown":
+        return {"status": "review_required", "reason": "release_evidence_ambiguous", "affected_work_blocked": True}
+    if chosen not in {"never_released", "released"}:
+        return {"status": "review_required", "reason": "migration_release_status_unreviewed", "affected_work_blocked": True}
+    if observed == "released" and chosen == "never_released":
+        return {"status": "review_required", "reason": "first_release_invalidated_pre_release_policy", "affected_work_blocked": True}
+    return {"status": "reviewed", "reason": "release_status_matches_review", "affected_work_blocked": False}
 
 
 def stack_tooling_offer(policy: dict[str, Any], capability: dict[str, Any]) -> dict[str, Any]:

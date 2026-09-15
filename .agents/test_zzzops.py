@@ -70,6 +70,43 @@ class PolicyModuleTests(unittest.TestCase):
         }
         self.assertEqual(set(), local_definitions & policy_exports)
 
+    def test_release_evidence_requires_public_github_release_or_explicit_owner_declaration(self):
+        policy = zzzops._policy
+        released = policy.classify_release_evidence(
+            visibility="PUBLIC", github_releases=[{"draft": False, "published_at": "2026-09-01T00:00:00Z"}],
+            owner_declaration="never_released",
+        )
+        self.assertEqual("released", released["status"])
+        self.assertTrue(released["first_release_transition"])
+        never = policy.classify_release_evidence(
+            visibility="PUBLIC", github_releases=[], owner_declaration="never_released",
+        )
+        self.assertEqual("never_released", never["status"])
+        unknown = policy.classify_release_evidence(visibility="PUBLIC", github_releases=[])
+        self.assertEqual("unknown", unknown["status"])
+        self.assertTrue(unknown["ambiguous"])
+        private = policy.classify_release_evidence(
+            visibility="PRIVATE", github_releases=[{"published_at": "2026-09-01T00:00:00Z"}],
+        )
+        self.assertEqual("unknown", private["status"])
+
+    def test_legacy_migration_review_reopens_missing_and_first_release_policy(self):
+        policy = {"sections": [{"id": "git_review_release", "settings": {}}]}
+        released = {"status": "released"}
+        missing = zzzops._policy.legacy_migration_review(policy, released)
+        self.assertEqual("review_required", missing["status"])
+        reviewed = {"sections": [{"id": "git_review_release", "settings": {
+            "legacy_migration": {"release_status": "never_released"},
+        }}]}
+        first_release = zzzops._policy.legacy_migration_review(reviewed, released)
+        self.assertEqual("first_release_invalidated_pre_release_policy", first_release["reason"])
+        stable = {"status": "released"}
+        self.assertEqual("reviewed", zzzops._policy.legacy_migration_review(
+            {"sections": [{"id": "git_review_release", "settings": {
+                "legacy_migration": {"release_status": "released"},
+            }}]}, stable,
+        )["status"])
+
 
 class PluginFreshnessTests(unittest.TestCase):
     def test_freshness_inventory_uses_native_read_only_commands_and_preserves_identity(self):

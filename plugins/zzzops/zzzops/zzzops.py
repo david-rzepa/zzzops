@@ -622,6 +622,7 @@ def _github_repository_capability(data: dict[str, Any]) -> dict[str, Any]:
         "usable": usable,
         "identity": data.get("nameWithOwner"),
         "url": data.get("url"),
+        "visibility": data.get("visibility"),
         "issues_enabled": issues_enabled,
         "viewer_permission": permission,
         "detail": "ok" if usable else ("issues disabled" if not issues_enabled else "insufficient permission"),
@@ -973,7 +974,7 @@ def github_repository_probe(repo: Path) -> dict[str, Any]:
         return {"available": False, "usable": False, "detail": "executable not found"}
     try:
         result = subprocess.run(
-            [executable, "repo", "view", "--json", "nameWithOwner,url,hasIssuesEnabled,viewerPermission"],
+            [executable, "repo", "view", "--json", "nameWithOwner,url,visibility,hasIssuesEnabled,viewerPermission"],
             cwd=repo, capture_output=True, text=True, timeout=8, check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -986,6 +987,32 @@ def github_repository_probe(repo: Path) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {"available": True, "usable": False, "detail": "invalid gh JSON"}
     return _github_repository_capability(data)
+
+
+def github_release_evidence(repo: Path, repository: dict[str, Any]) -> dict[str, Any]:
+    """Read public GitHub Releases; absence or failure remains ambiguous."""
+    identity = repository.get("identity") if isinstance(repository, dict) else None
+    executable = shutil.which("gh")
+    if not executable or not isinstance(identity, str) or identity.count("/") != 1:
+        return {"available": False, "releases": None, "reason": "repository_identity_unavailable"}
+    try:
+        result = subprocess.run(
+            [executable, "api", f"repos/{identity}/releases", "--paginate", "--slurp"],
+            cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=8, check=False,
+        )
+    except (OSError, UnicodeError, subprocess.TimeoutExpired) as exc:
+        return {"available": True, "releases": None, "reason": type(exc).__name__}
+    if result.returncode != 0:
+        return {"available": True, "releases": None, "reason": "release_api_failed"}
+    try:
+        releases = json.loads(result.stdout)
+    except (UnicodeError, json.JSONDecodeError):
+        return {"available": True, "releases": None, "reason": "release_api_invalid_json"}
+    if isinstance(releases, list) and all(isinstance(page, list) for page in releases):
+        releases = [item for page in releases for item in page]
+    if not isinstance(releases, list):
+        return {"available": True, "releases": None, "reason": "release_api_malformed"}
+    return {"available": True, "releases": releases, "reason": "ok"}
 
 
 def inspect_initialization(repo: Path) -> dict[str, Any]:
@@ -1003,6 +1030,11 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
     git_remote = command_probe(["git", "remote", "get-url", "origin"], repo)
     github_auth = command_probe(["gh", "auth", "status"], repo)
     github_repository = github_repository_probe(repo)
+    github_releases = github_release_evidence(repo, github_repository)
+    release_status = _policy.classify_release_evidence(
+        visibility=github_repository.get("visibility") if isinstance(github_repository, dict) else None,
+        github_releases=github_releases.get("releases"),
+    )
     if state and isinstance(state.get("policy"), dict):
         review_policy = state["policy"]
         review_is_proposal = False
@@ -1015,6 +1047,14 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         )
         review_policy = template["policy"]
         review_is_proposal = True
+    migration_policy_review = _policy.legacy_migration_review(review_policy, release_status)
+    migration_policy_invalidated = migration_policy_review.get("reason") in {
+        "migration_policy_missing",
+        "first_release_invalidated_pre_release_policy",
+    }
+    decision_blockers = policy_blockers(state.get("policy")) if state else ["policy:missing"]
+    if migration_policy_invalidated:
+        decision_blockers = [*decision_blockers, "legacy_migration:first_release_requires_policy_rereview"]
     github_stack = github_stack_probe(repo)
     plugin_inventory = _plugin_freshness.native_plugin_inventory()
     cache_path = Path(plugin_inventory["cache_path"])
@@ -1029,11 +1069,11 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         "project_path": str(path),
         "base_digest": initialization_base_digest(repo),
         "state": state,
-        "initialized": bool(state and state.get("initialized") is True and not policy_blockers(state.get("policy")) and error is None),
+        "initialized": bool(state and state.get("initialized") is True and not decision_blockers and error is None),
         "valid_state": error is None and state is not None,
         "state_error": error,
         "missing_charter_fields": charter_missing_fields(text),
-        "decision_blockers": policy_blockers(state.get("policy")) if state else ["policy:missing"],
+        "decision_blockers": decision_blockers,
         "policy_defaults": compare_policy_defaults(state["policy"]) if state and isinstance(state.get("policy"), dict) else [],
         "policy_review_table": render_policy_review_table(review_policy, proposal=review_is_proposal),
         "stack_tooling_offer": _policy.stack_tooling_offer(review_policy, github_stack),
@@ -1050,6 +1090,9 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
             "plugin_package": _package.package_status(),
             "github_auth": github_auth,
             "github_repository": github_repository,
+            "github_release_evidence": github_releases,
+            "release_status": release_status,
+            "legacy_migration_review": migration_policy_review,
             "github_stack": github_stack,
         },
         "repository_size": repository_size_profile(repo),

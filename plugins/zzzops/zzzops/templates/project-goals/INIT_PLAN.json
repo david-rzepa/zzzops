@@ -66,7 +66,17 @@
           "stacked_tool_installation": "explicit_user_approval", "stacked_unavailable_fallback": "chained_prs",
           "commit_unit": "verified_subgoal", "commit_style": "conventional", "review_gate": "human_at_exhaustion",
           "review_state_reads_per_checkpoint": 1,
-          "pr_approval": "required_when_repository_requires_pr", "conversational_approval": "never_for_goal_progress", "merge_after_approval": "when_authorized"
+          "pr_approval": "required_when_repository_requires_pr", "conversational_approval": "never_for_goal_progress", "merge_after_approval": "when_authorized",
+          "legacy_migration": {
+            "release_evidence": "public_github_release",
+            "release_status": "unknown",
+            "owner_declaration": null,
+            "ambiguous_evidence": "ask_user_or_persist_blocker",
+            "never_released_requires_owner_declaration": true,
+            "pre_release_default": "replace_and_reset_affected_project_owned_state",
+            "first_release_review": "required",
+            "post_release_policy": "explicit_user_review"
+          }
         },
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
