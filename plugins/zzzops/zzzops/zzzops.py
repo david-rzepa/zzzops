@@ -68,6 +68,13 @@ _policy = importlib.util.module_from_spec(_POLICY_MODULE_SPEC)
 sys.modules[_POLICY_MODULE_SPEC.name] = _policy
 _POLICY_MODULE_SPEC.loader.exec_module(_policy)
 _policy.configure_entrypoint(package_provenance=_package.package_provenance)
+
+_BOOTSTRAP_MODULE_PATH = Path(__file__).with_name("bootstrap.py")
+_BOOTSTRAP_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_bootstrap", _BOOTSTRAP_MODULE_PATH)
+assert _BOOTSTRAP_MODULE_SPEC and _BOOTSTRAP_MODULE_SPEC.loader
+_bootstrap = importlib.util.module_from_spec(_BOOTSTRAP_MODULE_SPEC)
+sys.modules[_BOOTSTRAP_MODULE_SPEC.name] = _bootstrap
+_BOOTSTRAP_MODULE_SPEC.loader.exec_module(_bootstrap)
 _RESERVATION_MODULE_PATH = Path(__file__).with_name("reservation.py")
 _RESERVATION_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_reservation", _RESERVATION_MODULE_PATH)
 assert _RESERVATION_MODULE_SPEC and _RESERVATION_MODULE_SPEC.loader
@@ -117,6 +124,7 @@ BACKENDS = _policy.BACKENDS
 POLICY_SECTION_IDS = _policy.POLICY_SECTION_IDS
 policy_default_catalog = _policy.policy_default_catalog
 policy_content_digest = _policy.policy_content_digest
+compare_bootstrap_capabilities = _bootstrap.compare_bootstrap_capabilities
 prepare_policy_defaults = _policy.prepare_policy_defaults
 compare_policy_defaults = _policy.compare_policy_defaults
 missing_policy_settings = _policy.missing_policy_settings

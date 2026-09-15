@@ -1,5 +1,29 @@
 # Analyze a repository for bootstrap
 
+## Incremental capability audit
+
+Every normal ZzzOps bootstrap or repository-inspection invocation automatically
+reads the current repository and compares it with `.zzzops/BOOTSTRAP.json`.
+When capability drift is found, it reports the delta and reconciles applicable
+work through ordinary goals. Applying an upgrade still requires the existing
+reviewed authority and explicit execution authorization; detection does not
+silently mutate project state. This is invocation-scoped, not a background
+daemon, and it never scans unrelated repositories.
+
+The record contains a schema version and capability entries with stable `id`,
+`revision`, and application `status` (`pending`, `applied`, or `verified`). A
+successful upgrade records the new revision only after its ordinary goals have
+reached their required verification or integration checkpoint. Missing or
+invalid legacy provenance produces an applicability audit, rather than an
+assumption that every capability was already applied. A pending or failed
+entry remains resumable.
+
+Comparison ignores plugin version and other unrelated metadata. It reports
+`current`, `upgrade_available`, `partially_applied`, or
+`legacy_provenance_missing`; unchanged or inapplicable updates are no-ops.
+Customized architecture, instructions, policy, goals, and branches remain
+untouched while missing capability work is reconciled as ordinary goals.
+
 This stage is read-only in the target repository. Establish a product brief before committing the harness: what outcome is being built, for whom, how success is observed, and which choices could create expensive downstream fan-out. An isolated disposable probe may gather stack evidence without modifying the target.
 
 ## Evidence route
