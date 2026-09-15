@@ -1028,7 +1028,6 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         visibility=github_repository.get("visibility") if isinstance(github_repository, dict) else None,
         github_releases=github_releases.get("releases"),
     )
-    migration_policy_review = _policy.legacy_migration_review(review_policy, release_status)
     if state and isinstance(state.get("policy"), dict):
         review_policy = state["policy"]
         review_is_proposal = False
@@ -1041,6 +1040,7 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         )
         review_policy = template["policy"]
         review_is_proposal = True
+    migration_policy_review = _policy.legacy_migration_review(review_policy, release_status)
     github_stack = github_stack_probe(repo)
     return {
         "schema_version": PLAN_SCHEMA_VERSION,
