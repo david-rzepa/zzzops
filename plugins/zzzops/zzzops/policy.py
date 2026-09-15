@@ -495,6 +495,25 @@ def classify_release_evidence(
     }
 
 
+def legacy_migration_review(policy: dict[str, Any], release_status: dict[str, Any]) -> dict[str, Any]:
+    """Report whether the migration choice needs review after release evidence changes."""
+    section = next((item for item in policy.get("sections", [])
+                    if isinstance(item, dict) and item.get("id") == "git_review_release"), {})
+    settings = section.get("settings") if isinstance(section.get("settings"), dict) else {}
+    recorded = settings.get("legacy_migration")
+    if not isinstance(recorded, dict):
+        return {"status": "review_required", "reason": "migration_policy_missing", "affected_work_blocked": True}
+    chosen = recorded.get("release_status")
+    observed = release_status.get("status")
+    if observed == "unknown":
+        return {"status": "review_required", "reason": "release_evidence_ambiguous", "affected_work_blocked": True}
+    if chosen not in {"never_released", "released"}:
+        return {"status": "review_required", "reason": "migration_release_status_unreviewed", "affected_work_blocked": True}
+    if observed == "released" and chosen == "never_released":
+        return {"status": "review_required", "reason": "first_release_invalidated_pre_release_policy", "affected_work_blocked": True}
+    return {"status": "reviewed", "reason": "release_status_matches_review", "affected_work_blocked": False}
+
+
 def stack_tooling_offer(policy: dict[str, Any], capability: dict[str, Any]) -> dict[str, Any]:
     """Describe an interactive tooling decision without granting installation authority."""
     section = next((item for item in policy.get("sections", [])

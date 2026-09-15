@@ -90,6 +90,23 @@ class PolicyModuleTests(unittest.TestCase):
         )
         self.assertEqual("unknown", private["status"])
 
+    def test_legacy_migration_review_reopens_missing_and_first_release_policy(self):
+        policy = {"sections": [{"id": "git_review_release", "settings": {}}]}
+        released = {"status": "released"}
+        missing = zzzops._policy.legacy_migration_review(policy, released)
+        self.assertEqual("review_required", missing["status"])
+        reviewed = {"sections": [{"id": "git_review_release", "settings": {
+            "legacy_migration": {"release_status": "never_released"},
+        }}]}
+        first_release = zzzops._policy.legacy_migration_review(reviewed, released)
+        self.assertEqual("first_release_invalidated_pre_release_policy", first_release["reason"])
+        stable = {"status": "released"}
+        self.assertEqual("reviewed", zzzops._policy.legacy_migration_review(
+            {"sections": [{"id": "git_review_release", "settings": {
+                "legacy_migration": {"release_status": "released"},
+            }}]}, stable,
+        )["status"])
+
 
 class DelegationAcceptanceTests(unittest.TestCase):
     def test_independent_fixture_proves_structural_overlap_and_bounded_context(self):

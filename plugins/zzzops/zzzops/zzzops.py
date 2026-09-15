@@ -1026,6 +1026,7 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         visibility=github_repository.get("visibility") if isinstance(github_repository, dict) else None,
         github_releases=github_releases.get("releases"),
     )
+    migration_policy_review = _policy.legacy_migration_review(review_policy, release_status)
     if state and isinstance(state.get("policy"), dict):
         review_policy = state["policy"]
         review_is_proposal = False
@@ -1062,6 +1063,7 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
             "github_repository": github_repository,
             "github_release_evidence": github_releases,
             "release_status": release_status,
+            "legacy_migration_review": migration_policy_review,
             "github_stack": github_stack,
         },
         "repository_size": repository_size_profile(repo),
