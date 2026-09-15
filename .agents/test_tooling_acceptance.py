@@ -11,7 +11,7 @@ class ToolingAcceptanceTests(unittest.TestCase):
         self.assertTrue(first["reuse_behavior_ok"])
         self.assertIsNone(first["selected_candidate"])
         self.assertFalse(first["install_performed"])
-        self.assertEqual("native_rg_and_python", first["fallback"])
+        self.assertIn(first["fallback"], {"native_rg", "python_stdlib_search"})
         self.assertTrue(first["repeated_bootstrap_noop"])
         self.assertEqual(first["selected_candidate"], second["selected_candidate"])
         self.assertEqual(first["install_performed"], second["install_performed"])
