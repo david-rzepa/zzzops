@@ -1041,17 +1041,23 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         review_policy = template["policy"]
         review_is_proposal = True
     migration_policy_review = _policy.legacy_migration_review(review_policy, release_status)
+    migration_policy_invalidated = (
+        migration_policy_review.get("reason") == "first_release_invalidated_pre_release_policy"
+    )
+    decision_blockers = policy_blockers(state.get("policy")) if state else ["policy:missing"]
+    if migration_policy_invalidated:
+        decision_blockers = [*decision_blockers, "legacy_migration:first_release_requires_policy_rereview"]
     github_stack = github_stack_probe(repo)
     return {
         "schema_version": PLAN_SCHEMA_VERSION,
         "project_path": str(path),
         "base_digest": initialization_base_digest(repo),
         "state": state,
-        "initialized": bool(state and state.get("initialized") is True and not policy_blockers(state.get("policy")) and error is None),
+        "initialized": bool(state and state.get("initialized") is True and not decision_blockers and error is None),
         "valid_state": error is None and state is not None,
         "state_error": error,
         "missing_charter_fields": charter_missing_fields(text),
-        "decision_blockers": policy_blockers(state.get("policy")) if state else ["policy:missing"],
+        "decision_blockers": decision_blockers,
         "policy_defaults": compare_policy_defaults(state["policy"]) if state and isinstance(state.get("policy"), dict) else [],
         "policy_review_table": render_policy_review_table(review_policy, proposal=review_is_proposal),
         "stack_tooling_offer": _policy.stack_tooling_offer(review_policy, github_stack),
