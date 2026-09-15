@@ -49,6 +49,9 @@ POLICY_SECTION_TITLES = {
     "automated_design": "Automated design",
     "autonomy_approval_parallelism": "Autonomy, approvals, and parallel work",
 }
+# New migration policy settings are introduced lazily so existing reviewed
+# projects remain valid until they explicitly revisit the policy.
+OPTIONAL_POLICY_SETTING_PREFIXES = {"git_review_release": ("settings.legacy_migration",)}
 
 AUTOMATED_DESIGN_SETTINGS = {
     "scope": "bounded_commitment_in_scope_implementation",
@@ -448,6 +451,8 @@ def missing_policy_settings(
         section_id = section["id"]
         expected = by_section[section_id].get("content", {}).get("settings", {})
         missing = _missing_setting_paths(section.get("settings"), expected)
+        optional_prefixes = OPTIONAL_POLICY_SETTING_PREFIXES.get(section_id, ())
+        missing = [path for path in missing if not path.startswith(optional_prefixes)]
         if missing:
             result[section_id] = missing
     return result
