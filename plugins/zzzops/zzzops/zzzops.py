@@ -1041,9 +1041,10 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         review_policy = template["policy"]
         review_is_proposal = True
     migration_policy_review = _policy.legacy_migration_review(review_policy, release_status)
-    migration_policy_invalidated = (
-        migration_policy_review.get("reason") == "first_release_invalidated_pre_release_policy"
-    )
+    migration_policy_invalidated = migration_policy_review.get("reason") in {
+        "migration_policy_missing",
+        "first_release_invalidated_pre_release_policy",
+    }
     decision_blockers = policy_blockers(state.get("policy")) if state else ["policy:missing"]
     if migration_policy_invalidated:
         decision_blockers = [*decision_blockers, "legacy_migration:first_release_requires_policy_rereview"]

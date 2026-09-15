@@ -50,7 +50,8 @@ POLICY_SECTION_TITLES = {
     "autonomy_approval_parallelism": "Autonomy, approvals, and parallel work",
 }
 # New migration policy settings are introduced lazily so existing reviewed
-# projects remain valid until they explicitly revisit the policy.
+# projects can be read and re-reviewed without a schema migration. Missing
+# settings still invalidate execution until the policy is explicitly revisited.
 OPTIONAL_POLICY_SETTING_PREFIXES = {"git_review_release": ("settings.legacy_migration",)}
 
 AUTOMATED_DESIGN_SETTINGS = {
