@@ -71,6 +71,43 @@ class PolicyModuleTests(unittest.TestCase):
         self.assertEqual(set(), local_definitions & policy_exports)
 
 
+class PluginFreshnessTests(unittest.TestCase):
+    def test_freshness_inventory_uses_native_read_only_commands_and_preserves_identity(self):
+        with mock.patch.object(zzzops._plugin_freshness, "subprocess") as process:
+            process.run.side_effect = [
+                SimpleNamespace(returncode=0, stdout=json.dumps({"installed": [{
+                    "pluginId": "zzzops@market", "version": "2.1.0",
+                    "source": {"kind": "git", "url": "https://example.invalid/zzzops"},
+                    "enabled": True, "scope": "user",
+                }]})),
+                SimpleNamespace(returncode=0, stdout="[]"),
+            ]
+            inventory = zzzops._plugin_freshness.native_plugin_inventory()
+        self.assertEqual("zzzops@market", inventory["agents"]["codex"]["plugins"][0]["id"])
+        self.assertEqual("2.1.0", inventory["agents"]["codex"]["plugins"][0]["version"])
+        self.assertEqual([], inventory["agents"]["claude"]["plugins"])
+        self.assertEqual(
+            [["codex", "plugin", "list", "--json"], ["claude", "plugin", "list", "--json"]],
+            [item.args[0] for item in process.run.call_args_list],
+        )
+
+    def test_freshness_inventory_failures_are_unknown_and_never_current(self):
+        with mock.patch.object(zzzops._plugin_freshness, "_run_json", return_value=(None, "OSError")):
+            inventory = zzzops._plugin_freshness.native_plugin_inventory()
+        self.assertFalse(inventory["agents"]["codex"]["ok"])
+        self.assertEqual("OSError", inventory["agents"]["codex"]["error"])
+        self.assertTrue(zzzops._plugin_freshness.freshness_due(None))
+
+    def test_freshness_due_respects_successful_daily_cache_and_forced_errors(self):
+        now = datetime(2026, 9, 15, 12, tzinfo=timezone.utc)
+        recent = {"status": "ok", "checked_at": "2026-09-15T12:00:00+00:00"}
+        old = {"status": "ok", "checked_at": "2026-09-14T11:59:59+00:00"}
+        failed = {"status": "error", "checked_at": "2026-09-15T12:00:00+00:00"}
+        self.assertFalse(zzzops._plugin_freshness.freshness_due(recent, now))
+        self.assertTrue(zzzops._plugin_freshness.freshness_due(old, now))
+        self.assertTrue(zzzops._plugin_freshness.freshness_due(failed, now))
+
+
 class DelegationAcceptanceTests(unittest.TestCase):
     def test_independent_fixture_proves_structural_overlap_and_bounded_context(self):
         result = manual_acceptance.delegation_acceptance_report()["independent_read_only"]
