@@ -8,6 +8,7 @@
 2. Route `work_state: triage|prepare` through `CREATE.md`; it may update state/justified children, never claim, branch, edit, or implement.
 3. `write` alone permits reserved changes with [[effective engineering rigor]](../../../concepts/effective-engineering-rigor.md). `wait_dependency` permits read-only work; `wait_human`, `blocked`, and `terminal` wait. Complete pending review always projects `wait_human`; repair only that selected goal to `blocked`. PROJECT derives descendant stacking.
 4. Obey authority and explicit PROJECT priority first. At equal priority choose risk-reducing or unlocking work over low-value easy or fast work; then confidence, feedback speed, and lower difficulty; difficulty is cost, not value. Never invent a baseline, score, or precision. Exact tie: PROJECT resume policy, then the lowest goal key.
+5. Before migration, persistence, API replacement, or reset work, inspect the reviewed release-aware migration decision. Missing `legacy_migration`, ambiguous release evidence, or a stale `never_released` decision blocks the affected work until explicit policy re-review. A confirmed never-released path may replace only affected project-owned state; released or unknown paths preserve state and follow an explicit reviewed migration plan.
 
 Execution assumes the user is absent and never asks an interactive question. Persist each unanswered consequential question with category, evidence, recommendation, boundary, safe work, and trigger. Never infer approval; stop affected work only and continue to true queue exhaustion.
 

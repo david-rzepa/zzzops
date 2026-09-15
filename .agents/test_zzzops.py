@@ -4272,6 +4272,7 @@ class WorkflowContractTests(unittest.TestCase):
     def test_automated_design_execution_and_review_contracts_preserve_boundaries(self):
         root = PLUGIN_ROOT
         unblock = (root / "skills" / "execute-zzzops" / "references" / "UNBLOCK.md").read_text(encoding="utf-8")
+        execute = (root / "skills" / "execute-zzzops" / "references" / "EXECUTE.md").read_text(encoding="utf-8")
         review = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
         for phrase in (
             "objectives, KPI evidence, constraints, and precedence",
@@ -4285,6 +4286,13 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("without inferring approval", review)
         self.assertIn("human explicitly reviewed the exact current design", unblock)
         self.assertIn("never infer it from policy approval, an ordinary PR, or unrelated review", unblock)
+        for text in (review, execute, unblock):
+            self.assertIn("legacy_migration", text)
+            self.assertIn("ambiguous", text)
+            self.assertIn("never_released", text)
+        self.assertIn("treat execution as uninitialized", review)
+        self.assertIn("blocks the affected work", execute)
+        self.assertIn("Never infer that state can be wiped", unblock)
 
     def test_exhaustion_review_and_bootstrap_contracts_are_explicit(self):
         root = PLUGIN_ROOT

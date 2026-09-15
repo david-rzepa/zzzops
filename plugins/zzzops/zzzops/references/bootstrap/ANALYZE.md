@@ -14,6 +14,8 @@ This stage is read-only in the target repository. Establish a product brief befo
    - `brownfield`: active product structure or conventions exist and must outrank generic preferences.
 6. Stop reading when mode, material constraints, tooling decision, and the next consequential decisions are supported. Record contradictory evidence instead of averaging it away.
 
+For brownfield repositories, include release evidence and the reviewed `legacy_migration` decision in the product brief before proposing any state or API replacement. Missing migration settings invalidate execution until policy re-review; ambiguous release evidence becomes a durable blocker. Only an explicitly confirmed never-released project may replace affected project-owned persistent state, and the brief must identify the bounded reset scope and preserve unrelated user, external, and deployment state.
+
 ## Product interview and unknowns
 
 Reuse supplied/repository evidence before asking 1–3 consequential questions at a time. At effective rigor establish beneficiaries, observable success, scope/non-goals, the initial milestone, operating constraints, and applicable security, data lifecycle, compatibility, failure/recovery, deployment, external-state, accessibility, and governance concerns. Questions elicit product facts, preferences, constraints, and authority; they do not outsource technical design to an inexperienced user.
