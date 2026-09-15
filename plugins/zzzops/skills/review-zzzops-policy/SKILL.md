@@ -13,6 +13,8 @@ Before optional tools, reuse capabilities; never invoke an unavailable path—us
 
 Run `init inspect` once. Show its `policy_review_table` exactly once before detail or action; never filter rows, even when policy is unchanged and approved. Keep hashes, snapshots, raw settings, and provenance progressive. Offer privacy-safe execution reports. For a missing automated-design section explain enabled/disabled. For missing workflow-adherence sections explain `optional`/`tracked`/`managed` and propose `tracked` for adherence; for missing rigor explain `vibe`/`structured`/`agentic` and propose `structured`—all without inferring approval.
 
+Show `capabilities.release_status` and `capabilities.legacy_migration_review` with the table. New/reviewed policy must include `legacy_migration`; an existing policy without it means treat execution as uninitialized and re-review before migration. A public GitHub Release is evidence; no release is ambiguous unless the owner says `never_released`. Route ambiguity to a decision/blocker. `never_released` stales at first release and blocks reset until review.
+
 Always foreground approval timing. Recommend `human_at_exhaustion`: policy approval gates execution once, verified per-goal PRs stack until safe work is exhausted, then the user reviews the ordered queue. Explain `human_after_checks` plus completed-dependency gating as the stricter per-goal alternative. Describe [[bounded commitment]](../../concepts/bounded-commitment.md) before automated-design authority; neither option bypasses checks, PR approval, merge authority, or release policy.
 
 Alongside Git/review policy, show `capabilities.github_stack` and `stack_tooling_offer`
