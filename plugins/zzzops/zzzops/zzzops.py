@@ -54,6 +54,13 @@ _diagnostics = importlib.util.module_from_spec(_DIAGNOSTICS_MODULE_SPEC)
 sys.modules[_DIAGNOSTICS_MODULE_SPEC.name] = _diagnostics
 _DIAGNOSTICS_MODULE_SPEC.loader.exec_module(_diagnostics)
 
+_PLUGIN_FRESHNESS_MODULE_PATH = Path(__file__).with_name("plugin_freshness.py")
+_PLUGIN_FRESHNESS_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_plugin_freshness", _PLUGIN_FRESHNESS_MODULE_PATH)
+assert _PLUGIN_FRESHNESS_MODULE_SPEC and _PLUGIN_FRESHNESS_MODULE_SPEC.loader
+_plugin_freshness = importlib.util.module_from_spec(_PLUGIN_FRESHNESS_MODULE_SPEC)
+sys.modules[_PLUGIN_FRESHNESS_MODULE_SPEC.name] = _plugin_freshness
+_PLUGIN_FRESHNESS_MODULE_SPEC.loader.exec_module(_plugin_freshness)
+
 _POLICY_MODULE_PATH = Path(__file__).with_name("policy.py")
 _POLICY_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_policy", _POLICY_MODULE_PATH)
 assert _POLICY_MODULE_SPEC and _POLICY_MODULE_SPEC.loader
@@ -1009,6 +1016,14 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         review_policy = template["policy"]
         review_is_proposal = True
     github_stack = github_stack_probe(repo)
+    plugin_inventory = _plugin_freshness.native_plugin_inventory()
+    cache_path = Path(plugin_inventory["cache_path"])
+    cache = None
+    try:
+        if cache_path.is_file():
+            cache = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        cache = None
     return {
         "schema_version": PLAN_SCHEMA_VERSION,
         "project_path": str(path),
@@ -1022,6 +1037,11 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         "policy_defaults": compare_policy_defaults(state["policy"]) if state and isinstance(state.get("policy"), dict) else [],
         "policy_review_table": render_policy_review_table(review_policy, proposal=review_is_proposal),
         "stack_tooling_offer": _policy.stack_tooling_offer(review_policy, github_stack),
+        "plugin_freshness": {
+            "due": _plugin_freshness.freshness_due(cache),
+            "inventory": plugin_inventory,
+            "cache_status": cache.get("status") if isinstance(cache, dict) else "missing",
+        },
         "backend_constraints": {
             "github_issues": "requires a usable GitHub repository probe",
         },
