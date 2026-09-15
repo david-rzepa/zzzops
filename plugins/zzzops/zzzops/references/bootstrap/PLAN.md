@@ -12,9 +12,10 @@ Use this stage only after the product brief and policy approval. It creates the 
 
 1. Reuse the refreshed portfolio for duplicate, ancestry, cycle, status, claim, and implementation checks. Treat the product brief, reviewed policy, and repository evidence as inputs, not a generic template.
 2. Select only justified, independently useful outcomes. Possible outcomes include pinned toolchain, repository structure, architecture boundaries, tests, formatting/lint/types, dependency/security checks, canonical verification, CI equivalence, deterministic guardrails, concise `AGENTS.md`, architecture context, and an initial product milestone. Omit anything without a beneficiary, risk reduction, or feedback value.
-3. Express every selected outcome as an ordinary managed goal using `$add-zzzops-goal` semantics. Each leaf needs observable acceptance evidence, the smallest real probe, resources, explicit dependencies, and risk inputs from which effective rigor is derived. Never persist a second effective-rigor value.
-4. Order dependencies by usable outcomes, not implementation steps. Canonical verification depends on the checks it composes; CI depends on canonical verification; product implementation depends on the harness outcomes it needs. Bootstrap goals must not depend on the product goals they unlock.
-5. Create the smallest executable initial product milestone under the root. PLAN does not implement it; the following ordinary execution loop does. Existing TODO/backlog import belongs to `$migrate-to-zzzops`.
+3. When discovery identifies a genuine capability gap, express analysis, selected setup/readback, and real invocation/verification as ordinary managed harness goals using `$add-zzzops-goal` semantics. Credit adequate native or installed tooling and make the setup goal a no-op when no candidate is selected; never install merely to enlarge the harness.
+4. Express every selected outcome as an ordinary managed goal using `$add-zzzops-goal` semantics. Each leaf needs observable acceptance evidence, the smallest real probe, resources, explicit dependencies, and risk inputs from which effective rigor is derived. Never persist a second effective-rigor value.
+5. Order dependencies by usable outcomes, not implementation steps. Canonical verification depends on the checks it composes; CI depends on canonical verification; product implementation depends on the harness outcomes it needs. Bootstrap goals must not depend on the product goals they unlock.
+6. Create the smallest executable initial product milestone under the root. PLAN does not implement it; the following ordinary execution loop does. Existing TODO/backlog import belongs to `$migrate-to-zzzops`.
 
 ## Reconcile existing goals
 

@@ -6,11 +6,13 @@ This stage is read-only in the target repository. Establish a product brief befo
 
 1. Read the supplied specification and repository evidence. Reuse any reviewed PROJECT policy, but when policy is absent gather enough product facts first to inform its review; never invent or approve policy locally.
 2. Inspect only decision-relevant tree entries, manifests/locks, pinned versions, source/config, instructions, architecture docs, build/test/verify commands, CI, and history or exposed GitHub state when it can change the conclusion.
-3. Classify from evidence, without asking the user to select a mode:
+3. Run one bounded, agent-driven tooling discovery pass after native capabilities are inventoried. Start with the repository's stack, recurring agent tasks, installed plugins, and existing commands; use the approved candidate shortlist only as search seeds, not as a closed catalog. For each candidate, record its canonical identity, supported installation scope, overlap with native and installed tools, lifecycle/privacy/cost, and the smallest real correctness probe. Reject redundant candidates and preserve a no-install result when no capability gap is observed.
+4. If a candidate is selected, inspect its maintained primary-source manifest and supported install method before any write. Prefer project-scoped reproducible setup and explicit invocation with no global hooks or provider enrichment on the first probe. Record version/provenance, agent invocation, configuration or hook changes, readback evidence, cleanup, offline/declined/failure recovery, and the fallback path. Missing authority for credentials, data transfer, paid services, host-wide changes, or external state is an ordinary policy blocker.
+5. Classify from evidence, without asking the user to select a mode:
    - `greenfield`: no meaningful product scaffold or established conventions;
    - `early_scaffold`: stack or skeleton exists, but architecture/product behavior and harness are minimal;
    - `brownfield`: active product structure or conventions exist and must outrank generic preferences.
-4. Stop reading when mode, material constraints, and the next consequential decisions are supported. Record contradictory evidence instead of averaging it away.
+6. Stop reading when mode, material constraints, tooling decision, and the next consequential decisions are supported. Record contradictory evidence instead of averaging it away.
 
 ## Product interview and unknowns
 

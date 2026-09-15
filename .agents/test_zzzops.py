@@ -4240,9 +4240,15 @@ class WorkflowContractTests(unittest.TestCase):
             "Continue from harness outcomes into product milestones",
         ):
             self.assertIn(phrase, bootstrap)
-        for phrase in ("no stack preference", "disposable spike", "high-commitment choice", "clearly dominates", "authority_blocker"):
+        for phrase in (
+            "no stack preference", "disposable spike", "high-commitment choice", "clearly dominates", "authority_blocker",
+            "agent-driven tooling discovery", "no-install result", "supported install method", "readback evidence",
+        ):
             self.assertIn(phrase, analyze)
-        for phrase in ("exactly one top-level product-outcome goal", "Reconcile and reuse it", "second top-level"):
+        for phrase in (
+            "exactly one top-level product-outcome goal", "Reconcile and reuse it", "second top-level",
+            "selected setup/readback", "real invocation/verification", "no candidate is selected",
+        ):
             self.assertIn(phrase, plan)
         self.assertIn("safe greeting behavior remains unimplemented", greenfield)
         self.assertIn("until exhaustion", brownfield)
