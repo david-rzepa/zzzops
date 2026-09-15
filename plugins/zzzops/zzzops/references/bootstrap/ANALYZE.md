@@ -1,5 +1,26 @@
 # Analyze a repository for bootstrap
 
+## Incremental capability audit
+
+An existing project is re-bootstrapped only by an explicit user invocation of
+the documented bootstrap upgrade/re-bootstrap entrypoint. The operation reads
+the current repository and compares it with `.zzzops/BOOTSTRAP.json`; it does
+not run as a daemon or scan unrelated repositories.
+
+The record contains a schema version and capability entries with stable `id`,
+`revision`, and application `status` (`pending`, `applied`, or `verified`). A
+successful upgrade records the new revision only after its ordinary goals have
+reached their required verification or integration checkpoint. Missing or
+invalid legacy provenance produces an applicability audit, rather than an
+assumption that every capability was already applied. A pending or failed
+entry remains resumable.
+
+Comparison ignores plugin version and other unrelated metadata. It reports
+`current`, `upgrade_available`, `partially_applied`, or
+`legacy_provenance_missing`; unchanged or inapplicable updates are no-ops.
+Customized architecture, instructions, policy, goals, and branches remain
+untouched while missing capability work is reconciled as ordinary goals.
+
 This stage is read-only in the target repository. Establish a product brief before committing the harness: what outcome is being built, for whom, how success is observed, and which choices could create expensive downstream fan-out. An isolated disposable probe may gather stack evidence without modifying the target.
 
 ## Evidence route
