@@ -43,7 +43,7 @@ class PolicyModuleTests(unittest.TestCase):
             "project_digest", "read_project_state", "validate_project_state",
             "validate_policy", "render_project", "render_project_audit",
             "normalize_resource_policy", "policy_default_catalog", "policy_content_digest",
-            "prepare_policy_defaults", "compare_policy_defaults", "missing_policy_settings", "policy_review_rows",
+            "prepare_policy_defaults", "compare_policy_defaults", "missing_policy_settings", "policy_review_rows", "migration_boundary",
             "render_policy_review_table",
         ):
             self.assertIs(getattr(zzzops, name), getattr(policy, name))

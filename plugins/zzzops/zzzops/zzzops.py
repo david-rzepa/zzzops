@@ -487,6 +487,7 @@ validate_project_state = _policy.validate_project_state
 validate_project_artifacts = _policy.validate_project_artifacts
 validate_policy = _policy.validate_policy
 policy_blockers = _policy.policy_blockers
+migration_boundary = _policy.migration_boundary
 
 
 def _project_repository_identity(project: dict[str, Any]) -> str:
@@ -1048,6 +1049,7 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         review_policy = template["policy"]
         review_is_proposal = True
     migration_policy_review = _policy.legacy_migration_review(review_policy, release_status)
+    migration_action = _policy.migration_boundary(review_policy, release_status)
     migration_policy_invalidated = migration_policy_review.get("reason") in {
         "migration_policy_missing",
         "first_release_invalidated_pre_release_policy",
@@ -1093,6 +1095,7 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
             "github_release_evidence": github_releases,
             "release_status": release_status,
             "legacy_migration_review": migration_policy_review,
+            "migration_boundary": migration_action,
             "github_stack": github_stack,
         },
         "repository_size": repository_size_profile(repo),

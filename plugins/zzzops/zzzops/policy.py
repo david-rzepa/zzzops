@@ -515,6 +515,16 @@ def legacy_migration_review(policy: dict[str, Any], release_status: dict[str, An
     return {"status": "reviewed", "reason": "release_status_matches_review", "affected_work_blocked": False}
 
 
+def migration_boundary(policy: dict[str, Any], release_status: dict[str, Any]) -> dict[str, Any]:
+    """Return the reviewed migration action without authorizing unrelated state changes."""
+    review = legacy_migration_review(policy, release_status)
+    if review.get("status") != "reviewed":
+        return {"action": "block", "scope": "none", "reason": review.get("reason"), "review": review}
+    if release_status.get("status") == "never_released":
+        return {"action": "replace_reset", "scope": "affected_project_owned", "reason": "explicit_never_released", "review": review}
+    return {"action": "preserve", "scope": "all_state", "reason": "released_or_unknown", "review": review}
+
+
 def stack_tooling_offer(policy: dict[str, Any], capability: dict[str, Any]) -> dict[str, Any]:
     """Describe an interactive tooling decision without granting installation authority."""
     section = next((item for item in policy.get("sections", [])
