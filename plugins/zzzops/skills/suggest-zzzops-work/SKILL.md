@@ -31,6 +31,7 @@ Exhausted-queue apply honors independent opt-ins:
 - `tests`: evidenced untested behavior, regression, boundary, or missing fast feedback—not percentage theater. Apply PROJECT `test_bug`; `capture_and_ask` records a separate human-blocked TODO before any fix.
 - `code_quality_non_behavioral`: behavior-preserving naming, extraction/decomposition, dead/duplicate code cleanup, or monolith splitting. Require unchanged-behavior evidence; exclude features, architecture rewrites, and style churn.
 - `agent_observability`: an evidenced diagnostic question cannot be answered without costly inference or user help. Load [the bounded category contract](references/AGENT_OBSERVABILITY.md); credit adequate signals and choose the smallest safe mechanism.
+- `verification_efficiency`: repeated verification cost or lost signal from serialization, setup, obsolete, redundant, or superseded tests. Load [the evidence-preserving contract](references/VERIFICATION_EFFICIENCY.md) before ranking a candidate. Existing reviewed category lists remain unchanged; enable this category through policy review.
 
 Use only PROJECT-enabled categories and cap, then return once to the calling `$execute-zzzops` loop. Never invoke entropy review from suggestion. Ask about material ambiguity; never manufacture work.
 

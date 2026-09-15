@@ -83,6 +83,7 @@ GIT_REVIEW_SETTING_VALUES = {
 DEPENDENCY_IMPLEMENTATION_GATES = {"dependencies_done", "stack_from_reviewed_checkpoint"}
 WORK_SUGGESTION_CATEGORIES = frozenset({
     "documentation", "tests", "code_quality_non_behavioral", "agent_observability",
+    "verification_efficiency",
 })
 
 WORKFLOW_ADHERENCE_SETTINGS = {

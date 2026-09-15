@@ -44,6 +44,7 @@ REQUIRED_FILES = {
     "skills/execute-zzzops/references/REVIEW_QUEUE.md",
     "skills/review-zzzops-entropy/references/FULL.md",
     "skills/review-zzzops-entropy/references/RECENT.md",
+    "skills/suggest-zzzops-work/references/VERIFICATION_EFFICIENCY.md",
     "scripts/cleanup_legacy.py",
     "zzzops/references/bootstrap/ANALYZE.md",
     "zzzops/references/bootstrap/PLAN.md",
