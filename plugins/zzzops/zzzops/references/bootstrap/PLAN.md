@@ -6,7 +6,20 @@ Use this stage only after the product brief and policy approval. It creates the 
 
 1. Refresh the canonical portfolio and find an adequate parentless goal that owns the supplied product outcome and measurable acceptance boundary. Reconcile and reuse it when its human scope matches; do not duplicate or silently choose between divergent near-matches.
 2. If none exists, create exactly one top-level product-outcome goal before any harness goal. Record beneficiaries, observable success, scope/non-goals, initial milestone, critical constraints, effective-rigor risks, high-commitment choices, and authority blockers. The root is durable product context, not a private bootstrap record.
-3. Put harness outcomes and product milestones beneath this root. A second top-level product goal, a harness goal without the root, or a root that only says “bootstrap repository” is invalid.
+3. Put harness outcomes beneath this root before the post-harness review checkpoint. Do not create product implementation goals until the checkpoint is explicitly approved. A second top-level product goal, a harness goal without the root, or a root that only says “bootstrap repository” is invalid.
+
+## Post-harness review checkpoint
+
+After analysis, tooling discovery/setup/readback, and harness-goal creation,
+write `.zzzops/BOOTSTRAP.json` with a stable `checkpoint_id`, `status` set to
+`awaiting_product_review`, root and harness goal ids, tooling provenance and
+limitations, dependencies, and the proposed first product milestone. The
+checkpoint is human-readable and linked to the canonical DAG. Approval or
+deferral is recorded against that id; approval unlocks exactly one idempotent
+product-goal reconciliation, while deferral leaves the checkpoint resumable.
+Repeating bootstrap before a decision reuses the checkpoint and creates no
+product goals or duplicates. Tooling-only work remains distinct from product
+implementation, and no background process is introduced.
 
 ## Build the harness DAG
 

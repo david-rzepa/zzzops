@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
+
+
+BOOTSTRAP_STATE_RELATIVE = ".zzzops/BOOTSTRAP.json"
 
 
 def _capability_map(record: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
@@ -58,3 +63,56 @@ def compare_bootstrap_capabilities(
         "removed": removed,
         "partial": partial,
     }
+
+
+def create_review_checkpoint(
+    root_goal_id: int,
+    harness_goal_ids: list[int],
+    tooling: dict[str, Any] | None,
+    product_milestone: dict[str, Any],
+    existing: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create or reuse the post-harness product-review checkpoint.
+
+    The checkpoint is deliberately derived from stable goal/tooling inputs, so
+    repeated bootstrap invocations reuse it and cannot duplicate product goals.
+    No product goal is created by this function.
+    """
+    if isinstance(existing, dict) and existing.get("checkpoint_id"):
+        return dict(existing)
+    payload = {
+        "root_goal_id": root_goal_id,
+        "harness_goal_ids": sorted(set(harness_goal_ids)),
+        "tooling": tooling if isinstance(tooling, dict) else {"selected": False, "candidates": []},
+        "product_milestone": product_milestone,
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    checkpoint_id = hashlib.sha256(encoded).hexdigest()[:16]
+    return {
+        "schema_version": 1,
+        "checkpoint_id": checkpoint_id,
+        "status": "awaiting_product_review",
+        "product_goals_created": False,
+        **payload,
+    }
+
+
+def record_review_decision(
+    checkpoint: dict[str, Any], decision: str, checkpoint_id: str,
+) -> dict[str, Any]:
+    """Record an approval or deferral exactly once against a checkpoint."""
+    if not isinstance(checkpoint, dict) or checkpoint.get("checkpoint_id") != checkpoint_id:
+        raise ValueError("checkpoint id does not match")
+    if decision not in {"approved", "deferred"}:
+        raise ValueError("decision must be approved or deferred")
+    result = dict(checkpoint)
+    current = result.get("status")
+    if current in {"approved", "deferred"}:
+        if current != decision:
+            raise ValueError("checkpoint already has a different decision")
+        return result
+    if current != "awaiting_product_review":
+        raise ValueError("checkpoint is not awaiting product review")
+    result["status"] = decision
+    result["decision_checkpoint_id"] = checkpoint_id
+    return result
