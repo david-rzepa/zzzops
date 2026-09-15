@@ -169,6 +169,122 @@ class DelegationAcceptanceTests(unittest.TestCase):
             self.assertEqual(before, sorted(repo.iterdir()))
 
 
+class StackToolingTests(unittest.TestCase):
+    def policy(self, mode="github_stacked_when_verified_else_chained", decline=None):
+        settings = {"pull_request_mode": mode}
+        if decline is not None:
+            settings["stacked_tooling_decline"] = decline
+        return {"sections": [{"id": "git_review_release", "settings": settings}]}
+
+    def probe(self, outputs, available=True):
+        probes = [SimpleNamespace(returncode=code, stdout=text) for code, text in outputs]
+        with mock.patch.object(zzzops.shutil, "which", return_value="gh" if available else None), \
+                mock.patch.object(zzzops.subprocess, "run", side_effect=probes) as run:
+            result = zzzops.github_stack_probe(Path("."))
+        self.assertTrue(all(call.args[0] in (
+            ["gh", "--version"], ["gh", "extension", "list"], ["gh", "stack", "--version"],
+        ) for call in run.call_args_list))
+        return result, run.call_args_list
+
+    def test_missing_official_extension_offers_installation_only_interactively(self):
+        capability, calls = self.probe([
+            (0, "gh version 2.98.0 (2026-08-21)\n"),
+            (0, "gh dash\tdlvhdr/gh-dash\tv4.25.2\n"),
+        ])
+        self.assertEqual(2, len(calls))
+        offer = zzzops._policy.stack_tooling_offer(self.policy(), capability)
+        self.assertEqual("extension_missing", capability["reason"])
+        self.assertTrue(offer["offer_installation"])
+        self.assertTrue(offer["requires_explicit_approval"])
+        self.assertEqual(["gh", "extension", "install", "github/gh-stack"], offer["install_command"])
+        self.assertFalse(capability["provider_membership_verified"])
+        self.assertFalse(zzzops._policy.stack_tooling_offer(self.policy("chained_prs"), capability)["offer_installation"])
+
+    def test_usable_official_extension_does_not_prompt_or_claim_provider_membership(self):
+        capability, calls = self.probe([
+            (0, "gh version 2.98.0\n"),
+            (0, "gh dash\tdlvhdr/gh-dash\tv4.25.2\ngh stack\tgithub/gh-stack\tv0.1.1\n"),
+            (0, "gh stack version 0.1.1\n"),
+        ])
+        self.assertEqual(3, len(calls))
+        self.assertTrue(capability["usable"])
+        self.assertFalse(capability["provider_membership_verified"])
+        offer = zzzops._policy.stack_tooling_offer(self.policy(), capability)
+        self.assertEqual("use_native_stacks", offer["action"])
+        self.assertFalse(offer["offer_installation"])
+
+    def test_missing_or_old_cli_needs_separate_authority(self):
+        for outputs, available in (([], False), ([(0, "gh version 1.9.9\n")], True)):
+            with self.subTest(available=available):
+                capability, _calls = self.probe(outputs, available)
+                offer = zzzops._policy.stack_tooling_offer(self.policy(), capability)
+                self.assertEqual("review_cli_install_or_upgrade", offer["action"])
+                self.assertTrue(offer["requires_explicit_approval"])
+                self.assertFalse(offer["offer_installation"])
+                self.assertIsNone(offer["install_command"])
+
+    def test_failed_malformed_or_wrong_source_capability_is_not_missing(self):
+        samples = (
+            ([(1, "")], "cli_unverified"),
+            ([(0, "not a version")], "cli_unverified"),
+            ([(0, "gh version 2.98.0"), (1, "")], "extension_list_failed"),
+            ([(0, "gh version 2.98.0"), (0, "malformed listing")], "extension_list_unverified"),
+            ([(0, "gh version 2.98.0"), (0, "gh stack\tother/gh-stack\tv1.0.0")], "wrong_extension_source"),
+            ([(0, "gh version 2.98.0"), (0, "gh stack\tgithub/gh-stack\tv0.1.1"), (1, "")], "extension_unverified"),
+        )
+        for outputs, expected in samples:
+            with self.subTest(expected=expected):
+                capability, _calls = self.probe(outputs)
+                self.assertEqual(expected, capability["reason"])
+                offer = zzzops._policy.stack_tooling_offer(self.policy(), capability)
+                self.assertEqual("review_capability_failure", offer["action"])
+                self.assertFalse(offer["offer_installation"])
+
+    def test_decline_is_bound_to_capability_and_explicit_reconsideration(self):
+        capability, _calls = self.probe([(0, "gh version 2.98.0"), (0, "")])
+        first = zzzops._policy.stack_tooling_offer(self.policy(), capability)
+        policy = self.policy(decline=first["capability_digest"])
+        before = json.dumps(policy, sort_keys=True)
+        for _ in range(2):
+            repeated = zzzops._policy.stack_tooling_offer(policy, capability)
+            self.assertEqual("keep_reviewed_fallback", repeated["action"])
+            self.assertFalse(repeated["offer_installation"])
+        self.assertEqual(before, json.dumps(policy, sort_keys=True))
+        changed = {**capability, "cli_version": "2.99.0"}
+        self.assertTrue(zzzops._policy.stack_tooling_offer(policy, changed)["offer_installation"])
+        del policy["sections"][0]["settings"]["stacked_tooling_decline"]
+        self.assertTrue(zzzops._policy.stack_tooling_offer(policy, capability)["offer_installation"])
+
+    def test_probe_timeout_does_not_install_or_offer_unverified_tooling(self):
+        with mock.patch.object(zzzops.shutil, "which", return_value="gh"), \
+                mock.patch.object(zzzops.subprocess, "run", side_effect=subprocess.TimeoutExpired("gh", 5)) as run:
+            capability = zzzops.github_stack_probe(Path("."))
+        run.assert_called_once()
+        self.assertEqual("cli_unverified", capability["reason"])
+        self.assertFalse(zzzops._policy.stack_tooling_offer(self.policy(), capability)["offer_installation"])
+
+    def test_invalid_output_encoding_returns_unverified_capability(self):
+        with mock.patch.object(zzzops.shutil, "which", return_value="gh"), \
+                mock.patch.object(zzzops.subprocess, "run", side_effect=UnicodeDecodeError(
+                    "utf-8", b"\xff", 0, 1, "invalid start byte")) as run:
+            capability = zzzops.github_stack_probe(Path("."))
+        run.assert_called_once()
+        self.assertEqual("cli_unverified", capability["reason"])
+        self.assertFalse(zzzops._policy.stack_tooling_offer(self.policy(), capability)["offer_installation"])
+
+    def test_decline_record_is_optional_and_validated(self):
+        path = PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json"
+        policy = json.loads(path.read_text(encoding="utf-8"))["policy"]
+        self.assertEqual([], zzzops.validate_policy(policy, True))
+        settings = next(section for section in policy["sections"]
+                        if section["id"] == "git_review_release")["settings"]
+        settings["stacked_tooling_decline"] = "sha256:" + "a" * 64
+        self.assertEqual([], zzzops.validate_policy(policy, True))
+        settings["stacked_tooling_decline"] = "not capability evidence"
+        self.assertTrue(any("stacked_tooling_decline is invalid" in error
+                            for error in zzzops.validate_policy(policy, True)))
+
+
 class EntropyModuleTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

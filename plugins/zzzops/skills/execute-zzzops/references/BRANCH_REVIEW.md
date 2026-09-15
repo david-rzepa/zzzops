@@ -10,6 +10,8 @@ Apply PROJECT Git/review policy; capture stays Git-free. Never absorb unrelated 
 
 Create/resume the recorded branch before edits. Stop on unattributable dirt; record authorized topology exceptions.
 
+Missing stack tooling routes to interactive policy review's installation offer. Unattended execution uses prior applicable authority and recorded fallback; installation never proves provider membership.
+
 Compare PRs to their immediate base; inherited commits are not overlap. Branches stay exclusive. Siblings may share a target; children may target a reviewed parent/dependency. Before opening a PR and each review checkpoint, inspect immediate-base history and apply `EXECUTION_STRATEGY.md` final-state cleanup.
 
 Apply PROJECT's PR mode. For native GitHub stacks, check the documented `gh` minimum and official `gh stack` capability; host tooling changes need explicit approval. Link ordered same-repository PRs bottom-to-top with noninteractive `gh stack link --base TRUNK ...`, then require provider readback of one identity, trunk, positions, and immediate bases. Missing capability, denied installation, unsupported topology, failure, or unverifiable state means **chained PRs**; follow PROJECT's fallback or block. Preserve ownership, exact heads, checks, review, merge, and release authority.

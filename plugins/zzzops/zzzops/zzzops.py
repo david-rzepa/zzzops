@@ -1008,6 +1008,7 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         )
         review_policy = template["policy"]
         review_is_proposal = True
+    github_stack = github_stack_probe(repo)
     return {
         "schema_version": PLAN_SCHEMA_VERSION,
         "project_path": str(path),
@@ -1020,6 +1021,7 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         "decision_blockers": policy_blockers(state.get("policy")) if state else ["policy:missing"],
         "policy_defaults": compare_policy_defaults(state["policy"]) if state and isinstance(state.get("policy"), dict) else [],
         "policy_review_table": render_policy_review_table(review_policy, proposal=review_is_proposal),
+        "stack_tooling_offer": _policy.stack_tooling_offer(review_policy, github_stack),
         "backend_constraints": {
             "github_issues": "requires a usable GitHub repository probe",
         },
@@ -1028,9 +1030,61 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
             "plugin_package": _package.package_status(),
             "github_auth": github_auth,
             "github_repository": github_repository,
+            "github_stack": github_stack,
         },
         "repository_size": repository_size_profile(repo),
     }
+
+
+def github_stack_probe(repo: Path) -> dict[str, Any]:
+    """Read local CLI/official extension capability; never install or infer a remote stack."""
+    result = {
+        "available": shutil.which("gh") is not None, "usable": False,
+        "reason": "gh_missing", "cli_version": None, "extension_version": None,
+        "official_source": "github/gh-stack", "minimum_cli_version": "2.0.0",
+        "provider_membership_verified": False,
+    }
+    if not result["available"]:
+        return result
+
+    def output(*arguments: str) -> str | None:
+        try:
+            probe = subprocess.run(["gh", *arguments], cwd=repo, capture_output=True,
+                                   text=True, timeout=5, check=False)
+        except (OSError, UnicodeError, subprocess.TimeoutExpired):
+            return None
+        return probe.stdout if probe.returncode == 0 else None
+
+    cli = output("--version")
+    version = re.search(r"^gh version (\d+)\.(\d+)\.(\d+)\b", cli or "")
+    result["reason"] = "cli_unverified"
+    if version is None:
+        return result
+    result["cli_version"] = ".".join(version.groups())
+    if tuple(map(int, version.groups())) < (2, 0, 0):
+        result["reason"] = "cli_upgrade_required"
+        return result
+    extensions = output("extension", "list")
+    if extensions is None:
+        result["reason"] = "extension_list_failed"
+        return result
+    if any(not re.match(r"^\s*gh\s+\S+\s+\S+/\S+\s+\S+", line)
+           for line in extensions.splitlines() if line.strip()):
+        result["reason"] = "extension_list_unverified"
+        return result
+    stack = re.search(r"^\s*gh\s+stack\s+(\S+)\s+(\S+)", extensions, re.MULTILINE)
+    if stack is None:
+        result["reason"] = "extension_missing"
+        return result
+    if stack.group(1) != result["official_source"]:
+        result["reason"] = "wrong_extension_source"
+        return result
+    installed = output("stack", "--version")
+    version = re.search(r"^gh stack version (\d+\.\d+\.\d+(?:[-+][\w.-]+)?)\b", installed or "")
+    result["reason"] = "extension_unverified"
+    if version is not None:
+        result.update(usable=True, reason="usable", extension_version=version.group(1))
+    return result
 
 
 def _checkpoint_policy_state(repo: Path) -> tuple[Path, str, dict[str, Any] | None, str | None, list[str], bool]:

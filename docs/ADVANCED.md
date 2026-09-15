@@ -58,6 +58,18 @@ You do not fill out a blank wizard. The agent summarizes meaningful choices and 
 
 `.zzzops/PROJECT.md` is the concise human charter and policy summary. `.zzzops/POLICY.json` is canonical machine policy, while `.zzzops/PROJECT_AUDIT.md` preserves evidence, rationale, review metadata, and history. See the [initialization contract](INITIALIZATION.md).
 
+When native PR stacks are preferred, interactive policy review checks the documented
+GitHub CLI minimum and the official `github/gh-stack` extension. If it is missing,
+the agent offers installation before choosing a fallback, explains the host tooling
+change, and reuses applicable explicit approval. CLI installation or upgrade requires
+its own authority. Inspection itself only reads capability; it never installs.
+Usable tooling needs no prompt. A declined offer is recorded against the capability
+digest in reviewed Git/review settings, so unchanged reviews do not repeat it.
+Reconsideration or changed capability can reopen the choice. Failed or unverifiable
+setup retains the reviewed fallback or becomes a blocker; installation alone does
+not establish native provider stack membership. Unattended execution consumes the
+reviewed decision and never interviews or installs without prior applicable authority.
+
 ## Repository bootstrap
 
 `$bootstrap-zzzops-repository` derives greenfield, early-scaffold, or brownfield behavior from repository evidence.
