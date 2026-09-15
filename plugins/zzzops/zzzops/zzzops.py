@@ -990,7 +990,7 @@ def github_release_evidence(repo: Path, repository: dict[str, Any]) -> dict[str,
         return {"available": False, "releases": None, "reason": "repository_identity_unavailable"}
     try:
         result = subprocess.run(
-            [executable, "api", f"repos/{identity}/releases", "--paginate"],
+            [executable, "api", f"repos/{identity}/releases", "--paginate", "--slurp"],
             cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=8, check=False,
         )
     except (OSError, UnicodeError, subprocess.TimeoutExpired) as exc:
@@ -1001,6 +1001,8 @@ def github_release_evidence(repo: Path, repository: dict[str, Any]) -> dict[str,
         releases = json.loads(result.stdout)
     except (UnicodeError, json.JSONDecodeError):
         return {"available": True, "releases": None, "reason": "release_api_invalid_json"}
+    if isinstance(releases, list) and all(isinstance(page, list) for page in releases):
+        releases = [item for page in releases for item in page]
     if not isinstance(releases, list):
         return {"available": True, "releases": None, "reason": "release_api_malformed"}
     return {"available": True, "releases": releases, "reason": "ok"}
