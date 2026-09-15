@@ -6,6 +6,8 @@ Start with a bounded repository map: project charter and agent context, architec
 
 Use focused native searches and policy-permitted read-only delegation to inspect independent domains. Prefer current executable evidence over prose or historical assumptions. Do not run expensive suites merely to search for ideas; run a narrow probe only when it can confirm or reject a candidate finding.
 
+For verification cost or redundant-test candidates, load the [verification efficiency contract](../../suggest-zzzops-work/references/VERIFICATION_EFFICIENCY.md). Map distinct evidence before proposing trimming; findings need explicit category authority before capture.
+
 Read every policy-eligible inbox observation, but do not narrow the audit to the inbox or interpret an empty inbox as health. Deduplicate candidates across domains and reject cosmetic churn, unsupported rewrites, generated/dependency changes, and findings without an evidenced beneficiary or repeated cost.
 
 Completion covers only the current qualifying event IDs frozen in the full manifest. It records that this full review ran; it does not resolve findings, observations, or future events.

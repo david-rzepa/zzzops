@@ -18,6 +18,27 @@ Agents still perform one targeted concurrency re-read before mutating the select
 
 ## Opt-in timing diagnostics
 
+### Verification-suite efficiency
+
+The opt-in `verification_efficiency` entropy category inspects recurring suite cost
+and useful signal. Compare repeated samples under comparable conditions, distinguish
+CI critical-path wall time from aggregate compute cost, and account for contention,
+setup, and variability before proposing parallelization or sharding. Map every test
+to its unique behavior, boundary, platform, runtime, failure, integration, and
+regression claims before proposing removal, merging, or replacement. Shared fixtures
+alone do not show redundancy. Preserve required CI and complete failure propagation;
+uncertainty calls for a bounded measurement goal, never a flaky hard-duration gate.
+
+The first bounded probe for this category found coverage-map and prompt-budget checks
+taking about 0.04–0.05 seconds per process across three samples. These cheap components
+do not establish a CI bottleneck. Prompt accounting unit cases and the current-artifact
+budget check retain distinct claims, as do canonical-source metadata and built archive
+metadata checks. Native-platform and installed-cache checks retain separate evidence
+even when they share code. No suite checks were removed or parallelized by adding the
+category. Review broader candidates only with current evidence and ordinary authority.
+
+### Local command profiles
+
 Add `--profile` to an explicit checkpoint or portfolio command to retain one local timing aggregate while preserving the command's ordinary stdout, exit behavior, and reported process counts:
 
 ```powershell

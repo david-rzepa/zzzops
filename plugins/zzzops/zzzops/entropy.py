@@ -15,6 +15,7 @@ SCHEMA_VERSION = 1
 DIRECTORY_RELATIVE = "zzzops/entropy-observations"
 ENTROPY_CATEGORIES = frozenset({
     "documentation", "tests", "code_quality_non_behavioral", "agent_observability",
+    "verification_efficiency",
 })
 MAX_PATHS = 4
 MAX_PATH_LENGTH = 240

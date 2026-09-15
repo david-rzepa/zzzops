@@ -8,4 +8,6 @@ For each event, hydrate that goal and its exact PR/base/head/merge evidence thro
 
 Map selected inbox fingerprints to the `entropy list` records. Treat them as leads, not findings. Validate only their named paths and the smallest surrounding evidence needed to confirm, dismiss, or deduplicate them.
 
+When this batch exposes verification cost or redundancy, use the [verification efficiency contract](../../suggest-zzzops-work/references/VERIFICATION_EFFICIENCY.md) within the exact batch scope; do not start a repository-wide suite audit.
+
 Events recorded after planning remain outside this manifest and stay due. Before completion, hydrate current goal revisions and each PR's [[exact head]](../../../concepts/exact-head.md), then derive the current event IDs independently. Pass those IDs as `current_events`; never echo the manifest IDs without checking. A later goal revision containing only explicitly nonqualifying administration does not replace the latest qualifying event: inspect the intervening history and retain that event ID only when its linked status and exact PR/base/head/merge evidence are unchanged. Any qualifying transition, repository identity change, relevant status change, exact-head drift, ambiguous history, or new recorded event fails closed and leaves coverage due.

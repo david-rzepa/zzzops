@@ -260,6 +260,26 @@ class EntropyModuleTests(unittest.TestCase):
         self.assertEqual(4, sum(result["recorded"] for result in results))
         self.assertEqual(4, zzzops.list_entropy_observations(self.repo, self.project())["pending"])
 
+    def test_verification_efficiency_preserves_legacy_opt_ins_and_resolution(self):
+        first = self.observe(
+            category="verification_efficiency",
+            evidence="The Linux validation graph serializes independent artifact checks.",
+        )
+        self.observe(goal=2, category="documentation")
+        legacy = zzzops.list_entropy_observations(self.repo, self.project())
+        self.assertEqual((2, 1, 1), (legacy["pending"], legacy["eligible"], legacy["excluded"]))
+        self.assertEqual(["documentation"], [item["category"] for item in legacy["observations"]])
+        enabled = zzzops.list_entropy_observations(
+            self.repo, self.project(["verification_efficiency"]),
+        )
+        self.assertEqual((2, 1, 1), (enabled["pending"], enabled["eligible"], enabled["excluded"]))
+        self.assertEqual(first["observation"], enabled["observations"][0])
+        zzzops.resolve_entropy_observations(
+            self.repo, fingerprints=[first["observation"]["fingerprint"]], outcome="captured",
+        )
+        remaining = zzzops.list_entropy_observations(self.repo, self.project())
+        self.assertEqual((1, 1, 0), (remaining["pending"], remaining["eligible"], remaining["excluded"]))
+
     def test_resolution_is_idempotent_and_preserves_concurrent_new_work(self):
         first = self.observe()
         fingerprint = first["observation"]["fingerprint"]
@@ -3811,6 +3831,7 @@ class WorkflowContractTests(unittest.TestCase):
                 "enabled": True,
                 "allowed_categories": [
                     "documentation", "tests", "code_quality_non_behavioral", "agent_observability",
+                    "verification_efficiency",
                 ],
                 "max_per_run": 3,
             },
@@ -3818,6 +3839,18 @@ class WorkflowContractTests(unittest.TestCase):
         )
         self.assertEqual("stack_from_reviewed_checkpoint", settings["dependency_implementation_gate"])
         self.assertTrue(settings["read_only_dependency_investigation"])
+
+        # The new draft accepts the category; existing reviewed lists stay valid
+        # and are not silently expanded by validation.
+        legacy = json.loads(json.dumps(plan["policy"]))
+        legacy_refill = next(
+            section for section in legacy["sections"]
+            if section["id"] == "autonomy_approval_parallelism"
+        )["settings"]["refill"]
+        legacy_refill["allowed_categories"].remove("verification_efficiency")
+        before = json.dumps(legacy, sort_keys=True)
+        self.assertEqual([], zzzops.validate_policy(legacy, True))
+        self.assertEqual(before, json.dumps(legacy, sort_keys=True))
 
         invalid = json.loads(json.dumps(plan["policy"]))
         invalid_settings = next(

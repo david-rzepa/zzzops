@@ -10,7 +10,7 @@ Record at most one bounded fact at a time:
 
 ```text
 <python> <zzzops-cli> --repo . entropy observe \
-  --category documentation|tests|code_quality_non_behavioral|agent_observability \
+  --category documentation|tests|code_quality_non_behavioral|agent_observability|verification_efficiency \
   --path REPOSITORY/PATH --evidence "ONE OBSERVED FACT" \
   --goal N --revision R
 ```
@@ -31,6 +31,10 @@ validates policy-eligible inbox leads. `$suggest-zzzops-work` continues to valid
 the same eligible leads during ordinary suggestion/refill and supplies the ranking,
 category, cap, and capture authority reused by entropy review. Neither workflow gains
 goal-write authority from the inbox itself.
+
+An already observed serialized check, repeated setup, or apparently superseded test
+may be one `verification_efficiency` fact. Record the observed cost or evidence gap;
+never stop ordinary work to time the suite or decide that a test is redundant.
 
 ## Exact review events
 
