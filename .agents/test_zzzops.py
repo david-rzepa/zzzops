@@ -4291,7 +4291,7 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn("ambiguous", text)
             self.assertIn("never_released", text)
         self.assertIn("treat execution as uninitialized", review)
-        self.assertIn("blocks the affected work", execute)
+        self.assertIn("blocks migration", execute)
         self.assertIn("Never infer that state can be wiped", unblock)
 
     def test_exhaustion_review_and_bootstrap_contracts_are_explicit(self):
