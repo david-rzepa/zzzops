@@ -457,6 +457,38 @@ def project_digest(text: str) -> str:
     return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def stack_tooling_offer(policy: dict[str, Any], capability: dict[str, Any]) -> dict[str, Any]:
+    """Describe an interactive tooling decision without granting installation authority."""
+    section = next((item for item in policy.get("sections", [])
+                    if isinstance(item, dict) and item.get("id") == "git_review_release"), {})
+    settings = section.get("settings") if isinstance(section.get("settings"), dict) else {}
+    preferred = settings.get("pull_request_mode") == "github_stacked_when_verified_else_chained"
+    digest = policy_content_digest({key: capability.get(key) for key in
+                                    ("reason", "cli_version", "extension_version", "official_source")})
+    declined = settings.get("stacked_tooling_decline") == digest
+    reason = capability.get("reason")
+    if not preferred:
+        action = "not_selected"
+    elif capability.get("usable") is True:
+        action = "use_native_stacks"
+    elif declined:
+        action = "keep_reviewed_fallback"
+    elif reason == "extension_missing":
+        action = "offer_installation"
+    elif reason in {"gh_missing", "cli_upgrade_required"}:
+        action = "review_cli_install_or_upgrade"
+    else:
+        action = "review_capability_failure"
+    return {
+        "preferred": preferred, "action": action, "capability_digest": digest,
+        "offer_installation": action == "offer_installation",
+        "requires_explicit_approval": action in {"offer_installation", "review_cli_install_or_upgrade"},
+        "install_command": ["gh", "extension", "install", "github/gh-stack"]
+        if action == "offer_installation" else None,
+        "decline_is_current": declined,
+    }
+
+
 def project_path(repo: Path) -> Path:
     return repo / ".zzzops" / "PROJECT.md"
 
@@ -646,6 +678,8 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
             errors.append(f"{prefix}.settings must be an object")
         elif section_id == "git_review_release":
             settings = section["settings"]
+            if "stacked_tooling_decline" in settings and not _digest_text(settings["stacked_tooling_decline"]):
+                errors.append(f"{prefix}.git_review_release.settings.stacked_tooling_decline is invalid")
             for field, allowed in GIT_REVIEW_SETTING_VALUES.items():
                 if settings.get(field) not in allowed:
                     errors.append(f"{prefix}.git_review_release.settings.{field} is invalid")
