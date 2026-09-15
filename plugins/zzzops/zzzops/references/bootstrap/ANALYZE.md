@@ -2,10 +2,13 @@
 
 ## Incremental capability audit
 
-An existing project is re-bootstrapped only by an explicit user invocation of
-the documented bootstrap upgrade/re-bootstrap entrypoint. The operation reads
-the current repository and compares it with `.zzzops/BOOTSTRAP.json`; it does
-not run as a daemon or scan unrelated repositories.
+Every normal ZzzOps bootstrap or repository-inspection invocation automatically
+reads the current repository and compares it with `.zzzops/BOOTSTRAP.json`.
+When capability drift is found, it reports the delta and reconciles applicable
+work through ordinary goals. Applying an upgrade still requires the existing
+reviewed authority and explicit execution authorization; detection does not
+silently mutate project state. This is invocation-scoped, not a background
+daemon, and it never scans unrelated repositories.
 
 The record contains a schema version and capability entries with stable `id`,
 `revision`, and application `status` (`pending`, `applied`, or `verified`). A

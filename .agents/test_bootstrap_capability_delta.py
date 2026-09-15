@@ -55,6 +55,12 @@ class BootstrapCapabilityDeltaTests(unittest.TestCase):
             MODULE.compare_bootstrap_capabilities(self.applied, self.current)
             self.assertEqual(marker.read_text(encoding="utf-8"), before)
 
+    def test_normal_inspection_detects_automatically_but_application_stays_gated(self):
+        document = (MODULE_PATH.parent / "references/bootstrap/ANALYZE.md").read_text(encoding="utf-8")
+        self.assertIn("Every normal ZzzOps bootstrap or repository-inspection invocation automatically", document)
+        self.assertIn("reviewed authority and explicit execution authorization", document)
+        self.assertIn("not a background", document)
+
 
 if __name__ == "__main__":
     unittest.main()
