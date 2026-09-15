@@ -457,6 +457,39 @@ def project_digest(text: str) -> str:
     return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def classify_release_evidence(
+    *, visibility: str | None, github_releases: list[dict[str, Any]] | None,
+    owner_declaration: str | None = None,
+) -> dict[str, Any]:
+    """Classify release evidence without inferring a destructive migration choice."""
+    releases = github_releases if isinstance(github_releases, list) else None
+    published = [item for item in (releases or []) if isinstance(item, dict)
+                 and item.get("draft") is not True
+                 and (item.get("published_at") or item.get("publishedAt"))]
+    if visibility == "PUBLIC" and published:
+        return {
+            "status": "released", "released": True, "ambiguous": False,
+            "evidence": "github_public_release", "release_count": len(published),
+            "first_release_transition": owner_declaration == "never_released",
+        }
+    if owner_declaration == "never_released" and visibility == "PUBLIC" and releases == []:
+        return {
+            "status": "never_released", "released": False, "ambiguous": False,
+            "evidence": "explicit_owner_declaration", "release_count": 0,
+            "first_release_transition": False,
+        }
+    reason = "release_history_ambiguous"
+    if visibility == "PUBLIC" and releases == []:
+        reason = "public_repository_without_github_release"
+    elif releases is None:
+        reason = "release_history_unavailable"
+    return {
+        "status": "unknown", "released": None, "ambiguous": True,
+        "evidence": "none", "reason": reason,
+        "release_count": len(published), "first_release_transition": False,
+    }
+
+
 def stack_tooling_offer(policy: dict[str, Any], capability: dict[str, Any]) -> dict[str, Any]:
     """Describe an interactive tooling decision without granting installation authority."""
     section = next((item for item in policy.get("sections", [])

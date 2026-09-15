@@ -70,6 +70,26 @@ class PolicyModuleTests(unittest.TestCase):
         }
         self.assertEqual(set(), local_definitions & policy_exports)
 
+    def test_release_evidence_requires_public_github_release_or_explicit_owner_declaration(self):
+        policy = zzzops._policy
+        released = policy.classify_release_evidence(
+            visibility="PUBLIC", github_releases=[{"draft": False, "published_at": "2026-09-01T00:00:00Z"}],
+            owner_declaration="never_released",
+        )
+        self.assertEqual("released", released["status"])
+        self.assertTrue(released["first_release_transition"])
+        never = policy.classify_release_evidence(
+            visibility="PUBLIC", github_releases=[], owner_declaration="never_released",
+        )
+        self.assertEqual("never_released", never["status"])
+        unknown = policy.classify_release_evidence(visibility="PUBLIC", github_releases=[])
+        self.assertEqual("unknown", unknown["status"])
+        self.assertTrue(unknown["ambiguous"])
+        private = policy.classify_release_evidence(
+            visibility="PRIVATE", github_releases=[{"published_at": "2026-09-01T00:00:00Z"}],
+        )
+        self.assertEqual("unknown", private["status"])
+
 
 class DelegationAcceptanceTests(unittest.TestCase):
     def test_independent_fixture_proves_structural_overlap_and_bounded_context(self):
