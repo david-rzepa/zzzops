@@ -15,6 +15,7 @@ GOAL_BLOCK_START = "<!-- zzzops-goal"
 GOAL_BLOCK_END = "zzzops-goal -->"
 GOAL_HISTORY_BLOCK_START = "<!-- zzzops-history"
 GOAL_HISTORY_BLOCK_END = "zzzops-history -->"
+GOAL_HISTORY_DETAILS_SUMMARY = "ZzzOps machine-readable transition payload"
 GOAL_HISTORY_SCHEMA_VERSION = 1
 GOAL_SCHEMA_LABEL_PREFIX = "zzzops:schema:v"
 GOAL_FIELDS = {
@@ -272,7 +273,7 @@ def render_goal_history(
     payload["payload_digest"] = hashlib.sha256(json.dumps(
         payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
     ).encode("utf-8")).hexdigest()
-    block = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    block = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
     next_action = desired.get("next_action", "")
     status = desired.get("status", "")
     return history_id, (
@@ -282,18 +283,25 @@ def render_goal_history(
         f"### Requested transition\n\n"
         f"- Status: `{status}`\n"
         f"- Next action:\n\n{next_action}\n\n"
-        f"{GOAL_HISTORY_BLOCK_START}\n{block}\n{GOAL_HISTORY_BLOCK_END}\n"
+        f"<details>\n<summary>{GOAL_HISTORY_DETAILS_SUMMARY}</summary>\n\n"
+        f"```json\n{block}\n```\n\n</details>\n"
     )
 
 
 def parse_goal_history(body: Any) -> dict[str, Any] | None:
     if not isinstance(body, str):
         return None
-    pattern = re.compile(
-        re.escape(GOAL_HISTORY_BLOCK_START) + r"\s*\n(.*?)\n" + re.escape(GOAL_HISTORY_BLOCK_END),
-        re.DOTALL,
+    details_pattern = re.compile(
+        r"<details>\s*<summary>" + re.escape(GOAL_HISTORY_DETAILS_SUMMARY)
+        + r"</summary>\s*```json\s*\n(.*?)\n```\s*</details>", re.DOTALL,
     )
-    match = pattern.search(body)
+    match = details_pattern.search(body)
+    if not match:
+        legacy_pattern = re.compile(
+            re.escape(GOAL_HISTORY_BLOCK_START) + r"\s*\n(.*?)\n" + re.escape(GOAL_HISTORY_BLOCK_END),
+            re.DOTALL,
+        )
+        match = legacy_pattern.search(body)
     if not match:
         return None
     try:
