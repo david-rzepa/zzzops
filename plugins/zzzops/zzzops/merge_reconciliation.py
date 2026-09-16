@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+import copy
 
 
 def classify_pr_merge(record: dict[str, Any], pull_request: dict[str, Any] | None, repository: str) -> dict[str, Any]:
@@ -36,4 +37,28 @@ def classify_pr_merge(record: dict[str, Any], pull_request: dict[str, Any] | Non
         "reasons": [],
         "merge_commit": pull_request["merge_commit"],
         "head_oid": pull_request["head_oid"],
+    }
+
+
+def build_reconciliation_transition(record: dict[str, Any], merge: dict[str, Any], expected_digest: str) -> dict[str, Any]:
+    """Build an exact-revision guarded done transition for verified merge evidence."""
+    if merge.get("status") != "merged_verified":
+        raise ValueError("goal is not eligible for merged-PR reconciliation")
+    desired = copy.deepcopy(record)
+    desired["status"] = "done"
+    desired["blockers"] = []
+    desired["claim"] = None
+    desired["revision"] = record["revision"] + 1
+    implementation = desired.get("implementation") or {}
+    review = implementation.get("review") or {}
+    review["status"] = "approved"
+    review["checkpoint"] = merge["merge_commit"]
+    implementation["review"] = review
+    desired["implementation"] = implementation
+    desired["next_action"] = f"Reconciled merged PR at {merge['merge_commit']}; dependencies may be re-evaluated on the next portfolio refresh."
+    return {
+        "schema_version": 1,
+        "expected_revision": record["revision"],
+        "expected_digest": expected_digest,
+        "goal": desired,
     }

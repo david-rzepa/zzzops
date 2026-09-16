@@ -51,6 +51,18 @@ class MergeReconciliationTests(unittest.TestCase):
         result = MODULE.classify_pr_merge(goal(), pull(repository="other/project"), "example/project")
         self.assertIn("repository_mismatch", result["reasons"])
 
+    def test_verified_merge_builds_one_guarded_idempotent_done_transition(self):
+        record = goal()
+        record.update({"status": "blocked", "revision": 4, "blockers": [{"status": "open", "category": "human-action"}], "claim": {"owner": "agent"}})
+        merge = MODULE.classify_pr_merge(record, pull(), "example/project")
+        transition = MODULE.build_reconciliation_transition(record, merge, "d" * 64)
+        self.assertEqual(transition["expected_revision"], 4)
+        self.assertEqual(transition["goal"]["status"], "done")
+        self.assertIsNone(transition["goal"]["claim"])
+        self.assertEqual(transition["goal"]["implementation"]["review"]["checkpoint"], "merge-1")
+        with self.assertRaises(ValueError):
+            MODULE.build_reconciliation_transition(record, {"status": "merged_stale"}, "d" * 64)
+
 
 if __name__ == "__main__":
     unittest.main()
