@@ -201,6 +201,46 @@ def _work_state(
     return "blocked"
 
 
+def active_stack_guard(
+    records: list[dict[str, Any]], open_prs: list[dict[str, Any]] | None = None,
+    *, candidate_goal: Any = None, policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Fail closed when a second active or stranded PR stack would be started."""
+    settings = policy if isinstance(policy, dict) else {}
+    if settings.get("active_stack") not in {None, "one_active_stack"}:
+        return {"allowed": True, "reason": "policy_does_not_enable_single_stack_guard", "stacks": []}
+    open_ids = {
+        str(item.get("number")) for item in (open_prs or [])
+        if isinstance(item, dict) and item.get("number") is not None
+    }
+    active = []
+    stranded = []
+    for record in records:
+        if not isinstance(record, dict) or record.get("status") in {"done", "cancelled"}:
+            continue
+        implementation = record.get("implementation")
+        if not isinstance(implementation, dict) or not implementation.get("pr"):
+            continue
+        entry = {
+            "goal": record.get("key"), "branch": implementation.get("branch"),
+            "pr": implementation.get("pr"), "base": implementation.get("base"),
+        }
+        pr_number = str(implementation["pr"]).rstrip("/").rsplit("/", 1)[-1]
+        if pr_number in open_ids:
+            active.append(entry)
+        elif (implementation.get("review") or {}).get("status") in {"pending", "approved"}:
+            stranded.append(entry)
+    stacks = active + stranded
+    if not stacks:
+        return {"allowed": True, "reason": "no_active_stack", "stacks": []}
+    reason = "active_stack_exists" if active else "stranded_stack_requires_recovery"
+    return {
+        "allowed": False, "reason": reason, "stacks": stacks,
+        "candidate_goal": candidate_goal,
+        "required_action": "integrate, close, or explicitly abandon the existing stack before starting another",
+    }
+
+
 def audit_portfolio(
     records: list[dict[str, Any]], backend: str, as_of: datetime | None = None, resource_policy: Any = None,
 ) -> list[dict[str, Any]]:
