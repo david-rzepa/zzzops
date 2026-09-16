@@ -13,10 +13,28 @@ from typing import Any
 
 PHASES = ("discovery", "architecture", "implementation", "verification")
 REQUIRED_FIELDS = {"model", "effort", "capability", "cost"}
+DELEGATION_TERMS = ("delegat", "subagent", "sub-agent", "worker", "agent")
 
 
 class RoutingError(ValueError):
     """The available inventory or requested launch does not satisfy policy."""
+
+
+def discover_delegation_capability(tool_catalog: Any) -> dict[str, Any]:
+    """Inspect the complete host tool catalog, including deferred tools."""
+    if not isinstance(tool_catalog, list):
+        return {"state": "unavailable", "matches": [], "evidence": "tool catalog unavailable"}
+    matches = []
+    for item in tool_catalog:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", ""))
+        description = str(item.get("description", ""))
+        haystack = f"{name} {description}".casefold()
+        if any(term in haystack for term in DELEGATION_TERMS):
+            matches.append(name or "<unnamed>")
+    state = "available" if matches else "unavailable"
+    return {"state": state, "matches": sorted(set(matches)), "evidence": "complete runtime tool catalog"}
 
 
 def _pair(item: dict[str, Any]) -> tuple[str, str]:

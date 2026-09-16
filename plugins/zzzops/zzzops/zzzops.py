@@ -147,6 +147,7 @@ render_policy_review_table = _policy.render_policy_review_table
 route_phase = _routing.route_phase
 validate_launch_plan = _routing.validate_launch_plan
 routing_event = _routing.routing_event
+discover_delegation_capability = _routing.discover_delegation_capability
 GOAL_FIELDS = _goals.GOAL_FIELDS
 GOAL_TRANSITION_FIELDS = {"schema_version", "expected_revision", "expected_digest", "goal"}
 BLOCKER_CATEGORIES = {

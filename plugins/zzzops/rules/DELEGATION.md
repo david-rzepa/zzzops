@@ -1,7 +1,5 @@
 # Delegation
 
-Eligible isolated work must be delegated within allowed capacity: two independent tasks or one beneficial long/context-heavy task.
+Eligible isolated work must be delegated: two independent or one long task. Before fallback inspect `ALL_TOOLS`; launches require `model`+`effort`. Skip authority/safety, conflict/coupling, triviality, overhead; record why. No eligible work: sequential fallback; missing capability with eligible work is a harness blocker.
 
-Skip for authority/safety, conflict/coupling, triviality, or overhead; record why. No workers means sequential fallback, not blocker.
-
-Assign scope/resources/probe/prohibitions/stop; return concise evidence-linked summaries, never transcripts. Only the coordinator owns state/claims/reservations/integration/decisions/external writes/approvals/user communication. Read-only never write; writable work requires disjoint worktrees under `EXECUTION_STRATEGY.md`.
+Assign scope/stop; return concise evidence-linked summaries, never transcripts. Only the coordinator owns state/claims/reservations/decisions/external writes/approvals/user communication. Read-only never write; writable work requires disjoint worktrees.
