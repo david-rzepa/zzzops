@@ -1,6 +1,6 @@
 # ZzzOps project policy audit
 
-Status: complete. Reviewer: user. Revision: 25.
+Status: complete. Reviewer: user. Revision: 27.
 
 ## Evidence and decisions
 
@@ -89,9 +89,9 @@ Status: complete. Reviewer: user. Revision: 25.
   - Decision: structured
   - Rationale: Balance production-oriented specification and verification with automatic escalation for high-risk work.
   - Sources: E-001: .zzzops/PROJECT.md — The existing confirmed charter defines the outcome, KPIs, acceptance criteria, and value constraints.; E-002: AGENTS.md — Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and reviewed PROJECT policy as the operational source of truth.
-  - Confidence/default: high; ZzzOps production-oriented fallback → accepted
-  - Provenance: adopted from the recorded ZzzOps default
-  - Settings: `{"escalation": {"allow_automatic_deescalation": false, "allow_automatic_escalation": true, "enabled": true}, "minimums": {"authentication": "agentic", "authorization": "agentic", "destructive_data_migrations": "agentic", "payments": "agentic", "secrets": "agentic", "security_sensitive": "agentic", "throwaway_prototypes": "vibe"}, "overrides": {"lowering": "explicit_user_authority", "may_undercut_risk_minimum": false, "per_goal": true, "raising": "allowed"}, "requirements_interview": {"level_mapping": {"agentic": "thorough", "structured": "standard", "vibe": "light"}, "source": "effective_engineering_rigor"}}`
+  - Confidence/default: high; ZzzOps production-oriented fallback → changed
+  - Provenance: customized from a ZzzOps default
+  - Settings: `{"escalation": {"allow_automatic_deescalation": false, "allow_automatic_escalation": true, "enabled": true}, "minimums": {"authentication": "agentic", "authorization": "agentic", "destructive_data_migrations": "agentic", "external_state": "agentic", "payments": "agentic", "secrets": "agentic", "security_sensitive": "agentic", "throwaway_prototypes": "vibe"}, "overrides": {"lowering": "explicit_user_authority", "may_undercut_risk_minimum": false, "per_goal": true, "raising": "allowed"}, "requirements_interview": {"level_mapping": {"agentic": "thorough", "structured": "standard", "vibe": "light"}, "source": "effective_engineering_rigor"}}`
   - Exceptions: none
   - Unresolved: none
 - [x] `[policy:workflow_adherence]` **ZzzOps workflow adherence** (applicable)
@@ -137,5 +137,7 @@ Status: complete. Reviewer: user. Revision: 25.
 | 2026-08-28 | user | Reviewed policy revision 23 | Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, workflow_adherence, autonomy_approval_parallelism, automated_design; source digest sha256:c9c5d663dce7b421d5d9f5ce666fcd3974609a715706af315c53431d4dc3ef86. |
 | 2026-08-28 | ZzzOps initialization | Created pending revision 24 | Confirmed agent-generated draft; explicit policy review still required. |
 | 2026-08-29 | user | Reviewed policy revision 25 | Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, workflow_adherence, autonomy_approval_parallelism, automated_design; source digest sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e. |
+| 2026-09-15 | ZzzOps initialization | Created pending revision 26 | Confirmed agent-generated draft; explicit policy review still required. |
+| 2026-09-15 | user | Reviewed policy revision 27 | Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, workflow_adherence, autonomy_approval_parallelism, automated_design; source digest sha256:37c161146a86812a2e524cea5b37134095aa68fdd8ffa72a2727824e997d95a0. |
 
 The machine-readable authority is [POLICY.json](POLICY.json); this file is its human audit view.
