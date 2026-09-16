@@ -65,6 +65,7 @@
           "stacked_capability": "official_gh_stack_extension_with_provider_membership_verification",
           "stacked_tool_installation": "explicit_user_approval", "stacked_unavailable_fallback": "chained_prs",
           "commit_unit": "verified_subgoal", "commit_style": "conventional", "review_gate": "human_at_exhaustion",
+          "active_stack": "one_active_stack", "second_stack": "durable_blocker", "base_freshness": "latest_integrated_target", "recovery": "explicit_abandoned_stack_decision",
           "review_state_reads_per_checkpoint": 1,
           "pr_approval": "required_when_repository_requires_pr", "conversational_approval": "never_for_goal_progress", "merge_after_approval": "when_authorized",
           "legacy_migration": {

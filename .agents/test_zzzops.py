@@ -4325,6 +4325,20 @@ class WorkflowContractTests(unittest.TestCase):
         event = zzzops.routing_event(intermediate, outcome="verified")
         self.assertEqual("unavailable", event["telemetry"]["status"])
 
+    def test_active_stack_guard_blocks_second_stack_and_allows_clean_queue(self):
+        policy = {"active_stack": "one_active_stack"}
+        self.assertTrue(zzzops.active_stack_guard([], [], candidate_goal=423, policy=policy)["allowed"])
+        active = [{
+            "key": 421, "status": "in_progress",
+            "implementation": {"branch": "codex/goal-421", "base": "dev", "pr": "424", "review": {"status": "pending"}},
+        }]
+        blocked = zzzops.active_stack_guard(active, [{"number": 424}], candidate_goal=423, policy=policy)
+        self.assertFalse(blocked["allowed"])
+        self.assertEqual("active_stack_exists", blocked["reason"])
+        stranded = zzzops.active_stack_guard(active, [], candidate_goal=423, policy=policy)
+        self.assertFalse(stranded["allowed"])
+        self.assertEqual("stranded_stack_requires_recovery", stranded["reason"])
+
     def test_automated_design_execution_and_review_contracts_preserve_boundaries(self):
         root = PLUGIN_ROOT
         unblock = (root / "skills" / "execute-zzzops" / "references" / "UNBLOCK.md").read_text(encoding="utf-8")

@@ -86,6 +86,12 @@ GIT_REVIEW_SETTING_VALUES = {
     "stacked_tool_installation": {"explicit_user_approval"},
     "stacked_unavailable_fallback": {"chained_prs"},
 }
+ACTIVE_STACK_SETTINGS = {
+    "active_stack": "one_active_stack",
+    "second_stack": "durable_blocker",
+    "base_freshness": "latest_integrated_target",
+    "recovery": "explicit_abandoned_stack_decision",
+}
 DEPENDENCY_IMPLEMENTATION_GATES = {"dependencies_done", "stack_from_reviewed_checkpoint"}
 WORK_SUGGESTION_CATEGORIES = frozenset({
     "documentation", "tests", "code_quality_non_behavioral", "agent_observability",
@@ -759,6 +765,9 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                 errors.append(f"{prefix}.git_review_release.settings.stacked_tooling_decline is invalid")
             for field, allowed in GIT_REVIEW_SETTING_VALUES.items():
                 if settings.get(field) not in allowed:
+                    errors.append(f"{prefix}.git_review_release.settings.{field} is invalid")
+            for field, expected in ACTIVE_STACK_SETTINGS.items():
+                if settings.get(field) != expected:
                     errors.append(f"{prefix}.git_review_release.settings.{field} is invalid")
             if settings.get("review_gate") == "human_at_exhaustion" and (
                 settings.get("review_pending_dependency") != "stack_from_reviewed_checkpoint"
