@@ -1,17 +1,17 @@
 {
   "approval": {
     "date": "2026-09-15",
-    "digest": "sha256:d036fbf246ed99061f5d31db8a9496857026f4d7a51014f1e452d867f8ded3c7",
+    "digest": "sha256:d975379f816ea68265e7bf680c1cc9e2d30237d251aaa2bd941b75029c56a7d2",
     "reviewer": "user"
   },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:e8d914a153dd286ae7d87ea2ed0754ef064a952fd7da60621027024e4d743ac6",
+      "digest": "sha256:89e8bd5486deb417d45ed4b5a446bdc7c0ce5a2d0c7c3666b0003fb1154db78b",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
-      "digest": "sha256:73e37b73eb9fbb7a4b147a0099610d720c336ac32c203868c62ff8555f1ac045",
+      "digest": "sha256:ffe7cd9dd309bcbc2f9f99a410a67a86e060adb20c60801ff400234743c6162a",
       "path": ".zzzops/PROJECT.md"
     }
   },
@@ -152,6 +152,24 @@
       "change": "Reviewed policy revision 27",
       "date": "2026-09-15",
       "reason": "Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, workflow_adherence, autonomy_approval_parallelism, automated_design; source digest sha256:37c161146a86812a2e524cea5b37134095aa68fdd8ffa72a2727824e997d95a0."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 28",
+      "date": "2026-09-15",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 29",
+      "date": "2026-09-15",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "user",
+      "change": "Reviewed policy revision 30",
+      "date": "2026-09-15",
+      "reason": "Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, autonomy_approval_parallelism, automated_design; source digest sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4."
     }
   ],
   "initialized": true,
@@ -240,6 +258,18 @@
         "id": "E-014",
         "kind": "proposed",
         "source": "user approval in current policy review"
+      },
+      {
+        "finding": "Adopt capability-derived model routing with conservative unattended defaults, direct root handling at root capability, exact current-session overrides for above-root or root-level parallelism, durable escalation blockers, optional telemetry, and stale-policy invalidation.",
+        "id": "E-015",
+        "kind": "proposed",
+        "source": "user policy interview in current execution session"
+      },
+      {
+        "finding": "Treat model plus effort as the routing unit; raising effort follows the same root-boundary and session-override rules as raising the model.",
+        "id": "E-016",
+        "kind": "proposed",
+        "source": "user policy interview in current execution session"
       }
     ],
     "schema_version": 1,
@@ -257,7 +287,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:37c161146a86812a2e524cea5b37134095aa68fdd8ffa72a2727824e997d95a0",
+          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
           "reviewer": "user"
         },
         "settings": {
@@ -289,7 +319,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:37c161146a86812a2e524cea5b37134095aa68fdd8ffa72a2727824e997d95a0",
+          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
           "reviewer": "user"
         },
         "settings": {
@@ -343,7 +373,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:37c161146a86812a2e524cea5b37134095aa68fdd8ffa72a2727824e997d95a0",
+          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
           "reviewer": "user"
         },
         "settings": {
@@ -393,7 +423,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:37c161146a86812a2e524cea5b37134095aa68fdd8ffa72a2727824e997d95a0",
+          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
           "reviewer": "user"
         },
         "settings": {
@@ -435,7 +465,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:37c161146a86812a2e524cea5b37134095aa68fdd8ffa72a2727824e997d95a0",
+          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
           "reviewer": "user"
         },
         "settings": {
@@ -466,7 +496,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:37c161146a86812a2e524cea5b37134095aa68fdd8ffa72a2727824e997d95a0",
+          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
           "reviewer": "user"
         },
         "settings": {
@@ -494,7 +524,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:37c161146a86812a2e524cea5b37134095aa68fdd8ffa72a2727824e997d95a0",
+          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
           "reviewer": "user"
         },
         "settings": {
@@ -521,7 +551,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:37c161146a86812a2e524cea5b37134095aa68fdd8ffa72a2727824e997d95a0",
+          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
           "reviewer": "user"
         },
         "settings": {
@@ -556,7 +586,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:37c161146a86812a2e524cea5b37134095aa68fdd8ffa72a2727824e997d95a0",
+          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
           "reviewer": "user"
         },
         "settings": {
@@ -594,7 +624,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:37c161146a86812a2e524cea5b37134095aa68fdd8ffa72a2727824e997d95a0",
+          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
           "reviewer": "user"
         },
         "settings": {
@@ -637,6 +667,80 @@
       },
       {
         "applicable": true,
+        "confidence": "medium",
+        "decision": "capability_derived",
+        "default_disposition": "changed",
+        "default_origin": "ZzzOps capability-derived routing fallback",
+        "default_provenance": {
+          "catalog_digest": "sha256:6c4205ff95d24272bbd4054f8109d73301379099b64cf37951b8ef7e3b74b0a2",
+          "default_id": "zzzops.policy.model_routing",
+          "schema_version": 1,
+          "source": {
+            "revision": "7f4471a886c293fa6afffa87244d606937bb0dfd0a37cb088662f0393db8efee",
+            "version": "0.0.0-dev"
+          },
+          "status": "customized"
+        },
+        "exceptions": [],
+        "id": "model_routing",
+        "rationale": "Select the least expensive available model that satisfies the phase capability floor while keeping root-level and above-root authority explicit.",
+        "required": true,
+        "review": {
+          "approved": true,
+          "date": "2026-09-15",
+          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
+          "reviewer": "user"
+        },
+        "settings": {
+          "capability_basis": "effective_engineering_rigor_and_bounded_commitment",
+          "escalation": {
+            "handling": "durable_blocker_continue_safe_work",
+            "triggers": [
+              "risk_or_commitment_increase",
+              "uncertainty",
+              "failed_probe",
+              "contradictory_evidence",
+              "capability_mismatch"
+            ]
+          },
+          "evidence": "append_only_goal_history",
+          "model_inventory": {
+            "effort": "runtime_supported_effort_levels",
+            "missing": "root_best_effort_web_research",
+            "source": "runtime_available_models",
+            "stale": "refresh_and_re_evaluate",
+            "unsupported": "durable_blocker"
+          },
+          "parallelism": {
+            "below_root": "allowed_within_reviewed_worker_limits",
+            "root_or_above": "session_override_required"
+          },
+          "phase_defaults": {
+            "architecture": "derived_from_required_capability",
+            "discovery": "economical_when_floor_allows",
+            "implementation": "derived_from_required_capability",
+            "verification": "economical_when_floor_allows"
+          },
+          "root_boundary": {
+            "above_root": "session_override_required",
+            "equal_root": "direct_root_no_subagent",
+            "root_capability": "current_root_agent"
+          },
+          "routing_unit": "model_plus_effort",
+          "telemetry": {
+            "source": "optional_provenance_backed_usage",
+            "unavailable": "record_unavailable_no_block"
+          }
+        },
+        "source_ids": [
+          "E-015",
+          "E-016"
+        ],
+        "title": "Model routing and delegation",
+        "unresolved": []
+      },
+      {
+        "applicable": true,
         "confidence": "high",
         "decision": "tracked",
         "default_disposition": "accepted",
@@ -674,7 +778,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:37c161146a86812a2e524cea5b37134095aa68fdd8ffa72a2727824e997d95a0",
+          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
           "reviewer": "user"
         },
         "settings": {
@@ -710,7 +814,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:37c161146a86812a2e524cea5b37134095aa68fdd8ffa72a2727824e997d95a0",
+          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
           "reviewer": "user"
         },
         "settings": {
@@ -813,7 +917,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:37c161146a86812a2e524cea5b37134095aa68fdd8ffa72a2727824e997d95a0",
+          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
           "reviewer": "user"
         },
         "settings": {
@@ -872,6 +976,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 27,
+  "revision": 30,
   "schema_version": 1
 }

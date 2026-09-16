@@ -64,6 +64,7 @@ When KPIs conflict, prefer: user authority and safety, correctness, privacy, ver
 - `[policy:documentation_style]` **Documentation and style**: Follow evidenced repository documentation and style conventions; use outcome-first, low-technical-detail user updates by default while allowing explicit project policy to override the style. (default origin unknown)
 - `[policy:deployment_resources]` **Deployment, environment, and resources**: Do not deploy without authority; choose bounded parallelism from the deterministic tracked-file repository size. (default origin unknown)
 - `[policy:engineering_rigor]` **Engineering rigor**: structured (customized from a ZzzOps default)
+- `[policy:model_routing]` **Model routing and delegation**: capability_derived (customized from a ZzzOps default)
 - `[policy:workflow_adherence]` **ZzzOps workflow adherence**: tracked (adopted from the recorded ZzzOps default)
 - `[policy:autonomy_approval_parallelism]` **Autonomy, approvals, and parallelism**: Interview adaptively during goal capture at the reviewed depth; treat the requesting user as the sole stakeholder; execute unattended by persisting consequential questions as durable blockers; repair in-scope CI failures without another approval; record privacy-safe execution reports; refill valuable bounded work; and use up to three size-aware workers. (default origin unknown)
 - `[policy:automated_design]` **Automated design authority**: disabled (customized from a ZzzOps default)

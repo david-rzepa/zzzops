@@ -1,6 +1,6 @@
 # ZzzOps project policy audit
 
-Status: complete. Reviewer: user. Revision: 27.
+Status: complete. Reviewer: user. Revision: 30.
 
 ## Evidence and decisions
 
@@ -94,6 +94,15 @@ Status: complete. Reviewer: user. Revision: 27.
   - Settings: `{"escalation": {"allow_automatic_deescalation": false, "allow_automatic_escalation": true, "enabled": true}, "minimums": {"authentication": "agentic", "authorization": "agentic", "destructive_data_migrations": "agentic", "external_state": "agentic", "payments": "agentic", "secrets": "agentic", "security_sensitive": "agentic", "throwaway_prototypes": "vibe"}, "overrides": {"lowering": "explicit_user_authority", "may_undercut_risk_minimum": false, "per_goal": true, "raising": "allowed"}, "requirements_interview": {"level_mapping": {"agentic": "thorough", "structured": "standard", "vibe": "light"}, "source": "effective_engineering_rigor"}}`
   - Exceptions: none
   - Unresolved: none
+- [x] `[policy:model_routing]` **Model routing and delegation** (applicable)
+  - Decision: capability_derived
+  - Rationale: Select the least expensive available model that satisfies the phase capability floor while keeping root-level and above-root authority explicit.
+  - Sources: E-015: user policy interview in current execution session — Adopt capability-derived model routing with conservative unattended defaults, direct root handling at root capability, exact current-session overrides for above-root or root-level parallelism, durable escalation blockers, optional telemetry, and stale-policy invalidation.; E-016: user policy interview in current execution session — Treat model plus effort as the routing unit; raising effort follows the same root-boundary and session-override rules as raising the model.
+  - Confidence/default: medium; ZzzOps capability-derived routing fallback → changed
+  - Provenance: customized from a ZzzOps default
+  - Settings: `{"capability_basis": "effective_engineering_rigor_and_bounded_commitment", "escalation": {"handling": "durable_blocker_continue_safe_work", "triggers": ["risk_or_commitment_increase", "uncertainty", "failed_probe", "contradictory_evidence", "capability_mismatch"]}, "evidence": "append_only_goal_history", "model_inventory": {"effort": "runtime_supported_effort_levels", "missing": "root_best_effort_web_research", "source": "runtime_available_models", "stale": "refresh_and_re_evaluate", "unsupported": "durable_blocker"}, "parallelism": {"below_root": "allowed_within_reviewed_worker_limits", "root_or_above": "session_override_required"}, "phase_defaults": {"architecture": "derived_from_required_capability", "discovery": "economical_when_floor_allows", "implementation": "derived_from_required_capability", "verification": "economical_when_floor_allows"}, "root_boundary": {"above_root": "session_override_required", "equal_root": "direct_root_no_subagent", "root_capability": "current_root_agent"}, "routing_unit": "model_plus_effort", "telemetry": {"source": "optional_provenance_backed_usage", "unavailable": "record_unavailable_no_block"}}`
+  - Exceptions: none
+  - Unresolved: none
 - [x] `[policy:workflow_adherence]` **ZzzOps workflow adherence** (applicable)
   - Decision: tracked
   - Rationale: Require durable goal context for substantial agent work while preserving narrow administration and read-only exemptions.
@@ -139,5 +148,8 @@ Status: complete. Reviewer: user. Revision: 27.
 | 2026-08-29 | user | Reviewed policy revision 25 | Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, workflow_adherence, autonomy_approval_parallelism, automated_design; source digest sha256:bd8bde97e268d3dc99fd1e8a23458a7b2d4cb31b2c4cba756dfeecabf892f73e. |
 | 2026-09-15 | ZzzOps initialization | Created pending revision 26 | Confirmed agent-generated draft; explicit policy review still required. |
 | 2026-09-15 | user | Reviewed policy revision 27 | Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, workflow_adherence, autonomy_approval_parallelism, automated_design; source digest sha256:37c161146a86812a2e524cea5b37134095aa68fdd8ffa72a2727824e997d95a0. |
+| 2026-09-15 | ZzzOps initialization | Created pending revision 28 | Confirmed agent-generated draft; explicit policy review still required. |
+| 2026-09-15 | ZzzOps initialization | Created pending revision 29 | Confirmed agent-generated draft; explicit policy review still required. |
+| 2026-09-15 | user | Reviewed policy revision 30 | Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, autonomy_approval_parallelism, automated_design; source digest sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4. |
 
 The machine-readable authority is [POLICY.json](POLICY.json); this file is its human audit view.
