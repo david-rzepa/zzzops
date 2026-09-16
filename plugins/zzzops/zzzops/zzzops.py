@@ -69,6 +69,13 @@ sys.modules[_POLICY_MODULE_SPEC.name] = _policy
 _POLICY_MODULE_SPEC.loader.exec_module(_policy)
 _policy.configure_entrypoint(package_provenance=_package.package_provenance)
 
+_ROUTING_MODULE_PATH = Path(__file__).with_name("routing.py")
+_ROUTING_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_routing", _ROUTING_MODULE_PATH)
+assert _ROUTING_MODULE_SPEC and _ROUTING_MODULE_SPEC.loader
+_routing = importlib.util.module_from_spec(_ROUTING_MODULE_SPEC)
+sys.modules[_ROUTING_MODULE_SPEC.name] = _routing
+_ROUTING_MODULE_SPEC.loader.exec_module(_routing)
+
 _BOOTSTRAP_MODULE_PATH = Path(__file__).with_name("bootstrap.py")
 _BOOTSTRAP_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_bootstrap", _BOOTSTRAP_MODULE_PATH)
 assert _BOOTSTRAP_MODULE_SPEC and _BOOTSTRAP_MODULE_SPEC.loader
@@ -137,6 +144,9 @@ compare_policy_defaults = _policy.compare_policy_defaults
 missing_policy_settings = _policy.missing_policy_settings
 policy_review_rows = _policy.policy_review_rows
 render_policy_review_table = _policy.render_policy_review_table
+route_phase = _routing.route_phase
+validate_launch_plan = _routing.validate_launch_plan
+routing_event = _routing.routing_event
 GOAL_FIELDS = _goals.GOAL_FIELDS
 GOAL_TRANSITION_FIELDS = {"schema_version", "expected_revision", "expected_digest", "goal"}
 BLOCKER_CATEGORIES = {

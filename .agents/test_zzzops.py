@@ -4297,6 +4297,34 @@ class WorkflowContractTests(unittest.TestCase):
         missing["sections"] = [item for item in missing["sections"] if item["id"] != "model_routing"]
         self.assertTrue(any("missing sections: model_routing" in error for error in zzzops.validate_policy(missing, True)))
 
+    def test_model_plus_effort_routing_enforces_root_boundary(self):
+        inventory = [
+            {"model": "economy", "effort": "low", "capability": 1, "cost": 1},
+            {"model": "intermediate", "effort": "medium", "capability": 2, "cost": 2},
+            {"model": "stronger", "effort": "high", "capability": 4, "cost": 4},
+        ]
+        root = {"model": "root", "effort": "high", "capability": 3, "cost": 3}
+        economical = zzzops.route_phase(phase="discovery", required_capability=1, inventory=inventory, root_pair=root)
+        self.assertEqual({"model": "economy", "effort": "low"}, economical["selected"])
+        intermediate = zzzops.route_phase(phase="implementation", required_capability=2, inventory=inventory, root_pair=root)
+        self.assertEqual({"model": "intermediate", "effort": "medium"}, intermediate["selected"])
+        direct = zzzops.route_phase(phase="architecture", required_capability=3, inventory=inventory, root_pair=root)
+        self.assertEqual("direct_root", direct["mode"])
+        with self.assertRaisesRegex(ValueError, "above-root"):
+            zzzops.route_phase(phase="architecture", required_capability=4, inventory=inventory, root_pair=root)
+        elevated = zzzops.route_phase(phase="architecture", required_capability=4, inventory=inventory, root_pair=root, session_override=True)
+        self.assertEqual("delegated_override", elevated["mode"])
+        self.assertEqual({"model": "stronger", "effort": "high"}, elevated["selected"])
+
+        invalid = {**direct, "mode": "delegated", "fork_turns": "all", "parallelism": 1}
+        invalid["selected"] = {"model": "root", "effort": "high"}
+        with self.assertRaisesRegex(ValueError, "root-equivalent"):
+            zzzops.validate_launch_plan(invalid, root_pair=root)
+        delegated = {**intermediate, "fork_turns": "2", "parallelism": 1}
+        self.assertTrue(zzzops.validate_launch_plan(delegated, root_pair=root)["valid"])
+        event = zzzops.routing_event(intermediate, outcome="verified")
+        self.assertEqual("unavailable", event["telemetry"]["status"])
+
     def test_automated_design_execution_and_review_contracts_preserve_boundaries(self):
         root = PLUGIN_ROOT
         unblock = (root / "skills" / "execute-zzzops" / "references" / "UNBLOCK.md").read_text(encoding="utf-8")
