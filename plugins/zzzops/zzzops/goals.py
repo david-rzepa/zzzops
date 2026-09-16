@@ -21,7 +21,7 @@ GOAL_SCHEMA_LABEL_PREFIX = "zzzops:schema:v"
 GOAL_FIELDS = {
     "schema_version", "status", "priority", "value", "difficulty", "confidence",
     "parent", "depends_on", "claim", "blockers", "evidence", "next_action",
-    "revision", "implementation", "resources", "engineering_rigor",
+    "revision", "implementation", "resources", "engineering_rigor", "phase_evidence",
 }
 GOAL_STATUSES = {"new", "triaged", "ready", "in_progress", "blocked", "done", "cancelled"}
 GOAL_PRIORITIES = {"P0", "P1", "P2", "P3"}
@@ -42,14 +42,18 @@ HISTORICAL_HUMAN_SECTIONS = {
 }
 _normalize_resources: Callable[[Any], list[str]] | None = None
 _text_present: Callable[[Any], bool] | None = None
+_validate_phase_evidence: Callable[[Any], list[str]] | None = None
 
 
 class GoalTransitionProviderError(ValueError):
     """The provider did not produce a safe, confirmed goal-operation result."""
 
-def configure_entrypoint(*, normalize_resources: Callable[[Any], list[str]], text_present: Callable[[Any], bool]) -> None:
-    global _normalize_resources, _text_present
-    _normalize_resources, _text_present = normalize_resources, text_present
+def configure_entrypoint(
+    *, normalize_resources: Callable[[Any], list[str]], text_present: Callable[[Any], bool],
+    validate_phase_evidence: Callable[[Any], list[str]] | None = None,
+) -> None:
+    global _normalize_resources, _text_present, _validate_phase_evidence
+    _normalize_resources, _text_present, _validate_phase_evidence = normalize_resources, text_present, validate_phase_evidence
 
 def _require_configured() -> tuple[Callable[[Any], list[str]], Callable[[Any], bool]]:
     if _normalize_resources is None or _text_present is None:
@@ -154,6 +158,11 @@ def validate_managed_goal(goal: Any, issue_number: int | None = None) -> list[st
                         errors.append("engineering_rigor.override.evidence is required")
     if not isinstance(goal.get("revision"), int) or isinstance(goal.get("revision"), bool) or goal.get("revision", 0) < 1:
         errors.append("revision must be a positive integer")
+    if "phase_evidence" in goal:
+        if _validate_phase_evidence is None:
+            errors.append("phase_evidence validation is unavailable")
+        else:
+            errors.extend(f"phase_evidence: {error}" for error in _validate_phase_evidence(goal["phase_evidence"]))
     implementation = goal.get("implementation")
     if implementation is not None:
         if not isinstance(implementation, dict):
