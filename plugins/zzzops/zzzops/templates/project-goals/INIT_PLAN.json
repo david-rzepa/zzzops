@@ -186,9 +186,19 @@
         "settings": {
           "capability_basis": "effective_engineering_rigor_and_bounded_commitment",
           "routing_unit": "model_plus_effort",
-          "model_inventory": {"source": "runtime_available_models", "effort": "runtime_supported_effort_levels", "missing": "root_best_effort_web_research", "stale": "refresh_and_re_evaluate", "unsupported": "durable_blocker"},
+          "model_inventory": {"source": "runtime_available_models", "effort": "runtime_supported_effort_levels", "missing": "root_best_effort_web_research", "stale": "refresh_and_re_evaluate", "unsupported": "durable_blocker", "reviewed_pairs": []},
           "root_boundary": {"root_capability": "current_root_agent", "equal_root": "direct_root_no_subagent", "above_root": "session_override_required"},
-          "phase_defaults": {"discovery": "economical_when_floor_allows", "architecture": "derived_from_required_capability", "implementation": "derived_from_required_capability", "verification": "economical_when_floor_allows"},
+          "tiers": [
+            {"id": "routine", "rank": 1}, {"id": "bounded", "rank": 2},
+            {"id": "reasoning", "rank": 3}, {"id": "architectural", "rank": 4}
+          ],
+          "assessment_tree": [
+            {"when": {"phase_type": ["context", "verify"]}, "tier": "routine"},
+            {"when": {"consequence": ["architectural"], "boundedness": ["unbounded"]}, "tier": "architectural"},
+            {"when": {"consequence": ["consequential"], "boundedness": ["bounded", "unbounded"]}, "tier": "reasoning"},
+            {"when": {"boundedness": ["atomic", "bounded"]}, "tier": "bounded"},
+            {"when": {}, "tier": "architectural"}
+          ],
           "escalation": {"triggers": ["risk_or_commitment_increase", "uncertainty", "failed_probe", "contradictory_evidence", "capability_mismatch"], "handling": "durable_blocker_continue_safe_work"},
           "parallelism": {"below_root": "allowed_within_reviewed_worker_limits", "root_or_above": "session_override_required"},
           "telemetry": {"source": "optional_provenance_backed_usage", "unavailable": "record_unavailable_no_block"},
@@ -208,7 +218,21 @@
           },
           "exemptions": ["read_only_investigation", "zzzops_administration"],
           "scoped_exception": "explicit_scoped_user_authority",
-          "agents_projection": "review_workflow_reconciliation"
+          "agents_projection": "review_workflow_reconciliation",
+          "phase_dag": {
+            "schema_version": 1,
+            "phases": [
+              {"id": "context", "type": "context", "depends_on": [], "parent_gates": [], "applicability": "always", "assignment_group": "root", "inputs": ["policy", "repository", "provider", "capabilities", "invocation"], "not_required": "never"},
+              {"id": "understand", "type": "understand", "depends_on": ["context"], "parent_gates": [], "applicability": "always", "assignment_group": "root", "inputs": ["goal_spec", "policy", "capabilities", "invocation", "upstream_outputs"], "not_required": "never"},
+              {"id": "decompose", "type": "decompose", "depends_on": ["understand"], "parent_gates": [], "applicability": "parent_only", "assignment_group": "planning", "inputs": ["goal_spec", "policy", "parents", "dependencies", "upstream_outputs"], "not_required": "atomic_goal"},
+              {"id": "plan", "type": "plan", "depends_on": ["decompose"], "parent_gates": ["decompose"], "applicability": "always", "assignment_group": "planning", "inputs": ["goal_spec", "policy", "phase_dag", "parents", "dependencies", "repository", "provider", "capabilities", "upstream_outputs"], "not_required": "never"},
+              {"id": "architecture_review", "type": "architecture_review", "depends_on": ["plan"], "parent_gates": ["plan"], "applicability": "always", "assignment_group": "review", "inputs": ["goal_spec", "policy", "phase_dag", "parents", "dependencies", "upstream_outputs"], "not_required": "atomic_goal"},
+              {"id": "implement", "type": "implement", "depends_on": ["architecture_review"], "parent_gates": ["plan", "architecture_review"], "applicability": "child_only", "assignment_group": "implementation", "inputs": ["goal_spec", "policy", "phase_dag", "parents", "dependencies", "repository", "provider", "capabilities", "upstream_outputs"], "not_required": "never"},
+              {"id": "verify", "type": "verify", "depends_on": ["implement"], "parent_gates": [], "applicability": "always", "assignment_group": "implementation", "inputs": ["goal_spec", "policy", "repository", "provider", "upstream_outputs"], "not_required": "never"},
+              {"id": "review", "type": "review", "depends_on": ["verify"], "parent_gates": [], "applicability": "always", "assignment_group": "review", "inputs": ["goal_spec", "policy", "repository", "provider", "upstream_outputs"], "not_required": "never"},
+              {"id": "publish", "type": "publish", "depends_on": ["review"], "parent_gates": [], "applicability": "always", "assignment_group": "coordinator", "inputs": ["goal_spec", "policy", "repository", "provider", "upstream_outputs"], "not_required": "never"}
+            ]
+          }
         },
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
