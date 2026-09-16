@@ -26,8 +26,6 @@ def classify_pr_merge(record: dict[str, Any], pull_request: dict[str, Any] | Non
         reasons.append("reviewed_head_mismatch")
     if not pull_request.get("merge_commit") or not pull_request.get("merged_at"):
         reasons.append("merge_evidence_incomplete")
-    if not pull_request.get("base_oid"):
-        reasons.append("base_object_evidence_incomplete")
     if pull_request.get("checks_verified") is not True:
         reasons.append("required_checks_unverified")
     if pull_request.get("review_verified") is not True:
@@ -39,7 +37,7 @@ def classify_pr_merge(record: dict[str, Any], pull_request: dict[str, Any] | Non
         "reasons": [],
         "merge_commit": pull_request["merge_commit"],
         "head_oid": pull_request["head_oid"],
-        "base_oid": pull_request["base_oid"],
+        "base_oid": pull_request.get("base_oid"),
     }
 
 
