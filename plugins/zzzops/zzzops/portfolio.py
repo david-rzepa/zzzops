@@ -12,10 +12,11 @@ ENGINEERING_RIGOR_LEVELS = ("vibe", "structured", "agentic")
 _exclusive_resources: Callable[[list[str], Any], list[str]] | None = None
 _normalize_resource_policy: Callable[[Any], dict[str, Any]] | None = None
 _text_present: Callable[[Any], bool] | None = None
+_merge_classifier: Callable[[dict[str, Any], dict[str, Any] | None, str], dict[str, Any]] | None = None
 
-def configure_entrypoint(*, exclusive_resources: Callable[[list[str], Any], list[str]], normalize_resource_policy: Callable[[Any], dict[str, Any]], text_present: Callable[[Any], bool]) -> None:
-    global _exclusive_resources, _normalize_resource_policy, _text_present
-    _exclusive_resources, _normalize_resource_policy, _text_present = exclusive_resources, normalize_resource_policy, text_present
+def configure_entrypoint(*, exclusive_resources: Callable[[list[str], Any], list[str]], normalize_resource_policy: Callable[[Any], dict[str, Any]], text_present: Callable[[Any], bool], merge_classifier: Callable[[dict[str, Any], dict[str, Any] | None, str], dict[str, Any]] | None = None) -> None:
+    global _exclusive_resources, _normalize_resource_policy, _text_present, _merge_classifier
+    _exclusive_resources, _normalize_resource_policy, _text_present, _merge_classifier = exclusive_resources, normalize_resource_policy, text_present, merge_classifier
 
 def _require_configured() -> tuple[Callable[[list[str], Any], list[str]], Callable[[Any], dict[str, Any]], Callable[[Any], bool]]:
     if _exclusive_resources is None or _normalize_resource_policy is None or _text_present is None:
@@ -253,6 +254,14 @@ def audit_portfolio(
         if isinstance(review, dict) and review.get("status") == "pending" and not review.get("checkpoint"):
             findings.append({"code": "pending_review_without_checkpoint", "goal": key, "detail": "checkpoint missing"})
         if backend == "github_issues":
+            if _merge_classifier is not None and record.get("pull_request") is not None:
+                repository = record.get("repository")
+                merge = _merge_classifier(record, record.get("pull_request"), repository if isinstance(repository, str) else "")
+                record["merge_reconciliation"] = merge
+                if merge["status"] == "merged_verified":
+                    findings.append({"code": "merged_pr_reconciliation_ready", "goal": key, "detail": "exact merge evidence is ready for guarded reconciliation"})
+                elif merge["status"] == "merged_stale":
+                    findings.append({"code": "merged_pr_stale_checkpoint", "goal": key, "detail": ",".join(merge["reasons"])})
             if isinstance(review, dict) and review.get("status") == "approved" and not (record.get("implementation") or {}).get("pr"):
                 findings.append({"code": "approved_review_without_pr", "goal": key, "detail": "PR missing"})
             expected = {"zzzops", f"zzzops:status:{record['status']}", f"zzzops:priority:{record['priority']}"}
@@ -344,4 +353,3 @@ def compact_portfolio_output(snapshot: dict[str, Any]) -> dict[str, Any]:
         else:
             goals.append(goal)
     return {**snapshot, "goals": goals, "summary": {**snapshot["summary"], "archived": archived}}
-
