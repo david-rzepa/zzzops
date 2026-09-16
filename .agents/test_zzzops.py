@@ -388,6 +388,7 @@ class EntropyModuleTests(unittest.TestCase):
         self.assertIs(zzzops.enabled_entropy_categories, zzzops._entropy.enabled_categories)
         self.assertIs(zzzops.list_entropy_observations, zzzops._entropy.list_observations)
         self.assertIs(zzzops.record_entropy_observation, zzzops._entropy.record_observation)
+        self.assertIs(zzzops.record_entropy_observation_checkpoint, zzzops._entropy.record_observation_checkpoint)
         self.assertIs(zzzops.resolve_entropy_observations, zzzops._entropy.resolve_observations)
         self.assertEqual(zzzops._policy.WORK_SUGGESTION_CATEGORIES, zzzops._entropy.ENTROPY_CATEGORIES)
         self.assertIs(zzzops.entropy_review_directory, zzzops._entropy_review.review_directory)
@@ -417,6 +418,13 @@ class EntropyModuleTests(unittest.TestCase):
         self.assertEqual(0, excluded["eligible"])
         self.assertEqual(1, excluded["excluded"])
         self.assertLessEqual(len(listed["observations"][0]["evidence"]), 280)
+
+    def test_no_observation_checkpoint_is_durable_and_idempotent(self):
+        first = zzzops.record_entropy_observation_checkpoint(self.repo, goal=7, revision=2)
+        second = zzzops.record_entropy_observation_checkpoint(self.repo, goal=7, revision=2)
+        self.assertEqual("none_observed", first["outcome"])
+        self.assertEqual(first["checkpoint_id"], second["checkpoint_id"])
+        self.assertTrue((zzzops.entropy_observation_directory(self.repo) / "checkpoints").exists())
 
     def test_legacy_policy_without_categories_routes_to_policy_review(self):
         with self.assertRaisesRegex(zzzops.EntropyObservationError, "categories are required"):

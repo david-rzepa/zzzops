@@ -251,6 +251,7 @@ entropy_observation_directory = _entropy.observation_directory
 enabled_entropy_categories = _entropy.enabled_categories
 list_entropy_observations = _entropy.list_observations
 record_entropy_observation = _entropy.record_observation
+record_entropy_observation_checkpoint = _entropy.record_observation_checkpoint
 resolve_entropy_observations = _entropy.resolve_observations
 EntropyObservationError = _entropy.EntropyObservationError
 
@@ -630,7 +631,7 @@ def _github_pull_request_states(
   repository(owner:$owner,name:$name){
     nameWithOwner
     pullRequest(number:$number){
-      merged mergedAt headRefOid baseRefName
+      merged mergedAt headRefOid baseRefName baseRefOid
       mergeCommit{oid}
       repository{nameWithOwner}
       reviewDecision
@@ -663,6 +664,7 @@ def _github_pull_request_states(
                 "merged": pull_request.get("merged") is True,
                 "merged_at": pull_request.get("mergedAt"),
                 "head_oid": pull_request.get("headRefOid"),
+                "base_oid": pull_request.get("baseRefOid"),
                 "base_ref": pull_request.get("baseRefName"),
                 "merge_commit": merge_commit.get("oid") if isinstance(merge_commit, dict) else None,
                 "repository": pr_repository.get("nameWithOwner") if isinstance(pr_repository, dict) else None,
@@ -960,6 +962,25 @@ def reconcile_merged_goal(repo: Path, project: dict[str, Any], issue_number: int
     result["transition"] = transition
     if apply:
         result["result"] = apply_goal_transition(adapter, repository, issue_number, transition)
+        updated_issue = adapter.get_issue(issue_number)
+        updated = github_goal_record(updated_issue)
+        implementation = updated.get("implementation") or {}
+        pr_url = implementation.get("pr")
+        tail = pr_url.rstrip("/").rsplit("/", 1)[-1] if isinstance(pr_url, str) else ""
+        event = {
+            "schema_version": 1,
+            "repository": repository,
+            "goal": issue_number,
+            "revision": updated["revision"],
+            "goal_digest": github_goal_record(updated_issue)["digest"],
+            "status": updated["status"],
+            "kind": "integrated_change",
+            "pr": int(tail) if tail.isdigit() else None,
+            "base_oid": merge.get("base_oid"),
+            "head_oid": merge.get("head_oid"),
+            "merge_oid": merge.get("merge_commit"),
+        }
+        result["entropy_event"] = record_entropy_review_event(repo, event)
         result["applied"] = True
     return result
 
@@ -1806,9 +1827,10 @@ def main() -> int:
     entropy_commands = entropy.add_subparsers(dest="entropy_command", required=True)
     entropy_commands.add_parser("list", help="List observations enabled by existing suggestion policy")
     entropy_observe = entropy_commands.add_parser("observe", help="Record one bounded entropy observation")
-    entropy_observe.add_argument("--category", choices=sorted(_entropy.ENTROPY_CATEGORIES), required=True)
-    entropy_observe.add_argument("--path", action="append", dest="paths", required=True)
-    entropy_observe.add_argument("--evidence", required=True)
+    entropy_observe.add_argument("--none", action="store_true", help="Record an explicit no-observation checkpoint")
+    entropy_observe.add_argument("--category", choices=sorted(_entropy.ENTROPY_CATEGORIES))
+    entropy_observe.add_argument("--path", action="append", dest="paths", default=[])
+    entropy_observe.add_argument("--evidence")
     entropy_observe.add_argument("--goal", type=int, required=True)
     entropy_observe.add_argument("--revision", type=int, required=True)
     entropy_resolve = entropy_commands.add_parser("resolve", help="Remove observations after validation")
@@ -1935,14 +1957,17 @@ def main() -> int:
                 project = reviewed_project_state(repo)
                 result = list_entropy_observations(repo, project)
             elif args.entropy_command == "observe":
-                result = record_entropy_observation(
-                    repo,
-                    category=args.category,
-                    paths=args.paths,
-                    evidence=args.evidence,
-                    goal=args.goal,
-                    revision=args.revision,
-                )
+                if args.none:
+                    if args.category or args.paths or args.evidence:
+                        raise ValueError("--none cannot be combined with an entropy observation")
+                    result = record_entropy_observation_checkpoint(repo, goal=args.goal, revision=args.revision)
+                else:
+                    if not args.category or not args.paths or not args.evidence:
+                        raise ValueError("an entropy observation requires --category, --path, and --evidence")
+                    result = record_entropy_observation(
+                        repo, category=args.category, paths=args.paths, evidence=args.evidence,
+                        goal=args.goal, revision=args.revision,
+                    )
             elif args.entropy_command == "resolve":
                 result = resolve_entropy_observations(
                     repo, fingerprints=args.fingerprints, outcome=args.outcome,
@@ -2032,6 +2057,54 @@ def main() -> int:
                 transition = load_goal_transition(args.input)
                 adapter = GitHubGoalTransitionAdapter(repo, repository)
                 result = apply_goal_transition(adapter, repository, args.goal, transition)
+                requested_goal = transition.get("goal") if isinstance(transition, dict) else None
+                if isinstance(requested_goal, dict) and requested_goal.get("status") == "done" and not ((requested_goal.get("implementation") or {}).get("pr")):
+                    updated_issue = adapter.get_issue(args.goal)
+                    updated_goal = github_goal_record(updated_issue)
+                    result["entropy_event"] = record_entropy_review_event(repo, {
+                        "schema_version": 1,
+                        "repository": repository,
+                        "goal": args.goal,
+                        "revision": updated_goal["revision"],
+                        "goal_digest": updated_goal["digest"],
+                        "status": updated_goal["status"],
+                        "kind": "completed_goal",
+                        "pr": None,
+                        "base_oid": None,
+                        "head_oid": None,
+                        "merge_oid": None,
+                    })
+                elif (
+                    isinstance(requested_goal, dict)
+                    and requested_goal.get("status") == "blocked"
+                    and isinstance(requested_goal.get("implementation"), dict)
+                    and isinstance(requested_goal["implementation"].get("review"), dict)
+                    and requested_goal["implementation"]["review"].get("status") == "pending"
+                ):
+                    updated_issue = adapter.get_issue(args.goal)
+                    states, _raw, _processes = _github_pull_request_states(
+                        repo, adapter.executable, [{"number": args.goal}], {args.goal: {"body": updated_issue.get("body", "")}},
+                    )
+                    pr_state = states.get(args.goal)
+                    implementation = requested_goal["implementation"]
+                    pr_url = implementation.get("pr")
+                    tail = pr_url.rstrip("/").rsplit("/", 1)[-1] if isinstance(pr_url, str) else ""
+                    if not isinstance(pr_state, dict) or not pr_state.get("base_oid") or not pr_state.get("head_oid"):
+                        raise ValueError("qualifying review checkpoint lacks exact PR base/head evidence")
+                    updated_goal = github_goal_record(updated_issue)
+                    result["entropy_event"] = record_entropy_review_event(repo, {
+                        "schema_version": 1,
+                        "repository": repository,
+                        "goal": args.goal,
+                        "revision": updated_goal["revision"],
+                        "goal_digest": updated_goal["digest"],
+                        "status": updated_goal["status"],
+                        "kind": "verified_checkpoint",
+                        "pr": int(tail) if tail.isdigit() else None,
+                        "base_oid": pr_state["base_oid"],
+                        "head_oid": pr_state["head_oid"],
+                        "merge_oid": None,
+                    })
             elif args.goal_command == "migrate-open":
                 result = migrate_open_repository_goals(
                     repo, project, limit=args.limit, include_feedback=args.include_feedback,

@@ -15,6 +15,16 @@ Record at most one bounded fact at a time:
   --goal N --revision R
 ```
 
+At every qualifying checkpoint, make this explicit: record one observation when
+you noticed concrete out-of-scope decay, or record that you checked and found
+none. The latter keeps capture from being silently skipped:
+
+```text
+<python> <zzzops-cli> --repo . entropy observe --none --goal N --revision R
+```
+
+This receipt is not an entropy finding and does not suppress later review.
+
 Use one to four normalized repository-relative paths and a single-line evidence
 statement of at most 280 characters. Do not include secrets, raw sensitive data,
 speculative solutions, acceptance criteria, priority, or a designed goal. Record

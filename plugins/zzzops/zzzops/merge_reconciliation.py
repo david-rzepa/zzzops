@@ -37,6 +37,7 @@ def classify_pr_merge(record: dict[str, Any], pull_request: dict[str, Any] | Non
         "reasons": [],
         "merge_commit": pull_request["merge_commit"],
         "head_oid": pull_request["head_oid"],
+        "base_oid": pull_request.get("base_oid"),
     }
 
 
