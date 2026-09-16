@@ -17,7 +17,7 @@ import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 _PACKAGE_MODULE_PATH = Path(__file__).with_name("package.py")
 _PACKAGE_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_package", _PACKAGE_MODULE_PATH)
@@ -109,6 +109,13 @@ assert _PORTFOLIO_MODULE_SPEC and _PORTFOLIO_MODULE_SPEC.loader
 _portfolio = importlib.util.module_from_spec(_PORTFOLIO_MODULE_SPEC)
 sys.modules[_PORTFOLIO_MODULE_SPEC.name] = _portfolio
 _PORTFOLIO_MODULE_SPEC.loader.exec_module(_portfolio)
+
+_MERGE_RECONCILIATION_MODULE_PATH = Path(__file__).with_name("merge_reconciliation.py")
+_MERGE_RECONCILIATION_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_merge_reconciliation", _MERGE_RECONCILIATION_MODULE_PATH)
+assert _MERGE_RECONCILIATION_MODULE_SPEC and _MERGE_RECONCILIATION_MODULE_SPEC.loader
+_merge_reconciliation = importlib.util.module_from_spec(_MERGE_RECONCILIATION_MODULE_SPEC)
+sys.modules[_MERGE_RECONCILIATION_MODULE_SPEC.name] = _merge_reconciliation
+_MERGE_RECONCILIATION_MODULE_SPEC.loader.exec_module(_merge_reconciliation)
 
 PROJECT_SCHEMA_VERSION = _policy.PROJECT_SCHEMA_VERSION
 PLAN_SCHEMA_VERSION = 1
@@ -203,6 +210,7 @@ _portfolio_key = _portfolio._portfolio_key
 audit_portfolio = _portfolio.audit_portfolio
 build_portfolio_snapshot = _portfolio.build_portfolio_snapshot
 compact_portfolio_output = _portfolio.compact_portfolio_output
+classify_pr_merge = _merge_reconciliation.classify_pr_merge
 derive_engineering_rigor = _portfolio.derive_engineering_rigor
 
 parse_managed_goal = _goals.parse_managed_goal
@@ -584,6 +592,79 @@ def _github_goal_bodies(
     return hydrated, raw_bytes, processes
 
 
+def _github_pull_request_states(
+    repo: Path, executable: str, selected: list[dict[str, Any]], bodies: dict[int, dict[str, Any]],
+) -> tuple[dict[int, dict[str, Any]], int, int]:
+    """Read PR merge state for implementation URLs in one query per PR repository."""
+    targets: dict[tuple[str, str, int], list[int]] = {}
+    for issue in selected:
+        body = bodies.get(issue["number"], {}).get("body")
+        if not isinstance(body, str):
+            continue
+        goal = _goals.parse_managed_goal(body, issue["number"])
+        implementation = goal.get("implementation") if isinstance(goal, dict) else None
+        pr_url = implementation.get("pr") if isinstance(implementation, dict) else None
+        if not isinstance(pr_url, str) or not pr_url.startswith("https://github.com/"):
+            continue
+        parsed = urlparse(pr_url)
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) < 4 or parts[2].casefold() != "pull" or not parts[3].isdigit():
+            continue
+        targets.setdefault((parts[0], parts[1], int(parts[3])), []).append(issue["number"])
+    states: dict[int, dict[str, Any]] = {}
+    raw_bytes = 0
+    processes = 0
+    for owner, name, number in sorted(targets):
+        query = """query($owner:String!,$name:String!,$number:Int!){
+  repository(owner:$owner,name:$name){
+    nameWithOwner
+    pullRequest(number:$number){
+      merged mergedAt headRefOid baseRefName
+      mergeCommit{oid}
+      repository{nameWithOwner}
+      reviewDecision
+    }
+  }
+}"""
+        command = [
+            executable, "api", "graphql", "-f", f"query={query}",
+            "-F", f"owner={owner}", "-F", f"name={name}", "-F", f"number={number}",
+        ]
+        try:
+            result = subprocess.run(command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ValueError(f"GitHub pull-request state read failed: {type(exc).__name__}") from exc
+        processes += 1
+        if result.returncode:
+            raise ValueError("GitHub pull-request state read failed: " + (result.stderr.strip() or "unknown gh error"))
+        try:
+            payload = json.loads(result.stdout)
+            data = payload["data"]["repository"]
+            pull_request = data.get("pullRequest")
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise ValueError("GitHub pull-request state read returned invalid JSON") from exc
+        if not isinstance(pull_request, dict):
+            normalized = None
+        else:
+            merge_commit = pull_request.get("mergeCommit")
+            pr_repository = pull_request.get("repository")
+            normalized = {
+                "merged": pull_request.get("merged") is True,
+                "merged_at": pull_request.get("mergedAt"),
+                "head_oid": pull_request.get("headRefOid"),
+                "base_ref": pull_request.get("baseRefName"),
+                "merge_commit": merge_commit.get("oid") if isinstance(merge_commit, dict) else None,
+                "repository": pr_repository.get("nameWithOwner") if isinstance(pr_repository, dict) else None,
+                "checks_verified": False,
+                "review_verified": pull_request.get("reviewDecision") == "APPROVED",
+            }
+        for issue_number in targets[(owner, name, number)]:
+            if normalized is not None:
+                states[issue_number] = normalized
+        raw_bytes += len(result.stdout.encode("utf-8"))
+    return states, raw_bytes, processes
+
+
 def github_issue_history(repo: Path, project: dict[str, Any], issue_number: int) -> list[dict[str, Any]]:
     """Hydrate append-only history for one explicitly selected goal."""
     identity = _project_repository_identity(project)
@@ -718,12 +799,16 @@ def _portfolio_from_hydrated_goals(
     project: dict[str, Any], selected: list[dict[str, Any]], bodies: dict[int, dict[str, Any]],
     findings: list[dict[str, Any]], discovery_bytes: int, discovery_reads: int,
     hydration_bytes: int, hydration_processes: int, excluded: int,
+    pull_request_states: dict[int, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     open_selected = [issue for issue in selected if issue["state"] == "open"]
     managed = []
     for issue in open_selected:
         hydrated = bodies[issue["number"]]
         candidate = {**issue, **hydrated}
+        if pull_request_states and issue["number"] in pull_request_states:
+            candidate["pull_request"] = pull_request_states[issue["number"]]
+            candidate["repository"] = project["repository"]["identity"]
         if GOAL_BLOCK_START in candidate["body"]:
             managed.append(candidate)
     records = []
@@ -787,10 +872,14 @@ def github_repository_portfolio_snapshot(
             repo, executable, owner, name, [issue["number"] for issue in open_selected],
         ),
     )
+    pull_request_states, pull_request_bytes, pull_request_processes = _github_pull_request_states(
+        repo, executable, open_selected, bodies,
+    )
     snapshot = _timed_call(
         timing, "graph_validation", lambda: _portfolio_from_hydrated_goals(
             project, selected, bodies, findings, discovery_bytes, discovery_reads,
-            hydration_bytes, hydration_processes, excluded,
+            hydration_bytes + pull_request_bytes, hydration_processes + pull_request_processes, excluded,
+            pull_request_states,
         ),
     )
     return repository_probe, snapshot
@@ -1438,7 +1527,7 @@ render_policy_sections = _policy.render_policy_sections
 render_project_audit = _policy.render_project_audit
 
 _goals.configure_entrypoint(normalize_resources=normalize_resources, text_present=text_present)
-_portfolio.configure_entrypoint(exclusive_resources=exclusive_resources, normalize_resource_policy=normalize_resource_policy, text_present=text_present)
+_portfolio.configure_entrypoint(exclusive_resources=exclusive_resources, normalize_resource_policy=normalize_resource_policy, text_present=text_present, merge_classifier=classify_pr_merge)
 
 
 def atomic_text(path: Path, text: str) -> None:
