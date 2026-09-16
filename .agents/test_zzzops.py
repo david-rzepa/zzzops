@@ -4333,6 +4333,16 @@ class WorkflowContractTests(unittest.TestCase):
         event = zzzops.routing_event(intermediate, outcome="verified")
         self.assertEqual("unavailable", event["telemetry"]["status"])
 
+    def test_deferred_delegation_capability_discovery_uses_complete_catalog(self):
+        hidden_then_deferred = [
+            {"name": "exec", "description": "Run shell commands"},
+            {"name": "multi_agent_v1__spawn_agent", "description": "Spawn a sub-agent with model and effort"},
+        ]
+        result = zzzops.discover_delegation_capability(hidden_then_deferred)
+        self.assertEqual("available", result["state"])
+        self.assertIn("multi_agent_v1__spawn_agent", result["matches"])
+        self.assertEqual("unavailable", zzzops.discover_delegation_capability([])["state"])
+
     def test_active_stack_guard_blocks_second_stack_and_allows_clean_queue(self):
         policy = {"active_stack": "one_active_stack"}
         self.assertTrue(zzzops.active_stack_guard([], [], candidate_goal=423, policy=policy)["allowed"])
