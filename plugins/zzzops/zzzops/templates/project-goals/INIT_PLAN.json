@@ -179,6 +179,23 @@
         "exceptions": [], "unresolved": [], "review": {"approved": false}
       },
       {
+        "id": "model_routing", "default_id": "zzzops.policy.model_routing", "title": "Model routing and delegation", "required": true, "applicable": true,
+        "decision": "capability_derived", "rationale": "Select the least expensive available model that satisfies the phase capability floor while keeping root-level and above-root authority explicit.",
+        "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps capability-derived routing fallback", "default_disposition": "accepted",
+        "settings": {
+          "capability_basis": "effective_engineering_rigor_and_bounded_commitment",
+          "routing_unit": "model_plus_effort",
+          "model_inventory": {"source": "runtime_available_models", "effort": "runtime_supported_effort_levels", "missing": "root_best_effort_web_research", "stale": "refresh_and_re_evaluate", "unsupported": "durable_blocker"},
+          "root_boundary": {"root_capability": "current_root_agent", "equal_root": "direct_root_no_subagent", "above_root": "session_override_required"},
+          "phase_defaults": {"discovery": "economical_when_floor_allows", "architecture": "derived_from_required_capability", "implementation": "derived_from_required_capability", "verification": "economical_when_floor_allows"},
+          "escalation": {"triggers": ["risk_or_commitment_increase", "uncertainty", "failed_probe", "contradictory_evidence", "capability_mismatch"], "handling": "durable_blocker_continue_safe_work"},
+          "parallelism": {"below_root": "allowed_within_reviewed_worker_limits", "root_or_above": "session_override_required"},
+          "telemetry": {"source": "optional_provenance_backed_usage", "unavailable": "record_unavailable_no_block"},
+          "evidence": "append_only_goal_history"
+        },
+        "exceptions": [], "unresolved": [], "review": {"approved": false}
+      },
+      {
         "id": "workflow_adherence", "default_id": "zzzops.policy.workflow_adherence", "title": "ZzzOps workflow adherence", "required": true, "applicable": true,
         "decision": "tracked", "rationale": "Require durable goal context for substantial agent work while allowing projects to review stricter or lighter routing.",
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps tracked-work fallback", "default_disposition": "accepted",
