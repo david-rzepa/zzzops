@@ -30,6 +30,7 @@ POLICY_SECTION_IDS = (
     "documentation_style",
     "deployment_resources",
     "engineering_rigor",
+    "model_routing",
     "workflow_adherence",
     "automated_design",
     "autonomy_approval_parallelism",
@@ -45,6 +46,7 @@ POLICY_SECTION_TITLES = {
     "documentation_style": "Documentation and communication",
     "deployment_resources": "Deployment and resources",
     "engineering_rigor": "Engineering rigor",
+    "model_routing": "Model routing and delegation",
     "workflow_adherence": "ZzzOps workflow use",
     "automated_design": "Automated design",
     "autonomy_approval_parallelism": "Autonomy, approvals, and parallel work",
@@ -104,6 +106,13 @@ WORKFLOW_ADHERENCE_SETTINGS = {
 ENGINEERING_RIGOR_LEVELS = ("vibe", "structured", "agentic")
 ENGINEERING_RIGOR_INTERVIEW_DEPTH = {
     "vibe": "light", "structured": "standard", "agentic": "thorough",
+}
+
+MODEL_ROUTING_PHASES = ("discovery", "architecture", "implementation", "verification")
+MODEL_ROUTING_LEVELS = {"economical", "intermediate", "root", "above_root"}
+MODEL_ROUTING_SETTINGS_KEYS = {
+    "capability_basis", "model_inventory", "root_boundary", "phase_defaults",
+    "escalation", "parallelism", "telemetry", "evidence",
 }
 
 POLICY_DEFAULT_CONTENT_FIELDS = ("decision", "settings")
@@ -818,6 +827,63 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                 errors.append(f"{prefix}.workflow_adherence.decision must be optional, tracked, or managed")
             if settings != WORKFLOW_ADHERENCE_SETTINGS:
                 errors.append(f"{prefix}.workflow_adherence.settings must preserve the bounded routing contract")
+        elif section_id == "model_routing":
+            settings = section["settings"]
+            if set(settings) != MODEL_ROUTING_SETTINGS_KEYS:
+                errors.append(f"{prefix}.model_routing.settings must contain the bounded routing contract")
+            if section.get("decision") != "capability_derived":
+                errors.append(f"{prefix}.model_routing.decision must be capability_derived")
+            if settings.get("capability_basis") != "effective_engineering_rigor_and_bounded_commitment":
+                errors.append(f"{prefix}.model_routing.settings.capability_basis is invalid")
+            inventory = settings.get("model_inventory")
+            if not isinstance(inventory, dict) or set(inventory) != {"source", "missing", "stale", "unsupported"}:
+                errors.append(f"{prefix}.model_routing.settings.model_inventory is invalid")
+            elif (
+                inventory.get("source") != "runtime_available_models"
+                or inventory.get("missing") != "root_best_effort_web_research"
+                or inventory.get("stale") != "refresh_and_re_evaluate"
+                or inventory.get("unsupported") != "durable_blocker"
+            ):
+                errors.append(f"{prefix}.model_routing.settings.model_inventory is invalid")
+            boundary = settings.get("root_boundary")
+            if not isinstance(boundary, dict) or set(boundary) != {"root_capability", "equal_root", "above_root"}:
+                errors.append(f"{prefix}.model_routing.settings.root_boundary is invalid")
+            elif (
+                boundary.get("root_capability") != "current_root_agent"
+                or boundary.get("equal_root") != "direct_root_no_subagent"
+                or boundary.get("above_root") != "session_override_required"
+            ):
+                errors.append(f"{prefix}.model_routing.settings.root_boundary is invalid")
+            phases = settings.get("phase_defaults")
+            if not isinstance(phases, dict) or set(phases) != set(MODEL_ROUTING_PHASES):
+                errors.append(f"{prefix}.model_routing.settings.phase_defaults must cover every routing phase")
+            elif any(value not in {"economical_when_floor_allows", "derived_from_required_capability"} for value in phases.values()):
+                errors.append(f"{prefix}.model_routing.settings.phase_defaults is invalid")
+            escalation = settings.get("escalation")
+            if not isinstance(escalation, dict) or set(escalation) != {"triggers", "handling"}:
+                errors.append(f"{prefix}.model_routing.settings.escalation is invalid")
+            elif (
+                not isinstance(escalation.get("triggers"), list)
+                or not escalation["triggers"]
+                or escalation.get("handling") != "durable_blocker_continue_safe_work"
+            ):
+                errors.append(f"{prefix}.model_routing.settings.escalation is invalid")
+            parallelism = settings.get("parallelism")
+            if not isinstance(parallelism, dict) or set(parallelism) != {"below_root", "root_or_above"}:
+                errors.append(f"{prefix}.model_routing.settings.parallelism is invalid")
+            elif (
+                parallelism.get("below_root") != "allowed_within_reviewed_worker_limits"
+                or parallelism.get("root_or_above") != "session_override_required"
+            ):
+                errors.append(f"{prefix}.model_routing.settings.parallelism is invalid")
+            telemetry = settings.get("telemetry")
+            if not isinstance(telemetry, dict) or set(telemetry) != {"source", "unavailable"}:
+                errors.append(f"{prefix}.model_routing.settings.telemetry is invalid")
+            elif telemetry.get("source") != "optional_provenance_backed_usage" or telemetry.get("unavailable") != "record_unavailable_no_block":
+                errors.append(f"{prefix}.model_routing.settings.telemetry is invalid")
+            evidence = settings.get("evidence")
+            if evidence != "append_only_goal_history":
+                errors.append(f"{prefix}.model_routing.settings.evidence is invalid")
         elif section_id == "automated_design":
             settings = section["settings"]
             if section.get("decision") not in {"enabled", "disabled"}:
