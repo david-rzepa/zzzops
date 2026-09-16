@@ -1,13 +1,13 @@
 {
   "approval": {
     "date": "2026-09-15",
-    "digest": "sha256:d975379f816ea68265e7bf680c1cc9e2d30237d251aaa2bd941b75029c56a7d2",
+    "digest": "sha256:d360919dcd3ae882b1f9cf96e1a24c58807ba856c5b28ae505fc3315d8b70aae",
     "reviewer": "user"
   },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:89e8bd5486deb417d45ed4b5a446bdc7c0ce5a2d0c7c3666b0003fb1154db78b",
+      "digest": "sha256:6202d396a8efee57fcf480590c69af75141641a62fc11596d4b06162436f772a",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
@@ -170,6 +170,18 @@
       "change": "Reviewed policy revision 30",
       "date": "2026-09-15",
       "reason": "Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, autonomy_approval_parallelism, automated_design; source digest sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 31",
+      "date": "2026-09-15",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "user",
+      "change": "Reviewed policy revision 32",
+      "date": "2026-09-15",
+      "reason": "Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, autonomy_approval_parallelism, automated_design; source digest sha256:3f1dee27e9bb1d25e82a2612801bcbc4022be3ae1047a61b53e31686ccbd7a17."
     }
   ],
   "initialized": true,
@@ -270,6 +282,12 @@
         "id": "E-016",
         "kind": "proposed",
         "source": "user policy interview in current execution session"
+      },
+      {
+        "finding": "The project requires at most one active pull-request stack, latest-integrated-base starts, and explicit recovery for interrupted or abandoned stacks.",
+        "id": "E-017",
+        "kind": "observed",
+        "source": "goal #423 user request"
       }
     ],
     "schema_version": 1,
@@ -287,7 +305,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
+          "reviewed_digest": "sha256:3f1dee27e9bb1d25e82a2612801bcbc4022be3ae1047a61b53e31686ccbd7a17",
           "reviewer": "user"
         },
         "settings": {
@@ -319,10 +337,12 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
+          "reviewed_digest": "sha256:3f1dee27e9bb1d25e82a2612801bcbc4022be3ae1047a61b53e31686ccbd7a17",
           "reviewer": "user"
         },
         "settings": {
+          "active_stack": "one_active_stack",
+          "base_freshness": "latest_integrated_target",
           "branch_base": "dev",
           "child_target": "nearest_parent_branch",
           "commit_style": "conventional",
@@ -338,6 +358,7 @@
           "pull_request_target": "preceding_goal_branch_then_dev",
           "pull_request_unit": "per_goal",
           "read_only_dependency_investigation": "allowed_before_completion",
+          "recovery": "explicit_abandoned_stack_decision",
           "release_actor": "david-rzepa",
           "release_branch": "main",
           "release_update": "explicit_owner_force_push",
@@ -345,6 +366,7 @@
           "review_gate": "human_at_exhaustion",
           "review_pending_dependency": "stack_from_reviewed_checkpoint",
           "review_state_reads_per_checkpoint": 1,
+          "second_stack": "durable_blocker",
           "shared_pull_request": "explicit_reviewed_override",
           "stacked_capability": "official_gh_stack_extension_with_provider_membership_verification",
           "stacked_tool_installation": "explicit_user_approval",
@@ -373,7 +395,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
+          "reviewed_digest": "sha256:3f1dee27e9bb1d25e82a2612801bcbc4022be3ae1047a61b53e31686ccbd7a17",
           "reviewer": "user"
         },
         "settings": {
@@ -423,7 +445,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
+          "reviewed_digest": "sha256:3f1dee27e9bb1d25e82a2612801bcbc4022be3ae1047a61b53e31686ccbd7a17",
           "reviewer": "user"
         },
         "settings": {
@@ -465,7 +487,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
+          "reviewed_digest": "sha256:3f1dee27e9bb1d25e82a2612801bcbc4022be3ae1047a61b53e31686ccbd7a17",
           "reviewer": "user"
         },
         "settings": {
@@ -496,7 +518,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
+          "reviewed_digest": "sha256:3f1dee27e9bb1d25e82a2612801bcbc4022be3ae1047a61b53e31686ccbd7a17",
           "reviewer": "user"
         },
         "settings": {
@@ -524,7 +546,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
+          "reviewed_digest": "sha256:3f1dee27e9bb1d25e82a2612801bcbc4022be3ae1047a61b53e31686ccbd7a17",
           "reviewer": "user"
         },
         "settings": {
@@ -551,7 +573,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
+          "reviewed_digest": "sha256:3f1dee27e9bb1d25e82a2612801bcbc4022be3ae1047a61b53e31686ccbd7a17",
           "reviewer": "user"
         },
         "settings": {
@@ -586,7 +608,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
+          "reviewed_digest": "sha256:3f1dee27e9bb1d25e82a2612801bcbc4022be3ae1047a61b53e31686ccbd7a17",
           "reviewer": "user"
         },
         "settings": {
@@ -624,7 +646,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
+          "reviewed_digest": "sha256:3f1dee27e9bb1d25e82a2612801bcbc4022be3ae1047a61b53e31686ccbd7a17",
           "reviewer": "user"
         },
         "settings": {
@@ -688,7 +710,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
+          "reviewed_digest": "sha256:3f1dee27e9bb1d25e82a2612801bcbc4022be3ae1047a61b53e31686ccbd7a17",
           "reviewer": "user"
         },
         "settings": {
@@ -778,7 +800,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
+          "reviewed_digest": "sha256:3f1dee27e9bb1d25e82a2612801bcbc4022be3ae1047a61b53e31686ccbd7a17",
           "reviewer": "user"
         },
         "settings": {
@@ -814,7 +836,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
+          "reviewed_digest": "sha256:3f1dee27e9bb1d25e82a2612801bcbc4022be3ae1047a61b53e31686ccbd7a17",
           "reviewer": "user"
         },
         "settings": {
@@ -917,7 +939,7 @@
         "review": {
           "approved": true,
           "date": "2026-09-15",
-          "reviewed_digest": "sha256:fb0b8e52218fc762c1fc77361a257e98b6b420d94b782c938a6879961ecf65b4",
+          "reviewed_digest": "sha256:3f1dee27e9bb1d25e82a2612801bcbc4022be3ae1047a61b53e31686ccbd7a17",
           "reviewer": "user"
         },
         "settings": {
@@ -976,6 +998,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 30,
+  "revision": 32,
   "schema_version": 1
 }
