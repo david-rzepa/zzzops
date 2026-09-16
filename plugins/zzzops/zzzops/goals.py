@@ -273,9 +273,15 @@ def render_goal_history(
         payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
     ).encode("utf-8")).hexdigest()
     block = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    next_action = desired.get("next_action", "")
+    status = desired.get("status", "")
     return history_id, (
         f"## ZzzOps transition history\n\n"
         f"Archived canonical state before revision {desired['revision']}.\n\n"
+        f"### Archived canonical body\n\n{prior_body.rstrip()}\n\n"
+        f"### Requested transition\n\n"
+        f"- Status: `{status}`\n"
+        f"- Next action:\n\n{next_action}\n\n"
         f"{GOAL_HISTORY_BLOCK_START}\n{block}\n{GOAL_HISTORY_BLOCK_END}\n"
     )
 
