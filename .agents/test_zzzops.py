@@ -4279,10 +4279,12 @@ class WorkflowContractTests(unittest.TestCase):
         plan = json.loads((root / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         section = next(item for item in plan["policy"]["sections"] if item["id"] == "model_routing")
         self.assertEqual("capability_derived", section["decision"])
+        self.assertEqual("model_plus_effort", section["settings"]["routing_unit"])
         self.assertEqual("direct_root_no_subagent", section["settings"]["root_boundary"]["equal_root"])
         self.assertEqual("session_override_required", section["settings"]["root_boundary"]["above_root"])
         self.assertEqual("durable_blocker_continue_safe_work", section["settings"]["escalation"]["handling"])
         self.assertEqual("refresh_and_re_evaluate", section["settings"]["model_inventory"]["stale"])
+        self.assertEqual("runtime_supported_effort_levels", section["settings"]["model_inventory"]["effort"])
         self.assertEqual("record_unavailable_no_block", section["settings"]["telemetry"]["unavailable"])
         self.assertEqual([], zzzops.validate_policy(plan["policy"], True))
 

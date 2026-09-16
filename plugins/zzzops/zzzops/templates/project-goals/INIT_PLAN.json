@@ -184,7 +184,8 @@
         "source_ids": ["E-002"], "confidence": "medium", "default_origin": "ZzzOps capability-derived routing fallback", "default_disposition": "accepted",
         "settings": {
           "capability_basis": "effective_engineering_rigor_and_bounded_commitment",
-          "model_inventory": {"source": "runtime_available_models", "missing": "root_best_effort_web_research", "stale": "refresh_and_re_evaluate", "unsupported": "durable_blocker"},
+          "routing_unit": "model_plus_effort",
+          "model_inventory": {"source": "runtime_available_models", "effort": "runtime_supported_effort_levels", "missing": "root_best_effort_web_research", "stale": "refresh_and_re_evaluate", "unsupported": "durable_blocker"},
           "root_boundary": {"root_capability": "current_root_agent", "equal_root": "direct_root_no_subagent", "above_root": "session_override_required"},
           "phase_defaults": {"discovery": "economical_when_floor_allows", "architecture": "derived_from_required_capability", "implementation": "derived_from_required_capability", "verification": "economical_when_floor_allows"},
           "escalation": {"triggers": ["risk_or_commitment_increase", "uncertainty", "failed_probe", "contradictory_evidence", "capability_mismatch"], "handling": "durable_blocker_continue_safe_work"},

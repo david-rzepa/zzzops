@@ -111,7 +111,7 @@ ENGINEERING_RIGOR_INTERVIEW_DEPTH = {
 MODEL_ROUTING_PHASES = ("discovery", "architecture", "implementation", "verification")
 MODEL_ROUTING_LEVELS = {"economical", "intermediate", "root", "above_root"}
 MODEL_ROUTING_SETTINGS_KEYS = {
-    "capability_basis", "model_inventory", "root_boundary", "phase_defaults",
+    "capability_basis", "routing_unit", "model_inventory", "root_boundary", "phase_defaults",
     "escalation", "parallelism", "telemetry", "evidence",
 }
 
@@ -835,11 +835,14 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                 errors.append(f"{prefix}.model_routing.decision must be capability_derived")
             if settings.get("capability_basis") != "effective_engineering_rigor_and_bounded_commitment":
                 errors.append(f"{prefix}.model_routing.settings.capability_basis is invalid")
+            if settings.get("routing_unit") != "model_plus_effort":
+                errors.append(f"{prefix}.model_routing.settings.routing_unit is invalid")
             inventory = settings.get("model_inventory")
-            if not isinstance(inventory, dict) or set(inventory) != {"source", "missing", "stale", "unsupported"}:
+            if not isinstance(inventory, dict) or set(inventory) != {"source", "effort", "missing", "stale", "unsupported"}:
                 errors.append(f"{prefix}.model_routing.settings.model_inventory is invalid")
             elif (
                 inventory.get("source") != "runtime_available_models"
+                or inventory.get("effort") != "runtime_supported_effort_levels"
                 or inventory.get("missing") != "root_best_effort_web_research"
                 or inventory.get("stale") != "refresh_and_re_evaluate"
                 or inventory.get("unsupported") != "durable_blocker"
