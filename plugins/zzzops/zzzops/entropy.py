@@ -26,6 +26,21 @@ class EntropyObservationError(ValueError):
     """Entropy-observation input or durable state is invalid or inconsistent."""
 
 
+def record_observation_checkpoint(repo: Path, *, goal: int, revision: int) -> dict[str, Any]:
+    """Record that an agent explicitly checked for out-of-scope entropy and found none."""
+    if not isinstance(goal, int) or isinstance(goal, bool) or goal < 1:
+        raise EntropyObservationError("observation checkpoint goal must be positive")
+    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+        raise EntropyObservationError("observation checkpoint revision must be positive")
+    value = {"schema_version": SCHEMA_VERSION, "goal": goal, "revision": revision, "outcome": "none_observed"}
+    directory = observation_directory(repo) / "checkpoints"
+    directory.mkdir(parents=True, exist_ok=True)
+    identifier = hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    target = directory / f"{identifier}.json"
+    target.write_text(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+    return {"schema_version": SCHEMA_VERSION, "recorded": True, "outcome": value["outcome"], "checkpoint_id": identifier}
+
+
 def observation_directory(repo: Path) -> Path:
     """Resolve the ignored inbox inside the repository's common Git directory."""
     result = subprocess.run(

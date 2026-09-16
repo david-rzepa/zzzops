@@ -251,6 +251,7 @@ entropy_observation_directory = _entropy.observation_directory
 enabled_entropy_categories = _entropy.enabled_categories
 list_entropy_observations = _entropy.list_observations
 record_entropy_observation = _entropy.record_observation
+record_entropy_observation_checkpoint = _entropy.record_observation_checkpoint
 resolve_entropy_observations = _entropy.resolve_observations
 EntropyObservationError = _entropy.EntropyObservationError
 
@@ -1826,9 +1827,10 @@ def main() -> int:
     entropy_commands = entropy.add_subparsers(dest="entropy_command", required=True)
     entropy_commands.add_parser("list", help="List observations enabled by existing suggestion policy")
     entropy_observe = entropy_commands.add_parser("observe", help="Record one bounded entropy observation")
-    entropy_observe.add_argument("--category", choices=sorted(_entropy.ENTROPY_CATEGORIES), required=True)
-    entropy_observe.add_argument("--path", action="append", dest="paths", required=True)
-    entropy_observe.add_argument("--evidence", required=True)
+    entropy_observe.add_argument("--none", action="store_true", help="Record an explicit no-observation checkpoint")
+    entropy_observe.add_argument("--category", choices=sorted(_entropy.ENTROPY_CATEGORIES))
+    entropy_observe.add_argument("--path", action="append", dest="paths", default=[])
+    entropy_observe.add_argument("--evidence")
     entropy_observe.add_argument("--goal", type=int, required=True)
     entropy_observe.add_argument("--revision", type=int, required=True)
     entropy_resolve = entropy_commands.add_parser("resolve", help="Remove observations after validation")
@@ -1955,14 +1957,17 @@ def main() -> int:
                 project = reviewed_project_state(repo)
                 result = list_entropy_observations(repo, project)
             elif args.entropy_command == "observe":
-                result = record_entropy_observation(
-                    repo,
-                    category=args.category,
-                    paths=args.paths,
-                    evidence=args.evidence,
-                    goal=args.goal,
-                    revision=args.revision,
-                )
+                if args.none:
+                    if args.category or args.paths or args.evidence:
+                        raise ValueError("--none cannot be combined with an entropy observation")
+                    result = record_entropy_observation_checkpoint(repo, goal=args.goal, revision=args.revision)
+                else:
+                    if not args.category or not args.paths or not args.evidence:
+                        raise ValueError("an entropy observation requires --category, --path, and --evidence")
+                    result = record_entropy_observation(
+                        repo, category=args.category, paths=args.paths, evidence=args.evidence,
+                        goal=args.goal, revision=args.revision,
+                    )
             elif args.entropy_command == "resolve":
                 result = resolve_entropy_observations(
                     repo, fingerprints=args.fingerprints, outcome=args.outcome,
