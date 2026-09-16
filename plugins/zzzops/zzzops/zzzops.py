@@ -103,6 +103,13 @@ _coaching = importlib.util.module_from_spec(_COACHING_MODULE_SPEC)
 sys.modules[_COACHING_MODULE_SPEC.name] = _coaching
 _COACHING_MODULE_SPEC.loader.exec_module(_coaching)
 
+_PHASE_EVIDENCE_MODULE_PATH = Path(__file__).with_name("phase_evidence.py")
+_PHASE_EVIDENCE_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_phase_evidence", _PHASE_EVIDENCE_MODULE_PATH)
+assert _PHASE_EVIDENCE_MODULE_SPEC and _PHASE_EVIDENCE_MODULE_SPEC.loader
+_phase_evidence = importlib.util.module_from_spec(_PHASE_EVIDENCE_MODULE_SPEC)
+sys.modules[_PHASE_EVIDENCE_MODULE_SPEC.name] = _phase_evidence
+_PHASE_EVIDENCE_MODULE_SPEC.loader.exec_module(_phase_evidence)
+
 _GOALS_MODULE_PATH = Path(__file__).with_name("goals.py")
 _GOALS_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_goals", _GOALS_MODULE_PATH)
 assert _GOALS_MODULE_SPEC and _GOALS_MODULE_SPEC.loader
@@ -150,6 +157,18 @@ routing_event = _routing.routing_event
 discover_delegation_capability = _routing.discover_delegation_capability
 GOAL_FIELDS = _goals.GOAL_FIELDS
 GOAL_TRANSITION_FIELDS = {"schema_version", "expected_revision", "expected_digest", "goal"}
+PHASE_EVIDENCE_SCHEMA_VERSION = _phase_evidence.PHASE_EVIDENCE_SCHEMA_VERSION
+PhaseEvidenceError = _phase_evidence.PhaseEvidenceError
+canonical_json_bytes = _phase_evidence.canonical_json_bytes
+sha256_phase_evidence_digest = _phase_evidence.sha256_digest
+empty_phase_evidence = _phase_evidence.empty_phase_evidence
+phase_input_envelope = _phase_evidence.phase_input_envelope
+goal_spec_digest = _phase_evidence.goal_spec_digest
+validate_phase_evidence = _phase_evidence.validate_phase_evidence
+normalize_phase_evidence = _phase_evidence.normalize_phase_evidence
+record_phase_result = _phase_evidence.record_phase_result
+withdraw_phase_evidence = _phase_evidence.withdraw_phase_evidence
+derive_phase_eligibility = _phase_evidence.derive_phase_eligibility
 BLOCKER_CATEGORIES = {
     "specification", "decision", "access-approval", "human-action",
     "external-dependency", "technical-unknown", "safety-compliance",
@@ -1580,7 +1599,10 @@ render_project = _policy.render_project
 render_policy_sections = _policy.render_policy_sections
 render_project_audit = _policy.render_project_audit
 
-_goals.configure_entrypoint(normalize_resources=normalize_resources, text_present=text_present)
+_goals.configure_entrypoint(
+    normalize_resources=normalize_resources, text_present=text_present,
+    validate_phase_evidence=_phase_evidence.validate_phase_evidence,
+)
 _portfolio.configure_entrypoint(exclusive_resources=exclusive_resources, normalize_resource_policy=normalize_resource_policy, text_present=text_present, merge_classifier=classify_pr_merge)
 active_stack_guard = _portfolio.active_stack_guard
 

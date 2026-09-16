@@ -1,4 +1,5 @@
 import ast
+import hashlib
 import importlib.util
 import io
 import json
@@ -2423,6 +2424,176 @@ class GoalCreateTests(unittest.TestCase):
             run.call_args_list[1].args[0],
         )
         self.assertEqual(payload, json.loads(run.call_args_list[1].kwargs["input"]))
+
+
+class PhaseEvidenceTests(unittest.TestCase):
+    def graph(self, *phases):
+        return {"phases": list(phases)}
+
+    def envelope(self, phase, *, policy="policy-1", upstream_outputs=None):
+        digest = zzzops.sha256_phase_evidence_digest
+        return zzzops.phase_input_envelope(
+            phase, digest({"goal": 1}), digest({"policy": policy}), digest({"dag": 1}),
+            repository={"identity": "owner/repo", "snapshot": {"branch": "dev"}},
+            provider={"identity": "github", "snapshot": {"repository": "owner/repo"}},
+            capabilities={"identity": "codex", "snapshot": {"models": ["test-model"]}},
+            invocation={"intent": "execute", "inputs": {"goal": 1}},
+            upstream_outputs=upstream_outputs,
+        )
+
+    def record(self, phase, envelope, output="output"):
+        digest = zzzops.sha256_phase_evidence_digest
+        return {
+            "status": "completed", "input_envelope": envelope, "input_hash": digest(envelope),
+            "output": {"reference": "git:" + hashlib.sha1(output.encode("utf-8")).hexdigest(), "hash": digest({"output": output})},
+            "verification": None, "routing": None, "review": None,
+            "selection": {"model": "test-model", "effort": "low"}, "actor": "worker-1", "not_required": None,
+        }
+
+    def goal(self, evidence=None, **overrides):
+        goal = {"status": "ready", "phase_evidence": zzzops.empty_phase_evidence() if evidence is None else evidence}
+        goal.update(overrides)
+        return goal
+
+    def test_canonical_hash_is_key_stable_and_array_ordered(self):
+        self.assertEqual(
+            zzzops.canonical_json_bytes({"b": 1, "a": ["x", "y"]}),
+            zzzops.canonical_json_bytes({"a": ["x", "y"], "b": 1}),
+        )
+        self.assertNotEqual(
+            zzzops.sha256_phase_evidence_digest(["x", "y"]),
+            zzzops.sha256_phase_evidence_digest(["y", "x"]),
+        )
+        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "acyclic"):
+            zzzops.derive_phase_eligibility(
+                self.goal(), self.graph({"id": "a", "depends_on": ["b"]}, {"id": "b", "depends_on": ["a"]}), {},
+            )
+        envelope = self.envelope("plan")
+        mutable = self.record("plan", envelope)
+        mutable["output"]["reference"] = "https://example.test/mutable"
+        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "content-addressed immutable"):
+            zzzops.record_phase_result(zzzops.empty_phase_evidence(), "plan", mutable, envelope)
+        mutable = self.record("plan", envelope)
+        mutable["output"] = {"reference": "provider:github", "hash": "provider:github"}
+        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "content-addressed immutable"):
+            zzzops.record_phase_result(zzzops.empty_phase_evidence(), "plan", mutable, envelope)
+        provider_output = self.record("plan", envelope)
+        provider_output["output"] = {
+            "reference": "provider:github:oid:" + "a" * 40,
+            "hash": "provider:github:oid:" + "a" * 40,
+        }
+        self.assertEqual(
+            provider_output["output"],
+            zzzops.record_phase_result(zzzops.empty_phase_evidence(), "plan", provider_output, envelope)["records"]["plan"]["output"],
+        )
+        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "goal_spec must be a SHA-256"):
+            zzzops.phase_input_envelope(
+                "plan", "provider:github", envelope["policy"], envelope["phase_dag"],
+                repository=envelope["repository"], provider=envelope["provider"],
+                capabilities=envelope["capabilities"], invocation=envelope["invocation"],
+            )
+        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "upstream hash"):
+            zzzops.phase_input_envelope(
+                "plan", envelope["goal_spec"], envelope["policy"], envelope["phase_dag"],
+                repository=envelope["repository"], provider=envelope["provider"],
+                capabilities=envelope["capabilities"], invocation=envelope["invocation"],
+                upstream_outputs=[{"phase": "upstream", "hash": "provider:github"}],
+            )
+        provider_upstream = zzzops.phase_input_envelope(
+            "plan", envelope["goal_spec"], envelope["policy"], envelope["phase_dag"],
+            repository=envelope["repository"], provider=envelope["provider"],
+            capabilities=envelope["capabilities"], invocation=envelope["invocation"],
+            upstream_outputs=[{"phase": "upstream", "hash": "provider:github:oid:" + "b" * 40}],
+        )
+        self.assertTrue(provider_upstream["upstream_outputs"][0]["hash"].startswith("provider:github:oid:"))
+        partial = {"phase": "plan"}
+        partial_record = self.record("plan", partial)
+        partial_record["input_hash"] = zzzops.sha256_phase_evidence_digest(partial)
+        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "input envelope"):
+            zzzops.record_phase_result(zzzops.empty_phase_evidence(), "plan", partial_record, partial)
+
+    def test_not_required_phase_retains_route_and_policy_decision(self):
+        envelope = self.envelope("decompose")
+        record = self.record("decompose", envelope)
+        record.update({
+            "status": "not_required", "output": None,
+            "not_required": {"reason": "Goal is atomic.", "policy_rule": "atomic_goal"},
+        })
+        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "decompose", record, envelope)
+        result = zzzops.derive_phase_eligibility(self.goal(evidence), self.graph({"id": "decompose"}), {"decompose": envelope})
+        self.assertEqual([], result["eligible"])
+
+    def test_parallel_frontier_and_restart_are_evidence_derived(self):
+        graph = self.graph({"id": "plan"}, {"id": "verify"})
+        inputs = {"plan": self.envelope("plan"), "verify": self.envelope("verify")}
+        first = zzzops.derive_phase_eligibility(self.goal(), graph, inputs)
+        second = zzzops.derive_phase_eligibility(self.goal(), graph, inputs)
+        self.assertEqual(first, second)
+        self.assertEqual(["plan", "verify"], [item["phase"] for item in first["eligible"]])
+
+    def test_stale_rejection_and_identical_output_preserves_descendant(self):
+        graph = self.graph({"id": "plan"}, {"id": "implement", "depends_on": ["plan"]})
+        plan_input = self.envelope("plan")
+        plan_record = self.record("plan", plan_input, "plan-v1")
+        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "plan", plan_record, plan_input)
+        output = plan_record["output"]
+        implement_input = self.envelope("implement", upstream_outputs=[{"phase": "plan", "hash": output["hash"]}])
+        evidence = zzzops.record_phase_result(evidence, "implement", self.record("implement", implement_input), implement_input)
+        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "stale"):
+            zzzops.record_phase_result(evidence, "plan", plan_record, self.envelope("plan", policy="policy-2"))
+
+        refreshed_input = self.envelope("plan", policy="policy-2")
+        evidence = zzzops.record_phase_result(evidence, "plan", self.record("plan", refreshed_input, "plan-v1"), refreshed_input)
+        result = zzzops.derive_phase_eligibility(
+            self.goal(evidence), graph,
+            {"plan": refreshed_input, "implement": implement_input},
+        )
+        self.assertEqual([], result["eligible"])
+        self.assertEqual([], result["stale"])
+
+    def test_changed_output_and_withdrawal_stale_declared_descendants(self):
+        graph = self.graph({"id": "plan"}, {"id": "implement", "depends_on": ["plan"]})
+        plan_input = self.envelope("plan")
+        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "plan", self.record("plan", plan_input, "first"), plan_input)
+        old_implement = self.envelope("implement", upstream_outputs=[{"phase": "plan", "hash": zzzops.sha256_phase_evidence_digest({"output": "first"})}])
+        evidence = zzzops.record_phase_result(evidence, "implement", self.record("implement", old_implement), old_implement)
+        evidence = zzzops.record_phase_result(evidence, "plan", self.record("plan", plan_input, "second"), plan_input)
+        changed_implement = self.envelope("implement", upstream_outputs=[{"phase": "plan", "hash": zzzops.sha256_phase_evidence_digest({"output": "second"})}])
+        stale = zzzops.derive_phase_eligibility(self.goal(evidence), graph, {"plan": plan_input, "implement": changed_implement})
+        self.assertEqual(["implement"], stale["stale"])
+        self.assertEqual(["implement"], [item["phase"] for item in stale["eligible"]])
+
+        withdrawn = zzzops.withdraw_phase_evidence(evidence, "plan", reason="Plan scope changed.", actor="root")
+        result = zzzops.derive_phase_eligibility(self.goal(withdrawn), graph, {"plan": plan_input, "implement": changed_implement})
+        self.assertEqual(["plan"], [item["phase"] for item in result["eligible"]])
+        self.assertEqual(["plan", "implement"], result["stale"])
+
+    def test_parent_gates_unrelated_revisions_and_closed_goals(self):
+        parent_input = self.envelope("architecture")
+        parent_evidence = zzzops.record_phase_result(
+            zzzops.empty_phase_evidence(), "architecture", self.record("architecture", parent_input), parent_input,
+        )
+        graph = self.graph({"id": "implement", "parent_gates": ["architecture"]})
+        child_input = self.envelope("implement")
+        child = self.goal(parent=9, revision=1)
+        blocked = zzzops.derive_phase_eligibility(child, graph, {"implement": child_input})
+        self.assertEqual(["architecture"], blocked["blocked"][0]["parent_gates"])
+        parent = {"goal": self.goal(parent_evidence), "live_inputs": {"architecture": parent_input}}
+        allowed = zzzops.derive_phase_eligibility(child, graph, {"implement": child_input}, {9: parent})
+        self.assertEqual(["implement"], [item["phase"] for item in allowed["eligible"]])
+        stale_parent = {"goal": self.goal(parent_evidence), "live_inputs": {"architecture": self.envelope("architecture", policy="policy-2")}}
+        stale = zzzops.derive_phase_eligibility(child, graph, {"implement": child_input}, {9: stale_parent})
+        self.assertEqual(["architecture"], stale["blocked"][0]["parent_gates"])
+        child["revision"] = 999
+        self.assertEqual(allowed, zzzops.derive_phase_eligibility(child, graph, {"implement": child_input}, {9: parent}))
+        terminal = zzzops.derive_phase_eligibility(self.goal(status="done"), graph, {"implement": child_input})
+        self.assertEqual(["terminal_goal"], terminal["diagnostics"])
+
+    def test_managed_goal_retains_typed_phase_evidence(self):
+        goal = GoalTransitionTests().goal()
+        goal["phase_evidence"] = zzzops.empty_phase_evidence()
+        self.assertEqual([], zzzops.validate_managed_goal(goal, 42))
+        self.assertEqual(goal["phase_evidence"], zzzops.compact_managed_goal(goal)["phase_evidence"])
 
 
 class GoalTransitionTests(unittest.TestCase):
