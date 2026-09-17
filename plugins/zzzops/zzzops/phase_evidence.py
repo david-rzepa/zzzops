@@ -298,6 +298,23 @@ def independent_review_ready(evidence: Any, implementation_phase: str, review_ph
     }
 
 
+def record_phase_review(evidence: Any, phase: str, artifact: Any, reviewer: str) -> dict[str, Any]:
+    """Attach an independent immutable review to the exact current phase record."""
+    normalized, phase = normalize_phase_evidence(evidence), _text(phase, "review phase")
+    record = normalized["records"].get(phase)
+    if record is None:
+        raise PhaseEvidenceError("cannot review phase evidence that was never recorded")
+    reviewer = _text(reviewer, "phase reviewer")
+    if reviewer == record["actor"]:
+        raise PhaseEvidenceError("phase reviewer must be independent from phase actor")
+    normalized["reviews"][phase] = {
+        "record_hash": sha256_digest(record),
+        "artifact": _artifact(artifact, "phase review artifact", required=True),
+        "reviewer": reviewer,
+    }
+    return normalized
+
+
 def withdraw_phase_evidence(evidence: Any, phase: str, *, reason: str, actor: str) -> dict[str, Any]:
     """Append a justified withdrawal; evaluation then stales declared descendants."""
     normalized, phase = normalize_phase_evidence(evidence), _text(phase, "phase")
