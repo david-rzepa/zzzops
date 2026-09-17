@@ -984,6 +984,86 @@ class DiagnosticsModuleTests(unittest.TestCase):
         self.assertEqual(expected, json.loads(stream.getvalue()))
         checkpoint.assert_called_once_with(self.repo.resolve(), 42, "execute", json.loads(runtime.read_text(encoding="utf-8")))
 
+    def test_workflow_cli_dispatches_every_registered_skill_intent_after_context(self):
+        package = {"ok": True}
+        for skill, intents in zzzops.WORKFLOW_SKILL_INTENTS.items():
+            for intent in intents:
+                with self.subTest(skill=skill, intent=intent):
+                    with (
+                        mock.patch.object(zzzops, "configure_cli_stdout"),
+                        mock.patch.object(zzzops._package, "package_status", return_value=package),
+                        mock.patch.object(zzzops, "workflow_context_step", return_value=None),
+                        mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--intent", intent, "--source-skill", skill]),
+                        mock.patch.object(sys, "stdout", io.StringIO()) as stream,
+                    ):
+                        self.assertEqual(0, zzzops.main())
+                step = json.loads(stream.getvalue())["next_steps"]
+                self.assertEqual([{
+                    "kind": "dispatch", "assignment": "root", "skill": skill, "intent": intent,
+                    "action": zzzops.WORKFLOW_SOURCE_ACTIONS[skill],
+                }], step)
+        self.assertEqual(set(zzzops.WORKFLOW_SKILL_INTENTS), set(zzzops.WORKFLOW_SOURCE_ACTIONS))
+
+    def test_workflow_parser_errors_are_actionable_json_blockers(self):
+        for arguments in (
+            ["workflow"],
+            ["workflow", "--intent", "unknown"],
+            ["workflow", "--intent", "execute", "--unknown"],
+        ):
+            with self.subTest(arguments=arguments):
+                result = subprocess.run(
+                    [sys.executable, str(MODULE_PATH), *arguments],
+                    capture_output=True, text=True, encoding="utf-8", check=False,
+                )
+                self.assertEqual(2, result.returncode)
+                self.assertEqual("", result.stderr)
+                payload = json.loads(result.stdout)
+                self.assertEqual([{
+                    "kind": "blocker", "assignment": "root",
+                    "action": "Correct the workflow command arguments, then invoke workflow again.",
+                    "reason": payload["next_steps"][0]["reason"],
+                }], payload["next_steps"])
+                self.assertTrue(payload["next_steps"][0]["reason"])
+
+    def test_workflow_cli_invalid_package_returns_an_action_only_repair_step(self):
+        with (
+            mock.patch.object(zzzops, "configure_cli_stdout"),
+            mock.patch.object(zzzops._package, "package_status", return_value={"ok": False, "detail": "invalid"}),
+            mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--intent", "execute", "--source-skill", "$execute-zzzops"]),
+            mock.patch.object(sys, "stdout", io.StringIO()) as stream,
+        ):
+            self.assertEqual(2, zzzops.main())
+        payload = json.loads(stream.getvalue())
+        self.assertEqual({"next_steps"}, set(payload))
+        self.assertEqual("resolve_blocker", payload["next_steps"][0]["directive"])
+        self.assertEqual("$execute-zzzops", payload["next_steps"][0]["skill"])
+        self.assertIn("Repair or reinstall", payload["next_steps"][0]["action"])
+
+    def test_workflow_cli_errors_are_actionable_blockers(self):
+        runtime = self.repo / "invalid-runtime.json"
+        runtime.write_text("not json", encoding="utf-8")
+        cases = [
+            ["workflow", "--intent", "execute", "--source-skill", "$add-zzzops-goal"],
+            ["workflow", "--goal", "42", "--intent", "execute"],
+            ["workflow", "--goal", "42", "--intent", "execute", "--runtime", str(runtime)],
+        ]
+        for command in cases:
+            with self.subTest(command=command):
+                with (
+                    mock.patch.object(zzzops, "configure_cli_stdout"),
+                    mock.patch.object(zzzops._package, "package_status", return_value={"ok": True}),
+                    mock.patch.object(zzzops, "workflow_context_step", return_value=None),
+                    mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), *command]),
+                    mock.patch.object(sys, "stdout", io.StringIO()) as stream,
+                ):
+                    self.assertEqual(2, zzzops.main())
+            payload = json.loads(stream.getvalue())
+            self.assertEqual(1, len(payload["next_steps"]))
+            self.assertEqual("blocker", payload["next_steps"][0]["kind"])
+            self.assertEqual("root", payload["next_steps"][0]["assignment"])
+            self.assertEqual("Correct the workflow input or context error, then invoke workflow again.", payload["next_steps"][0]["action"])
+            self.assertTrue(payload["next_steps"][0]["reason"])
+
     def test_workflow_cli_gates_no_goal_dispatch_on_context(self):
         gate = {
             "id": "bootstrap", "skill": "$bootstrap-zzzops-repository", "intent": "inspect",

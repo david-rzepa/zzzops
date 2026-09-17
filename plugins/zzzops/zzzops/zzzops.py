@@ -2289,11 +2289,22 @@ def _profiled_portfolio_cli(repo: Path, args: argparse.Namespace) -> tuple[int, 
         return 2, f"Could not load goals: {exc}"
 
 
+class WorkflowArgumentError(Exception):
+    """A workflow-only parse error that must preserve the public JSON contract."""
+
+
+class WorkflowArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        if "workflow" in sys.argv:
+            raise WorkflowArgumentError(message)
+        super().error(message)
+
+
 def main() -> int:
     configure_cli_stdout()
-    parser = argparse.ArgumentParser(description="ZzzOps project control CLI")
+    parser = WorkflowArgumentParser(description="ZzzOps project control CLI")
     parser.add_argument("--repo", type=Path, default=Path.cwd(), help="Project root (default: current directory)")
-    commands = parser.add_subparsers(dest="command")
+    commands = parser.add_subparsers(dest="command", parser_class=WorkflowArgumentParser)
     init = commands.add_parser("init", help="Inspect, validate, or apply agent-driven project initialization")
     init_commands = init.add_subparsers(dest="init_command", required=True)
     init_commands.add_parser("inspect", help="Report initialization state and read-only capabilities as JSON")
@@ -2416,7 +2427,15 @@ def main() -> int:
         feedback_command.add_argument("--diagnostic-python", choices=sorted(_feedback.TIMING_PYTHONS), default="unknown")
         if name == "submit":
             feedback_command.add_argument("--confirm", required=True, help="Exact digest shown by feedback prepare")
-    args = parser.parse_args()
+    try:
+        args = parser.parse_args()
+    except WorkflowArgumentError as exc:
+        print(json.dumps({"next_steps": [{
+            "kind": "blocker", "assignment": "root",
+            "action": "Correct the workflow command arguments, then invoke workflow again.",
+            "reason": str(exc),
+        }]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+        return 2
     repo = args.repo.resolve()
     if args.command == "checkpoint" and args.profile:
         try:
@@ -2442,7 +2461,7 @@ def main() -> int:
                 "Repair or reinstall the ZzzOps Agent Plugin package, then invoke workflow again.",
                 source_skill=args.source_skill,
             )
-            print(json.dumps(workflow_envelope(args.intent, [repair]), ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+            print(json.dumps({"next_steps": [repair]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 2
         print(str(package.get("detail") or "The ZzzOps Agent Plugin package is invalid."))
         return 2
@@ -2551,7 +2570,11 @@ def main() -> int:
                 print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
                 return 0
             except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
-                print(json.dumps({"next_steps": [{"kind": "blocker", "assignment": "root", "reason": str(exc)}]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+                print(json.dumps({"next_steps": [{
+                    "kind": "blocker", "assignment": "root",
+                    "action": "Correct the workflow input or context error, then invoke workflow again.",
+                    "reason": str(exc),
+                }]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
                 return 2
         if args.command == "init":
             if args.init_command == "inspect":
@@ -2728,7 +2751,7 @@ def main() -> int:
                 args.intent, str(exc), "Repair the reported workflow input or current repository state, then invoke workflow again.",
                 source_skill=args.source_skill,
             )
-            print(json.dumps(workflow_envelope(args.intent, [repair]), ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+            print(json.dumps({"next_steps": [repair]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 2
         print(f"Could not continue: {exc}")
         return 2
