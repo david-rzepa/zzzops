@@ -2010,6 +2010,11 @@ def main() -> int:
     commands = parser.add_subparsers(dest="command")
     workflow = commands.add_parser("workflow", help="Return the next actionable ZzzOps workflow steps")
     workflow.add_argument("--intent", choices=sorted(WORKFLOW_INTENTS), required=True)
+    workflow.add_argument("--goal", type=int, help="Managed goal whose evidence-derived phase frontier to evaluate")
+    workflow.add_argument(
+        "--phase-inputs",
+        help="Observed JSON object mapping phase IDs to complete live input envelopes",
+    )
     workflow.add_argument(
         "--routing-request",
         help="Observed JSON routing facts: phase, dimensions, available_pairs, root_pair, and tool_catalog",
@@ -2161,7 +2166,43 @@ def main() -> int:
                           "audience": "root", "phase": "context", "action": "Inspect policy state and prepare the required review input.",
                           "reason": "Project policy is missing, stale, or invalid."}]
             else:
-                if args.routing_request:
+                if args.goal is not None:
+                    try:
+                        if not args.phase_inputs:
+                            raise ValueError("phase inputs are required")
+                        phase_inputs = json.loads(args.phase_inputs)
+                        repository = _project_repository_identity(project)
+                        goal = github_goal_record(
+                            GitHubGoalTransitionAdapter(repo, repository).get_issue(args.goal)
+                        )
+                        phase_dag = next(
+                            section for section in project["policy"]["sections"]
+                            if section.get("id") == "workflow_adherence"
+                        )["settings"]["phase_dag"]
+                        frontier = workflow_phase_frontier(goal, phase_dag, phase_inputs)
+                        if args.routing_request:
+                            request = json.loads(args.routing_request)
+                            eligible = {item["phase"] for item in frontier["eligibility"]["eligible"]}
+                            if request.get("phase") not in eligible:
+                                raise ValueError("routing phase is not eligible")
+                            routing = next(
+                                section for section in project["policy"]["sections"]
+                                if section.get("id") == "model_routing"
+                            )
+                            steps = [workflow_routing_step(args.intent, routing["settings"], request)]
+                        else:
+                            steps = frontier["next_steps"]
+                        if not steps:
+                            steps = [{"id": "phase-input-evidence", "skill": "$execute-zzzops", "intent": "execute",
+                                      "audience": "root", "phase": "context",
+                                      "action": "Record complete live input evidence for the blocked or missing phase, then invoke workflow again.",
+                                      "reason": "; ".join(frontier["eligibility"]["diagnostics"]) or "Phase dependencies are not yet satisfied."}]
+                    except (StopIteration, ValueError, json.JSONDecodeError):
+                        steps = [{"id": "phase-input-evidence", "skill": "$execute-zzzops", "intent": "execute",
+                                  "audience": "root", "phase": "context",
+                                  "action": "Record complete valid live input evidence for this goal, then invoke workflow again with --goal and --phase-inputs.",
+                                  "reason": "The supplied goal or phase inputs cannot derive a safe workflow frontier."}]
+                elif args.routing_request:
                     try:
                         request = json.loads(args.routing_request)
                         routing = next(
