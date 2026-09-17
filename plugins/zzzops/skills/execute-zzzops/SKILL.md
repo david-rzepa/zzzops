@@ -14,7 +14,7 @@ Read `../../rules/COMMUNICATION.md` for user-facing messages.
 
 Mode: `dry run`, `preview`, or `plan` means read-only inventory, triage simulation, ordering, and blocker reporting; do not initialize/apply, claim, update goals, edit source, run mutating commands, or change Git/external state. Otherwise run the live loop below.
 
-First invoke `zzzops workflow --intent execute` and obey its action-only `next_steps`. Do not choose a private CLI command from this skill. Then load only the rules, goal context, and references named by that workflow response.
+First invoke `zzzops workflow --intent execute` and obey its action-only `next_steps`. Do not choose a private CLI command from this skill. The workflow response determines when `../../rules/INITIALIZATION.md` and `../../rules/BACKENDS.md` apply; then load only the named rules, goal context, and references.
 Track execute intent through `../../rules/CONTINUATION.md` so additive capture can safely resume without nested loops.
 
 Goals labeled `zzzops-feedback` are excluded by default. Include them only when the user explicitly approves inclusion for the current execution session; invocation approval counts, one approval covers all feedback goals, and expires with the session. Never ask per issue. Preserve the choice on every checkpoint/portfolio refresh by using `--include-feedback` only in an approved session.
