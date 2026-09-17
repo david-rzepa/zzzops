@@ -112,6 +112,9 @@ WORKFLOW_ADHERENCE_SETTINGS = {
 WORKFLOW_PHASE_IDS = (
     "understand", "decompose", "plan", "test_design", "implement", "publish",
 )
+LEGACY_WORKFLOW_PHASE_IDS = (
+    "context", "understand", "decompose", "plan", "architecture_review", "implement", "verify", "review", "publish",
+)
 WORKFLOW_PHASE_TYPES = frozenset(WORKFLOW_PHASE_IDS)
 WORKFLOW_ASSIGNMENT_GROUPS = frozenset({"root", "planning", "implementation", "review", "coordinator"})
 WORKFLOW_APPLICABILITY = frozenset({"always", "parent_only", "child_only"})
@@ -486,6 +489,8 @@ def missing_policy_settings(
         section_id = section["id"]
         expected = by_section[section_id].get("content", {}).get("settings", {})
         missing = _missing_setting_paths(section.get("settings"), expected)
+        if section_id == "workflow_adherence" and legacy_workflow_phase_dag(section.get("settings", {}).get("phase_dag")):
+            missing = [path for path in missing if not path.startswith("phase_dag")]
         optional_prefixes = OPTIONAL_POLICY_SETTING_PREFIXES.get(section_id, ())
         missing = [path for path in missing if not path.startswith(optional_prefixes)]
         if missing:
@@ -565,6 +570,13 @@ def _workflow_phase_dag_errors(value: Any) -> list[str]:
     for phase in nodes:
         visit(phase)
     return errors
+
+
+def legacy_workflow_phase_dag(value: Any) -> bool:
+    """Recognize only the retired shipped shape so it can be reviewed for upgrade."""
+    return isinstance(value, dict) and value.get("schema_version") == 1 and isinstance(value.get("phases"), list) and tuple(
+        node.get("id") for node in value["phases"] if isinstance(node, dict)
+    ) == LEGACY_WORKFLOW_PHASE_IDS
 
 
 def phase_evidence_graph(phase_dag: Any, *, has_parent: bool) -> dict[str, list[dict[str, Any]]]:
@@ -1197,7 +1209,8 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                 for field, value in WORKFLOW_ADHERENCE_SETTINGS.items():
                     if settings.get(field) != value:
                         errors.append(f"{prefix}.workflow_adherence.settings.{field} is invalid")
-                errors.extend(f"{prefix}.workflow_adherence.{error}" for error in _workflow_phase_dag_errors(settings.get("phase_dag")))
+                if not legacy_workflow_phase_dag(settings.get("phase_dag")):
+                    errors.extend(f"{prefix}.workflow_adherence.{error}" for error in _workflow_phase_dag_errors(settings.get("phase_dag")))
         elif section_id == "model_routing":
             settings = section["settings"]
             if section.get("decision") != "capability_derived":
