@@ -2491,8 +2491,7 @@ class PhaseEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "independent"):
             zzzops.record_phase_review(evidence, "plan", artifact, "worker-1")
         changed = zzzops.record_phase_result(reviewed, "plan", self.record("plan", envelope, "changed"), envelope)
-        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "stale"):
-            zzzops.normalize_phase_evidence(changed)
+        self.assertNotIn("plan", changed["reviews"])
         with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "acyclic"):
             zzzops.derive_phase_eligibility(
                 self.goal(), self.graph({"id": "a", "depends_on": ["b"]}, {"id": "b", "depends_on": ["a"]}), {},

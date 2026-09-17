@@ -274,6 +274,7 @@ def record_phase_result(evidence: Any, phase: str, record: Any, current_input: d
     if normalized_record["input_hash"] != sha256_digest(current) or normalized_record["input_envelope"] != current:
         raise PhaseEvidenceError("phase result input evidence is stale")
     normalized["records"][phase] = normalized_record
+    normalized["reviews"].pop(phase, None)
     normalized["withdrawals"] = [item for item in normalized["withdrawals"] if item["phase"] != phase]
     return normalized
 
