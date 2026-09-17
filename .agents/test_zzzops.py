@@ -4581,8 +4581,12 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("preview", zzzops.WORKFLOW_SKILL_INTENTS["$execute-zzzops"])
         for skill, intent in expected.items():
             with self.subTest(skill=skill):
-                text = (PLUGIN_ROOT / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
-                self.assertIn(f"zzzops workflow --intent {intent} --source-skill '${skill}'", text)
+                skill_path = PLUGIN_ROOT / "skills" / skill / "SKILL.md"
+                text = skill_path.read_text(encoding="utf-8")
+                self.assertTrue((skill_path.parents[2] / "zzzops" / "zzzops.py").is_file())
+                self.assertIn("Codex plugins do not put a `zzzops` binary on `PATH`", text)
+                self.assertIn(f'python3 "$ZZZOPS_CLI" workflow --intent {intent} --source-skill \'${skill}\'', text)
+                self.assertNotIn("`zzzops workflow", text)
                 self.assertIn("Do not invoke a private ZzzOps command", text)
 
     def test_workflow_skill_registry_allows_execute_approval_and_resume_only(self):

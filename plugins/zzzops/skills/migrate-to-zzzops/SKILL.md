@@ -7,7 +7,9 @@ description: ZzzOps v0.0.0-dev — development plugin. Discover, plan, migrate, 
 
 Read `../../rules/COMMUNICATION.md` for user-facing messages.
 
-First invoke `zzzops workflow --intent inspect --source-skill '$migrate-to-zzzops'` and obey its `next_steps`. Do not invoke a private ZzzOps command named elsewhere in this skill; those references describe the workflow handler behind this public command.
+Codex plugins do not put a `zzzops` binary on `PATH`. From this loaded skill's absolute `<skill><path>`, derive `ZZZOPS_CLI` by replacing `skills/migrate-to-zzzops/SKILL.md` with `zzzops/zzzops.py`. Invoke it as `python3 "$ZZZOPS_CLI"`; do not search for, install, or invoke a global `zzzops` command.
+
+First invoke `python3 "$ZZZOPS_CLI" workflow --intent inspect --source-skill '$migrate-to-zzzops'` and obey its `next_steps`. Do not invoke a private ZzzOps command named elsewhere in this skill; those references describe the workflow handler behind this public command.
 
 Mode: `dry run`, `preview`, or `plan` reports candidates and a proposed plan in chat without creating plan/summary files or changing state. Otherwise build the review artifacts below; apply only after explicit approval.
 

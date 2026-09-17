@@ -65,6 +65,18 @@ class ClaudePluginAcceptanceTests(unittest.TestCase):
             with self.assertRaisesRegex(self.harness.AcceptanceError, "isolated Claude cache"):
                 self.harness.validate_install(record, config, "2.0.0")
 
+    def test_cached_skill_launch_contract_rejects_path_command(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            install = Path(directory)
+            (install / "zzzops").mkdir()
+            (install / "zzzops" / "zzzops.py").write_text("# runtime\n", encoding="utf-8")
+            for name in EXPECTED_SKILLS:
+                skill = install / "skills" / name
+                skill.mkdir(parents=True)
+                (skill / "SKILL.md").write_text("`zzzops workflow`\n", encoding="utf-8")
+            with self.assertRaisesRegex(self.harness.AcceptanceError, "package-owned public CLI"):
+                self.harness.validate_skill_launch_contract(install)
+
     def test_versionless_validation_allows_only_claudes_documented_sha_warning(self) -> None:
         warning = (
             "Found 1 warning\nplugins[0] plugin.json → " + self.harness.NO_VERSION_WARNING

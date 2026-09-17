@@ -5,7 +5,9 @@ description: ZzzOps v0.0.0-dev — development plugin. Capture/add/create/record
 
 # Add Goal
 
-First invoke `zzzops workflow --intent capture --source-skill '$add-zzzops-goal'` and obey its `next_steps`. Do not invoke a private ZzzOps command named elsewhere in this skill; those references describe the workflow handler behind this public command.
+Codex plugins do not put a `zzzops` binary on `PATH`. From this loaded skill's absolute `<skill><path>`, derive `ZZZOPS_CLI` by replacing `skills/add-zzzops-goal/SKILL.md` with `zzzops/zzzops.py`. Invoke it as `python3 "$ZZZOPS_CLI"`; do not search for, install, or invoke a global `zzzops` command.
+
+First invoke `python3 "$ZZZOPS_CLI" workflow --intent capture --source-skill '$add-zzzops-goal'` and obey its `next_steps`. Do not invoke a private ZzzOps command named elsewhere in this skill; those references describe the workflow handler behind this public command.
 
 Read `../../rules/COMMUNICATION.md`; run `../../rules/INITIALIZATION.md` and `../../rules/BACKENDS.md`. Hydrate likely duplicate/relationship matches. Isolated: `../../rules/DELEGATION.md`
 

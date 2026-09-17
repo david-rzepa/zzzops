@@ -5,7 +5,9 @@ description: ZzzOps v0.0.0-dev — development plugin. Review repository entropy
 
 # Review ZzzOps Entropy
 
-First invoke `zzzops workflow --intent execute --source-skill '$review-zzzops-entropy'` and obey its `next_steps`. Do not invoke a private ZzzOps command named elsewhere in this skill; those references describe the workflow handler behind this public command.
+Codex plugins do not put a `zzzops` binary on `PATH`. From this loaded skill's absolute `<skill><path>`, derive `ZZZOPS_CLI` by replacing `skills/review-zzzops-entropy/SKILL.md` with `zzzops/zzzops.py`. Invoke it as `python3 "$ZZZOPS_CLI"`; do not search for, install, or invoke a global `zzzops` command.
+
+First invoke `python3 "$ZZZOPS_CLI" workflow --intent execute --source-skill '$review-zzzops-entropy'` and obey its `next_steps`. Do not invoke a private ZzzOps command named elsewhere in this skill; those references describe the workflow handler behind this public command.
 
 Read `../../rules/COMMUNICATION.md` for user-facing messages. Run `../../rules/INITIALIZATION.md`, then `../../rules/BACKENDS.md`, and read `../../rules/DELEGATION.md` before inspecting the repository.
 

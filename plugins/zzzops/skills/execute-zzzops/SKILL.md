@@ -10,11 +10,13 @@ description: >-
 
 # Execute ZzzOps
 
-Call the public `zzzops workflow --intent execute` checkpoint first and after every completed step. Its `next_steps` are authoritative: execute only the returned step, with its exact model-plus-effort pair and assignment. Do not decide whether to delegate, select a model, skip a review, or call private ZzzOps handlers yourself.
+Codex plugins do not put a `zzzops` binary on `PATH`. From this loaded skill's absolute `<skill><path>`, derive `ZZZOPS_CLI` by replacing `skills/execute-zzzops/SKILL.md` with `zzzops/zzzops.py`. Invoke it as `python3 "$ZZZOPS_CLI"`; do not search for, install, or invoke a global `zzzops` command.
 
-First invoke `zzzops workflow --intent execute --source-skill '$execute-zzzops'` and obey its action-only `next_steps`. Do not invoke a private ZzzOps command.
+Call the public `python3 "$ZZZOPS_CLI" workflow --intent execute` checkpoint first and after every completed step. Its `next_steps` are authoritative: execute only the returned step, with its exact model-plus-effort pair and assignment. Do not decide whether to delegate, select a model, skip a review, or call private ZzzOps handlers yourself.
 
-For a `dry run`, `preview`, or `plan`, call `zzzops workflow --intent preview`; do not mutate project, Git, provider, or goal state. Human input is always returned as a root-directed blocker. Resolve it in the root agent, then call the checkpoint again.
+First invoke `python3 "$ZZZOPS_CLI" workflow --intent execute --source-skill '$execute-zzzops'` and obey its action-only `next_steps`. Do not invoke a private ZzzOps command.
+
+For a `dry run`, `preview`, or `plan`, call `python3 "$ZZZOPS_CLI" workflow --intent preview`; do not mutate project, Git, provider, or goal state. Human input is always returned as a root-directed blocker. Resolve it in the root agent, then call the checkpoint again.
 
 Each returned phase step names one prompt under [references/phases](references/phases). Read only that prompt. It describes the work; the checkpoint supplies the live evidence, command, and completion contract. Persist the returned immutable evidence before requesting another checkpoint.
 

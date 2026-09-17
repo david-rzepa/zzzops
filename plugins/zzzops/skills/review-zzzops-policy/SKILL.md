@@ -7,7 +7,9 @@ description: ZzzOps v0.0.0-dev — development plugin. Review, initialize, summa
 
 Read `../../rules/COMMUNICATION.md` for user-facing messages.
 
-First invoke `zzzops workflow --intent inspect --source-skill '$review-zzzops-policy'` and obey its `next_steps`. Do not invoke a private ZzzOps command named elsewhere in this skill; those references describe the workflow handler behind this public command.
+Codex plugins do not put a `zzzops` binary on `PATH`. From this loaded skill's absolute `<skill><path>`, derive `ZZZOPS_CLI` by replacing `skills/review-zzzops-policy/SKILL.md` with `zzzops/zzzops.py`. Invoke it as `python3 "$ZZZOPS_CLI"`; do not search for, install, or invoke a global `zzzops` command.
+
+First invoke `python3 "$ZZZOPS_CLI" workflow --intent inspect --source-skill '$review-zzzops-policy'` and obey its `next_steps`. Do not invoke a private ZzzOps command named elsewhere in this skill; those references describe the workflow handler behind this public command.
 
 Follow `../../rules/INITIALIZATION.md`; only this workflow changes or confirms policy.
 

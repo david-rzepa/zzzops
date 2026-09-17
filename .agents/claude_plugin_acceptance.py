@@ -139,6 +139,21 @@ def validate_install(records: Any, config: Path, version: str) -> Path:
     return install
 
 
+def validate_skill_launch_contract(install: Path) -> None:
+    """Require every cached skill to locate the package-owned public CLI."""
+    for name in EXPECTED_SKILLS:
+        skill = install / "skills" / name / "SKILL.md"
+        expected_cli = skill.parents[2] / "zzzops" / "zzzops.py"
+        text = skill.read_text(encoding="utf-8")
+        if (
+            not expected_cli.is_file()
+            or "Codex plugins do not put a `zzzops` binary on `PATH`" not in text
+            or 'python3 "$ZZZOPS_CLI" workflow' not in text
+            or "`zzzops workflow" in text
+        ):
+            raise AcceptanceError("cached skill does not invoke its package-owned public CLI")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate generated ZzzOps through an isolated Claude installation")
     parser.add_argument("--claude-version", required=True)
@@ -193,6 +208,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             if (install / ".acceptance-revision").read_text(encoding="utf-8").strip() != "first":
                 raise AcceptanceError("first installed cache does not contain the first Git revision")
+            validate_skill_launch_contract(install)
 
             second_revision = commit_marketplace(marketplace, "second")
             second_cache_version = second_revision[:12]
@@ -204,6 +220,7 @@ def main(argv: list[str] | None = None) -> int:
             if updated == install or (updated / ".acceptance-revision").read_text(encoding="utf-8").strip() != "second":
                 raise AcceptanceError("Claude did not install the second Git-backed plugin revision")
             install = updated
+            validate_skill_launch_contract(install)
             details = run(["claude", "plugin", "details", "zzzops@zzzops"], env=env)
             validate_details(details)
             cached_skills = {path.name for path in (install / "skills").iterdir() if path.is_dir()}
