@@ -1333,6 +1333,48 @@ def workflow_checkpoint(repo: Path, goal_number: int, intent: str, runtime: Any)
     return {"next_steps": result["next_steps"]}
 
 
+def workflow_submit(repo: Path, goal_number: int, intent: str, payload: Any) -> dict[str, Any]:
+    """Record one checkpoint-authorized phase result or review as a guarded goal transition."""
+    if not isinstance(payload, dict) or set(payload) - {"operation", "phase", "record", "artifact", "reviewer", "decision"}:
+        raise ValueError("workflow submission is invalid")
+    operation, phase = payload.get("operation"), payload.get("phase")
+    if operation not in {"record_result", "record_review"} or not isinstance(phase, str):
+        raise ValueError("workflow submission operation is invalid")
+    project = reviewed_project_state(repo)
+    repository = _project_repository_identity(project)
+    adapter = GitHubGoalTransitionAdapter(repo, repository)
+    issue = adapter.get_issue(goal_number)
+    goal = github_goal_record(issue)
+    graph, phase_nodes = _workflow_phase_configuration(project, goal)
+    if phase not in phase_nodes:
+        raise ValueError("workflow submission phase is not applicable to this goal")
+    live_inputs = workflow_live_inputs(repo, project, goal, intent, graph)
+    evidence = goal.get("phase_evidence") or empty_phase_evidence()
+    if operation == "record_result":
+        if set(payload) != {"operation", "phase", "record"}:
+            raise ValueError("workflow result submission is invalid")
+        updated_evidence = record_phase_result(evidence, phase, payload["record"], live_inputs[phase])
+    else:
+        if set(payload) != {"operation", "phase", "artifact", "reviewer", "decision"}:
+            raise ValueError("workflow review submission is invalid")
+        review = phase_nodes[phase].get("review", {})
+        updated_evidence = record_phase_review(
+            evidence, phase, payload["artifact"], payload["reviewer"], decision=payload["decision"],
+            require_independent=review.get("independent") is True,
+        )
+    desired = parse_managed_goal(issue["body"], goal_number)
+    if desired is None:  # pragma: no cover - github_goal_record already establishes this
+        raise ValueError("goal is not managed")
+    desired["phase_evidence"] = updated_evidence
+    desired["revision"] += 1
+    transition = {
+        "schema_version": GOAL_TRANSITION_SCHEMA_VERSION,
+        "expected_revision": goal["revision"], "expected_digest": goal["digest"], "goal": desired,
+    }
+    result = apply_goal_transition(adapter, repository, goal_number, transition)
+    return {"next_steps": [], "transition": result}
+
+
 def migrate_open_repository_goals(
     repo: Path, project: dict[str, Any], *, limit: int, include_feedback: bool = False,
 ) -> dict[str, Any]:
@@ -2241,6 +2283,7 @@ def main() -> int:
     workflow_parser.add_argument("--intent", choices=sorted(WORKFLOW_INTENTS), required=True)
     workflow_parser.add_argument("--source-skill", choices=sorted(WORKFLOW_SKILL_INTENTS), help="Named skill that initiated this public workflow call")
     workflow_parser.add_argument("--runtime", type=Path, help="Current root and available model-effort pairs as JSON")
+    workflow_parser.add_argument("--input", type=Path, help="UTF-8 result or review submission JSON")
     installation = commands.add_parser("installation", help="Check or record per-repository plugin validation")
     installation_commands = installation.add_subparsers(dest="installation_command", required=True)
     installation_commands.add_parser("status", help="Report whether this installed package needs repository validation")
@@ -2457,9 +2500,14 @@ def main() -> int:
                     }]}
                 elif args.intent not in {"execute", "preview"}:
                     raise ValueError("Goal phase checkpoints require execute or preview intent")
+                elif args.input:
+                    payload = json.loads(args.input.resolve().read_text(encoding="utf-8-sig"))
+                    result = workflow_submit(repo, args.goal, args.intent, payload)
                 else:
                     if args.runtime is None:
                         raise ValueError("Goal phase checkpoints require current runtime evidence")
+                    runtime = json.loads(args.runtime.resolve().read_text(encoding="utf-8-sig"))
+                    result = workflow_checkpoint(repo, args.goal, args.intent, runtime)
                     runtime = json.loads(args.runtime.resolve().read_text(encoding="utf-8-sig"))
                     result = workflow_checkpoint(repo, args.goal, args.intent, runtime)
                 print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))

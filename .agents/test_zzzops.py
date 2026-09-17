@@ -983,6 +983,23 @@ class DiagnosticsModuleTests(unittest.TestCase):
         self.assertEqual(expected, json.loads(stream.getvalue()))
         checkpoint.assert_called_once_with(self.repo.resolve(), 42, "execute", json.loads(runtime.read_text(encoding="utf-8")))
 
+    def test_workflow_cli_submits_phase_evidence_through_the_same_command(self):
+        runtime, payload_path = self.repo / "runtime.json", self.repo / "result.json"
+        runtime.write_text(json.dumps({"root_pair": {"model": "root", "effort": "medium"}, "available_pairs": [{"model": "root", "effort": "medium"}]}), encoding="utf-8")
+        payload = {"operation": "record_review", "phase": "plan", "artifact": {"reference": "urn:sha256:" + "1" * 64, "hash": "sha256:" + "2" * 64}, "reviewer": "reviewer", "decision": "approved"}
+        payload_path.write_text(json.dumps(payload), encoding="utf-8")
+        expected = {"next_steps": [], "transition": {"number": 42}}
+        with (
+            mock.patch.object(zzzops, "configure_cli_stdout"),
+            mock.patch.object(zzzops._package, "package_status", return_value={"ok": True}),
+            mock.patch.object(zzzops, "workflow_submit", return_value=expected) as submit,
+            mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--goal", "42", "--intent", "execute", "--runtime", str(runtime), "--input", str(payload_path)]),
+            mock.patch.object(sys, "stdout", io.StringIO()) as stream,
+        ):
+            self.assertEqual(0, zzzops.main())
+        self.assertEqual(expected, json.loads(stream.getvalue()))
+        submit.assert_called_once_with(self.repo.resolve(), 42, "execute", payload)
+
     def test_profile_flag_preserves_checkpoint_output_and_records_only_when_enabled(self):
         checkpoint = {"ready": True, "schema_version": 1, "value": "unchanged"}
         with (
@@ -2888,6 +2905,26 @@ class GoalTransitionTests(unittest.TestCase):
         record = zzzops.github_goal_record({**self.issue(), "body": body})
         self.assertEqual(["Creates the requested result.", "Preserves existing behaviour."], record["acceptance_criteria"])
         self.assertEqual(goal["phase_evidence"], record["phase_evidence"])
+
+    def test_workflow_submission_records_evidence_with_a_guarded_goal_transition(self):
+        adapter = FakeGoalTransitionAdapter(self.issue())
+        evidence_test = PhaseEvidenceTests()
+        envelope = evidence_test.envelope("plan")
+        record = evidence_test.record("plan", envelope)
+        project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}}
+        graph = {"phases": [{"id": "plan"}]}
+        nodes = {"plan": {"review": {"independent": True}}}
+        with (
+            mock.patch.object(zzzops, "reviewed_project_state", return_value=project),
+            mock.patch.object(zzzops, "GitHubGoalTransitionAdapter", return_value=adapter),
+            mock.patch.object(zzzops, "_workflow_phase_configuration", return_value=(graph, nodes)),
+            mock.patch.object(zzzops, "workflow_live_inputs", return_value={"plan": envelope}),
+        ):
+            result = zzzops.workflow_submit(Path("."), 42, "execute", {"operation": "record_result", "phase": "plan", "record": record})
+        self.assertEqual([], result["next_steps"])
+        persisted = zzzops.parse_managed_goal(adapter.issue["body"], 42)
+        self.assertIn("plan", persisted["phase_evidence"]["records"])
+        self.assertEqual(2, persisted["revision"])
 
     def test_transition_replaces_stale_schema_labels_with_current_schema(self):
         issue = self.issue()
