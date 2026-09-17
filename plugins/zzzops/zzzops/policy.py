@@ -718,7 +718,7 @@ def reviewed_model_effort(settings: Any, tier: Any, available_pairs: Any) -> dic
 
 
 def reviewed_phase_assignment(
-    settings: Any, dimensions: Any, available_pairs: Any, root_pair: Any,
+    settings: Any, dimensions: Any, available_pairs: Any, root_pair: Any, *, requires_human: bool = False,
 ) -> dict[str, Any]:
     """Derive a non-discretionary phase assignment from reviewed routing policy.
 
@@ -727,6 +727,8 @@ def reviewed_phase_assignment(
     workflow CLI will place in its actionable next-step response.
     """
     tier_decision = capability_tier(settings, dimensions)
+    if not isinstance(requires_human, bool):
+        raise ValueError("Human-interaction requirement must be a boolean")
     if not isinstance(root_pair, dict) or set(root_pair) != {"model", "effort"} or not all(
         _policy_identifier(root_pair.get(field)) for field in ("model", "effort")
     ):
@@ -745,11 +747,17 @@ def reviewed_phase_assignment(
         }
     ranks = {item["id"]: item["rank"] for item in settings["tiers"]}
     requested_rank, root_rank = ranks[tier_decision["tier"]], ranks[root_entry["tier"]]
-    if requested_rank == root_rank:
+    if requires_human:
+        if requested_rank > root_rank:
+            return {
+                "status": "blocked", "tier": tier_decision["tier"], "rule_index": tier_decision["rule_index"],
+                "reason": "human_interaction_exceeds_root_capability",
+                "next_step": {"action": "resolve_blocker", "instruction": "Human interaction must stay on the root agent, whose reviewed capability is insufficient for this phase."},
+            }
         return {
             "status": "ready", "tier": tier_decision["tier"], "rule_index": tier_decision["rule_index"],
-            "mode": "direct_root", "selected": dict(root_pair),
-            "next_step": {"action": "continue_root", "instruction": "Perform this phase on the root agent."},
+            "mode": "direct_root", "selected": None,
+            "next_step": {"action": "continue_root", "instruction": "Perform this human-interaction phase on the root agent."},
         }
     if requested_rank > root_rank:
         return {
@@ -760,13 +768,13 @@ def reviewed_phase_assignment(
     candidates = [
         item for item in reviewed
         if (item["model"], item["effort"]) in available
-        and ranks[item["tier"]] >= requested_rank and ranks[item["tier"]] < root_rank
+        and requested_rank <= ranks[item["tier"]] <= root_rank
     ]
     if not candidates:
         return {
             "status": "blocked", "tier": tier_decision["tier"], "rule_index": tier_decision["rule_index"],
             "reason": "reviewed_worker_model_effort_unavailable",
-            "next_step": {"action": "resolve_blocker", "instruction": "Make a reviewed below-root model-plus-effort pair available, then retry routing."},
+            "next_step": {"action": "resolve_blocker", "instruction": "Make a reviewed model-plus-effort pair at or below root capability available, then retry routing."},
         }
     selected = min(candidates, key=lambda item: (item["cost"], item["model"], item["effort"]))
     assignment = {"model": selected["model"], "effort": selected["effort"]}

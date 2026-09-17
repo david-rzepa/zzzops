@@ -4645,13 +4645,23 @@ class WorkflowContractTests(unittest.TestCase):
             [{"model": "economy", "effort": "low"}, root_pair], root_pair,
         )
         self.assertEqual("delegated", delegated["mode"])
-        self.assertEqual({"model": "economy", "effort": "low"}, delegated["selected"])
+        self.assertEqual(root_pair, delegated["selected"])
         self.assertEqual("delegate", delegated["next_step"]["action"])
-        direct = zzzops.reviewed_phase_assignment(
+        root_equivalent = zzzops.reviewed_phase_assignment(
             custom_settings, {"consequence": "consequential", "boundedness": "bounded"},
             [{"model": "economy", "effort": "low"}, root_pair], root_pair,
         )
+        self.assertEqual("delegated", root_equivalent["mode"])
+        self.assertEqual(root_pair, root_equivalent["selected"])
+        self.assertEqual("delegate", root_equivalent["next_step"]["action"])
+        direct = zzzops.reviewed_phase_assignment(
+            custom_settings, {"consequence": "consequential", "boundedness": "bounded"},
+            [{"model": "economy", "effort": "low"}, root_pair], root_pair,
+            requires_human=True,
+        )
         self.assertEqual("direct_root", direct["mode"])
+        self.assertIsNone(direct["selected"])
+        self.assertEqual("continue_root", direct["next_step"]["action"])
         blocked = zzzops.reviewed_phase_assignment(
             custom_settings, {"consequence": "architectural", "boundedness": "unbounded"},
             [{"model": "economy", "effort": "low"}, root_pair], root_pair,
