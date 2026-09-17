@@ -183,6 +183,29 @@ BLOCKER_CATEGORIES = {
     "specification", "decision", "access-approval", "human-action",
     "external-dependency", "technical-unknown", "safety-compliance",
 }
+WORKFLOW_INTENTS = {"capture", "execute", "approve", "resume", "inspect"}
+WORKFLOW_SKILLS = {
+    "capture": "$add-zzzops-goal", "execute": "$execute-zzzops", "approve": "$execute-zzzops",
+    "resume": "$execute-zzzops", "inspect": "$review-zzzops-policy",
+}
+
+
+def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
+    """Validate the action-only public workflow response."""
+    if intent not in WORKFLOW_INTENTS or not isinstance(steps, list):
+        raise ValueError("workflow response is invalid")
+    seen, normalized = set(), []
+    for step in steps:
+        fields = {"id", "skill", "intent", "audience", "phase", "action", "reason"}
+        if not isinstance(step, dict) or set(step) != fields or step.get("id") in seen:
+            raise ValueError("workflow next step is invalid")
+        if step.get("intent") not in WORKFLOW_INTENTS or step.get("skill") != WORKFLOW_SKILLS[step["intent"]] or step.get("audience") not in {"root", "worker"}:
+            raise ValueError("workflow next step is invalid")
+        if any(not isinstance(step.get(field), str) or not step[field] for field in fields):
+            raise ValueError("workflow next step is invalid")
+        seen.add(step["id"])
+        normalized.append(dict(step))
+    return {"schema_version": 1, "next_steps": normalized}
 GOAL_STATUSES = {"new", "triaged", "ready", "in_progress", "blocked", "done", "cancelled"}
 GOAL_PRIORITIES = {"P0", "P1", "P2", "P3"}
 GOAL_VALUES = {"critical", "high", "medium", "low"}
@@ -1883,6 +1906,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="ZzzOps project control CLI")
     parser.add_argument("--repo", type=Path, default=Path.cwd(), help="Project root (default: current directory)")
     commands = parser.add_subparsers(dest="command")
+    workflow = commands.add_parser("workflow", help="Return the next actionable ZzzOps workflow steps")
+    workflow.add_argument("--intent", choices=sorted(WORKFLOW_INTENTS), required=True)
     init = commands.add_parser("init", help="Inspect, validate, or apply agent-driven project initialization")
     init_commands = init.add_subparsers(dest="init_command", required=True)
     init_commands.add_parser("inspect", help="Report initialization state and read-only capabilities as JSON")
@@ -2022,6 +2047,18 @@ def main() -> int:
         print(str(package.get("detail") or "The ZzzOps Agent Plugin package is invalid."))
         return 2
     try:
+        if args.command == "workflow":
+            try:
+                reviewed_project_state(repo)
+                steps = [{"id": f"{args.intent}-dispatch", "skill": WORKFLOW_SKILLS[args.intent], "intent": args.intent,
+                          "audience": "root", "phase": "context", "action": f"Continue the {args.intent} workflow from current evidence.",
+                          "reason": "Project policy and canonical state are available."}]
+            except ValueError:
+                steps = [{"id": "policy-review", "skill": "$review-zzzops-policy", "intent": "inspect",
+                          "audience": "root", "phase": "context", "action": "Inspect policy state and prepare the required review input.",
+                          "reason": "Project policy is missing, stale, or invalid."}]
+            print(json.dumps(workflow_envelope(args.intent, steps), ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+            return 0
         if args.command == "installation":
             provenance = {"version": package["version"], "revision": package["revision"]}
             if args.installation_command == "status":
