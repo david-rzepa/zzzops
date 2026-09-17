@@ -5301,6 +5301,20 @@ class WorkflowContractTests(unittest.TestCase):
         missing = zzzops.workflow_step_plan(goal, {"phases": [{"id": "understand"}]}, {"understand": input_envelope}, phase_nodes, settings, None)
         self.assertEqual("capability_discovery", missing["next_steps"][0]["kind"])
 
+    def test_workflow_step_plan_delegates_a_non_human_root_equivalent_worker(self):
+        plan = json.loads((PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        settings = json.loads(json.dumps(next(item for item in plan["policy"]["sections"] if item["id"] == "model_routing")["settings"]))
+        settings["model_inventory"]["reviewed_pairs"] = [{"model": "root-model", "effort": "medium", "tier": "bounded", "cost": 1}]
+        evidence_test = PhaseEvidenceTests()
+        input_envelope = evidence_test.envelope("plan")
+        result = zzzops.workflow_step_plan(
+            {"status": "ready", "difficulty": "S", "engineering_rigor": {"risk_categories": [], "effective": "structured"}},
+            {"phases": [{"id": "plan"}]}, {"plan": input_envelope}, {"plan": {"assignment_group": "planning"}}, settings,
+            {"root_pair": {"model": "root-model", "effort": "medium"}, "available_pairs": [{"model": "root-model", "effort": "medium"}]},
+        )
+        self.assertEqual("delegate", result["next_steps"][0]["assignment"])
+        self.assertEqual({"model": "root-model", "effort": "medium"}, result["next_steps"][0]["selection"])
+
     def test_workflow_step_plan_routes_required_human_approval_to_root(self):
         plan = json.loads((PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         settings = json.loads(json.dumps(next(item for item in plan["policy"]["sections"] if item["id"] == "model_routing")["settings"]))
