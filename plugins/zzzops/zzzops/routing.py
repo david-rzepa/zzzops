@@ -11,7 +11,10 @@ import json
 from typing import Any
 
 
-PHASES = ("discovery", "architecture", "implementation", "verification")
+# These identifiers are the durable workflow phase types, rather than loose
+# categories inferred by an agent.  A checkpoint must supply one before route
+# selection can occur.
+PHASES = ("understand", "decompose", "plan", "test_design", "implement", "publish")
 REQUIRED_FIELDS = {"model", "effort", "capability", "cost"}
 DELEGATION_TERMS = ("delegat", "subagent", "sub-agent", "worker", "agent")
 

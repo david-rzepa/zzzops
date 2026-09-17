@@ -4895,21 +4895,21 @@ class WorkflowContractTests(unittest.TestCase):
             {"model": "stronger", "effort": "high", "capability": 4, "cost": 4},
         ]
         root = {"model": "root", "effort": "high", "capability": 3, "cost": 3}
-        economical = zzzops.route_phase(phase="discovery", required_capability=1, inventory=inventory, root_pair=root)
+        economical = zzzops.route_phase(phase="test_design", required_capability=1, inventory=inventory, root_pair=root)
         self.assertEqual({"model": "economy", "effort": "low"}, economical["selected"])
-        intermediate = zzzops.route_phase(phase="implementation", required_capability=2, inventory=inventory, root_pair=root)
+        intermediate = zzzops.route_phase(phase="implement", required_capability=2, inventory=inventory, root_pair=root)
         self.assertEqual({"model": "intermediate", "effort": "medium"}, intermediate["selected"])
-        root_equivalent = zzzops.route_phase(phase="architecture", required_capability=3, inventory=inventory, root_pair=root)
+        root_equivalent = zzzops.route_phase(phase="plan", required_capability=3, inventory=inventory, root_pair=root)
         self.assertEqual("delegated", root_equivalent["mode"])
         self.assertEqual({"model": "root", "effort": "high"}, root_equivalent["selected"])
         direct = zzzops.route_phase(
-            phase="architecture", required_capability=3, inventory=inventory,
+            phase="plan", required_capability=3, inventory=inventory,
             root_pair=root, requires_human=True,
         )
         self.assertEqual("direct_root", direct["mode"])
         with self.assertRaisesRegex(ValueError, "above-root"):
-            zzzops.route_phase(phase="architecture", required_capability=4, inventory=inventory, root_pair=root)
-        elevated = zzzops.route_phase(phase="architecture", required_capability=4, inventory=inventory, root_pair=root, session_override=True)
+            zzzops.route_phase(phase="plan", required_capability=4, inventory=inventory, root_pair=root)
+        elevated = zzzops.route_phase(phase="plan", required_capability=4, inventory=inventory, root_pair=root, session_override=True)
         self.assertEqual("delegated_override", elevated["mode"])
         self.assertEqual({"model": "stronger", "effort": "high"}, elevated["selected"])
 
