@@ -114,6 +114,71 @@ def route_phase(
     }
 
 
+def prepare_phase_assignment(
+    *,
+    phase: str,
+    required_capability: int,
+    inventory: Any,
+    root_pair: dict[str, Any],
+    tool_catalog: Any,
+    session_override: bool = False,
+) -> dict[str, Any]:
+    """Return an executable assignment or explicit harness blocker.
+
+    Routing is deliberately separate from launching.  A coordinator must first
+    inspect the complete tool catalog, then may ask the existing harness to
+    launch the returned worker assignment.  This prevents an unavailable
+    delegation tool from silently changing eligible work into root work.
+    """
+    plan = route_phase(
+        phase=phase,
+        required_capability=required_capability,
+        inventory=inventory,
+        root_pair=root_pair,
+        session_override=session_override,
+    )
+    if plan["mode"] == "direct_root":
+        return {
+            "status": "ready",
+            "assignment": plan,
+            "delegation": None,
+            "next_step": {
+                "action": "continue_root",
+                "instruction": f"Perform the {phase} phase on the root agent.",
+            },
+        }
+
+    delegation = discover_delegation_capability(tool_catalog)
+    if delegation["state"] != "available":
+        return {
+            "status": "blocked",
+            "assignment": plan,
+            "delegation": delegation,
+            "blocker": {
+                "category": "technical-unknown",
+                "reason": "delegation_harness_unavailable",
+                "next_action": "Run this phase in a harness that exposes delegation, then retry this assignment.",
+            },
+            "next_step": {
+                "action": "resolve_blocker",
+                "instruction": "Delegation is required for this phase, but this harness cannot delegate. Resolve the harness blocker, then retry.",
+            },
+        }
+    selected = plan["selected"]
+    return {
+        "status": "ready",
+        "assignment": plan,
+        "delegation": delegation,
+        "next_step": {
+            "action": "delegate",
+            "instruction": (
+                f"Delegate the {phase} phase using model {selected['model']} "
+                f"with effort {selected['effort']}."
+            ),
+        },
+    }
+
+
 def validate_launch_plan(
     plan: Any, *, root_pair: dict[str, Any], session_override: bool = False, max_workers: int = 3,
 ) -> dict[str, Any]:
