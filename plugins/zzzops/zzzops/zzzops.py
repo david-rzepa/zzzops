@@ -192,7 +192,6 @@ WORKFLOW_DEFAULT_SKILLS = {
 WORKFLOW_SKILL_INTENTS = {
     "$add-zzzops-goal": {"capture"}, "$execute-zzzops": {"execute", "preview", "approve", "resume"},
     "$bootstrap-zzzops-repository": {"inspect"}, "$migrate-to-zzzops": {"inspect"},
-    "$review-agentic-engineering": {"inspect"}, "$review-zzzops-entropy": {"execute"},
     "$review-zzzops-policy": {"inspect"}, "$send-zzzops-feedback": {"execute"},
     "$suggest-zzzops-work": {"inspect"}, "$validate-zzzops-installation": {"inspect"},
 }
@@ -201,8 +200,6 @@ WORKFLOW_SOURCE_ACTIONS = {
     "$execute-zzzops": "Evaluate the goal workflow frontier and perform its required next step.",
     "$bootstrap-zzzops-repository": "Inspect repository and product evidence for the bootstrap workflow.",
     "$migrate-to-zzzops": "Inspect candidate legacy work and its adoption evidence.",
-    "$review-agentic-engineering": "Inspect completed-work evidence for the requested agentic-engineering review.",
-    "$review-zzzops-entropy": "Inspect the requested entropy-review evidence and coverage state.",
     "$review-zzzops-policy": "Inspect policy state and prepare the required review input.",
     "$send-zzzops-feedback": "Inspect the requested feedback evidence and exact submission preconditions.",
     "$suggest-zzzops-work": "Inspect bounded repository evidence for possible work suggestions.",
@@ -246,8 +243,6 @@ WORKFLOW_INSTRUCTION_PATHS = {
     "$bootstrap-zzzops-repository": "zzzops/references/next_steps/bootstrap.md",
     "$execute-zzzops": "zzzops/references/next_steps/execute.md",
     "$migrate-to-zzzops": "zzzops/references/next_steps/migrate.md",
-    "$review-agentic-engineering": "zzzops/references/next_steps/review-agentic-engineering.md",
-    "$review-zzzops-entropy": "zzzops/references/next_steps/review-entropy.md",
     "$review-zzzops-policy": "zzzops/references/next_steps/policy-review.md",
     "$send-zzzops-feedback": "zzzops/references/next_steps/send-feedback.md",
     "$suggest-zzzops-work": "zzzops/references/next_steps/suggest-work.md",
@@ -488,7 +483,7 @@ GOAL_SCHEMA_LABEL = re.compile(r"^zzzops:schema:v(?P<version>[1-9][0-9]*)$")
 GOAL_HYDRATION_BATCH_SIZE = 100
 MANAGED_SKILLS = (
     "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
-    "review-agentic-engineering", "review-zzzops-entropy", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
+    "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
     "validate-zzzops-installation",
 )
 GITHUB_MANAGEMENT_PERMISSIONS = {"TRIAGE", "WRITE", "MAINTAIN", "ADMIN"}

@@ -13,8 +13,6 @@ SKILL_UI = {
     "bootstrap-zzzops-repository": ("Bootstrap Repository", "Create or strengthen an agent-ready repository"),
     "execute-zzzops": ("Execute", "Run the primary autonomous ZzzOps goal loop"),
     "migrate-to-zzzops": ("Migrate TODOs", "Discover and migrate repository TODOs safely"),
-    "review-agentic-engineering": ("Review Agentic Engineering", "Improve how you work with software agents"),
-    "review-zzzops-entropy": ("Review Entropy", "Review recent or full repository entropy"),
     "review-zzzops-policy": ("Review Policy", "Initialize or review project operating policy"),
     "send-zzzops-feedback": ("Send Feedback", "Preview and send privacy-safe ZzzOps feedback"),
     "suggest-zzzops-work": ("Suggest Work", "Audit project gaps and suggest durable work"),
@@ -101,7 +99,6 @@ class AgentPluginTests(unittest.TestCase):
         actual = {path.name for path in (PLUGIN / "skills").iterdir() if (path / "SKILL.md").is_file()}
         self.assertEqual(SHIPPED_SKILLS, actual)
         self.assertEqual(SHIPPED_SKILLS, package["SHIPPED_SKILLS"])
-        self.assertIn("review-zzzops-entropy", actual)
         self.assertFalse((PLUGIN / "skills" / "run-zzzops-acceptance").exists())
 
     def test_all_product_skills_load_shared_communication_contract(self) -> None:
@@ -134,10 +131,6 @@ class AgentPluginTests(unittest.TestCase):
         self.assertTrue(status["ok"], status["detail"])
         self.assertTrue((PLUGIN / "concepts" / "bounded-commitment.md").is_file())
         self.assertTrue((PLUGIN / "zzzops" / "concepts.py").is_file())
-
-    def test_agentic_coaching_requires_explicit_invocation(self) -> None:
-        metadata = (PLUGIN / "skills" / "review-agentic-engineering" / "agents" / "openai.yaml").read_text(encoding="utf-8")
-        self.assertIn("allow_implicit_invocation: false", metadata)
 
     def test_legacy_installer_surfaces_are_absent(self) -> None:
         for relative in (

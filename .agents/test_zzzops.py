@@ -398,8 +398,6 @@ class EntropyModuleTests(unittest.TestCase):
         self.assertIs(zzzops.plan_entropy_review, zzzops._entropy_review.plan_entropy_review)
         self.assertIs(zzzops.complete_entropy_review, zzzops._entropy_review.complete_entropy_review)
         self.assertIn("zzzops/entropy_review.py", zzzops._package.REQUIRED_FILES)
-        self.assertIn("skills/review-zzzops-entropy/references/RECENT.md", zzzops._package.REQUIRED_FILES)
-        self.assertIn("skills/review-zzzops-entropy/references/FULL.md", zzzops._package.REQUIRED_FILES)
 
     def observe(self, goal=1, evidence="AGENTS.md repeats a rule already enforced by CI.", category="documentation"):
         return zzzops.record_entropy_observation(
@@ -4576,7 +4574,6 @@ class WorkflowContractTests(unittest.TestCase):
         expected = {
             "add-zzzops-goal": "capture", "bootstrap-zzzops-repository": "inspect",
             "execute-zzzops": "execute", "migrate-to-zzzops": "inspect",
-            "review-agentic-engineering": "inspect", "review-zzzops-entropy": "execute",
             "review-zzzops-policy": "inspect", "send-zzzops-feedback": "execute",
             "suggest-zzzops-work": "inspect", "validate-zzzops-installation": "inspect",
         }
@@ -4661,9 +4658,9 @@ class WorkflowContractTests(unittest.TestCase):
     def test_workflow_repair_preserves_compatible_source_and_is_action_only(self):
         repair = zzzops.workflow_repair_step(
             "execute", "Package validation failed.", "Repair the package and retry.",
-            source_skill="$review-zzzops-entropy",
+            source_skill="$execute-zzzops",
         )
-        self.assertEqual("$review-zzzops-entropy", repair["skill"])
+        self.assertEqual("$execute-zzzops", repair["skill"])
         self.assertEqual("resolve_blocker", repair["directive"])
         self.assertEqual({"schema_version": 1, "next_steps": [repair]}, zzzops.workflow_envelope("execute", [repair]))
         fallback = zzzops.workflow_repair_step(
@@ -5644,8 +5641,6 @@ class WorkflowContractTests(unittest.TestCase):
             "bootstrap-zzzops-repository": ("bootstrap", "empty", "established", "product specification", "agent-ready", "execute", "safe pr-gated work"),
             "execute-zzzops": ("execute", "work all goals", "continue", "resume", "triage", "prioritize", "reprioritize", "unblock", '"dry run"', '"preview"', '"plan"', "default executes"),
             "migrate-to-zzzops": ("discover", "plan", "migrate", "import", "todos/backlogs", '"dry run"', '"preview"', '"apply"', "default builds review artifacts"),
-            "review-agentic-engineering": ("review", "completed", "explicit request", "one or two", "overall agentic-engineering", "read-only", "not a scorecard"),
-            "review-zzzops-entropy": ("review", "entropy", "exact pending recent", "full audit", "preview-only", "completion", "suggestion", "goal authority"),
             "review-zzzops-policy": ("review", "initialize", "summarize", "reconcile", "adjust", "policy", "preferred first workflow", "always re-summarizes"),
             "send-zzzops-feedback": ("preview", "send", "feedback", "execution reports", "exact-payload confirmation"),
             "suggest-zzzops-work": ("suggest", "discover", "audit", '"dry run"', '"preview"', '"plan"', '"apply"', '"refill"'),
@@ -5672,16 +5667,16 @@ class WorkflowContractTests(unittest.TestCase):
         root = PLUGIN_ROOT
         names = (
             "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
-            "review-agentic-engineering", "review-zzzops-entropy", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
+            "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
             "validate-zzzops-installation",
         )
         self.assertEqual(names, zzzops.MANAGED_SKILLS)
         thin_skills = {"add-zzzops-goal", "migrate-to-zzzops", "send-zzzops-feedback", "validate-zzzops-installation"}
         for name in names:
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
-            if name not in thin_skills and name != "review-agentic-engineering":
+            if name not in thin_skills:
                 self.assertIn("INITIALIZATION.md", text, name)
-            if name not in thin_skills | {"review-agentic-engineering", "review-zzzops-policy"}:
+            if name not in thin_skills | {"review-zzzops-policy"}:
                 self.assertIn("BACKENDS.md", text, name)
 
         initialization = (root / "rules" / "INITIALIZATION.md").read_text(encoding="utf-8")
@@ -5880,24 +5875,12 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn(phrase, privacy)
 
     def test_entropy_review_skill_routes_exact_preview_full_and_authorized_handoff(self):
-        skill_root = PLUGIN_ROOT / "skills" / "review-zzzops-entropy"
-        skill = (skill_root / "SKILL.md").read_text(encoding="utf-8")
-        recent = (skill_root / "references" / "RECENT.md").read_text(encoding="utf-8")
-        full = (skill_root / "references" / "FULL.md").read_text(encoding="utf-8")
-        suggest = (PLUGIN_ROOT / "skills" / "suggest-zzzops-work" / "SKILL.md").read_text(encoding="utf-8")
+        skill = (PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "phases" / "implement-review.md").read_text(encoding="utf-8")
         for phrase in (
-            "`preview` is the default", "entropy review status", "do not call `entropy review plan`",
-            "Validate every returned record", "Never call the repository clean", "$add-zzzops-goal",
-            "Do not invoke `$suggest-zzzops-work` as a second broad audit", "current_events",
-            "stop and report if initialization would require", "Preview never calls `report record`",
-            "only when `$execute-zzzops` explicitly invokes this skill after true exhaustion",
+            "Perform entropy review", "duplicated logic", "unnecessary complexity",
+            "Rank findings", "Do not call the repository clean", "durable follow-up goal",
         ):
             self.assertIn(phrase, skill)
-        self.assertIn("exact pending recent", skill)
-        self.assertIn("never call `plan`", recent)
-        self.assertIn("regardless of prior review coverage", full)
-        self.assertIn("Preview performs the audit without calling `entropy review plan`", full)
-        self.assertIn("Route explicit recent or repository-wide entropy reviews to `$review-zzzops-entropy`", suggest)
 
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)
@@ -5935,7 +5918,7 @@ class WorkflowContractTests(unittest.TestCase):
 
         operations = {row["operation"] for row in rows.values()}
         self.assertEqual({
-            "entropy_mark_exact", "entropy_status_recent", "entropy_review_automatic_recent_once",
+            "entropy_mark_exact", "entropy_status_recent", "phase_review_entropy_once",
             "refill_gate_once", "final_review_handoff",
         }, operations)
         self.assertTrue(all(row["failure"] == "actionable_stop" for row in rows.values()))
@@ -5986,28 +5969,14 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("false", meta["same_exact_state_may_review_again"])
         self.assertEqual("true", meta["mark_before_next_exhaustion"])
         self.assertEqual(
-            "entropy_status_recent<entropy_review_automatic_recent_once<"
+            "entropy_status_recent<phase_review_entropy_once<"
             "refill_gate_once<final_review_handoff",
             meta["order"],
         )
         self.assertEqual(zzzops._entropy_review.SUCCESS_OUTCOMES, set(routes("review")))
 
-        recent = (
-            PLUGIN_ROOT / "skills" / "review-zzzops-entropy" / "references" / "RECENT.md"
-        ).read_text(encoding="utf-8")
-        self.assertIn("only explicitly nonqualifying administration", recent)
-        self.assertIn("linked status and exact PR/base/head/merge evidence are unchanged", recent)
-        self.assertIn("ambiguous history", recent)
-
-        review_skill = (
-            PLUGIN_ROOT / "skills" / "review-zzzops-entropy" / "SKILL.md"
-        ).read_text(encoding="utf-8")
-        receipt_step = review_skill.index("6. Complete only after")
-        automatic_apply_step = review_skill.index(
-            "Automatic recent returns its fixed reviewed findings only after step 6"
-        )
-        self.assertLess(receipt_step, automatic_apply_step)
-        self.assertIn("If post-receipt capture fails", review_skill)
+        review_skill = (PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "phases" / "implement-review.md").read_text(encoding="utf-8")
+        self.assertIn("durable follow-up goal", review_skill)
         self.assertLess(
             reference.index("Only after the exact completion receipt succeeds"),
             reference.index("Post-receipt review capture consumes"),

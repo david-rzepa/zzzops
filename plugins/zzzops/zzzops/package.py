@@ -27,7 +27,7 @@ PLUGIN_FIELDS = {
 }
 SHIPPED_SKILLS = {
     "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
-    "review-agentic-engineering", "review-zzzops-entropy", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
+    "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
     "validate-zzzops-installation",
 }
 REQUIRED_FILES = {
@@ -42,8 +42,6 @@ REQUIRED_FILES = {
     "zzzops/coaching.py", "zzzops/concepts.py",
     "skills/execute-zzzops/references/ENTROPY_OBSERVATIONS.md",
     "skills/execute-zzzops/references/REVIEW_QUEUE.md",
-    "skills/review-zzzops-entropy/references/FULL.md",
-    "skills/review-zzzops-entropy/references/RECENT.md",
     "skills/suggest-zzzops-work/references/VERIFICATION_EFFICIENCY.md",
     "scripts/cleanup_legacy.py",
     "zzzops/references/bootstrap/ANALYZE.md",
@@ -59,8 +57,6 @@ REQUIRED_FILES = {
     "zzzops/references/next_steps/add-goal.md",
     "zzzops/references/next_steps/execute.md",
     "zzzops/references/next_steps/migrate.md",
-    "zzzops/references/next_steps/review-agentic-engineering.md",
-    "zzzops/references/next_steps/review-entropy.md",
     "zzzops/references/next_steps/send-feedback.md",
     "zzzops/references/next_steps/suggest-work.md",
 }

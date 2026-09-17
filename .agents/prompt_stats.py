@@ -18,13 +18,10 @@ DELEGATION_PROMPT = "plugins/zzzops/rules/DELEGATION.md"
 PROACTIVE_DELEGATION_SIGNAL = "Do not decide whether to delegate from this rule"
 PROACTIVE_DELEGATION_WORKFLOWS = {
     "bootstrap-greenfield", "bootstrap-brownfield", "capture", "execution",
-    "entropy-review", "suggestion", "installation-validation",
+    "suggestion", "installation-validation",
 }
 COLD_ONLY_PROMPTS = {
     "plugins/zzzops/skills/review-zzzops-policy/SKILL.md",
-    "plugins/zzzops/skills/review-zzzops-entropy/SKILL.md",
-    "plugins/zzzops/skills/review-zzzops-entropy/references/RECENT.md",
-    "plugins/zzzops/skills/review-zzzops-entropy/references/FULL.md",
 }
 
 # These limits protect context paid on every Codex turn and the two frequent ZzzOps paths. At the
@@ -39,11 +36,6 @@ ENFORCED_PROMPT_BUDGETS = {
 }
 
 WORKFLOW_PROMPTS = {
-    "agentic-coaching": (
-        "plugins/zzzops/skills/review-agentic-engineering/SKILL.md",
-        "plugins/zzzops/skills/review-agentic-engineering/references/ATTRIBUTION.md",
-        COMMUNICATION_PROMPT, "plugins/zzzops/rules/FEEDBACK.md",
-    ),
     "bootstrap-greenfield": (
         "plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md",
         "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
@@ -62,6 +54,7 @@ WORKFLOW_PROMPTS = {
     ),
     "capture": (
         "plugins/zzzops/skills/add-zzzops-goal/SKILL.md",
+        "plugins/zzzops/zzzops/references/next_steps/add-goal.md",
         COMMUNICATION_PROMPT, DELEGATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
         "plugins/zzzops/rules/CONTINUATION.md", "plugins/zzzops/rules/FEEDBACK.md",
     ),
@@ -74,19 +67,13 @@ WORKFLOW_PROMPTS = {
         "plugins/zzzops/rules/GOAL_SYSTEM.md", "plugins/zzzops/rules/CONTINUATION.md",
         "plugins/zzzops/rules/EXECUTION_STRATEGY.md", DELEGATION_PROMPT, "plugins/zzzops/rules/FEEDBACK.md",
     ),
-    "entropy-review": (
-        "plugins/zzzops/skills/review-zzzops-entropy/SKILL.md",
-        "plugins/zzzops/skills/review-zzzops-entropy/references/RECENT.md",
-        "plugins/zzzops/skills/review-zzzops-entropy/references/FULL.md",
-        COMMUNICATION_PROMPT, DELEGATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
-        "plugins/zzzops/rules/FEEDBACK.md",
-    ),
     "policy-review": (
         "plugins/zzzops/skills/review-zzzops-policy/SKILL.md",
         COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "migration": (
         "plugins/zzzops/skills/migrate-to-zzzops/SKILL.md",
+        "plugins/zzzops/zzzops/references/next_steps/migrate.md",
         COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
         "plugins/zzzops/rules/FEEDBACK.md",
     ),
@@ -97,6 +84,7 @@ WORKFLOW_PROMPTS = {
     ),
     "installation-validation": (
         "plugins/zzzops/skills/validate-zzzops-installation/SKILL.md",
+        "plugins/zzzops/zzzops/references/next_steps/installation-validation.md",
         COMMUNICATION_PROMPT, DELEGATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "acceptance": (
@@ -105,17 +93,16 @@ WORKFLOW_PROMPTS = {
     ),
     "feedback": (
         "plugins/zzzops/skills/send-zzzops-feedback/SKILL.md",
+        "plugins/zzzops/zzzops/references/next_steps/send-feedback.md",
         COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
     ),
 }
 
 WORKFLOW_SIGNALS = {
-    "agentic-coaching": ("Run only when explicitly invoked", "at most two", "Only genuine `prompt_specification_gap`", "Remain read-only", "Do not resolve `ambiguous` candidates by guessing", "$send-zzzops-feedback"),
     "bootstrap-greenfield": ("never silently de-escalate", "adaptive product interview", "exactly one canonical top-level product-outcome goal", "canonical verification", "Continue from harness outcomes into product milestones", "ordered PR review queue", PROACTIVE_DELEGATION_SIGNAL),
     "bootstrap-brownfield": ("evidence-led product/harness audit", "top-level product-outcome goal", "reconcile it in place", "$migrate-to-zzzops", "canonical verification", "until exhaustion", PROACTIVE_DELEGATION_SIGNAL),
     "capture": ("duplicate/relationship matches", "interview at", "owns requirements/acceptance", "active same-task execute intent", "effective engineering rigor", "vibe → light", "never silently de-escalate", "Git-free creation", PROACTIVE_DELEGATION_SIGNAL),
     "execution": ("complete:true", "smallest falsifiable chunk", "difficulty is cost, not value", "human_at_exhaustion", "human_after_checks", "PR review queue", "Execution assumes the user is absent", "Before substantive work on a newly selected goal", "safe useful work", "effective engineering rigor", "created-but-unrun machinery is not proof", "exact recent review, optional refill", "administrative transitions and newly suggested goals do not qualify", PROACTIVE_DELEGATION_SIGNAL),
-    "entropy-review": ("preview` is the default", "entropy review status", "do not call `entropy review plan`", "exact pending recent", "full review contract", "Never infer cleanliness from an empty inbox", "$add-zzzops-goal", "current_events", PROACTIVE_DELEGATION_SIGNAL),
     "policy-review": ("only this workflow changes or confirms policy", "explicit approval of the current digest", "The policy is already approved", "privacy-safe execution reports"),
     "migration": ("explicit completeness review", "preserve every source location", "apply only after explicit approval"),
     "suggestion": ("no-write default", "zzzops-refill", "never copy source labels", "goal-effective engineering rigor", "incomplete canonical verification", "proposed goal—not a silent change", PROACTIVE_DELEGATION_SIGNAL),

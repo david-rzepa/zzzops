@@ -22,8 +22,6 @@ SKILL_UI = {
     "bootstrap-zzzops-repository": ("Bootstrap Repository", "Create or strengthen an agent-ready repository"),
     "execute-zzzops": ("Execute", "Run the primary autonomous ZzzOps goal loop"),
     "migrate-to-zzzops": ("Migrate TODOs", "Discover and migrate repository TODOs safely"),
-    "review-agentic-engineering": ("Review Agentic Engineering", "Improve how you work with software agents"),
-    "review-zzzops-entropy": ("Review Entropy", "Review recent or full repository entropy"),
     "review-zzzops-policy": ("Review Policy", "Initialize or review project operating policy"),
     "send-zzzops-feedback": ("Send Feedback", "Preview and send privacy-safe ZzzOps feedback"),
     "suggest-zzzops-work": ("Suggest Work", "Audit project gaps and suggest durable work"),
@@ -188,7 +186,6 @@ class MarketplaceBundleTests(unittest.TestCase):
         }
         self.assertEqual(SHIPPED_SKILLS, canonical_skills)
         self.assertEqual(canonical_skills, generated_skills)
-        self.assertIn("review-zzzops-entropy", generated_skills)
         for relative, content in canonical.items():
             self.assertEqual(content, files[f"zzzops/{relative}"], relative)
 
@@ -248,7 +245,7 @@ class MarketplaceBundleTests(unittest.TestCase):
             root = Path(directory)
             shutil.copytree(ROOT / "plugins" / "zzzops", root / "plugins" / "zzzops")
             (root / "plugins" / "zzzops" / "skills" / "add-zzzops-goal" / "SKILL.md").unlink()
-            with self.assertRaisesRegex(self.builder.BundleError, "skill discovery metadata"):
+            with self.assertRaisesRegex(self.builder.BundleError, "product skills|skill discovery metadata"):
                 self.builder.claude_marketplace_files(root, "2.0.0")
         with self.assertRaisesRegex(self.builder.BundleError, "version"):
             self.builder.claude_marketplace_files(ROOT, "latest")
