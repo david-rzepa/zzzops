@@ -4670,7 +4670,7 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_unknown_discovery_is_adaptive_durable_and_reviewable(self):
         root = PLUGIN_ROOT
-        capture = (root / "skills" / "add-zzzops-goal" / "SKILL.md").read_text(encoding="utf-8")
+        capture = (root / "zzzops" / "references" / "next_steps" / "add-goal.md").read_text(encoding="utf-8")
         create = (root / "skills" / "execute-zzzops" / "references" / "CREATE.md").read_text(encoding="utf-8")
         execute = (root / "skills" / "execute-zzzops" / "references" / "EXECUTE.md").read_text(encoding="utf-8")
         self_review = (root / "skills" / "execute-zzzops" / "references" / "SELF_REVIEW.md").read_text(encoding="utf-8")
