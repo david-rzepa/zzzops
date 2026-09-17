@@ -197,15 +197,75 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
     seen, normalized = set(), []
     for step in steps:
         fields = {"id", "skill", "intent", "audience", "phase", "action", "reason"}
-        if not isinstance(step, dict) or set(step) != fields or step.get("id") in seen:
+        optional_fields = {"directive", "model", "effort"}
+        if not isinstance(step, dict) or not fields <= set(step) or set(step) - fields - optional_fields or step.get("id") in seen:
             raise ValueError("workflow next step is invalid")
         if step.get("intent") not in WORKFLOW_INTENTS or step.get("skill") != WORKFLOW_SKILLS[step["intent"]] or step.get("audience") not in {"root", "worker"}:
             raise ValueError("workflow next step is invalid")
         if any(not isinstance(step.get(field), str) or not step[field] for field in fields):
             raise ValueError("workflow next step is invalid")
+        if step.get("directive") not in {None, "delegate", "continue_root", "resolve_blocker"}:
+            raise ValueError("workflow next step is invalid")
+        if ("model" in step) != ("effort" in step) or any(
+            not isinstance(step.get(field), str) or not step[field]
+            for field in {"model", "effort"} if field in step
+        ):
+            raise ValueError("workflow next step is invalid")
+        if step.get("directive") == "delegate" and ("model" not in step or "effort" not in step):
+            raise ValueError("workflow next step is invalid")
+        if step.get("directive") != "delegate" and ("model" in step or "effort" in step):
+            raise ValueError("workflow next step is invalid")
         seen.add(step["id"])
         normalized.append(dict(step))
     return {"schema_version": 1, "next_steps": normalized}
+
+
+def workflow_routing_step(intent: str, settings: Any, request: Any) -> dict[str, Any]:
+    """Turn reviewed routing facts into an imperative workflow instruction.
+
+    The caller supplies observed harness facts, while policy selects the route.
+    This deliberately leaves no agent-side delegation heuristic: a ready worker
+    route emits ``delegate`` with its exact model-plus-effort pair; an
+    unavailable harness emits a blocker instead.
+    """
+    fields = {"phase", "dimensions", "available_pairs", "root_pair", "tool_catalog"}
+    if not isinstance(request, dict) or set(request) != fields:
+        raise ValueError("workflow routing request is invalid")
+    assignment = prepare_reviewed_phase_assignment(
+        reviewed_phase_assignment(
+            settings, request["dimensions"], request["available_pairs"], request["root_pair"],
+        ),
+        request["tool_catalog"],
+    )
+    phase = request["phase"]
+    if not isinstance(phase, str) or not phase:
+        raise ValueError("workflow routing request is invalid")
+    directive = assignment["next_step"]
+    if directive["action"] == "delegate":
+        selected = assignment["selected"]
+        return {
+            "id": f"delegate-{phase}", "skill": "$execute-zzzops", "intent": "execute",
+            "audience": "root", "phase": phase,
+            "directive": "delegate",
+            "action": directive["instruction"],
+            "reason": "Reviewed routing requires a worker for this phase.",
+            "model": selected["model"], "effort": selected["effort"],
+        }
+    if directive["action"] == "continue_root":
+        return {
+            "id": f"root-{phase}", "skill": "$execute-zzzops", "intent": "execute",
+            "audience": "root", "phase": phase,
+            "directive": "continue_root",
+            "action": directive["instruction"],
+            "reason": "Reviewed routing requires root execution for this phase.",
+        }
+    return {
+        "id": f"routing-blocker-{phase}", "skill": "$execute-zzzops", "intent": "execute",
+        "audience": "root", "phase": phase,
+        "directive": "resolve_blocker",
+        "action": directive["instruction"],
+        "reason": str(assignment.get("reason") or "Routing is not executable."),
+    }
 GOAL_STATUSES = {"new", "triaged", "ready", "in_progress", "blocked", "done", "cancelled"}
 GOAL_PRIORITIES = {"P0", "P1", "P2", "P3"}
 GOAL_VALUES = {"critical", "high", "medium", "low"}
@@ -1908,6 +1968,10 @@ def main() -> int:
     commands = parser.add_subparsers(dest="command")
     workflow = commands.add_parser("workflow", help="Return the next actionable ZzzOps workflow steps")
     workflow.add_argument("--intent", choices=sorted(WORKFLOW_INTENTS), required=True)
+    workflow.add_argument(
+        "--routing-request",
+        help="Observed JSON routing facts: phase, dimensions, available_pairs, root_pair, and tool_catalog",
+    )
     init = commands.add_parser("init", help="Inspect, validate, or apply agent-driven project initialization")
     init_commands = init.add_subparsers(dest="init_command", required=True)
     init_commands.add_parser("inspect", help="Report initialization state and read-only capabilities as JSON")
@@ -2049,14 +2113,30 @@ def main() -> int:
     try:
         if args.command == "workflow":
             try:
-                reviewed_project_state(repo)
-                steps = [{"id": f"{args.intent}-dispatch", "skill": WORKFLOW_SKILLS[args.intent], "intent": args.intent,
-                          "audience": "root", "phase": "context", "action": f"Continue the {args.intent} workflow from current evidence.",
-                          "reason": "Project policy and canonical state are available."}]
+                project = reviewed_project_state(repo)
             except ValueError:
                 steps = [{"id": "policy-review", "skill": "$review-zzzops-policy", "intent": "inspect",
                           "audience": "root", "phase": "context", "action": "Inspect policy state and prepare the required review input.",
                           "reason": "Project policy is missing, stale, or invalid."}]
+            else:
+                if args.routing_request:
+                    try:
+                        request = json.loads(args.routing_request)
+                        routing = next(
+                            section for section in project["policy"]["sections"]
+                            if section.get("id") == "model_routing"
+                        )
+                        steps = [workflow_routing_step(args.intent, routing["settings"], request)]
+                    except (StopIteration, ValueError, json.JSONDecodeError):
+                        steps = [{"id": "routing-evidence", "skill": "$execute-zzzops", "intent": "execute",
+                                  "audience": "root", "phase": "understand",
+                                  "action": "Record complete valid routing evidence, then invoke workflow again with --routing-request.",
+                                  "reason": "The supplied routing evidence cannot determine an executable phase assignment."}]
+                else:
+                    steps = [{"id": "routing-evidence", "skill": "$execute-zzzops", "intent": "execute",
+                              "audience": "root", "phase": "understand",
+                              "action": "Record the current phase routing evidence, then invoke workflow again with --routing-request.",
+                              "reason": "The workflow cannot select root execution or delegation without current model, effort, and harness evidence."}]
             print(json.dumps(workflow_envelope(args.intent, steps), ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 0
         if args.command == "installation":

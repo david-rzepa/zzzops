@@ -4681,6 +4681,21 @@ class WorkflowContractTests(unittest.TestCase):
         )
         self.assertEqual("ready", harness_ready["status"])
         self.assertEqual("delegate", harness_ready["next_step"]["action"])
+        workflow_step = zzzops.workflow_routing_step("execute", custom_settings, {
+            "phase": "verify", "dimensions": {"phase_type": "context"},
+            "available_pairs": [{"model": "economy", "effort": "low"}, root_pair],
+            "root_pair": root_pair,
+            "tool_catalog": [{"name": "spawn_agent", "description": "delegate work"}],
+        })
+        self.assertEqual("delegate-verify", workflow_step["id"])
+        self.assertEqual("delegate", workflow_step["directive"])
+        self.assertEqual(f"Delegate this phase using model {root_pair['model']} with effort {root_pair['effort']}.", workflow_step["action"])
+        self.assertEqual(root_pair["model"], workflow_step["model"])
+        self.assertEqual(root_pair["effort"], workflow_step["effort"])
+        self.assertEqual(
+            {"schema_version": 1, "next_steps": [workflow_step]},
+            zzzops.workflow_envelope("execute", [workflow_step]),
+        )
         root_equivalent = zzzops.reviewed_phase_assignment(
             custom_settings, {"consequence": "consequential", "boundedness": "bounded"},
             [{"model": "economy", "effort": "low"}, root_pair], root_pair,
