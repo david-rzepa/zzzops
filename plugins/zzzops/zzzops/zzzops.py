@@ -492,6 +492,7 @@ reservation_cli_message = _reservation.reservation_cli_message
 acquire_phase_lease = _reservation.acquire_phase_lease
 renew_phase_lease = _reservation.renew_phase_lease
 release_phase_lease = _reservation.release_phase_lease
+PhaseLeaseHeartbeat = _reservation.PhaseLeaseHeartbeat
 
 
 def project_claim_ttl_seconds(project: dict[str, Any]) -> int:

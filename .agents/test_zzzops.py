@@ -3621,6 +3621,14 @@ class ReservationTests(unittest.TestCase):
         self.assertEqual("not_owned", zzzops.release_phase_lease(adapter, "owner/repo", 12, "verify", 4, "agent-a", "run-a", lease["generation"] + 1)["outcome"])
         self.assertTrue(zzzops.release_phase_lease(adapter, "owner/repo", 12, "verify", 4, "agent-a", "run-a", lease["generation"])["released"])
 
+    def test_phase_lease_heartbeat_never_renews_a_dead_or_uncertain_worker(self):
+        renew = mock.Mock(return_value={"acquired": True, "outcome": "renewed"})
+        heartbeat = zzzops.PhaseLeaseHeartbeat(renew, lambda: False)
+        self.assertEqual("worker_not_live", heartbeat.tick()["outcome"])
+        renew.assert_not_called()
+        uncertain = zzzops.PhaseLeaseHeartbeat(mock.Mock(side_effect=zzzops.ReservationProviderError("lost")), lambda: True)
+        self.assertEqual("uncertain", uncertain.tick()["outcome"])
+
     def test_renew_and_release_require_the_same_owner(self):
         adapter = FakeReservationAdapter()
         self.assertTrue(self.acquire(adapter)["acquired"])

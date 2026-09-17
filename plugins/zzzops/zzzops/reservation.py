@@ -9,6 +9,7 @@ import json
 import re
 import shutil
 import subprocess
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -723,3 +724,29 @@ def release_phase_lease(adapter: Any, repository: str, goal: int, phase: str, re
     if adapter.get_label(phase_lease_label_name(goal, phase)) is not None:
         raise ReservationProviderError("GitHub did not confirm phase lease release; no ownership assumed.")
     return {"released": True, "outcome": "released", "goal": goal, "phase": phase}
+
+
+class PhaseLeaseHeartbeat:
+    """Renew one local worker lease while its local liveness probe remains true."""
+
+    def __init__(self, renew: Callable[[], dict[str, Any]], alive: Callable[[], bool]):
+        self._renew = renew
+        self._alive = alive
+        self._stop = threading.Event()
+        self.result: dict[str, Any] | None = None
+
+    def tick(self) -> dict[str, Any]:
+        if self._stop.is_set():
+            self.result = {"outcome": "stopped"}
+        elif not self._alive():
+            self.result = {"outcome": "worker_not_live"}
+        else:
+            try:
+                result = self._renew()
+                self.result = result if result.get("acquired") is True else {"outcome": "uncertain", "result": result}
+            except ReservationProviderError as exc:
+                self.result = {"outcome": "uncertain", "detail": str(exc)}
+        return self.result
+
+    def stop(self) -> None:
+        self._stop.set()
