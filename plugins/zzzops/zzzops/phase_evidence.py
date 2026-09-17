@@ -9,7 +9,7 @@ import re
 from typing import Any
 
 
-PHASE_EVIDENCE_SCHEMA_VERSION = 1
+PHASE_EVIDENCE_SCHEMA_VERSION = 2
 SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 PROVIDER_CONTENT_IDENTITY = re.compile(r"^provider:[A-Za-z0-9._-]+:(?:sha256:[0-9a-f]{64}|oid:[0-9a-f]{40,64})$")
 IMMUTABLE_REFERENCE = re.compile(r"^(?:git:[0-9a-f]{40,64}(?::[A-Za-z0-9._:/@-]+)?|urn:sha256:[0-9a-f]{64}|provider:[A-Za-z0-9._-]+:(?:sha256:[0-9a-f]{64}|oid:[0-9a-f]{40,64}))$")
@@ -113,7 +113,7 @@ def _snapshot(value: Any, field: str) -> dict[str, Any]:
 def _input_envelope(value: Any, phase: str) -> dict[str, Any]:
     fields = {
         "schema_version", "phase", "goal_spec", "policy", "phase_dag", "parents", "dependencies",
-        "repository", "provider", "capabilities", "invocation", "upstream_outputs",
+        "repository", "provider", "capabilities", "invocation", "upstream_outputs", "acceptance_criteria",
     }
     if not isinstance(value, dict) or set(value) != fields:
         raise PhaseEvidenceError(f"phase record {phase} input envelope has invalid fields")
@@ -133,6 +133,12 @@ def _input_envelope(value: Any, phase: str) -> dict[str, Any]:
         if not isinstance(item, dict) or set(item) != {"phase", "hash"}:
             raise PhaseEvidenceError(f"phase record {phase} upstream output is invalid")
         normalized_upstream.append({"phase": _text(item.get("phase"), "upstream phase"), "hash": _content_hash(item.get("hash"), "upstream hash")})
+    criteria = value.get("acceptance_criteria")
+    if not isinstance(criteria, list):
+        raise PhaseEvidenceError(f"phase record {phase} acceptance criteria must be a list")
+    normalized_criteria = [_text(item, "acceptance criterion") for item in criteria]
+    if len(normalized_criteria) != len(set(normalized_criteria)):
+        raise PhaseEvidenceError(f"phase record {phase} acceptance criteria must be unique")
     return {
         "schema_version": PHASE_EVIDENCE_SCHEMA_VERSION, "phase": phase,
         "goal_spec": _sha256(value.get("goal_spec"), "goal_spec"), "policy": _sha256(value.get("policy"), "policy"),
@@ -144,6 +150,7 @@ def _input_envelope(value: Any, phase: str) -> dict[str, Any]:
         "capabilities": _snapshot(value.get("capabilities"), "capabilities"),
         "invocation": {"intent": _text(invocation.get("intent"), "invocation.intent"), "inputs": copy.deepcopy(invocation["inputs"])},
         "upstream_outputs": normalized_upstream,
+        "acceptance_criteria": normalized_criteria,
     }
 
 
@@ -152,7 +159,7 @@ def phase_input_envelope(
     parents: list[dict[str, Any]] | None = None, dependencies: list[dict[str, Any]] | None = None,
     repository: dict[str, Any] | None = None, provider: dict[str, Any] | None = None,
     capabilities: dict[str, Any] | None = None, invocation: dict[str, Any] | None = None,
-    upstream_outputs: list[dict[str, Any]] | None = None,
+    upstream_outputs: list[dict[str, Any]] | None = None, acceptance_criteria: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build one phase's declared input envelope; array order remains declared."""
     envelope = {
@@ -162,6 +169,7 @@ def phase_input_envelope(
         "dependencies": copy.deepcopy(dependencies or []), "repository": copy.deepcopy(repository),
         "provider": copy.deepcopy(provider), "capabilities": copy.deepcopy(capabilities),
         "invocation": copy.deepcopy(invocation), "upstream_outputs": copy.deepcopy(upstream_outputs or []),
+        "acceptance_criteria": copy.deepcopy(acceptance_criteria or []),
     }
     return _input_envelope(envelope, phase)
 
@@ -181,7 +189,7 @@ def goal_spec_digest(goal: dict[str, Any], *, title: str, human_spec: str) -> st
 
 
 def _record(value: Any, phase: str) -> dict[str, Any]:
-    fields = {"status", "input_envelope", "input_hash", "output", "verification", "routing", "review", "selection", "actor", "not_required"}
+    fields = {"status", "input_envelope", "input_hash", "output", "verification", "routing", "selection", "actor", "not_required", "test_design"}
     if not isinstance(value, dict) or set(value) != fields:
         raise PhaseEvidenceError(f"phase record {phase} has invalid fields")
     status = value.get("status")
@@ -196,9 +204,9 @@ def _record(value: Any, phase: str) -> dict[str, Any]:
         "output": _artifact(value.get("output"), f"phase record {phase}.output", required=status == "completed"),
         "verification": _artifact(value.get("verification"), f"phase record {phase}.verification"),
         "routing": _artifact(value.get("routing"), f"phase record {phase}.routing"),
-        "review": _artifact(value.get("review"), f"phase record {phase}.review"),
         "selection": copy.deepcopy(value.get("selection")),
         "actor": _text(value.get("actor"), f"phase record {phase}.actor"), "not_required": copy.deepcopy(value.get("not_required")),
+        "test_design": _test_design(value.get("test_design"), phase, envelope, status),
     }
     if not isinstance(result["selection"], dict) or set(result["selection"]) != {"model", "effort"}:
         raise PhaseEvidenceError(f"phase record {phase} selection is invalid")
@@ -212,7 +220,45 @@ def _record(value: Any, phase: str) -> dict[str, Any]:
         _text(decision.get("policy_rule"), f"phase record {phase}.not_required.policy_rule")
     elif result["not_required"] is not None:
         raise PhaseEvidenceError(f"completed phase record {phase} cannot contain a not-required decision")
+    if phase == "implement" and status == "completed" and result["verification"] is None:
+        raise PhaseEvidenceError("completed implementation phase requires passing verification evidence")
     return result
+
+
+def _test_design(value: Any, phase: str, envelope: dict[str, Any], status: str) -> dict[str, Any] | None:
+    """Validate the executable behavioural-test contract for a test-design phase."""
+    if phase != "test_design":
+        if value is not None:
+            raise PhaseEvidenceError(f"phase record {phase} cannot contain test design evidence")
+        return None
+    if status == "not_required":
+        if value is not None:
+            raise PhaseEvidenceError("not-required test-design phase cannot contain test design evidence")
+        return None
+    if not isinstance(value, dict) or set(value) != {"baseline_failure", "coverage"}:
+        raise PhaseEvidenceError("test-design phase record must contain baseline failure and coverage")
+    coverage = value.get("coverage")
+    if not isinstance(coverage, list):
+        raise PhaseEvidenceError("test-design coverage must be a list")
+    expected = envelope["acceptance_criteria"]
+    covered: list[str] = []
+    normalized = []
+    for item in coverage:
+        if not isinstance(item, dict) or set(item) != {"criterion", "test", "exclusion"}:
+            raise PhaseEvidenceError("test-design coverage entries must contain criterion, test, and exclusion")
+        criterion = _text(item.get("criterion"), "test-design coverage criterion")
+        test, exclusion = item.get("test"), item.get("exclusion")
+        if (test is None) == (exclusion is None):
+            raise PhaseEvidenceError("test-design coverage requires exactly one test or exclusion")
+        normalized.append({
+            "criterion": criterion,
+            "test": _artifact(test, "test-design coverage test") if test is not None else None,
+            "exclusion": _text(exclusion, "test-design coverage exclusion") if exclusion is not None else None,
+        })
+        covered.append(criterion)
+    if len(covered) != len(set(covered)) or set(covered) != set(expected):
+        raise PhaseEvidenceError("test-design coverage must account for every acceptance criterion exactly once")
+    return {"baseline_failure": _artifact(value.get("baseline_failure"), "test-design baseline failure", required=True), "coverage": normalized}
 
 
 def normalize_phase_evidence(value: Any) -> dict[str, Any]:
@@ -229,14 +275,24 @@ def normalize_phase_evidence(value: Any) -> dict[str, Any]:
         normalized["records"][phase] = _record(record, phase)
     for phase, review in reviews.items():
         _text(phase, "review phase")
-        if phase not in normalized["records"] or not isinstance(review, dict) or set(review) != {"record_hash", "artifact", "reviewer"}:
+        if phase not in normalized["records"] or not isinstance(review, dict) or set(review) != {"record_hash", "input_hash", "output_hash", "artifact", "reviewer", "decision"}:
             raise PhaseEvidenceError("phase review is invalid")
         if review.get("record_hash") != sha256_digest(normalized["records"][phase]):
             raise PhaseEvidenceError("phase review record hash is stale")
+        if review.get("input_hash") != normalized["records"][phase]["input_hash"]:
+            raise PhaseEvidenceError("phase review input hash is stale")
+        output = normalized["records"][phase]["output"]
+        if output is None or review.get("output_hash") != output["hash"]:
+            raise PhaseEvidenceError("phase review output hash is stale")
+        decision = review.get("decision")
+        if decision not in {"approved", "changes_requested"}:
+            raise PhaseEvidenceError("phase review decision is invalid")
         normalized["reviews"][phase] = {
             "record_hash": review["record_hash"],
+            "input_hash": review["input_hash"], "output_hash": review["output_hash"],
             "artifact": _artifact(review.get("artifact"), "phase review artifact", required=True),
             "reviewer": _text(review.get("reviewer"), "phase reviewer"),
+            "decision": decision,
         }
     seen = set()
     for withdrawal in withdrawals:
@@ -273,6 +329,8 @@ def record_phase_result(evidence: Any, phase: str, record: Any, current_input: d
     current = _input_envelope(current_input, phase)
     if normalized_record["input_hash"] != sha256_digest(current) or normalized_record["input_envelope"] != current:
         raise PhaseEvidenceError("phase result input evidence is stale")
+    if phase == "implement":
+        _require_approved_test_design(normalized, normalized_record)
     normalized["records"][phase] = normalized_record
     normalized["reviews"].pop(phase, None)
     normalized["withdrawals"] = [item for item in normalized["withdrawals"] if item["phase"] != phase]
@@ -299,19 +357,43 @@ def independent_review_ready(evidence: Any, implementation_phase: str, review_ph
     }
 
 
-def record_phase_review(evidence: Any, phase: str, artifact: Any, reviewer: str) -> dict[str, Any]:
+def _require_approved_test_design(evidence: dict[str, Any], implementation: dict[str, Any]) -> None:
+    """Implementation may only proceed from an approved, explicitly bound test design."""
+    design = evidence["records"].get("test_design")
+    review = evidence["reviews"].get("test_design")
+    if design is None or design["status"] != "completed" or design["test_design"] is None or _withdrawn(evidence, "test_design"):
+        raise PhaseEvidenceError("implementation requires completed test-design evidence")
+    if review is None or review["decision"] != "approved":
+        raise PhaseEvidenceError("implementation requires approved test-design review")
+    output = design["output"]
+    if output is None or not any(
+        item["phase"] == "test_design" and item["hash"] == output["hash"]
+        for item in implementation["input_envelope"]["upstream_outputs"]
+    ):
+        raise PhaseEvidenceError("implementation must bind the approved test-design output")
+
+
+def record_phase_review(evidence: Any, phase: str, artifact: Any, reviewer: str, *, decision: str = "approved", require_independent: bool = True) -> dict[str, Any]:
     """Attach an independent immutable review to the exact current phase record."""
     normalized, phase = normalize_phase_evidence(evidence), _text(phase, "review phase")
     record = normalized["records"].get(phase)
     if record is None:
         raise PhaseEvidenceError("cannot review phase evidence that was never recorded")
     reviewer = _text(reviewer, "phase reviewer")
-    if reviewer == record["actor"]:
+    if not isinstance(require_independent, bool):
+        raise PhaseEvidenceError("phase review independence requirement is invalid")
+    if require_independent and reviewer == record["actor"]:
         raise PhaseEvidenceError("phase reviewer must be independent from phase actor")
+    if decision not in {"approved", "changes_requested"}:
+        raise PhaseEvidenceError("phase review decision is invalid")
+    if record["output"] is None:
+        raise PhaseEvidenceError("cannot review phase evidence without an output")
     normalized["reviews"][phase] = {
         "record_hash": sha256_digest(record),
+        "input_hash": record["input_hash"], "output_hash": record["output"]["hash"],
         "artifact": _artifact(artifact, "phase review artifact", required=True),
         "reviewer": reviewer,
+        "decision": decision,
     }
     return normalized
 
