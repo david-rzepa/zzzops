@@ -168,9 +168,11 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
         attempts = [item["attempt"] for item in events if item["event"] == "liveness_unknown"]
         self.assertEqual([1, 2, 3], attempts)
         self.assertFalse(any(item.get("lease") == "token-unknown" for item in self._lines(self.cli_records)))
+        # The diagnostic precedes the atomic config update; wait for process
+        # completion before asserting its durable cleanup.
+        self._wait(lambda: not heartbeat._pid_alive(result["pid"]))
         config = json.loads(Path(result["config"]).read_text(encoding="utf-8"))
         self.assertEqual([], config["leases"])
-        self._wait(lambda: not heartbeat._pid_alive(result["pid"]))
 
     def test_probe_timeout_is_unknown_and_never_renews(self):
         result = self._start(52, "test_design", "token-timeout", "timeout")
