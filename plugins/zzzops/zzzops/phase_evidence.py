@@ -50,7 +50,7 @@ def sha256_digest(value: Any) -> str:
 
 
 def empty_phase_evidence() -> dict[str, Any]:
-    return {"schema_version": PHASE_EVIDENCE_SCHEMA_VERSION, "records": {}, "withdrawals": []}
+    return {"schema_version": PHASE_EVIDENCE_SCHEMA_VERSION, "records": {}, "reviews": {}, "withdrawals": []}
 
 
 def _text(value: Any, field: str) -> str:
@@ -216,17 +216,28 @@ def _record(value: Any, phase: str) -> dict[str, Any]:
 
 
 def normalize_phase_evidence(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict) or set(value) != {"schema_version", "records", "withdrawals"}:
+    if not isinstance(value, dict) or set(value) != {"schema_version", "records", "reviews", "withdrawals"}:
         raise PhaseEvidenceError("phase evidence has invalid fields")
     if value.get("schema_version") != PHASE_EVIDENCE_SCHEMA_VERSION:
         raise PhaseEvidenceError("phase evidence schema version is invalid")
-    records, withdrawals = value.get("records"), value.get("withdrawals")
-    if not isinstance(records, dict) or not isinstance(withdrawals, list):
-        raise PhaseEvidenceError("phase evidence records and withdrawals are required")
+    records, reviews, withdrawals = value.get("records"), value.get("reviews"), value.get("withdrawals")
+    if not isinstance(records, dict) or not isinstance(reviews, dict) or not isinstance(withdrawals, list):
+        raise PhaseEvidenceError("phase evidence records, reviews, and withdrawals are required")
     normalized = empty_phase_evidence()
     for phase, record in records.items():
         _text(phase, "phase identifier")
         normalized["records"][phase] = _record(record, phase)
+    for phase, review in reviews.items():
+        _text(phase, "review phase")
+        if phase not in normalized["records"] or not isinstance(review, dict) or set(review) != {"record_hash", "artifact", "reviewer"}:
+            raise PhaseEvidenceError("phase review is invalid")
+        if review.get("record_hash") != sha256_digest(normalized["records"][phase]):
+            raise PhaseEvidenceError("phase review record hash is stale")
+        normalized["reviews"][phase] = {
+            "record_hash": review["record_hash"],
+            "artifact": _artifact(review.get("artifact"), "phase review artifact", required=True),
+            "reviewer": _text(review.get("reviewer"), "phase reviewer"),
+        }
     seen = set()
     for withdrawal in withdrawals:
         if not isinstance(withdrawal, dict) or set(withdrawal) != {"id", "phase", "reason", "actor", "record_hash"}:
