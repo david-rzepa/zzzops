@@ -4746,7 +4746,7 @@ class WorkflowContractTests(unittest.TestCase):
             [{"model": "economy", "effort": "low"}, root_pair], root_pair,
         )
         self.assertEqual("delegated", delegated["mode"])
-        self.assertEqual(root_pair, delegated["selected"])
+        self.assertEqual({"model": "economy", "effort": "low"}, delegated["selected"])
         self.assertEqual("delegate", delegated["next_step"]["action"])
         no_harness = zzzops.prepare_reviewed_phase_assignment(delegated, [])
         self.assertEqual("blocked", no_harness["status"])
@@ -4764,9 +4764,9 @@ class WorkflowContractTests(unittest.TestCase):
         })
         self.assertEqual("delegate-understand", workflow_step["id"])
         self.assertEqual("delegate", workflow_step["directive"])
-        self.assertEqual(f"Delegate this phase using model {root_pair['model']} with effort {root_pair['effort']}.", workflow_step["action"])
-        self.assertEqual(root_pair["model"], workflow_step["model"])
-        self.assertEqual(root_pair["effort"], workflow_step["effort"])
+        self.assertEqual("Delegate this phase using model economy with effort low.", workflow_step["action"])
+        self.assertEqual("economy", workflow_step["model"])
+        self.assertEqual("low", workflow_step["effort"])
         self.assertEqual(
             {"schema_version": 1, "next_steps": [workflow_step]},
             zzzops.workflow_envelope("execute", [workflow_step]),
