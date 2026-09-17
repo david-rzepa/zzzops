@@ -2220,18 +2220,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="ZzzOps project control CLI")
     parser.add_argument("--repo", type=Path, default=Path.cwd(), help="Project root (default: current directory)")
     commands = parser.add_subparsers(dest="command")
-    workflow = commands.add_parser("workflow", help="Return the next actionable ZzzOps workflow steps")
-    workflow.add_argument("--intent", choices=sorted(WORKFLOW_INTENTS), required=True)
-    workflow.add_argument("--source-skill", choices=sorted(WORKFLOW_SKILL_INTENTS), help="Named skill that initiated this public workflow call")
-    workflow.add_argument("--goal", type=int, help="Managed goal whose evidence-derived phase frontier to evaluate")
-    workflow.add_argument(
-        "--phase-inputs",
-        help="Observed JSON object mapping phase IDs to complete live input envelopes",
-    )
-    workflow.add_argument(
-        "--routing-request",
-        help="Observed JSON routing facts: phase, dimensions, available_pairs, root_pair, and tool_catalog",
-    )
     init = commands.add_parser("init", help="Inspect, validate, or apply agent-driven project initialization")
     init_commands = init.add_subparsers(dest="init_command", required=True)
     init_commands.add_parser("inspect", help="Report initialization state and read-only capabilities as JSON")
@@ -2247,10 +2235,11 @@ def main() -> int:
     checkpoint_parser = commands.add_parser("checkpoint", help="Validate initialized state, GitHub capability, and the goal portfolio once")
     checkpoint_parser.add_argument("--include-feedback", action="store_true", help="Include specially tagged feedback goals for this session")
     checkpoint_parser.add_argument("--profile", action="store_true", help="Record one local privacy-safe timing aggregate")
-    workflow_parser = commands.add_parser("workflow", help="Return the exact next ZzzOps phase step for one goal")
-    workflow_parser.add_argument("--goal", type=int, required=True)
-    workflow_parser.add_argument("--intent", choices=("execute", "preview"), required=True)
-    workflow_parser.add_argument("--runtime", type=Path, required=True, help="Current root and available model-effort pairs as JSON")
+    workflow_parser = commands.add_parser("workflow", help="Return the next actionable ZzzOps workflow step")
+    workflow_parser.add_argument("--goal", type=int, help="Managed goal whose evidence-derived phase frontier to evaluate")
+    workflow_parser.add_argument("--intent", choices=sorted(WORKFLOW_INTENTS), required=True)
+    workflow_parser.add_argument("--source-skill", choices=sorted(WORKFLOW_SKILL_INTENTS), help="Named skill that initiated this public workflow call")
+    workflow_parser.add_argument("--runtime", type=Path, help="Current root and available model-effort pairs as JSON")
     installation = commands.add_parser("installation", help="Check or record per-repository plugin validation")
     installation_commands = installation.add_subparsers(dest="installation_command", required=True)
     installation_commands.add_parser("status", help="Report whether this installed package needs repository validation")
@@ -2383,82 +2372,6 @@ def main() -> int:
         print(str(package.get("detail") or "The ZzzOps Agent Plugin package is invalid."))
         return 2
     try:
-        if args.command == "workflow":
-            if args.source_skill and args.intent not in WORKFLOW_SKILL_INTENTS[args.source_skill]:
-                steps = [{"id": "workflow-source", "skill": WORKFLOW_DEFAULT_SKILLS[args.intent], "intent": args.intent,
-                          "audience": "root", "phase": "context",
-                          "action": "Invoke workflow again with the source skill's declared intent.",
-                          "reason": "The source skill cannot initiate the requested workflow intent."}]
-                print(json.dumps(workflow_envelope(args.intent, steps), ensure_ascii=False, sort_keys=True, separators=(",", ":")))
-                return 0
-            context_step = workflow_context_step(repo, package, source_skill=args.source_skill)
-            if context_step is not None:
-                steps = [context_step]
-            else:
-                project = reviewed_project_state(repo)
-                if args.goal is not None:
-                    try:
-                        if not args.phase_inputs:
-                            raise ValueError("phase inputs are required")
-                        phase_inputs = json.loads(args.phase_inputs)
-                        repository = _project_repository_identity(project)
-                        goal = github_goal_record(
-                            GitHubGoalTransitionAdapter(repo, repository).get_issue(args.goal)
-                        )
-                        phase_dag = next(
-                            section for section in project["policy"]["sections"]
-                            if section.get("id") == "workflow_adherence"
-                        )["settings"]["phase_dag"]
-                        frontier = workflow_phase_frontier(goal, phase_dag, phase_inputs)
-                        if args.routing_request:
-                            request = json.loads(args.routing_request)
-                            eligible = {item["phase"] for item in frontier["eligibility"]["eligible"]}
-                            if request.get("phase") not in eligible:
-                                raise ValueError("routing phase is not eligible")
-                            routing = next(
-                                section for section in project["policy"]["sections"]
-                                if section.get("id") == "model_routing"
-                            )
-                            steps = [workflow_routing_step(args.intent, routing["settings"], request)]
-                        else:
-                            steps = frontier["next_steps"]
-                        if not steps:
-                            steps = [{"id": "phase-input-evidence", "skill": "$execute-zzzops", "intent": "execute",
-                                      "audience": "root", "phase": "context",
-                                      "action": "Record complete live input evidence for the blocked or missing phase, then invoke workflow again.",
-                                      "reason": "; ".join(frontier["eligibility"]["diagnostics"]) or "Phase dependencies are not yet satisfied."}]
-                    except (StopIteration, ValueError, json.JSONDecodeError):
-                        steps = [{"id": "phase-input-evidence", "skill": "$execute-zzzops", "intent": "execute",
-                                  "audience": "root", "phase": "context",
-                                  "action": "Record complete valid live input evidence for this goal, then invoke workflow again with --goal and --phase-inputs.",
-                                  "reason": "The supplied goal or phase inputs cannot derive a safe workflow frontier."}]
-                elif args.routing_request:
-                    try:
-                        request = json.loads(args.routing_request)
-                        routing = next(
-                            section for section in project["policy"]["sections"]
-                            if section.get("id") == "model_routing"
-                        )
-                        steps = [workflow_routing_step(args.intent, routing["settings"], request)]
-                    except (StopIteration, ValueError, json.JSONDecodeError):
-                        steps = [{"id": "routing-evidence", "skill": "$execute-zzzops", "intent": "execute",
-                                  "audience": "root", "phase": "understand",
-                                  "action": "Record complete valid routing evidence, then invoke workflow again with --routing-request.",
-                                  "reason": "The supplied routing evidence cannot determine an executable phase assignment."}]
-                else:
-                    source_skill = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
-                    if source_skill == "$execute-zzzops":
-                        steps = [{"id": "routing-evidence", "skill": source_skill, "intent": args.intent,
-                                  "audience": "root", "phase": "understand",
-                                  "action": "Record the current phase routing evidence, then invoke workflow again with --routing-request.",
-                                  "reason": "The workflow cannot select root execution or delegation without current model, effort, and harness evidence."}]
-                    else:
-                        steps = [{"id": f"{source_skill[1:]}-dispatch", "skill": source_skill, "intent": args.intent,
-                                  "audience": "root", "phase": "context",
-                                  "action": WORKFLOW_SOURCE_ACTIONS[source_skill],
-                                  "reason": "Project policy and canonical state are available for this named workflow."}]
-            print(json.dumps(workflow_envelope(args.intent, steps), ensure_ascii=False, sort_keys=True, separators=(",", ":")))
-            return 0
         if args.command == "installation":
             provenance = {"version": package["version"], "revision": package["revision"]}
             if args.installation_command == "status":
@@ -2533,8 +2446,21 @@ def main() -> int:
             return 0 if result["ready"] else 2
         elif args.command == "workflow":
             try:
-                runtime = json.loads(args.runtime.resolve().read_text(encoding="utf-8-sig"))
-                result = workflow_checkpoint(repo, args.goal, args.intent, runtime)
+                if args.source_skill and args.intent not in WORKFLOW_SKILL_INTENTS[args.source_skill]:
+                    raise ValueError("The source skill cannot initiate the requested workflow intent")
+                if args.goal is None:
+                    source_skill = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
+                    result = {"next_steps": [{
+                        "kind": "dispatch", "assignment": "root", "skill": source_skill,
+                        "intent": args.intent, "action": WORKFLOW_SOURCE_ACTIONS[source_skill],
+                    }]}
+                elif args.intent not in {"execute", "preview"}:
+                    raise ValueError("Goal phase checkpoints require execute or preview intent")
+                else:
+                    if args.runtime is None:
+                        raise ValueError("Goal phase checkpoints require current runtime evidence")
+                    runtime = json.loads(args.runtime.resolve().read_text(encoding="utf-8-sig"))
+                    result = workflow_checkpoint(repo, args.goal, args.intent, runtime)
                 print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
                 return 0
             except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:

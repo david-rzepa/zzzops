@@ -4220,6 +4220,15 @@ class ReservationTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_public_workflow_cli_has_one_parser_and_exposes_all_named_intents(self):
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "workflow", "--help"],
+            capture_output=True, text=True, encoding="utf-8", check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("--intent {approve,capture,execute,inspect,resume}", result.stdout)
+        self.assertIn("--runtime RUNTIME", result.stdout)
+
     @mock.patch.object(zzzops, "inspect_initialization")
     @mock.patch.object(zzzops._installation, "validation_status")
     def test_workflow_context_gate_prioritizes_installation_then_bootstrap_then_policy(self, status, inspection):
