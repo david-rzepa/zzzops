@@ -461,3 +461,61 @@ def derive_phase_eligibility(goal: dict[str, Any], graph: Any, live_inputs: dict
         else:
             eligible.append({"phase": phase, "reason": "stale_input" if phase in stale else "missing_evidence"})
     return {"eligible": eligible, "stale": stale, "blocked": blocked, "diagnostics": diagnostics}
+
+
+def derive_phase_steps(
+    goal: dict[str, Any], graph: Any, live_inputs: dict[str, dict[str, Any]],
+    related_goals: dict[Any, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Derive executable and review work from immutable evidence, with no cursor.
+
+    Every supplied graph phase requires an approved review before it satisfies a
+    dependency. Callers may run independent returned steps in parallel; this
+    function deliberately does not reserve or mutate anything.
+    """
+    nodes = _graph(graph)
+    if not isinstance(goal, dict):
+        raise PhaseEvidenceError("goal must be an object")
+    if goal.get("status") in {"done", "cancelled"} or goal.get("state") == "closed":
+        return {"execute": [], "review": [], "stale": [], "blocked": [], "diagnostics": ["terminal_goal"]}
+    evidence = normalize_phase_evidence(goal.get("phase_evidence", empty_phase_evidence()))
+    if not isinstance(live_inputs, dict) or any(phase not in nodes for phase in live_inputs):
+        raise PhaseEvidenceError("live phase inputs are invalid")
+    normalized_inputs = {phase: _input_envelope(value, phase) for phase, value in live_inputs.items()}
+    current = {
+        phase: phase in evidence["records"] and phase in normalized_inputs and not _withdrawn(evidence, phase)
+        and evidence["records"][phase]["input_hash"] == sha256_digest(normalized_inputs[phase])
+        for phase in nodes
+    }
+    approved = {
+        phase: current[phase] and evidence["reviews"].get(phase, {}).get("decision") == "approved"
+        for phase in nodes
+    }
+    stale = [phase for phase in nodes if phase in evidence["records"] and not current[phase]]
+    related_goals = related_goals or {}
+    parent = related_goals.get(goal.get("parent")) if goal.get("parent") is not None else None
+    parent_goal = parent.get("goal") if isinstance(parent, dict) else None
+    parent_inputs = parent.get("live_inputs") if isinstance(parent, dict) else None
+    parent_evidence = normalize_phase_evidence(parent_goal.get("phase_evidence", empty_phase_evidence())) if isinstance(parent_goal, dict) else None
+    execute, review, blocked, diagnostics = [], [], [], []
+    for phase, node in nodes.items():
+        if current[phase]:
+            if not approved[phase]:
+                review.append({"phase": phase, "reason": "missing_or_unapproved_review"})
+            continue
+        unmet = [dependency for dependency in node["depends_on"] if not approved[dependency]]
+        missing_parent = [
+            gate for gate in node["parent_gates"]
+            if parent_evidence is None or not isinstance(parent_inputs, dict) or gate not in parent_inputs
+            or gate not in parent_evidence["records"] or _withdrawn(parent_evidence, gate)
+            or parent_evidence["records"][gate]["status"] != "completed"
+            or parent_evidence["records"][gate]["input_hash"] != sha256_digest(_input_envelope(parent_inputs[gate], gate))
+            or parent_evidence["reviews"].get(gate, {}).get("decision") != "approved"
+        ]
+        if unmet or missing_parent:
+            blocked.append({"phase": phase, "dependencies": unmet, "parent_gates": missing_parent})
+        elif phase not in normalized_inputs:
+            diagnostics.append(f"{phase}:missing_live_input")
+        else:
+            execute.append({"phase": phase, "reason": "stale_input" if phase in stale else "missing_evidence"})
+    return {"execute": execute, "review": review, "stale": stale, "blocked": blocked, "diagnostics": diagnostics}

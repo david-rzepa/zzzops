@@ -214,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
                 "workflow", "--intent", "inspect", "--source-skill", "$review-zzzops-policy",
             ])
             steps = inspection.get("next_steps") if isinstance(inspection, dict) else None
-            if inspection.get("schema_version") != 1 or not isinstance(steps, list) or not steps:
+            if set(inspection) != {"next_steps"} or not isinstance(steps, list) or not steps:
                 raise AcceptanceError("packaged ZzzOps runtime cannot produce a public workflow response")
     except (AcceptanceError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         print(f"Claude plugin acceptance failed: {exc}", file=sys.stderr)
