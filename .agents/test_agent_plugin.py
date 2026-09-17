@@ -116,7 +116,7 @@ class AgentPluginTests(unittest.TestCase):
             "progressive detail",
         ):
             self.assertIn(signal, guide_text)
-        for skill in set(SHIPPED_SKILLS) - {"add-zzzops-goal", "migrate-to-zzzops", "send-zzzops-feedback", "validate-zzzops-installation"}:
+        for skill in set(SHIPPED_SKILLS) - {"add-zzzops-goal", "migrate-to-zzzops", "review-agentic-engineering", "send-zzzops-feedback", "validate-zzzops-installation"}:
             text = (PLUGIN / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("../../rules/COMMUNICATION.md", text, skill)
         feedback_instruction = (PLUGIN / "zzzops" / "references" / "next_steps" / "send-feedback.md").read_text(encoding="utf-8")
@@ -127,6 +127,8 @@ class AgentPluginTests(unittest.TestCase):
         self.assertIn("explicit removal confirmation", installation_instruction)
         migration_instruction = (PLUGIN / "zzzops" / "references" / "next_steps" / "migrate.md").read_text(encoding="utf-8")
         self.assertIn("Treat its candidates, types, confidence", migration_instruction)
+        agentic_instruction = (PLUGIN / "zzzops" / "references" / "next_steps" / "review-agentic-engineering.md").read_text(encoding="utf-8")
+        self.assertIn("at most two high-value observations", agentic_instruction)
 
     def test_package_contains_valid_progressively_disclosed_concepts(self) -> None:
         package = runpy.run_path(str(PLUGIN / "zzzops" / "package.py"))

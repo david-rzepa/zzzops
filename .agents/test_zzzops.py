@@ -4587,6 +4587,7 @@ class WorkflowContractTests(unittest.TestCase):
             "send-zzzops-feedback": "send_feedback",
             "validate-zzzops-installation": "validate_installation",
             "migrate-to-zzzops": "migrate",
+            "review-agentic-engineering": "review_agentic_engineering",
         }
         for skill, intent in expected.items():
             with self.subTest(skill=skill):
@@ -4610,6 +4611,7 @@ class WorkflowContractTests(unittest.TestCase):
             "send_feedback": ("execute", "$send-zzzops-feedback"),
             "validate_installation": ("inspect", "$validate-zzzops-installation"),
             "migrate": ("inspect", "$migrate-to-zzzops"),
+            "review_agentic_engineering": ("inspect", "$review-agentic-engineering"),
         }
         for semantic_intent, (workflow_intent, source_skill) in expected.items():
             with self.subTest(intent=semantic_intent):
@@ -5661,6 +5663,7 @@ class WorkflowContractTests(unittest.TestCase):
                 "send-zzzops-feedback": "send-feedback.md",
                 "validate-zzzops-installation": "installation-validation.md",
                 "migrate-to-zzzops": "migrate.md",
+                "review-agentic-engineering": "review-agentic-engineering.md",
             }.get(name)
             if instruction_name:
                 source = (PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / instruction_name).read_text(encoding="utf-8")
@@ -5676,7 +5679,7 @@ class WorkflowContractTests(unittest.TestCase):
             "validate-zzzops-installation",
         )
         self.assertEqual(names, zzzops.MANAGED_SKILLS)
-        thin_skills = {"add-zzzops-goal", "migrate-to-zzzops", "send-zzzops-feedback", "validate-zzzops-installation"}
+        thin_skills = {"add-zzzops-goal", "migrate-to-zzzops", "review-agentic-engineering", "send-zzzops-feedback", "validate-zzzops-installation"}
         for name in names:
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
             if name not in thin_skills and name != "review-agentic-engineering":
@@ -5723,6 +5726,7 @@ class WorkflowContractTests(unittest.TestCase):
             "send-zzzops-feedback": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "send-feedback.md",
             "validate-zzzops-installation": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "installation-validation.md",
             "migrate-to-zzzops": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "migrate.md",
+            "review-agentic-engineering": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "review-agentic-engineering.md",
         }
         for skill in root.iterdir():
             path = skill / "SKILL.md"
