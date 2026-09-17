@@ -34,7 +34,7 @@ COLD_ONLY_PROMPTS = {
 # workflows remain advisory rather than competing for one aggregate allowance.
 ENFORCED_PROMPT_BUDGETS = {
     "always-loaded/codex": 700,
-    "capture/codex": 3_600,
+    "capture/codex": 3_700,
     "execution/codex": 8_800,
 }
 

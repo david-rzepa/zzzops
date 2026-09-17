@@ -147,8 +147,9 @@ def validate_skill_launch_contract(install: Path) -> None:
         text = skill.read_text(encoding="utf-8")
         if (
             not expected_cli.is_file()
-            or "Codex plugins do not put a `zzzops` binary on `PATH`" not in text
-            or 'python3 "$ZZZOPS_CLI" workflow' not in text
+            or "../../zzzops/zzzops.py" not in text
+            or "--intent" not in text
+            or "../../zzzops/references/CLI_USAGE.md" not in text
             or "`zzzops workflow" in text
         ):
             raise AcceptanceError("cached skill does not invoke its package-owned public CLI")
