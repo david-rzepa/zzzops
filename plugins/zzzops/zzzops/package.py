@@ -51,6 +51,18 @@ REQUIRED_FILES = {
     "zzzops/references/bootstrap/GREENFIELD.md",
     "zzzops/references/bootstrap/BROWNFIELD.md",
     "zzzops/templates/project-goals/INIT_PLAN.json",
+    "zzzops/references/next_steps/workflow-repair.md",
+    "zzzops/references/next_steps/installation-validation.md",
+    "zzzops/references/next_steps/bootstrap.md",
+    "zzzops/references/next_steps/policy-review.md",
+    "zzzops/references/next_steps/routing-evidence.md",
+    "zzzops/references/next_steps/add-goal.md",
+    "zzzops/references/next_steps/execute.md",
+    "zzzops/references/next_steps/migrate.md",
+    "zzzops/references/next_steps/review-agentic-engineering.md",
+    "zzzops/references/next_steps/review-entropy.md",
+    "zzzops/references/next_steps/send-feedback.md",
+    "zzzops/references/next_steps/suggest-work.md",
 }
 NAME_PATTERN = re.compile(r"^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$")
 

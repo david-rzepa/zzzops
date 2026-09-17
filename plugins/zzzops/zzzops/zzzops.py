@@ -209,6 +209,41 @@ WORKFLOW_SOURCE_ACTIONS = {
     "$validate-zzzops-installation": "Inspect installed-package validation evidence for this repository.",
 }
 
+WORKFLOW_INSTRUCTION_PATHS = {
+    "workflow-repair": "zzzops/references/next_steps/workflow-repair.md",
+    "installation-validation": "zzzops/references/next_steps/installation-validation.md",
+    "bootstrap": "zzzops/references/next_steps/bootstrap.md",
+    "policy-review": "zzzops/references/next_steps/policy-review.md",
+    "routing-evidence": "zzzops/references/next_steps/routing-evidence.md",
+    "$add-zzzops-goal": "zzzops/references/next_steps/add-goal.md",
+    "$bootstrap-zzzops-repository": "zzzops/references/next_steps/bootstrap.md",
+    "$execute-zzzops": "zzzops/references/next_steps/execute.md",
+    "$migrate-to-zzzops": "zzzops/references/next_steps/migrate.md",
+    "$review-agentic-engineering": "zzzops/references/next_steps/review-agentic-engineering.md",
+    "$review-zzzops-entropy": "zzzops/references/next_steps/review-entropy.md",
+    "$review-zzzops-policy": "zzzops/references/next_steps/policy-review.md",
+    "$send-zzzops-feedback": "zzzops/references/next_steps/send-feedback.md",
+    "$suggest-zzzops-work": "zzzops/references/next_steps/suggest-work.md",
+    "$validate-zzzops-installation": "zzzops/references/next_steps/installation-validation.md",
+}
+
+
+def workflow_instruction(identifier: str) -> dict[str, str]:
+    """Return an immutable reference to the package instruction for one step."""
+    relative = WORKFLOW_INSTRUCTION_PATHS.get(identifier)
+    if relative is None and identifier.startswith("phase:"):
+        _prefix, phase, operation = identifier.split(":", 2)
+        relative = f"skills/execute-zzzops/references/phases/{phase}-{operation}.md"
+    if not isinstance(relative, str):
+        raise ValueError("workflow instruction is not registered")
+    path = Path(__file__).resolve().parent.parent / relative
+    if not path.is_file():
+        raise ValueError("workflow instruction is missing")
+    return {
+        "path": relative,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    }
+
 
 def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
     """Validate the action-only public workflow response."""
@@ -217,7 +252,7 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
     seen, normalized = set(), []
     for step in steps:
         fields = {"id", "skill", "intent", "audience", "phase", "action", "reason"}
-        optional_fields = {"directive", "model", "effort"}
+        optional_fields = {"directive", "model", "effort", "instruction"}
         if not isinstance(step, dict) or not fields <= set(step) or set(step) - fields - optional_fields or step.get("id") in seen:
             raise ValueError("workflow next step is invalid")
         if step.get("intent") not in WORKFLOW_INTENTS or step["intent"] not in WORKFLOW_SKILL_INTENTS.get(step.get("skill"), set()) or step.get("audience") not in {"root", "worker"}:
@@ -235,6 +270,12 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
             raise ValueError("workflow next step is invalid")
         if step.get("directive") != "delegate" and ("model" in step or "effort" in step):
             raise ValueError("workflow next step is invalid")
+        instruction = step.get("instruction")
+        if instruction is not None and (
+            not isinstance(instruction, dict) or set(instruction) != {"path", "sha256"}
+            or any(not isinstance(instruction.get(field), str) or not instruction[field] for field in instruction)
+        ):
+            raise ValueError("workflow next step is invalid")
         seen.add(step["id"])
         normalized.append(dict(step))
     return {"schema_version": 1, "next_steps": normalized}
@@ -246,7 +287,7 @@ def workflow_repair_step(intent: str, reason: str, action: str, *, source_skill:
     return {
         "id": "workflow-repair", "skill": skill, "intent": intent,
         "audience": "root", "phase": "context", "directive": "resolve_blocker",
-        "action": action, "reason": reason,
+        "action": action, "reason": reason, "instruction": workflow_instruction("workflow-repair"),
     }
 
 
@@ -265,6 +306,7 @@ def workflow_context_step(
                 "audience": "root", "phase": "context",
                 "action": "Validate the installed ZzzOps package for this repository, then invoke workflow again.",
                 "reason": f"Repository installation validation is required ({status.get('reason')}).",
+                "instruction": workflow_instruction("installation-validation"),
             }
     inspection = inspect_initialization(repo)
     if inspection.get("initialized") is True:
@@ -277,6 +319,7 @@ def workflow_context_step(
             "audience": "root", "phase": "context",
             "action": "Bootstrap repository policy and canonical context, then invoke workflow again.",
             "reason": str(inspection.get("state_error") or "Canonical project policy is missing."),
+            "instruction": workflow_instruction("bootstrap"),
         }
     if source_skill == "$review-zzzops-policy":
         return None
@@ -285,6 +328,7 @@ def workflow_context_step(
         "audience": "root", "phase": "context",
         "action": "Inspect policy state and prepare the required review input.",
         "reason": "; ".join(inspection.get("decision_blockers") or ["Project policy is not ready."]),
+        "instruction": workflow_instruction("policy-review"),
     }
 
 
@@ -318,6 +362,7 @@ def workflow_routing_step(intent: str, settings: Any, request: Any) -> dict[str,
             "action": directive["instruction"],
             "reason": "Reviewed routing requires a worker for this phase.",
             "model": selected["model"], "effort": selected["effort"],
+            "instruction": workflow_instruction(f"phase:{phase}:execute"),
         }
     if directive["action"] == "continue_root":
         return {
@@ -326,6 +371,7 @@ def workflow_routing_step(intent: str, settings: Any, request: Any) -> dict[str,
             "directive": "continue_root",
             "action": directive["instruction"],
             "reason": "Reviewed routing requires root execution for this phase.",
+            "instruction": workflow_instruction(f"phase:{phase}:execute"),
         }
     return {
         "id": f"routing-blocker-{phase}", "skill": "$execute-zzzops", "intent": "execute",
@@ -333,6 +379,7 @@ def workflow_routing_step(intent: str, settings: Any, request: Any) -> dict[str,
         "directive": "resolve_blocker",
         "action": directive["instruction"],
         "reason": str(assignment.get("reason") or "Routing is not executable."),
+        "instruction": workflow_instruction("routing-evidence"),
     }
 
 
@@ -367,6 +414,7 @@ def workflow_phase_frontier(
                 "audience": "root", "phase": phase, "directive": "continue_root",
                 "action": f"Perform the {phase} phase on the root agent.",
                 "reason": f"The reviewed phase DAG assigns {phase} to the root agent ({item['reason']}).",
+                "instruction": workflow_instruction(f"phase:{phase}:execute"),
             })
         else:
             steps.append({
@@ -374,6 +422,7 @@ def workflow_phase_frontier(
                 "audience": "root", "phase": phase,
                 "action": f"Record complete routing evidence for the {phase} phase, then invoke workflow routing.",
                 "reason": f"The {phase} phase is eligible ({item['reason']}) but its reviewed model-and-effort assignment has not yet been evaluated.",
+                "instruction": workflow_instruction("routing-evidence"),
             })
     return {"eligibility": eligibility, "next_steps": steps}
 GOAL_STATUSES = {"new", "triaged", "ready", "in_progress", "blocked", "done", "cancelled"}
@@ -2557,6 +2606,7 @@ def main() -> int:
                         result = {"next_steps": [{
                             "kind": "dispatch", "assignment": "root", "skill": source_skill,
                             "intent": args.intent, "action": WORKFLOW_SOURCE_ACTIONS[source_skill],
+                            "instruction": workflow_instruction(source_skill),
                         }]}
                 elif args.intent not in {"execute", "preview"}:
                     raise ValueError("Goal phase checkpoints require execute or preview intent")

@@ -1001,6 +1001,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
                 self.assertEqual([{
                     "kind": "dispatch", "assignment": "root", "skill": skill, "intent": intent,
                     "action": zzzops.WORKFLOW_SOURCE_ACTIONS[skill],
+                    "instruction": zzzops.workflow_instruction(skill),
                 }], step)
         self.assertEqual(set(zzzops.WORKFLOW_SKILL_INTENTS), set(zzzops.WORKFLOW_SOURCE_ACTIONS))
 
@@ -1088,6 +1089,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
         expected = {"next_steps": [{
             "kind": "dispatch", "assignment": "root", "skill": "$execute-zzzops", "intent": "execute",
             "action": "Evaluate the goal workflow frontier and perform its required next step.",
+            "instruction": zzzops.workflow_instruction("$execute-zzzops"),
         }]}
         with (
             mock.patch.object(zzzops, "configure_cli_stdout"),
@@ -1159,6 +1161,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
         expected = {"next_steps": [{
             "kind": "dispatch", "assignment": "root", "skill": "$execute-zzzops", "intent": "preview",
             "action": "Evaluate the goal workflow frontier and perform its required next step.",
+            "instruction": zzzops.workflow_instruction("$execute-zzzops"),
         }]}
         with (
             mock.patch.object(zzzops, "configure_cli_stdout"),
@@ -4604,6 +4607,30 @@ class WorkflowContractTests(unittest.TestCase):
         }
         with self.assertRaisesRegex(ValueError, "next step"):
             zzzops.workflow_envelope("capture", [invalid])
+
+    def test_workflow_instruction_references_are_complete_and_content_addressed(self):
+        identifiers = set(zzzops.WORKFLOW_INSTRUCTION_PATHS)
+        identifiers.update({
+            "phase:understand:execute", "phase:decompose:execute", "phase:plan:execute",
+            "phase:test_design:execute", "phase:implement:execute", "phase:publish:execute",
+        })
+        for identifier in identifiers:
+            with self.subTest(identifier=identifier):
+                reference = zzzops.workflow_instruction(identifier)
+                path = PLUGIN_ROOT / reference["path"]
+                self.assertTrue(path.is_file())
+                self.assertEqual(
+                    hashlib.sha256(path.read_bytes()).hexdigest(), reference["sha256"],
+                )
+
+    def test_workflow_envelope_rejects_an_invalid_instruction_reference(self):
+        step = {
+            "id": "instruction", "skill": "$execute-zzzops", "intent": "execute",
+            "audience": "root", "phase": "context", "action": "Follow the returned instruction.",
+            "reason": "The workflow selected a step.", "instruction": {"path": "only-path"},
+        }
+        with self.assertRaisesRegex(ValueError, "next step"):
+            zzzops.workflow_envelope("execute", [step])
 
     def test_workflow_repair_preserves_compatible_source_and_is_action_only(self):
         repair = zzzops.workflow_repair_step(
