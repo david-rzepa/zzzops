@@ -968,6 +968,43 @@ class DiagnosticsModuleTests(unittest.TestCase):
         record.assert_not_called()
         purge.assert_not_called()
 
+    def test_workflow_cli_emits_only_next_steps(self):
+        runtime = self.repo / "runtime.json"
+        runtime.write_text(json.dumps({"root_pair": {"model": "root", "effort": "medium"}, "available_pairs": [{"model": "root", "effort": "medium"}]}), encoding="utf-8")
+        expected = {"next_steps": [{"kind": "execute", "phase": "understand"}]}
+        with (
+            mock.patch.object(zzzops, "configure_cli_stdout"),
+            mock.patch.object(zzzops._package, "package_status", return_value={"ok": True}),
+            mock.patch.object(zzzops, "workflow_checkpoint", return_value=expected) as checkpoint,
+            mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--goal", "42", "--intent", "execute", "--runtime", str(runtime)]),
+            mock.patch.object(sys, "stdout", io.StringIO()) as stream,
+        ):
+            self.assertEqual(0, zzzops.main())
+        self.assertEqual(expected, json.loads(stream.getvalue()))
+        checkpoint.assert_called_once_with(self.repo.resolve(), 42, "execute", json.loads(runtime.read_text(encoding="utf-8")))
+
+    def test_workflow_cli_submits_phase_evidence_through_the_same_command(self):
+        runtime, payload_path = self.repo / "runtime.json", self.repo / "result.json"
+        runtime.write_text(json.dumps({"root_pair": {"model": "root", "effort": "medium"}, "available_pairs": [{"model": "root", "effort": "medium"}]}), encoding="utf-8")
+        payload = {"operation": "record_review", "phase": "plan", "artifact": {"reference": "urn:sha256:" + "1" * 64, "hash": "sha256:" + "2" * 64}, "reviewer": "reviewer", "decision": "approved"}
+        payload_path.write_text(json.dumps(payload), encoding="utf-8")
+        expected = {"next_steps": []}
+        with (
+            mock.patch.object(zzzops, "configure_cli_stdout"),
+            mock.patch.object(zzzops._package, "package_status", return_value={"ok": True}),
+            mock.patch.object(zzzops, "workflow_submit", return_value=expected) as submit,
+            mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--goal", "42", "--intent", "execute", "--runtime", str(runtime), "--input", str(payload_path)]),
+            mock.patch.object(sys, "stdout", io.StringIO()) as stream,
+        ):
+            self.assertEqual(0, zzzops.main())
+        self.assertEqual(expected, json.loads(stream.getvalue()))
+        submit.assert_called_once_with(self.repo.resolve(), 42, "execute", payload)
+
+    def test_workflow_diagnostics_are_local_and_not_stdout_payloads(self):
+        zzzops.record_workflow_diagnostic(self.repo, {"goal": 42, "detail": "internal"})
+        rows = zzzops.workflow_diagnostic_log(self.repo).read_text(encoding="utf-8").splitlines()
+        self.assertEqual({"detail": "internal", "goal": 42}, json.loads(rows[0]))
+
     def test_profile_flag_preserves_checkpoint_output_and_records_only_when_enabled(self):
         checkpoint = {"ready": True, "schema_version": 1, "value": "unchanged"}
         with (
@@ -2430,7 +2467,7 @@ class PhaseEvidenceTests(unittest.TestCase):
     def graph(self, *phases):
         return {"phases": list(phases)}
 
-    def envelope(self, phase, *, policy="policy-1", upstream_outputs=None):
+    def envelope(self, phase, *, policy="policy-1", upstream_outputs=None, acceptance_criteria=None):
         digest = zzzops.sha256_phase_evidence_digest
         return zzzops.phase_input_envelope(
             phase, digest({"goal": 1}), digest({"policy": policy}), digest({"dag": 1}),
@@ -2439,6 +2476,7 @@ class PhaseEvidenceTests(unittest.TestCase):
             capabilities={"identity": "codex", "snapshot": {"models": ["test-model"]}},
             invocation={"intent": "execute", "inputs": {"goal": 1}},
             upstream_outputs=upstream_outputs,
+            acceptance_criteria=acceptance_criteria or ["Goal works."],
         )
 
     def record(self, phase, envelope, output="output"):
@@ -2446,9 +2484,33 @@ class PhaseEvidenceTests(unittest.TestCase):
         return {
             "status": "completed", "input_envelope": envelope, "input_hash": digest(envelope),
             "output": {"reference": "git:" + hashlib.sha1(output.encode("utf-8")).hexdigest(), "hash": digest({"output": output})},
-            "verification": None, "routing": None, "review": None,
+            "verification": (
+                {"reference": "urn:sha256:" + "5" * 64, "hash": digest({"verification": output})}
+                if phase == "implement" else None
+            ), "routing": None,
             "selection": {"model": "test-model", "effort": "low"}, "actor": "worker-1", "not_required": None,
+            "test_design": (
+                {
+                    "baseline_failure": {"reference": "urn:sha256:" + "2" * 64, "hash": digest({"baseline": output})},
+                    "coverage": [
+                        {
+                            "criterion": criterion,
+                            "test": {"reference": "git:" + hashlib.sha1((output + criterion).encode("utf-8")).hexdigest(), "hash": digest({"test": criterion, "output": output})},
+                            "exclusion": None,
+                        }
+                        for criterion in envelope["acceptance_criteria"]
+                    ],
+                }
+                if phase == "test_design" else None
+            ),
         }
+
+    def approved_test_design(self, evidence, *, output="tests"):
+        envelope = self.envelope("test_design")
+        record = self.record("test_design", envelope, output)
+        evidence = zzzops.record_phase_result(evidence, "test_design", record, envelope)
+        review = {"reference": "urn:sha256:" + "3" * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": output})}
+        return zzzops.record_phase_review(evidence, "test_design", review, "reviewer-2"), record
 
     def goal(self, evidence=None, **overrides):
         goal = {"status": "ready", "phase_evidence": zzzops.empty_phase_evidence() if evidence is None else evidence}
@@ -2465,20 +2527,21 @@ class PhaseEvidenceTests(unittest.TestCase):
             zzzops.sha256_phase_evidence_digest(["y", "x"]),
         )
 
-    def test_independent_review_requires_verification_and_distinct_actor(self):
-        implementation_input, review_input = self.envelope("implement"), self.envelope("review")
-        implementation = self.record("implement", implementation_input)
-        digest = zzzops.sha256_phase_evidence_digest
-        implementation["verification"] = {"reference": "urn:sha256:" + "1" * 64, "hash": digest({"checks": "passed"})}
-        review = self.record("review", review_input, "review")
-        review["actor"] = "reviewer-2"
-        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "implement", implementation, implementation_input)
-        evidence = zzzops.record_phase_result(evidence, "review", review, review_input)
-        self.assertTrue(zzzops.independent_review_ready(evidence, "implement", "review")["ready"])
-        review["actor"] = "worker-1"
-        same_actor = zzzops.record_phase_result(evidence, "review", review, review_input)
+    def test_phase_review_binds_exact_record_and_requires_independent_reviewer(self):
+        envelope = self.envelope("plan")
+        evidence = zzzops.record_phase_result(
+            zzzops.empty_phase_evidence(), "plan", self.record("plan", envelope), envelope,
+        )
+        artifact = {"reference": "urn:sha256:" + "1" * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": "ok"})}
+        reviewed = zzzops.record_phase_review(evidence, "plan", artifact, "reviewer-2")
+        self.assertEqual("reviewer-2", reviewed["reviews"]["plan"]["reviewer"])
+        self.assertEqual("approved", reviewed["reviews"]["plan"]["decision"])
+        self.assertEqual(reviewed["records"]["plan"]["input_hash"], reviewed["reviews"]["plan"]["input_hash"])
+        self.assertEqual(reviewed["records"]["plan"]["output"]["hash"], reviewed["reviews"]["plan"]["output_hash"])
         with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "independent"):
-            zzzops.independent_review_ready(same_actor, "implement", "review")
+            zzzops.record_phase_review(evidence, "plan", artifact, "worker-1")
+        changed = zzzops.record_phase_result(reviewed, "plan", self.record("plan", envelope, "changed"), envelope)
+        self.assertNotIn("plan", changed["reviews"])
         with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "acyclic"):
             zzzops.derive_phase_eligibility(
                 self.goal(), self.graph({"id": "a", "depends_on": ["b"]}, {"id": "b", "depends_on": ["a"]}), {},
@@ -2527,6 +2590,38 @@ class PhaseEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "input envelope"):
             zzzops.record_phase_result(zzzops.empty_phase_evidence(), "plan", partial_record, partial)
 
+    def test_test_design_requires_baseline_complete_coverage_and_approved_review_for_implementation(self):
+        evidence = zzzops.empty_phase_evidence()
+        design_input = self.envelope("test_design", acceptance_criteria=["Creates project.", "Writes policy."])
+        incomplete = self.record("test_design", design_input)
+        incomplete["test_design"]["coverage"].pop()
+        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "every acceptance criterion"):
+            zzzops.record_phase_result(evidence, "test_design", incomplete, design_input)
+        invalid_baseline = self.record("test_design", design_input)
+        invalid_baseline["test_design"]["baseline_failure"] = None
+        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "baseline failure"):
+            zzzops.record_phase_result(evidence, "test_design", invalid_baseline, design_input)
+
+        design = self.record("test_design", design_input)
+        evidence = zzzops.record_phase_result(evidence, "test_design", design, design_input)
+        implementation_input = self.envelope("implement", upstream_outputs=[{"phase": "test_design", "hash": design["output"]["hash"]}])
+        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "approved test-design review"):
+            zzzops.record_phase_result(evidence, "implement", self.record("implement", implementation_input), implementation_input)
+        review_artifact = {"reference": "urn:sha256:" + "4" * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": "changes"})}
+        evidence = zzzops.record_phase_review(evidence, "test_design", review_artifact, "reviewer-2", decision="changes_requested")
+        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "approved test-design review"):
+            zzzops.record_phase_result(evidence, "implement", self.record("implement", implementation_input), implementation_input)
+        evidence = zzzops.record_phase_review(evidence, "test_design", review_artifact, "reviewer-2")
+        without_binding = self.envelope("implement")
+        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "bind the approved"):
+            zzzops.record_phase_result(evidence, "implement", self.record("implement", without_binding), without_binding)
+        missing_verification = self.record("implement", implementation_input)
+        missing_verification["verification"] = None
+        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "passing verification"):
+            zzzops.record_phase_result(evidence, "implement", missing_verification, implementation_input)
+        accepted = zzzops.record_phase_result(evidence, "implement", self.record("implement", implementation_input), implementation_input)
+        self.assertIn("implement", accepted["records"])
+
     def test_not_required_phase_retains_route_and_policy_decision(self):
         envelope = self.envelope("decompose")
         record = self.record("decompose", envelope)
@@ -2546,13 +2641,131 @@ class PhaseEvidenceTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(["plan", "verify"], [item["phase"] for item in first["eligible"]])
 
+    def test_phase_steps_require_approved_review_before_downstream_execution(self):
+        graph = self.graph(
+            {"id": "plan"}, {"id": "test_design", "depends_on": ["plan"]},
+            {"id": "implement", "depends_on": ["test_design"]},
+        )
+        plan_input, test_input = self.envelope("plan"), self.envelope("test_design")
+        initial = zzzops.derive_phase_steps(self.goal(), graph, {"plan": plan_input, "test_design": test_input, "implement": self.envelope("implement")})
+        self.assertEqual(["plan"], [step["phase"] for step in initial["execute"]])
+        self.assertEqual(["test_design", "implement"], [item["phase"] for item in initial["blocked"]])
+
+        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "plan", self.record("plan", plan_input), plan_input)
+        awaiting_review = zzzops.derive_phase_steps(self.goal(evidence), graph, {"plan": plan_input, "test_design": test_input, "implement": self.envelope("implement")})
+        self.assertEqual(["plan"], [step["phase"] for step in awaiting_review["review"]])
+        self.assertEqual(["test_design", "implement"], [item["phase"] for item in awaiting_review["blocked"]])
+
+        artifact = {"reference": "urn:sha256:" + "6" * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": "plan"})}
+        evidence = zzzops.record_phase_review(evidence, "plan", artifact, "reviewer-2")
+        next_step = zzzops.derive_phase_steps(self.goal(evidence), graph, {"plan": plan_input, "test_design": test_input, "implement": self.envelope("implement")})
+        self.assertEqual(["test_design"], [step["phase"] for step in next_step["execute"]])
+
+    def test_phase_steps_require_current_approved_parent_gate(self):
+        parent_input = self.envelope("plan")
+        parent_evidence = zzzops.record_phase_result(
+            zzzops.empty_phase_evidence(), "plan", self.record("plan", parent_input), parent_input,
+        )
+        child = self.goal(parent=9)
+        child_input = self.envelope("test_design")
+        graph = self.graph({"id": "test_design", "parent_gates": ["plan"]})
+        blocked = zzzops.derive_phase_steps(child, graph, {"test_design": child_input}, {9: {"goal": self.goal(parent_evidence), "live_inputs": {"plan": parent_input}}})
+        self.assertEqual(["plan"], blocked["blocked"][0]["parent_gates"])
+        artifact = {"reference": "urn:sha256:" + "7" * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": "parent"})}
+        parent_evidence = zzzops.record_phase_review(parent_evidence, "plan", artifact, "reviewer-2")
+        allowed = zzzops.derive_phase_steps(child, graph, {"test_design": child_input}, {9: {"goal": self.goal(parent_evidence), "live_inputs": {"plan": parent_input}}})
+        self.assertEqual(["test_design"], [step["phase"] for step in allowed["execute"]])
+
+    def test_phase_steps_require_approved_review_before_downstream_execution(self):
+        graph = self.graph(
+            {"id": "plan"}, {"id": "test_design", "depends_on": ["plan"]},
+            {"id": "implement", "depends_on": ["test_design"]},
+        )
+        plan_input, test_input = self.envelope("plan"), self.envelope("test_design")
+        initial = zzzops.derive_phase_steps(self.goal(), graph, {"plan": plan_input, "test_design": test_input, "implement": self.envelope("implement")})
+        self.assertEqual(["plan"], [step["phase"] for step in initial["execute"]])
+        self.assertEqual(["test_design", "implement"], [item["phase"] for item in initial["blocked"]])
+
+        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "plan", self.record("plan", plan_input), plan_input)
+        awaiting_review = zzzops.derive_phase_steps(self.goal(evidence), graph, {"plan": plan_input, "test_design": test_input, "implement": self.envelope("implement")})
+        self.assertEqual(["plan"], [step["phase"] for step in awaiting_review["review"]])
+        self.assertEqual(["test_design", "implement"], [item["phase"] for item in awaiting_review["blocked"]])
+
+        artifact = {"reference": "urn:sha256:" + "6" * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": "plan"})}
+        evidence = zzzops.record_phase_review(evidence, "plan", artifact, "reviewer-2")
+        next_step = zzzops.derive_phase_steps(self.goal(evidence), graph, {"plan": plan_input, "test_design": test_input, "implement": self.envelope("implement")})
+        self.assertEqual(["test_design"], [step["phase"] for step in next_step["execute"]])
+
+    def test_complete_workflow_lifecycle_emits_execution_and_review_steps(self):
+        plan = json.loads((PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        routing = json.loads(json.dumps(next(item for item in plan["policy"]["sections"] if item["id"] == "model_routing")["settings"]))
+        routing["model_inventory"]["reviewed_pairs"] = [
+            {"model": "root", "effort": "high", "tier": "architectural", "cost": 10},
+            {"model": "economy", "effort": "low", "tier": "routine", "cost": 1},
+            {"model": "builder", "effort": "medium", "tier": "bounded", "cost": 3},
+            {"model": "architect", "effort": "high", "tier": "architectural", "cost": 8},
+        ]
+        runtime = {
+            "root_pair": {"model": "root", "effort": "high"},
+            "available_pairs": [
+                {"model": "root", "effort": "high"}, {"model": "economy", "effort": "low"},
+                {"model": "builder", "effort": "medium"}, {"model": "architect", "effort": "high"},
+            ],
+        }
+        phases = ["understand", "decompose", "plan", "test_design", "implement", "publish"]
+        graph = self.graph(*[
+            {"id": phase, "depends_on": [] if index == 0 else [phases[index - 1]]}
+            for index, phase in enumerate(phases)
+        ])
+        phase_nodes = {
+            phase: {"assignment_group": "root" if phase == "understand" else "planning" if phase in {"decompose", "plan", "test_design"} else "implementation"}
+            for phase in phases
+        }
+        goal = {"status": "ready", "difficulty": "S", "engineering_rigor": {"risk_categories": [], "effective": "structured"}}
+        evidence = zzzops.empty_phase_evidence()
+
+        def inputs():
+            result = {}
+            for index, phase in enumerate(phases):
+                upstream = []
+                if index:
+                    prior = evidence["records"].get(phases[index - 1], {}).get("output")
+                    if prior:
+                        upstream = [{"phase": phases[index - 1], "hash": prior["hash"]}]
+                result[phase] = self.envelope(phase, upstream_outputs=upstream)
+            return result
+
+        for phase in phases:
+            goal["phase_evidence"] = evidence
+            step = zzzops.workflow_step_plan(goal, graph, inputs(), phase_nodes, routing, runtime)
+            self.assertEqual(phase, step["next_steps"][0]["phase"])
+            self.assertEqual("execute", step["next_steps"][0]["kind"])
+            phase_input = inputs()[phase]
+            record = self.record(phase, phase_input, phase + " output")
+            evidence = zzzops.record_phase_result(evidence, phase, record, phase_input)
+            goal["phase_evidence"] = evidence
+            review = zzzops.workflow_step_plan(goal, graph, inputs(), phase_nodes, routing, runtime)
+            self.assertEqual([{
+                "phase": phase, "reason": "missing_or_unapproved_review",
+            }], review["frontier"]["review"])
+            self.assertEqual("review", review["next_steps"][0]["kind"])
+            artifact = {"reference": "urn:sha256:" + str(phases.index(phase) + 1) * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": phase})}
+            evidence = zzzops.record_phase_review(evidence, phase, artifact, "reviewer-2")
+
+        goal["phase_evidence"] = evidence
+        finished = zzzops.workflow_step_plan(goal, graph, inputs(), phase_nodes, routing, runtime)
+        self.assertEqual([], finished["next_steps"])
+
     def test_stale_rejection_and_identical_output_preserves_descendant(self):
         graph = self.graph({"id": "plan"}, {"id": "implement", "depends_on": ["plan"]})
         plan_input = self.envelope("plan")
         plan_record = self.record("plan", plan_input, "plan-v1")
         evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "plan", plan_record, plan_input)
+        evidence, test_design = self.approved_test_design(evidence)
         output = plan_record["output"]
-        implement_input = self.envelope("implement", upstream_outputs=[{"phase": "plan", "hash": output["hash"]}])
+        implement_input = self.envelope("implement", upstream_outputs=[
+            {"phase": "plan", "hash": output["hash"]}, {"phase": "test_design", "hash": test_design["output"]["hash"]},
+        ])
         evidence = zzzops.record_phase_result(evidence, "implement", self.record("implement", implement_input), implement_input)
         with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "stale"):
             zzzops.record_phase_result(evidence, "plan", plan_record, self.envelope("plan", policy="policy-2"))
@@ -2570,10 +2783,17 @@ class PhaseEvidenceTests(unittest.TestCase):
         graph = self.graph({"id": "plan"}, {"id": "implement", "depends_on": ["plan"]})
         plan_input = self.envelope("plan")
         evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "plan", self.record("plan", plan_input, "first"), plan_input)
-        old_implement = self.envelope("implement", upstream_outputs=[{"phase": "plan", "hash": zzzops.sha256_phase_evidence_digest({"output": "first"})}])
+        evidence, test_design = self.approved_test_design(evidence)
+        old_implement = self.envelope("implement", upstream_outputs=[
+            {"phase": "plan", "hash": zzzops.sha256_phase_evidence_digest({"output": "first"})},
+            {"phase": "test_design", "hash": test_design["output"]["hash"]},
+        ])
         evidence = zzzops.record_phase_result(evidence, "implement", self.record("implement", old_implement), old_implement)
         evidence = zzzops.record_phase_result(evidence, "plan", self.record("plan", plan_input, "second"), plan_input)
-        changed_implement = self.envelope("implement", upstream_outputs=[{"phase": "plan", "hash": zzzops.sha256_phase_evidence_digest({"output": "second"})}])
+        changed_implement = self.envelope("implement", upstream_outputs=[
+            {"phase": "plan", "hash": zzzops.sha256_phase_evidence_digest({"output": "second"})},
+            {"phase": "test_design", "hash": test_design["output"]["hash"]},
+        ])
         stale = zzzops.derive_phase_eligibility(self.goal(evidence), graph, {"plan": plan_input, "implement": changed_implement})
         self.assertEqual(["implement"], stale["stale"])
         self.assertEqual(["implement"], [item["phase"] for item in stale["eligible"]])
@@ -2590,7 +2810,9 @@ class PhaseEvidenceTests(unittest.TestCase):
         )
         graph = self.graph({"id": "implement", "parent_gates": ["architecture"]})
         child_input = self.envelope("implement")
-        child = self.goal(parent=9, revision=1)
+        child_evidence, test_design = self.approved_test_design(zzzops.empty_phase_evidence())
+        child_input = self.envelope("implement", upstream_outputs=[{"phase": "test_design", "hash": test_design["output"]["hash"]}])
+        child = self.goal(child_evidence, parent=9, revision=1)
         blocked = zzzops.derive_phase_eligibility(child, graph, {"implement": child_input})
         self.assertEqual(["architecture"], blocked["blocked"][0]["parent_gates"])
         parent = {"goal": self.goal(parent_evidence), "live_inputs": {"architecture": parent_input}}
@@ -2680,6 +2902,40 @@ class GoalTransitionTests(unittest.TestCase):
         result = zzzops.apply_goal_transition(adapter, "owner/repo", 42, transition)
         self.assertEqual("closed", result["state"])
         self.assertIn("zzzops:status:done", adapter.updates[0]["labels"])
+
+    def test_goal_record_projects_exact_checked_acceptance_criteria_and_phase_evidence(self):
+        goal = self.goal()
+        goal["phase_evidence"] = zzzops.empty_phase_evidence()
+        body = zzzops.render_managed_goal(goal, "## Outcome\n\n- [x] Creates the requested result.\n- [x] Preserves existing behaviour.\n", 42)
+        record = zzzops.github_goal_record({**self.issue(), "body": body})
+        self.assertEqual(["Creates the requested result.", "Preserves existing behaviour."], record["acceptance_criteria"])
+        self.assertEqual(goal["phase_evidence"], record["phase_evidence"])
+
+    def test_workflow_submission_records_evidence_with_a_guarded_goal_transition(self):
+        adapter = FakeGoalTransitionAdapter(self.issue())
+        evidence_test = PhaseEvidenceTests()
+        envelope = evidence_test.envelope("plan")
+        record = evidence_test.record("plan", envelope)
+        project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}}
+        graph = {"phases": [{"id": "plan"}]}
+        nodes = {"plan": {"review": {"independent": True}}}
+        with (
+            mock.patch.object(zzzops, "reviewed_project_state", return_value=project),
+            mock.patch.object(zzzops, "GitHubGoalTransitionAdapter", return_value=adapter),
+            mock.patch.object(zzzops, "_workflow_phase_configuration", return_value=(graph, nodes)),
+            mock.patch.object(zzzops, "workflow_live_inputs", return_value={"plan": envelope}),
+        ):
+            with self.assertRaisesRegex(ValueError, "current required"):
+                zzzops.workflow_submit(Path("."), 42, "execute", {
+                    "operation": "record_review", "phase": "plan",
+                    "artifact": {"reference": "urn:sha256:" + "1" * 64, "hash": "sha256:" + "2" * 64},
+                    "reviewer": "reviewer", "decision": "approved",
+                })
+            result = zzzops.workflow_submit(Path("."), 42, "execute", {"operation": "record_result", "phase": "plan", "record": record})
+        self.assertEqual({"next_steps": []}, result)
+        persisted = zzzops.parse_managed_goal(adapter.issue["body"], 42)
+        self.assertIn("plan", persisted["phase_evidence"]["records"])
+        self.assertEqual(2, persisted["revision"])
 
     def test_transition_replaces_stale_schema_labels_with_current_schema(self):
         issue = self.issue()
@@ -4092,6 +4348,15 @@ class ReservationTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_public_workflow_cli_has_one_parser_and_exposes_all_named_intents(self):
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "workflow", "--help"],
+            capture_output=True, text=True, encoding="utf-8", check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("--intent {approve,capture,execute,inspect,resume}", result.stdout)
+        self.assertIn("--runtime RUNTIME", result.stdout)
+
     @mock.patch.object(zzzops, "inspect_initialization")
     @mock.patch.object(zzzops._installation, "validation_status")
     def test_workflow_context_gate_prioritizes_installation_then_bootstrap_then_policy(self, status, inspection):
@@ -4818,6 +5083,55 @@ class WorkflowContractTests(unittest.TestCase):
         missing["sections"] = [item for item in missing["sections"] if item["id"] != "model_routing"]
         self.assertTrue(any("missing sections: model_routing" in error for error in zzzops.validate_policy(missing, True)))
 
+    def test_workflow_step_plan_emits_skill_and_exact_routing_or_discovery_blocker(self):
+        plan = json.loads((PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        settings = next(item for item in plan["policy"]["sections"] if item["id"] == "model_routing")["settings"]
+        settings = json.loads(json.dumps(settings))
+        settings["model_inventory"]["reviewed_pairs"] = [
+            {"model": "root-model", "effort": "medium", "tier": "routine", "cost": 1},
+        ]
+        evidence_test = PhaseEvidenceTests()
+        input_envelope = evidence_test.envelope("understand")
+        goal = {"status": "ready", "difficulty": "S", "engineering_rigor": {"risk_categories": [], "effective": "structured"}}
+        phase_nodes = {"understand": {"assignment_group": "root"}}
+        result = zzzops.workflow_step_plan(
+            goal, {"phases": [{"id": "understand"}]}, {"understand": input_envelope}, phase_nodes, settings,
+            {"root_pair": {"model": "root-model", "effort": "medium"}, "available_pairs": [{"model": "root-model", "effort": "medium"}]},
+        )
+        self.assertEqual([{
+            "kind": "execute", "phase": "understand", "reason": "missing_evidence",
+            "skill": "execute-zzzops/references/phases/understand-execute.md", "assignment": "root",
+            "selection": {"model": "root-model", "effort": "medium"},
+        }], result["next_steps"])
+        missing = zzzops.workflow_step_plan(goal, {"phases": [{"id": "understand"}]}, {"understand": input_envelope}, phase_nodes, settings, None)
+        self.assertEqual("capability_discovery", missing["next_steps"][0]["kind"])
+
+    def test_workflow_step_plan_routes_required_human_approval_to_root(self):
+        plan = json.loads((PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        settings = json.loads(json.dumps(next(item for item in plan["policy"]["sections"] if item["id"] == "model_routing")["settings"]))
+        settings["model_inventory"]["reviewed_pairs"] = [{"model": "root-model", "effort": "medium", "tier": "architectural", "cost": 1}]
+        evidence_test = PhaseEvidenceTests()
+        input_envelope = evidence_test.envelope("understand")
+        record = evidence_test.record("understand", input_envelope)
+        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "understand", record, input_envelope)
+        goal = {"status": "ready", "difficulty": "S", "engineering_rigor": {"risk_categories": [], "effective": "structured"}, "phase_evidence": evidence}
+        result = zzzops.workflow_step_plan(
+            goal, {"phases": [{"id": "understand"}]}, {"understand": input_envelope},
+            {"understand": {"assignment_group": "root", "review": {"human_approval": True}}}, settings,
+            {"root_pair": {"model": "root-model", "effort": "medium"}, "available_pairs": [{"model": "root-model", "effort": "medium"}]},
+        )
+        self.assertEqual("human_approval", result["next_steps"][0]["kind"])
+        self.assertEqual("root", result["next_steps"][0]["assignment"])
+        self.assertEqual({"model": "root-model", "effort": "medium"}, result["next_steps"][0]["selection"])
+
+    def test_workflow_checkpoint_rejects_an_invalid_portfolio_before_goal_execution(self):
+        with (
+            mock.patch.object(zzzops, "reviewed_project_state", return_value={"repository": {"identity": "owner/repo"}}),
+            mock.patch.object(zzzops, "portfolio_snapshot", return_value={"complete": True, "valid": False, "goals": []}),
+        ):
+            with self.assertRaisesRegex(ValueError, "portfolio"):
+                zzzops.workflow_checkpoint(Path("."), 42, "execute", None)
+
     def test_model_plus_effort_routing_enforces_root_boundary(self):
         inventory = [
             {"model": "economy", "effort": "low", "capability": 1, "cost": 1},
@@ -4825,21 +5139,21 @@ class WorkflowContractTests(unittest.TestCase):
             {"model": "stronger", "effort": "high", "capability": 4, "cost": 4},
         ]
         root = {"model": "root", "effort": "high", "capability": 3, "cost": 3}
-        economical = zzzops.route_phase(phase="discovery", required_capability=1, inventory=inventory, root_pair=root)
+        economical = zzzops.route_phase(phase="test_design", required_capability=1, inventory=inventory, root_pair=root)
         self.assertEqual({"model": "economy", "effort": "low"}, economical["selected"])
-        intermediate = zzzops.route_phase(phase="implementation", required_capability=2, inventory=inventory, root_pair=root)
+        intermediate = zzzops.route_phase(phase="implement", required_capability=2, inventory=inventory, root_pair=root)
         self.assertEqual({"model": "intermediate", "effort": "medium"}, intermediate["selected"])
-        root_equivalent = zzzops.route_phase(phase="architecture", required_capability=3, inventory=inventory, root_pair=root)
+        root_equivalent = zzzops.route_phase(phase="plan", required_capability=3, inventory=inventory, root_pair=root)
         self.assertEqual("delegated", root_equivalent["mode"])
         self.assertEqual({"model": "root", "effort": "high"}, root_equivalent["selected"])
         direct = zzzops.route_phase(
-            phase="architecture", required_capability=3, inventory=inventory,
+            phase="plan", required_capability=3, inventory=inventory,
             root_pair=root, requires_human=True,
         )
         self.assertEqual("direct_root", direct["mode"])
         with self.assertRaisesRegex(ValueError, "above-root"):
-            zzzops.route_phase(phase="architecture", required_capability=4, inventory=inventory, root_pair=root)
-        elevated = zzzops.route_phase(phase="architecture", required_capability=4, inventory=inventory, root_pair=root, session_override=True)
+            zzzops.route_phase(phase="plan", required_capability=4, inventory=inventory, root_pair=root)
+        elevated = zzzops.route_phase(phase="plan", required_capability=4, inventory=inventory, root_pair=root, session_override=True)
         self.assertEqual("delegated_override", elevated["mode"])
         self.assertEqual({"model": "stronger", "effort": "high"}, elevated["selected"])
 
@@ -4877,7 +5191,7 @@ class WorkflowContractTests(unittest.TestCase):
         inventory = [{"model": "economy", "effort": "low", "capability": 1, "cost": 1}]
         root = {"model": "root", "effort": "high", "capability": 3, "cost": 3}
         blocked = zzzops.prepare_phase_assignment(
-            phase="implementation", required_capability=1, inventory=inventory,
+            phase="implement", required_capability=1, inventory=inventory,
             root_pair=root, tool_catalog=[],
         )
         self.assertEqual("blocked", blocked["status"])
@@ -4887,7 +5201,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("resolve_blocker", blocked["next_step"]["action"])
 
         ready = zzzops.prepare_phase_assignment(
-            phase="implementation", required_capability=1, inventory=inventory,
+            phase="implement", required_capability=1, inventory=inventory,
             root_pair=root, tool_catalog=[{"name": "spawn_agent", "description": "delegate work"}],
         )
         self.assertEqual("ready", ready["status"])
