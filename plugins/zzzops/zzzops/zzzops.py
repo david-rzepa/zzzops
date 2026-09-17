@@ -215,6 +215,7 @@ WORKFLOW_ENTRY_INTENTS = {
     "validate_installation": ("inspect", "$validate-zzzops-installation"),
     "migrate": ("inspect", "$migrate-to-zzzops"),
     "review_agentic_engineering": ("inspect", "$review-agentic-engineering"),
+    "review_entropy": ("execute", "$review-zzzops-entropy"),
 }
 
 
