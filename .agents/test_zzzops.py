@@ -4720,10 +4720,10 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertTrue(any("model_routing.settings.root_boundary" in error for error in zzzops.validate_policy(invalid, True)))
 
         settings = section["settings"]
-        self.assertEqual("routine", zzzops.capability_tier(settings, {"phase_type": "context"})["tier"])
+        self.assertEqual("routine", zzzops.capability_tier(settings, {"phase_type": "understand"})["tier"])
         self.assertEqual("bounded", zzzops.capability_tier(settings, {"phase_type": "plan", "boundedness": "atomic"})["tier"])
         self.assertEqual("reasoning", zzzops.capability_tier(settings, {"consequence": "consequential", "boundedness": "bounded"})["tier"])
-        self.assertEqual("architectural", zzzops.capability_tier(settings, {"phase_type": "review"})["tier"])
+        self.assertEqual("architectural", zzzops.capability_tier(settings, {"phase_type": "publish"})["tier"])
 
         bad_tree = json.loads(json.dumps(plan["policy"]))
         next(item for item in bad_tree["sections"] if item["id"] == "model_routing")["settings"]["assessment_tree"][0]["command"] = "delegate"
