@@ -248,12 +248,14 @@ def workflow_repair_step(intent: str, reason: str, action: str, *, source_skill:
     }
 
 
-def workflow_context_step(repo: Path, package: dict[str, Any]) -> dict[str, Any] | None:
+def workflow_context_step(
+    repo: Path, package: dict[str, Any], *, source_skill: str | None = None,
+) -> dict[str, Any] | None:
     """Derive the mandatory shared context gate without retaining workflow state."""
     provenance = {field: package.get(field) for field in ("version", "revision")}
     if all(isinstance(value, str) and value for value in provenance.values()):
         status = _installation.validation_status(repo, provenance)
-        if status.get("required") is True:
+        if status.get("required") is True and source_skill != "$validate-zzzops-installation":
             return {
                 "id": "installation-validation", "skill": "$validate-zzzops-installation", "intent": "inspect",
                 "audience": "root", "phase": "context",
@@ -2233,7 +2235,7 @@ def main() -> int:
                           "reason": "The source skill cannot initiate the requested workflow intent."}]
                 print(json.dumps(workflow_envelope(args.intent, steps), ensure_ascii=False, sort_keys=True, separators=(",", ":")))
                 return 0
-            context_step = workflow_context_step(repo, package)
+            context_step = workflow_context_step(repo, package, source_skill=args.source_skill)
             if context_step is not None:
                 steps = [context_step]
             else:
