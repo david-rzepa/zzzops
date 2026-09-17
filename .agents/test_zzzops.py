@@ -988,7 +988,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
         runtime.write_text(json.dumps({"root_pair": {"model": "root", "effort": "medium"}, "available_pairs": [{"model": "root", "effort": "medium"}]}), encoding="utf-8")
         payload = {"operation": "record_review", "phase": "plan", "artifact": {"reference": "urn:sha256:" + "1" * 64, "hash": "sha256:" + "2" * 64}, "reviewer": "reviewer", "decision": "approved"}
         payload_path.write_text(json.dumps(payload), encoding="utf-8")
-        expected = {"next_steps": [], "transition": {"number": 42}}
+        expected = {"next_steps": []}
         with (
             mock.patch.object(zzzops, "configure_cli_stdout"),
             mock.patch.object(zzzops._package, "package_status", return_value={"ok": True}),
@@ -2921,7 +2921,7 @@ class GoalTransitionTests(unittest.TestCase):
             mock.patch.object(zzzops, "workflow_live_inputs", return_value={"plan": envelope}),
         ):
             result = zzzops.workflow_submit(Path("."), 42, "execute", {"operation": "record_result", "phase": "plan", "record": record})
-        self.assertEqual([], result["next_steps"])
+        self.assertEqual({"next_steps": []}, result)
         persisted = zzzops.parse_managed_goal(adapter.issue["body"], 42)
         self.assertIn("plan", persisted["phase_evidence"]["records"])
         self.assertEqual(2, persisted["revision"])

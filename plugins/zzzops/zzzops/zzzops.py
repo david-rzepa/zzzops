@@ -1371,8 +1371,8 @@ def workflow_submit(repo: Path, goal_number: int, intent: str, payload: Any) -> 
         "schema_version": GOAL_TRANSITION_SCHEMA_VERSION,
         "expected_revision": goal["revision"], "expected_digest": goal["digest"], "goal": desired,
     }
-    result = apply_goal_transition(adapter, repository, goal_number, transition)
-    return {"next_steps": [], "transition": result}
+    apply_goal_transition(adapter, repository, goal_number, transition)
+    return {"next_steps": []}
 
 
 def migrate_open_repository_goals(
