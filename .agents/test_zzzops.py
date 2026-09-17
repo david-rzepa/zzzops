@@ -3613,6 +3613,14 @@ class ReservationTests(unittest.TestCase):
         metadata = zzzops.parse_phase_lease_description(label["description"])
         self.assertEqual((12, "verify", "agent-a"), (metadata["goal"], metadata["phase"], metadata["owner"]))
 
+    def test_phase_lease_renewal_and_release_require_exact_generation(self):
+        adapter = FakeReservationAdapter()
+        lease = zzzops.acquire_phase_lease(adapter, "owner/repo", 12, "verify", 4, "agent-a", "run-a", 120, self.now)
+        renewed = zzzops.renew_phase_lease(adapter, "owner/repo", 12, "verify", 4, "agent-a", "run-a", lease["generation"], 180, self.now)
+        self.assertTrue(renewed["acquired"])
+        self.assertEqual("not_owned", zzzops.release_phase_lease(adapter, "owner/repo", 12, "verify", 4, "agent-a", "run-a", lease["generation"] + 1)["outcome"])
+        self.assertTrue(zzzops.release_phase_lease(adapter, "owner/repo", 12, "verify", 4, "agent-a", "run-a", lease["generation"])["released"])
+
     def test_renew_and_release_require_the_same_owner(self):
         adapter = FakeReservationAdapter()
         self.assertTrue(self.acquire(adapter)["acquired"])

@@ -688,3 +688,38 @@ def acquire_phase_lease(
     return {"acquired": True, "outcome": "acquired", "goal": goal, "phase": phase, "generation": generation,
             "expires_at": now_epoch + ttl_seconds}
 
+
+def renew_phase_lease(adapter: Any, repository: str, goal: int, phase: str, revision: int, owner: str, run_id: str, generation: int, ttl_seconds: int = 900, now: datetime | None = None) -> dict[str, Any]:
+    if not isinstance(ttl_seconds, int) or isinstance(ttl_seconds, bool) or not 60 <= ttl_seconds <= 86400:
+        raise ValueError("ttl-seconds must be from 60 to 86400")
+    _validate_reservation_goal(adapter, repository, goal, revision, require_writable=True)
+    existing = adapter.get_label(phase_lease_label_name(goal, phase))
+    if existing is None:
+        return {"acquired": False, "outcome": "missing", "goal": goal, "phase": phase}
+    current = parse_phase_lease_description(existing.get("description"))
+    if (current["repository_key"] != reservation_repository_key(repository) or current["goal"] != goal
+            or current["phase"] != phase or current["owner"] != owner or current["run_id"] != run_id
+            or current["generation"] != generation):
+        return {"acquired": False, "outcome": "not_owned", "goal": goal, "phase": phase}
+    now_epoch = int((now or datetime.now(timezone.utc)).timestamp())
+    description = phase_lease_description(repository, goal, phase, revision, owner, run_id, now_epoch + ttl_seconds, generation)
+    adapter.update_label(existing["node_id"], description)
+    confirmed = adapter.get_label(phase_lease_label_name(goal, phase))
+    if confirmed is None or confirmed.get("node_id") != existing["node_id"] or confirmed.get("description") != description:
+        raise ReservationProviderError("GitHub did not confirm phase lease renewal; no ownership assumed.")
+    return {"acquired": True, "outcome": "renewed", "goal": goal, "phase": phase, "generation": generation, "expires_at": now_epoch + ttl_seconds}
+
+
+def release_phase_lease(adapter: Any, repository: str, goal: int, phase: str, revision: int, owner: str, run_id: str, generation: int) -> dict[str, Any]:
+    _validate_reservation_goal(adapter, repository, goal, revision)
+    existing = adapter.get_label(phase_lease_label_name(goal, phase))
+    if existing is None:
+        return {"released": True, "outcome": "already_released", "goal": goal, "phase": phase}
+    current = parse_phase_lease_description(existing.get("description"))
+    if (current["repository_key"] != reservation_repository_key(repository) or current["goal"] != goal or current["phase"] != phase
+            or current["owner"] != owner or current["run_id"] != run_id or current["generation"] != generation):
+        return {"released": False, "outcome": "not_owned", "goal": goal, "phase": phase}
+    adapter.delete_label(existing["node_id"])
+    if adapter.get_label(phase_lease_label_name(goal, phase)) is not None:
+        raise ReservationProviderError("GitHub did not confirm phase lease release; no ownership assumed.")
+    return {"released": True, "outcome": "released", "goal": goal, "phase": phase}
