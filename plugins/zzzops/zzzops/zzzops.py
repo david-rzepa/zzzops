@@ -266,6 +266,48 @@ def workflow_routing_step(intent: str, settings: Any, request: Any) -> dict[str,
         "action": directive["instruction"],
         "reason": str(assignment.get("reason") or "Routing is not executable."),
     }
+
+
+def workflow_phase_frontier(
+    goal: dict[str, Any], phase_dag: Any, live_inputs: dict[str, dict[str, Any]],
+    related_goals: dict[Any, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Project the evidence-derived phase DAG into an ordered action frontier.
+
+    The projection deliberately does not let a skill select delegation.  Root
+    phases are explicit root work. Every other eligible phase is an explicit
+    routing-evidence prerequisite, after which ``workflow_routing_step`` emits
+    the sole permitted launch directive.
+    """
+    if not isinstance(phase_dag, dict) or not isinstance(phase_dag.get("phases"), list):
+        raise ValueError("workflow phase DAG is invalid")
+    graph = phase_evidence_graph(phase_dag, has_parent=goal.get("parent") is not None)
+    eligibility = derive_phase_eligibility(goal, graph, live_inputs, related_goals)
+    nodes = {
+        node.get("id"): node for node in phase_dag["phases"]
+        if isinstance(node, dict) and isinstance(node.get("id"), str)
+    }
+    steps = []
+    for item in eligibility["eligible"]:
+        phase = item["phase"]
+        node = nodes.get(phase)
+        if not isinstance(node, dict):
+            raise ValueError("workflow phase DAG is invalid")
+        if node.get("assignment_group") == "root":
+            steps.append({
+                "id": f"root-{phase}", "skill": "$execute-zzzops", "intent": "execute",
+                "audience": "root", "phase": phase, "directive": "continue_root",
+                "action": f"Perform the {phase} phase on the root agent.",
+                "reason": f"The reviewed phase DAG assigns {phase} to the root agent ({item['reason']}).",
+            })
+        else:
+            steps.append({
+                "id": f"routing-evidence-{phase}", "skill": "$execute-zzzops", "intent": "execute",
+                "audience": "root", "phase": phase,
+                "action": f"Record complete routing evidence for the {phase} phase, then invoke workflow routing.",
+                "reason": f"The {phase} phase is eligible ({item['reason']}) but its reviewed model-and-effort assignment has not yet been evaluated.",
+            })
+    return {"eligibility": eligibility, "next_steps": steps}
 GOAL_STATUSES = {"new", "triaged", "ready", "in_progress", "blocked", "done", "cancelled"}
 GOAL_PRIORITIES = {"P0", "P1", "P2", "P3"}
 GOAL_VALUES = {"critical", "high", "medium", "low"}

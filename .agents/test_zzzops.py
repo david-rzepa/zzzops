@@ -2546,6 +2546,21 @@ class PhaseEvidenceTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(["plan", "verify"], [item["phase"] for item in first["eligible"]])
 
+    def test_workflow_frontier_projects_root_phase_without_agent_routing_discretion(self):
+        plan = json.loads((PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        phase_dag = next(section for section in plan["policy"]["sections"] if section["id"] == "workflow_adherence")["settings"]["phase_dag"]
+        context = self.envelope("context")
+        first = zzzops.workflow_phase_frontier(self.goal(), phase_dag, {"context": context})
+        self.assertEqual(["root-context"], [step["id"] for step in first["next_steps"]])
+        self.assertEqual("continue_root", first["next_steps"][0]["directive"])
+        self.assertNotIn("model", first["next_steps"][0])
+
+        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "context", self.record("context", context), context)
+        understand = self.envelope("understand")
+        second = zzzops.workflow_phase_frontier(self.goal(evidence), phase_dag, {"context": context, "understand": understand})
+        self.assertEqual(["root-understand"], [step["id"] for step in second["next_steps"]])
+        self.assertEqual("continue_root", second["next_steps"][0]["directive"])
+
     def test_stale_rejection_and_identical_output_preserves_descendant(self):
         graph = self.graph({"id": "plan"}, {"id": "implement", "depends_on": ["plan"]})
         plan_input = self.envelope("plan")
