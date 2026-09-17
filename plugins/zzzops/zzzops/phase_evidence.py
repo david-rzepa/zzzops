@@ -337,26 +337,6 @@ def record_phase_result(evidence: Any, phase: str, record: Any, current_input: d
     return normalized
 
 
-def independent_review_ready(evidence: Any, implementation_phase: str, review_phase: str) -> dict[str, Any]:
-    """Require fresh verification and a distinct reviewer before publication."""
-    normalized = normalize_phase_evidence(evidence)
-    implementation_phase, review_phase = _text(implementation_phase, "implementation phase"), _text(review_phase, "review phase")
-    implementation = normalized["records"].get(implementation_phase)
-    review = normalized["records"].get(review_phase)
-    if not isinstance(implementation, dict) or implementation.get("status") != "completed":
-        raise PhaseEvidenceError("implementation evidence is incomplete")
-    if implementation.get("verification") is None:
-        raise PhaseEvidenceError("implementation verification evidence is missing")
-    if not isinstance(review, dict) or review.get("status") != "completed" or review.get("output") is None:
-        raise PhaseEvidenceError("independent review evidence is incomplete")
-    if implementation.get("actor") == review.get("actor"):
-        raise PhaseEvidenceError("review actor must be independent from implementation actor")
-    return {
-        "ready": True, "implementation_phase": implementation_phase, "review_phase": review_phase,
-        "implementation_actor": implementation["actor"], "review_actor": review["actor"],
-    }
-
-
 def _require_approved_test_design(evidence: dict[str, Any], implementation: dict[str, Any]) -> None:
     """Implementation may only proceed from an approved, explicitly bound test design."""
     design = evidence["records"].get("test_design")

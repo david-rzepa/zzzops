@@ -176,7 +176,6 @@ goal_spec_digest = _phase_evidence.goal_spec_digest
 validate_phase_evidence = _phase_evidence.validate_phase_evidence
 normalize_phase_evidence = _phase_evidence.normalize_phase_evidence
 record_phase_result = _phase_evidence.record_phase_result
-independent_review_ready = _phase_evidence.independent_review_ready
 record_phase_review = _phase_evidence.record_phase_review
 withdraw_phase_evidence = _phase_evidence.withdraw_phase_evidence
 derive_phase_eligibility = _phase_evidence.derive_phase_eligibility

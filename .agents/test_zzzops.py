@@ -2490,21 +2490,6 @@ class PhaseEvidenceTests(unittest.TestCase):
             zzzops.sha256_phase_evidence_digest(["y", "x"]),
         )
 
-    def test_independent_review_requires_verification_and_distinct_actor(self):
-        implementation_input, review_input = self.envelope("implement"), self.envelope("review")
-        implementation = self.record("implement", implementation_input)
-        digest = zzzops.sha256_phase_evidence_digest
-        implementation["verification"] = {"reference": "urn:sha256:" + "1" * 64, "hash": digest({"checks": "passed"})}
-        review = self.record("review", review_input, "review")
-        review["actor"] = "reviewer-2"
-        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "implement", implementation, implementation_input)
-        evidence = zzzops.record_phase_result(evidence, "review", review, review_input)
-        self.assertTrue(zzzops.independent_review_ready(evidence, "implement", "review")["ready"])
-        review["actor"] = "worker-1"
-        same_actor = zzzops.record_phase_result(evidence, "review", review, review_input)
-        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "independent"):
-            zzzops.independent_review_ready(same_actor, "implement", "review")
-
     def test_phase_review_binds_exact_record_and_requires_independent_reviewer(self):
         envelope = self.envelope("plan")
         evidence = zzzops.record_phase_result(
