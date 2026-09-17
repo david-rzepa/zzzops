@@ -198,6 +198,7 @@ WORKFLOW_SKILL_INTENTS = {
 }
 WORKFLOW_SOURCE_ACTIONS = {
     "$add-zzzops-goal": "Capture the requested outcome and durable goal evidence.",
+    "$execute-zzzops": "Evaluate the goal workflow frontier and perform its required next step.",
     "$bootstrap-zzzops-repository": "Inspect repository and product evidence for the bootstrap workflow.",
     "$migrate-to-zzzops": "Inspect candidate legacy work and its adoption evidence.",
     "$review-agentic-engineering": "Inspect completed-work evidence for the requested agentic-engineering review.",
@@ -273,6 +274,8 @@ def workflow_context_step(
             "action": "Bootstrap repository policy and canonical context, then invoke workflow again.",
             "reason": str(inspection.get("state_error") or "Canonical project policy is missing."),
         }
+    if source_skill == "$review-zzzops-policy":
+        return None
     return {
         "id": "policy-review", "skill": "$review-zzzops-policy", "intent": "inspect",
         "audience": "root", "phase": "context",
@@ -2518,10 +2521,14 @@ def main() -> int:
                     raise ValueError("The source skill cannot initiate the requested workflow intent")
                 if args.goal is None:
                     source_skill = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
-                    result = {"next_steps": [{
-                        "kind": "dispatch", "assignment": "root", "skill": source_skill,
-                        "intent": args.intent, "action": WORKFLOW_SOURCE_ACTIONS[source_skill],
-                    }]}
+                    context = workflow_context_step(repo, package, source_skill=source_skill)
+                    if context is not None:
+                        result = {"next_steps": [context]}
+                    else:
+                        result = {"next_steps": [{
+                            "kind": "dispatch", "assignment": "root", "skill": source_skill,
+                            "intent": args.intent, "action": WORKFLOW_SOURCE_ACTIONS[source_skill],
+                        }]}
                 elif args.intent not in {"execute", "preview"}:
                     raise ValueError("Goal phase checkpoints require execute or preview intent")
                 elif args.input:
