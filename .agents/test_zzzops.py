@@ -3587,6 +3587,32 @@ class ReservationTests(unittest.TestCase):
         self.assertEqual(1, sum(result["acquired"] for result in results))
         self.assertEqual({"acquired", "contended"}, {result["outcome"] for result in results})
 
+    def test_phase_lease_has_one_owner_and_expired_generation_advances(self):
+        adapter = FakeReservationAdapter()
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = [future.result() for future in (
+                pool.submit(zzzops.acquire_phase_lease, adapter, "owner/repo", 12, "implement", 4, owner, run, 120, self.now)
+                for owner, run in (("agent-a", "run-a"), ("agent-b", "run-b"))
+            )]
+        self.assertEqual(1, sum(result["acquired"] for result in results))
+        winner = next(result for result in results if result["acquired"])
+        later = datetime.fromtimestamp(int(self.now.timestamp()) + 121, timezone.utc)
+        replacement = zzzops.acquire_phase_lease(
+            adapter, "owner/repo", 12, "implement", 4, "agent-c", "run-c", 120, later,
+        )
+        self.assertTrue(replacement["acquired"])
+        self.assertEqual(winner["generation"] + 1, replacement["generation"])
+
+    def test_phase_lease_metadata_is_phase_bound(self):
+        adapter = FakeReservationAdapter()
+        acquired = zzzops.acquire_phase_lease(
+            adapter, "owner/repo", 12, "verify", 4, "agent-a", "run-a", 120, self.now,
+        )
+        self.assertTrue(acquired["acquired"])
+        label = adapter.get_label(zzzops.phase_lease_label_name(12, "verify"))
+        metadata = zzzops.parse_phase_lease_description(label["description"])
+        self.assertEqual((12, "verify", "agent-a"), (metadata["goal"], metadata["phase"], metadata["owner"]))
+
     def test_renew_and_release_require_the_same_owner(self):
         adapter = FakeReservationAdapter()
         self.assertTrue(self.acquire(adapter)["acquired"])

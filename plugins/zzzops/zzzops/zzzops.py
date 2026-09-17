@@ -236,6 +236,10 @@ reservation_repository_key = _reservation.reservation_repository_key
 resource_label_name = _reservation.resource_label_name
 reservation_description = _reservation.reservation_description
 parse_reservation_description = _reservation.parse_reservation_description
+phase_lease_label_name = _reservation.phase_lease_label_name
+storage_lock_label_name = _reservation.storage_lock_label_name
+phase_lease_description = _reservation.phase_lease_description
+parse_phase_lease_description = _reservation.parse_phase_lease_description
 normalize_resources = _policy.normalize_resources
 normalize_resource_policy = _policy.normalize_resource_policy
 exclusive_resources = _policy.exclusive_resources
@@ -485,6 +489,7 @@ acquire_reservation_bundle = _reservation.acquire_reservation_bundle
 renew_reservation_bundle = _reservation.renew_reservation_bundle
 release_reservation_bundle = _reservation.release_reservation_bundle
 reservation_cli_message = _reservation.reservation_cli_message
+acquire_phase_lease = _reservation.acquire_phase_lease
 
 
 def project_claim_ttl_seconds(project: dict[str, Any]) -> int:
