@@ -2676,6 +2676,24 @@ class GoalTransitionTests(unittest.TestCase):
         self.assertIn("zzzops:schema:v1", adapter.updates[0]["labels"])
         self.assertNotIn("zzzops:schema:v9", adapter.updates[0]["labels"])
 
+    def test_independent_transition_batch_rejects_dependencies_before_writes(self):
+        first, second = self.transition(), self.transition()
+        second["goal"]["depends_on"] = [42]
+        with self.assertRaisesRegex(ValueError, "depends on another batch item"):
+            zzzops.apply_independent_goal_transitions(None, "owner/repo", [
+                {"goal": 42, "transition": first}, {"goal": 43, "transition": second},
+            ])
+        with mock.patch.object(zzzops._goals, "apply_goal_transition", side_effect=[
+            {"number": 42, "status": "ready"}, ValueError("stale"),
+        ]) as apply:
+            result = zzzops.apply_independent_goal_transitions(None, "owner/repo", [
+                {"goal": 42, "transition": first}, {"goal": 43, "transition": self.transition()},
+            ])
+        self.assertFalse(result["applied"])
+        self.assertEqual(42, result["results"][0]["goal"])
+        self.assertEqual(43, result["failed_goal"])
+        self.assertEqual(2, apply.call_count)
+
     def test_transition_rejects_stale_or_malformed_input_before_write(self):
         issue = self.issue()
         for change in ("revision", "digest", "schema", "revision_jump"):

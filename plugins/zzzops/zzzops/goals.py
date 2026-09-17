@@ -738,6 +738,43 @@ def apply_goal_transition(
     }
 
 
+def apply_independent_goal_transitions(
+    adapter: Any, repository: str, items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Apply an ordered independent batch without rolling back confirmed writes."""
+    if not isinstance(items, list) or not items:
+        raise ValueError("transition batch must contain at least one item")
+    numbers: set[int] = set()
+    normalized: list[tuple[int, dict[str, Any]]] = []
+    for item in items:
+        if not isinstance(item, dict) or set(item) != {"goal", "transition"}:
+            raise ValueError("transition batch item is invalid")
+        number, transition = item["goal"], item["transition"]
+        if not isinstance(number, int) or isinstance(number, bool) or number < 1 or number in numbers:
+            raise ValueError("transition batch goal is invalid")
+        if not isinstance(transition, dict):
+            raise ValueError("transition batch transition is invalid")
+        desired = transition.get("goal")
+        if not isinstance(desired, dict):
+            raise ValueError("transition batch transition is invalid")
+        numbers.add(number)
+        normalized.append((number, transition))
+    for number, transition in normalized:
+        dependencies = transition["goal"].get("depends_on")
+        if not isinstance(dependencies, list):
+            raise ValueError(f"transition batch goal #{number} dependencies are invalid")
+        if any(dependency in numbers for dependency in dependencies):
+            raise ValueError(f"transition batch goal #{number} depends on another batch item")
+    results = []
+    for number, transition in normalized:
+        try:
+            result = apply_goal_transition(adapter, repository, number, transition)
+        except (GoalTransitionProviderError, ValueError) as exc:
+            return {"applied": False, "results": results, "failed_goal": number, "error": str(exc)}
+        results.append({"goal": number, "result": result})
+    return {"applied": True, "results": results}
+
+
 def ensure_current_goal_schema(
     adapter: Any, repository: str, issue_number: int,
 ) -> dict[str, Any]:

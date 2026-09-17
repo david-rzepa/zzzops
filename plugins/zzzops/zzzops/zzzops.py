@@ -272,6 +272,7 @@ current_goal_schema_label = _goals.current_goal_schema_label
 validate_goal_transition = _goals.validate_goal_transition
 load_goal_transition = _goals.load_goal_transition
 apply_goal_transition = _goals.apply_goal_transition
+apply_independent_goal_transitions = _goals.apply_independent_goal_transitions
 validate_goal_create = _goals.validate_goal_create
 load_goal_create = _goals.load_goal_create
 apply_goal_create = _goals.apply_goal_create
