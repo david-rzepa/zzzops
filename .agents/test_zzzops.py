@@ -2654,6 +2654,26 @@ class PhaseEvidenceTests(unittest.TestCase):
         allowed = zzzops.derive_phase_steps(child, graph, {"test_design": child_input}, {9: {"goal": self.goal(parent_evidence), "live_inputs": {"plan": parent_input}}})
         self.assertEqual(["test_design"], [step["phase"] for step in allowed["execute"]])
 
+    def test_phase_steps_require_approved_review_before_downstream_execution(self):
+        graph = self.graph(
+            {"id": "plan"}, {"id": "test_design", "depends_on": ["plan"]},
+            {"id": "implement", "depends_on": ["test_design"]},
+        )
+        plan_input, test_input = self.envelope("plan"), self.envelope("test_design")
+        initial = zzzops.derive_phase_steps(self.goal(), graph, {"plan": plan_input, "test_design": test_input, "implement": self.envelope("implement")})
+        self.assertEqual(["plan"], [step["phase"] for step in initial["execute"]])
+        self.assertEqual(["test_design", "implement"], [item["phase"] for item in initial["blocked"]])
+
+        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "plan", self.record("plan", plan_input), plan_input)
+        awaiting_review = zzzops.derive_phase_steps(self.goal(evidence), graph, {"plan": plan_input, "test_design": test_input, "implement": self.envelope("implement")})
+        self.assertEqual(["plan"], [step["phase"] for step in awaiting_review["review"]])
+        self.assertEqual(["test_design", "implement"], [item["phase"] for item in awaiting_review["blocked"]])
+
+        artifact = {"reference": "urn:sha256:" + "6" * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": "plan"})}
+        evidence = zzzops.record_phase_review(evidence, "plan", artifact, "reviewer-2")
+        next_step = zzzops.derive_phase_steps(self.goal(evidence), graph, {"plan": plan_input, "test_design": test_input, "implement": self.envelope("implement")})
+        self.assertEqual(["test_design"], [step["phase"] for step in next_step["execute"]])
+
     def test_stale_rejection_and_identical_output_preserves_descendant(self):
         graph = self.graph({"id": "plan"}, {"id": "implement", "depends_on": ["plan"]})
         plan_input = self.envelope("plan")
