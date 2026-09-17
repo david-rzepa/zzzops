@@ -4546,14 +4546,19 @@ class WorkflowContractTests(unittest.TestCase):
         dag = section["settings"]["phase_dag"]
         self.assertEqual(1, dag["schema_version"])
         self.assertEqual(
-            ["context", "understand", "decompose", "plan", "architecture_review", "implement", "verify", "review", "publish"],
+            ["understand", "decompose", "plan", "test_design", "implement", "publish"],
             [phase["id"] for phase in dag["phases"]],
         )
         self.assertEqual("root", next(phase for phase in dag["phases"] if phase["id"] == "understand")["assignment_group"])
-        self.assertEqual(["plan", "architecture_review"], next(phase for phase in dag["phases"] if phase["id"] == "implement")["parent_gates"])
+        self.assertEqual(["plan", "test_design"], next(phase for phase in dag["phases"] if phase["id"] == "implement")["parent_gates"])
+        self.assertEqual(
+            {"independent": True, "human_approval": True, "assignment_group": "review"},
+            next(phase for phase in dag["phases"] if phase["id"] == "understand")["review"],
+        )
+        self.assertTrue(all(phase["review"]["independent"] for phase in dag["phases"]))
         child_graph = zzzops.phase_evidence_graph(dag, has_parent=True)
         self.assertEqual(
-            ["context", "understand", "plan", "architecture_review", "implement", "verify", "review", "publish"],
+            ["understand", "plan", "test_design", "implement", "publish"],
             [node["id"] for node in child_graph["phases"]],
         )
         self.assertEqual(
@@ -4566,8 +4571,7 @@ class WorkflowContractTests(unittest.TestCase):
         )
         parent_graph = zzzops.phase_evidence_graph(dag, has_parent=False)
         parent_phases = {node["id"] for node in parent_graph["phases"]}
-        self.assertNotIn("verify", parent_phases, "#432 must not make aggregate verification eligible before child completion is represented")
-        self.assertFalse({"review", "publish"} & parent_phases)
+        self.assertNotIn("publish", parent_phases, "#432 must not make aggregate publication eligible before child completion is represented")
         self.assertEqual([], zzzops.validate_policy(plan["policy"], True))
 
         rendered = zzzops.render_project({
@@ -4604,20 +4608,20 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertTrue(any("acyclic" in error for error in zzzops.validate_policy(cyclic, True)))
 
         root_escape = json.loads(json.dumps(plan["policy"]))
-        next(item for item in root_escape["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]["phases"][1]["assignment_group"] = "planning"
+        next(phase for phase in next(item for item in root_escape["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]["phases"] if phase["id"] == "understand")["assignment_group"] = "planning"
         self.assertTrue(any("keep understand on root" in error for error in zzzops.validate_policy(root_escape, True)))
 
         type_escape = json.loads(json.dumps(plan["policy"]))
-        next(item for item in type_escape["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]["phases"][5]["type"] = "context"
+        next(phase for phase in next(item for item in type_escape["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]["phases"] if phase["id"] == "publish")["type"] = "understand"
         self.assertTrue(any("must match its known phase id" in error for error in zzzops.validate_policy(type_escape, True)))
 
         invalid_gate = json.loads(json.dumps(plan["policy"]))
-        next(item for item in invalid_gate["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]["phases"][5]["parent_gates"] = ["unknown"]
+        next(phase for phase in next(item for item in invalid_gate["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]["phases"] if phase["id"] == "implement")["parent_gates"] = ["unknown"]
         self.assertTrue(any("parent_gates" in error for error in zzzops.validate_policy(invalid_gate, True)))
 
         customized = json.loads(json.dumps(plan["policy"]))
         custom_dag = next(item for item in customized["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]
-        next(phase for phase in custom_dag["phases"] if phase["id"] == "verify")["inputs"].append("capabilities")
+        next(phase for phase in custom_dag["phases"] if phase["id"] == "test_design")["inputs"].append("parents")
         self.assertEqual([], zzzops.validate_policy(customized, True))
 
         review = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
