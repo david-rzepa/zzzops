@@ -3655,6 +3655,9 @@ class ReservationTests(unittest.TestCase):
         adapter = FakeReservationAdapter()
         self.assertTrue(zzzops.acquire_storage_lock(adapter, "owner/repo", "goal-12", "agent-a", "run-a", 60, self.now)["acquired"])
         self.assertEqual("contended", zzzops.acquire_storage_lock(adapter, "owner/repo", "goal-12", "agent-b", "run-b", 60, self.now)["outcome"])
+        self.assertEqual("renewed", zzzops.renew_storage_lock(adapter, "owner/repo", "goal-12", "agent-a", "run-a", 60, self.now)["outcome"])
+        self.assertEqual("not_owned", zzzops.release_storage_lock(adapter, "owner/repo", "goal-12", "agent-b", "run-b")["outcome"])
+        self.assertTrue(zzzops.release_storage_lock(adapter, "owner/repo", "goal-12", "agent-a", "run-a")["released"])
         applied = zzzops.apply_independent_batch(
             [{"id": "one", "depends_on": []}, {"id": "two", "depends_on": []}, {"id": "three", "depends_on": ["two"]}],
             lambda item: {"ok": True, "item": item["id"]},
