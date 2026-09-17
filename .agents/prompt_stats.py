@@ -62,6 +62,7 @@ WORKFLOW_PROMPTS = {
     ),
     "execution": (
         "plugins/zzzops/skills/execute-zzzops/SKILL.md",
+        "plugins/zzzops/zzzops/references/next_steps/execute.md",
         "plugins/zzzops/skills/execute-zzzops/references/EXECUTE.md",
         "plugins/zzzops/skills/execute-zzzops/references/BRANCH_REVIEW.md",
         "plugins/zzzops/skills/execute-zzzops/references/SELF_REVIEW.md",

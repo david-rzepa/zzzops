@@ -4587,6 +4587,7 @@ class WorkflowContractTests(unittest.TestCase):
             "suggest-zzzops-work": "suggest_work",
             "bootstrap-zzzops-repository": "bootstrap",
             "review-zzzops-policy": "review_policy",
+            "execute-zzzops": "execute",
         }
         for skill, intent in expected.items():
             with self.subTest(skill=skill):
@@ -5664,6 +5665,7 @@ class WorkflowContractTests(unittest.TestCase):
                 "migrate-to-zzzops": "migrate.md",
                 "suggest-zzzops-work": "suggest-work.md",
                 "bootstrap-zzzops-repository": "bootstrap.md",
+                "execute-zzzops": "execute.md",
                 "review-zzzops-policy": "policy-review.md",
             }.get(name)
             if instruction_name:
@@ -5680,7 +5682,7 @@ class WorkflowContractTests(unittest.TestCase):
             "validate-zzzops-installation",
         )
         self.assertEqual(names, zzzops.MANAGED_SKILLS)
-        thin_skills = {"add-zzzops-goal", "bootstrap-zzzops-repository", "migrate-to-zzzops", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work", "validate-zzzops-installation"}
+        thin_skills = {"add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work", "validate-zzzops-installation"}
         for name in names:
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
             if name not in thin_skills:
@@ -5729,6 +5731,7 @@ class WorkflowContractTests(unittest.TestCase):
             "migrate-to-zzzops": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "migrate.md",
             "suggest-zzzops-work": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "suggest-work.md",
             "bootstrap-zzzops-repository": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "bootstrap.md",
+            "execute-zzzops": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "execute.md",
             "review-zzzops-policy": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "policy-review.md",
         }
         for skill in root.iterdir():
@@ -5744,7 +5747,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("validated ZzzOps version/revision provenance", feedback_rule)
 
     def test_execute_feedback_queue_requires_one_session_approval(self):
-        execute = (PLUGIN_ROOT / "skills" / "execute-zzzops" / "SKILL.md").read_text(encoding="utf-8")
+        execute = (PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "execute.md").read_text(encoding="utf-8")
         for phrase in ("zzzops-feedback", "current execution session", "Never ask per issue", "--include-feedback"):
             self.assertIn(phrase, execute)
 
