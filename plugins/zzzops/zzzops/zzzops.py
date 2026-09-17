@@ -257,7 +257,9 @@ def workflow_context_step(
     provenance = {field: package.get(field) for field in ("version", "revision")}
     if all(isinstance(value, str) and value for value in provenance.values()):
         status = _installation.validation_status(repo, provenance)
-        if status.get("required") is True and source_skill != "$validate-zzzops-installation":
+        if status.get("required") is True:
+            if source_skill == "$validate-zzzops-installation":
+                return None
             return {
                 "id": "installation-validation", "skill": "$validate-zzzops-installation", "intent": "inspect",
                 "audience": "root", "phase": "context",
@@ -268,6 +270,8 @@ def workflow_context_step(
     if inspection.get("initialized") is True:
         return None
     if inspection.get("state") is None:
+        if source_skill == "$bootstrap-zzzops-repository":
+            return None
         return {
             "id": "bootstrap", "skill": "$bootstrap-zzzops-repository", "intent": "inspect",
             "audience": "root", "phase": "context",
