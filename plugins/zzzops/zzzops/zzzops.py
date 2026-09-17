@@ -212,6 +212,7 @@ WORKFLOW_ENTRY_INTENTS = {
     "validate_installation": ("inspect", "$validate-zzzops-installation"),
     "migrate": ("inspect", "$migrate-to-zzzops"),
     "suggest_work": ("inspect", "$suggest-zzzops-work"),
+    "bootstrap": ("inspect", "$bootstrap-zzzops-repository"),
 }
 
 

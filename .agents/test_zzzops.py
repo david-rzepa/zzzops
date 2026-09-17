@@ -4585,6 +4585,7 @@ class WorkflowContractTests(unittest.TestCase):
             "validate-zzzops-installation": "validate_installation",
             "migrate-to-zzzops": "migrate",
             "suggest-zzzops-work": "suggest_work",
+            "bootstrap-zzzops-repository": "bootstrap",
         }
         for skill, intent in expected.items():
             with self.subTest(skill=skill):
@@ -4609,6 +4610,7 @@ class WorkflowContractTests(unittest.TestCase):
             "validate_installation": ("inspect", "$validate-zzzops-installation"),
             "migrate": ("inspect", "$migrate-to-zzzops"),
             "suggest_work": ("inspect", "$suggest-zzzops-work"),
+            "bootstrap": ("inspect", "$bootstrap-zzzops-repository"),
         }
         for semantic_intent, (workflow_intent, source_skill) in expected.items():
             with self.subTest(intent=semantic_intent):
@@ -5574,7 +5576,7 @@ class WorkflowContractTests(unittest.TestCase):
         review_queue = (
             root / "skills" / "execute-zzzops" / "references" / "REVIEW_QUEUE.md"
         ).read_text(encoding="utf-8")
-        bootstrap = (root / "skills" / "bootstrap-zzzops-repository" / "SKILL.md").read_text(encoding="utf-8")
+        bootstrap = (root / "zzzops" / "references" / "next_steps" / "bootstrap.md").read_text(encoding="utf-8")
         analyze = (root / "zzzops" / "references" / "bootstrap" / "ANALYZE.md").read_text(encoding="utf-8")
         plan = (root / "zzzops" / "references" / "bootstrap" / "PLAN.md").read_text(encoding="utf-8")
         greenfield = (root / "zzzops" / "references" / "bootstrap" / "GREENFIELD.md").read_text(encoding="utf-8")
@@ -5659,6 +5661,7 @@ class WorkflowContractTests(unittest.TestCase):
                 "validate-zzzops-installation": "installation-validation.md",
                 "migrate-to-zzzops": "migrate.md",
                 "suggest-zzzops-work": "suggest-work.md",
+                "bootstrap-zzzops-repository": "bootstrap.md",
             }.get(name)
             if instruction_name:
                 source = (PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / instruction_name).read_text(encoding="utf-8")
@@ -5674,7 +5677,7 @@ class WorkflowContractTests(unittest.TestCase):
             "validate-zzzops-installation",
         )
         self.assertEqual(names, zzzops.MANAGED_SKILLS)
-        thin_skills = {"add-zzzops-goal", "migrate-to-zzzops", "send-zzzops-feedback", "suggest-zzzops-work", "validate-zzzops-installation"}
+        thin_skills = {"add-zzzops-goal", "bootstrap-zzzops-repository", "migrate-to-zzzops", "send-zzzops-feedback", "suggest-zzzops-work", "validate-zzzops-installation"}
         for name in names:
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
             if name not in thin_skills:
@@ -5722,6 +5725,7 @@ class WorkflowContractTests(unittest.TestCase):
             "validate-zzzops-installation": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "installation-validation.md",
             "migrate-to-zzzops": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "migrate.md",
             "suggest-zzzops-work": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "suggest-work.md",
+            "bootstrap-zzzops-repository": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "bootstrap.md",
         }
         for skill in root.iterdir():
             path = skill / "SKILL.md"

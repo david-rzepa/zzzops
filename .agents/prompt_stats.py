@@ -38,6 +38,7 @@ ENFORCED_PROMPT_BUDGETS = {
 WORKFLOW_PROMPTS = {
     "bootstrap-greenfield": (
         "plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md",
+        "plugins/zzzops/zzzops/references/next_steps/bootstrap.md",
         "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
         "plugins/zzzops/zzzops/references/bootstrap/PLAN.md",
         "plugins/zzzops/zzzops/references/bootstrap/GREENFIELD.md",
@@ -46,6 +47,7 @@ WORKFLOW_PROMPTS = {
     ),
     "bootstrap-brownfield": (
         "plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md",
+        "plugins/zzzops/zzzops/references/next_steps/bootstrap.md",
         "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
         "plugins/zzzops/zzzops/references/bootstrap/PLAN.md",
         "plugins/zzzops/zzzops/references/bootstrap/BROWNFIELD.md",
