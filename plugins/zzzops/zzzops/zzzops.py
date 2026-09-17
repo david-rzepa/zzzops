@@ -179,6 +179,7 @@ record_phase_result = _phase_evidence.record_phase_result
 record_phase_review = _phase_evidence.record_phase_review
 withdraw_phase_evidence = _phase_evidence.withdraw_phase_evidence
 derive_phase_eligibility = _phase_evidence.derive_phase_eligibility
+derive_phase_steps = _phase_evidence.derive_phase_steps
 BLOCKER_CATEGORIES = {
     "specification", "decision", "access-approval", "human-action",
     "external-dependency", "technical-unknown", "safety-compliance",
