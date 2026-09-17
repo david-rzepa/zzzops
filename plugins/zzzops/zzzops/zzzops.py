@@ -1364,7 +1364,13 @@ def workflow_submit(repo: Path, goal_number: int, intent: str, payload: Any) -> 
     live_inputs = workflow_live_inputs(repo, project, goal, intent, graph)
     evidence = goal.get("phase_evidence") or empty_phase_evidence()
     goal["phase_evidence"] = evidence
-    frontier = derive_phase_steps(goal, graph, live_inputs)
+    related: dict[Any, dict[str, Any]] = {}
+    if goal.get("parent") is not None:
+        parent_issue = adapter.get_issue(goal["parent"])
+        parent = github_goal_record(parent_issue)
+        parent_graph, _parent_nodes = _workflow_phase_configuration(project, parent)
+        related[goal["parent"]] = {"goal": parent, "live_inputs": workflow_live_inputs(repo, project, parent, intent, parent_graph)}
+    frontier = derive_phase_steps(goal, graph, live_inputs, related)
     allowed = frontier["execute"] if operation == "record_result" else frontier["review"]
     if phase not in {item["phase"] for item in allowed}:
         raise ValueError("workflow submission is not the current required phase step")
