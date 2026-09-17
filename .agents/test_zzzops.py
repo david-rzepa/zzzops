@@ -4794,6 +4794,23 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertFalse(stranded["allowed"])
         self.assertEqual("stranded_stack_requires_recovery", stranded["reason"])
 
+    def test_linear_publication_requires_the_current_exact_stack_tip(self):
+        stack = [
+            {"branch": "goal/one", "base": "dev", "head": "head-one"},
+            {"branch": "goal/two", "base": "goal/one", "head": "head-two"},
+        ]
+        candidate = {"branch": "goal/three", "base": "goal/two", "base_head": "head-two", "head": "head-three"}
+        ready = zzzops.linear_publication_next_step(stack, candidate, trunk="dev")
+        self.assertEqual("publish_linear", ready["action"])
+        sibling = {**candidate, "base": "goal/one", "base_head": "head-one"}
+        self.assertEqual("rebase_to_tip", zzzops.linear_publication_next_step(stack, sibling, trunk="dev")["action"])
+        stale = {**candidate, "base_head": "old-head"}
+        self.assertEqual("ancestor_head_changed", zzzops.linear_publication_next_step(stack, stale, trunk="dev")["reason"])
+        with self.assertRaisesRegex(ValueError, "not linear"):
+            zzzops.linear_publication_next_step(
+                [{"branch": "goal/two", "base": "dev", "head": "head-two"}, *stack], candidate, trunk="dev",
+            )
+
     def test_automated_design_execution_and_review_contracts_preserve_boundaries(self):
         root = PLUGIN_ROOT
         unblock = (root / "skills" / "execute-zzzops" / "references" / "UNBLOCK.md").read_text(encoding="utf-8")

@@ -1658,6 +1658,7 @@ _goals.configure_entrypoint(
 )
 _portfolio.configure_entrypoint(exclusive_resources=exclusive_resources, normalize_resource_policy=normalize_resource_policy, text_present=text_present, merge_classifier=classify_pr_merge)
 active_stack_guard = _portfolio.active_stack_guard
+linear_publication_next_step = _portfolio.linear_publication_next_step
 
 
 def atomic_text(path: Path, text: str) -> None:

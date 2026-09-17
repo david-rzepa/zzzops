@@ -241,6 +241,51 @@ def active_stack_guard(
     }
 
 
+def linear_publication_next_step(stack: Any, candidate: Any, *, trunk: str) -> dict[str, Any]:
+    """Derive a serial publication directive without resolving Git conflicts.
+
+    Implementations may proceed independently, but the final publication base
+    must be the exact current stack tip.  A changed ancestor therefore produces
+    a rebase instruction instead of a sibling successor or stale review.
+    """
+    if not isinstance(trunk, str) or not trunk:
+        raise ValueError("publication trunk is invalid")
+    if not isinstance(stack, list) or not isinstance(candidate, dict):
+        raise ValueError("publication topology is invalid")
+    required = {"branch", "base", "base_head", "head"}
+    if set(candidate) != required or any(not isinstance(candidate[field], str) or not candidate[field] for field in required):
+        raise ValueError("publication candidate is invalid")
+    seen = set()
+    previous_branch, previous_head = trunk, None
+    for index, item in enumerate(stack):
+        if not isinstance(item, dict) or set(item) != {"branch", "base", "head"}:
+            raise ValueError("publication stack entry is invalid")
+        if any(not isinstance(item[field], str) or not item[field] for field in ("branch", "base", "head")):
+            raise ValueError("publication stack entry is invalid")
+        if item["branch"] in seen or item["base"] != previous_branch:
+            raise ValueError("publication stack is not linear")
+        seen.add(item["branch"])
+        previous_branch, previous_head = item["branch"], item["head"]
+    if candidate["branch"] in seen:
+        raise ValueError("publication candidate already exists in the stack")
+    if candidate["base"] != previous_branch:
+        return {
+            "action": "rebase_to_tip", "reason": "candidate_base_is_not_current_stack_tip",
+            "tip": {"branch": previous_branch, "head": previous_head},
+            "instruction": f"Rebase {candidate['branch']} onto the current stack tip {previous_branch}; do not publish a sibling successor.",
+        }
+    if previous_head is not None and candidate["base_head"] != previous_head:
+        return {
+            "action": "rebase_to_tip", "reason": "ancestor_head_changed",
+            "tip": {"branch": previous_branch, "head": previous_head},
+            "instruction": f"The ancestor head changed. Rebase {candidate['branch']} onto {previous_branch} at its current head, then re-run checks.",
+        }
+    return {
+        "action": "publish_linear", "base": previous_branch,
+        "instruction": f"Publish {candidate['branch']} as the next PR on {previous_branch}.",
+    }
+
+
 def audit_portfolio(
     records: list[dict[str, Any]], backend: str, as_of: datetime | None = None, resource_policy: Any = None,
 ) -> list[dict[str, Any]]:
