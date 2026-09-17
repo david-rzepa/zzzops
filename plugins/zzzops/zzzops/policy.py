@@ -110,7 +110,7 @@ WORKFLOW_ADHERENCE_SETTINGS = {
 }
 
 WORKFLOW_PHASE_IDS = (
-    "context", "understand", "decompose", "plan", "architecture_review", "implement", "verify", "review", "publish",
+    "understand", "decompose", "plan", "test_design", "implement", "publish",
 )
 WORKFLOW_PHASE_TYPES = frozenset(WORKFLOW_PHASE_IDS)
 WORKFLOW_ASSIGNMENT_GROUPS = frozenset({"root", "planning", "implementation", "review", "coordinator"})
@@ -508,7 +508,7 @@ def _workflow_phase_dag_errors(value: Any) -> list[str]:
         return ["phase_dag schema_version or phases is invalid"]
     nodes: dict[str, dict[str, Any]] = {}
     errors = []
-    expected_fields = {"id", "type", "depends_on", "parent_gates", "applicability", "assignment_group", "inputs", "not_required"}
+    expected_fields = {"id", "type", "depends_on", "parent_gates", "applicability", "assignment_group", "inputs", "not_required", "review"}
     for index, node in enumerate(value["phases"]):
         prefix = f"phase_dag.phases[{index}]"
         if not isinstance(node, dict) or set(node) != expected_fields:
@@ -528,8 +528,13 @@ def _workflow_phase_dag_errors(value: Any) -> list[str]:
             errors.append(f"{prefix}.assignment_group must keep understand on root")
         if node.get("not_required") not in WORKFLOW_NOT_REQUIRED:
             errors.append(f"{prefix}.not_required is invalid")
-        if node.get("not_required") == "atomic_goal" and phase not in {"decompose", "architecture_review"}:
+        if node.get("not_required") == "atomic_goal" and phase != "decompose":
             errors.append(f"{prefix}.not_required is not allowed for this phase")
+        review = node.get("review")
+        if not isinstance(review, dict) or set(review) != {"independent", "human_approval", "assignment_group"}:
+            errors.append(f"{prefix}.review is invalid")
+        elif not isinstance(review.get("independent"), bool) or not isinstance(review.get("human_approval"), bool) or review.get("assignment_group") != "review":
+            errors.append(f"{prefix}.review is invalid")
         dependencies, parent_gates = node.get("depends_on"), node.get("parent_gates")
         if not isinstance(dependencies, list) or any(item not in WORKFLOW_PHASE_IDS for item in dependencies) or len(set(dependencies)) != len(dependencies):
             errors.append(f"{prefix}.depends_on is invalid")
@@ -575,7 +580,7 @@ def phase_evidence_graph(phase_dag: Any, *, has_parent: bool) -> dict[str, list[
     errors = _workflow_phase_dag_errors(phase_dag)
     if errors:
         raise ValueError("Invalid workflow phase DAG: " + "; ".join(errors))
-    parent_finalization = {"verify", "review", "publish"}
+    parent_finalization = {"publish"}
     included = {
         node["id"] for node in phase_dag["phases"]
         if node["applicability"] == "always"
@@ -715,6 +720,74 @@ def reviewed_model_effort(settings: Any, tier: Any, available_pairs: Any) -> dic
         return {"available": False, "tier": tier, "selected": None}
     selected = min(candidates, key=lambda item: (item["cost"], item["model"], item["effort"]))
     return {"available": True, "tier": tier, "selected": {"model": selected["model"], "effort": selected["effort"]}}
+
+
+def reviewed_phase_assignment(
+    settings: Any, dimensions: Any, available_pairs: Any, root_pair: Any, *, requires_human: bool = False,
+) -> dict[str, Any]:
+    """Derive a non-discretionary phase assignment from reviewed routing policy.
+
+    The caller supplies observed runtime facts, never a capability score.  This
+    function evaluates the reviewed tree and emits the directive which the
+    workflow CLI will place in its actionable next-step response.
+    """
+    tier_decision = capability_tier(settings, dimensions)
+    if not isinstance(requires_human, bool):
+        raise ValueError("Human-interaction requirement must be a boolean")
+    if not isinstance(root_pair, dict) or set(root_pair) != {"model", "effort"} or not all(
+        _policy_identifier(root_pair.get(field)) for field in ("model", "effort")
+    ):
+        raise ValueError("Root model inventory is invalid")
+    # This also validates the complete runtime inventory shape.
+    reviewed_model_effort(settings, tier_decision["tier"], available_pairs)
+    available = {(item["model"], item["effort"]) for item in available_pairs}
+    root = (root_pair["model"], root_pair["effort"])
+    reviewed = settings["model_inventory"]["reviewed_pairs"]
+    root_entry = next((item for item in reviewed if (item["model"], item["effort"]) == root), None)
+    if root_entry is None or root not in available:
+        return {
+            "status": "blocked", "tier": tier_decision["tier"], "rule_index": tier_decision["rule_index"],
+            "reason": "root_model_effort_unreviewed_or_unavailable",
+            "next_step": {"action": "resolve_blocker", "instruction": "Record or restore the current root model-plus-effort pair, then retry routing."},
+        }
+    ranks = {item["id"]: item["rank"] for item in settings["tiers"]}
+    requested_rank, root_rank = ranks[tier_decision["tier"]], ranks[root_entry["tier"]]
+    if requires_human:
+        if requested_rank > root_rank:
+            return {
+                "status": "blocked", "tier": tier_decision["tier"], "rule_index": tier_decision["rule_index"],
+                "reason": "human_interaction_exceeds_root_capability",
+                "next_step": {"action": "resolve_blocker", "instruction": "Human interaction must stay on the root agent, whose reviewed capability is insufficient for this phase."},
+            }
+        return {
+            "status": "ready", "tier": tier_decision["tier"], "rule_index": tier_decision["rule_index"],
+            "mode": "direct_root", "selected": None,
+            "next_step": {"action": "continue_root", "instruction": "Perform this human-interaction phase on the root agent."},
+        }
+    if requested_rank > root_rank:
+        return {
+            "status": "blocked", "tier": tier_decision["tier"], "rule_index": tier_decision["rule_index"],
+            "reason": "above_root_session_override_required",
+            "next_step": {"action": "resolve_blocker", "instruction": "This phase exceeds root capability; obtain the recorded session override, then retry routing."},
+        }
+    candidates = [
+        item for item in reviewed
+        if (item["model"], item["effort"]) in available
+        and requested_rank <= ranks[item["tier"]] <= root_rank
+    ]
+    if not candidates:
+        return {
+            "status": "blocked", "tier": tier_decision["tier"], "rule_index": tier_decision["rule_index"],
+            "reason": "reviewed_worker_model_effort_unavailable",
+            "next_step": {"action": "resolve_blocker", "instruction": "Make a reviewed model-plus-effort pair at or below root capability available, then retry routing."},
+        }
+    selected = min(candidates, key=lambda item: (item["cost"], item["model"], item["effort"]))
+    assignment = {"model": selected["model"], "effort": selected["effort"]}
+    return {
+        "status": "ready", "tier": tier_decision["tier"], "rule_index": tier_decision["rule_index"],
+        "mode": "delegated", "selected": assignment,
+        "next_step": {"action": "delegate", "instruction": f"Delegate this phase using model {assignment['model']} with effort {assignment['effort']}."},
+    }
 
 
 def model_inventory_freshness(reviewed_pairs: Any, observed: Any) -> dict[str, Any]:

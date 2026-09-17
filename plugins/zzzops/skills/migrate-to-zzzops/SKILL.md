@@ -7,6 +7,8 @@ description: ZzzOps v0.0.0-dev — development plugin. Discover, plan, migrate, 
 
 Read `../../rules/COMMUNICATION.md` for user-facing messages.
 
+First invoke `zzzops workflow --intent inspect --source-skill '$migrate-to-zzzops'` and obey its `next_steps`. Do not invoke a private ZzzOps command named elsewhere in this skill; those references describe the workflow handler behind this public command.
+
 Mode: `dry run`, `preview`, or `plan` reports candidates and a proposed plan in chat without creating plan/summary files or changing state. Otherwise build the review artifacts below; apply only after explicit approval.
 
 Run `../../rules/INITIALIZATION.md`, then `../../rules/BACKENDS.md`. Use `../../zzzops/templates/project-goals/` for artifact shapes.

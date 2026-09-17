@@ -7,6 +7,8 @@ description: ZzzOps v0.0.0-dev — development plugin. Preview and send user fee
 
 Read `../../rules/COMMUNICATION.md` for user-facing messages.
 
+First invoke `zzzops workflow --intent execute --source-skill '$send-zzzops-feedback'` and obey its `next_steps`. Do not invoke a private ZzzOps command named elsewhere in this skill; those references describe the workflow handler behind this public command.
+
 Run `../../rules/INITIALIZATION.md`, then read `../../rules/FEEDBACK.md`. Use the resolved Python interpreter for all CLI calls.
 
 Use checkpoint only for readiness; detailed inputs are local reports and explicit feedback, never goal bodies/history.
