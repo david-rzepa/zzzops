@@ -156,8 +156,8 @@ class MarketplaceBundleTests(unittest.TestCase):
         files = self.builder.claude_marketplace_files(ROOT, "2.0.0")
         self.assertIn("zzzops/concepts/bounded-commitment.md", files)
         self.assertIn("zzzops/zzzops/concepts.py", files)
-        skill = files["zzzops/skills/execute-zzzops/SKILL.md"].decode("utf-8")
-        self.assertIn("[[bounded commitment]](../../concepts/bounded-commitment.md)", skill)
+        instruction = files["zzzops/zzzops/references/next_steps/execute.md"].decode("utf-8")
+        self.assertIn("[[bounded commitment]](../../../concepts/bounded-commitment.md)", instruction)
         manifest = json.loads(files["zzzops/.claude-plugin/plugin.json"])
         marketplace = json.loads(files[".claude-plugin/marketplace.json"])
 

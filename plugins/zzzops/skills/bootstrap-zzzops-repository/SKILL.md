@@ -6,3 +6,5 @@ description: ZzzOps v0.0.0-dev — development plugin. Bootstrap a repository fr
 # Bootstrap a ZzzOps Repository
 
 Run [`zzzops.py`](../../zzzops/zzzops.py) with `--intent bootstrap`; follow its `next_steps`.
+
+Read [CLI usage](../../zzzops/references/CLI_USAGE.md) before invoking it.

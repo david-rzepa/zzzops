@@ -79,11 +79,11 @@ class ConceptTests(unittest.TestCase):
             set(catalog.by_id),
         )
         links = concepts.validate_document(
-            plugin / "skills" / "execute-zzzops" / "SKILL.md", catalog, (plugin / "concepts",),
+            plugin / "zzzops" / "references" / "next_steps" / "execute.md", catalog, (plugin / "concepts",),
         )
         self.assertEqual(["bounded commitment", "safe useful work"], [link.display for link in links])
         resolved = concepts.resolve_document_concepts(
-            plugin / "skills" / "execute-zzzops" / "SKILL.md", (plugin / "concepts",),
+            plugin / "zzzops" / "references" / "next_steps" / "execute.md", (plugin / "concepts",),
         )
         self.assertEqual(["bounded-commitment", "safe-useful-work"], [item.identifier for item in resolved])
         bounded = catalog.by_id["bounded-commitment"].path.read_text(encoding="utf-8")

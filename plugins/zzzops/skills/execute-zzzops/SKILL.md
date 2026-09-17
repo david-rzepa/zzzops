@@ -6,3 +6,5 @@ description: ZzzOps v0.0.0-dev — development plugin. Execute the primary ZzzOp
 # Execute ZzzOps
 
 Run [`zzzops.py`](../../zzzops/zzzops.py) with `--intent execute`; follow its `next_steps`.
+
+Read [CLI usage](../../zzzops/references/CLI_USAGE.md) before invoking it.

@@ -14,6 +14,7 @@ HARNESS_PROMPTS = {
 }
 
 COMMUNICATION_PROMPT = "plugins/zzzops/rules/COMMUNICATION.md"
+CLI_USAGE_PROMPT = "plugins/zzzops/zzzops/references/CLI_USAGE.md"
 DELEGATION_PROMPT = "plugins/zzzops/rules/DELEGATION.md"
 PROACTIVE_DELEGATION_SIGNAL = "Do not decide whether to delegate from this rule"
 PROACTIVE_DELEGATION_WORKFLOWS = {
@@ -171,6 +172,8 @@ def prompt_files(root: Path) -> list[Path]:
     files.extend(product_skills)
     for skill in product_skills:
         files.extend((skill.parent / "references").glob("*.md"))
+    files.extend((root / "plugins" / "zzzops" / "zzzops" / "references" / "next_steps").glob("*.md"))
+    files.append(root / CLI_USAGE_PROMPT)
     files.extend((root / "plugins" / "zzzops" / "zzzops" / "references" / "bootstrap").glob("*.md"))
     files.extend((root / "plugins" / "zzzops" / "zzzops" / "templates" / "project-goals").glob("*.md"))
     files.extend((root / "plugins" / "zzzops" / "concepts").glob("*.md"))
@@ -203,13 +206,13 @@ def prompt_profile(root: Path, paths: tuple[str, ...]) -> tuple[int, int, str]:
 
 
 def workflow_profile(root: Path, workflow: str, harness: str) -> tuple[int, int, str]:
-    return prompt_profile(root, (*HARNESS_PROMPTS[harness], *WORKFLOW_PROMPTS[workflow]))
+    return prompt_profile(root, (*HARNESS_PROMPTS[harness], CLI_USAGE_PROMPT, *WORKFLOW_PROMPTS[workflow]))
 
 
 def workflow_path_profiles(root: Path, workflow: str, harness: str) -> dict[str, tuple[int, int]]:
     """Measure progressive-disclosure paths without charging cold prompts to entry."""
     return {
-        "entry": prompt_profile(root, (*HARNESS_PROMPTS[harness], *ENTRY_PROMPTS[workflow]))[:2],
+        "entry": prompt_profile(root, (*HARNESS_PROMPTS[harness], CLI_USAGE_PROMPT, *ENTRY_PROMPTS[workflow]))[:2],
         "hot": workflow_profile(root, workflow, harness)[:2],
         "cold": prompt_profile(root, COLD_WORKFLOW_PROMPTS.get(workflow, ()))[:2],
     }

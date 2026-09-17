@@ -44,6 +44,7 @@ REQUIRED_FILES = {
     "skills/execute-zzzops/references/REVIEW_QUEUE.md",
     "skills/suggest-zzzops-work/references/VERIFICATION_EFFICIENCY.md",
     "scripts/cleanup_legacy.py",
+    "zzzops/references/CLI_USAGE.md",
     "zzzops/references/bootstrap/ANALYZE.md",
     "zzzops/references/bootstrap/PLAN.md",
     "zzzops/references/bootstrap/GREENFIELD.md",
