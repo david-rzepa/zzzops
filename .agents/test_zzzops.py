@@ -2674,6 +2674,66 @@ class PhaseEvidenceTests(unittest.TestCase):
         next_step = zzzops.derive_phase_steps(self.goal(evidence), graph, {"plan": plan_input, "test_design": test_input, "implement": self.envelope("implement")})
         self.assertEqual(["test_design"], [step["phase"] for step in next_step["execute"]])
 
+    def test_complete_workflow_lifecycle_emits_execution_and_review_steps(self):
+        plan = json.loads((PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        routing = json.loads(json.dumps(next(item for item in plan["policy"]["sections"] if item["id"] == "model_routing")["settings"]))
+        routing["model_inventory"]["reviewed_pairs"] = [
+            {"model": "root", "effort": "high", "tier": "architectural", "cost": 10},
+            {"model": "economy", "effort": "low", "tier": "routine", "cost": 1},
+            {"model": "builder", "effort": "medium", "tier": "bounded", "cost": 3},
+            {"model": "architect", "effort": "high", "tier": "architectural", "cost": 8},
+        ]
+        runtime = {
+            "root_pair": {"model": "root", "effort": "high"},
+            "available_pairs": [
+                {"model": "root", "effort": "high"}, {"model": "economy", "effort": "low"},
+                {"model": "builder", "effort": "medium"}, {"model": "architect", "effort": "high"},
+            ],
+        }
+        phases = ["understand", "decompose", "plan", "test_design", "implement", "publish"]
+        graph = self.graph(*[
+            {"id": phase, "depends_on": [] if index == 0 else [phases[index - 1]]}
+            for index, phase in enumerate(phases)
+        ])
+        phase_nodes = {
+            phase: {"assignment_group": "root" if phase == "understand" else "planning" if phase in {"decompose", "plan", "test_design"} else "implementation"}
+            for phase in phases
+        }
+        goal = {"status": "ready", "difficulty": "S", "engineering_rigor": {"risk_categories": [], "effective": "structured"}}
+        evidence = zzzops.empty_phase_evidence()
+
+        def inputs():
+            result = {}
+            for index, phase in enumerate(phases):
+                upstream = []
+                if index:
+                    prior = evidence["records"].get(phases[index - 1], {}).get("output")
+                    if prior:
+                        upstream = [{"phase": phases[index - 1], "hash": prior["hash"]}]
+                result[phase] = self.envelope(phase, upstream_outputs=upstream)
+            return result
+
+        for phase in phases:
+            goal["phase_evidence"] = evidence
+            step = zzzops.workflow_step_plan(goal, graph, inputs(), phase_nodes, routing, runtime)
+            self.assertEqual(phase, step["next_steps"][0]["phase"])
+            self.assertEqual("execute", step["next_steps"][0]["kind"])
+            phase_input = inputs()[phase]
+            record = self.record(phase, phase_input, phase + " output")
+            evidence = zzzops.record_phase_result(evidence, phase, record, phase_input)
+            goal["phase_evidence"] = evidence
+            review = zzzops.workflow_step_plan(goal, graph, inputs(), phase_nodes, routing, runtime)
+            self.assertEqual([{
+                "phase": phase, "reason": "missing_or_unapproved_review",
+            }], review["frontier"]["review"])
+            self.assertEqual("review", review["next_steps"][0]["kind"])
+            artifact = {"reference": "urn:sha256:" + str(phases.index(phase) + 1) * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": phase})}
+            evidence = zzzops.record_phase_review(evidence, phase, artifact, "reviewer-2")
+
+        goal["phase_evidence"] = evidence
+        finished = zzzops.workflow_step_plan(goal, graph, inputs(), phase_nodes, routing, runtime)
+        self.assertEqual([], finished["next_steps"])
+
     def test_stale_rejection_and_identical_output_preserves_descendant(self):
         graph = self.graph({"id": "plan"}, {"id": "implement", "depends_on": ["plan"]})
         plan_input = self.envelope("plan")
