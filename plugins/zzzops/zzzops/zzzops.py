@@ -184,13 +184,13 @@ BLOCKER_CATEGORIES = {
     "specification", "decision", "access-approval", "human-action",
     "external-dependency", "technical-unknown", "safety-compliance",
 }
-WORKFLOW_INTENTS = {"capture", "execute", "approve", "resume", "inspect"}
+WORKFLOW_INTENTS = {"capture", "execute", "preview", "approve", "resume", "inspect"}
 WORKFLOW_DEFAULT_SKILLS = {
-    "capture": "$add-zzzops-goal", "execute": "$execute-zzzops", "approve": "$execute-zzzops",
+    "capture": "$add-zzzops-goal", "execute": "$execute-zzzops", "preview": "$execute-zzzops", "approve": "$execute-zzzops",
     "resume": "$execute-zzzops", "inspect": "$review-zzzops-policy",
 }
 WORKFLOW_SKILL_INTENTS = {
-    "$add-zzzops-goal": {"capture"}, "$execute-zzzops": {"execute", "approve", "resume"},
+    "$add-zzzops-goal": {"capture"}, "$execute-zzzops": {"execute", "preview", "approve", "resume"},
     "$bootstrap-zzzops-repository": {"inspect"}, "$migrate-to-zzzops": {"inspect"},
     "$review-agentic-engineering": {"inspect"}, "$review-zzzops-entropy": {"execute"},
     "$review-zzzops-policy": {"inspect"}, "$send-zzzops-feedback": {"execute"},

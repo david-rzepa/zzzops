@@ -1037,6 +1037,21 @@ class DiagnosticsModuleTests(unittest.TestCase):
         checkpoint.assert_not_called()
         self.assertEqual({"next_steps": [gate]}, json.loads(stream.getvalue()))
 
+    def test_workflow_cli_dispatches_preview_without_a_goal(self):
+        expected = {"next_steps": [{
+            "kind": "dispatch", "assignment": "root", "skill": "$execute-zzzops", "intent": "preview",
+            "action": "Evaluate the goal workflow frontier and perform its required next step.",
+        }]}
+        with (
+            mock.patch.object(zzzops, "configure_cli_stdout"),
+            mock.patch.object(zzzops._package, "package_status", return_value={"ok": True}),
+            mock.patch.object(zzzops, "workflow_context_step", return_value=None),
+            mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--intent", "preview"]),
+            mock.patch.object(sys, "stdout", io.StringIO()) as stream,
+        ):
+            self.assertEqual(0, zzzops.main())
+        self.assertEqual(expected, json.loads(stream.getvalue()))
+
     def test_workflow_cli_submits_phase_evidence_through_the_same_command(self):
         runtime, payload_path = self.repo / "runtime.json", self.repo / "result.json"
         runtime.write_text(json.dumps({"root_pair": {"model": "root", "effort": "medium"}, "available_pairs": [{"model": "root", "effort": "medium"}]}), encoding="utf-8")
@@ -4409,7 +4424,7 @@ class WorkflowContractTests(unittest.TestCase):
             capture_output=True, text=True, encoding="utf-8", check=False,
         )
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn("--intent {approve,capture,execute,inspect,resume}", result.stdout)
+        self.assertIn("--intent {approve,capture,execute,inspect,preview,resume}", result.stdout)
         self.assertIn("--runtime RUNTIME", result.stdout)
 
     @mock.patch.object(zzzops, "inspect_initialization")
@@ -4445,6 +4460,7 @@ class WorkflowContractTests(unittest.TestCase):
             "suggest-zzzops-work": "inspect", "validate-zzzops-installation": "inspect",
         }
         self.assertEqual({f"${name}" for name in expected}, set(zzzops.WORKFLOW_SKILL_INTENTS))
+        self.assertIn("preview", zzzops.WORKFLOW_SKILL_INTENTS["$execute-zzzops"])
         for skill, intent in expected.items():
             with self.subTest(skill=skill):
                 text = (PLUGIN_ROOT / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
