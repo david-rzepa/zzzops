@@ -110,7 +110,7 @@ WORKFLOW_ADHERENCE_SETTINGS = {
 }
 
 WORKFLOW_PHASE_IDS = (
-    "context", "understand", "decompose", "plan", "architecture_review", "implement", "verify", "review", "publish",
+    "understand", "decompose", "plan", "test_design", "implement", "publish",
 )
 WORKFLOW_PHASE_TYPES = frozenset(WORKFLOW_PHASE_IDS)
 WORKFLOW_ASSIGNMENT_GROUPS = frozenset({"root", "planning", "implementation", "review", "coordinator"})
@@ -508,7 +508,7 @@ def _workflow_phase_dag_errors(value: Any) -> list[str]:
         return ["phase_dag schema_version or phases is invalid"]
     nodes: dict[str, dict[str, Any]] = {}
     errors = []
-    expected_fields = {"id", "type", "depends_on", "parent_gates", "applicability", "assignment_group", "inputs", "not_required"}
+    expected_fields = {"id", "type", "depends_on", "parent_gates", "applicability", "assignment_group", "inputs", "not_required", "review"}
     for index, node in enumerate(value["phases"]):
         prefix = f"phase_dag.phases[{index}]"
         if not isinstance(node, dict) or set(node) != expected_fields:
@@ -528,8 +528,13 @@ def _workflow_phase_dag_errors(value: Any) -> list[str]:
             errors.append(f"{prefix}.assignment_group must keep understand on root")
         if node.get("not_required") not in WORKFLOW_NOT_REQUIRED:
             errors.append(f"{prefix}.not_required is invalid")
-        if node.get("not_required") == "atomic_goal" and phase not in {"decompose", "architecture_review"}:
+        if node.get("not_required") == "atomic_goal" and phase != "decompose":
             errors.append(f"{prefix}.not_required is not allowed for this phase")
+        review = node.get("review")
+        if not isinstance(review, dict) or set(review) != {"independent", "human_approval", "assignment_group"}:
+            errors.append(f"{prefix}.review is invalid")
+        elif not isinstance(review.get("independent"), bool) or not isinstance(review.get("human_approval"), bool) or review.get("assignment_group") != "review":
+            errors.append(f"{prefix}.review is invalid")
         dependencies, parent_gates = node.get("depends_on"), node.get("parent_gates")
         if not isinstance(dependencies, list) or any(item not in WORKFLOW_PHASE_IDS for item in dependencies) or len(set(dependencies)) != len(dependencies):
             errors.append(f"{prefix}.depends_on is invalid")
@@ -575,7 +580,7 @@ def phase_evidence_graph(phase_dag: Any, *, has_parent: bool) -> dict[str, list[
     errors = _workflow_phase_dag_errors(phase_dag)
     if errors:
         raise ValueError("Invalid workflow phase DAG: " + "; ".join(errors))
-    parent_finalization = {"verify", "review", "publish"}
+    parent_finalization = {"publish"}
     included = {
         node["id"] for node in phase_dag["phases"]
         if node["applicability"] == "always"
