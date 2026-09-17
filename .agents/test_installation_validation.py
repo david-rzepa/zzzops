@@ -150,7 +150,7 @@ class InstallationValidationTests(unittest.TestCase):
 
     def test_prompt_routes_once_and_preserves_confirmation_boundary(self) -> None:
         initialization = (ROOT / "plugins" / "zzzops" / "rules" / "INITIALIZATION.md").read_text(encoding="utf-8")
-        skill = (ROOT / "plugins" / "zzzops" / "skills" / "validate-zzzops-installation" / "SKILL.md").read_text(encoding="utf-8")
+        skill = (ROOT / "plugins" / "zzzops" / "zzzops" / "references" / "next_steps" / "installation-validation.md").read_text(encoding="utf-8")
         for required in ("installation status", "required:true", "$validate-zzzops-installation", "resume the requested workflow once"):
             self.assertIn(required, initialization)
         for required in ("explicit removal confirmation", "records `declined`", "--apply --yes", "resume that original workflow exactly once"):

@@ -4582,15 +4582,39 @@ class WorkflowContractTests(unittest.TestCase):
         }
         self.assertEqual({f"${name}" for name in expected}, set(zzzops.WORKFLOW_SKILL_INTENTS))
         self.assertIn("preview", zzzops.WORKFLOW_SKILL_INTENTS["$execute-zzzops"])
+        semantic_intents = {
+            "add-zzzops-goal": "add_goal",
+            "send-zzzops-feedback": "send_feedback",
+            "validate-zzzops-installation": "validate_installation",
+        }
         for skill, intent in expected.items():
             with self.subTest(skill=skill):
                 skill_path = PLUGIN_ROOT / "skills" / skill / "SKILL.md"
                 text = skill_path.read_text(encoding="utf-8")
                 self.assertTrue((skill_path.parents[2] / "zzzops" / "zzzops.py").is_file())
-                self.assertIn("Codex plugins do not put a `zzzops` binary on `PATH`", text)
-                self.assertIn(f'python3 "$ZZZOPS_CLI" workflow --intent {intent} --source-skill \'${skill}\'', text)
-                self.assertNotIn("`zzzops workflow", text)
-                self.assertIn("Do not invoke a private ZzzOps command", text)
+                if skill in semantic_intents:
+                    self.assertIn("../../zzzops/zzzops.py", text)
+                    self.assertIn(f"--intent {semantic_intents[skill]}", text)
+                    self.assertNotIn("INITIALIZATION.md", text)
+                    self.assertNotIn("private ZzzOps command", text)
+                else:
+                    self.assertIn("Codex plugins do not put a `zzzops` binary on `PATH`", text)
+                    self.assertIn(f'python3 "$ZZZOPS_CLI" workflow --intent {intent} --source-skill \'${skill}\'', text)
+                    self.assertNotIn("`zzzops workflow", text)
+                    self.assertIn("Do not invoke a private ZzzOps command", text)
+
+    def test_semantic_entrypoints_expand_to_the_registered_public_workflow(self):
+        expected = {
+            "add_goal": ("capture", "$add-zzzops-goal"),
+            "send_feedback": ("execute", "$send-zzzops-feedback"),
+            "validate_installation": ("inspect", "$validate-zzzops-installation"),
+        }
+        for semantic_intent, (workflow_intent, source_skill) in expected.items():
+            with self.subTest(intent=semantic_intent):
+                argv = zzzops.normalize_workflow_entrypoint(["zzzops.py", "--intent", semantic_intent])
+                self.assertEqual(
+                    ["zzzops.py", "workflow", "--intent", workflow_intent, "--source-skill", source_skill], argv,
+                )
 
     def test_workflow_skill_registry_allows_execute_approval_and_resume_only(self):
         for intent in ("execute", "approve", "resume"):
@@ -5629,7 +5653,15 @@ class WorkflowContractTests(unittest.TestCase):
         for name, phrases in contracts.items():
             skill = (root / name / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn(f"name: {name}", skill, name)
-            description = re.sub(r"\s+", " ", skill.split("---", 2)[1].lower())
+            source = skill
+            instruction_name = {
+                "add-zzzops-goal": "add-goal.md",
+                "send-zzzops-feedback": "send-feedback.md",
+                "validate-zzzops-installation": "installation-validation.md",
+            }.get(name)
+            if instruction_name:
+                source = (PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / instruction_name).read_text(encoding="utf-8")
+            description = re.sub(r"\s+", " ", source.lower())
             for phrase in phrases:
                 self.assertIn(phrase, description, f"{name}: {phrase}")
 
@@ -5641,11 +5673,12 @@ class WorkflowContractTests(unittest.TestCase):
             "validate-zzzops-installation",
         )
         self.assertEqual(names, zzzops.MANAGED_SKILLS)
+        thin_skills = {"add-zzzops-goal", "send-zzzops-feedback", "validate-zzzops-installation"}
         for name in names:
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
-            if name != "review-agentic-engineering":
+            if name not in thin_skills and name != "review-agentic-engineering":
                 self.assertIn("INITIALIZATION.md", text, name)
-            if name not in {"review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback", "validate-zzzops-installation"}:
+            if name not in thin_skills | {"review-agentic-engineering", "review-zzzops-policy"}:
                 self.assertIn("BACKENDS.md", text, name)
 
         initialization = (root / "rules" / "INITIALIZATION.md").read_text(encoding="utf-8")
@@ -5682,11 +5715,18 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_skills_apply_shared_privacy_safe_feedback_handoff(self):
         root = PLUGIN_ROOT / "skills"
+        instruction_paths = {
+            "add-zzzops-goal": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "add-goal.md",
+            "send-zzzops-feedback": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "send-feedback.md",
+            "validate-zzzops-installation": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "installation-validation.md",
+        }
         for skill in root.iterdir():
             path = skill / "SKILL.md"
             if path.is_file():
-                self.assertIn("FEEDBACK.md", path.read_text(encoding="utf-8"), skill.name)
-        feedback_skill = (root / "send-zzzops-feedback" / "SKILL.md").read_text(encoding="utf-8")
+                source = instruction_paths.get(skill.name, path)
+                if skill.name not in instruction_paths:
+                    self.assertIn("FEEDBACK.md", source.read_text(encoding="utf-8"), skill.name)
+        feedback_skill = instruction_paths["send-zzzops-feedback"].read_text(encoding="utf-8")
         feedback_rule = (PLUGIN_ROOT / "rules" / "FEEDBACK.md").read_text(encoding="utf-8")
         self.assertIn("validated ZzzOps build provenance", feedback_skill)
         self.assertIn("legacy schema-v2 provenance is explicitly unknown", feedback_skill)
@@ -5770,7 +5810,7 @@ class WorkflowContractTests(unittest.TestCase):
     def test_refill_and_feedback_provenance_labels_stay_distinct(self):
         skills = PLUGIN_ROOT / "skills"
         refill = (skills / "suggest-zzzops-work" / "SKILL.md").read_text(encoding="utf-8").lower()
-        feedback = (skills / "send-zzzops-feedback" / "SKILL.md").read_text(encoding="utf-8")
+        feedback = (PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "send-feedback.md").read_text(encoding="utf-8")
         for phrase in ("during exhausted-queue refill", "zzzops-refill", "never copy source labels", "zzzops-feedback"):
             self.assertIn(phrase, refill)
         self.assertIn("`zzzops-feedback` label", feedback)
