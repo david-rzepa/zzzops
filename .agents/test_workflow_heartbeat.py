@@ -102,6 +102,7 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
         )
         self.assertNotIn("probe_argv", renew)
 
+        self._wait(lambda: [lease['token'] for lease in json.loads(Path(first['config']).read_text(encoding='utf-8'))['leases']] == ['token-a'])
         config = json.loads(Path(first["config"]).read_text(encoding="utf-8"))
         if os.name != "nt":
             self.assertEqual(0o700, Path(first["config"]).parent.stat().st_mode & 0o777)
