@@ -27,6 +27,24 @@ def explicit_approval(value):
     return isinstance(value, str) and bool(value.strip()) and value == value.strip() and '<' not in value and '>' not in value
 
 
+def preflight_policy_proposal(api, repo, proposal):
+    if not isinstance(proposal, dict):
+        raise ValueError('Policy proposal must be a JSON object')
+    prospective = copy.deepcopy(proposal)
+    prospective['confirmed'] = True
+    errors = api.validate_plan(repo, prospective)
+    if errors:
+        raise ValueError('Invalid policy proposal: ' + '; '.join(errors))
+    unresolved = [
+        section.get('id', '<unknown>')
+        for section in prospective['policy']['sections']
+        if section.get('unresolved')
+    ]
+    if unresolved:
+        raise ValueError('Resolve policy choices before approval: ' + ', '.join(unresolved))
+    return prospective
+
+
 def state(goal):
     return copy.deepcopy(goal.get('workflow') or {'leases': {}, 'receipts': {}, 'workers': {}, 'assessments': {}, 'artifacts': {}})
 
@@ -898,6 +916,7 @@ def public_run(api, repo, intent, source, runtime, payload, number):
         directory = repo / '.zzzops' / 'proposals'
         if operation == 'policy_propose':
             proposal = payload['plan']
+            preflight_policy_proposal(api, repo, proposal)
             proposal_hash = digest(proposal)
             directory.mkdir(parents=True, exist_ok=True)
             path = directory / (proposal_hash.split(':')[1] + '.json')
@@ -909,8 +928,9 @@ def public_run(api, repo, intent, source, runtime, payload, number):
         proposal = json.loads((directory / (proposal_hash.split(':')[1] + '.json')).read_text())
         if digest(proposal) != proposal_hash:
             raise ValueError('Policy proposal changed after review')
-        proposal['confirmed'] = True
-        api.apply_plan(repo, proposal)
+        prospective = preflight_policy_proposal(api, repo, proposal)
+        applied = api.apply_plan(repo, prospective)
+        api.confirm_project(repo, applied['policy_digest'], payload['approved_by'], [], True)
         return {'next_steps': [{'kind': 'checkpoint', 'action': 'Reinvoke the original intent against the newly reviewed policy.'}]}
     if gate and gate.get('id') in {'bootstrap', 'policy-review'}:
         inspection = api.inspect_initialization(repo)

@@ -37,6 +37,8 @@ reviewed decision and follows the recorded fallback or persists a blocker.
 
 Review rigor defaults/escalation/minimums/overrides/interview depth. More rigor costs upfront but cuts ambiguity/rework/regressions; never silently lower or undercut a minimum.
 
+Each `reviewed_pairs` entry needs `model`, `effort`, `tier`, and integer `cost`: use one relative-cost scale and document estimates.
+
 Compare default IDs/digests first. Changed/stale: load full old/new snapshots only for changed or selected sections. Missing legacy provenance stays unknown. Replace matching stored defaults only; report customized values without replacement.
 
 If every required section has valid approval, say `The policy is already approved.` Do not ask for approval again. Otherwise require explicit approval of the current digest from the root-mediated human interaction, then submit that approval using the exact returned input contract. Approved policy artifacts may enter ordinary PR review without another conversational gate.
