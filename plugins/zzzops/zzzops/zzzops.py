@@ -2560,6 +2560,8 @@ def main() -> int:
                     if context is not None:
                         result = {"next_steps": [context]}
                     elif args.input:
+                        if args.intent == "preview":
+                            raise ValueError("Preview workflow does not accept phase-evidence submissions")
                         payload = json.loads(args.input.resolve().read_text(encoding="utf-8-sig"))
                         result = workflow_submit(repo, args.goal, args.intent, payload)
                     else:

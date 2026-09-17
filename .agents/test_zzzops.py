@@ -1096,6 +1096,41 @@ class DiagnosticsModuleTests(unittest.TestCase):
             self.assertEqual(0, zzzops.main())
         self.assertEqual(expected, json.loads(stream.getvalue()))
 
+    def test_workflow_cli_runs_preview_checkpoint_without_mutation(self):
+        runtime = self.repo / "runtime.json"
+        runtime.write_text(json.dumps({"root_pair": {"model": "root", "effort": "medium"}, "available_pairs": [{"model": "root", "effort": "medium"}]}), encoding="utf-8")
+        expected = {"next_steps": [{"kind": "preview", "phase": "understand"}]}
+        with (
+            mock.patch.object(zzzops, "configure_cli_stdout"),
+            mock.patch.object(zzzops, "workflow_context_step", return_value=None),
+            mock.patch.object(zzzops._package, "package_status", return_value={"ok": True}),
+            mock.patch.object(zzzops, "workflow_checkpoint", return_value=expected) as checkpoint,
+            mock.patch.object(zzzops, "workflow_submit") as submit,
+            mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--goal", "42", "--intent", "preview", "--runtime", str(runtime)]),
+            mock.patch.object(sys, "stdout", io.StringIO()) as stream,
+        ):
+            self.assertEqual(0, zzzops.main())
+        checkpoint.assert_called_once_with(self.repo.resolve(), 42, "preview", json.loads(runtime.read_text(encoding="utf-8")))
+        submit.assert_not_called()
+        self.assertEqual(expected, json.loads(stream.getvalue()))
+
+    def test_workflow_cli_rejects_preview_submissions(self):
+        payload_path = self.repo / "result.json"
+        payload_path.write_text("{}", encoding="utf-8")
+        with (
+            mock.patch.object(zzzops, "configure_cli_stdout"),
+            mock.patch.object(zzzops, "workflow_context_step", return_value=None),
+            mock.patch.object(zzzops._package, "package_status", return_value={"ok": True}),
+            mock.patch.object(zzzops, "workflow_submit") as submit,
+            mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--goal", "42", "--intent", "preview", "--input", str(payload_path)]),
+            mock.patch.object(sys, "stdout", io.StringIO()) as stream,
+        ):
+            self.assertEqual(2, zzzops.main())
+        submit.assert_not_called()
+        step = json.loads(stream.getvalue())["next_steps"][0]
+        self.assertEqual("blocker", step["kind"])
+        self.assertIn("does not accept", step["reason"])
+
     def test_workflow_cli_gates_goal_checkpoint_on_context(self):
         runtime = self.repo / "runtime.json"
         runtime.write_text(json.dumps({"root_pair": {"model": "root", "effort": "medium"}, "available_pairs": [{"model": "root", "effort": "medium"}]}), encoding="utf-8")
