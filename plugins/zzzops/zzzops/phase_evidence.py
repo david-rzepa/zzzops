@@ -267,6 +267,26 @@ def record_phase_result(evidence: Any, phase: str, record: Any, current_input: d
     return normalized
 
 
+def independent_review_ready(evidence: Any, implementation_phase: str, review_phase: str) -> dict[str, Any]:
+    """Require fresh verification and a distinct reviewer before publication."""
+    normalized = normalize_phase_evidence(evidence)
+    implementation_phase, review_phase = _text(implementation_phase, "implementation phase"), _text(review_phase, "review phase")
+    implementation = normalized["records"].get(implementation_phase)
+    review = normalized["records"].get(review_phase)
+    if not isinstance(implementation, dict) or implementation.get("status") != "completed":
+        raise PhaseEvidenceError("implementation evidence is incomplete")
+    if implementation.get("verification") is None:
+        raise PhaseEvidenceError("implementation verification evidence is missing")
+    if not isinstance(review, dict) or review.get("status") != "completed" or review.get("output") is None:
+        raise PhaseEvidenceError("independent review evidence is incomplete")
+    if implementation.get("actor") == review.get("actor"):
+        raise PhaseEvidenceError("review actor must be independent from implementation actor")
+    return {
+        "ready": True, "implementation_phase": implementation_phase, "review_phase": review_phase,
+        "implementation_actor": implementation["actor"], "review_actor": review["actor"],
+    }
+
+
 def withdraw_phase_evidence(evidence: Any, phase: str, *, reason: str, actor: str) -> dict[str, Any]:
     """Append a justified withdrawal; evaluation then stales declared descendants."""
     normalized, phase = normalize_phase_evidence(evidence), _text(phase, "phase")
