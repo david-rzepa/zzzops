@@ -2532,8 +2532,6 @@ def main() -> int:
                         raise ValueError("Goal phase checkpoints require current runtime evidence")
                     runtime = json.loads(args.runtime.resolve().read_text(encoding="utf-8-sig"))
                     result = workflow_checkpoint(repo, args.goal, args.intent, runtime)
-                    runtime = json.loads(args.runtime.resolve().read_text(encoding="utf-8-sig"))
-                    result = workflow_checkpoint(repo, args.goal, args.intent, runtime)
                 print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
                 return 0
             except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
