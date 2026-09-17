@@ -4364,6 +4364,31 @@ class WorkflowContractTests(unittest.TestCase):
         )
         self.assertEqual("explicit_scoped_user_authority", section["settings"]["scoped_exception"])
         self.assertEqual("review_workflow_reconciliation", section["settings"]["agents_projection"])
+        dag = section["settings"]["phase_dag"]
+        self.assertEqual(1, dag["schema_version"])
+        self.assertEqual(
+            ["context", "understand", "decompose", "plan", "architecture_review", "implement", "verify", "review", "publish"],
+            [phase["id"] for phase in dag["phases"]],
+        )
+        self.assertEqual("root", next(phase for phase in dag["phases"] if phase["id"] == "understand")["assignment_group"])
+        self.assertEqual(["plan", "architecture_review"], next(phase for phase in dag["phases"] if phase["id"] == "implement")["parent_gates"])
+        child_graph = zzzops.phase_evidence_graph(dag, has_parent=True)
+        self.assertEqual(
+            ["context", "understand", "plan", "architecture_review", "implement", "verify", "review", "publish"],
+            [node["id"] for node in child_graph["phases"]],
+        )
+        self.assertEqual(
+            {"id": "plan", "depends_on": [], "parent_gates": ["decompose"]},
+            next(node for node in child_graph["phases"] if node["id"] == "plan"),
+        )
+        self.assertEqual(
+            {"id", "depends_on", "parent_gates"},
+            set(next(node for node in child_graph["phases"] if node["id"] == "implement")),
+        )
+        parent_graph = zzzops.phase_evidence_graph(dag, has_parent=False)
+        parent_phases = {node["id"] for node in parent_graph["phases"]}
+        self.assertNotIn("verify", parent_phases, "#432 must not make aggregate verification eligible before child completion is represented")
+        self.assertFalse({"review", "publish"} & parent_phases)
         self.assertEqual([], zzzops.validate_policy(plan["policy"], True))
 
         rendered = zzzops.render_project({
@@ -4385,6 +4410,36 @@ class WorkflowContractTests(unittest.TestCase):
         invalid = json.loads(json.dumps(plan["policy"]))
         next(item for item in invalid["sections"] if item["id"] == "workflow_adherence")["decision"] = "strict"
         self.assertTrue(any("workflow_adherence.decision" in error for error in zzzops.validate_policy(invalid, True)))
+
+        missing_dag = json.loads(json.dumps(plan["policy"]))
+        missing_dag["evidence"] = plan["evidence"]
+        del next(item for item in missing_dag["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]
+        self.assertTrue(any("missing operational policy settings" in error for error in zzzops.validate_policy(missing_dag, False)))
+
+        executable = json.loads(json.dumps(plan["policy"]))
+        next(item for item in executable["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]["phases"][0]["handler"] = "python arbitrary.py"
+        self.assertTrue(any("unsupported declarative fields" in error for error in zzzops.validate_policy(executable, True)))
+
+        cyclic = json.loads(json.dumps(plan["policy"]))
+        next(item for item in cyclic["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]["phases"][0]["depends_on"] = ["publish"]
+        self.assertTrue(any("acyclic" in error for error in zzzops.validate_policy(cyclic, True)))
+
+        root_escape = json.loads(json.dumps(plan["policy"]))
+        next(item for item in root_escape["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]["phases"][1]["assignment_group"] = "planning"
+        self.assertTrue(any("keep understand on root" in error for error in zzzops.validate_policy(root_escape, True)))
+
+        type_escape = json.loads(json.dumps(plan["policy"]))
+        next(item for item in type_escape["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]["phases"][5]["type"] = "context"
+        self.assertTrue(any("must match its known phase id" in error for error in zzzops.validate_policy(type_escape, True)))
+
+        invalid_gate = json.loads(json.dumps(plan["policy"]))
+        next(item for item in invalid_gate["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]["phases"][5]["parent_gates"] = ["unknown"]
+        self.assertTrue(any("parent_gates" in error for error in zzzops.validate_policy(invalid_gate, True)))
+
+        customized = json.loads(json.dumps(plan["policy"]))
+        custom_dag = next(item for item in customized["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]
+        next(phase for phase in custom_dag["phases"] if phase["id"] == "verify")["inputs"].append("capabilities")
+        self.assertEqual([], zzzops.validate_policy(customized, True))
 
         review = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
         initialization = (Path(__file__).parents[1] / "docs" / "INITIALIZATION.md").read_text(encoding="utf-8")
@@ -4465,12 +4520,72 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("refresh_and_re_evaluate", section["settings"]["model_inventory"]["stale"])
         self.assertEqual("runtime_supported_effort_levels", section["settings"]["model_inventory"]["effort"])
         self.assertEqual("record_unavailable_no_block", section["settings"]["telemetry"]["unavailable"])
+        self.assertEqual(["routine", "bounded", "reasoning", "architectural"], [tier["id"] for tier in section["settings"]["tiers"]])
         self.assertEqual([], zzzops.validate_policy(plan["policy"], True))
 
         invalid = json.loads(json.dumps(plan["policy"]))
         routing = next(item for item in invalid["sections"] if item["id"] == "model_routing")
         routing["settings"]["root_boundary"]["equal_root"] = "spawn_equal_root"
         self.assertTrue(any("model_routing.settings.root_boundary" in error for error in zzzops.validate_policy(invalid, True)))
+
+        settings = section["settings"]
+        self.assertEqual("routine", zzzops.capability_tier(settings, {"phase_type": "context"})["tier"])
+        self.assertEqual("bounded", zzzops.capability_tier(settings, {"phase_type": "plan", "boundedness": "atomic"})["tier"])
+        self.assertEqual("reasoning", zzzops.capability_tier(settings, {"consequence": "consequential", "boundedness": "bounded"})["tier"])
+        self.assertEqual("architectural", zzzops.capability_tier(settings, {"phase_type": "review"})["tier"])
+
+        bad_tree = json.loads(json.dumps(plan["policy"]))
+        next(item for item in bad_tree["sections"] if item["id"] == "model_routing")["settings"]["assessment_tree"][0]["command"] = "delegate"
+        self.assertTrue(any("assessment_tree" in error for error in zzzops.validate_policy(bad_tree, True)))
+
+        customized_tree = json.loads(json.dumps(plan["policy"]))
+        custom_settings = next(item for item in customized_tree["sections"] if item["id"] == "model_routing")["settings"]
+        custom_settings["assessment_tree"][3] = {"when": {"boundedness": ["atomic", "bounded"]}, "tier": "reasoning"}
+        custom_settings["model_inventory"]["reviewed_pairs"] = [
+            {"model": "economy", "effort": "low", "tier": "routine", "cost": 5},
+            {"model": "gpt-5.6-codex", "effort": "high", "tier": "reasoning", "cost": 4},
+        ]
+        self.assertEqual([], zzzops.validate_policy(customized_tree, True))
+        self.assertEqual(
+            {"available": True, "tier": "reasoning", "selected": {"model": "gpt-5.6-codex", "effort": "high"}},
+            zzzops.reviewed_model_effort(custom_settings, "reasoning", [{"model": "gpt-5.6-codex", "effort": "high"}]),
+        )
+        self.assertEqual(
+            {"available": False, "tier": "reasoning", "selected": None},
+            zzzops.reviewed_model_effort(custom_settings, "reasoning", []),
+        )
+        self.assertEqual(
+            {"available": True, "tier": "routine", "selected": {"model": "gpt-5.6-codex", "effort": "high"}},
+            zzzops.reviewed_model_effort(custom_settings, "routine", [{"model": "gpt-5.6-codex", "effort": "high"}]),
+        )
+        self.assertEqual(
+            {"available": True, "tier": "routine", "selected": {"model": "gpt-5.6-codex", "effort": "high"}},
+            zzzops.reviewed_model_effort(custom_settings, "routine", [
+                {"model": "economy", "effort": "low"}, {"model": "gpt-5.6-codex", "effort": "high"},
+            ]),
+        )
+
+        reviewed_pairs = [
+            {"model": "economy", "effort": "low", "tier": "routine", "cost": 1},
+            {"model": "reasoner", "effort": "high", "tier": "reasoning", "cost": 4},
+        ]
+        self.assertEqual(
+            {"stale": True, "reason": "new_model_effort", "added": [{"model": "economy", "effort": "high"}], "availability": "complete"},
+            zzzops.model_inventory_freshness(reviewed_pairs, {"status": "complete", "pairs": [{"model": "economy", "effort": "low"}, {"model": "economy", "effort": "high"}]}),
+        )
+        self.assertEqual(
+            {"stale": False, "reason": "inventory_not_complete", "added": [], "availability": "unavailable"},
+            zzzops.model_inventory_freshness(reviewed_pairs, {"status": "unavailable", "pairs": []}),
+        )
+        self.assertFalse(
+            zzzops.model_inventory_freshness(reviewed_pairs, {"status": "complete", "pairs": [{"model": "economy", "effort": "low"}]})["stale"]
+        )
+        digest_one, digest_two = "sha256:" + "1" * 64, "sha256:" + "2" * 64
+        self.assertTrue(zzzops.phase_policy_freshness(digest_one, digest_two, terminal=False)["stale"])
+        self.assertEqual(
+            {"stale": False, "reason": "terminal_goal", "rewrite_required": False},
+            zzzops.phase_policy_freshness(digest_one, digest_two, terminal=True),
+        )
 
         missing = json.loads(json.dumps(plan["policy"]))
         missing["sections"] = [item for item in missing["sections"] if item["id"] != "model_routing"]

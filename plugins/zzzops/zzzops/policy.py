@@ -109,15 +109,34 @@ WORKFLOW_ADHERENCE_SETTINGS = {
     "agents_projection": "review_workflow_reconciliation",
 }
 
+WORKFLOW_PHASE_IDS = (
+    "context", "understand", "decompose", "plan", "architecture_review", "implement", "verify", "review", "publish",
+)
+WORKFLOW_PHASE_TYPES = frozenset(WORKFLOW_PHASE_IDS)
+WORKFLOW_ASSIGNMENT_GROUPS = frozenset({"root", "planning", "implementation", "review", "coordinator"})
+WORKFLOW_APPLICABILITY = frozenset({"always", "parent_only", "child_only"})
+WORKFLOW_NOT_REQUIRED = frozenset({"never", "atomic_goal"})
+WORKFLOW_INPUT_CATEGORIES = frozenset({
+    "goal_spec", "policy", "phase_dag", "parents", "dependencies", "repository", "provider",
+    "capabilities", "invocation", "upstream_outputs",
+})
+
+ROUTING_TIER_IDS = ("routine", "bounded", "reasoning", "architectural")
+ROUTING_DIMENSIONS = frozenset({"phase_type", "consequence", "boundedness", "engineering_rigor"})
+ROUTING_DIMENSION_VALUES = {
+    "phase_type": WORKFLOW_PHASE_TYPES,
+    "consequence": frozenset({"routine", "bounded", "consequential", "architectural"}),
+    "boundedness": frozenset({"atomic", "bounded", "unbounded"}),
+    "engineering_rigor": frozenset({"vibe", "structured", "agentic"}),
+}
+
 ENGINEERING_RIGOR_LEVELS = ("vibe", "structured", "agentic")
 ENGINEERING_RIGOR_INTERVIEW_DEPTH = {
     "vibe": "light", "structured": "standard", "agentic": "thorough",
 }
 
-MODEL_ROUTING_PHASES = ("discovery", "architecture", "implementation", "verification")
-MODEL_ROUTING_LEVELS = {"economical", "intermediate", "root", "above_root"}
 MODEL_ROUTING_SETTINGS_KEYS = {
-    "capability_basis", "routing_unit", "model_inventory", "root_boundary", "phase_defaults",
+    "capability_basis", "routing_unit", "model_inventory", "root_boundary", "tiers", "assessment_tree",
     "escalation", "parallelism", "telemetry", "evidence",
 }
 
@@ -472,6 +491,270 @@ def missing_policy_settings(
         if missing:
             result[section_id] = missing
     return result
+
+
+def _policy_identifier(value: Any) -> bool:
+    return (
+        isinstance(value, str) and bool(value) and value.casefold() == value
+        and value.replace("_", "").replace("-", "").replace(".", "").isalnum()
+    )
+
+
+def _workflow_phase_dag_errors(value: Any) -> list[str]:
+    """Validate the static, declarative workflow graph stored in project policy."""
+    if not isinstance(value, dict) or set(value) != {"schema_version", "phases"}:
+        return ["phase_dag must contain schema_version and phases"]
+    if value.get("schema_version") != 1 or not isinstance(value.get("phases"), list):
+        return ["phase_dag schema_version or phases is invalid"]
+    nodes: dict[str, dict[str, Any]] = {}
+    errors = []
+    expected_fields = {"id", "type", "depends_on", "parent_gates", "applicability", "assignment_group", "inputs", "not_required"}
+    for index, node in enumerate(value["phases"]):
+        prefix = f"phase_dag.phases[{index}]"
+        if not isinstance(node, dict) or set(node) != expected_fields:
+            errors.append(f"{prefix} has unsupported declarative fields")
+            continue
+        phase = node.get("id")
+        if phase not in WORKFLOW_PHASE_IDS or phase in nodes:
+            errors.append(f"{prefix}.id is invalid")
+            continue
+        if node.get("type") not in WORKFLOW_PHASE_TYPES or node.get("type") != phase:
+            errors.append(f"{prefix}.type must match its known phase id")
+        if node.get("applicability") not in WORKFLOW_APPLICABILITY:
+            errors.append(f"{prefix}.applicability is invalid")
+        if node.get("assignment_group") not in WORKFLOW_ASSIGNMENT_GROUPS:
+            errors.append(f"{prefix}.assignment_group is invalid")
+        if phase == "understand" and node.get("assignment_group") != "root":
+            errors.append(f"{prefix}.assignment_group must keep understand on root")
+        if node.get("not_required") not in WORKFLOW_NOT_REQUIRED:
+            errors.append(f"{prefix}.not_required is invalid")
+        if node.get("not_required") == "atomic_goal" and phase not in {"decompose", "architecture_review"}:
+            errors.append(f"{prefix}.not_required is not allowed for this phase")
+        dependencies, parent_gates = node.get("depends_on"), node.get("parent_gates")
+        if not isinstance(dependencies, list) or any(item not in WORKFLOW_PHASE_IDS for item in dependencies) or len(set(dependencies)) != len(dependencies):
+            errors.append(f"{prefix}.depends_on is invalid")
+        if not isinstance(parent_gates, list) or any(item not in WORKFLOW_PHASE_IDS for item in parent_gates) or len(set(parent_gates)) != len(parent_gates):
+            errors.append(f"{prefix}.parent_gates is invalid")
+        inputs = node.get("inputs")
+        if not isinstance(inputs, list) or not inputs or any(item not in WORKFLOW_INPUT_CATEGORIES for item in inputs) or len(set(inputs)) != len(inputs):
+            errors.append(f"{prefix}.inputs is invalid")
+        nodes[phase] = node
+    if set(nodes) != set(WORKFLOW_PHASE_IDS):
+        errors.append("phase_dag must define every shipped phase exactly once")
+    for phase, node in nodes.items():
+        dependencies = node.get("depends_on", [])
+        if phase in dependencies or any(dependency not in nodes for dependency in dependencies):
+            errors.append(f"phase_dag dependencies for {phase} are invalid")
+    visiting, visited = set(), set()
+    def visit(phase: str) -> None:
+        if phase in visiting:
+            errors.append("phase_dag must be acyclic")
+            return
+        if phase in visited or phase not in nodes:
+            return
+        visiting.add(phase)
+        for dependency in nodes[phase].get("depends_on", []):
+            visit(dependency)
+        visiting.remove(phase)
+        visited.add(phase)
+    for phase in nodes:
+        visit(phase)
+    return errors
+
+
+def phase_evidence_graph(phase_dag: Any, *, has_parent: bool) -> dict[str, list[dict[str, Any]]]:
+    """Project reviewed policy nodes into the exact graph consumed by #432.
+
+    Applicability is resolved before handing the graph to the generic evaluator.
+    In particular, a child consumes its parent's decomposition as a parent gate
+    instead of receiving an impossible local decomposition dependency. The
+    generic #432 graph has no child-aggregation edge, so parent verification,
+    review, and publication stay absent until orchestration can supply that
+    canonical aggregate-completion evidence.
+    """
+    errors = _workflow_phase_dag_errors(phase_dag)
+    if errors:
+        raise ValueError("Invalid workflow phase DAG: " + "; ".join(errors))
+    parent_finalization = {"verify", "review", "publish"}
+    included = {
+        node["id"] for node in phase_dag["phases"]
+        if node["applicability"] == "always"
+        or (node["applicability"] == "child_only" and has_parent)
+        or (node["applicability"] == "parent_only" and not has_parent)
+    } - (parent_finalization if not has_parent else set())
+    result = []
+    for node in phase_dag["phases"]:
+        phase = node["id"]
+        if phase not in included:
+            continue
+        dependencies = [dependency for dependency in node["depends_on"] if dependency in included]
+        parent_gates = list(node["parent_gates"] if has_parent else [])
+        result.append({"id": phase, "depends_on": dependencies, "parent_gates": parent_gates})
+    return {"phases": result}
+
+
+def _routing_settings_errors(settings: Any) -> list[str]:
+    if not isinstance(settings, dict) or set(settings) != MODEL_ROUTING_SETTINGS_KEYS:
+        return ["settings must contain the declarative routing contract"]
+    errors = []
+    if settings.get("capability_basis") != "effective_engineering_rigor_and_bounded_commitment":
+        errors.append("settings.capability_basis is invalid")
+    if settings.get("routing_unit") != "model_plus_effort":
+        errors.append("settings.routing_unit is invalid")
+    inventory = settings.get("model_inventory")
+    inventory_fields = {"source", "effort", "missing", "stale", "unsupported", "reviewed_pairs"}
+    if not isinstance(inventory, dict) or set(inventory) != inventory_fields:
+        errors.append("settings.model_inventory is invalid")
+    else:
+        if any(inventory.get(field) != expected for field, expected in {
+            "source": "runtime_available_models", "effort": "runtime_supported_effort_levels",
+            "missing": "root_best_effort_web_research", "stale": "refresh_and_re_evaluate",
+            "unsupported": "durable_blocker",
+        }.items()):
+            errors.append("settings.model_inventory is invalid")
+        pairs = inventory.get("reviewed_pairs")
+        seen_pairs = set()
+        if not isinstance(pairs, list):
+            errors.append("settings.model_inventory.reviewed_pairs is invalid")
+        else:
+            for item in pairs:
+                if not isinstance(item, dict) or set(item) != {"model", "effort", "tier", "cost"}:
+                    errors.append("settings.model_inventory.reviewed_pairs is invalid")
+                    continue
+                pair = (item.get("model"), item.get("effort"))
+                if (not all(_policy_identifier(part) for part in pair) or item.get("tier") not in ROUTING_TIER_IDS
+                        or not isinstance(item.get("cost"), int) or isinstance(item.get("cost"), bool) or item["cost"] < 0
+                        or pair in seen_pairs):
+                    errors.append("settings.model_inventory.reviewed_pairs is invalid")
+                seen_pairs.add(pair)
+    tiers = settings.get("tiers")
+    if not isinstance(tiers, list) or len(tiers) != len(ROUTING_TIER_IDS):
+        errors.append("settings.tiers must define every shipped tier")
+    else:
+        expected_ranks = set(range(1, len(ROUTING_TIER_IDS) + 1))
+        actual_ids = [item.get("id") for item in tiers if isinstance(item, dict)]
+        ranks = [item.get("rank") for item in tiers if isinstance(item, dict)]
+        if any(not isinstance(item, dict) or set(item) != {"id", "rank"} for item in tiers) or set(actual_ids) != set(ROUTING_TIER_IDS) or set(ranks) != expected_ranks:
+            errors.append("settings.tiers must define every shipped tier")
+    tree = settings.get("assessment_tree")
+    if not isinstance(tree, list) or not tree:
+        errors.append("settings.assessment_tree is invalid")
+    else:
+        catch_all = 0
+        for index, rule in enumerate(tree):
+            if not isinstance(rule, dict) or set(rule) != {"when", "tier"} or rule.get("tier") not in ROUTING_TIER_IDS:
+                errors.append("settings.assessment_tree is invalid")
+                continue
+            when = rule.get("when")
+            if not isinstance(when, dict) or set(when) - ROUTING_DIMENSIONS:
+                errors.append("settings.assessment_tree is invalid")
+                continue
+            if not when:
+                catch_all += 1
+                if index != len(tree) - 1:
+                    errors.append("settings.assessment_tree catch-all must be last")
+            for dimension, values in when.items():
+                allowed = ROUTING_DIMENSION_VALUES[dimension]
+                if not isinstance(values, list) or not values or any(value not in allowed for value in values) or len(set(values)) != len(values):
+                    errors.append("settings.assessment_tree is invalid")
+        if catch_all != 1:
+            errors.append("settings.assessment_tree requires one final catch-all")
+    boundary = settings.get("root_boundary")
+    if boundary != {"root_capability": "current_root_agent", "equal_root": "direct_root_no_subagent", "above_root": "session_override_required"}:
+        errors.append("settings.root_boundary is invalid")
+    escalation = settings.get("escalation")
+    if not isinstance(escalation, dict) or set(escalation) != {"triggers", "handling"} or not isinstance(escalation.get("triggers"), list) or not escalation["triggers"] or escalation.get("handling") != "durable_blocker_continue_safe_work":
+        errors.append("settings.escalation is invalid")
+    parallelism = settings.get("parallelism")
+    if parallelism != {"below_root": "allowed_within_reviewed_worker_limits", "root_or_above": "session_override_required"}:
+        errors.append("settings.parallelism is invalid")
+    telemetry = settings.get("telemetry")
+    if telemetry != {"source": "optional_provenance_backed_usage", "unavailable": "record_unavailable_no_block"}:
+        errors.append("settings.telemetry is invalid")
+    if settings.get("evidence") != "append_only_goal_history":
+        errors.append("settings.evidence is invalid")
+    return errors
+
+
+def capability_tier(settings: Any, dimensions: Any) -> dict[str, Any]:
+    """Evaluate the reviewed declarative tree without selecting a provider model."""
+    errors = _routing_settings_errors(settings)
+    if errors:
+        raise ValueError("Invalid model-routing policy: " + "; ".join(errors))
+    if not isinstance(dimensions, dict) or set(dimensions) - ROUTING_DIMENSIONS:
+        raise ValueError("Routing dimensions are invalid")
+    for key, value in dimensions.items():
+        if value not in ROUTING_DIMENSION_VALUES[key]:
+            raise ValueError(f"Routing dimension {key} is invalid")
+    for index, rule in enumerate(settings["assessment_tree"]):
+        if all(dimensions.get(key) in values for key, values in rule["when"].items()):
+            return {"tier": rule["tier"], "rule_index": index}
+    raise ValueError("Reviewed routing tree has no matching tier")  # pragma: no cover - validated catch-all
+
+
+def reviewed_model_effort(settings: Any, tier: Any, available_pairs: Any) -> dict[str, Any]:
+    """Pick the least-cost reviewed pair in a tier from the current availability set."""
+    errors = _routing_settings_errors(settings)
+    if errors:
+        raise ValueError("Invalid model-routing policy: " + "; ".join(errors))
+    if tier not in ROUTING_TIER_IDS:
+        raise ValueError("Routing tier is invalid")
+    if not isinstance(available_pairs, list):
+        raise ValueError("Available model inventory is invalid")
+    available = set()
+    for item in available_pairs:
+        if not isinstance(item, dict) or set(item) != {"model", "effort"} or not _policy_identifier(item.get("model")) or not _policy_identifier(item.get("effort")):
+            raise ValueError("Available model inventory is invalid")
+        available.add((item["model"], item["effort"]))
+    ranks = {item["id"]: item["rank"] for item in settings["tiers"]}
+    candidates = [
+        item for item in settings["model_inventory"]["reviewed_pairs"]
+        if ranks[item["tier"]] >= ranks[tier] and (item["model"], item["effort"]) in available
+    ]
+    if not candidates:
+        return {"available": False, "tier": tier, "selected": None}
+    selected = min(candidates, key=lambda item: (item["cost"], item["model"], item["effort"]))
+    return {"available": True, "tier": tier, "selected": {"model": selected["model"], "effort": selected["effort"]}}
+
+
+def model_inventory_freshness(reviewed_pairs: Any, observed: Any) -> dict[str, Any]:
+    """Only a complete observation of a new model-effort pair stales policy."""
+    def pairs(value: Any, *, reviewed: bool) -> set[tuple[str, str]]:
+        if not isinstance(value, list):
+            raise ValueError("Model inventory pairs must be a list")
+        result = set()
+        for item in value:
+            fields = {"model", "effort", "tier", "cost"} if reviewed else {"model", "effort"}
+            if not isinstance(item, dict) or set(item) != fields or not _policy_identifier(item.get("model")) or not _policy_identifier(item.get("effort")):
+                raise ValueError("Model inventory pair is invalid")
+            if reviewed and (item.get("tier") not in ROUTING_TIER_IDS or not isinstance(item.get("cost"), int) or isinstance(item.get("cost"), bool) or item["cost"] < 0):
+                raise ValueError("Reviewed model inventory pair is invalid")
+            pair = (item["model"], item["effort"])
+            if pair in result:
+                raise ValueError("Model inventory pairs must be unique")
+            result.add(pair)
+        return result
+    reviewed = pairs(reviewed_pairs, reviewed=True)
+    if not isinstance(observed, dict) or set(observed) != {"status", "pairs"} or observed.get("status") not in {"complete", "unavailable", "partial"}:
+        raise ValueError("Observed model inventory is invalid")
+    current = pairs(observed.get("pairs"), reviewed=False)
+    if observed["status"] != "complete":
+        return {"stale": False, "reason": "inventory_not_complete", "added": [], "availability": observed["status"]}
+    added = sorted(
+        ({"model": model, "effort": effort} for model, effort in current - reviewed),
+        key=lambda item: (item["model"], item["effort"]),
+    )
+    return {"stale": bool(added), "reason": "new_model_effort" if added else "current", "added": added, "availability": "complete"}
+
+
+def phase_policy_freshness(recorded_policy_digest: Any, effective_policy_digest: Any, *, terminal: bool) -> dict[str, Any]:
+    """Derive universal open-goal invalidation without touching closed goal state."""
+    if terminal:
+        return {"stale": False, "reason": "terminal_goal", "rewrite_required": False}
+    if not _digest_text(recorded_policy_digest) or not _digest_text(effective_policy_digest):
+        raise ValueError("Policy digests must be SHA-256 digests")
+    changed = recorded_policy_digest != effective_policy_digest
+    return {"stale": changed, "reason": "policy_digest_changed" if changed else "current", "rewrite_required": False}
 
 
 def project_digest(text: str) -> str:
@@ -834,68 +1117,19 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
             settings = section["settings"]
             if section.get("decision") not in WORKFLOW_ADHERENCE_SETTINGS["levels"]:
                 errors.append(f"{prefix}.workflow_adherence.decision must be optional, tracked, or managed")
-            if settings != WORKFLOW_ADHERENCE_SETTINGS:
-                errors.append(f"{prefix}.workflow_adherence.settings must preserve the bounded routing contract")
+            expected = set(WORKFLOW_ADHERENCE_SETTINGS) | {"phase_dag"}
+            if not isinstance(settings, dict) or set(settings) != expected:
+                errors.append(f"{prefix}.workflow_adherence.settings must contain the declarative workflow contract")
+            else:
+                for field, value in WORKFLOW_ADHERENCE_SETTINGS.items():
+                    if settings.get(field) != value:
+                        errors.append(f"{prefix}.workflow_adherence.settings.{field} is invalid")
+                errors.extend(f"{prefix}.workflow_adherence.{error}" for error in _workflow_phase_dag_errors(settings.get("phase_dag")))
         elif section_id == "model_routing":
             settings = section["settings"]
-            if set(settings) != MODEL_ROUTING_SETTINGS_KEYS:
-                errors.append(f"{prefix}.model_routing.settings must contain the bounded routing contract")
             if section.get("decision") != "capability_derived":
                 errors.append(f"{prefix}.model_routing.decision must be capability_derived")
-            if settings.get("capability_basis") != "effective_engineering_rigor_and_bounded_commitment":
-                errors.append(f"{prefix}.model_routing.settings.capability_basis is invalid")
-            if settings.get("routing_unit") != "model_plus_effort":
-                errors.append(f"{prefix}.model_routing.settings.routing_unit is invalid")
-            inventory = settings.get("model_inventory")
-            if not isinstance(inventory, dict) or set(inventory) != {"source", "effort", "missing", "stale", "unsupported"}:
-                errors.append(f"{prefix}.model_routing.settings.model_inventory is invalid")
-            elif (
-                inventory.get("source") != "runtime_available_models"
-                or inventory.get("effort") != "runtime_supported_effort_levels"
-                or inventory.get("missing") != "root_best_effort_web_research"
-                or inventory.get("stale") != "refresh_and_re_evaluate"
-                or inventory.get("unsupported") != "durable_blocker"
-            ):
-                errors.append(f"{prefix}.model_routing.settings.model_inventory is invalid")
-            boundary = settings.get("root_boundary")
-            if not isinstance(boundary, dict) or set(boundary) != {"root_capability", "equal_root", "above_root"}:
-                errors.append(f"{prefix}.model_routing.settings.root_boundary is invalid")
-            elif (
-                boundary.get("root_capability") != "current_root_agent"
-                or boundary.get("equal_root") != "direct_root_no_subagent"
-                or boundary.get("above_root") != "session_override_required"
-            ):
-                errors.append(f"{prefix}.model_routing.settings.root_boundary is invalid")
-            phases = settings.get("phase_defaults")
-            if not isinstance(phases, dict) or set(phases) != set(MODEL_ROUTING_PHASES):
-                errors.append(f"{prefix}.model_routing.settings.phase_defaults must cover every routing phase")
-            elif any(value not in {"economical_when_floor_allows", "derived_from_required_capability"} for value in phases.values()):
-                errors.append(f"{prefix}.model_routing.settings.phase_defaults is invalid")
-            escalation = settings.get("escalation")
-            if not isinstance(escalation, dict) or set(escalation) != {"triggers", "handling"}:
-                errors.append(f"{prefix}.model_routing.settings.escalation is invalid")
-            elif (
-                not isinstance(escalation.get("triggers"), list)
-                or not escalation["triggers"]
-                or escalation.get("handling") != "durable_blocker_continue_safe_work"
-            ):
-                errors.append(f"{prefix}.model_routing.settings.escalation is invalid")
-            parallelism = settings.get("parallelism")
-            if not isinstance(parallelism, dict) or set(parallelism) != {"below_root", "root_or_above"}:
-                errors.append(f"{prefix}.model_routing.settings.parallelism is invalid")
-            elif (
-                parallelism.get("below_root") != "allowed_within_reviewed_worker_limits"
-                or parallelism.get("root_or_above") != "session_override_required"
-            ):
-                errors.append(f"{prefix}.model_routing.settings.parallelism is invalid")
-            telemetry = settings.get("telemetry")
-            if not isinstance(telemetry, dict) or set(telemetry) != {"source", "unavailable"}:
-                errors.append(f"{prefix}.model_routing.settings.telemetry is invalid")
-            elif telemetry.get("source") != "optional_provenance_backed_usage" or telemetry.get("unavailable") != "record_unavailable_no_block":
-                errors.append(f"{prefix}.model_routing.settings.telemetry is invalid")
-            evidence = settings.get("evidence")
-            if evidence != "append_only_goal_history":
-                errors.append(f"{prefix}.model_routing.settings.evidence is invalid")
+            errors.extend(f"{prefix}.model_routing.{error}" for error in _routing_settings_errors(settings))
         elif section_id == "automated_design":
             settings = section["settings"]
             if section.get("decision") not in {"enabled", "disabled"}:
