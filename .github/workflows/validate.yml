@@ -66,9 +66,9 @@ jobs:
         with:
           node-version: '24.14.0'
       - name: Install pinned Claude Code
-        run: npm install --global @anthropic-ai/claude-code@2.1.241
+        run: npm install --global @anthropic-ai/claude-code@2.1.270
       - name: Test generated marketplace installation and discovery
-        run: python .agents/claude_plugin_acceptance.py --claude-version 2.1.241
+        run: python .agents/claude_plugin_acceptance.py --claude-version 2.1.270
 
   required:
     name: dev-required-tests

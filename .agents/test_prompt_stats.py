@@ -125,18 +125,19 @@ class PromptStatsTests(unittest.TestCase):
         for workflow in prompt_stats.WORKFLOW_PROMPTS:
             self.assertIn(f"| {workflow} |", report)
 
-    def test_proactive_delegation_signal_reaches_every_applicable_workflow(self) -> None:
+    def test_cli_routing_signal_reaches_every_applicable_workflow(self) -> None:
         root = SCRIPT.parents[1]
         for workflow in prompt_stats.PROACTIVE_DELEGATION_WORKFLOWS:
             self.assertIn(prompt_stats.DELEGATION_PROMPT, prompt_stats.WORKFLOW_PROMPTS[workflow])
         delegation = (root / prompt_stats.DELEGATION_PROMPT).read_text(encoding="utf-8")
         for phrase in (
-            "authority/safety", "conflict/coupling", "triviality", "overhead",
-            "record why", "sequential fallback", "concise evidence-linked summaries",
+            "public workflow CLI", "obey its `next_steps`", "model-plus-effort assignment",
+            "never silently reroutes", "concise evidence-linked summaries",
             "Only the coordinator owns", "claims/reservations", "external writes",
             "Read-only never write", "disjoint worktrees",
         ):
             self.assertIn(phrase, delegation)
+        self.assertNotIn("Eligible isolated work must be delegated", delegation)
         missing = [
             workflow for workflow in sorted(prompt_stats.PROACTIVE_DELEGATION_WORKFLOWS)
             if prompt_stats.PROACTIVE_DELEGATION_SIGNAL
