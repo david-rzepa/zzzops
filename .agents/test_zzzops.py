@@ -4931,6 +4931,29 @@ class WorkflowContractTests(unittest.TestCase):
         missing["sections"] = [item for item in missing["sections"] if item["id"] != "model_routing"]
         self.assertTrue(any("missing sections: model_routing" in error for error in zzzops.validate_policy(missing, True)))
 
+    def test_workflow_step_plan_emits_skill_and_exact_routing_or_discovery_blocker(self):
+        plan = json.loads((PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
+        settings = next(item for item in plan["policy"]["sections"] if item["id"] == "model_routing")["settings"]
+        settings = json.loads(json.dumps(settings))
+        settings["model_inventory"]["reviewed_pairs"] = [
+            {"model": "root-model", "effort": "medium", "tier": "routine", "cost": 1},
+        ]
+        evidence_test = PhaseEvidenceTests()
+        input_envelope = evidence_test.envelope("understand")
+        goal = {"status": "ready", "difficulty": "S", "engineering_rigor": {"risk_categories": [], "effective": "structured"}}
+        phase_nodes = {"understand": {"assignment_group": "root"}}
+        result = zzzops.workflow_step_plan(
+            goal, {"phases": [{"id": "understand"}]}, {"understand": input_envelope}, phase_nodes, settings,
+            {"root_pair": {"model": "root-model", "effort": "medium"}, "available_pairs": [{"model": "root-model", "effort": "medium"}]},
+        )
+        self.assertEqual([{
+            "kind": "execute", "phase": "understand", "reason": "missing_evidence",
+            "skill": "execute-zzzops/references/phases/understand-execute.md", "assignment": "root",
+            "selection": {"model": "root-model", "effort": "medium"},
+        }], result["next_steps"])
+        missing = zzzops.workflow_step_plan(goal, {"phases": [{"id": "understand"}]}, {"understand": input_envelope}, phase_nodes, settings, None)
+        self.assertEqual("capability_discovery", missing["next_steps"][0]["kind"])
+
     def test_model_plus_effort_routing_enforces_root_boundary(self):
         inventory = [
             {"model": "economy", "effort": "low", "capability": 1, "cost": 1},

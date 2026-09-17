@@ -1181,6 +1181,83 @@ def portfolio_snapshot(repo: Path, include_feedback: bool = False, *, timing: An
     return snapshot
 
 
+WORKFLOW_STEP_SCHEMA_VERSION = 1
+WORKFLOW_PHASE_PROMPTS = {
+    (phase, kind): f"execute-zzzops/references/phases/{phase}-{kind}.md"
+    for phase in ("understand", "decompose", "plan", "test_design", "implement", "publish")
+    for kind in ("execute", "review")
+}
+
+
+def _workflow_section(project: dict[str, Any], identifier: str) -> dict[str, Any]:
+    for section in project.get("policy", {}).get("sections", []):
+        if isinstance(section, dict) and section.get("id") == identifier and isinstance(section.get("settings"), dict):
+            return section
+    raise ValueError(f"Reviewed {identifier} policy is unavailable")
+
+
+def _workflow_runtime(runtime: Any) -> dict[str, Any]:
+    if not isinstance(runtime, dict) or set(runtime) != {"root_pair", "available_pairs"}:
+        raise ValueError("workflow runtime must contain root_pair and available_pairs")
+    root, available = runtime["root_pair"], runtime["available_pairs"]
+    if not isinstance(root, dict) or set(root) != {"model", "effort"} or not isinstance(available, list):
+        raise ValueError("workflow runtime is invalid")
+    # reviewed_model_effort performs the detailed identifier validation.
+    return {"root_pair": dict(root), "available_pairs": [dict(item) if isinstance(item, dict) else item for item in available]}
+
+
+def workflow_step_plan(
+    goal: dict[str, Any], graph: dict[str, Any], live_inputs: dict[str, dict[str, Any]],
+    phase_nodes: dict[str, dict[str, Any]], routing_settings: dict[str, Any], runtime: Any,
+    *, related_goals: dict[Any, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Turn a pure evidence frontier into exact phase prompts and routing pairs."""
+    frontier = derive_phase_steps(goal, graph, live_inputs, related_goals)
+    try:
+        runtime = _workflow_runtime(runtime)
+    except ValueError as exc:
+        return {"schema_version": WORKFLOW_STEP_SCHEMA_VERSION, "next_steps": [{
+            "kind": "capability_discovery", "assignment": "root", "reason": str(exc),
+        }], "frontier": frontier}
+    tiers = {item["id"]: item["rank"] for item in routing_settings["tiers"]}
+    root_choice = next(
+        (item for item in routing_settings["model_inventory"]["reviewed_pairs"] if {
+            "model": item["model"], "effort": item["effort"],
+        } == runtime["root_pair"]),
+        None,
+    )
+    if root_choice is None:
+        return {"schema_version": WORKFLOW_STEP_SCHEMA_VERSION, "next_steps": [{
+            "kind": "capability_discovery", "assignment": "root", "reason": "root model-plus-effort pair is not reviewed",
+        }], "frontier": frontier}
+    dimensions_base = {
+        "consequence": "architectural" if "architecture" in goal.get("engineering_rigor", {}).get("risk_categories", []) else "bounded",
+        "boundedness": "atomic" if goal.get("difficulty") in {"XS", "S"} else "bounded",
+        "engineering_rigor": goal.get("engineering_rigor", {}).get("effective") or "structured",
+    }
+    steps = []
+    for kind, entries in (("execute", frontier["execute"]), ("review", frontier["review"])):
+        for entry in entries:
+            phase = entry["phase"]
+            node = phase_nodes[phase]
+            tier = capability_tier(routing_settings, {**dimensions_base, "phase_type": phase})["tier"]
+            chosen = reviewed_model_effort(routing_settings, tier, runtime["available_pairs"])
+            if not chosen["available"]:
+                steps.append({"kind": "capability_discovery", "phase": phase, "assignment": "root", "reason": f"no reviewed available model-plus-effort pair for {tier}"})
+                continue
+            selection = runtime["root_pair"] if (kind == "execute" and node["assignment_group"] == "root") else chosen["selected"]
+            if tiers[tier] > tiers[root_choice["tier"]] and selection != runtime["root_pair"]:
+                steps.append({"kind": "session_override", "phase": phase, "assignment": "root", "reason": "required model tier exceeds root capability"})
+                continue
+            steps.append({
+                "kind": kind, "phase": phase, "reason": entry["reason"],
+                "skill": WORKFLOW_PHASE_PROMPTS[(phase, kind)],
+                "assignment": "root" if selection == runtime["root_pair"] else "delegate",
+                "selection": selection,
+            })
+    return {"schema_version": WORKFLOW_STEP_SCHEMA_VERSION, "next_steps": steps, "frontier": frontier}
+
+
 def migrate_open_repository_goals(
     repo: Path, project: dict[str, Any], *, limit: int, include_feedback: bool = False,
 ) -> dict[str, Any]:
