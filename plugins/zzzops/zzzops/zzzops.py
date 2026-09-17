@@ -209,6 +209,30 @@ WORKFLOW_SOURCE_ACTIONS = {
     "$validate-zzzops-installation": "Inspect installed-package validation evidence for this repository.",
 }
 
+WORKFLOW_ENTRY_INTENTS = {
+    "send_feedback": ("execute", "$send-zzzops-feedback"),
+}
+
+
+def normalize_workflow_entrypoint(argv: list[str]) -> list[str]:
+    """Expand a public semantic intent without exposing private handlers."""
+    if "--intent" not in argv:
+        return argv
+    index = argv.index("--intent")
+    if index + 1 >= len(argv):
+        return argv
+    route = WORKFLOW_ENTRY_INTENTS.get(argv[index + 1])
+    if route is None:
+        return argv
+    intent, source_skill = route
+    result = list(argv)
+    result[index + 1] = intent
+    if "workflow" not in result:
+        result.insert(index, "workflow")
+    if "--source-skill" not in result:
+        result.extend(("--source-skill", source_skill))
+    return result
+
 WORKFLOW_INSTRUCTION_PATHS = {
     "workflow-repair": "zzzops/references/next_steps/workflow-repair.md",
     "installation-validation": "zzzops/references/next_steps/installation-validation.md",
@@ -2355,6 +2379,7 @@ class WorkflowArgumentParser(argparse.ArgumentParser):
 
 def main() -> int:
     configure_cli_stdout()
+    sys.argv = normalize_workflow_entrypoint(sys.argv)
     parser = WorkflowArgumentParser(description="ZzzOps project control CLI")
     parser.add_argument("--repo", type=Path, default=Path.cwd(), help="Project root (default: current directory)")
     commands = parser.add_subparsers(dest="command", parser_class=WorkflowArgumentParser)

@@ -116,9 +116,11 @@ class AgentPluginTests(unittest.TestCase):
             "progressive detail",
         ):
             self.assertIn(signal, guide_text)
-        for skill in SHIPPED_SKILLS:
+        for skill in set(SHIPPED_SKILLS) - {"send-zzzops-feedback"}:
             text = (PLUGIN / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("../../rules/COMMUNICATION.md", text, skill)
+        feedback_instruction = (PLUGIN / "zzzops" / "references" / "next_steps" / "send-feedback.md").read_text(encoding="utf-8")
+        self.assertIn("Keep user text separate", feedback_instruction)
 
     def test_package_contains_valid_progressively_disclosed_concepts(self) -> None:
         package = runpy.run_path(str(PLUGIN / "zzzops" / "package.py"))
@@ -187,7 +189,7 @@ class AgentPluginTests(unittest.TestCase):
 
     def test_restricted_data_boundary_is_shipped(self) -> None:
         goal_rules = (PLUGIN / "rules" / "GOAL_SYSTEM.md").read_text(encoding="utf-8")
-        feedback_skill = (PLUGIN / "skills" / "send-zzzops-feedback" / "SKILL.md").read_text(encoding="utf-8")
+        feedback_skill = (PLUGIN / "zzzops" / "references" / "next_steps" / "send-feedback.md").read_text(encoding="utf-8")
         for restricted in (
             "credentials",
             "payment cards",

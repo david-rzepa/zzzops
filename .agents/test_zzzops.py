@@ -5818,7 +5818,7 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_timing_feedback_requires_explicit_fixed_selection_and_exact_confirmation(self):
         send = (
-            PLUGIN_ROOT / "skills" / "send-zzzops-feedback" / "SKILL.md"
+            PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "send-feedback.md"
         ).read_text(encoding="utf-8")
         feedback = (PLUGIN_ROOT / "rules" / "FEEDBACK.md").read_text(encoding="utf-8")
         privacy = (PLUGIN_ROOT.parent.parent / "PRIVACY.md").read_text(encoding="utf-8")
