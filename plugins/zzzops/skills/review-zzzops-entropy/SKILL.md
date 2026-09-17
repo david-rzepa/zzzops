@@ -5,6 +5,8 @@ description: ZzzOps v0.0.0-dev — development plugin. Review repository entropy
 
 # Review ZzzOps Entropy
 
+First invoke `zzzops workflow --intent execute --source-skill '$review-zzzops-entropy'` and obey its `next_steps`. Do not invoke a private ZzzOps command named elsewhere in this skill; those references describe the workflow handler behind this public command.
+
 Read `../../rules/COMMUNICATION.md` for user-facing messages. Run `../../rules/INITIALIZATION.md`, then `../../rules/BACKENDS.md`, and read `../../rules/DELEGATION.md` before inspecting the repository.
 
 For preview, keep preflight read-only: run status/checkpoint reads, but stop and report if initialization would require installation validation, policy reconciliation, or another state-changing handoff. Do not persist execution reports during preview.

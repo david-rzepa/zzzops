@@ -411,13 +411,49 @@ def github_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
         "digest": hashlib.sha256(digest_source.encode("utf-8")).hexdigest(),
         "updated_at": issue.get("updated_at"), "implementation": goal.get("implementation"),
         "engineering_rigor": goal.get("engineering_rigor"),
+        "phase_evidence": goal.get("phase_evidence"),
+        "human_spec": compact_human_goal_text(body),
+        "acceptance_criteria": goal_acceptance_criteria(body),
         "labels": label_names, "schema_version": schema_versions[0] if len(schema_versions) == 1 else None,
         "state": issue.get("state"), "url": issue.get("html_url"),
     }
 
 
+def goal_acceptance_criteria(body: str) -> list[str]:
+    """Return the exact checked behavioural criteria from a managed goal body."""
+    if not isinstance(body, str):
+        raise ValueError("goal body must be text")
+    criteria = [match.group(1).strip() for match in re.finditer(r"^\s*-\s*\[x\]\s+(.+?)\s*$", body, re.IGNORECASE | re.MULTILINE)]
+    if any(not item for item in criteria) or len(criteria) != len(set(criteria)):
+        raise ValueError("goal acceptance criteria must be unique")
+    return criteria
+
+
 def current_goal_schema_label() -> str:
     return f"{GOAL_SCHEMA_LABEL_PREFIX}{GOAL_SCHEMA_VERSION}"
+
+
+def workflow_adoption_assessment(goal: Any) -> dict[str, Any]:
+    """Describe lossless workflow adoption without inventing historical evidence."""
+    if not isinstance(goal, dict) or goal.get("status") not in GOAL_STATUSES:
+        raise ValueError("workflow adoption goal is invalid")
+    if goal["status"] in {"done", "cancelled"}:
+        return {
+            "action": "preserve_closed", "phase_evidence": "uninspected",
+            "instruction": "Preserve this closed goal unchanged. If it reopens, derive phase eligibility then.",
+        }
+    evidence = goal.get("phase_evidence")
+    if evidence is None:
+        return {
+            "action": "reassess_open", "phase_evidence": "missing",
+            "instruction": "Keep current goal and PR state; derive fresh phase evidence before workflow execution.",
+        }
+    errors = _validate_phase_evidence(evidence) if _validate_phase_evidence is not None else ["phase evidence validation unavailable"]
+    return {
+        "action": "reassess_open" if errors else "reuse_valid_evidence",
+        "phase_evidence": "invalid" if errors else "valid",
+        "instruction": "Reassess phase evidence before workflow execution." if errors else "Use the current evidence-derived phase frontier.",
+    }
 
 
 def github_archived_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
@@ -736,6 +772,43 @@ def apply_goal_transition(
         "number": issue_number, "revision": desired["revision"], "state": state,
         "status": desired["status"], "url": expected_url,
     }
+
+
+def apply_independent_goal_transitions(
+    adapter: Any, repository: str, items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Apply an ordered independent batch without rolling back confirmed writes."""
+    if not isinstance(items, list) or not items:
+        raise ValueError("transition batch must contain at least one item")
+    numbers: set[int] = set()
+    normalized: list[tuple[int, dict[str, Any]]] = []
+    for item in items:
+        if not isinstance(item, dict) or set(item) != {"goal", "transition"}:
+            raise ValueError("transition batch item is invalid")
+        number, transition = item["goal"], item["transition"]
+        if not isinstance(number, int) or isinstance(number, bool) or number < 1 or number in numbers:
+            raise ValueError("transition batch goal is invalid")
+        if not isinstance(transition, dict):
+            raise ValueError("transition batch transition is invalid")
+        desired = transition.get("goal")
+        if not isinstance(desired, dict):
+            raise ValueError("transition batch transition is invalid")
+        numbers.add(number)
+        normalized.append((number, transition))
+    for number, transition in normalized:
+        dependencies = transition["goal"].get("depends_on")
+        if not isinstance(dependencies, list):
+            raise ValueError(f"transition batch goal #{number} dependencies are invalid")
+        if any(dependency in numbers for dependency in dependencies):
+            raise ValueError(f"transition batch goal #{number} depends on another batch item")
+    results = []
+    for number, transition in normalized:
+        try:
+            result = apply_goal_transition(adapter, repository, number, transition)
+        except (GoalTransitionProviderError, ValueError) as exc:
+            return {"applied": False, "results": results, "failed_goal": number, "error": str(exc)}
+        results.append({"goal": number, "result": result})
+    return {"applied": True, "results": results}
 
 
 def ensure_current_goal_schema(

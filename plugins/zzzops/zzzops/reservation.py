@@ -9,6 +9,7 @@ import json
 import re
 import shutil
 import subprocess
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -28,6 +29,9 @@ RESERVATION_COLOR = "5319E7"
 RESERVATION_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 RESERVATION_EXPIRY_GRACE_SECONDS = 60
 RESOURCE_LABEL_PREFIX = "zzzops:resource:"
+PHASE_LEASE_LABEL_PREFIX = "zzzops:phase:"
+STORAGE_LOCK_LABEL_PREFIX = "zzzops:lock:"
+PHASE_LEASE_VERSION = "z2"
 _parse_goal: Callable[[str, int | None], dict[str, Any] | None] | None = None
 _sanitize_output: Callable[[str], str] = lambda value: value
 
@@ -595,3 +599,269 @@ def reservation_cli_message(result: dict[str, Any], goal: int) -> str:
     return f"Goal #{goal} is not reserved by this run. Refresh before continuing."
 
 
+def phase_lease_label_name(goal: int, phase: str) -> str:
+    """Return the repository-global label used for one persisted phase lease."""
+    if not isinstance(goal, int) or isinstance(goal, bool) or goal < 1:
+        raise ValueError("goal must be a positive issue number")
+    phase = _reservation_actor(phase, "phase", 24)
+    return f"{PHASE_LEASE_LABEL_PREFIX}{goal}:{phase}"
+
+
+def storage_lock_label_name(key: str) -> str:
+    """Return a bounded stable label for a brief backend-storage lock."""
+    key = _reservation_actor(key, "storage key", 24)
+    return f"{STORAGE_LOCK_LABEL_PREFIX}{key}"
+
+
+def storage_lock_description(repository: str, key: str, owner: str, run_id: str, expires_at: int) -> str:
+    key = _reservation_actor(key, "storage key", 24)
+    owner = _reservation_actor(owner, "owner", 20)
+    run_id = _reservation_actor(run_id, "run-id", 32)
+    value = f"z3|r={reservation_repository_key(repository)}|k={key}|o={owner}|u={run_id}|x={expires_at}"
+    if len(value) > 100:
+        raise ValueError("storage lock metadata exceeds GitHub's label-description limit")
+    return value
+
+
+def parse_storage_lock_description(value: Any) -> dict[str, Any]:
+    if not isinstance(value, str) or not value.startswith("z3|"):
+        raise ReservationProviderError("Storage lock metadata is invalid; no ownership assumed.")
+    fields = dict(part.split("=", 1) for part in value.split("|")[1:] if "=" in part)
+    if set(fields) != {"r", "k", "o", "u", "x"}:
+        raise ReservationProviderError("Storage lock metadata is incomplete; no ownership assumed.")
+    try:
+        return {
+            "repository_key": fields["r"], "key": _reservation_actor(fields["k"], "storage key", 24),
+            "owner": _reservation_actor(fields["o"], "owner", 20), "run_id": _reservation_actor(fields["u"], "run-id", 32),
+            "expires_at": int(fields["x"]),
+        }
+    except ValueError as exc:
+        raise ReservationProviderError("Storage lock metadata is invalid; no ownership assumed.") from exc
+
+
+def acquire_storage_lock(adapter: Any, repository: str, key: str, owner: str, run_id: str, ttl_seconds: int = 60, now: datetime | None = None) -> dict[str, Any]:
+    if not isinstance(ttl_seconds, int) or isinstance(ttl_seconds, bool) or not 10 <= ttl_seconds <= 300:
+        raise ValueError("storage-lock ttl-seconds must be from 10 to 300")
+    now_epoch = int((now or datetime.now(timezone.utc)).timestamp())
+    name = storage_lock_label_name(key)
+    expected = storage_lock_description(repository, key, owner, run_id, now_epoch + ttl_seconds)
+    existing = adapter.get_label(name)
+    if existing is not None:
+        current = parse_storage_lock_description(existing.get("description"))
+        if current["repository_key"] != reservation_repository_key(repository) or current["key"] != key:
+            raise ReservationProviderError("Storage lock identity is invalid; no ownership assumed.")
+        if current["expires_at"] > now_epoch:
+            return {"acquired": False, "outcome": "contended", "key": key}
+        adapter.delete_label(existing["node_id"])
+    created = adapter.create_label(name, expected)
+    if created is None:
+        return {"acquired": False, "outcome": "contended", "key": key}
+    if created.get("description") != expected or not created.get("node_id"):
+        raise ReservationProviderError("GitHub did not confirm storage lock ownership; no ownership assumed.")
+    return {"acquired": True, "outcome": "acquired", "key": key, "expires_at": now_epoch + ttl_seconds}
+
+
+def renew_storage_lock(adapter: Any, repository: str, key: str, owner: str, run_id: str, ttl_seconds: int = 60, now: datetime | None = None) -> dict[str, Any]:
+    now_epoch = int((now or datetime.now(timezone.utc)).timestamp())
+    existing = adapter.get_label(storage_lock_label_name(key))
+    if existing is None:
+        return {"acquired": False, "outcome": "missing", "key": key}
+    current = parse_storage_lock_description(existing.get("description"))
+    if (current["repository_key"] != reservation_repository_key(repository) or current["key"] != key
+            or current["owner"] != owner or current["run_id"] != run_id):
+        return {"acquired": False, "outcome": "not_owned", "key": key}
+    expected = storage_lock_description(repository, key, owner, run_id, now_epoch + ttl_seconds)
+    adapter.update_label(existing["node_id"], expected)
+    confirmed = adapter.get_label(storage_lock_label_name(key))
+    if confirmed is None or confirmed.get("node_id") != existing["node_id"] or confirmed.get("description") != expected:
+        raise ReservationProviderError("GitHub did not confirm storage lock renewal; no ownership assumed.")
+    return {"acquired": True, "outcome": "renewed", "key": key, "expires_at": now_epoch + ttl_seconds}
+
+
+def release_storage_lock(adapter: Any, repository: str, key: str, owner: str, run_id: str) -> dict[str, Any]:
+    existing = adapter.get_label(storage_lock_label_name(key))
+    if existing is None:
+        return {"released": True, "outcome": "already_released", "key": key}
+    current = parse_storage_lock_description(existing.get("description"))
+    if (current["repository_key"] != reservation_repository_key(repository) or current["key"] != key
+            or current["owner"] != owner or current["run_id"] != run_id):
+        return {"released": False, "outcome": "not_owned", "key": key}
+    adapter.delete_label(existing["node_id"])
+    if adapter.get_label(storage_lock_label_name(key)) is not None:
+        raise ReservationProviderError("GitHub did not confirm storage lock release; no ownership assumed.")
+    return {"released": True, "outcome": "released", "key": key}
+
+
+def apply_independent_batch(items: list[dict[str, Any]], apply: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
+    """Apply independent items in order, preserving confirmed per-item results."""
+    results = []
+    seen = set()
+    for item in items:
+        item_id = item.get("id") if isinstance(item, dict) else None
+        if not isinstance(item_id, str) or not item_id or item_id in seen:
+            return {"applied": False, "results": results, "error": "batch item id is invalid"}
+        seen.add(item_id)
+        if item.get("depends_on"):
+            return {"applied": False, "results": results, "error": f"batch item {item_id} is dependent"}
+        result = apply(item)
+        results.append({"id": item_id, "result": result})
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            return {"applied": False, "results": results, "error": f"batch item {item_id} failed"}
+    return {"applied": True, "results": results}
+
+
+def phase_lease_description(
+    repository: str, goal: int, phase: str, revision: int, owner: str, run_id: str,
+    expires_at: int, generation: int = 1,
+) -> str:
+    phase = _reservation_actor(phase, "phase", 24)
+    owner = _reservation_actor(owner, "owner", 20)
+    run_id = _reservation_actor(run_id, "run-id", 32)
+    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+        raise ValueError("revision must be a positive integer")
+    if not isinstance(generation, int) or isinstance(generation, bool) or generation < 1:
+        raise ValueError("generation must be a positive integer")
+    value = f"{PHASE_LEASE_VERSION}|r={reservation_repository_key(repository)}|g={goal}|p={phase}|v={revision}|o={owner}|u={run_id}|n={generation}|x={expires_at}"
+    if len(value) > 100:
+        raise ValueError("phase lease metadata exceeds GitHub's label-description limit")
+    return value
+
+
+def parse_phase_lease_description(value: Any) -> dict[str, Any]:
+    if not isinstance(value, str):
+        raise ReservationProviderError("Phase lease metadata is missing; no ownership assumed.")
+    parts = value.split("|")
+    if not parts or parts[0] != PHASE_LEASE_VERSION:
+        raise ReservationProviderError("Phase lease metadata is invalid; no ownership assumed.")
+    fields: dict[str, str] = {}
+    for part in parts[1:]:
+        key, separator, item = part.partition("=")
+        if not separator or key in fields:
+            raise ReservationProviderError("Phase lease metadata is invalid; no ownership assumed.")
+        fields[key] = item
+    if set(fields) != {"r", "g", "p", "v", "o", "u", "n", "x"}:
+        raise ReservationProviderError("Phase lease metadata is incomplete; no ownership assumed.")
+    try:
+        result = {
+            "repository_key": fields["r"], "goal": int(fields["g"]), "phase": _reservation_actor(fields["p"], "phase", 24),
+            "revision": int(fields["v"]), "owner": _reservation_actor(fields["o"], "owner", 20),
+            "run_id": _reservation_actor(fields["u"], "run-id", 32), "generation": int(fields["n"]), "expires_at": int(fields["x"]),
+        }
+        if result["goal"] < 1 or result["revision"] < 1 or result["generation"] < 1 or result["expires_at"] < 0:
+            raise ValueError("invalid phase lease fields")
+        return result
+    except ValueError as exc:
+        raise ReservationProviderError("Phase lease metadata is invalid; no ownership assumed.") from exc
+
+
+def acquire_phase_lease(
+    adapter: Any, repository: str, goal: int, phase: str, revision: int, owner: str, run_id: str,
+    ttl_seconds: int = 900, now: datetime | None = None,
+) -> dict[str, Any]:
+    if not isinstance(ttl_seconds, int) or isinstance(ttl_seconds, bool) or not 60 <= ttl_seconds <= 86400:
+        raise ValueError("ttl-seconds must be from 60 to 86400")
+    _validate_reservation_goal(adapter, repository, goal, revision, require_writable=True)
+    now_epoch = int((now or datetime.now(timezone.utc)).timestamp())
+    name = phase_lease_label_name(goal, phase)
+    existing = adapter.get_label(name)
+    generation = 1
+    if existing is not None:
+        current = parse_phase_lease_description(existing.get("description"))
+        if current["repository_key"] != reservation_repository_key(repository) or current["goal"] != goal or current["phase"] != phase:
+            raise ReservationProviderError("Phase lease identity is invalid; no ownership assumed.")
+        if current["expires_at"] > now_epoch:
+            return {"acquired": False, "outcome": "contended", "goal": goal, "phase": phase,
+                    "holder": {key: current[key] for key in ("owner", "run_id", "generation", "expires_at")}}
+        adapter.delete_label(existing["node_id"])
+        generation = current["generation"] + 1
+    description = phase_lease_description(repository, goal, phase, revision, owner, run_id, now_epoch + ttl_seconds, generation)
+    created = adapter.create_label(name, description)
+    if created is None:
+        confirmed = adapter.get_label(name)
+        if confirmed is None or confirmed.get("description") != description:
+            return {"acquired": False, "outcome": "contended", "goal": goal, "phase": phase}
+        created = confirmed
+    if created.get("description") != description or not created.get("node_id"):
+        raise ReservationProviderError("GitHub did not confirm phase lease ownership; no ownership assumed.")
+    return {"acquired": True, "outcome": "acquired", "goal": goal, "phase": phase, "generation": generation,
+            "expires_at": now_epoch + ttl_seconds}
+
+
+def renew_phase_lease(adapter: Any, repository: str, goal: int, phase: str, revision: int, owner: str, run_id: str, generation: int, ttl_seconds: int = 900, now: datetime | None = None) -> dict[str, Any]:
+    if not isinstance(ttl_seconds, int) or isinstance(ttl_seconds, bool) or not 60 <= ttl_seconds <= 86400:
+        raise ValueError("ttl-seconds must be from 60 to 86400")
+    _validate_reservation_goal(adapter, repository, goal, revision, require_writable=True)
+    existing = adapter.get_label(phase_lease_label_name(goal, phase))
+    if existing is None:
+        return {"acquired": False, "outcome": "missing", "goal": goal, "phase": phase}
+    current = parse_phase_lease_description(existing.get("description"))
+    if (current["repository_key"] != reservation_repository_key(repository) or current["goal"] != goal
+            or current["phase"] != phase or current["owner"] != owner or current["run_id"] != run_id
+            or current["generation"] != generation):
+        return {"acquired": False, "outcome": "not_owned", "goal": goal, "phase": phase}
+    now_epoch = int((now or datetime.now(timezone.utc)).timestamp())
+    description = phase_lease_description(repository, goal, phase, revision, owner, run_id, now_epoch + ttl_seconds, generation)
+    adapter.update_label(existing["node_id"], description)
+    confirmed = adapter.get_label(phase_lease_label_name(goal, phase))
+    if confirmed is None or confirmed.get("node_id") != existing["node_id"] or confirmed.get("description") != description:
+        raise ReservationProviderError("GitHub did not confirm phase lease renewal; no ownership assumed.")
+    return {"acquired": True, "outcome": "renewed", "goal": goal, "phase": phase, "generation": generation, "expires_at": now_epoch + ttl_seconds}
+
+
+def release_phase_lease(adapter: Any, repository: str, goal: int, phase: str, revision: int, owner: str, run_id: str, generation: int) -> dict[str, Any]:
+    _validate_reservation_goal(adapter, repository, goal, revision)
+    existing = adapter.get_label(phase_lease_label_name(goal, phase))
+    if existing is None:
+        return {"released": True, "outcome": "already_released", "goal": goal, "phase": phase}
+    current = parse_phase_lease_description(existing.get("description"))
+    if (current["repository_key"] != reservation_repository_key(repository) or current["goal"] != goal or current["phase"] != phase
+            or current["owner"] != owner or current["run_id"] != run_id or current["generation"] != generation):
+        return {"released": False, "outcome": "not_owned", "goal": goal, "phase": phase}
+    adapter.delete_label(existing["node_id"])
+    if adapter.get_label(phase_lease_label_name(goal, phase)) is not None:
+        raise ReservationProviderError("GitHub did not confirm phase lease release; no ownership assumed.")
+    return {"released": True, "outcome": "released", "goal": goal, "phase": phase}
+
+
+class PhaseLeaseHeartbeat:
+    """Renew one local worker lease while its local liveness probe remains true."""
+
+    def __init__(self, renew: Callable[[], dict[str, Any]], alive: Callable[[], bool]):
+        self._renew = renew
+        self._alive = alive
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self.result: dict[str, Any] | None = None
+
+    def tick(self) -> dict[str, Any]:
+        if self._stop.is_set():
+            self.result = {"outcome": "stopped"}
+        elif not self._alive():
+            self.result = {"outcome": "worker_not_live"}
+        else:
+            try:
+                result = self._renew()
+                self.result = result if result.get("acquired") is True else {"outcome": "uncertain", "result": result}
+            except ReservationProviderError as exc:
+                self.result = {"outcome": "uncertain", "detail": str(exc)}
+        return self.result
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def start(self, interval_seconds: float) -> None:
+        if interval_seconds <= 0:
+            raise ValueError("heartbeat interval must be positive")
+        if self._thread is not None and self._thread.is_alive():
+            raise ValueError("heartbeat is already running")
+        def run() -> None:
+            while not self._stop.wait(interval_seconds):
+                outcome = self.tick()
+                if outcome.get("outcome") in {"worker_not_live", "uncertain"}:
+                    return
+        self._thread = threading.Thread(target=run, name="zzzops-phase-lease-heartbeat", daemon=True)
+        self._thread.start()
+
+    def join(self, timeout: float | None = None) -> None:
+        if self._thread is not None:
+            self._thread.join(timeout)

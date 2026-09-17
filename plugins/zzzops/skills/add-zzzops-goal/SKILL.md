@@ -5,6 +5,8 @@ description: ZzzOps v0.0.0-dev — development plugin. Capture/add/create/record
 
 # Add Goal
 
+First invoke `zzzops workflow --intent capture --source-skill '$add-zzzops-goal'` and obey its `next_steps`. Do not invoke a private ZzzOps command named elsewhere in this skill; those references describe the workflow handler behind this public command.
+
 Read `../../rules/COMMUNICATION.md`; run `../../rules/INITIALIZATION.md` and `../../rules/BACKENDS.md`. Hydrate likely duplicate/relationship matches. Isolated: `../../rules/DELEGATION.md`
 
 Then interview at [[effective engineering rigor]](../../concepts/effective-engineering-rigor.md): `vibe → light`, `structured → standard`, `agentic → thorough`; else reviewed/`standard`. Ask 1–3 evidenced gaps/recommendations; persist risks/overrides; never silently de-escalate. Depth: outcome/acceptance/constraints → scope/dependencies/risks/authority/verification → architecture/security/data/recovery/operations/lifecycle/governance. User owns requirements/acceptance.

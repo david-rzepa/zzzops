@@ -45,6 +45,12 @@ class MergeReconciliationTests(unittest.TestCase):
         self.assertEqual(result["status"], "merged_stale")
         self.assertEqual(set(result["reasons"]), {"required_checks_unverified", "review_evidence_unverified"})
 
+    def test_exact_managed_approval_satisfies_review_evidence(self):
+        record = goal()
+        record["implementation"]["review"]["status"] = "approved"
+        result = MODULE.classify_pr_merge(record, pull(review_verified=False), "example/project")
+        self.assertEqual("merged_verified", result["status"])
+
     def test_open_missing_and_wrong_repository_are_distinct(self):
         self.assertEqual(MODULE.classify_pr_merge(goal(), pull(merged=False), "example/project")["status"], "open")
         self.assertEqual(MODULE.classify_pr_merge(goal(), None, "example/project")["status"], "unavailable")

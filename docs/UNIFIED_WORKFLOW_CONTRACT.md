@@ -69,6 +69,14 @@ lease, dependency IDs, or an opaque log reference when that information is neede
 to act. The response never emits a generic instruction that requires the agent
 to infer which skill to read or which workflow intent to invoke.
 
+Routing is equally imperative. Once routing evidence is available, `workflow`
+emits exactly one `directive` of `delegate`, `continue_root`, or
+`resolve_blocker` for that phase. A `delegate` directive includes the required
+`model` and `effort`; the agent must launch that pair and must not apply a separate delegation heuristic. A
+`continue_root` action forbids delegation for that phase. Missing runtime model
+or delegation-harness evidence produces `resolve_blocker`, never a discretionary
+fallback.
+
 Standard output contains no diagnostics, timing, full portfolio, or tool logs.
 Those go to a bounded local log artifact; a next step may reference that artifact
 only when inspecting it is necessary to resolve the step. Errors use the same

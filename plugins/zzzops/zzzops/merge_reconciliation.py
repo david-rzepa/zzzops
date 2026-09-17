@@ -28,7 +28,7 @@ def classify_pr_merge(record: dict[str, Any], pull_request: dict[str, Any] | Non
         reasons.append("merge_evidence_incomplete")
     if pull_request.get("checks_verified") is not True:
         reasons.append("required_checks_unverified")
-    if pull_request.get("review_verified") is not True:
+    if pull_request.get("review_verified") is not True and review.get("status") != "approved":
         reasons.append("review_evidence_unverified")
     if reasons:
         return {"status": "merged_stale", "reasons": reasons}

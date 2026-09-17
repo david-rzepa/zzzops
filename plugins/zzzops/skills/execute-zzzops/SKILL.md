@@ -10,26 +10,16 @@ description: >-
 
 # Execute ZzzOps
 
-Read `../../rules/COMMUNICATION.md` for user-facing messages.
+Call the public `zzzops workflow --intent execute` checkpoint first and after every completed step. Its `next_steps` are authoritative: execute only the returned step, with its exact model-plus-effort pair and assignment. Do not decide whether to delegate, select a model, skip a review, or call private ZzzOps handlers yourself.
 
-Mode: `dry run`, `preview`, or `plan` means read-only inventory, triage simulation, ordering, and blocker reporting; do not initialize/apply, claim, update goals, edit source, run mutating commands, or change Git/external state. Otherwise run the live loop below.
+First invoke `zzzops workflow --intent execute --source-skill '$execute-zzzops'` and obey its action-only `next_steps`. Do not invoke a private ZzzOps command.
 
-First run `../../rules/INITIALIZATION.md`, then route through `../../rules/BACKENDS.md`. Read `../../rules/GOAL_SYSTEM.md` and the initialized charter; load only what applies.
-Track execute intent through `../../rules/CONTINUATION.md` so additive capture can safely resume without nested loops.
+For a `dry run`, `preview`, or `plan`, call `zzzops workflow --intent preview`; do not mutate project, Git, provider, or goal state. Human input is always returned as a root-directed blocker. Resolve it in the root agent, then call the checkpoint again.
 
-Goals labeled `zzzops-feedback` are excluded by default. Include them only when the user explicitly approves inclusion for the current execution session; invocation approval counts, one approval covers all feedback goals, and expires with the session. Never ask per issue. Preserve the choice on every checkpoint/portfolio refresh by using `--include-feedback` only in an approved session.
+Each returned phase step names one prompt under [references/phases](references/phases). Read only that prompt. It describes the work; the checkpoint supplies the live evidence, command, and completion contract. Persist the returned immutable evidence before requesting another checkpoint.
 
+Continue while the checkpoint returns actionable work. It is responsible for shared bootstrap, policy, capability, portfolio, dependency, phase-review, and stack checks; its diagnostics belong in its referenced log, not agent-visible narration.
 
-- Create/triage/decompose: [CREATE.md](references/CREATE.md).
-- Unblock and persist unanswered requests: [UNBLOCK.md](references/UNBLOCK.md) and `../../rules/BLOCKERS.md`.
-- Select/execute/complete/handoff: [EXECUTE.md](references/EXECUTE.md).
-- Source-changing branch topology/review: [BRANCH_REVIEW.md](references/BRANCH_REVIEW.md).
-- Pre-handoff diff/dead-code review: [SELF_REVIEW.md](references/SELF_REVIEW.md).
-- Tests, delegation, parallelism, or long commands: `../../rules/EXECUTION_STRATEGY.md`.
-- Exhausted-queue backlog suggestions: `$suggest-zzzops-work` when explicitly enabled by reviewed PROJECT policy.
+The workflow enforces the shared [INITIALIZATION.md](../../rules/INITIALIZATION.md), [BACKENDS.md](../../rules/BACKENDS.md), and [FEEDBACK.md](../../rules/FEEDBACK.md) rules. `zzzops-feedback` goals remain excluded until the user authorizes them for the current execution session; pass that approval through `--include-feedback`. Never ask per issue.
 
-Apply PROJECT throughout. Before writes assess [[bounded commitment]](../../concepts/bounded-commitment.md); before switching/stopping persist resumable state. Continue while policy permits [[safe useful work]](../../concepts/safe-useful-work.md); optimize verified value, not count.
-
-Before source work, read PROJECT Git/review/continuation policy and checkpoint only pending local ZzzOps state when required; never absorb unrelated changes or create an empty GitHub-state commit.
-
-Before stopping or handing off, apply `../../rules/FEEDBACK.md`.
+Read [COMMUNICATION.md](../../rules/COMMUNICATION.md). Apply [[bounded commitment]](../../concepts/bounded-commitment.md) and [[safe useful work]](../../concepts/safe-useful-work.md) when acting on a returned step.
