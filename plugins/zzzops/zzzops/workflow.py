@@ -148,10 +148,19 @@ class Workflow:
         self.runtime = runtime
         self.repository = api._project_repository_identity(project)
         self.adapter = api.GitHubGoalTransitionAdapter(repo, self.repository)
+        self._read_cache = {}
+        self._portfolio_cache = None
+
+    def invalidate(self):
+        getattr(self, '_read_cache', {}).clear()
+        self._read_cache = {}
+        self._portfolio_cache = None
 
     def read(self, number):
-        issue = self.adapter.get_issue(number)
-        return issue, self.api.github_goal_record(issue)
+        if number not in self._read_cache:
+            issue = self.adapter.get_issue(number)
+            self._read_cache[number] = (issue, self.api.github_goal_record(issue))
+        return copy.deepcopy(self._read_cache[number])
 
     def artifact(self, number, content):
         identity = digest(content)
@@ -203,10 +212,12 @@ class Workflow:
         raise ValueError('Persist the phase artifact through operation=artifact before submitting its reference')
 
     def portfolio(self, *, allow_invalid=False):
-        portfolio = self.api.portfolio_snapshot(self.repo)
+        if self._portfolio_cache is None:
+            self._portfolio_cache = self.api.portfolio_snapshot(self.repo)
+        portfolio = self._portfolio_cache
         if not portfolio.get('complete') or (not allow_invalid and not portfolio.get('valid')):
             raise ValueError('Repair the goal portfolio before starting or submitting work')
-        return portfolio['goals']
+        return copy.deepcopy(portfolio['goals'])
 
     @contextmanager
     def locked(self):
@@ -232,6 +243,7 @@ class Workflow:
             'expires_at': expires_at, 'valid': True,
         }
         self._storage_reservation = reservation
+        self.invalidate()
         try:
             yield
         finally:
@@ -260,11 +272,13 @@ class Workflow:
                 raise ValueError('Provider did not confirm a live workflow storage reservation; no write is allowed')
             reservation['expires_at'] = expires_at
         desired['revision'] = goal['revision'] + 1
-        self.api.apply_goal_transition(self.adapter, self.repository, goal['key'], {
+        result = self.api.apply_goal_transition(self.adapter, self.repository, goal['key'], {
             'schema_version': self.api.GOAL_TRANSITION_SCHEMA_VERSION,
             'expected_revision': goal['revision'], 'expected_digest': goal['digest'], 'goal': desired,
             **({'human_spec': human_spec} if human_spec is not None else {}),
         })
+        self.invalidate()
+        return result
 
     def inputs(self, goal, graph):
         live = self.api.workflow_live_inputs(self.repo, self.project, goal, 'execute', graph)
@@ -407,7 +421,10 @@ class Workflow:
                 step.clear()
                 step.update(kind='assess', assignment='root', goal=number, phase=phase,
                             action='Assess consequence, boundedness and engineering rigor; declare every repository file consumed by this phase. Use an empty list only when no repository files are inputs.',
-                            input_hash=digest(phase_input), submission={'operation': 'assess', 'phase': phase, 'input_hash': digest(phase_input), 'request_id': 'new-unique-id', 'files': [], 'dimensions': {'consequence': 'bounded', 'boundedness': 'atomic', 'engineering_rigor': 'structured'}})
+                            title=goal['title'], input_envelope=phase_input, input_hash=digest(phase_input),
+                            goal_specification={'reference': goal['url'], 'hash': phase_input['goal_spec'], 'read': {'operation': 'read', 'phase': phase}},
+                            command=['--intent', 'execute', '--goal', str(number), '--runtime', '<runtime.json>', '--input', '<submission.json>'],
+                            submission={'operation': 'assess', 'phase': phase, 'input_hash': digest(phase_input), 'request_id': 'new-unique-id', 'files': [], 'dimensions': {'consequence': 'bounded', 'boundedness': 'atomic', 'engineering_rigor': 'structured'}})
                 continue
             key = phase + ':' + kind
             lease = state(goal)['leases'].get(key)
@@ -860,8 +877,8 @@ class Workflow:
         return {'next_steps': [{'kind': 'checkpoint', 'goal': goal['key'], 'action': 'Re-read the goal to obtain its next required phase or review.'}]}
 
 
-def checkpoint(api, repo, project, runtime, number=None):
-    engine = Workflow(api, repo, project, runtime)
+def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
+    engine = engine or Workflow(api, repo, project, runtime)
     goals = engine.portfolio()
     if number is not None:
         if number not in {g['key'] for g in goals}:
@@ -1057,4 +1074,4 @@ def public_run(api, repo, intent, source, runtime, payload, number):
         return {'next_steps': [{'kind': 'adopt', 'assignment': 'root', 'instruction': api.workflow_instruction(source), 'submission': {'operation': 'adopt', 'limit': 25}, 'action': 'Adopt open goals only; preserve historical records and current implementation links.'}]}
     if source in {'$send-zzzops-feedback', '$suggest-zzzops-work'}:
         return {'next_steps': [{'kind': 'dispatch', 'assignment': 'root', 'instruction': api.workflow_instruction(source), 'action': api.WORKFLOW_SOURCE_ACTIONS[source]}]}
-    return checkpoint(api, repo, project, runtime, number)
+    return checkpoint(api, repo, project, runtime, number, engine=engine)
