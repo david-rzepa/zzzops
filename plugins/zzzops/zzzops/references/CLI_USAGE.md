@@ -1,13 +1,14 @@
 # Using the ZzzOps CLI
 
-Run the package-local [`zzzops.py`](../zzzops.py) with the semantic `--intent`
-from the loaded skill. Do not search for or install a global `zzzops` command.
+Run the package-local [`zzzops.py`](../zzzops.py), never a global command. Start with
+the skill's semantic `--intent`. Continue with `workflow --intent INTENT` and only the
+returned `--goal`, `--runtime`, or `--input` JSON-file arguments that apply.
 
-The CLI's `next_steps` are authoritative. Perform only returned steps, use their
-content-addressed instruction references, and preserve their exact model-plus-effort
-assignment, evidence contract, and authority boundary. Do not select delegation,
-models, phase order, or private ZzzOps handlers yourself.
+Obey `next_steps`. Read the returned `instruction` and evidence fields. For mutating
+phase work, send `start`, bind the actual executor with `bind` when delegated, then
+complete `submission` under its lease using `command`. Preserve the exact assignment,
+authority, and evidence contract; invent no arguments, operations, models, phase
+order, or private handlers.
 
-Call the CLI again after completing a returned step. Its stdout contains only action
-that needs attention; read diagnostics from the referenced log when needed. Resolve
-human-input blockers only in the root agent, then return to the CLI.
+Invoke the workflow again after each step. Only root resolves blockers or asks the
+human. Human approval is a separate step, never implied by execution or review.

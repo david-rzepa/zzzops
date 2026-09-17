@@ -712,7 +712,7 @@ class EntropyModuleTests(unittest.TestCase):
         event_path = self.repo / "event.json"
         event_path.write_text(json.dumps(self.review_event()), encoding="utf-8")
         rejected = subprocess.run(
-            [sys.executable, str(MODULE_PATH), "--repo", str(self.repo), "entropy", "review", "mark", "--input", str(event_path)],
+            [sys.executable, "-c", "import runpy,sys; raise SystemExit(runpy.run_path(sys.argv.pop(1))['_private_main']())", str(MODULE_PATH), "--repo", str(self.repo), "entropy", "review", "mark", "--input", str(event_path)],
             capture_output=True, text=True, check=False,
         )
         self.assertEqual(2, rejected.returncode)
@@ -724,7 +724,7 @@ class EntropyModuleTests(unittest.TestCase):
             self.skipTest("repository fixture is intentionally stale until model-routing policy review")
         event_path.write_text(json.dumps({**self.review_event(), "repository": "david-rzepa/zzzops"}), encoding="utf-8")
         mark_command = [
-            sys.executable, str(MODULE_PATH), "--repo", str(self.repo),
+            sys.executable, "-c", "import runpy,sys; raise SystemExit(runpy.run_path(sys.argv.pop(1))['_private_main']())", str(MODULE_PATH), "--repo", str(self.repo),
             "entropy", "review", "mark", "--input", str(event_path),
         ]
         workers = [subprocess.Popen(mark_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for _ in range(3)]
@@ -734,7 +734,7 @@ class EntropyModuleTests(unittest.TestCase):
         self.assertEqual(1, sum(payload["recorded"] for payload in marked_payloads))
         event_id = marked_payloads[0]["event_id"]
         planned = subprocess.run(
-            [sys.executable, str(MODULE_PATH), "--repo", str(self.repo), "entropy", "review", "plan", "--mode", "recent"],
+            [sys.executable, "-c", "import runpy,sys; raise SystemExit(runpy.run_path(sys.argv.pop(1))['_private_main']())", str(MODULE_PATH), "--repo", str(self.repo), "entropy", "review", "plan", "--mode", "recent"],
             capture_output=True, text=True, check=True,
         )
         batch_id = json.loads(planned.stdout)["batch_id"]
@@ -743,7 +743,7 @@ class EntropyModuleTests(unittest.TestCase):
             "schema_version": 1, "batch_id": batch_id, "outcome": "clean", "current_events": [event_id],
         }), encoding="utf-8")
         complete_command = [
-            sys.executable, str(MODULE_PATH), "--repo", str(self.repo),
+            sys.executable, "-c", "import runpy,sys; raise SystemExit(runpy.run_path(sys.argv.pop(1))['_private_main']())", str(MODULE_PATH), "--repo", str(self.repo),
             "entropy", "review", "complete", "--input", str(completion_path),
         ]
         workers = [subprocess.Popen(complete_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for _ in range(3)]
@@ -758,7 +758,7 @@ class EntropyModuleTests(unittest.TestCase):
         }), encoding="utf-8")
         second = json.loads(subprocess.run(mark_command, capture_output=True, text=True, check=True).stdout)
         second_batch = json.loads(subprocess.run(
-            [sys.executable, str(MODULE_PATH), "--repo", str(self.repo), "entropy", "review", "plan", "--mode", "recent"],
+            [sys.executable, "-c", "import runpy,sys; raise SystemExit(runpy.run_path(sys.argv.pop(1))['_private_main']())", str(MODULE_PATH), "--repo", str(self.repo), "entropy", "review", "plan", "--mode", "recent"],
             capture_output=True, text=True, check=True,
         ).stdout)
         conflict_paths = []
@@ -770,7 +770,7 @@ class EntropyModuleTests(unittest.TestCase):
             }), encoding="utf-8")
             conflict_paths.append(path)
         conflict_commands = [
-            [sys.executable, str(MODULE_PATH), "--repo", str(self.repo), "entropy", "review", "complete", "--input", str(path)]
+            [sys.executable, "-c", "import runpy,sys; raise SystemExit(runpy.run_path(sys.argv.pop(1))['_private_main']())", str(MODULE_PATH), "--repo", str(self.repo), "entropy", "review", "complete", "--input", str(path)]
             for path in conflict_paths
         ]
         workers = [subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for command in conflict_commands]
@@ -961,7 +961,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
             mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "diagnostics", "suggest"]),
             mock.patch.object(sys, "stdout", io.StringIO()) as stream,
         ):
-            self.assertEqual(0, zzzops.main())
+            self.assertEqual(0, zzzops._private_main())
         self.assertEqual(no_data, json.loads(stream.getvalue()))
         record.assert_not_called()
         purge.assert_not_called()
@@ -978,7 +978,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
             mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--goal", "42", "--intent", "execute", "--runtime", str(runtime)]),
             mock.patch.object(sys, "stdout", io.StringIO()) as stream,
         ):
-            self.assertEqual(0, zzzops.main())
+            self.assertEqual(0, zzzops._private_main())
         self.assertEqual(expected, json.loads(stream.getvalue()))
         checkpoint.assert_called_once_with(self.repo.resolve(), 42, "execute", json.loads(runtime.read_text(encoding="utf-8")))
 
@@ -994,7 +994,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
                         mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--intent", intent, "--source-skill", skill]),
                         mock.patch.object(sys, "stdout", io.StringIO()) as stream,
                     ):
-                        self.assertEqual(0, zzzops.main())
+                        self.assertEqual(0, zzzops._private_main())
                 step = json.loads(stream.getvalue())["next_steps"]
                 self.assertEqual([{
                     "kind": "dispatch", "assignment": "root", "skill": skill, "intent": intent,
@@ -1018,8 +1018,8 @@ class DiagnosticsModuleTests(unittest.TestCase):
                 self.assertEqual("", result.stderr)
                 payload = json.loads(result.stdout)
                 self.assertEqual([{
-                    "kind": "blocker", "assignment": "root",
-                    "action": "Correct the workflow command arguments, then invoke workflow again.",
+                    "kind": "repair", "assignment": "root",
+                    "action": "Correct this input or backend condition and retry the same request.",
                     "reason": payload["next_steps"][0]["reason"],
                 }], payload["next_steps"])
                 self.assertTrue(payload["next_steps"][0]["reason"])
@@ -1031,7 +1031,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
             mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--intent", "execute", "--source-skill", "$execute-zzzops"]),
             mock.patch.object(sys, "stdout", io.StringIO()) as stream,
         ):
-            self.assertEqual(2, zzzops.main())
+            self.assertEqual(2, zzzops._private_main())
         payload = json.loads(stream.getvalue())
         self.assertEqual({"next_steps"}, set(payload))
         self.assertEqual("resolve_blocker", payload["next_steps"][0]["directive"])
@@ -1058,7 +1058,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
                     mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), *command]),
                     mock.patch.object(sys, "stdout", io.StringIO()) as stream,
                 ):
-                    self.assertEqual(2, zzzops.main())
+                    self.assertEqual(2, zzzops._private_main())
             payload = json.loads(stream.getvalue())
             self.assertEqual(1, len(payload["next_steps"]))
             self.assertEqual("blocker", payload["next_steps"][0]["kind"])
@@ -1079,7 +1079,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
             mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--intent", "capture", "--source-skill", "$add-zzzops-goal"]),
             mock.patch.object(sys, "stdout", io.StringIO()) as stream,
         ):
-            self.assertEqual(0, zzzops.main())
+            self.assertEqual(0, zzzops._private_main())
         context.assert_called_once_with(self.repo.resolve(), {"ok": True, "version": "0.0.0-dev", "revision": "a" * 40}, source_skill="$add-zzzops-goal")
         self.assertEqual({"next_steps": [gate]}, json.loads(stream.getvalue()))
 
@@ -1096,7 +1096,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
             mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--intent", "execute", "--source-skill", "$execute-zzzops"]),
             mock.patch.object(sys, "stdout", io.StringIO()) as stream,
         ):
-            self.assertEqual(0, zzzops.main())
+            self.assertEqual(0, zzzops._private_main())
         self.assertEqual(expected, json.loads(stream.getvalue()))
 
     def test_workflow_cli_runs_preview_checkpoint_without_mutation(self):
@@ -1112,7 +1112,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
             mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--goal", "42", "--intent", "preview", "--runtime", str(runtime)]),
             mock.patch.object(sys, "stdout", io.StringIO()) as stream,
         ):
-            self.assertEqual(0, zzzops.main())
+            self.assertEqual(0, zzzops._private_main())
         checkpoint.assert_called_once_with(self.repo.resolve(), 42, "preview", json.loads(runtime.read_text(encoding="utf-8")))
         submit.assert_not_called()
         self.assertEqual(expected, json.loads(stream.getvalue()))
@@ -1128,7 +1128,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
             mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--goal", "42", "--intent", "preview", "--input", str(payload_path)]),
             mock.patch.object(sys, "stdout", io.StringIO()) as stream,
         ):
-            self.assertEqual(2, zzzops.main())
+            self.assertEqual(2, zzzops._private_main())
         submit.assert_not_called()
         step = json.loads(stream.getvalue())["next_steps"][0]
         self.assertEqual("blocker", step["kind"])
@@ -1150,7 +1150,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
             mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--goal", "42", "--intent", "execute", "--runtime", str(runtime)]),
             mock.patch.object(sys, "stdout", io.StringIO()) as stream,
         ):
-            self.assertEqual(0, zzzops.main())
+            self.assertEqual(0, zzzops._private_main())
         context.assert_called_once_with(self.repo.resolve(), {"ok": True, "version": "0.0.0-dev", "revision": "a" * 40}, source_skill="$execute-zzzops")
         checkpoint.assert_not_called()
         self.assertEqual({"next_steps": [gate]}, json.loads(stream.getvalue()))
@@ -1168,7 +1168,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
             mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--intent", "preview"]),
             mock.patch.object(sys, "stdout", io.StringIO()) as stream,
         ):
-            self.assertEqual(0, zzzops.main())
+            self.assertEqual(0, zzzops._private_main())
         self.assertEqual(expected, json.loads(stream.getvalue()))
 
     def test_workflow_cli_submits_phase_evidence_through_the_same_command(self):
@@ -1185,7 +1185,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
             mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--goal", "42", "--intent", "execute", "--runtime", str(runtime), "--input", str(payload_path)]),
             mock.patch.object(sys, "stdout", io.StringIO()) as stream,
         ):
-            self.assertEqual(0, zzzops.main())
+            self.assertEqual(0, zzzops._private_main())
         self.assertEqual(expected, json.loads(stream.getvalue()))
         submit.assert_called_once_with(self.repo.resolve(), 42, "execute", payload)
 
@@ -1204,12 +1204,12 @@ class DiagnosticsModuleTests(unittest.TestCase):
         ):
             plain_stream = io.StringIO()
             with mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "checkpoint"]), mock.patch.object(sys, "stdout", plain_stream):
-                self.assertEqual(0, zzzops.main())
+                self.assertEqual(0, zzzops._private_main())
             self.assertFalse(record.called)
 
             profiled_stream = io.StringIO()
             with mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "checkpoint", "--profile"]), mock.patch.object(sys, "stdout", profiled_stream):
-                self.assertEqual(0, zzzops.main())
+                self.assertEqual(0, zzzops._private_main())
             self.assertEqual(plain_stream.getvalue(), profiled_stream.getvalue())
             diagnostic = record.call_args.args[1]
             self.assertIn("package", diagnostic["phases"])
@@ -1225,7 +1225,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
         ):
             stream = io.StringIO()
             with mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "checkpoint", "--profile"]), mock.patch.object(sys, "stdout", stream):
-                self.assertEqual(0, zzzops.main())
+                self.assertEqual(0, zzzops._private_main())
         self.assertEqual("\nNo further changes made.\n", stream.getvalue())
         diagnostic = record.call_args.args[1]
         self.assertEqual(1, diagnostic["phases"]["command_total"]["failures"])
@@ -1369,7 +1369,7 @@ class CoachingAttributionTests(unittest.TestCase):
             }), encoding="utf-8")
             before = {path.relative_to(root).as_posix(): path.read_bytes() for path in root.rglob("*") if path.is_file()}
             result = subprocess.run(
-                [sys.executable, str(MODULE_PATH), "--repo", str(root), "coaching", "attribute", "--input", str(request)],
+                [sys.executable, "-c", "import runpy,sys; raise SystemExit(runpy.run_path(sys.argv.pop(1))['_private_main']())", str(MODULE_PATH), "--repo", str(root), "coaching", "attribute", "--input", str(request)],
                 text=True, capture_output=True, check=True,
             )
             output = json.loads(result.stdout)
@@ -1848,7 +1848,7 @@ class InitializationTests(unittest.TestCase):
         applied = zzzops.apply_plan(self.repo, self.plan())
         result = subprocess.run(
             [
-                sys.executable, str(MODULE_PATH), "--repo", str(self.repo),
+                sys.executable, "-c", "import runpy,sys; raise SystemExit(runpy.run_path(sys.argv.pop(1))['_private_main']())", str(MODULE_PATH), "--repo", str(self.repo),
                 "init", "confirm", "--policy-digest", applied["policy_digest"],
                 "--reviewer", "test-user", "--all",
             ],
@@ -1859,14 +1859,14 @@ class InitializationTests(unittest.TestCase):
 
     def test_cli_without_command_shows_help_without_writing_local_state(self):
         result = subprocess.run(
-            [sys.executable, str(MODULE_PATH), "--repo", str(self.repo)],
+            [sys.executable, str(MODULE_PATH), "--repo", str(self.repo), "--help"],
             text=True,
             encoding="utf-8",
             capture_output=True,
             check=False,
         )
         self.assertEqual(0, result.returncode, result.stderr + result.stdout)
-        self.assertIn("ZzzOps project control CLI", result.stdout)
+        self.assertIn("ZzzOps actionable workflow checkpoint", result.stdout)
 
     def test_rejects_unconfirmed_unknown_and_stale_plans(self):
         plan = self.plan()
@@ -2117,7 +2117,7 @@ class ExecutionReportTests(unittest.TestCase):
         environment = dict(os.environ)
         environment["PYTHONIOENCODING"] = "cp1252"
         command = [
-            sys.executable, str(MODULE_PATH), "--repo", str(MODULE_PATH.parents[2]),
+            sys.executable, "-c", "import runpy,sys; raise SystemExit(runpy.run_path(sys.argv.pop(1))['_private_main']())", str(MODULE_PATH), "--repo", str(MODULE_PATH.parents[2]),
             "feedback", "prepare", "--prompt-file", str(prompt),
         ]
 
@@ -2623,7 +2623,7 @@ class GoalCreateTests(unittest.TestCase):
     ):
         argv = ["zzzops.py", "--repo", ".", "goal", "create", "--input", "create.json"]
         with mock.patch.object(sys, "argv", argv), mock.patch("sys.stdout", new_callable=io.StringIO):
-            self.assertEqual(2, zzzops.main())
+            self.assertEqual(2, zzzops._private_main())
         adapter.assert_not_called()
 
     @mock.patch.object(zzzops.shutil, "which", return_value="gh")
@@ -2798,7 +2798,7 @@ class PhaseEvidenceTests(unittest.TestCase):
             zzzops.record_phase_result(evidence, "implement", self.record("implement", implementation_input), implementation_input)
         review_artifact = {"reference": "urn:sha256:" + "4" * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": "changes"})}
         evidence = zzzops.record_phase_review(evidence, "test_design", review_artifact, "reviewer-2", decision="changes_requested")
-        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "approved test-design review"):
+        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "requested test-design changes"):
             zzzops.record_phase_result(evidence, "implement", self.record("implement", implementation_input), implementation_input)
         evidence = zzzops.record_phase_review(evidence, "test_design", review_artifact, "reviewer-2")
         without_binding = self.envelope("implement")
@@ -2821,6 +2821,35 @@ class PhaseEvidenceTests(unittest.TestCase):
         evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "decompose", record, envelope)
         result = zzzops.derive_phase_eligibility(self.goal(evidence), self.graph({"id": "decompose"}), {"decompose": envelope})
         self.assertEqual([], result["eligible"])
+
+    def test_not_required_phase_still_requires_policy_review_and_human_approval(self):
+        envelope = self.envelope("decompose")
+        record = self.record("decompose", envelope)
+        record.update({
+            "status": "not_required", "output": None,
+            "not_required": {"reason": "Goal is atomic.", "policy_rule": "atomic_goal"},
+        })
+        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "decompose", record, envelope)
+        graph = self.graph({"id": "decompose"}, {"id": "plan", "depends_on": ["decompose"]})
+        inputs = {"decompose": envelope, "plan": self.envelope("plan")}
+        policy = {"decompose": {
+            "not_required": "atomic_goal",
+            "review": {"independent": True, "human_approval": True},
+        }}
+
+        awaiting_review = zzzops.derive_phase_steps(self.goal(evidence), graph, inputs, review_policy=policy)
+        self.assertEqual(["decompose"], [item["phase"] for item in awaiting_review["review"]])
+        self.assertEqual(["plan"], [item["phase"] for item in awaiting_review["blocked"]])
+
+        artifact = {"reference": "urn:sha256:" + "8" * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": "skip"})}
+        evidence = zzzops.record_phase_review(evidence, "decompose", artifact, "reviewer-2")
+        awaiting_human = zzzops.derive_phase_steps(self.goal(evidence), graph, inputs, review_policy=policy)
+        self.assertEqual([{"phase": "decompose", "reason": "missing_human_approval"}], awaiting_human["review"])
+        self.assertEqual(["plan"], [item["phase"] for item in awaiting_human["blocked"]])
+
+        evidence = zzzops.record_phase_approval(evidence, "decompose", "root", "approval-atomic")
+        approved = zzzops.derive_phase_steps(self.goal(evidence), graph, inputs, review_policy=policy)
+        self.assertEqual(["plan"], [item["phase"] for item in approved["execute"]])
 
     def test_parallel_frontier_and_restart_are_evidence_derived(self):
         graph = self.graph({"id": "plan"}, {"id": "verify"})
@@ -4073,7 +4102,7 @@ class ReservationTests(unittest.TestCase):
         self.assertEqual(1, sum(result["acquired"] for result in results))
         self.assertEqual({"acquired", "contended"}, {result["outcome"] for result in results})
 
-    def test_phase_lease_has_one_owner_and_expired_generation_advances(self):
+    def test_phase_lease_has_one_owner_and_expiry_requires_explicit_recovery(self):
         adapter = FakeReservationAdapter()
         with ThreadPoolExecutor(max_workers=2) as pool:
             results = [future.result() for future in (
@@ -4086,8 +4115,9 @@ class ReservationTests(unittest.TestCase):
         replacement = zzzops.acquire_phase_lease(
             adapter, "owner/repo", 12, "implement", 4, "agent-c", "run-c", 120, later,
         )
-        self.assertTrue(replacement["acquired"])
-        self.assertEqual(winner["generation"] + 1, replacement["generation"])
+        self.assertFalse(replacement["acquired"])
+        self.assertEqual("recovery_required", replacement["outcome"])
+        self.assertEqual(winner["generation"], replacement["holder"]["generation"])
 
     def test_phase_lease_metadata_is_phase_bound(self):
         adapter = FakeReservationAdapter()
@@ -5077,7 +5107,12 @@ class WorkflowContractTests(unittest.TestCase):
         )
         parent_graph = zzzops.phase_evidence_graph(dag, has_parent=False)
         parent_phases = {node["id"] for node in parent_graph["phases"]}
-        self.assertNotIn("publish", parent_phases, "#432 must not make aggregate publication eligible before child completion is represented")
+        self.assertIn("publish", parent_phases)
+        self.assertEqual(
+            ["plan"],
+            next(node for node in parent_graph["phases"] if node["id"] == "publish")["depends_on"],
+            "parent publication is present while orchestration supplies the aggregate child-completion gate",
+        )
         self.assertEqual([], zzzops.validate_policy(plan["policy"], True))
 
         rendered = zzzops.render_project({
@@ -5390,6 +5425,16 @@ class WorkflowContractTests(unittest.TestCase):
             {"understand": {"assignment_group": "root", "review": {"human_approval": True}}}, settings,
             {"root_pair": {"model": "root-model", "effort": "medium"}, "available_pairs": [{"model": "root-model", "effort": "medium"}]},
         )
+        self.assertEqual("review", result["next_steps"][0]["kind"])
+        self.assertEqual("delegate", result["next_steps"][0]["assignment"])
+        artifact = {"reference": "urn:sha256:" + "9" * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": "understand"})}
+        evidence = zzzops.record_phase_review(evidence, "understand", artifact, "reviewer-2")
+        goal["phase_evidence"] = evidence
+        result = zzzops.workflow_step_plan(
+            goal, {"phases": [{"id": "understand"}]}, {"understand": input_envelope},
+            {"understand": {"assignment_group": "root", "review": {"independent": True, "human_approval": True}}}, settings,
+            {"root_pair": {"model": "root-model", "effort": "medium"}, "available_pairs": [{"model": "root-model", "effort": "medium"}]},
+        )
         self.assertEqual("human_approval", result["next_steps"][0]["kind"])
         self.assertEqual("root", result["next_steps"][0]["assignment"])
         self.assertEqual({"model": "root-model", "effort": "medium"}, result["next_steps"][0]["selection"])
@@ -5414,7 +5459,7 @@ class WorkflowContractTests(unittest.TestCase):
             {"status": "ready", "difficulty": "S", "engineering_rigor": {"risk_categories": [], "effective": "structured"}},
             {"phases": [{"id": "plan"}]}, {"plan": evidence_test.envelope("plan")}, {"plan": {"assignment_group": "planning"}}, settings, runtime,
         )
-        self.assertIn("no reviewed available", unavailable["next_steps"][0]["reason"])
+        self.assertIn("no permitted reviewed available", unavailable["next_steps"][0]["reason"])
 
         high = {"model": "high-model", "effort": "high"}
         settings["assessment_tree"] = [{"when": {}, "tier": "architectural"}]
@@ -5711,13 +5756,14 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("present the complete policy proposal without asking whether to review", initialization)
         for text in (review_skill, initialization):
             self.assertIn("The policy is already approved.", text)
-            self.assertIn("Do not ask for approval", text)
             self.assertIn("do not", text.lower())
-            self.assertIn("`init confirm`", text)
-            self.assertIn("approval digest", text)
             self.assertIn("required section", text)
             self.assertIn("Changed/stale", text)
             self.assertIn("privacy-safe execution reports", text)
+        self.assertIn("current approval digest", initialization)
+        self.assertIn("current digest", review_skill)
+        self.assertIn("root-mediated human interaction", review_skill)
+        self.assertIn("exact returned input contract", review_skill)
         manifest = json.loads((root / "plugin.json").read_text(encoding="utf-8"))
         self.assertEqual("zzzops", manifest["name"])
         self.assertEqual("0.0.0-dev", manifest["version"])
@@ -5748,7 +5794,7 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_execute_feedback_queue_requires_one_session_approval(self):
         execute = (PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "execute.md").read_text(encoding="utf-8")
-        for phrase in ("zzzops-feedback", "current execution session", "Never ask per issue", "--include-feedback"):
+        for phrase in ("zzzops-feedback", "current execution session", "never invent a flag or ask per issue"):
             self.assertIn(phrase, execute)
 
     def test_execute_guidance_bounds_github_reads_without_weakening_safety_checks(self):
@@ -5859,7 +5905,7 @@ class WorkflowContractTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         performance = (PLUGIN_ROOT.parent.parent / "docs" / "PERFORMANCE.md").read_text(encoding="utf-8")
         for phrase in (
-            "diagnostics suggest", "available:true", "missing", "malformed", "stale",
+            "returned diagnostic suggestion", "available:true", "missing", "malformed", "stale",
             "no_measured_phase", "never enter exhausted-queue refill", "never submitted",
             "explicit `apply`",
         ):
@@ -5877,9 +5923,9 @@ class WorkflowContractTests(unittest.TestCase):
         feedback = (PLUGIN_ROOT / "rules" / "FEEDBACK.md").read_text(encoding="utf-8")
         privacy = (PLUGIN_ROOT.parent.parent / "PRIVACY.md").read_text(encoding="utf-8")
         for phrase in (
-            "diagnostics list", "exactly one user-selected diagnostic ID", "use `unknown`",
+            "available diagnostics", "exactly one user-selected diagnostic ID", "use `unknown`",
             "never selected automatically", "public preview/digest", "digest confirmation",
-            "deletes only the submitted reports and selected diagnostic",
+            "delete only the submitted reports and selected diagnostic",
         ):
             self.assertIn(phrase, send + feedback)
         for phrase in (
@@ -6032,8 +6078,9 @@ class WorkflowContractTests(unittest.TestCase):
         ):
             self.assertIn(phrase, entropy)
         for phrase in (
-            "Always run", "entropy list", "allowed_categories", "stay pending",
-            "resolve", "only after an ordinary goal is confirmed", "not authority or a second backlog",
+            "Inspect the entropy observations returned", "allowed_categories", "stay pending",
+            "`dismissed` through", "returned input contract", "only after an ordinary goal is confirmed",
+            "not authority or a second backlog",
         ):
             self.assertIn(phrase, suggest)
         self.assertNotIn("record-completion", execute + entropy + suggest)

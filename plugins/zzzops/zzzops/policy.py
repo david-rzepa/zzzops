@@ -573,27 +573,27 @@ def phase_evidence_graph(phase_dag: Any, *, has_parent: bool) -> dict[str, list[
     Applicability is resolved before handing the graph to the generic evaluator.
     In particular, a child consumes its parent's decomposition as a parent gate
     instead of receiving an impossible local decomposition dependency. The
-    generic #432 graph has no child-aggregation edge, so parent verification,
-    review, and publication stay absent until orchestration can supply that
-    canonical aggregate-completion evidence.
+    orchestration layer supplies child-completion evidence to parent publication.
     """
     errors = _workflow_phase_dag_errors(phase_dag)
     if errors:
         raise ValueError("Invalid workflow phase DAG: " + "; ".join(errors))
-    parent_finalization = {"publish"}
     included = {
         node["id"] for node in phase_dag["phases"]
         if node["applicability"] == "always"
         or (node["applicability"] == "child_only" and has_parent)
         or (node["applicability"] == "parent_only" and not has_parent)
-    } - (parent_finalization if not has_parent else set())
+    }
     result = []
     for node in phase_dag["phases"]:
         phase = node["id"]
         if phase not in included:
             continue
         dependencies = [dependency for dependency in node["depends_on"] if dependency in included]
-        parent_gates = list(node["parent_gates"] if has_parent else [])
+        parent_phases = {item["id"] for item in phase_dag["phases"] if item["applicability"] != "child_only"}
+        parent_gates = [gate for gate in node["parent_gates"] if gate in parent_phases] if has_parent else []
+        if phase == "publish" and not has_parent:
+            dependencies = ["plan"]
         result.append({"id": phase, "depends_on": dependencies, "parent_gates": parent_gates})
     return {"phases": result}
 

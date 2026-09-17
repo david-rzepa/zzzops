@@ -131,7 +131,11 @@ class AgentPluginTests(unittest.TestCase):
         policy_instruction = (PLUGIN / "zzzops" / "references" / "next_steps" / "policy-review.md").read_text(encoding="utf-8")
         self.assertIn("explicit approval of the current digest", policy_instruction)
         cli_usage = (PLUGIN / "zzzops" / "references" / "CLI_USAGE.md").read_text(encoding="utf-8")
-        self.assertIn("model-plus-effort", cli_usage)
+        for field in ("`instruction`", "evidence fields", "`start`", "`bind`", "`submission`", "`command`"):
+            self.assertIn(field, cli_usage)
+        self.assertIn("Human approval is a separate step", cli_usage)
+        for retired in ("init inspect", "feedback prepare", "report list", "portfolio", "--include-feedback"):
+            self.assertNotIn(retired, cli_usage)
         for skill in SHIPPED_SKILLS:
             text = (PLUGIN / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("../../zzzops/references/CLI_USAGE.md", text, skill)

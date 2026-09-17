@@ -138,6 +138,16 @@ class PromptStatsTests(unittest.TestCase):
         ]
         self.assertEqual([], missing)
 
+        usage = (root / prompt_stats.CLI_USAGE_PROMPT).read_text(encoding="utf-8")
+        for phrase in (
+            "semantic `--intent`", "`workflow --intent INTENT`", "returned `--goal`",
+            "`instruction`", "evidence fields", "send `start`", "`bind`", "`submission`",
+            "using `command`", "Only root", "Human approval is a separate step",
+        ):
+            self.assertIn(phrase, usage)
+        for retired in ("init inspect", "feedback prepare", "report list", "--include-feedback"):
+            self.assertNotIn(retired, usage)
+
     def test_workflow_eval_reports_missing_signal(self) -> None:
         root = SCRIPT.parents[1]
         failures, _ = prompt_stats.evaluate_workflows(root)

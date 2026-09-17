@@ -26,6 +26,8 @@ def linux_validation() -> None:
 
 
 def windows_validation() -> None:
+    run(sys.executable, "-m", "unittest", "discover", "-s", ".agents", "-p", "test_workflow_*.py")
+    run(sys.executable, "-m", "unittest", "discover", "-s", ".agents", "-p", "test_phase_*.py")
     run(sys.executable, ".agents/test_zzzops.py")
     run(sys.executable, ".agents/test_legacy_cleanup.py")
     run(sys.executable, ".agents/test_installation_validation.py")
@@ -34,6 +36,8 @@ def windows_validation() -> None:
 
 
 def macos_validation() -> None:
+    run(sys.executable, "-m", "unittest", "discover", "-s", ".agents", "-p", "test_workflow_*.py")
+    run(sys.executable, "-m", "unittest", "discover", "-s", ".agents", "-p", "test_phase_*.py")
     run(sys.executable, ".agents/test_zzzops.py")
     run(sys.executable, ".agents/test_legacy_cleanup.py")
     run(sys.executable, ".agents/test_installation_validation.py")

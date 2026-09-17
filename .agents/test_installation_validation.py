@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import hashlib
+import io
 import json
 from pathlib import Path
 import subprocess
@@ -28,9 +29,19 @@ def load_module():
     return module
 
 
+def load_cli():
+    spec = importlib.util.spec_from_file_location("zzzops_public_cli_installation_test", CLI)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 class InstallationValidationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.module = load_module()
+        self.cli = load_cli()
         self.provenance = {"version": "2.0.0", "revision": "a" * 64}
 
     def make_repo(self, directory: str) -> Path:
@@ -135,26 +146,52 @@ class InstallationValidationTests(unittest.TestCase):
     def test_cli_clean_first_use_and_idempotent_status(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             repo = self.make_repo(directory)
-            audit = json.loads(subprocess.check_output(
-                [sys.executable, str(CLI), "--repo", str(repo), "installation", "audit"], text=True,
-            ))
-            subprocess.run([
-                sys.executable, str(CLI), "--repo", str(repo), "installation", "record",
-                "--outcome", "clean", "--audit-signature", audit["signature"],
-            ], check=True, capture_output=True, text=True)
-            status = json.loads(subprocess.check_output(
-                [sys.executable, str(CLI), "--repo", str(repo), "installation", "status"], text=True,
-            ))
+            package = {"ok": True, **self.provenance}
+
+            def invoke(*arguments: str) -> tuple[int, dict]:
+                stream = io.StringIO()
+                with (
+                    mock.patch.object(self.cli._package, "package_status", return_value=package),
+                    mock.patch.object(sys, "argv", [str(CLI), "--repo", str(repo), *arguments]),
+                    mock.patch.object(sys, "stdout", stream),
+                ):
+                    code = self.cli.main()
+                return code, json.loads(stream.getvalue())
+
+            code, first = invoke("--intent", "validate_installation")
+            self.assertEqual(0, code)
+            step = first["next_steps"][0]
+            self.assertEqual("installation_validation", step["kind"])
+            self.assertEqual("installation_record", step["submission"]["operation"])
+            self.assertTrue(step["audit"]["safe"], step["audit"]["errors"])
+            submission = {**step["submission"], "outcome": "clean"}
+            request = repo / "installation-result.json"
+            request.write_text(json.dumps(submission), encoding="utf-8")
+
+            required = {"required": True, "reason": "missing"}
+            with mock.patch.object(self.cli._installation, "validation_status", return_value=required):
+                code, recorded = invoke("--intent", "validate_installation", "--input", str(request))
+                self.assertEqual(0, code)
+                record_bytes = self.cli._installation.record_path(repo).read_bytes()
+                code, repeated = invoke("--intent", "validate_installation", "--input", str(request))
+                self.assertEqual(0, code)
+            self.assertEqual(recorded, repeated)
+            self.assertEqual(record_bytes, self.cli._installation.record_path(repo).read_bytes())
+
+            status = self.cli._installation.validation_status(repo, self.provenance)
             self.assertFalse(status["required"])
             self.assertEqual("current", status["reason"])
 
     def test_prompt_routes_once_and_preserves_confirmation_boundary(self) -> None:
-        initialization = (ROOT / "plugins" / "zzzops" / "rules" / "INITIALIZATION.md").read_text(encoding="utf-8")
         skill = (ROOT / "plugins" / "zzzops" / "zzzops" / "references" / "next_steps" / "installation-validation.md").read_text(encoding="utf-8")
-        for required in ("installation status", "required:true", "$validate-zzzops-installation", "resume the requested workflow once"):
-            self.assertIn(required, initialization)
-        for required in ("explicit removal confirmation", "records `declined`", "--apply --yes", "resume that original workflow exactly once"):
+        for required in (
+            "returned installation status", "returned installation audit", "exact audit signature",
+            "explicit removal confirmation", "records `declined`", "returned cleanup action",
+            "resume that original workflow exactly once",
+        ):
             self.assertIn(required, skill)
+        for retired in ("`installation status`", "`installation audit`", "--apply --yes"):
+            self.assertNotIn(retired, skill)
 
 
 if __name__ == "__main__":

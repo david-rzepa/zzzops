@@ -9,7 +9,7 @@ Only this workflow changes or confirms policy.
 
 Before optional tools, reuse capabilities; never invoke an unavailable path—use an alternative or block once.
 
-Run `init inspect` once. Never ask to start policy review. For missing, changed, or stale policy, inspect and show the proposal; after its table and changes, ask only for approval or adjustments, never approval to review. Show its `policy_review_table` exactly once before detail or action; never filter rows, even when policy is unchanged and approved. Keep detail progressive. Offer privacy-safe execution reports. For a missing automated-design section, explain enabled/disabled. For missing workflow-adherence sections, explain `optional`/`tracked`/`managed` and propose `tracked` for adherence; for missing rigor explain `vibe`/`structured`/`agentic` and propose `structured`—all without inferring approval.
+Use the inspection evidence returned for this workflow once. Never ask to start policy review. For missing, changed, or stale policy, inspect and show the proposal; after its table and changes, ask only for approval or adjustments, never approval to review. Show its `policy_review_table` exactly once before detail or action; never filter rows, even when policy is unchanged and approved. Keep detail progressive. Offer privacy-safe execution reports. For a missing automated-design section, explain enabled/disabled. For missing workflow-adherence sections, explain `optional`/`tracked`/`managed` and propose `tracked` for adherence; for missing rigor explain `vibe`/`structured`/`agentic` and propose `structured`—all without inferring approval.
 
 Show `capabilities.release_status` and `capabilities.legacy_migration_review` with the table. New/reviewed policy must include `legacy_migration`; an existing policy without it means treat execution as uninitialized and re-review before migration. A public GitHub Release is evidence; no release is ambiguous unless the owner says `never_released`. Route ambiguity to a decision/blocker. `never_released` stales at first release and blocks reset until review.
 
@@ -39,6 +39,6 @@ Review rigor defaults/escalation/minimums/overrides/interview depth. More rigor 
 
 Compare default IDs/digests first. Changed/stale: load full old/new snapshots only for changed or selected sections. Missing legacy provenance stays unknown. Replace matching stored defaults only; report customized values without replacement.
 
-If every required section has valid approval, say `The policy is already approved.` Do not ask for approval or run `init confirm`. Else require explicit approval of the current digest (`approval digest`), then `init confirm`. Approved policy artifacts may enter ordinary PR review without another conversational gate.
+If every required section has valid approval, say `The policy is already approved.` Do not ask for approval again. Otherwise require explicit approval of the current digest from the root-mediated human interaction, then submit that approval using the exact returned input contract. Approved policy artifacts may enter ordinary PR review without another conversational gate.
 
 Approved adherence: reconcile a bounded `AGENTS.md` block (`BEGIN ZZZOPS WORKFLOW ADHERENCE`); preserve all unrelated instructions.

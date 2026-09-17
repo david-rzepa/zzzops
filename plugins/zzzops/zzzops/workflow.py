@@ -1,0 +1,1040 @@
+"""Public workflow orchestration. Backend evidence is authority, not a cursor.
+
+Mutation serialization is short-lived; phase ownership is durable on the goal.
+The module receives the existing command services to keep provider I/O injectable.
+"""
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+import os
+import subprocess
+import time
+import uuid
+import base64
+import zlib
+import re
+from contextlib import contextmanager
+from pathlib import Path
+
+
+def digest(value):
+    return 'sha256:' + hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()).hexdigest()
+
+
+def explicit_approval(value):
+    return isinstance(value, str) and bool(value.strip()) and value == value.strip() and '<' not in value and '>' not in value
+
+
+def state(goal):
+    return copy.deepcopy(goal.get('workflow') or {'leases': {}, 'receipts': {}, 'workers': {}, 'assessments': {}, 'artifacts': {}})
+
+
+def validate_state(value):
+    def text(item):
+        return isinstance(item, str) and bool(item) and item == item.strip()
+
+    def sha256(item):
+        return (
+            isinstance(item, str) and len(item) == 71 and item.startswith('sha256:')
+            and all(character in '0123456789abcdef' for character in item[7:])
+        )
+
+    def selection(item):
+        return (
+            isinstance(item, dict) and set(item) == {'model', 'effort'}
+            and all(text(entry) for entry in item.values())
+        )
+
+    if not isinstance(value, dict) or set(value) != {'leases', 'receipts', 'workers', 'assessments', 'artifacts'}:
+        return ['workflow must contain leases, receipts, workers, assessments and artifacts']
+    if any(not isinstance(v, dict) for v in value.values()):
+        return ['workflow collections must be objects']
+    for key, lease in value['leases'].items():
+        if not text(key) or ':' not in key:
+            return ['workflow lease map identity is invalid']
+        if not isinstance(lease, dict) or set(lease) != {'token', 'owner', 'worker', 'selection', 'kind', 'input_hash', 'expires_at', 'group', 'record_hash', 'review_hash'}:
+            return ['workflow lease fields are invalid']
+        phase, separator, kind = key.rpartition(':')
+        if not separator or not text(phase) or kind not in {'execute', 'review', 'human_approval'} or lease['kind'] != kind:
+            return ['workflow lease map identity is invalid']
+        expiry = lease['expires_at']
+        if (
+            not isinstance(expiry, (int, float)) or isinstance(expiry, bool)
+            or not -float('inf') < expiry < float('inf') or expiry <= 0
+            or not all(text(lease[f]) for f in ('token', 'owner', 'group'))
+            or not sha256(lease['input_hash'])
+            or (lease['worker'] is not None and not text(lease['worker']))
+        ):
+            return ['workflow lease identity is invalid']
+        if not selection(lease['selection']):
+            return ['workflow lease selection is invalid']
+        if kind == 'execute':
+            if lease['record_hash'] is not None or lease['review_hash'] is not None:
+                return ['workflow lease evidence binding is invalid']
+        elif not sha256(lease['record_hash']) or (kind == 'review' and lease['review_hash'] is not None) or (kind == 'human_approval' and not sha256(lease['review_hash'])):
+            return ['workflow lease evidence binding is invalid']
+    for request_id, receipt in value['receipts'].items():
+        if not text(request_id) or not isinstance(receipt, dict) or set(receipt) != {'hash'} or not sha256(receipt['hash']):
+            return ['workflow receipt is invalid']
+    for identifier, worker in value['workers'].items():
+        if (
+            not text(identifier) or not isinstance(worker, dict) or set(worker) != {'id', 'group', 'selection'}
+            or worker.get('id') != identifier or not text(worker.get('group')) or not selection(worker.get('selection'))
+        ):
+            return ['workflow worker is invalid']
+    for phase, assessment in value['assessments'].items():
+        allowed = {'dimensions', 'goal_spec', 'policy'}
+        if (
+            not text(phase) or not isinstance(assessment, dict) or set(assessment) not in (allowed, allowed | {'files'})
+            or not sha256(assessment.get('goal_spec')) or not sha256(assessment.get('policy'))
+        ):
+            return ['workflow assessment is invalid']
+        dimensions = assessment.get('dimensions')
+        if (
+            not isinstance(dimensions, dict)
+            or set(dimensions) != {'consequence', 'boundedness', 'engineering_rigor'}
+            or any(not text(item) for item in dimensions.values())
+        ):
+            return ['workflow assessment dimensions are invalid']
+        files = assessment.get('files', [])
+        if not isinstance(files, list) or any(not text(path) for path in files) or len(files) != len(set(files)):
+            return ['workflow assessment files are invalid']
+    for phase, artifact in value['artifacts'].items():
+        if not text(phase) or not isinstance(artifact, dict) or set(artifact) != {'commands', 'workspace', 'passed'}:
+            return ['workflow verification artifact is invalid']
+        commands = artifact.get('commands')
+        if not sha256(artifact.get('workspace')) or not isinstance(artifact.get('passed'), bool) or not isinstance(commands, list) or not commands:
+            return ['workflow verification artifact is invalid']
+        for result in commands:
+            if not isinstance(result, dict) or set(result) != {'command', 'exit_code', 'log_hash', 'log'}:
+                return ['workflow verification command is invalid']
+            command, exit_code, log_hash = result.get('command'), result.get('exit_code'), result.get('log_hash')
+            if (
+                not isinstance(command, list) or not command or any(not text(argument) for argument in command)
+                or not isinstance(exit_code, int) or isinstance(exit_code, bool)
+                or not isinstance(log_hash, str) or len(log_hash) != 64
+                or any(character not in '0123456789abcdef' for character in log_hash)
+                or not text(result.get('log'))
+            ):
+                return ['workflow verification command is invalid']
+        if artifact['passed'] != all(result['exit_code'] == 0 for result in commands):
+            return ['workflow verification result is inconsistent']
+    return []
+
+
+class Workflow:
+    def __init__(self, api, repo, project, runtime=None):
+        self.api, self.repo, self.project = api, repo, project
+        self.runtime = runtime
+        self.repository = api._project_repository_identity(project)
+        self.adapter = api.GitHubGoalTransitionAdapter(repo, self.repository)
+
+    def read(self, number):
+        issue = self.adapter.get_issue(number)
+        return issue, self.api.github_goal_record(issue)
+
+    def artifact(self, number, content):
+        identity = digest(content)
+        marker = '<!-- zzzops-artifact ' + identity + ' -->'
+        raw = json.dumps({'hash': identity, 'content': content}, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+        if len(raw.encode('utf-8')) > 1_000_000:
+            raise ValueError('Phase artifacts must be bounded to one megabyte')
+        encoded = base64.b64encode(zlib.compress(raw.encode('utf-8'))).decode('ascii')
+        body = marker + '\n<details><summary>Immutable phase artifact</summary>\n\n```text\n' + encoded + '\n```\n</details>'
+        if len(body) > 65000:
+            raise ValueError('Artifact is too large for one provider comment; use a published Git content reference')
+        existing = [c for c in self.adapter.get_issue_comments(number) if c.get('body', '').startswith(marker)]
+        if existing and any(c['body'] != body for c in existing):
+            raise ValueError('Stored artifact identity conflicts with its contents')
+        if not existing:
+            stored = self.adapter.create_issue_comment(number, body)
+            if stored.get('body') != body:
+                raise ValueError('Provider did not confirm the exact artifact')
+        return {'reference': 'urn:' + identity, 'hash': identity}
+
+    def read_artifact(self, number, artifact):
+        artifact = self.api._phase_evidence._artifact(artifact, 'artifact', required=True)
+        reference, expected = artifact['reference'], artifact['hash']
+        if reference.startswith('git:'):
+            content = subprocess.run(['git', 'show', reference[4:]], cwd=self.repo, capture_output=True, check=True).stdout
+            if 'sha256:' + hashlib.sha256(content).hexdigest() != expected:
+                raise ValueError('Git artifact content does not match its declared hash')
+            return content.decode('utf-8')
+        if reference != 'urn:' + expected:
+            raise ValueError('Artifact reference must identify its exact stored content hash')
+        marker = '<!-- zzzops-artifact ' + expected + ' -->'
+        for comment in self.adapter.get_issue_comments(number):
+            body = comment.get('body', '')
+            if body.startswith(marker):
+                match = re.search(r'```text\n([A-Za-z0-9+/=]+)\n```', body)
+                if not match:
+                    raise ValueError('Malformed stored artifact')
+                decoder = zlib.decompressobj()
+                try:
+                    raw = decoder.decompress(base64.b64decode(match[1], validate=True), 1_000_001)
+                except (ValueError, zlib.error) as exc:
+                    raise ValueError('Malformed stored artifact encoding') from exc
+                if not decoder.eof or decoder.unused_data or len(raw) > 1_000_000:
+                    raise ValueError('Stored artifact exceeds its bounded size')
+                value = json.loads(raw)
+                if value.get('hash') != expected or digest(value.get('content')) != expected:
+                    raise ValueError('Stored artifact content changed')
+                return value['content']
+        raise ValueError('Persist the phase artifact through operation=artifact before submitting its reference')
+
+    def portfolio(self, *, allow_invalid=False):
+        portfolio = self.api.portfolio_snapshot(self.repo)
+        if not portfolio.get('complete') or (not allow_invalid and not portfolio.get('valid')):
+            raise ValueError('Repair the goal portfolio before starting or submitting work')
+        return portfolio['goals']
+
+    @contextmanager
+    def locked(self):
+        api = self.api
+        adapter = api.GitHubReservationAdapter(self.repo, self.repository)
+        owner, run = 'workflow', uuid.uuid4().hex
+        if getattr(self, '_storage_reservation', None) is not None:
+            raise ValueError('Nested workflow storage reservations are not supported')
+        deadline = time.monotonic() + 10
+        while True:
+            acquired = api.acquire_storage_lock(adapter, self.repository, 'workflow', owner, run, 300)
+            if acquired.get('acquired'):
+                break
+            if time.monotonic() >= deadline:
+                raise ValueError('Another coordinator is updating goals; retry the same request')
+            time.sleep(.2)
+        expires_at = acquired.get('expires_at')
+        if not isinstance(expires_at, (int, float)) or isinstance(expires_at, bool):
+            api.release_storage_lock(adapter, self.repository, 'workflow', owner, run)
+            raise ValueError('Provider did not confirm the storage reservation expiry; no write is allowed')
+        reservation = {
+            'adapter': adapter, 'owner': owner, 'run': run,
+            'expires_at': expires_at, 'valid': True,
+        }
+        self._storage_reservation = reservation
+        try:
+            yield
+        finally:
+            if getattr(self, '_storage_reservation', None) is reservation:
+                self._storage_reservation = None
+            api.release_storage_lock(adapter, self.repository, 'workflow', owner, run)
+
+    def save(self, issue, goal, desired, *, human_spec=None):
+        reservation = getattr(self, '_storage_reservation', None)
+        if reservation is not None:
+            if not reservation['valid']:
+                raise ValueError('A current workflow storage reservation is required before writing')
+            if time.time() >= reservation['expires_at']:
+                reservation['valid'] = False
+                raise ValueError('The workflow storage reservation expired before writing; re-read and retry')
+            renewed = self.api.renew_storage_lock(
+                reservation['adapter'], self.repository, 'workflow',
+                reservation['owner'], reservation['run'], 300,
+            )
+            if not renewed.get('acquired'):
+                reservation['valid'] = False
+                raise ValueError('The workflow storage reservation was lost before writing; re-read and retry')
+            expires_at = renewed.get('expires_at')
+            if not isinstance(expires_at, (int, float)) or isinstance(expires_at, bool) or expires_at <= time.time():
+                reservation['valid'] = False
+                raise ValueError('Provider did not confirm a live workflow storage reservation; no write is allowed')
+            reservation['expires_at'] = expires_at
+        desired['revision'] = goal['revision'] + 1
+        self.api.apply_goal_transition(self.adapter, self.repository, goal['key'], {
+            'schema_version': self.api.GOAL_TRANSITION_SCHEMA_VERSION,
+            'expected_revision': goal['revision'], 'expected_digest': goal['digest'], 'goal': desired,
+            **({'human_spec': human_spec} if human_spec is not None else {}),
+        })
+
+    def inputs(self, goal, graph):
+        live = self.api.workflow_live_inputs(self.repo, self.project, goal, 'execute', graph)
+        evidence = goal.get('phase_evidence') or self.api.empty_phase_evidence()
+        def completion_identity(completed):
+            records = (completed.get('phase_evidence') or {}).get('records', {})
+            return {
+                phase: {
+                    'status': record.get('status'),
+                    'output': record.get('output'),
+                    'not_required': record.get('not_required'),
+                }
+                for phase, record in sorted(records.items())
+            }
+        # Only explicitly consumed files invalidate a phase. HEAD/revision and
+        # other operational bookkeeping must not invalidate a reviewed design.
+        for phase, envelope in live.items():
+            node = next(node for node in graph['phases'] if node['id'] == phase)
+            if goal.get('parent'):
+                _, parent = self.read(goal['parent'])
+                parent_records = (parent.get('phase_evidence') or {}).get('records', {})
+                for gate in node.get('parent_gates', []):
+                    record = parent_records.get(gate)
+                    if record:
+                        artifact = record.get('output') or {'reference': 'urn:sha256:' + digest(record.get('not_required'))[7:], 'hash': digest(record.get('not_required'))}
+                        envelope['parents'].append({'goal': parent['key'], 'artifact': artifact})
+            for dependency in goal.get('depends_on', []):
+                _, required = self.read(dependency)
+                identity = digest({
+                    'status': required['status'],
+                    'spec': self.api.goal_spec_digest(required, title=required['title'], human_spec=required['human_spec']),
+                    'results': completion_identity(required),
+                })
+                envelope['dependencies'].append({'goal': dependency, 'artifact': {'reference': 'urn:sha256:' + identity[7:], 'hash': identity}})
+            prior = evidence['records'].get(phase, {}).get('input_envelope', {})
+            assessment = state(goal)['assessments'].get(phase)
+            paths = assessment.get('files', []) if assessment else prior.get('repository', {}).get('snapshot', {}).get('files', {})
+            envelope['repository']['snapshot'] = {'files': self.file_hashes(paths)}
+            if assessment:
+                envelope['capabilities']['snapshot'] = {'assessment': assessment}
+            if phase == 'publish' and not goal.get('parent'):
+                children = [self.read(g['key'])[1] for g in self.portfolio() if g.get('parent') == goal['key']]
+                envelope['dependencies'] += [
+                    {'goal': child['key'], 'artifact': {'reference': 'urn:sha256:' + digest({'status': child['status'], 'results': completion_identity(child), 'spec': self.api.goal_spec_digest(child, title=child['title'], human_spec=child['human_spec'])})[7:],
+                     'hash': digest({'status': child['status'], 'results': completion_identity(child), 'spec': self.api.goal_spec_digest(child, title=child['title'], human_spec=child['human_spec'])})}}
+                    for child in sorted(children, key=lambda g: g['key'])]
+            if phase == 'publish' and (goal.get('implementation') or {}).get('branch'):
+                envelope['provider']['snapshot']['publication'] = self.publication_identity(goal)
+            proof = state(goal)['artifacts'].get(phase)
+            if proof and proof.get('workspace') and proof['workspace'] != self.workspace_digest():
+                envelope['repository']['snapshot']['output_drift'] = self.workspace_digest()
+        return live
+
+    def pull_request(self, goal):
+        issue, _ = self.read(goal['key'])
+        states, _, _ = self.api._github_pull_request_states(self.repo, getattr(self.adapter, 'executable', 'gh'), [{'number': goal['key']}], {goal['key']: {'body': issue['body']}})
+        value = states.get(goal['key'])
+        if not isinstance(value, dict):
+            raise ValueError('Current provider PR evidence is unavailable')
+        return value
+
+    def publication_identity(self, goal):
+        implementation = goal['implementation']
+        if implementation.get('pr'):
+            current = self.pull_request(goal)
+            return {field: current[field] for field in ('head_oid', 'base_oid', 'base_ref')}
+        def rev(ref):
+            return subprocess.run(['git', 'rev-parse', ref], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
+        return {'head_oid': rev(implementation['branch']), 'base_oid': rev(implementation['base']), 'base_ref': implementation['base']}
+
+    def workspace_digest(self):
+        files = subprocess.run(['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], cwd=self.repo, capture_output=True, text=True, check=True).stdout.split('\0')
+        return digest(self.file_hashes(path for path in files if path and not path.startswith('.zzzops/')))
+
+    def file_hashes(self, paths):
+        result = {}
+        for relative in sorted(paths):
+            path = (self.repo / relative).resolve()
+            if not path.is_relative_to(self.repo.resolve()):
+                raise ValueError('Evidence paths must remain inside the repository')
+            result[relative] = 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else 'missing'
+        return result
+
+    def context(self, goal):
+        graph, nodes = self.api._workflow_phase_configuration(self.project, goal)
+        related = {}
+        if goal.get('parent'):
+            _, parent = self.read(goal['parent'])
+            parent_graph, _ = self.api._workflow_phase_configuration(self.project, parent)
+            related[goal['parent']] = {'goal': parent, 'live_inputs': self.inputs(parent, parent_graph)}
+        return graph, nodes, self.inputs(goal, graph), related
+
+    def step(self, number):
+        _, goal = self.read(number)
+        if goal['status'] in {'done', 'cancelled'}:
+            return []
+        if goal.get('needs_human'):
+            return [{'kind': 'blocker', 'assignment': 'root', 'goal': number,
+                     'action': 'Resolve human blockers on root. Remove only resolved entries from changes.blockers, retain unresolved entries, and describe the resolution in changes.next_action.',
+                     'categories': goal.get('blocker_categories', []),
+                     'submission': {'operation': 'revise', 'expected_digest': goal['digest'], 'request_id': 'new-unique-id',
+                                    'changes': {'blockers': goal.get('blockers', []), 'next_action': '<observed blocker resolution>'}}}]
+        if goal.get('claim'):
+            return [{'kind': 'recover_legacy', 'assignment': 'root', 'goal': number, 'action': 'Confirm the legacy worker stopped before replacing its claim with phase leases.', 'submission': {'operation': 'recover_legacy', 'claim_hash': digest(goal['claim']), 'worker_status': 'stopped', 'evidence': '<observed terminal state>', 'request_id': 'new-unique-id'}}]
+        graph, nodes, live, related = self.context(goal)
+        result = self.api.workflow_step_plan(goal, graph, live, nodes,
+                    self.api._workflow_section(self.project, 'model_routing')['settings'], self.runtime,
+                    related_goals=related)
+        steps = result['next_steps']
+        for step in steps:
+            phase = step.get('phase')
+            step['goal'] = number
+            if not phase:
+                step.update(action='Discover the complete harness tool catalog, including deferred tools, and available model/effort pairs. Resubmit --runtime with root_pair, available_pairs, root_id and delegation evidence.',
+                            runtime_contract={'root_pair': {'model': 'identifier', 'effort': 'identifier'}, 'available_pairs': [], 'root_id': 'thread-id', 'delegation': {'available': True, 'tool': 'actual harness tool name', 'discovery_complete': True}})
+                continue
+            kind = step['kind']
+            if kind not in {'execute', 'review', 'human_approval'}:
+                step.update(action='Resolve this routing prerequisite on root. If it needs user authority, persist a blocker and continue other goals; do not silently substitute root work.',
+                            instruction=self.api.workflow_instruction('routing-evidence'),
+                            submission={'operation': 'block', 'category': 'access-approval', 'reason': step.get('reason', 'Routing prerequisite unavailable'), 'request_id': 'new-unique-id'})
+                continue
+            if phase == 'test_design' and not goal['acceptance_criteria']:
+                step.clear()
+                step.update(kind='specify', assignment='root', goal=number, action='Capture explicit acceptance bullets for every required behavior before designing tests.', submission={'operation': 'specify', 'expected_digest': goal['digest'], 'human_spec': '<complete updated human goal specification with acceptance bullets>', 'request_id': 'new-unique-id'})
+                continue
+            if phase == 'publish':
+                gate = self.publication_gate(goal)
+                if gate:
+                    step.clear(); step.update(gate, goal=number, phase=phase)
+                    continue
+            if step.get('assignment') == 'delegate':
+                capability = (self.runtime or {}).get('delegation', {})
+                if not capability.get('available') or not capability.get('discovery_complete') or not capability.get('tool'):
+                    step.update(kind='capability_discovery', assignment='root', action='Discover deferred delegation tools and record the actual launch tool in runtime.delegation. If unavailable, record a blocker; do not silently run this phase on root.')
+                    continue
+            phase_input = live[phase]
+            assessment = state(goal)['assessments'].get(phase)
+            if not assessment or assessment.get('goal_spec') != phase_input['goal_spec'] or assessment.get('policy') != phase_input['policy']:
+                step.clear()
+                step.update(kind='assess', assignment='root', goal=number, phase=phase,
+                            action='Assess consequence, boundedness and engineering rigor; declare every repository file consumed by this phase. Use an empty list only when no repository files are inputs.',
+                            input_hash=digest(phase_input), submission={'operation': 'assess', 'phase': phase, 'input_hash': digest(phase_input), 'request_id': 'new-unique-id', 'files': [], 'dimensions': {'consequence': 'bounded', 'boundedness': 'atomic', 'engineering_rigor': 'structured'}})
+                continue
+            key = phase + ':' + kind
+            lease = state(goal)['leases'].get(key)
+            step['instruction'] = self.api.workflow_instruction(f'phase:{phase}:{"review" if kind == "human_approval" else kind}')
+            step['input_envelope'] = phase_input
+            step['input_hash'] = digest(phase_input)
+            step['goal_specification'] = {'reference': goal['url'], 'hash': phase_input['goal_spec'], 'read': {'operation': 'read', 'phase': phase}}
+            step['artifact_submission'] = {'operation': 'artifact', 'lease': '<current-token>', 'actor': '<bound-worker>', 'content': '<phase output or review content>'}
+            records = (goal.get('phase_evidence') or {}).get('records', {})
+            step['upstream_evidence'] = {entry['phase']: records[entry['phase']].get('output') for entry in phase_input['upstream_outputs'] if entry['phase'] in records}
+            if kind != 'execute':
+                step['review_target'] = {'record_hash': digest(records.get(phase)), 'output': records.get(phase, {}).get('output'), 'verification': records.get(phase, {}).get('verification')}
+                if step['review_target']['output']:
+                    step['review_target']['read'] = {'operation': 'read', 'artifact': step['review_target']['output']}
+            step['submission'] = {'operation': 'record_result' if kind == 'execute' else 'record_review' if kind == 'review' else 'approve', 'phase': phase, 'request_id': 'new-unique-id', 'lease': 'token from start', 'actor': 'bound worker identity'}
+            if kind == 'execute':
+                step['submission']['files'] = list(phase_input['repository']['snapshot']['files'])
+            step['result_contract'] = {
+                'record': {'status': 'completed', 'input_envelope': phase_input, 'input_hash': digest(phase_input), 'output': {'reference': '<immutable content reference>', 'hash': '<sha256 digest>'}, 'verification': None, 'routing': {'reference': 'urn:sha256:' + digest(assessment)[7:], 'hash': digest(assessment)}, 'selection': step['selection'], 'actor': '<bound-worker>', 'not_required': None, 'test_design': None},
+                'review': {'artifact': {'reference': '<immutable review reference>', 'hash': '<sha256 digest>'}, 'outcomes': {'acceptance': 'approved or changes_requested', 'entropy': {'outcome': 'no_findings, fixed or follow_up', 'evidence': '<concrete finding or inspected scope>', 'goals': []}}},
+                'approval': {'actor': '<root-id>', 'approval_token': '<explicit user approval reference>'},
+            }
+            step['recovery_contract'] = {'operation': 'recover', 'phase': phase, 'lease': '<exact-token>', 'worker_status': 'stopped', 'evidence': '<observed terminal state>', 'request_id': 'new-unique-id'}
+            if nodes[phase].get('not_required', 'never') != 'never':
+                step['result_contract']['not_required'] = {'status': 'not_required', 'output': None, 'not_required': {'reason': '<evidence supporting this exception>', 'policy_rule': nodes[phase]['not_required']}}
+            step['command'] = ['--intent', 'execute', '--goal', str(number), '--runtime', '<runtime.json>', '--input', '<submission.json>']
+            if phase in {'test_design', 'implement', 'publish'}:
+                step['verification'] = {'operation': 'verify', 'phase': phase, 'lease': '<current-token>', 'actor': '<bound-worker>', 'commands': [['<project-test-runner>', '<arguments>']], 'request_id': 'new-unique-id'}
+                try:
+                    implementation = goal.get('implementation') or {}
+                    if implementation.get('pr'):
+                        identity = self.publication_identity(goal)
+                        step['base_commit'] = identity['base_oid']
+                        step['work_head'] = identity['head_oid']
+                        step['base_branch'] = identity['base_ref']
+                    else:
+                        step['base_branch'] = implementation.get('base') or implementation.get('target') or 'dev'
+                        step['base_commit'] = subprocess.run(['git', 'rev-parse', '--verify', step['base_branch'] + '^{commit}'], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
+                except subprocess.CalledProcessError:
+                    step.clear()
+                    step.update(kind='publication_setup', assignment='root', goal=number, phase=phase,
+                                action='Fetch or record the declared implementation base before starting this phase; its exact commit is unavailable.')
+                    continue
+            step['start'] = {'operation': 'start', 'phase': phase, 'kind': kind, 'input_hash': step['input_hash'], 'request_id': 'new-unique-id'}
+            step['assignment_group'] = nodes[phase].get('review', {}).get('assignment_group', 'review') if kind == 'review' else nodes[phase]['assignment_group']
+            reusable = [w for w in state(goal)['workers'].values() if w.get('group') == step['assignment_group'] and w.get('selection') == step['selection'] and (kind != 'review' or w['id'] != (goal.get('phase_evidence') or {}).get('records', {}).get(phase, {}).get('actor'))]
+            if reusable:
+                step['resume_worker'] = reusable[-1]['id']
+            if lease:
+                step['lease'] = lease
+                step['kind'] = 'recover' if lease['expires_at'] <= time.time() else 'await_worker'
+                step['action'] = 'Check the bound worker. Reconcile completion or explicitly recover only after confirming it stopped; expiry is not permission to duplicate work.'
+            else:
+                step['action'] = 'Acquire this phase with the start request before doing work; bind the actual executor before submitting evidence.'
+        if not steps and result['frontier']['blocked']:
+            return [{'kind': 'dependency', 'assignment': 'root', 'goal': number, 'action': 'Complete the required ancestor phases.', 'blocked': result['frontier']['blocked']}]
+        if not steps:
+            if (goal.get('implementation') or {}).get('pr'):
+                current = self.pull_request(goal)
+                classification = self.api.classify_pr_merge(goal, current, self.repository)
+                if classification['status'] != 'merged_verified':
+                    if not current.get('merged'):
+                        return [{'kind': 'integration', 'assignment': 'root', 'goal': number, 'action': 'Confirm human merge approval and green checks for this exact PR head, then integrate through the CLI.', 'head': current['head_oid'], 'submission': {'operation': 'integrate', 'expected_head': current['head_oid'], 'approved_by': '<user>', 'request_id': 'new-unique-id'}}]
+                    return [{'kind': 'repair', 'assignment': 'root', 'goal': number, 'action': 'Reconcile incomplete or stale merge evidence before completing this goal.', 'reasons': classification['reasons']}]
+            return [{'kind': 'complete', 'goal': number, 'assignment': 'root', 'action': 'All required phase evidence is current. Record completion, then continue with the next goal.', 'submission': {'operation': 'complete', 'request_id': 'new-unique-id'}}]
+        return steps
+
+    def publication_gate(self, goal):
+        if not goal.get('parent'):
+            children = [self.read(g['key'])[1] for g in self.portfolio() if g.get('parent') == goal['key']]
+            skipped = False
+            record = (goal.get('phase_evidence') or {}).get('records', {}).get('decompose', {})
+            if record.get('status') == 'not_required':
+                graph, nodes, live, related = self.context(goal)
+                frontier = self.api.derive_phase_steps(goal, graph, live, related, review_policy=nodes)
+                pending = frontier['execute'] + frontier['review'] + frontier['blocked']
+                skipped = (
+                    'decompose' not in frontier['stale']
+                    and not any(item.get('phase') == 'decompose' for item in pending)
+                    and not any(item == 'decompose:missing_live_input' for item in frontier['diagnostics'])
+                )
+            if (not children and not skipped) or any(g['status'] != 'done' or not (g.get('phase_evidence') or {}).get('records') for g in children):
+                return {'kind': 'dependency', 'assignment': 'root', 'action': 'Complete all implementation child goals before aggregate publication review.', 'children': [g['key'] for g in children]}
+        implementation = goal.get('implementation') or {}
+        if not implementation.get('branch'):
+            if goal.get('parent'):
+                return {'kind': 'publication_setup', 'assignment': 'root', 'action': 'Record the implementation branch, base and target before publication.'}
+            return None
+        # Read provider topology here, never accept a caller-supplied topology as
+        # proof that another coordinator has not published in the meantime.
+        result = subprocess.run(['gh', 'pr', 'list', '--state', 'open', '--limit', '1000', '--json', 'headRefName,baseRefName,headRefOid'], cwd=self.repo, capture_output=True, text=True, check=True)
+        pulls = json.loads(result.stdout)
+        managed_branches = {(g.get('implementation') or {}).get('branch') for g in self.portfolio()}
+        managed_branches.add(implementation['branch'])
+        pulls = [pull for pull in pulls if pull['headRefName'] in managed_branches]
+        trunk = implementation.get('target') or 'dev'
+        ordered, base = [], trunk
+        remaining = list(pulls)
+        while remaining:
+            matches = [p for p in remaining if p['baseRefName'] == base]
+            if len(matches) != 1:
+                return {'kind': 'repair_stack', 'assignment': 'root', 'action': 'Rebase open PRs into one linear stack before publication.'}
+            p = matches[0]; remaining.remove(p)
+            ordered.append({'branch': p['headRefName'], 'base': p['baseRefName'], 'head': p['headRefOid']})
+            base = p['headRefName']
+        def rev(ref):
+            return subprocess.run(['git', 'rev-parse', ref], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
+        published = next((i for i, p in enumerate(ordered) if p['branch'] == implementation['branch']), None)
+        if published is not None:
+            ordered = ordered[:published]
+        identity = self.publication_identity(goal)
+        candidate = {'branch': implementation['branch'], 'base': identity['base_ref'], 'base_head': identity['base_oid'], 'head': identity['head_oid']}
+        if implementation.get('pr') and (rev(implementation['branch']) != identity['head_oid'] or rev(implementation['base']) != identity['base_oid']):
+            return {'kind': 'repair_stack', 'assignment': 'root', 'action': 'Synchronize the local candidate and base with the exact provider commits before verifying publication.', 'head': identity['head_oid'], 'base': identity['base_oid']}
+        directive = self.api.linear_publication_next_step(ordered, candidate, trunk=trunk)
+        if directive['action'] != 'publish_linear':
+            return {'kind': 'repair_stack', 'assignment': 'root', **directive}
+        return None
+
+    def verify(self, number, payload):
+        # Verification may be slow. Never hold the short backend storage lock
+        # while tests run; revalidate ownership and inputs before recording it.
+        _, goal = self.read(number)
+        receipt = state(goal)['receipts'].get(payload['request_id'])
+        if receipt:
+            if receipt['hash'] != digest(payload):
+                raise ValueError('request_id was already used with different inputs')
+            return {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'Verification was already recorded; re-read its evidence.'}]}
+        lease = next((v for v in state(goal)['leases'].values() if v['token'] == payload.get('lease')), None)
+        if not lease or payload.get('actor') != lease['worker']:
+            raise ValueError('Verification requires the bound phase executor')
+        commands = payload.get('commands')
+        if not isinstance(commands, list) or not commands or any(not isinstance(command, list) or not command or any(not isinstance(arg, str) or not arg for arg in command) for command in commands):
+            raise ValueError('Verification commands must be nonempty argument arrays')
+        before = self.workspace_digest()
+        logs = self.repo / '.zzzops' / 'diagnostics'
+        logs.mkdir(parents=True, exist_ok=True)
+        results = []
+        for index, command in enumerate(commands):
+            log = logs / f'verify-{lease["token"]}-{index}.log'
+            with log.open('w') as output:
+                process = subprocess.run(command, cwd=self.repo, stdout=output, stderr=subprocess.STDOUT, timeout=300, check=False)
+            results.append({'command': command, 'exit_code': process.returncode, 'log_hash': hashlib.sha256(log.read_bytes()).hexdigest(), 'log': str(log)})
+        after = self.workspace_digest()
+        if before != after:
+            raise ValueError('Verification changed repository inputs; inspect generated changes and rerun')
+        proof = {'commands': results, 'workspace': after, 'passed': all(r['exit_code'] == 0 for r in results)}
+        return self.mutate(number, payload, _proof=proof)
+
+    def mutate(self, number, payload, *, _proof=None):
+        if not isinstance(payload, dict) or not isinstance(payload.get('request_id'), str) or not payload['request_id']:
+            raise ValueError('Every mutation requires a stable request_id for safe retries')
+        if payload.get('operation') == 'verify' and _proof is None:
+            return self.verify(number, payload)
+        with self.locked():
+            portfolio = self.portfolio(allow_invalid=payload.get('operation') in {'revise', 'recover_legacy'})
+            issue, goal = self.read(number)
+            desired = self.api.parse_managed_goal(issue['body'], number)
+            durable = state(goal)
+            fingerprint = digest(payload)
+            receipt = durable['receipts'].get(payload['request_id'])
+            if receipt:
+                if receipt['hash'] != fingerprint:
+                    raise ValueError('request_id was already used with different inputs')
+                return {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'This request was already applied. Re-read current goal evidence.'}]}
+            operation = payload.get('operation')
+            human_spec = None
+            phase = payload.get('phase')
+            runtime = self.runtime or {}
+            root = runtime.get('root_id')
+            if not root:
+                raise ValueError('Current runtime.root_id is required')
+            if operation == 'start':
+                kind = payload.get('kind')
+                step = next((s for s in self.step(number) if s.get('phase') == phase and s.get('kind') == kind), None)
+                if not step or kind not in {'execute', 'review', 'human_approval'}:
+                    raise ValueError('This phase is not eligible to start')
+                if step['input_hash'] != payload.get('input_hash'):
+                    raise ValueError('Start inputs changed; request a fresh checkpoint')
+                if phase == 'publish':
+                    for row in self.portfolio():
+                        other = self.read(row['key'])[1] if row['status'] not in {'done', 'cancelled'} else row
+                        if other['key'] != number and any(k.startswith('publish:') for k in state(other)['leases']):
+                            raise ValueError('Another goal owns publication; wait or recover its lease')
+                key = phase + ':' + kind
+                evidence = goal.get('phase_evidence') or self.api.empty_phase_evidence()
+                lease = {'token': uuid.uuid4().hex, 'owner': root, 'worker': root if step['assignment'] == 'root' else None,
+                         'selection': step['selection'], 'kind': kind, 'input_hash': step['input_hash'], 'expires_at': time.time() + 900, 'group': step['assignment_group'],
+                         'record_hash': digest(evidence['records'].get(phase)) if kind != 'execute' else None,
+                         'review_hash': digest(evidence['reviews'].get(phase)) if kind == 'human_approval' else None}
+                durable['leases'][key] = lease
+                response = {'next_steps': [{**step, 'kind': 'perform', 'lease': lease, 'action': 'Perform the root step.' if lease['worker'] else 'Launch or resume the assigned worker, then bind its identity using operation=bind. Release the lease if dispatch fails.', 'bind': {'operation': 'bind', 'phase': phase, 'lease': lease['token'], 'actor': '<worker-id>', 'selection': lease['selection'], 'request_id': 'new-unique-id'}}]}
+            elif operation == 'assess':
+                graph, nodes, live, _ = self.context(goal)
+                if phase not in nodes or payload.get('input_hash') != digest(live[phase]):
+                    raise ValueError('Assessment must bind the current phase inputs')
+                dimensions = payload.get('dimensions')
+                if not isinstance(dimensions, dict):
+                    raise ValueError('Root capability assessment dimensions are required')
+                self.api.capability_tier(self.api._workflow_section(self.project, 'model_routing')['settings'], {**dimensions, 'phase_type': phase})
+                files = payload.get('files')
+                if not isinstance(files, list) or any(not isinstance(path, str) or not path for path in files):
+                    raise ValueError('Declared phase inputs must be repository-relative file paths')
+                self.file_hashes(files)
+                durable['assessments'][phase] = {'dimensions': dimensions, 'goal_spec': live[phase]['goal_spec'], 'policy': live[phase]['policy'], 'files': files}
+                response = {'next_steps': [{'kind': 'checkpoint', 'action': 'Re-evaluate the goal with the recorded capability assessment.', 'goal': number}]}
+            elif operation == 'withdraw':
+                evidence = goal.get('phase_evidence') or self.api.empty_phase_evidence()
+                record = evidence['records'].get(phase)
+                if payload.get('record_hash') != digest(record):
+                    raise ValueError('Withdrawal requires the exact current record hash')
+                if any(k.startswith(str(phase) + ':') for k in durable['leases']):
+                    raise ValueError('Stop and reconcile the phase worker before withdrawing its evidence')
+                desired['phase_evidence'] = self.api.withdraw_phase_evidence(evidence, phase, reason=payload['reason'], actor=root)
+                response = {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'Reassess withdrawn phase evidence.'}]}
+            elif operation == 'revise':
+                if payload.get('expected_digest') != goal['digest']:
+                    raise ValueError('Goal changed before revision; re-read it')
+                changes = payload.get('changes')
+                allowed = {'priority', 'value', 'difficulty', 'confidence', 'depends_on', 'parent', 'resources', 'engineering_rigor', 'implementation', 'next_action', 'blockers'}
+                if not isinstance(changes, dict) or set(changes) - allowed:
+                    raise ValueError('Only goal metadata may be revised; phase evidence and completion use their guarded operations')
+                if 'implementation' in changes:
+                    incoming = (changes['implementation'] or {}).get('review')
+                    existing = (goal.get('implementation') or {}).get('review')
+                    if incoming != existing and incoming != {'status': 'not_started', 'checkpoint': None}:
+                        raise ValueError('Review approval/checkpoints must come from guarded publication, not metadata revision')
+                desired.update(changes)
+                projected = [{**row, **changes} if row['key'] == number else row for row in portfolio]
+                relation_codes = {'missing_relation', 'self_relation', 'parent_cycle', 'depends_on_cycle', 'duplicate_dependency', 'done_with_unfinished_dependency', 'cancelled_dependency'}
+                def issues(rows):
+                    return {(f['code'], f['goal'], f['detail']) for f in self.api.audit_portfolio(copy.deepcopy(rows), 'github_issues') if f['code'] in relation_codes}
+                if issues(projected) - issues(portfolio):
+                    raise ValueError('The proposed metadata would break goal-DAG invariants')
+                response = {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'Re-evaluate changed goal metadata and affected phase evidence.'}]}
+            elif operation == 'recover_legacy':
+                if payload.get('claim_hash') != digest(goal.get('claim')) or payload.get('worker_status') != 'stopped' or not explicit_approval(payload.get('evidence')):
+                    raise ValueError('Legacy claim recovery requires exact claim identity and evidence the worker stopped')
+                desired['claim'] = None
+                response = {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'Reassess missing phase evidence; old claims do not imply completed work.'}]}
+            elif operation == 'reopen':
+                if payload.get('expected_digest') != goal['digest'] or not explicit_approval(payload.get('reason')):
+                    raise ValueError('Reopening requires current goal digest and an explicit reason')
+                desired['status'] = 'ready'
+                desired['next_action'] = payload['reason']
+                response = {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'Re-evaluate all evidence under current policy; retained historical phases may be stale.'}]}
+            elif operation == 'specify':
+                if payload.get('expected_digest') != goal['digest'] or not isinstance(payload.get('human_spec'), str) or not payload['human_spec'].strip():
+                    raise ValueError('Specification changes require exact current goal digest and nonempty human_spec')
+                if durable['leases']:
+                    raise ValueError('Reconcile workers before changing the specification they consume')
+                human_spec = payload['human_spec']
+                if not self.api._goals.goal_acceptance_criteria(human_spec):
+                    raise ValueError('Specify explicit acceptance bullets so every behavior can be covered by tests')
+                response = {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'Reassess the changed specification and obtain its required design approval.'}]}
+            elif operation == 'block':
+                if payload.get('category') not in self.api.BLOCKER_CATEGORIES or not explicit_approval(payload.get('reason')):
+                    raise ValueError('A concrete categorized blocker is required')
+                blocker = {'id': digest({'category': payload['category'], 'reason': payload['reason']})[7:23], 'status': 'open', 'category': payload['category'], 'reason': payload['reason']}
+                desired['blockers'] = [b for b in desired['blockers'] if b.get('id') != blocker['id']] + [blocker]
+                desired['status'] = 'blocked'
+                desired['next_action'] = payload['reason']
+                response = {'next_steps': [{'kind': 'checkpoint', 'action': 'The blocker is durable. Continue independent goals.'}]}
+            elif operation == 'complete':
+                graph, nodes, live, related = self.context(goal)
+                frontier = self.api.derive_phase_steps(goal, graph, live, related, review_policy=nodes)
+                if frontier['execute'] or frontier['review'] or frontier['blocked'] or frontier.get('approve'):
+                    raise ValueError('Goal completion requires every phase and review to be current')
+                merged = (goal.get('implementation') or {}).get('pr') and self.pull_request(goal).get('merged')
+                if not merged and self.publication_gate(goal):
+                    raise ValueError('Aggregate/publication proof is incomplete')
+                if durable['leases']:
+                    raise ValueError('Reconcile active workers before completing the goal')
+                if (goal.get('implementation') or {}).get('pr'):
+                    classification = self.api.classify_pr_merge(goal, self.pull_request(goal), self.repository)
+                    if classification['status'] != 'merged_verified':
+                        raise ValueError('Completion requires exact-head merged PR evidence: ' + str(classification))
+                desired['status'] = 'done'
+                desired['next_action'] = 'Completed from current phase evidence.'
+                response = {'next_steps': [{'kind': 'checkpoint', 'action': 'Continue execution across the remaining portfolio.'}]}
+            elif operation == 'integrate':
+                graph, nodes, live, related = self.context(goal)
+                frontier = self.api.derive_phase_steps(goal, graph, live, related, review_policy=nodes)
+                if frontier['execute'] or frontier['review'] or frontier['blocked'] or durable['leases']:
+                    raise ValueError('Integration requires all phase reviews and reconciled workers')
+                current = self.pull_request(goal)
+                if not explicit_approval(payload.get('approved_by')) or payload.get('expected_head') != current['head_oid'] or not current.get('checks_verified'):
+                    raise ValueError('Integration requires exact-head human approval and current green checks')
+                if self.publication_gate(goal):
+                    raise ValueError('Repair publication topology before integration')
+                if not current.get('merged'):
+                    subprocess.run(['gh', 'pr', 'merge', goal['implementation']['pr'], '--squash', '--match-head-commit', current['head_oid']], cwd=self.repo, capture_output=True, text=True, check=True)
+                desired['implementation']['review'] = {'status': 'approved', 'checkpoint': current['head_oid']}
+                response = {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'Re-read provider evidence before recording completion.'}]}
+            else:
+                matches = [(k, v) for k, v in durable['leases'].items() if v['token'] == payload.get('lease')]
+                if len(matches) != 1:
+                    raise ValueError('An exact current phase lease is required')
+                key, lease = matches[0]
+                if not key.startswith(str(phase) + ':') or lease['owner'] != root:
+                    raise ValueError('Lease belongs to another coordinator or phase')
+                if operation == 'bind':
+                    actor = payload.get('actor')
+                    if not isinstance(actor, str) or not actor or payload.get('selection') != lease['selection']:
+                        raise ValueError('Bind the actual executor and exact selected model/effort')
+                    if lease['worker'] and lease['worker'] != actor:
+                        raise ValueError('A bound executor cannot be replaced without recovery')
+                    if lease['kind'] != 'human_approval' and phase != 'understand' and actor == root:
+                        raise ValueError('Autonomous phase work must be delegated')
+                    if lease['kind'] == 'review' and actor == (goal.get('phase_evidence') or {}).get('records', {}).get(phase, {}).get('actor'):
+                        raise ValueError('Reviewer must be independent')
+                    lease['worker'] = actor
+                    durable['workers'][actor] = {'id': actor, 'group': lease['group'], 'selection': lease['selection']}
+                    response = {'next_steps': [{'kind': 'heartbeat', 'assignment': 'root', 'goal': number, 'phase': phase, 'lease': lease, 'action': 'Configure a local liveness probe for the bound worker so the CLI can renew ownership. Exit 0 means active, 1 stopped, other/timeout unknown.', 'submission': {'operation': 'heartbeat', 'phase': phase, 'lease': lease['token'], 'probe': ['<local-worker-status-command>', '<worker-id>']}}]}
+                elif operation == 'verify':
+                    if payload.get('actor') != lease['worker'] or lease['kind'] != 'execute':
+                        raise ValueError('Only the bound executor can verify phase work')
+                    proof = _proof
+                    if proof['workspace'] != self.workspace_digest():
+                        raise ValueError('Verification inputs changed before persistence')
+                    results = proof['commands']
+                    durable['artifacts'][phase] = proof
+                    self.artifact(number, proof)
+                    proof_hash = digest(proof)
+                    expected = not proof['passed'] if phase == 'test_design' else proof['passed']
+                    response = {'next_steps': [{'kind': 'record_result' if expected else 'correct', 'goal': number, 'phase': phase, 'action': 'Submit this evidence after confirming failures exercise the intended missing behavior.' if expected and phase == 'test_design' else 'Submit the verified result.' if expected else 'Correct the checks or implementation and rerun verification.', 'verification': {'reference': 'urn:sha256:' + proof_hash[7:], 'hash': proof_hash}, **({} if proof['passed'] else {'logs': [r['log'] for r in results if r['exit_code'] != 0]})}]}
+                elif operation in {'renew', 'release', 'recover'}:
+                    if operation == 'recover' and (payload.get('worker_status') != 'stopped' or not payload.get('evidence')):
+                        raise ValueError('Recovery requires evidence that the old worker stopped; expiry/unknown liveness is insufficient')
+                    if operation == 'release' and lease['worker'] and payload.get('worker_status') not in {'completed', 'stopped'}:
+                        raise ValueError('Confirm worker completion or stop before releasing ownership')
+                    if operation == 'release' and lease['worker'] and not payload.get('evidence'):
+                        raise ValueError('Bound-worker release requires terminal-state evidence')
+                    if operation == 'renew':
+                        if payload.get('actor') != lease['worker'] or payload.get('worker_status') != 'active':
+                            raise ValueError('Renewal requires observed activity of the bound worker')
+                        lease['expires_at'] = time.time() + 900
+                    else:
+                        del durable['leases'][key]
+                        if operation == 'recover':
+                            durable['workers'].pop(lease['worker'], None)
+                    response = {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'Re-evaluate current goal evidence.'}]}
+                else:
+                    response = self.submit_evidence(goal, desired, durable, key, lease, payload)
+            desired['workflow'] = durable
+            if operation != 'renew':
+                durable['receipts'][payload['request_id']] = {'hash': fingerprint}
+            self.save(issue, goal, desired, human_spec=human_spec)
+            if operation == 'verify' and response['next_steps'][0]['kind'] == 'record_result':
+                artifact = response['next_steps'][0]['verification']
+                next_step = next(s for s in self.step(number) if s.get('phase') == phase)
+                next_step.update(kind='record_result', action=response['next_steps'][0]['action'])
+                record = next_step['result_contract']['record']
+                record['actor'] = lease['worker']
+                if phase == 'test_design':
+                    record['test_design'] = {'baseline_failure': artifact, 'coverage': [{'criterion': criterion, 'test': None, 'exclusion': None} for criterion in record['input_envelope']['acceptance_criteria']]}
+                else:
+                    record['verification'] = artifact
+                next_step['submission'].update(lease=lease['token'], actor=lease['worker'], record=record)
+                next_step['verification'] = artifact
+                return {'next_steps': [next_step]}
+            return response
+
+    def submit_evidence(self, goal, desired, durable, key, lease, payload):
+        api = self.api
+        phase, operation = payload['phase'], payload['operation']
+        if not lease['worker'] or payload.get('actor') != lease['worker']:
+            raise ValueError('Only the bound executor may submit evidence')
+        graph, nodes, live, related = self.context(goal)
+        frontier = api.derive_phase_steps(goal, graph, live, related, review_policy=nodes)
+        expected_frontier = frontier['execute'] if lease['kind'] == 'execute' else frontier['review']
+        if phase not in {item['phase'] for item in expected_frontier}:
+            raise ValueError('Ancestor or review evidence changed; this assignment is no longer eligible')
+        if lease['input_hash'] != digest(live[phase]):
+            raise ValueError('Phase inputs changed while work was in flight; reassess before submitting')
+        evidence = goal.get('phase_evidence') or api.empty_phase_evidence()
+        if lease['kind'] != 'execute' and lease['record_hash'] != digest(evidence['records'].get(phase)):
+            raise ValueError('The reviewed artifact changed while review was in flight')
+        if lease['kind'] == 'human_approval' and lease['review_hash'] != digest(evidence['reviews'].get(phase)):
+            raise ValueError('The independent review changed before human approval')
+        if operation == 'record_result' and lease['kind'] == 'execute':
+            record = copy.deepcopy(payload['record'])
+            if record.get('status') == 'not_required' and (nodes[phase].get('not_required', 'never') == 'never' or (record.get('not_required') or {}).get('policy_rule') != nodes[phase]['not_required']):
+                raise ValueError('The reviewed policy does not permit this phase exemption')
+            if record['actor'] != lease['worker'] or record['selection'] != lease['selection']:
+                raise ValueError('Result actor/model/effort does not match the assigned executor')
+            routing_hash = digest(durable['assessments'].get(phase))
+            if record.get('routing') != {'reference': 'urn:' + routing_hash, 'hash': routing_hash}:
+                raise ValueError('Result routing must bind the current capability assessment')
+            # Declared file dependencies are re-read at submission, not trusted hashes.
+            files = payload.get('files', [])
+            actual = self.file_hashes(files)
+            expected = record['input_envelope']['repository']['snapshot'].get('files', {})
+            if actual != expected:
+                raise ValueError('Declared file evidence changed or was omitted')
+            live[phase]['repository']['snapshot']['files'] = actual
+            if phase in {'implement', 'publish'} and record.get('status') != 'not_required':
+                proof = durable['artifacts'].get(phase)
+                if not proof or not proof.get('passed') or proof.get('workspace') != self.workspace_digest() or (record.get('verification') or {}).get('hash') != digest(proof):
+                    raise ValueError('Implementation/publication requires current passing verification from operation=verify')
+            if phase == 'test_design' and record.get('status') != 'not_required':
+                proof = durable['artifacts'].get(phase)
+                if not proof or proof.get('passed') or proof.get('workspace') != self.workspace_digest() or ((record.get('test_design') or {}).get('baseline_failure') or {}).get('hash') != digest(proof):
+                    raise ValueError('Test design requires current failing-baseline evidence from operation=verify')
+            if phase == 'publish' and (goal.get('implementation') or {}).get('branch'):
+                current = self.pull_request(goal)
+                if self.publication_gate(goal):
+                    raise ValueError('Publication topology changed; reconcile before recording the result')
+                desired['implementation']['review'] = {'status': 'not_started', 'checkpoint': current['head_oid']}
+            if record.get('output'):
+                self.read_artifact(goal['key'], record['output'])
+            desired['phase_evidence'] = api.record_phase_result(
+                evidence, phase, record, live[phase], phase_policy=nodes,
+            )
+        elif operation == 'record_review' and lease['kind'] == 'review':
+            if phase == 'publish' and (goal.get('implementation') or {}).get('pr') and not self.pull_request(goal).get('checks_verified'):
+                raise ValueError('Publication review requires current green CI checks')
+            outcomes = payload.get('outcomes')
+            if not isinstance(outcomes, dict) or set(outcomes) != {'acceptance', 'entropy'}:
+                raise ValueError('Review requires separate acceptance and entropy outcomes')
+            entropy = outcomes['entropy']
+            if not isinstance(entropy, dict) or entropy.get('outcome') not in {'no_findings', 'fixed', 'follow_up'} or not entropy.get('evidence'):
+                raise ValueError('Entropy review requires an explicit evidenced disposition')
+            if entropy['outcome'] == 'follow_up':
+                ids = entropy.get('goals', [])
+                if not ids:
+                    raise ValueError('Out-of-scope entropy requires durable follow-up goals immediately')
+                for number in ids:
+                    _, followup = self.read(number)
+                    if followup['status'] in {'done', 'cancelled'} or (followup.get('parent') != goal['key'] and goal['key'] not in followup.get('depends_on', [])):
+                        raise ValueError('Entropy follow-up must be an open goal linked to this reviewed goal')
+            if outcomes['acceptance'] not in {'approved', 'changes_requested'}:
+                raise ValueError('Acceptance review decision is invalid')
+            self.read_artifact(goal['key'], payload['artifact'])
+            desired['phase_evidence'] = api.record_phase_review(evidence, phase, payload['artifact'], lease['worker'], decision=outcomes['acceptance'], require_independent=nodes[phase]['review'].get('independent', True), outcomes=outcomes)
+        elif operation == 'approve' and lease['kind'] == 'human_approval':
+            if payload.get('actor') != (self.runtime or {}).get('root_id'):
+                raise ValueError('Human approval must be recorded by root')
+            if payload.get('approval', {}).get('actor') != payload['actor']:
+                raise ValueError('Approval provenance must match the root executor')
+            if not explicit_approval(payload['approval'].get('approval_token')):
+                raise ValueError('Replace the approval placeholder with an explicit user approval reference')
+            # Exact reviewed evidence, never approval implied by phase completion.
+            desired['phase_evidence'] = api.record_phase_approval(evidence, phase, actor='root', approval_token=payload['approval']['approval_token'])
+        elif operation == 'withdraw':
+            desired['phase_evidence'] = api.withdraw_phase_evidence(evidence, phase, reason=payload['reason'], actor=lease['worker'])
+        else:
+            raise ValueError('Operation does not match the leased phase assignment')
+        del durable['leases'][key]
+        return {'next_steps': [{'kind': 'checkpoint', 'goal': goal['key'], 'action': 'Re-read the goal to obtain its next required phase or review.'}]}
+
+
+def checkpoint(api, repo, project, runtime, number=None):
+    engine = Workflow(api, repo, project, runtime)
+    goals = engine.portfolio()
+    if number is not None:
+        if number not in {g['key'] for g in goals}:
+            raise ValueError('Requested goal is not in the validated portfolio')
+        return {'next_steps': engine.step(number)}
+    runnable_steps = []
+    waiting_steps = []
+    waiting_kinds = {'blocker', 'dependency', 'await_worker'}
+    for goal in sorted(goals, key=lambda g: (g.get('priority', 'P3'), g['key'])):
+        if goal['status'] in {'done', 'cancelled'}:
+            continue
+        blocked = [g for g in goals if g['key'] in goal.get('depends_on', []) and g['status'] != 'done']
+        if blocked:
+            waiting_steps.append({'kind': 'dependency', 'assignment': 'root', 'goal': goal['key'], 'action': 'Complete or repair the prerequisite goals.', 'dependencies': [g['key'] for g in blocked]})
+            continue
+        for step in engine.step(goal['key']):
+            (waiting_steps if step.get('kind') in waiting_kinds else runnable_steps).append(step)
+        if len(runnable_steps) >= 3:
+            break
+    return {'next_steps': (runnable_steps or waiting_steps)[:3]}
+
+
+def public_run(api, repo, intent, source, runtime, payload, number):
+    """Route every intent through context gates; repairs use the same entrypoint."""
+    if payload is not None and not isinstance(payload, dict):
+        raise ValueError('Submission must be a JSON object')
+    if runtime is not None and not isinstance(runtime, dict):
+        raise ValueError('Runtime evidence must be a JSON object')
+    if intent not in api.WORKFLOW_SKILL_INTENTS.get(source, set()):
+        raise ValueError('The source skill cannot initiate this intent')
+    package = api._package.package_status()
+    if not package.get('ok'):
+        raise ValueError('Repair or reinstall the invalid ZzzOps package')
+    operation = payload.get('operation') if isinstance(payload, dict) else None
+    readonly = intent == 'preview'
+    if readonly and payload is not None:
+        raise ValueError('Preview never accepts mutations')
+    provenance = {f: package.get(f) for f in ('version', 'revision')}
+    gate = api.workflow_context_step(repo, package)
+    # These operations repair only the prerequisite they own. Other intents do
+    # not skip gates merely because their skill name was supplied by a caller.
+    installation = api._installation.validation_status(repo, provenance) if all(isinstance(v, str) for v in provenance.values()) else {'required': False}
+    if installation.get('required'):
+        audit = api._installation.installation_audit(repo)
+        if operation == 'installation_record':
+            api._installation.record_validation(repo, provenance, outcome=payload['outcome'], audit_signature=payload['audit_signature'])
+            return {'next_steps': [{'kind': 'checkpoint', 'action': 'Reinvoke the original intent after installation validation.'}]}
+        return {'next_steps': [{'kind': 'installation_validation', 'assignment': 'root', 'instruction': api.workflow_instruction('installation-validation'), 'action': 'Validate the installed package and record the observed outcome.', 'audit': audit, 'submission': {'operation': 'installation_record', 'outcome': '<validated outcome>', 'audit_signature': audit.get('signature', audit.get('audit_signature'))}}]}
+    if operation in {'policy_propose', 'policy_approve'}:
+        if not (runtime or {}).get('root_id'):
+            raise ValueError('Policy design and human approval belong to the root agent')
+        directory = repo / '.zzzops' / 'proposals'
+        if operation == 'policy_propose':
+            proposal = payload['plan']
+            proposal_hash = digest(proposal)
+            directory.mkdir(parents=True, exist_ok=True)
+            path = directory / (proposal_hash.split(':')[1] + '.json')
+            api.atomic_text(path, json.dumps(proposal, ensure_ascii=False, sort_keys=True))
+            return {'next_steps': [{'kind': 'human_approval', 'assignment': 'root', 'action': 'Review this exact project/policy proposal with the user before approving.', 'proposal': str(path), 'hash': proposal_hash, 'submission': {'operation': 'policy_approve', 'proposal_hash': proposal_hash, 'approved_by': '<user>'}}]}
+        proposal_hash = payload['proposal_hash']
+        if not explicit_approval(payload.get('approved_by')) or not isinstance(proposal_hash, str) or not __import__('re').fullmatch(r'sha256:[0-9a-f]{64}', proposal_hash):
+            raise ValueError('Explicit human approval of the exact proposal hash is required')
+        proposal = json.loads((directory / (proposal_hash.split(':')[1] + '.json')).read_text())
+        if digest(proposal) != proposal_hash:
+            raise ValueError('Policy proposal changed after review')
+        proposal['confirmed'] = True
+        api.apply_plan(repo, proposal)
+        return {'next_steps': [{'kind': 'checkpoint', 'action': 'Reinvoke the original intent against the newly reviewed policy.'}]}
+    if gate and gate.get('id') in {'bootstrap', 'policy-review'}:
+        inspection = api.inspect_initialization(repo)
+        path = repo / '.zzzops' / 'diagnostics' / 'policy-review.json'
+        if not readonly:
+            api.atomic_text(path, json.dumps(inspection, ensure_ascii=False, sort_keys=True))
+        return {'next_steps': [{**gate, 'inspection': inspection if readonly else str(path), 'submission': {'operation': 'policy_propose', 'plan': '<complete initialization plan>'}, 'template': str(Path(api.__file__).parent / 'templates/project-goals/INIT_PLAN.json')}]}
+    project = api.reviewed_project_state(repo)
+    if runtime and runtime.get('delegation', {}).get('discovery_complete'):
+        settings = api._workflow_section(project, 'model_routing')['settings']
+        freshness = api._policy.model_inventory_freshness(settings['model_inventory']['reviewed_pairs'], {'status': 'complete', 'pairs': runtime['available_pairs']})
+        if freshness['stale']:
+            return {'next_steps': [{'kind': 'policy_review', 'assignment': 'root', 'action': 'Review policy tier mappings for newly discovered model/effort pairs before proceeding.', 'added': freshness['added'], 'submission': {'operation': 'policy_propose', 'plan': '<updated reviewed policy plan>'}}]}
+    engine = Workflow(api, repo, project, runtime)
+    engine.portfolio(allow_invalid=operation in {'revise', 'adopt', 'recover_legacy'})
+    if operation == 'read' and number is not None:
+        _, goal = engine.read(number)
+        evidence = goal.get('phase_evidence') or api.empty_phase_evidence()
+        content = engine.read_artifact(number, payload['artifact']) if payload.get('artifact') else {'specification': goal['human_spec'], 'acceptance_criteria': goal['acceptance_criteria'], 'phase_record': evidence['records'].get(payload.get('phase')), 'phase_review': evidence['reviews'].get(payload.get('phase'))}
+        return {'next_steps': [{'kind': 'inspect_evidence', 'goal': number, 'action': 'Use this current evidence for the assigned phase.', 'content': content}]}
+    if operation == 'artifact' and number is not None:
+        with engine.locked():
+            _, goal = engine.read(number)
+            lease = next((v for v in state(goal)['leases'].values() if v['token'] == payload.get('lease')), None)
+            if not lease or lease['expires_at'] <= time.time() or lease['owner'] != (runtime or {}).get('root_id') or lease['worker'] != payload.get('actor'):
+                raise ValueError('Artifact persistence requires the bound phase executor')
+            artifact = engine.artifact(number, payload['content'])
+        kind = 'record_review' if lease['kind'] == 'review' else 'record_result'
+        return {'next_steps': [{'kind': kind, 'goal': number, 'action': 'Use this immutable artifact reference in the assigned submission.', 'artifact': artifact}]}
+    administrative = api._workflow_admin.handle(api, repo, project, source, runtime, payload) if operation not in {'capture_propose', 'capture'} else None
+    if administrative is not None:
+        return administrative
+    if operation == 'heartbeat':
+        _, goal = engine.read(number)
+        lease = next((v for v in state(goal)['leases'].values() if v['token'] == payload.get('lease')), None)
+        if not lease or not lease['worker'] or lease['owner'] != (runtime or {}).get('root_id'):
+            raise ValueError('Heartbeat requires a lease owned by the current coordinator and a bound executor')
+        api._heartbeat.start_heartbeat(repo=repo, root_id=lease['owner'], runtime_path=api.runtime_path, cli_path=Path(api.__file__), goal=number, phase=payload['phase'], token=lease['token'], actor=lease['worker'], probe_argv=payload['probe'])
+        return {'next_steps': [{'kind': 'perform', 'goal': number, 'phase': payload['phase'], 'action': 'The local coordinator is monitoring this worker. Continue its assigned work.'}]}
+    if operation == 'capture_propose':
+        request = payload['request']
+        errors = api.validate_goal_create(request)
+        if errors:
+            raise ValueError('; '.join(errors))
+        if not api._goals.goal_acceptance_criteria(request['body']):
+            raise ValueError('Goal design must contain explicit acceptance bullets covering its required behavior')
+        return {'next_steps': [{'kind': 'human_approval', 'assignment': 'root', 'action': 'Review the captured goal design with the user, then approve these exact contents.', 'proposal': request, 'proposal_hash': digest(request), 'submission': {'operation': 'capture', 'request': request, 'proposal_hash': digest(request), 'approved_by': '<user>'}}]}
+    if operation == 'capture':
+        if not (runtime or {}).get('root_id'):
+            raise ValueError('Goal design approval must be coordinated by root')
+        parent = payload.get('request', {}).get('goal', {}).get('parent')
+        if parent is None:
+            if not explicit_approval(payload.get('approved_by')) or payload.get('proposal_hash') != digest(payload['request']):
+                raise ValueError('Explicit approval of this exact goal design is required')
+        else:
+            _, parent_goal = engine.read(parent)
+            graph, nodes, live, related = engine.context(parent_goal)
+            frontier = api.derive_phase_steps(parent_goal, graph, live, related, review_policy=nodes)
+            if any(item['phase'] == 'understand' for key in ('execute', 'review', 'blocked') for item in frontier[key]):
+                raise ValueError('Child capture requires current parent design approval')
+        with engine.locked():
+            api.apply_goal_create(engine.adapter, engine.repository, payload['request'])
+        return {'next_steps': [{'kind': 'checkpoint', 'action': 'Continue execution with the newly captured goal.'}]}
+    if operation == 'adopt':
+        with engine.locked():
+            api.migrate_open_repository_goals(repo, project, limit=payload.get('limit', 25))
+        return {'next_steps': [{'kind': 'checkpoint', 'action': 'Re-evaluate open goals; closed goals remain untouched.'}]}
+    if operation == 'batch':
+        items = payload.get('items')
+        if not isinstance(items, list) or not items or len(items) > 20:
+            raise ValueError('A batch must contain between one and twenty independent items')
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError('Each batch item must be a JSON object')
+            if not isinstance(item.get('id'), str) or not item['id']:
+                raise ValueError('Each batch item must have a non-empty string id')
+            goal = item.get('goal')
+            if isinstance(goal, bool) or not isinstance(goal, int) or goal <= 0:
+                raise ValueError('Each batch item must target a positive integer goal')
+            if not isinstance(item.get('payload'), dict):
+                raise ValueError('Each batch item payload must be a JSON object')
+            if 'depends_on' in item and not isinstance(item['depends_on'], list):
+                raise ValueError('Each batch item depends_on value must be a JSON array')
+        goals = {item['goal'] for item in items}
+        if len(goals) != len(items):
+            raise ValueError('Batch items must target distinct goals; submit same-goal transitions separately')
+        records = {}
+        def relations(number):
+            if number not in records:
+                _, records[number] = engine.read(number)
+            current = records[number]
+            return list(current.get('depends_on', [])) + ([current['parent']] if current.get('parent') is not None else [])
+        for number in goals:
+            pending = relations(number)
+            visited = set()
+            while pending:
+                related = pending.pop()
+                if related in goals:
+                    raise ValueError('Dependent or parent/child goals cannot share a mutation batch')
+                if related in visited:
+                    continue
+                visited.add(related)
+                pending.extend(relations(related))
+        def apply(item):
+            try:
+                result = engine.mutate(item['goal'], item['payload'])
+                return {'ok': True, 'next_steps': result['next_steps']}
+            except (ValueError, OSError) as exc:
+                return {'ok': False, 'action': 'Retry this item with its original request_id after fixing the error.', 'reason': str(exc)}
+        result = api.apply_independent_batch(items, apply)
+        steps = [{'kind': 'batch_item', 'id': item['id'], **item['result']} for item in result.get('results', [])]
+        if result.get('error'):
+            steps.append({'kind': 'repair', 'action': result['error']})
+        return {'next_steps': steps}
+    if payload is not None and number is not None:
+        return engine.mutate(number, payload)
+    if payload is not None:
+        raise ValueError('Unknown operation or missing goal; request an intent checkpoint for its submission contract')
+    if source == '$add-zzzops-goal' or intent == 'capture':
+        return {'next_steps': [{'kind': 'capture', 'assignment': 'root', 'instruction': api.workflow_instruction('$add-zzzops-goal'), 'action': 'Interview the user and submit the approved goal design.', 'submission': {'operation': 'capture', 'request': '<validated goal-create request>'}, 'request_fields': ['schema_version', 'request_id', 'title', 'human_body', 'goal']}]}
+    if source in {'$bootstrap-zzzops-repository', '$review-zzzops-policy', '$validate-zzzops-installation'}:
+        return {'next_steps': []}
+    if source == '$migrate-to-zzzops':
+        return {'next_steps': [{'kind': 'adopt', 'assignment': 'root', 'instruction': api.workflow_instruction(source), 'submission': {'operation': 'adopt', 'limit': 25}, 'action': 'Adopt open goals only; preserve historical records and current implementation links.'}]}
+    if source in {'$send-zzzops-feedback', '$suggest-zzzops-work'}:
+        return {'next_steps': [{'kind': 'dispatch', 'assignment': 'root', 'instruction': api.workflow_instruction(source), 'action': api.WORKFLOW_SOURCE_ACTIONS[source]}]}
+    return checkpoint(api, repo, project, runtime, number)

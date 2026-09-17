@@ -1,3 +1,3 @@
 # Record routing evidence
 
-Collect observed harness capabilities and phase dimensions required by the workflow, then invoke it for the routing decision.
+Collect the observed harness capabilities and phase dimensions named by the returned contract. Submit that evidence through the returned `command`, then invoke the workflow again for its routing decision. Do not select a model, effort, or executor yourself.

@@ -16,6 +16,7 @@ import sys
 import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from urllib.parse import quote, urlparse
 
@@ -110,6 +111,21 @@ _phase_evidence = importlib.util.module_from_spec(_PHASE_EVIDENCE_MODULE_SPEC)
 sys.modules[_PHASE_EVIDENCE_MODULE_SPEC.name] = _phase_evidence
 _PHASE_EVIDENCE_MODULE_SPEC.loader.exec_module(_phase_evidence)
 
+_WORKFLOW_SPEC = importlib.util.spec_from_file_location("zzzops_workflow", Path(__file__).with_name("workflow.py"))
+_workflow = importlib.util.module_from_spec(_WORKFLOW_SPEC)
+_WORKFLOW_SPEC.loader.exec_module(_workflow)
+
+_ADMIN_SPEC = importlib.util.spec_from_file_location("zzzops_workflow_admin", Path(__file__).with_name("workflow_admin.py"))
+_workflow_admin = importlib.util.module_from_spec(_ADMIN_SPEC)
+_ADMIN_SPEC.loader.exec_module(_workflow_admin)
+_HEARTBEAT_SPEC = importlib.util.spec_from_file_location("zzzops_heartbeat", Path(__file__).with_name("heartbeat.py"))
+_heartbeat = importlib.util.module_from_spec(_HEARTBEAT_SPEC)
+_HEARTBEAT_SPEC.loader.exec_module(_heartbeat)
+
+
+def workflow_engine(repo, project, runtime=None):
+    return _workflow.Workflow(SimpleNamespace(**globals()), repo, project, runtime)
+
 _GOALS_MODULE_PATH = Path(__file__).with_name("goals.py")
 _GOALS_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_goals", _GOALS_MODULE_PATH)
 assert _GOALS_MODULE_SPEC and _GOALS_MODULE_SPEC.loader
@@ -177,6 +193,7 @@ validate_phase_evidence = _phase_evidence.validate_phase_evidence
 normalize_phase_evidence = _phase_evidence.normalize_phase_evidence
 record_phase_result = _phase_evidence.record_phase_result
 record_phase_review = _phase_evidence.record_phase_review
+record_phase_approval = _phase_evidence.record_phase_approval
 withdraw_phase_evidence = _phase_evidence.withdraw_phase_evidence
 derive_phase_eligibility = _phase_evidence.derive_phase_eligibility
 derive_phase_steps = _phase_evidence.derive_phase_steps
@@ -207,6 +224,10 @@ WORKFLOW_SOURCE_ACTIONS = {
 }
 
 WORKFLOW_ENTRY_INTENTS = {
+    "execute": ("execute", "$execute-zzzops"),
+    "preview": ("preview", "$execute-zzzops"),
+    "resume": ("resume", "$execute-zzzops"),
+    "approve": ("approve", "$execute-zzzops"),
     "send_feedback": ("execute", "$send-zzzops-feedback"),
     "add_goal": ("capture", "$add-zzzops-goal"),
     "validate_installation": ("inspect", "$validate-zzzops-installation"),
@@ -1290,13 +1311,13 @@ def _workflow_section(project: dict[str, Any], identifier: str) -> dict[str, Any
 
 
 def _workflow_runtime(runtime: Any) -> dict[str, Any]:
-    if not isinstance(runtime, dict) or set(runtime) != {"root_pair", "available_pairs"}:
+    if not isinstance(runtime, dict) or not {"root_pair", "available_pairs"} <= set(runtime) or set(runtime) - {"root_pair", "available_pairs", "root_id", "delegation", "overrides"}:
         raise ValueError("workflow runtime must contain root_pair and available_pairs")
     root, available = runtime["root_pair"], runtime["available_pairs"]
     if not isinstance(root, dict) or set(root) != {"model", "effort"} or not isinstance(available, list):
         raise ValueError("workflow runtime is invalid")
     # reviewed_model_effort performs the detailed identifier validation.
-    return {"root_pair": dict(root), "available_pairs": [dict(item) if isinstance(item, dict) else item for item in available]}
+    return {**runtime, "root_pair": dict(root), "available_pairs": [dict(item) if isinstance(item, dict) else item for item in available]}
 
 
 def workflow_step_plan(
@@ -1305,7 +1326,7 @@ def workflow_step_plan(
     *, related_goals: dict[Any, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Turn a pure evidence frontier into exact phase prompts and routing pairs."""
-    frontier = derive_phase_steps(goal, graph, live_inputs, related_goals)
+    frontier = derive_phase_steps(goal, graph, live_inputs, related_goals, review_policy=phase_nodes)
     try:
         runtime = _workflow_runtime(runtime)
     except ValueError as exc:
@@ -1333,18 +1354,30 @@ def workflow_step_plan(
         for entry in entries:
             phase = entry["phase"]
             node = phase_nodes[phase]
-            human_approval = kind == "review" and node.get("review", {}).get("human_approval") is True
+            human_approval = kind == "review" and entry["reason"] == "missing_human_approval"
             requires_human = human_approval or (kind == "execute" and node["assignment_group"] == "root")
-            tier = capability_tier(routing_settings, {**dimensions_base, "phase_type": phase})["tier"]
-            chosen = reviewed_model_effort(routing_settings, tier, runtime["available_pairs"])
-            if not chosen["available"]:
-                steps.append({"kind": "capability_discovery", "phase": phase, "assignment": "root", "reason": f"no reviewed available model-plus-effort pair for {tier}"})
-                continue
+            assessment = _workflow.state(goal)["assessments"].get(phase, {})
+            dimensions = assessment.get("dimensions", dimensions_base)
+            tier = capability_tier(routing_settings, {**dimensions, "phase_type": phase})["tier"]
             if requires_human and tiers[tier] > tiers[root_choice["tier"]]:
                 steps.append({"kind": "capability_discovery", "phase": phase, "assignment": "root", "reason": "human-interaction phase exceeds root capability"})
                 continue
+            overrides = runtime.get('overrides', [])
+            if not isinstance(overrides, list):
+                raise ValueError('Session overrides must be a list of exact approved model/effort pairs')
+            def permitted(item):
+                normal = tiers[item['tier']] <= tiers[root_choice['tier']] and item['cost'] <= root_choice['cost']
+                explicit = any(isinstance(value, dict) and value.get('model') == item['model'] and value.get('effort') == item['effort'] and value.get('root_id') == runtime.get('root_id') and _workflow.explicit_approval(value.get('approved_by')) for value in overrides)
+                return normal or explicit
+            permitted_pairs = [{'model': item['model'], 'effort': item['effort']} for item in routing_settings['model_inventory']['reviewed_pairs'] if permitted(item)]
+            available = [pair for pair in runtime['available_pairs'] if pair in permitted_pairs]
+            chosen = reviewed_model_effort(routing_settings, tier, available)
+            if not chosen["available"]:
+                all_choices = reviewed_model_effort(routing_settings, tier, runtime['available_pairs'])
+                steps.append({"kind": "session_override" if all_choices['available'] else "capability_discovery", "phase": phase, "assignment": "root", "reason": f"no permitted reviewed available model-plus-effort pair for {tier}"})
+                continue
             selection = runtime["root_pair"] if requires_human else chosen["selected"]
-            if tiers[tier] > tiers[root_choice["tier"]]:
+            if tiers[tier] > tiers[root_choice["tier"]] and not overrides:
                 steps.append({"kind": "session_override", "phase": phase, "assignment": "root", "reason": "required model tier exceeds root capability"})
                 continue
             steps.append({
@@ -1385,7 +1418,7 @@ def workflow_live_inputs(repo: Path, project: dict[str, Any], goal: dict[str, An
     policy = project["policy"]
     dag = _workflow_section(project, "workflow_adherence")["settings"]["phase_dag"]
     goal_digest = goal_spec_digest(goal, title=goal["title"], human_spec=goal["human_spec"])
-    evidence = normalize_phase_evidence(goal.get("phase_evidence", empty_phase_evidence()))
+    evidence = normalize_phase_evidence(goal.get("phase_evidence") or empty_phase_evidence())
     live = {}
     for node in graph["phases"]:
         phase = node["id"]
@@ -1396,10 +1429,10 @@ def workflow_live_inputs(repo: Path, project: dict[str, Any], goal: dict[str, An
                 upstream.append({"phase": dependency, "hash": output["hash"]})
         live[phase] = phase_input_envelope(
             phase, goal_digest, sha256_phase_evidence_digest(policy), sha256_phase_evidence_digest(dag),
-            repository=_workflow_repository_snapshot(repo, identity),
+            repository={"identity": identity, "snapshot": {}},
             provider={"identity": "github", "snapshot": {"repository": identity}},
             capabilities={"identity": "workflow-runtime", "snapshot": {"status": "declared_at_checkpoint"}},
-            invocation={"intent": intent, "inputs": {"goal": goal["key"], "revision": goal["revision"]}},
+            invocation={"intent": "execute", "inputs": {"goal": goal["key"]}},
             upstream_outputs=upstream, acceptance_criteria=goal.get("acceptance_criteria", []),
         )
     return live
@@ -2149,6 +2182,7 @@ render_project_audit = _policy.render_project_audit
 _goals.configure_entrypoint(
     normalize_resources=normalize_resources, text_present=text_present,
     validate_phase_evidence=_phase_evidence.validate_phase_evidence,
+    validate_workflow=_workflow.validate_state,
 )
 _portfolio.configure_entrypoint(exclusive_resources=exclusive_resources, normalize_resource_policy=normalize_resource_policy, text_present=text_present, merge_classifier=classify_pr_merge)
 active_stack_guard = _portfolio.active_stack_guard
@@ -2378,7 +2412,7 @@ class WorkflowArgumentParser(argparse.ArgumentParser):
         super().error(message)
 
 
-def main() -> int:
+def _private_main() -> int:
     configure_cli_stdout()
     sys.argv = normalize_workflow_entrypoint(sys.argv)
     parser = WorkflowArgumentParser(description="ZzzOps project control CLI")
@@ -2850,6 +2884,48 @@ _feedback.configure_entrypoint(
     delete_diagnostic=_diagnostics.delete_diagnostic,
     validate_diagnostic=_diagnostics.validate_diagnostic,
 )
+
+
+def main() -> int:
+    """Only the intent checkpoint is public; legacy parsers are internal adapters."""
+    configure_cli_stdout()
+    argv = list(sys.argv)
+    command_index = 3 if len(argv) > 2 and argv[1] == '--repo' else 1
+    if len(argv) > command_index and argv[command_index] == 'workflow':
+        argv.pop(command_index)
+    if '--intent' in argv:
+        index = argv.index('--intent')
+        route = WORKFLOW_ENTRY_INTENTS.get(argv[index + 1]) if index + 1 < len(argv) else None
+        if route:
+            argv[index + 1] = route[0]
+            if '--source-skill' not in argv:
+                argv.extend(('--source-skill', route[1]))
+    class WorkflowParser(argparse.ArgumentParser):
+        def error(self, message):
+            raise ValueError(message)
+    parser = WorkflowParser(description="ZzzOps actionable workflow checkpoint")
+    parser.add_argument("--repo", type=Path, default=Path.cwd())
+    parser.add_argument("--intent", choices=sorted(WORKFLOW_INTENTS), required=True)
+    parser.add_argument("--source-skill", choices=sorted(WORKFLOW_SKILL_INTENTS))
+    parser.add_argument("--goal", type=int)
+    parser.add_argument("--runtime", type=Path)
+    parser.add_argument("--input", type=Path)
+    if len(sys.argv) == 1:
+        parser.print_help()
+        return 0
+    try:
+        args = parser.parse_args(argv[1:])
+        runtime = json.loads(args.runtime.read_text()) if args.runtime else None
+        payload = json.loads(args.input.read_text()) if args.input else None
+        source = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
+        services = SimpleNamespace(**globals())
+        services.runtime_path = args.runtime.resolve() if args.runtime else None
+        result = _workflow.public_run(services, args.repo.resolve(), args.intent, source, runtime, payload, args.goal)
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+        return 0
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
+        print(json.dumps({"next_steps": [{"kind": "repair", "assignment": "root", "action": "Correct this input or backend condition and retry the same request.", "reason": str(exc)}]}, ensure_ascii=False, separators=(",", ":")))
+        return 2
 
 
 if __name__ == "__main__":

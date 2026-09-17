@@ -151,7 +151,7 @@ WORKFLOW_SIGNALS = {
     "policy-review": ("Only this workflow changes or confirms policy", "explicit approval of the current digest", "The policy is already approved", "privacy-safe execution reports"),
     "migration": ("explicit completeness review", "preserve every source location", "apply only after explicit approval"),
     "suggestion": ("no-write default", "zzzops-refill", "never copy source labels", "goal-effective engineering rigor", "incomplete canonical verification", "proposed goal—not a silent change", PROACTIVE_DELEGATION_SIGNAL),
-    "installation-validation": ("installation status", "installation audit", "explicit removal confirmation", "resume that original workflow exactly once", PROACTIVE_DELEGATION_SIGNAL),
+    "installation-validation": ("returned installation status", "returned installation audit", "exact audit signature", "explicit removal confirmation", "resume that original workflow exactly once", PROACTIVE_DELEGATION_SIGNAL),
     "acceptance": ("exactly one active item", "Never infer an ID", "blockers unchecked"),
     "feedback": ("exact target, title, labels, and body", "public", "nothing was deleted"),
 }
