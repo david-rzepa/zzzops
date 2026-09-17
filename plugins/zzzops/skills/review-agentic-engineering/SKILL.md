@@ -7,6 +7,8 @@ description: ZzzOps v0.0.0-dev — development plugin. Review completed software
 
 Read `../../rules/COMMUNICATION.md` for user-facing messages.
 
+First invoke `zzzops workflow --intent inspect --source-skill '$review-agentic-engineering'` and obey its `next_steps`. Do not invoke a private ZzzOps command named elsewhere in this skill; those references describe the workflow handler behind this public command.
+
 Run only when explicitly invoked. Help the user improve how they use software agents across projects without assuming that friction was their prompting fault.
 
 1. Read [evidence and attribution](references/ATTRIBUTION.md). Inspect several substantial completed work items when available, using evidence already visible in the current environment. Do not create a prompt archive or copy raw project content into attribution input or output.

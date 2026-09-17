@@ -7,6 +7,8 @@ description: ZzzOps v0.0.0-dev — development plugin. Validate one repository a
 
 Read `../../rules/COMMUNICATION.md` for user-facing messages.
 
+First invoke `zzzops workflow --intent inspect --source-skill '$validate-zzzops-installation'` and obey its `next_steps`. Do not invoke a private ZzzOps command named elsewhere in this skill; those references describe the workflow handler behind this public command.
+
 This workflow owns the installation check, so skip `INITIALIZATION.md`'s validation handoff and do not recurse. Resolve Python and the installed package CLI as described there.
 
 1. Read `../../rules/DELEGATION.md` for isolated read-only inspection, then run `installation status`. Automatic routing stops immediately when the current package record is `clean` or `declined`; explicit invocation continues to a fresh audit.
