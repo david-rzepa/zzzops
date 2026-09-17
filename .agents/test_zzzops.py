@@ -4584,6 +4584,7 @@ class WorkflowContractTests(unittest.TestCase):
             "send-zzzops-feedback": "send_feedback",
             "validate-zzzops-installation": "validate_installation",
             "migrate-to-zzzops": "migrate",
+            "suggest-zzzops-work": "suggest_work",
         }
         for skill, intent in expected.items():
             with self.subTest(skill=skill):
@@ -4607,6 +4608,7 @@ class WorkflowContractTests(unittest.TestCase):
             "send_feedback": ("execute", "$send-zzzops-feedback"),
             "validate_installation": ("inspect", "$validate-zzzops-installation"),
             "migrate": ("inspect", "$migrate-to-zzzops"),
+            "suggest_work": ("inspect", "$suggest-zzzops-work"),
         }
         for semantic_intent, (workflow_intent, source_skill) in expected.items():
             with self.subTest(intent=semantic_intent):
@@ -5656,6 +5658,7 @@ class WorkflowContractTests(unittest.TestCase):
                 "send-zzzops-feedback": "send-feedback.md",
                 "validate-zzzops-installation": "installation-validation.md",
                 "migrate-to-zzzops": "migrate.md",
+                "suggest-zzzops-work": "suggest-work.md",
             }.get(name)
             if instruction_name:
                 source = (PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / instruction_name).read_text(encoding="utf-8")
@@ -5671,7 +5674,7 @@ class WorkflowContractTests(unittest.TestCase):
             "validate-zzzops-installation",
         )
         self.assertEqual(names, zzzops.MANAGED_SKILLS)
-        thin_skills = {"add-zzzops-goal", "migrate-to-zzzops", "send-zzzops-feedback", "validate-zzzops-installation"}
+        thin_skills = {"add-zzzops-goal", "migrate-to-zzzops", "send-zzzops-feedback", "suggest-zzzops-work", "validate-zzzops-installation"}
         for name in names:
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
             if name not in thin_skills:
@@ -5718,6 +5721,7 @@ class WorkflowContractTests(unittest.TestCase):
             "send-zzzops-feedback": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "send-feedback.md",
             "validate-zzzops-installation": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "installation-validation.md",
             "migrate-to-zzzops": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "migrate.md",
+            "suggest-zzzops-work": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "suggest-work.md",
         }
         for skill in root.iterdir():
             path = skill / "SKILL.md"
@@ -5808,7 +5812,7 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_refill_and_feedback_provenance_labels_stay_distinct(self):
         skills = PLUGIN_ROOT / "skills"
-        refill = (skills / "suggest-zzzops-work" / "SKILL.md").read_text(encoding="utf-8").lower()
+        refill = (PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "suggest-work.md").read_text(encoding="utf-8").lower()
         feedback = (PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "send-feedback.md").read_text(encoding="utf-8")
         for phrase in ("during exhausted-queue refill", "zzzops-refill", "never copy source labels", "zzzops-feedback"):
             self.assertIn(phrase, refill)
@@ -5820,7 +5824,7 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_agent_observability_suggestions_are_bounded_and_evidence_led(self):
         skill = (
-            PLUGIN_ROOT / "skills" / "suggest-zzzops-work" / "SKILL.md"
+            PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "suggest-work.md"
         ).read_text(encoding="utf-8")
         reference = (
             PLUGIN_ROOT / "skills" / "suggest-zzzops-work" / "references"
@@ -5840,7 +5844,7 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_timing_suggestions_are_local_optional_and_never_refill_work(self):
         suggest = (
-            PLUGIN_ROOT / "skills" / "suggest-zzzops-work" / "SKILL.md"
+            PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "suggest-work.md"
         ).read_text(encoding="utf-8")
         performance = (PLUGIN_ROOT.parent.parent / "docs" / "PERFORMANCE.md").read_text(encoding="utf-8")
         for phrase in (
@@ -6008,7 +6012,7 @@ class WorkflowContractTests(unittest.TestCase):
         root = PLUGIN_ROOT
         execute = (root / "skills" / "execute-zzzops" / "references" / "EXECUTE.md").read_text(encoding="utf-8")
         entropy = (root / "skills" / "execute-zzzops" / "references" / "ENTROPY_OBSERVATIONS.md").read_text(encoding="utf-8")
-        suggest = (root / "skills" / "suggest-zzzops-work" / "SKILL.md").read_text(encoding="utf-8")
+        suggest = (root / "zzzops" / "references" / "next_steps" / "suggest-work.md").read_text(encoding="utf-8")
         self.assertIn("ENTROPY_OBSERVATIONS.md", execute)
         for phrase in (
             "entropy observe", "Never pause", "one to four normalized",

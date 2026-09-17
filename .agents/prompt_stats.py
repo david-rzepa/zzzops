@@ -79,6 +79,7 @@ WORKFLOW_PROMPTS = {
     ),
     "suggestion": (
         "plugins/zzzops/skills/suggest-zzzops-work/SKILL.md",
+        "plugins/zzzops/zzzops/references/next_steps/suggest-work.md",
         COMMUNICATION_PROMPT, DELEGATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
         "plugins/zzzops/rules/FEEDBACK.md",
     ),
