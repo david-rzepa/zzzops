@@ -238,6 +238,16 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
     return {"schema_version": 1, "next_steps": normalized}
 
 
+def workflow_repair_step(intent: str, reason: str, action: str, *, source_skill: str | None = None) -> dict[str, Any]:
+    """Return the one actionable repair step for a failed public invocation."""
+    skill = source_skill if source_skill in WORKFLOW_SKILL_INTENTS and intent in WORKFLOW_SKILL_INTENTS[source_skill] else WORKFLOW_DEFAULT_SKILLS[intent]
+    return {
+        "id": "workflow-repair", "skill": skill, "intent": intent,
+        "audience": "root", "phase": "context", "directive": "resolve_blocker",
+        "action": action, "reason": reason,
+    }
+
+
 def workflow_routing_step(intent: str, settings: Any, request: Any) -> dict[str, Any]:
     """Turn reviewed routing facts into an imperative workflow instruction.
 
@@ -2174,6 +2184,14 @@ def main() -> int:
             return 0
     package = _package.package_status()
     if package.get("ok") is not True:
+        if args.command == "workflow":
+            repair = workflow_repair_step(
+                args.intent, "The ZzzOps Agent Plugin package is invalid.",
+                "Repair or reinstall the ZzzOps Agent Plugin package, then invoke workflow again.",
+                source_skill=args.source_skill,
+            )
+            print(json.dumps(workflow_envelope(args.intent, [repair]), ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+            return 2
         print(str(package.get("detail") or "The ZzzOps Agent Plugin package is invalid."))
         return 2
     try:
@@ -2497,6 +2515,13 @@ def main() -> int:
     except (EOFError, KeyboardInterrupt):
         print("\nNo further changes made.")
     except ValueError as exc:
+        if args.command == "workflow":
+            repair = workflow_repair_step(
+                args.intent, str(exc), "Repair the reported workflow input or current repository state, then invoke workflow again.",
+                source_skill=args.source_skill,
+            )
+            print(json.dumps(workflow_envelope(args.intent, [repair]), ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+            return 2
         print(f"Could not continue: {exc}")
         return 2
     return 0

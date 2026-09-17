@@ -4138,6 +4138,20 @@ class WorkflowContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "next step"):
             zzzops.workflow_envelope("capture", [invalid])
 
+    def test_workflow_repair_preserves_compatible_source_and_is_action_only(self):
+        repair = zzzops.workflow_repair_step(
+            "execute", "Package validation failed.", "Repair the package and retry.",
+            source_skill="$review-zzzops-entropy",
+        )
+        self.assertEqual("$review-zzzops-entropy", repair["skill"])
+        self.assertEqual("resolve_blocker", repair["directive"])
+        self.assertEqual({"schema_version": 1, "next_steps": [repair]}, zzzops.workflow_envelope("execute", [repair]))
+        fallback = zzzops.workflow_repair_step(
+            "capture", "Package validation failed.", "Repair the package and retry.",
+            source_skill="$execute-zzzops",
+        )
+        self.assertEqual("$add-zzzops-goal", fallback["skill"])
+
     def test_policy_review_reuses_capability_evidence_before_tool_selection(self):
         review = (
             PLUGIN_ROOT / "skills" / "review-zzzops-policy" / "SKILL.md"
