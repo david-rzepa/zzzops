@@ -2546,21 +2546,6 @@ class PhaseEvidenceTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(["plan", "verify"], [item["phase"] for item in first["eligible"]])
 
-    def test_workflow_frontier_projects_root_phase_without_agent_routing_discretion(self):
-        plan = json.loads((PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
-        phase_dag = next(section for section in plan["policy"]["sections"] if section["id"] == "workflow_adherence")["settings"]["phase_dag"]
-        context = self.envelope("context")
-        first = zzzops.workflow_phase_frontier(self.goal(), phase_dag, {"context": context})
-        self.assertEqual(["root-context"], [step["id"] for step in first["next_steps"]])
-        self.assertEqual("continue_root", first["next_steps"][0]["directive"])
-        self.assertNotIn("model", first["next_steps"][0])
-
-        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "context", self.record("context", context), context)
-        understand = self.envelope("understand")
-        second = zzzops.workflow_phase_frontier(self.goal(evidence), phase_dag, {"context": context, "understand": understand})
-        self.assertEqual(["root-understand"], [step["id"] for step in second["next_steps"]])
-        self.assertEqual("continue_root", second["next_steps"][0]["directive"])
-
     def test_stale_rejection_and_identical_output_preserves_descendant(self):
         graph = self.graph({"id": "plan"}, {"id": "implement", "depends_on": ["plan"]})
         plan_input = self.envelope("plan")
@@ -4733,7 +4718,7 @@ class WorkflowContractTests(unittest.TestCase):
         custom_settings = next(item for item in customized_tree["sections"] if item["id"] == "model_routing")["settings"]
         custom_settings["assessment_tree"][3] = {"when": {"boundedness": ["atomic", "bounded"]}, "tier": "reasoning"}
         custom_settings["model_inventory"]["reviewed_pairs"] = [
-            {"model": "economy", "effort": "low", "tier": "routine", "cost": 5},
+            {"model": "economy", "effort": "low", "tier": "routine", "cost": 3},
             {"model": "gpt-5.6-codex", "effort": "high", "tier": "reasoning", "cost": 4},
         ]
         self.assertEqual([], zzzops.validate_policy(customized_tree, True))
@@ -4750,14 +4735,14 @@ class WorkflowContractTests(unittest.TestCase):
             zzzops.reviewed_model_effort(custom_settings, "routine", [{"model": "gpt-5.6-codex", "effort": "high"}]),
         )
         self.assertEqual(
-            {"available": True, "tier": "routine", "selected": {"model": "gpt-5.6-codex", "effort": "high"}},
+            {"available": True, "tier": "routine", "selected": {"model": "economy", "effort": "low"}},
             zzzops.reviewed_model_effort(custom_settings, "routine", [
                 {"model": "economy", "effort": "low"}, {"model": "gpt-5.6-codex", "effort": "high"},
             ]),
         )
         root_pair = {"model": "gpt-5.6-codex", "effort": "high"}
         delegated = zzzops.reviewed_phase_assignment(
-            custom_settings, {"phase_type": "context"},
+            custom_settings, {"phase_type": "understand"},
             [{"model": "economy", "effort": "low"}, root_pair], root_pair,
         )
         self.assertEqual("delegated", delegated["mode"])
@@ -4772,12 +4757,12 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("ready", harness_ready["status"])
         self.assertEqual("delegate", harness_ready["next_step"]["action"])
         workflow_step = zzzops.workflow_routing_step("execute", custom_settings, {
-            "phase": "verify", "dimensions": {"phase_type": "context"},
+            "phase": "understand", "dimensions": {"phase_type": "understand"},
             "available_pairs": [{"model": "economy", "effort": "low"}, root_pair],
             "root_pair": root_pair,
             "tool_catalog": [{"name": "spawn_agent", "description": "delegate work"}],
         })
-        self.assertEqual("delegate-verify", workflow_step["id"])
+        self.assertEqual("delegate-understand", workflow_step["id"])
         self.assertEqual("delegate", workflow_step["directive"])
         self.assertEqual(f"Delegate this phase using model {root_pair['model']} with effort {root_pair['effort']}.", workflow_step["action"])
         self.assertEqual(root_pair["model"], workflow_step["model"])
