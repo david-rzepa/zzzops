@@ -1189,6 +1189,18 @@ WORKFLOW_PHASE_PROMPTS = {
 }
 
 
+def workflow_diagnostic_log(repo: Path) -> Path:
+    return repo / ".zzzops" / "diagnostics" / "workflow.jsonl"
+
+
+def record_workflow_diagnostic(repo: Path, event: dict[str, Any]) -> None:
+    """Keep non-actionable checkpoint detail out of the agent-facing stream."""
+    path = workflow_diagnostic_log(repo)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n")
+
+
 def _workflow_section(project: dict[str, Any], identifier: str) -> dict[str, Any]:
     for section in project.get("policy", {}).get("sections", []):
         if isinstance(section, dict) and section.get("id") == identifier and isinstance(section.get("settings"), dict):
@@ -1330,6 +1342,7 @@ def workflow_checkpoint(repo: Path, goal_number: int, intent: str, runtime: Any)
         related[goal["parent"]] = {"goal": parent, "live_inputs": workflow_live_inputs(repo, project, parent, intent, parent_graph)}
     routing = _workflow_section(project, "model_routing")["settings"]
     result = workflow_step_plan(goal, graph, live_inputs, phase_nodes, routing, runtime, related_goals=related)
+    record_workflow_diagnostic(repo, {"goal": goal_number, "intent": intent, "frontier": result["frontier"]})
     return {"next_steps": result["next_steps"]}
 
 

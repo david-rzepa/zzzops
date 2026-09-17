@@ -1000,6 +1000,11 @@ class DiagnosticsModuleTests(unittest.TestCase):
         self.assertEqual(expected, json.loads(stream.getvalue()))
         submit.assert_called_once_with(self.repo.resolve(), 42, "execute", payload)
 
+    def test_workflow_diagnostics_are_local_and_not_stdout_payloads(self):
+        zzzops.record_workflow_diagnostic(self.repo, {"goal": 42, "detail": "internal"})
+        rows = zzzops.workflow_diagnostic_log(self.repo).read_text(encoding="utf-8").splitlines()
+        self.assertEqual({"detail": "internal", "goal": 42}, json.loads(rows[0]))
+
     def test_profile_flag_preserves_checkpoint_output_and_records_only_when_enabled(self):
         checkpoint = {"ready": True, "schema_version": 1, "value": "unchanged"}
         with (
