@@ -968,6 +968,21 @@ class DiagnosticsModuleTests(unittest.TestCase):
         record.assert_not_called()
         purge.assert_not_called()
 
+    def test_workflow_cli_emits_only_next_steps(self):
+        runtime = self.repo / "runtime.json"
+        runtime.write_text(json.dumps({"root_pair": {"model": "root", "effort": "medium"}, "available_pairs": [{"model": "root", "effort": "medium"}]}), encoding="utf-8")
+        expected = {"next_steps": [{"kind": "execute", "phase": "understand"}]}
+        with (
+            mock.patch.object(zzzops, "configure_cli_stdout"),
+            mock.patch.object(zzzops._package, "package_status", return_value={"ok": True}),
+            mock.patch.object(zzzops, "workflow_checkpoint", return_value=expected) as checkpoint,
+            mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--goal", "42", "--intent", "execute", "--runtime", str(runtime)]),
+            mock.patch.object(sys, "stdout", io.StringIO()) as stream,
+        ):
+            self.assertEqual(0, zzzops.main())
+        self.assertEqual(expected, json.loads(stream.getvalue()))
+        checkpoint.assert_called_once_with(self.repo.resolve(), 42, "execute", json.loads(runtime.read_text(encoding="utf-8")))
+
     def test_profile_flag_preserves_checkpoint_output_and_records_only_when_enabled(self):
         checkpoint = {"ready": True, "schema_version": 1, "value": "unchanged"}
         with (
@@ -4953,6 +4968,14 @@ class WorkflowContractTests(unittest.TestCase):
         }], result["next_steps"])
         missing = zzzops.workflow_step_plan(goal, {"phases": [{"id": "understand"}]}, {"understand": input_envelope}, phase_nodes, settings, None)
         self.assertEqual("capability_discovery", missing["next_steps"][0]["kind"])
+
+    def test_workflow_checkpoint_rejects_an_invalid_portfolio_before_goal_execution(self):
+        with (
+            mock.patch.object(zzzops, "reviewed_project_state", return_value={"repository": {"identity": "owner/repo"}}),
+            mock.patch.object(zzzops, "portfolio_snapshot", return_value={"complete": True, "valid": False, "goals": []}),
+        ):
+            with self.assertRaisesRegex(ValueError, "portfolio"):
+                zzzops.workflow_checkpoint(Path("."), 42, "execute", None)
 
     def test_model_plus_effort_routing_enforces_root_boundary(self):
         inventory = [

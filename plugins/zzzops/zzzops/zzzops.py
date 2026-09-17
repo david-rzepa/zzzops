@@ -1258,6 +1258,80 @@ def workflow_step_plan(
     return {"schema_version": WORKFLOW_STEP_SCHEMA_VERSION, "next_steps": steps, "frontier": frontier}
 
 
+def _workflow_phase_configuration(project: dict[str, Any], goal: dict[str, Any]) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    adherence = _workflow_section(project, "workflow_adherence")
+    dag = adherence["settings"].get("phase_dag")
+    graph = phase_evidence_graph(dag, has_parent=goal.get("parent") is not None)
+    phase_nodes = {node["id"]: node for node in dag["phases"] if node["id"] in {item["id"] for item in graph["phases"]}}
+    return graph, phase_nodes
+
+
+def _workflow_repository_snapshot(repo: Path, identity: str) -> dict[str, Any]:
+    head = "unavailable"
+    executable = shutil.which("git")
+    if executable:
+        try:
+            result = subprocess.run([executable, "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, timeout=5, check=False)
+            if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{40,64}", result.stdout.strip()):
+                head = result.stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return {"identity": identity, "snapshot": {"head": head}}
+
+
+def workflow_live_inputs(repo: Path, project: dict[str, Any], goal: dict[str, Any], intent: str, graph: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Build reproducible phase inputs from the current repository and goal record."""
+    if intent not in {"execute", "preview"}:
+        raise ValueError("workflow intent is invalid")
+    identity = _project_repository_identity(project)
+    policy = project["policy"]
+    dag = _workflow_section(project, "workflow_adherence")["settings"]["phase_dag"]
+    goal_digest = goal_spec_digest(goal, title=goal["title"], human_spec=goal["human_spec"])
+    evidence = normalize_phase_evidence(goal.get("phase_evidence", empty_phase_evidence()))
+    live = {}
+    for node in graph["phases"]:
+        phase = node["id"]
+        upstream = []
+        for dependency in node.get("depends_on", []):
+            output = evidence["records"].get(dependency, {}).get("output")
+            if isinstance(output, dict):
+                upstream.append({"phase": dependency, "hash": output["hash"]})
+        live[phase] = phase_input_envelope(
+            phase, goal_digest, sha256_phase_evidence_digest(policy), sha256_phase_evidence_digest(dag),
+            repository=_workflow_repository_snapshot(repo, identity),
+            provider={"identity": "github", "snapshot": {"repository": identity}},
+            capabilities={"identity": "workflow-runtime", "snapshot": {"status": "declared_at_checkpoint"}},
+            invocation={"intent": intent, "inputs": {"goal": goal["key"], "revision": goal["revision"]}},
+            upstream_outputs=upstream, acceptance_criteria=goal.get("acceptance_criteria", []),
+        )
+    return live
+
+
+def workflow_checkpoint(repo: Path, goal_number: int, intent: str, runtime: Any) -> dict[str, Any]:
+    """Public, functional checkpoint: re-read state and return only required work."""
+    project = reviewed_project_state(repo)
+    portfolio = portfolio_snapshot(repo)
+    if portfolio.get("complete") is not True or portfolio.get("valid") is not True:
+        raise ValueError("Goal portfolio is not valid")
+    if goal_number not in {item.get("key") for item in portfolio.get("goals", [])}:
+        raise ValueError(f"Goal #{goal_number} is not present in the current portfolio")
+    repository = _project_repository_identity(project)
+    adapter = GitHubGoalTransitionAdapter(repo, repository)
+    issue = adapter.get_issue(goal_number)
+    goal = github_goal_record(issue)
+    graph, phase_nodes = _workflow_phase_configuration(project, goal)
+    live_inputs = workflow_live_inputs(repo, project, goal, intent, graph)
+    related: dict[Any, dict[str, Any]] = {}
+    if goal.get("parent") is not None:
+        parent_issue = adapter.get_issue(goal["parent"])
+        parent = github_goal_record(parent_issue)
+        parent_graph, _parent_nodes = _workflow_phase_configuration(project, parent)
+        related[goal["parent"]] = {"goal": parent, "live_inputs": workflow_live_inputs(repo, project, parent, intent, parent_graph)}
+    routing = _workflow_section(project, "model_routing")["settings"]
+    result = workflow_step_plan(goal, graph, live_inputs, phase_nodes, routing, runtime, related_goals=related)
+    return {"next_steps": result["next_steps"]}
+
+
 def migrate_open_repository_goals(
     repo: Path, project: dict[str, Any], *, limit: int, include_feedback: bool = False,
 ) -> dict[str, Any]:
@@ -2173,6 +2247,10 @@ def main() -> int:
     checkpoint_parser = commands.add_parser("checkpoint", help="Validate initialized state, GitHub capability, and the goal portfolio once")
     checkpoint_parser.add_argument("--include-feedback", action="store_true", help="Include specially tagged feedback goals for this session")
     checkpoint_parser.add_argument("--profile", action="store_true", help="Record one local privacy-safe timing aggregate")
+    workflow_parser = commands.add_parser("workflow", help="Return the exact next ZzzOps phase step for one goal")
+    workflow_parser.add_argument("--goal", type=int, required=True)
+    workflow_parser.add_argument("--intent", choices=("execute", "preview"), required=True)
+    workflow_parser.add_argument("--runtime", type=Path, required=True, help="Current root and available model-effort pairs as JSON")
     installation = commands.add_parser("installation", help="Check or record per-repository plugin validation")
     installation_commands = installation.add_subparsers(dest="installation_command", required=True)
     installation_commands.add_parser("status", help="Report whether this installed package needs repository validation")
@@ -2453,6 +2531,15 @@ def main() -> int:
             result = decision_checkpoint(repo, args.include_feedback)
             print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 0 if result["ready"] else 2
+        elif args.command == "workflow":
+            try:
+                runtime = json.loads(args.runtime.resolve().read_text(encoding="utf-8-sig"))
+                result = workflow_checkpoint(repo, args.goal, args.intent, runtime)
+                print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+                return 0
+            except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+                print(json.dumps({"next_steps": [{"kind": "blocker", "assignment": "root", "reason": str(exc)}]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+                return 2
         if args.command == "init":
             if args.init_command == "inspect":
                 result = inspect_initialization(repo)
