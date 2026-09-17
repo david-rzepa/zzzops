@@ -2925,6 +2925,12 @@ class GoalTransitionTests(unittest.TestCase):
             mock.patch.object(zzzops, "_workflow_phase_configuration", return_value=(graph, nodes)),
             mock.patch.object(zzzops, "workflow_live_inputs", return_value={"plan": envelope}),
         ):
+            with self.assertRaisesRegex(ValueError, "current required"):
+                zzzops.workflow_submit(Path("."), 42, "execute", {
+                    "operation": "record_review", "phase": "plan",
+                    "artifact": {"reference": "urn:sha256:" + "1" * 64, "hash": "sha256:" + "2" * 64},
+                    "reviewer": "reviewer", "decision": "approved",
+                })
             result = zzzops.workflow_submit(Path("."), 42, "execute", {"operation": "record_result", "phase": "plan", "record": record})
         self.assertEqual({"next_steps": []}, result)
         persisted = zzzops.parse_managed_goal(adapter.issue["body"], 42)

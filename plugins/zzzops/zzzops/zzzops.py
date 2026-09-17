@@ -1363,6 +1363,11 @@ def workflow_submit(repo: Path, goal_number: int, intent: str, payload: Any) -> 
         raise ValueError("workflow submission phase is not applicable to this goal")
     live_inputs = workflow_live_inputs(repo, project, goal, intent, graph)
     evidence = goal.get("phase_evidence") or empty_phase_evidence()
+    goal["phase_evidence"] = evidence
+    frontier = derive_phase_steps(goal, graph, live_inputs)
+    allowed = frontier["execute"] if operation == "record_result" else frontier["review"]
+    if phase not in {item["phase"] for item in allowed}:
+        raise ValueError("workflow submission is not the current required phase step")
     if operation == "record_result":
         if set(payload) != {"operation", "phase", "record"}:
             raise ValueError("workflow result submission is invalid")
