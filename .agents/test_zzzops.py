@@ -4619,6 +4619,14 @@ class WorkflowContractTests(unittest.TestCase):
         next(phase for phase in next(item for item in invalid_gate["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]["phases"] if phase["id"] == "implement")["parent_gates"] = ["unknown"]
         self.assertTrue(any("parent_gates" in error for error in zzzops.validate_policy(invalid_gate, True)))
 
+        invalid_review = json.loads(json.dumps(plan["policy"]))
+        next(phase for phase in next(item for item in invalid_review["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]["phases"] if phase["id"] == "test_design")["review"]["independent"] = "yes"
+        self.assertTrue(any("review is invalid" in error for error in zzzops.validate_policy(invalid_review, True)))
+
+        customized_review = json.loads(json.dumps(plan["policy"]))
+        next(phase for phase in next(item for item in customized_review["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]["phases"] if phase["id"] == "publish")["review"]["human_approval"] = True
+        self.assertEqual([], zzzops.validate_policy(customized_review, True))
+
         customized = json.loads(json.dumps(plan["policy"]))
         custom_dag = next(item for item in customized["sections"] if item["id"] == "workflow_adherence")["settings"]["phase_dag"]
         next(phase for phase in custom_dag["phases"] if phase["id"] == "test_design")["inputs"].append("parents")
