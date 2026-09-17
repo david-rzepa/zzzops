@@ -1189,6 +1189,18 @@ WORKFLOW_PHASE_PROMPTS = {
 }
 
 
+def workflow_diagnostic_log(repo: Path) -> Path:
+    return repo / ".zzzops" / "diagnostics" / "workflow.jsonl"
+
+
+def record_workflow_diagnostic(repo: Path, event: dict[str, Any]) -> None:
+    """Keep non-actionable checkpoint detail out of the agent-facing stream."""
+    path = workflow_diagnostic_log(repo)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n")
+
+
 def _workflow_section(project: dict[str, Any], identifier: str) -> dict[str, Any]:
     for section in project.get("policy", {}).get("sections", []):
         if isinstance(section, dict) and section.get("id") == identifier and isinstance(section.get("settings"), dict):
@@ -1240,17 +1252,18 @@ def workflow_step_plan(
         for entry in entries:
             phase = entry["phase"]
             node = phase_nodes[phase]
+            human_approval = kind == "review" and node.get("review", {}).get("human_approval") is True
             tier = capability_tier(routing_settings, {**dimensions_base, "phase_type": phase})["tier"]
             chosen = reviewed_model_effort(routing_settings, tier, runtime["available_pairs"])
             if not chosen["available"]:
                 steps.append({"kind": "capability_discovery", "phase": phase, "assignment": "root", "reason": f"no reviewed available model-plus-effort pair for {tier}"})
                 continue
-            selection = runtime["root_pair"] if (kind == "execute" and node["assignment_group"] == "root") else chosen["selected"]
+            selection = runtime["root_pair"] if (human_approval or (kind == "execute" and node["assignment_group"] == "root")) else chosen["selected"]
             if tiers[tier] > tiers[root_choice["tier"]] and selection != runtime["root_pair"]:
                 steps.append({"kind": "session_override", "phase": phase, "assignment": "root", "reason": "required model tier exceeds root capability"})
                 continue
             steps.append({
-                "kind": kind, "phase": phase, "reason": entry["reason"],
+                "kind": "human_approval" if human_approval else kind, "phase": phase, "reason": entry["reason"],
                 "skill": WORKFLOW_PHASE_PROMPTS[(phase, kind)],
                 "assignment": "root" if selection == runtime["root_pair"] else "delegate",
                 "selection": selection,
@@ -1329,7 +1342,61 @@ def workflow_checkpoint(repo: Path, goal_number: int, intent: str, runtime: Any)
         related[goal["parent"]] = {"goal": parent, "live_inputs": workflow_live_inputs(repo, project, parent, intent, parent_graph)}
     routing = _workflow_section(project, "model_routing")["settings"]
     result = workflow_step_plan(goal, graph, live_inputs, phase_nodes, routing, runtime, related_goals=related)
+    record_workflow_diagnostic(repo, {"goal": goal_number, "intent": intent, "frontier": result["frontier"]})
     return {"next_steps": result["next_steps"]}
+
+
+def workflow_submit(repo: Path, goal_number: int, intent: str, payload: Any) -> dict[str, Any]:
+    """Record one checkpoint-authorized phase result or review as a guarded goal transition."""
+    if not isinstance(payload, dict) or set(payload) - {"operation", "phase", "record", "artifact", "reviewer", "decision"}:
+        raise ValueError("workflow submission is invalid")
+    operation, phase = payload.get("operation"), payload.get("phase")
+    if operation not in {"record_result", "record_review"} or not isinstance(phase, str):
+        raise ValueError("workflow submission operation is invalid")
+    project = reviewed_project_state(repo)
+    repository = _project_repository_identity(project)
+    adapter = GitHubGoalTransitionAdapter(repo, repository)
+    issue = adapter.get_issue(goal_number)
+    goal = github_goal_record(issue)
+    graph, phase_nodes = _workflow_phase_configuration(project, goal)
+    if phase not in phase_nodes:
+        raise ValueError("workflow submission phase is not applicable to this goal")
+    live_inputs = workflow_live_inputs(repo, project, goal, intent, graph)
+    evidence = goal.get("phase_evidence") or empty_phase_evidence()
+    goal["phase_evidence"] = evidence
+    related: dict[Any, dict[str, Any]] = {}
+    if goal.get("parent") is not None:
+        parent_issue = adapter.get_issue(goal["parent"])
+        parent = github_goal_record(parent_issue)
+        parent_graph, _parent_nodes = _workflow_phase_configuration(project, parent)
+        related[goal["parent"]] = {"goal": parent, "live_inputs": workflow_live_inputs(repo, project, parent, intent, parent_graph)}
+    frontier = derive_phase_steps(goal, graph, live_inputs, related)
+    allowed = frontier["execute"] if operation == "record_result" else frontier["review"]
+    if phase not in {item["phase"] for item in allowed}:
+        raise ValueError("workflow submission is not the current required phase step")
+    if operation == "record_result":
+        if set(payload) != {"operation", "phase", "record"}:
+            raise ValueError("workflow result submission is invalid")
+        updated_evidence = record_phase_result(evidence, phase, payload["record"], live_inputs[phase])
+    else:
+        if set(payload) != {"operation", "phase", "artifact", "reviewer", "decision"}:
+            raise ValueError("workflow review submission is invalid")
+        review = phase_nodes[phase].get("review", {})
+        updated_evidence = record_phase_review(
+            evidence, phase, payload["artifact"], payload["reviewer"], decision=payload["decision"],
+            require_independent=review.get("independent") is True,
+        )
+    desired = parse_managed_goal(issue["body"], goal_number)
+    if desired is None:  # pragma: no cover - github_goal_record already establishes this
+        raise ValueError("goal is not managed")
+    desired["phase_evidence"] = updated_evidence
+    desired["revision"] += 1
+    transition = {
+        "schema_version": GOAL_TRANSITION_SCHEMA_VERSION,
+        "expected_revision": goal["revision"], "expected_digest": goal["digest"], "goal": desired,
+    }
+    apply_goal_transition(adapter, repository, goal_number, transition)
+    return {"next_steps": []}
 
 
 def migrate_open_repository_goals(
@@ -2240,6 +2307,7 @@ def main() -> int:
     workflow_parser.add_argument("--intent", choices=sorted(WORKFLOW_INTENTS), required=True)
     workflow_parser.add_argument("--source-skill", choices=sorted(WORKFLOW_SKILL_INTENTS), help="Named skill that initiated this public workflow call")
     workflow_parser.add_argument("--runtime", type=Path, help="Current root and available model-effort pairs as JSON")
+    workflow_parser.add_argument("--input", type=Path, help="UTF-8 result or review submission JSON")
     installation = commands.add_parser("installation", help="Check or record per-repository plugin validation")
     installation_commands = installation.add_subparsers(dest="installation_command", required=True)
     installation_commands.add_parser("status", help="Report whether this installed package needs repository validation")
@@ -2456,6 +2524,9 @@ def main() -> int:
                     }]}
                 elif args.intent not in {"execute", "preview"}:
                     raise ValueError("Goal phase checkpoints require execute or preview intent")
+                elif args.input:
+                    payload = json.loads(args.input.resolve().read_text(encoding="utf-8-sig"))
+                    result = workflow_submit(repo, args.goal, args.intent, payload)
                 else:
                     if args.runtime is None:
                         raise ValueError("Goal phase checkpoints require current runtime evidence")
