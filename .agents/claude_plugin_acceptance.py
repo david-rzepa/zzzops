@@ -158,6 +158,7 @@ def main(argv: list[str] | None = None) -> int:
             project = workspace / "project"
             config.mkdir()
             project.mkdir()
+            run(["git", "init", str(project)])
             env = os.environ.copy()
             env["CLAUDE_CONFIG_DIR"] = str(config)
             observed_version = run(["claude", "--version"], env=env).strip()
