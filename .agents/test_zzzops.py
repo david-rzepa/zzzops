@@ -4734,6 +4734,19 @@ class WorkflowContractTests(unittest.TestCase):
         event = zzzops.routing_event(intermediate, outcome="verified")
         self.assertEqual("unavailable", event["telemetry"]["status"])
 
+    def test_pr_check_rollup_requires_nonempty_completed_successes(self):
+        complete = {
+            "commits": {"nodes": [{"commit": {"statusCheckRollup": {"contexts": {"nodes": [
+                {"__typename": "CheckRun", "name": "tests", "status": "COMPLETED", "conclusion": "SUCCESS"},
+                {"__typename": "StatusContext", "context": "lint", "state": "SUCCESS"},
+            ]}}}}]},
+        }
+        self.assertTrue(zzzops._pull_request_checks_verified(complete))
+        failed = json.loads(json.dumps(complete))
+        failed["commits"]["nodes"][0]["commit"]["statusCheckRollup"]["contexts"]["nodes"][0]["conclusion"] = "FAILURE"
+        self.assertFalse(zzzops._pull_request_checks_verified(failed))
+        self.assertFalse(zzzops._pull_request_checks_verified({"commits": {"nodes": []}}))
+
     def test_deferred_delegation_capability_discovery_uses_complete_catalog(self):
         hidden_then_deferred = [
             {"name": "exec", "description": "Run shell commands"},

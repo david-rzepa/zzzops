@@ -675,6 +675,11 @@ def _github_pull_request_states(
       mergeCommit{oid}
       repository{nameWithOwner}
       reviewDecision
+      commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{
+        __typename
+        ... on CheckRun{name status conclusion}
+        ... on StatusContext{context state}
+      }}}}}}
     }
   }
 }"""
@@ -708,7 +713,7 @@ def _github_pull_request_states(
                 "base_ref": pull_request.get("baseRefName"),
                 "merge_commit": merge_commit.get("oid") if isinstance(merge_commit, dict) else None,
                 "repository": pr_repository.get("nameWithOwner") if isinstance(pr_repository, dict) else None,
-                "checks_verified": False,
+                "checks_verified": _pull_request_checks_verified(pull_request),
                 "review_verified": pull_request.get("reviewDecision") == "APPROVED",
             }
         for issue_number in targets[(owner, name, number)]:
@@ -716,6 +721,34 @@ def _github_pull_request_states(
                 states[issue_number] = normalized
         raw_bytes += len(result.stdout.encode("utf-8"))
     return states, raw_bytes, processes
+
+
+def _pull_request_checks_verified(pull_request: Any) -> bool:
+    """Accept only a non-empty, completed-success check rollup on the PR head."""
+    if not isinstance(pull_request, dict):
+        return False
+    commits = pull_request.get("commits")
+    nodes = commits.get("nodes") if isinstance(commits, dict) else None
+    if not isinstance(nodes, list) or len(nodes) != 1 or not isinstance(nodes[0], dict):
+        return False
+    commit = nodes[0].get("commit")
+    rollup = commit.get("statusCheckRollup") if isinstance(commit, dict) else None
+    contexts = rollup.get("contexts") if isinstance(rollup, dict) else None
+    checks = contexts.get("nodes") if isinstance(contexts, dict) else None
+    if not isinstance(checks, list) or not checks:
+        return False
+    for check in checks:
+        if not isinstance(check, dict):
+            return False
+        if check.get("__typename") == "CheckRun":
+            if not isinstance(check.get("name"), str) or not check["name"] or check.get("status") != "COMPLETED" or check.get("conclusion") != "SUCCESS":
+                return False
+        elif check.get("__typename") == "StatusContext":
+            if not isinstance(check.get("context"), str) or not check["context"] or check.get("state") != "SUCCESS":
+                return False
+        else:
+            return False
+    return True
 
 
 def github_issue_history(repo: Path, project: dict[str, Any], issue_number: int) -> list[dict[str, Any]]:
