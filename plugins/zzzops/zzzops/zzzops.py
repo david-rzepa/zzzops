@@ -159,6 +159,7 @@ model_inventory_freshness = _policy.model_inventory_freshness
 phase_policy_freshness = _policy.phase_policy_freshness
 route_phase = _routing.route_phase
 prepare_phase_assignment = _routing.prepare_phase_assignment
+prepare_reviewed_phase_assignment = _routing.prepare_reviewed_phase_assignment
 validate_launch_plan = _routing.validate_launch_plan
 routing_event = _routing.routing_event
 discover_delegation_capability = _routing.discover_delegation_capability

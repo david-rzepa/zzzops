@@ -4647,6 +4647,14 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("delegated", delegated["mode"])
         self.assertEqual(root_pair, delegated["selected"])
         self.assertEqual("delegate", delegated["next_step"]["action"])
+        no_harness = zzzops.prepare_reviewed_phase_assignment(delegated, [])
+        self.assertEqual("blocked", no_harness["status"])
+        self.assertEqual("delegation_harness_unavailable", no_harness["reason"])
+        harness_ready = zzzops.prepare_reviewed_phase_assignment(
+            delegated, [{"name": "spawn_agent", "description": "delegate work"}],
+        )
+        self.assertEqual("ready", harness_ready["status"])
+        self.assertEqual("delegate", harness_ready["next_step"]["action"])
         root_equivalent = zzzops.reviewed_phase_assignment(
             custom_settings, {"consequence": "consequential", "boundedness": "bounded"},
             [{"model": "economy", "effort": "low"}, root_pair], root_pair,

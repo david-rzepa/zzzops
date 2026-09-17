@@ -173,6 +173,38 @@ def prepare_phase_assignment(
     }
 
 
+def prepare_reviewed_phase_assignment(decision: Any, tool_catalog: Any) -> dict[str, Any]:
+    """Apply observed harness capability to an already reviewed route directive.
+
+    Policy owns the model-and-effort decision.  The coordinator only verifies
+    that the selected action is executable in this harness; it cannot replace a
+    required worker with root work.
+    """
+    if not isinstance(decision, dict) or decision.get("status") not in {"ready", "blocked"}:
+        raise RoutingError("reviewed phase route is invalid")
+    if decision["status"] == "blocked":
+        return {**decision, "delegation": None}
+    if decision.get("mode") == "direct_root":
+        return {**decision, "delegation": None}
+    if decision.get("mode") != "delegated" or not isinstance(decision.get("selected"), dict):
+        raise RoutingError("reviewed phase route is invalid")
+    delegation = discover_delegation_capability(tool_catalog)
+    if delegation["state"] != "available":
+        return {
+            "status": "blocked",
+            "tier": decision.get("tier"),
+            "rule_index": decision.get("rule_index"),
+            "assignment": decision,
+            "delegation": delegation,
+            "reason": "delegation_harness_unavailable",
+            "next_step": {
+                "action": "resolve_blocker",
+                "instruction": "Delegation is required for this phase, but this harness cannot delegate. Resolve the harness blocker, then retry.",
+            },
+        }
+    return {**decision, "delegation": delegation}
+
+
 def validate_launch_plan(
     plan: Any, *, root_pair: dict[str, Any], session_override: bool = False, max_workers: int = 3,
 ) -> dict[str, Any]:
