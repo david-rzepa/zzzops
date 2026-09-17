@@ -5036,7 +5036,7 @@ class WorkflowContractTests(unittest.TestCase):
         inventory = [{"model": "economy", "effort": "low", "capability": 1, "cost": 1}]
         root = {"model": "root", "effort": "high", "capability": 3, "cost": 3}
         blocked = zzzops.prepare_phase_assignment(
-            phase="implementation", required_capability=1, inventory=inventory,
+            phase="implement", required_capability=1, inventory=inventory,
             root_pair=root, tool_catalog=[],
         )
         self.assertEqual("blocked", blocked["status"])
@@ -5046,7 +5046,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("resolve_blocker", blocked["next_step"]["action"])
 
         ready = zzzops.prepare_phase_assignment(
-            phase="implementation", required_capability=1, inventory=inventory,
+            phase="implement", required_capability=1, inventory=inventory,
             root_pair=root, tool_catalog=[{"name": "spawn_agent", "description": "delegate work"}],
         )
         self.assertEqual("ready", ready["status"])
