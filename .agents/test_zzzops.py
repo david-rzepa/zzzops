@@ -1044,6 +1044,9 @@ class DiagnosticsModuleTests(unittest.TestCase):
         runtime.write_text("not json", encoding="utf-8")
         cases = [
             ["workflow", "--intent", "execute", "--source-skill", "$add-zzzops-goal"],
+            ["workflow", "--intent", "execute", "--runtime", str(runtime)],
+            ["workflow", "--intent", "execute", "--input", str(runtime)],
+            ["workflow", "--goal", "42", "--intent", "capture"],
             ["workflow", "--goal", "42", "--intent", "execute"],
             ["workflow", "--goal", "42", "--intent", "execute", "--runtime", str(runtime)],
         ]

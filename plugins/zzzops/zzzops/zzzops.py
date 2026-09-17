@@ -2543,6 +2543,8 @@ def main() -> int:
                 if args.source_skill and args.intent not in WORKFLOW_SKILL_INTENTS[args.source_skill]:
                     raise ValueError("The source skill cannot initiate the requested workflow intent")
                 if args.goal is None:
+                    if args.runtime is not None or args.input is not None:
+                        raise ValueError("Workflow runtime and phase-evidence input require a managed goal")
                     source_skill = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
                     context = workflow_context_step(repo, package, source_skill=source_skill)
                     if context is not None:
