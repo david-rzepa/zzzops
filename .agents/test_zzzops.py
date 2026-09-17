@@ -2771,6 +2771,14 @@ class GoalTransitionTests(unittest.TestCase):
         self.assertEqual("closed", result["state"])
         self.assertIn("zzzops:status:done", adapter.updates[0]["labels"])
 
+    def test_goal_record_projects_exact_checked_acceptance_criteria_and_phase_evidence(self):
+        goal = self.goal()
+        goal["phase_evidence"] = zzzops.empty_phase_evidence()
+        body = zzzops.render_managed_goal(goal, "## Outcome\n\n- [x] Creates the requested result.\n- [x] Preserves existing behaviour.\n", 42)
+        record = zzzops.github_goal_record({**self.issue(), "body": body})
+        self.assertEqual(["Creates the requested result.", "Preserves existing behaviour."], record["acceptance_criteria"])
+        self.assertEqual(goal["phase_evidence"], record["phase_evidence"])
+
     def test_transition_replaces_stale_schema_labels_with_current_schema(self):
         issue = self.issue()
         issue["labels"].append({"name": "zzzops:schema:v9"})

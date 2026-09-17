@@ -411,9 +411,22 @@ def github_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
         "digest": hashlib.sha256(digest_source.encode("utf-8")).hexdigest(),
         "updated_at": issue.get("updated_at"), "implementation": goal.get("implementation"),
         "engineering_rigor": goal.get("engineering_rigor"),
+        "phase_evidence": goal.get("phase_evidence"),
+        "human_spec": compact_human_goal_text(body),
+        "acceptance_criteria": goal_acceptance_criteria(body),
         "labels": label_names, "schema_version": schema_versions[0] if len(schema_versions) == 1 else None,
         "state": issue.get("state"), "url": issue.get("html_url"),
     }
+
+
+def goal_acceptance_criteria(body: str) -> list[str]:
+    """Return the exact checked behavioural criteria from a managed goal body."""
+    if not isinstance(body, str):
+        raise ValueError("goal body must be text")
+    criteria = [match.group(1).strip() for match in re.finditer(r"^\s*-\s*\[x\]\s+(.+?)\s*$", body, re.IGNORECASE | re.MULTILINE)]
+    if any(not item for item in criteria) or len(criteria) != len(set(criteria)):
+        raise ValueError("goal acceptance criteria must be unique")
+    return criteria
 
 
 def current_goal_schema_label() -> str:
