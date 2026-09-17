@@ -4789,6 +4789,9 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn(phrase, initialization)
         review_skill = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("Approved policy artifacts may enter ordinary PR review without another conversational gate", review_skill)
+        self.assertIn("Never ask to start policy review.", review_skill)
+        self.assertIn("ask only for approval or adjustments, never approval to review", review_skill)
+        self.assertIn("present the complete policy proposal without asking whether to review", initialization)
         for text in (review_skill, initialization):
             self.assertIn("The policy is already approved.", text)
             self.assertIn("Do not ask for approval", text)
