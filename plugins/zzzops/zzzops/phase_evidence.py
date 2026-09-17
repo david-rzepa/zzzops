@@ -463,7 +463,10 @@ def derive_phase_eligibility(goal: dict[str, Any], graph: Any, live_inputs: dict
     return {"eligible": eligible, "stale": stale, "blocked": blocked, "diagnostics": diagnostics}
 
 
-def derive_phase_steps(goal: dict[str, Any], graph: Any, live_inputs: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def derive_phase_steps(
+    goal: dict[str, Any], graph: Any, live_inputs: dict[str, dict[str, Any]],
+    related_goals: dict[Any, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Derive executable and review work from immutable evidence, with no cursor.
 
     Every supplied graph phase requires an approved review before it satisfies a
@@ -489,6 +492,11 @@ def derive_phase_steps(goal: dict[str, Any], graph: Any, live_inputs: dict[str, 
         for phase in nodes
     }
     stale = [phase for phase in nodes if phase in evidence["records"] and not current[phase]]
+    related_goals = related_goals or {}
+    parent = related_goals.get(goal.get("parent")) if goal.get("parent") is not None else None
+    parent_goal = parent.get("goal") if isinstance(parent, dict) else None
+    parent_inputs = parent.get("live_inputs") if isinstance(parent, dict) else None
+    parent_evidence = normalize_phase_evidence(parent_goal.get("phase_evidence", empty_phase_evidence())) if isinstance(parent_goal, dict) else None
     execute, review, blocked, diagnostics = [], [], [], []
     for phase, node in nodes.items():
         if current[phase]:
@@ -496,8 +504,16 @@ def derive_phase_steps(goal: dict[str, Any], graph: Any, live_inputs: dict[str, 
                 review.append({"phase": phase, "reason": "missing_or_unapproved_review"})
             continue
         unmet = [dependency for dependency in node["depends_on"] if not approved[dependency]]
-        if unmet:
-            blocked.append({"phase": phase, "dependencies": unmet})
+        missing_parent = [
+            gate for gate in node["parent_gates"]
+            if parent_evidence is None or not isinstance(parent_inputs, dict) or gate not in parent_inputs
+            or gate not in parent_evidence["records"] or _withdrawn(parent_evidence, gate)
+            or parent_evidence["records"][gate]["status"] != "completed"
+            or parent_evidence["records"][gate]["input_hash"] != sha256_digest(_input_envelope(parent_inputs[gate], gate))
+            or parent_evidence["reviews"].get(gate, {}).get("decision") != "approved"
+        ]
+        if unmet or missing_parent:
+            blocked.append({"phase": phase, "dependencies": unmet, "parent_gates": missing_parent})
         elif phase not in normalized_inputs:
             diagnostics.append(f"{phase}:missing_live_input")
         else:
