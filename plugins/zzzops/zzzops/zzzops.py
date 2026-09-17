@@ -213,6 +213,7 @@ WORKFLOW_ENTRY_INTENTS = {
     "send_feedback": ("execute", "$send-zzzops-feedback"),
     "add_goal": ("capture", "$add-zzzops-goal"),
     "validate_installation": ("inspect", "$validate-zzzops-installation"),
+    "migrate": ("inspect", "$migrate-to-zzzops"),
 }
 
 
