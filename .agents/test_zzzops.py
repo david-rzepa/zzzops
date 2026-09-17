@@ -4107,6 +4107,21 @@ class ReservationTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_each_named_skill_enters_the_public_workflow_with_its_registered_intent(self):
+        expected = {
+            "add-zzzops-goal": "capture", "bootstrap-zzzops-repository": "inspect",
+            "execute-zzzops": "execute", "migrate-to-zzzops": "inspect",
+            "review-agentic-engineering": "inspect", "review-zzzops-entropy": "execute",
+            "review-zzzops-policy": "inspect", "send-zzzops-feedback": "execute",
+            "suggest-zzzops-work": "inspect", "validate-zzzops-installation": "inspect",
+        }
+        self.assertEqual({f"${name}" for name in expected}, set(zzzops.WORKFLOW_SKILL_INTENTS))
+        for skill, intent in expected.items():
+            with self.subTest(skill=skill):
+                text = (PLUGIN_ROOT / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
+                self.assertIn(f"zzzops workflow --intent {intent} --source-skill '${skill}'", text)
+                self.assertIn("Do not invoke a private ZzzOps command", text)
+
     def test_workflow_skill_registry_allows_execute_approval_and_resume_only(self):
         for intent in ("execute", "approve", "resume"):
             step = {
