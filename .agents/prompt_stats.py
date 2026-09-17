@@ -23,6 +23,8 @@ PROACTIVE_DELEGATION_WORKFLOWS = {
 }
 COLD_ONLY_PROMPTS = {
     "plugins/zzzops/skills/review-zzzops-policy/SKILL.md",
+    "plugins/zzzops/zzzops/references/next_steps/policy-review.md",
+    "plugins/zzzops/zzzops/references/next_steps/suggest-work.md",
 }
 
 # These limits protect context paid on every Codex turn and the two frequent ZzzOps paths. At the
