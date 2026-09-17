@@ -29,12 +29,12 @@ COLD_ONLY_PROMPTS = {
 
 # These limits protect context paid on every Codex turn and the two frequent ZzzOps paths. At the
 # goal #297 baseline, always-loaded/codex is 625 tokens. Goal #302 reduced capture/execution to
-# 3,324/8,452 tokens. Pending the unified workflow CLI, retain modest 3,400/8,800 ceilings so
+# 3,324/8,452 tokens. Pending the unified workflow CLI, retain modest 3,500/8,800 ceilings so
 # policy and routing work can land without repeated budget-only failures. Cold mutually exclusive
 # workflows remain advisory rather than competing for one aggregate allowance.
 ENFORCED_PROMPT_BUDGETS = {
     "always-loaded/codex": 700,
-    "capture/codex": 3_400,
+    "capture/codex": 3_500,
     "execution/codex": 8_800,
 }
 

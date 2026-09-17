@@ -184,9 +184,27 @@ BLOCKER_CATEGORIES = {
     "external-dependency", "technical-unknown", "safety-compliance",
 }
 WORKFLOW_INTENTS = {"capture", "execute", "approve", "resume", "inspect"}
-WORKFLOW_SKILLS = {
+WORKFLOW_DEFAULT_SKILLS = {
     "capture": "$add-zzzops-goal", "execute": "$execute-zzzops", "approve": "$execute-zzzops",
     "resume": "$execute-zzzops", "inspect": "$review-zzzops-policy",
+}
+WORKFLOW_SKILL_INTENTS = {
+    "$add-zzzops-goal": "capture", "$execute-zzzops": "execute",
+    "$bootstrap-zzzops-repository": "inspect", "$migrate-to-zzzops": "inspect",
+    "$review-agentic-engineering": "inspect", "$review-zzzops-entropy": "execute",
+    "$review-zzzops-policy": "inspect", "$send-zzzops-feedback": "execute",
+    "$suggest-zzzops-work": "inspect", "$validate-zzzops-installation": "inspect",
+}
+WORKFLOW_SOURCE_ACTIONS = {
+    "$add-zzzops-goal": "Capture the requested outcome and durable goal evidence.",
+    "$bootstrap-zzzops-repository": "Inspect repository and product evidence for the bootstrap workflow.",
+    "$migrate-to-zzzops": "Inspect candidate legacy work and its adoption evidence.",
+    "$review-agentic-engineering": "Inspect completed-work evidence for the requested agentic-engineering review.",
+    "$review-zzzops-entropy": "Inspect the requested entropy-review evidence and coverage state.",
+    "$review-zzzops-policy": "Inspect policy state and prepare the required review input.",
+    "$send-zzzops-feedback": "Inspect the requested feedback evidence and exact submission preconditions.",
+    "$suggest-zzzops-work": "Inspect bounded repository evidence for possible work suggestions.",
+    "$validate-zzzops-installation": "Inspect installed-package validation evidence for this repository.",
 }
 
 
@@ -200,7 +218,7 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
         optional_fields = {"directive", "model", "effort"}
         if not isinstance(step, dict) or not fields <= set(step) or set(step) - fields - optional_fields or step.get("id") in seen:
             raise ValueError("workflow next step is invalid")
-        if step.get("intent") not in WORKFLOW_INTENTS or step.get("skill") != WORKFLOW_SKILLS[step["intent"]] or step.get("audience") not in {"root", "worker"}:
+        if step.get("intent") not in WORKFLOW_INTENTS or WORKFLOW_SKILL_INTENTS.get(step.get("skill")) != step["intent"] or step.get("audience") not in {"root", "worker"}:
             raise ValueError("workflow next step is invalid")
         if any(not isinstance(step.get(field), str) or not step[field] for field in fields):
             raise ValueError("workflow next step is invalid")
@@ -2010,6 +2028,7 @@ def main() -> int:
     commands = parser.add_subparsers(dest="command")
     workflow = commands.add_parser("workflow", help="Return the next actionable ZzzOps workflow steps")
     workflow.add_argument("--intent", choices=sorted(WORKFLOW_INTENTS), required=True)
+    workflow.add_argument("--source-skill", choices=sorted(WORKFLOW_SKILL_INTENTS), help="Named skill that initiated this public workflow call")
     workflow.add_argument("--goal", type=int, help="Managed goal whose evidence-derived phase frontier to evaluate")
     workflow.add_argument(
         "--phase-inputs",
@@ -2159,6 +2178,13 @@ def main() -> int:
         return 2
     try:
         if args.command == "workflow":
+            if args.source_skill and WORKFLOW_SKILL_INTENTS[args.source_skill] != args.intent:
+                steps = [{"id": "workflow-source", "skill": WORKFLOW_DEFAULT_SKILLS[args.intent], "intent": args.intent,
+                          "audience": "root", "phase": "context",
+                          "action": "Invoke workflow again with the source skill's declared intent.",
+                          "reason": "The source skill cannot initiate the requested workflow intent."}]
+                print(json.dumps(workflow_envelope(args.intent, steps), ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+                return 0
             try:
                 project = reviewed_project_state(repo)
             except ValueError:
@@ -2216,10 +2242,17 @@ def main() -> int:
                                   "action": "Record complete valid routing evidence, then invoke workflow again with --routing-request.",
                                   "reason": "The supplied routing evidence cannot determine an executable phase assignment."}]
                 else:
-                    steps = [{"id": "routing-evidence", "skill": "$execute-zzzops", "intent": "execute",
-                              "audience": "root", "phase": "understand",
-                              "action": "Record the current phase routing evidence, then invoke workflow again with --routing-request.",
-                              "reason": "The workflow cannot select root execution or delegation without current model, effort, and harness evidence."}]
+                    source_skill = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
+                    if source_skill == "$execute-zzzops":
+                        steps = [{"id": "routing-evidence", "skill": source_skill, "intent": args.intent,
+                                  "audience": "root", "phase": "understand",
+                                  "action": "Record the current phase routing evidence, then invoke workflow again with --routing-request.",
+                                  "reason": "The workflow cannot select root execution or delegation without current model, effort, and harness evidence."}]
+                    else:
+                        steps = [{"id": f"{source_skill[1:]}-dispatch", "skill": source_skill, "intent": args.intent,
+                                  "audience": "root", "phase": "context",
+                                  "action": WORKFLOW_SOURCE_ACTIONS[source_skill],
+                                  "reason": "Project policy and canonical state are available for this named workflow."}]
             print(json.dumps(workflow_envelope(args.intent, steps), ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 0
         if args.command == "installation":
