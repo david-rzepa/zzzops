@@ -717,6 +717,66 @@ def reviewed_model_effort(settings: Any, tier: Any, available_pairs: Any) -> dic
     return {"available": True, "tier": tier, "selected": {"model": selected["model"], "effort": selected["effort"]}}
 
 
+def reviewed_phase_assignment(
+    settings: Any, dimensions: Any, available_pairs: Any, root_pair: Any,
+) -> dict[str, Any]:
+    """Derive a non-discretionary phase assignment from reviewed routing policy.
+
+    The caller supplies observed runtime facts, never a capability score.  This
+    function evaluates the reviewed tree and emits the directive which the
+    workflow CLI will place in its actionable next-step response.
+    """
+    tier_decision = capability_tier(settings, dimensions)
+    if not isinstance(root_pair, dict) or set(root_pair) != {"model", "effort"} or not all(
+        _policy_identifier(root_pair.get(field)) for field in ("model", "effort")
+    ):
+        raise ValueError("Root model inventory is invalid")
+    # This also validates the complete runtime inventory shape.
+    reviewed_model_effort(settings, tier_decision["tier"], available_pairs)
+    available = {(item["model"], item["effort"]) for item in available_pairs}
+    root = (root_pair["model"], root_pair["effort"])
+    reviewed = settings["model_inventory"]["reviewed_pairs"]
+    root_entry = next((item for item in reviewed if (item["model"], item["effort"]) == root), None)
+    if root_entry is None or root not in available:
+        return {
+            "status": "blocked", "tier": tier_decision["tier"], "rule_index": tier_decision["rule_index"],
+            "reason": "root_model_effort_unreviewed_or_unavailable",
+            "next_step": {"action": "resolve_blocker", "instruction": "Record or restore the current root model-plus-effort pair, then retry routing."},
+        }
+    ranks = {item["id"]: item["rank"] for item in settings["tiers"]}
+    requested_rank, root_rank = ranks[tier_decision["tier"]], ranks[root_entry["tier"]]
+    if requested_rank == root_rank:
+        return {
+            "status": "ready", "tier": tier_decision["tier"], "rule_index": tier_decision["rule_index"],
+            "mode": "direct_root", "selected": dict(root_pair),
+            "next_step": {"action": "continue_root", "instruction": "Perform this phase on the root agent."},
+        }
+    if requested_rank > root_rank:
+        return {
+            "status": "blocked", "tier": tier_decision["tier"], "rule_index": tier_decision["rule_index"],
+            "reason": "above_root_session_override_required",
+            "next_step": {"action": "resolve_blocker", "instruction": "This phase exceeds root capability; obtain the recorded session override, then retry routing."},
+        }
+    candidates = [
+        item for item in reviewed
+        if (item["model"], item["effort"]) in available
+        and ranks[item["tier"]] >= requested_rank and ranks[item["tier"]] < root_rank
+    ]
+    if not candidates:
+        return {
+            "status": "blocked", "tier": tier_decision["tier"], "rule_index": tier_decision["rule_index"],
+            "reason": "reviewed_worker_model_effort_unavailable",
+            "next_step": {"action": "resolve_blocker", "instruction": "Make a reviewed below-root model-plus-effort pair available, then retry routing."},
+        }
+    selected = min(candidates, key=lambda item: (item["cost"], item["model"], item["effort"]))
+    assignment = {"model": selected["model"], "effort": selected["effort"]}
+    return {
+        "status": "ready", "tier": tier_decision["tier"], "rule_index": tier_decision["rule_index"],
+        "mode": "delegated", "selected": assignment,
+        "next_step": {"action": "delegate", "instruction": f"Delegate this phase using model {assignment['model']} with effort {assignment['effort']}."},
+    }
+
+
 def model_inventory_freshness(reviewed_pairs: Any, observed: Any) -> dict[str, Any]:
     """Only a complete observation of a new model-effort pair stales policy."""
     def pairs(value: Any, *, reviewed: bool) -> set[tuple[str, str]]:

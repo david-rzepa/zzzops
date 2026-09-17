@@ -4639,6 +4639,24 @@ class WorkflowContractTests(unittest.TestCase):
                 {"model": "economy", "effort": "low"}, {"model": "gpt-5.6-codex", "effort": "high"},
             ]),
         )
+        root_pair = {"model": "gpt-5.6-codex", "effort": "high"}
+        delegated = zzzops.reviewed_phase_assignment(
+            custom_settings, {"phase_type": "context"},
+            [{"model": "economy", "effort": "low"}, root_pair], root_pair,
+        )
+        self.assertEqual("delegated", delegated["mode"])
+        self.assertEqual({"model": "economy", "effort": "low"}, delegated["selected"])
+        self.assertEqual("delegate", delegated["next_step"]["action"])
+        direct = zzzops.reviewed_phase_assignment(
+            custom_settings, {"consequence": "consequential", "boundedness": "bounded"},
+            [{"model": "economy", "effort": "low"}, root_pair], root_pair,
+        )
+        self.assertEqual("direct_root", direct["mode"])
+        blocked = zzzops.reviewed_phase_assignment(
+            custom_settings, {"consequence": "architectural", "boundedness": "unbounded"},
+            [{"model": "economy", "effort": "low"}, root_pair], root_pair,
+        )
+        self.assertEqual("above_root_session_override_required", blocked["reason"])
 
         reviewed_pairs = [
             {"model": "economy", "effort": "low", "tier": "routine", "cost": 1},

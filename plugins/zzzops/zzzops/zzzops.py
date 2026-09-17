@@ -154,6 +154,7 @@ render_policy_review_table = _policy.render_policy_review_table
 capability_tier = _policy.capability_tier
 phase_evidence_graph = _policy.phase_evidence_graph
 reviewed_model_effort = _policy.reviewed_model_effort
+reviewed_phase_assignment = _policy.reviewed_phase_assignment
 model_inventory_freshness = _policy.model_inventory_freshness
 phase_policy_freshness = _policy.phase_policy_freshness
 route_phase = _routing.route_phase
