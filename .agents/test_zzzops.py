@@ -2624,6 +2624,21 @@ class PhaseEvidenceTests(unittest.TestCase):
         next_step = zzzops.derive_phase_steps(self.goal(evidence), graph, {"plan": plan_input, "test_design": test_input, "implement": self.envelope("implement")})
         self.assertEqual(["test_design"], [step["phase"] for step in next_step["execute"]])
 
+    def test_phase_steps_require_current_approved_parent_gate(self):
+        parent_input = self.envelope("plan")
+        parent_evidence = zzzops.record_phase_result(
+            zzzops.empty_phase_evidence(), "plan", self.record("plan", parent_input), parent_input,
+        )
+        child = self.goal(parent=9)
+        child_input = self.envelope("test_design")
+        graph = self.graph({"id": "test_design", "parent_gates": ["plan"]})
+        blocked = zzzops.derive_phase_steps(child, graph, {"test_design": child_input}, {9: {"goal": self.goal(parent_evidence), "live_inputs": {"plan": parent_input}}})
+        self.assertEqual(["plan"], blocked["blocked"][0]["parent_gates"])
+        artifact = {"reference": "urn:sha256:" + "7" * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": "parent"})}
+        parent_evidence = zzzops.record_phase_review(parent_evidence, "plan", artifact, "reviewer-2")
+        allowed = zzzops.derive_phase_steps(child, graph, {"test_design": child_input}, {9: {"goal": self.goal(parent_evidence), "live_inputs": {"plan": parent_input}}})
+        self.assertEqual(["test_design"], [step["phase"] for step in allowed["execute"]])
+
     def test_stale_rejection_and_identical_output_preserves_descendant(self):
         graph = self.graph({"id": "plan"}, {"id": "implement", "depends_on": ["plan"]})
         plan_input = self.envelope("plan")
