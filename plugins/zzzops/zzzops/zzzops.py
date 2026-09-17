@@ -238,6 +238,8 @@ reservation_description = _reservation.reservation_description
 parse_reservation_description = _reservation.parse_reservation_description
 phase_lease_label_name = _reservation.phase_lease_label_name
 storage_lock_label_name = _reservation.storage_lock_label_name
+storage_lock_description = _reservation.storage_lock_description
+acquire_storage_lock = _reservation.acquire_storage_lock
 phase_lease_description = _reservation.phase_lease_description
 parse_phase_lease_description = _reservation.parse_phase_lease_description
 normalize_resources = _policy.normalize_resources
@@ -493,6 +495,7 @@ acquire_phase_lease = _reservation.acquire_phase_lease
 renew_phase_lease = _reservation.renew_phase_lease
 release_phase_lease = _reservation.release_phase_lease
 PhaseLeaseHeartbeat = _reservation.PhaseLeaseHeartbeat
+apply_independent_batch = _reservation.apply_independent_batch
 
 
 def project_claim_ttl_seconds(project: dict[str, Any]) -> int:

@@ -3629,6 +3629,17 @@ class ReservationTests(unittest.TestCase):
         uncertain = zzzops.PhaseLeaseHeartbeat(mock.Mock(side_effect=zzzops.ReservationProviderError("lost")), lambda: True)
         self.assertEqual("uncertain", uncertain.tick()["outcome"])
 
+    def test_storage_lock_serializes_writers_and_batch_preserves_results(self):
+        adapter = FakeReservationAdapter()
+        self.assertTrue(zzzops.acquire_storage_lock(adapter, "owner/repo", "goal-12", "agent-a", "run-a", 60, self.now)["acquired"])
+        self.assertEqual("contended", zzzops.acquire_storage_lock(adapter, "owner/repo", "goal-12", "agent-b", "run-b", 60, self.now)["outcome"])
+        applied = zzzops.apply_independent_batch(
+            [{"id": "one", "depends_on": []}, {"id": "two", "depends_on": []}, {"id": "three", "depends_on": ["two"]}],
+            lambda item: {"ok": True, "item": item["id"]},
+        )
+        self.assertFalse(applied["applied"])
+        self.assertEqual(["one", "two"], [item["id"] for item in applied["results"]])
+
     def test_renew_and_release_require_the_same_owner(self):
         adapter = FakeReservationAdapter()
         self.assertTrue(self.acquire(adapter)["acquired"])

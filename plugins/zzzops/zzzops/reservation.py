@@ -613,6 +613,59 @@ def storage_lock_label_name(key: str) -> str:
     return f"{STORAGE_LOCK_LABEL_PREFIX}{key}"
 
 
+def storage_lock_description(repository: str, key: str, owner: str, run_id: str, expires_at: int) -> str:
+    key = _reservation_actor(key, "storage key", 24)
+    owner = _reservation_actor(owner, "owner", 20)
+    run_id = _reservation_actor(run_id, "run-id", 32)
+    value = f"z3|r={reservation_repository_key(repository)}|k={key}|o={owner}|u={run_id}|x={expires_at}"
+    if len(value) > 100:
+        raise ValueError("storage lock metadata exceeds GitHub's label-description limit")
+    return value
+
+
+def acquire_storage_lock(adapter: Any, repository: str, key: str, owner: str, run_id: str, ttl_seconds: int = 60, now: datetime | None = None) -> dict[str, Any]:
+    if not isinstance(ttl_seconds, int) or isinstance(ttl_seconds, bool) or not 10 <= ttl_seconds <= 300:
+        raise ValueError("storage-lock ttl-seconds must be from 10 to 300")
+    now_epoch = int((now or datetime.now(timezone.utc)).timestamp())
+    name = storage_lock_label_name(key)
+    expected = storage_lock_description(repository, key, owner, run_id, now_epoch + ttl_seconds)
+    existing = adapter.get_label(name)
+    if existing is not None:
+        text = existing.get("description")
+        if not isinstance(text, str) or not text.startswith("z3|"):
+            raise ReservationProviderError("Storage lock metadata is invalid; no ownership assumed.")
+        fields = dict(part.split("=", 1) for part in text.split("|")[1:] if "=" in part)
+        if fields.get("r") != reservation_repository_key(repository) or fields.get("k") != key:
+            raise ReservationProviderError("Storage lock identity is invalid; no ownership assumed.")
+        if int(fields.get("x", "-1")) > now_epoch:
+            return {"acquired": False, "outcome": "contended", "key": key}
+        adapter.delete_label(existing["node_id"])
+    created = adapter.create_label(name, expected)
+    if created is None:
+        return {"acquired": False, "outcome": "contended", "key": key}
+    if created.get("description") != expected or not created.get("node_id"):
+        raise ReservationProviderError("GitHub did not confirm storage lock ownership; no ownership assumed.")
+    return {"acquired": True, "outcome": "acquired", "key": key, "expires_at": now_epoch + ttl_seconds}
+
+
+def apply_independent_batch(items: list[dict[str, Any]], apply: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
+    """Apply independent items in order, preserving confirmed per-item results."""
+    results = []
+    seen = set()
+    for item in items:
+        item_id = item.get("id") if isinstance(item, dict) else None
+        if not isinstance(item_id, str) or not item_id or item_id in seen:
+            return {"applied": False, "results": results, "error": "batch item id is invalid"}
+        seen.add(item_id)
+        if item.get("depends_on"):
+            return {"applied": False, "results": results, "error": f"batch item {item_id} is dependent"}
+        result = apply(item)
+        results.append({"id": item_id, "result": result})
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            return {"applied": False, "results": results, "error": f"batch item {item_id} failed"}
+    return {"applied": True, "results": results}
+
+
 def phase_lease_description(
     repository: str, goal: int, phase: str, revision: int, owner: str, run_id: str,
     expires_at: int, generation: int = 1,
