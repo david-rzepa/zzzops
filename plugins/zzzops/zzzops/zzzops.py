@@ -1240,17 +1240,18 @@ def workflow_step_plan(
         for entry in entries:
             phase = entry["phase"]
             node = phase_nodes[phase]
+            human_approval = kind == "review" and node.get("review", {}).get("human_approval") is True
             tier = capability_tier(routing_settings, {**dimensions_base, "phase_type": phase})["tier"]
             chosen = reviewed_model_effort(routing_settings, tier, runtime["available_pairs"])
             if not chosen["available"]:
                 steps.append({"kind": "capability_discovery", "phase": phase, "assignment": "root", "reason": f"no reviewed available model-plus-effort pair for {tier}"})
                 continue
-            selection = runtime["root_pair"] if (kind == "execute" and node["assignment_group"] == "root") else chosen["selected"]
+            selection = runtime["root_pair"] if (human_approval or (kind == "execute" and node["assignment_group"] == "root")) else chosen["selected"]
             if tiers[tier] > tiers[root_choice["tier"]] and selection != runtime["root_pair"]:
                 steps.append({"kind": "session_override", "phase": phase, "assignment": "root", "reason": "required model tier exceeds root capability"})
                 continue
             steps.append({
-                "kind": kind, "phase": phase, "reason": entry["reason"],
+                "kind": "human_approval" if human_approval else kind, "phase": phase, "reason": entry["reason"],
                 "skill": WORKFLOW_PHASE_PROMPTS[(phase, kind)],
                 "assignment": "root" if selection == runtime["root_pair"] else "delegate",
                 "selection": selection,
