@@ -213,6 +213,7 @@ WORKFLOW_ENTRY_INTENTS = {
     "migrate": ("inspect", "$migrate-to-zzzops"),
     "suggest_work": ("inspect", "$suggest-zzzops-work"),
     "bootstrap": ("inspect", "$bootstrap-zzzops-repository"),
+    "review_policy": ("inspect", "$review-zzzops-policy"),
 }
 
 

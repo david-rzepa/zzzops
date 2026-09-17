@@ -71,6 +71,7 @@ WORKFLOW_PROMPTS = {
     ),
     "policy-review": (
         "plugins/zzzops/skills/review-zzzops-policy/SKILL.md",
+        "plugins/zzzops/zzzops/references/next_steps/policy-review.md",
         COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "migration": (
@@ -106,7 +107,7 @@ WORKFLOW_SIGNALS = {
     "bootstrap-brownfield": ("evidence-led product/harness audit", "top-level product-outcome goal", "reconcile it in place", "$migrate-to-zzzops", "canonical verification", "until exhaustion", PROACTIVE_DELEGATION_SIGNAL),
     "capture": ("duplicate/relationship matches", "interview at", "owns requirements/acceptance", "active same-task execute intent", "effective engineering rigor", "vibe → light", "never silently de-escalate", "Git-free creation", PROACTIVE_DELEGATION_SIGNAL),
     "execution": ("complete:true", "smallest falsifiable chunk", "difficulty is cost, not value", "human_at_exhaustion", "human_after_checks", "PR review queue", "Execution assumes the user is absent", "Before substantive work on a newly selected goal", "safe useful work", "effective engineering rigor", "created-but-unrun machinery is not proof", "exact recent review, optional refill", "administrative transitions and newly suggested goals do not qualify", PROACTIVE_DELEGATION_SIGNAL),
-    "policy-review": ("only this workflow changes or confirms policy", "explicit approval of the current digest", "The policy is already approved", "privacy-safe execution reports"),
+    "policy-review": ("Only this workflow changes or confirms policy", "explicit approval of the current digest", "The policy is already approved", "privacy-safe execution reports"),
     "migration": ("explicit completeness review", "preserve every source location", "apply only after explicit approval"),
     "suggestion": ("no-write default", "zzzops-refill", "never copy source labels", "goal-effective engineering rigor", "incomplete canonical verification", "proposed goal—not a silent change", PROACTIVE_DELEGATION_SIGNAL),
     "installation-validation": ("installation status", "installation audit", "explicit removal confirmation", "resume that original workflow exactly once", PROACTIVE_DELEGATION_SIGNAL),

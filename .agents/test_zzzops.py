@@ -1794,7 +1794,7 @@ class InitializationTests(unittest.TestCase):
         self.assertIn("customized from a ZzzOps default", audit)
 
     def test_policy_review_guidance_loads_changed_default_snapshots_progressively(self):
-        review = (MODULE_PATH.parents[1] / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
+        review = (MODULE_PATH.parents[1] / "zzzops" / "references" / "next_steps" / "policy-review.md").read_text(encoding="utf-8")
         for phrase in (
             "Compare default IDs/digests first",
             "load full old/new snapshots only for changed or selected sections",
@@ -4586,6 +4586,7 @@ class WorkflowContractTests(unittest.TestCase):
             "migrate-to-zzzops": "migrate",
             "suggest-zzzops-work": "suggest_work",
             "bootstrap-zzzops-repository": "bootstrap",
+            "review-zzzops-policy": "review_policy",
         }
         for skill, intent in expected.items():
             with self.subTest(skill=skill):
@@ -4611,6 +4612,7 @@ class WorkflowContractTests(unittest.TestCase):
             "migrate": ("inspect", "$migrate-to-zzzops"),
             "suggest_work": ("inspect", "$suggest-zzzops-work"),
             "bootstrap": ("inspect", "$bootstrap-zzzops-repository"),
+            "review_policy": ("inspect", "$review-zzzops-policy"),
         }
         for semantic_intent, (workflow_intent, source_skill) in expected.items():
             with self.subTest(intent=semantic_intent):
@@ -4675,7 +4677,7 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_policy_review_reuses_capability_evidence_before_tool_selection(self):
         review = (
-            PLUGIN_ROOT / "skills" / "review-zzzops-policy" / "SKILL.md"
+            PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "policy-review.md"
         ).read_text(encoding="utf-8")
         for signal in (
             "Before optional tools, reuse capabilities",
@@ -5135,7 +5137,7 @@ class WorkflowContractTests(unittest.TestCase):
         next(phase for phase in custom_dag["phases"] if phase["id"] == "test_design")["inputs"].append("parents")
         self.assertEqual([], zzzops.validate_policy(customized, True))
 
-        review = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
+        review = (root / "zzzops" / "references" / "next_steps" / "policy-review.md").read_text(encoding="utf-8")
         initialization = (Path(__file__).parents[1] / "docs" / "INITIALIZATION.md").read_text(encoding="utf-8")
         execution = (Path(__file__).parents[1] / "docs" / "EXECUTION.md").read_text(encoding="utf-8")
         self.assertIn("workflow-adherence sections", review)
@@ -5194,7 +5196,7 @@ class WorkflowContractTests(unittest.TestCase):
             mutate(item, autonomy)
             self.assertTrue(any(field in error for error in zzzops.validate_policy(invalid, True)), field)
 
-        review = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
+        review = (root / "zzzops" / "references" / "next_steps" / "policy-review.md").read_text(encoding="utf-8")
         initialization = (Path(__file__).parents[1] / "docs" / "INITIALIZATION.md").read_text(encoding="utf-8")
         for text in (review, initialization):
             self.assertIn("`vibe`", text)
@@ -5549,7 +5551,7 @@ class WorkflowContractTests(unittest.TestCase):
         root = PLUGIN_ROOT
         unblock = (root / "skills" / "execute-zzzops" / "references" / "UNBLOCK.md").read_text(encoding="utf-8")
         execute = (root / "skills" / "execute-zzzops" / "references" / "EXECUTE.md").read_text(encoding="utf-8")
-        review = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
+        review = (root / "zzzops" / "references" / "next_steps" / "policy-review.md").read_text(encoding="utf-8")
         for phrase in (
             "objectives, KPI evidence, constraints, and precedence",
             "credible alternatives, early evidence when useful, structural cost signals, assumptions, and a falsifiable validation signal",
@@ -5572,7 +5574,7 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_exhaustion_review_and_bootstrap_contracts_are_explicit(self):
         root = PLUGIN_ROOT
-        review = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
+        review = (root / "zzzops" / "references" / "next_steps" / "policy-review.md").read_text(encoding="utf-8")
         review_queue = (
             root / "skills" / "execute-zzzops" / "references" / "REVIEW_QUEUE.md"
         ).read_text(encoding="utf-8")
@@ -5662,6 +5664,7 @@ class WorkflowContractTests(unittest.TestCase):
                 "migrate-to-zzzops": "migrate.md",
                 "suggest-zzzops-work": "suggest-work.md",
                 "bootstrap-zzzops-repository": "bootstrap.md",
+                "review-zzzops-policy": "policy-review.md",
             }.get(name)
             if instruction_name:
                 source = (PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / instruction_name).read_text(encoding="utf-8")
@@ -5677,12 +5680,12 @@ class WorkflowContractTests(unittest.TestCase):
             "validate-zzzops-installation",
         )
         self.assertEqual(names, zzzops.MANAGED_SKILLS)
-        thin_skills = {"add-zzzops-goal", "bootstrap-zzzops-repository", "migrate-to-zzzops", "send-zzzops-feedback", "suggest-zzzops-work", "validate-zzzops-installation"}
+        thin_skills = {"add-zzzops-goal", "bootstrap-zzzops-repository", "migrate-to-zzzops", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work", "validate-zzzops-installation"}
         for name in names:
             text = (root / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
             if name not in thin_skills:
                 self.assertIn("INITIALIZATION.md", text, name)
-            if name not in thin_skills | {"review-zzzops-policy"}:
+            if name not in thin_skills:
                 self.assertIn("BACKENDS.md", text, name)
 
         initialization = (root / "rules" / "INITIALIZATION.md").read_text(encoding="utf-8")
@@ -5699,7 +5702,7 @@ class WorkflowContractTests(unittest.TestCase):
             "plugin package", "reinstalling or updating it through Codex",
         ):
             self.assertIn(phrase, initialization)
-        review_skill = (root / "skills" / "review-zzzops-policy" / "SKILL.md").read_text(encoding="utf-8")
+        review_skill = (root / "zzzops" / "references" / "next_steps" / "policy-review.md").read_text(encoding="utf-8")
         self.assertIn("Approved policy artifacts may enter ordinary PR review without another conversational gate", review_skill)
         self.assertIn("Never ask to start policy review.", review_skill)
         self.assertIn("ask only for approval or adjustments, never approval to review", review_skill)
@@ -5726,6 +5729,7 @@ class WorkflowContractTests(unittest.TestCase):
             "migrate-to-zzzops": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "migrate.md",
             "suggest-zzzops-work": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "suggest-work.md",
             "bootstrap-zzzops-repository": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "bootstrap.md",
+            "review-zzzops-policy": PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "policy-review.md",
         }
         for skill in root.iterdir():
             path = skill / "SKILL.md"
