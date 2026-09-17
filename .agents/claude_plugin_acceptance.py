@@ -158,6 +158,7 @@ def main(argv: list[str] | None = None) -> int:
             project = workspace / "project"
             config.mkdir()
             project.mkdir()
+            run(["git", "init", str(project)])
             env = os.environ.copy()
             env["CLAUDE_CONFIG_DIR"] = str(config)
             observed_version = run(["claude", "--version"], env=env).strip()
@@ -209,11 +210,12 @@ def main(argv: list[str] | None = None) -> int:
             if cached_skills != EXPECTED_SKILLS:
                 raise AcceptanceError("cached skill directories differ from the intended ZzzOps surface")
             inspection = json_output([
-                sys.executable, str(install / "zzzops" / "zzzops.py"), "--repo", str(project), "init", "inspect",
+                sys.executable, str(install / "zzzops" / "zzzops.py"), "--repo", str(project),
+                "workflow", "--intent", "inspect", "--source-skill", "$review-zzzops-policy",
             ])
-            package = inspection.get("capabilities", {}).get("plugin_package", {}) if isinstance(inspection, dict) else {}
-            if package.get("ok") is not True or package.get("version") != product_version:
-                raise AcceptanceError("packaged ZzzOps runtime cannot validate its installed cache copy")
+            steps = inspection.get("next_steps") if isinstance(inspection, dict) else None
+            if set(inspection) != {"next_steps"} or not isinstance(steps, list) or not steps:
+                raise AcceptanceError("packaged ZzzOps runtime cannot produce a public workflow response")
     except (AcceptanceError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         print(f"Claude plugin acceptance failed: {exc}", file=sys.stderr)
         return 2
