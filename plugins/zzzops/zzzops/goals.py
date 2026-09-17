@@ -420,6 +420,29 @@ def current_goal_schema_label() -> str:
     return f"{GOAL_SCHEMA_LABEL_PREFIX}{GOAL_SCHEMA_VERSION}"
 
 
+def workflow_adoption_assessment(goal: Any) -> dict[str, Any]:
+    """Describe lossless workflow adoption without inventing historical evidence."""
+    if not isinstance(goal, dict) or goal.get("status") not in GOAL_STATUSES:
+        raise ValueError("workflow adoption goal is invalid")
+    if goal["status"] in {"done", "cancelled"}:
+        return {
+            "action": "preserve_closed", "phase_evidence": "uninspected",
+            "instruction": "Preserve this closed goal unchanged. If it reopens, derive phase eligibility then.",
+        }
+    evidence = goal.get("phase_evidence")
+    if evidence is None:
+        return {
+            "action": "reassess_open", "phase_evidence": "missing",
+            "instruction": "Keep current goal and PR state; derive fresh phase evidence before workflow execution.",
+        }
+    errors = _validate_phase_evidence(evidence) if _validate_phase_evidence is not None else ["phase evidence validation unavailable"]
+    return {
+        "action": "reassess_open" if errors else "reuse_valid_evidence",
+        "phase_evidence": "invalid" if errors else "valid",
+        "instruction": "Reassess phase evidence before workflow execution." if errors else "Use the current evidence-derived phase frontier.",
+    }
+
+
 def github_archived_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
     """Project one closed goal from discovery labels without hydrating its body."""
     labels = sorted(

@@ -164,6 +164,7 @@ validate_launch_plan = _routing.validate_launch_plan
 routing_event = _routing.routing_event
 discover_delegation_capability = _routing.discover_delegation_capability
 GOAL_FIELDS = _goals.GOAL_FIELDS
+workflow_adoption_assessment = _goals.workflow_adoption_assessment
 GOAL_TRANSITION_FIELDS = {"schema_version", "expected_revision", "expected_digest", "goal"}
 PHASE_EVIDENCE_SCHEMA_VERSION = _phase_evidence.PHASE_EVIDENCE_SCHEMA_VERSION
 PhaseEvidenceError = _phase_evidence.PhaseEvidenceError

@@ -2930,6 +2930,14 @@ class GoalSchemaMigrationTests(unittest.TestCase):
         self.assertEqual([], zzzops.parse_managed_goal(adapter.issues[7]["body"], 7)["evidence"])
         self.assertEqual(1, len(adapter.comments[7]))
 
+    def test_workflow_adoption_preserves_closed_and_never_invents_phase_evidence(self):
+        open_goal = zzzops.parse_managed_goal(self.issue(8)["body"], 8)
+        self.assertEqual("missing", zzzops.workflow_adoption_assessment(open_goal)["phase_evidence"])
+        closed_goal = zzzops.parse_managed_goal(self.issue(9, status="done")["body"], 9)
+        self.assertEqual("preserve_closed", zzzops.workflow_adoption_assessment(closed_goal)["action"])
+        open_goal["phase_evidence"] = zzzops.empty_phase_evidence()
+        self.assertEqual("reuse_valid_evidence", zzzops.workflow_adoption_assessment(open_goal)["action"])
+
 
 class PortfolioTests(unittest.TestCase):
     def goal(self, **overrides):
