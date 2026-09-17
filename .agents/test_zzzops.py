@@ -4107,6 +4107,20 @@ class ReservationTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    @mock.patch.object(zzzops, "inspect_initialization")
+    @mock.patch.object(zzzops._installation, "validation_status")
+    def test_workflow_context_gate_prioritizes_installation_then_bootstrap_then_policy(self, status, inspection):
+        package = {"version": "0.0.0-dev", "revision": "a" * 40}
+        status.return_value = {"required": True, "reason": "package_changed"}
+        self.assertEqual("installation-validation", zzzops.workflow_context_step(Path("."), package)["id"])
+        status.return_value = {"required": False}
+        inspection.return_value = {"initialized": False, "state": None, "state_error": "canonical policy is missing"}
+        self.assertEqual("bootstrap", zzzops.workflow_context_step(Path("."), package)["id"])
+        inspection.return_value = {"initialized": False, "state": {}, "decision_blockers": ["policy:model_routing"]}
+        self.assertEqual("policy-review", zzzops.workflow_context_step(Path("."), package)["id"])
+        inspection.return_value = {"initialized": True}
+        self.assertIsNone(zzzops.workflow_context_step(Path("."), package))
+
     def test_each_named_skill_enters_the_public_workflow_with_its_registered_intent(self):
         expected = {
             "add-zzzops-goal": "capture", "bootstrap-zzzops-repository": "inspect",

@@ -248,6 +248,36 @@ def workflow_repair_step(intent: str, reason: str, action: str, *, source_skill:
     }
 
 
+def workflow_context_step(repo: Path, package: dict[str, Any]) -> dict[str, Any] | None:
+    """Derive the mandatory shared context gate without retaining workflow state."""
+    provenance = {field: package.get(field) for field in ("version", "revision")}
+    if all(isinstance(value, str) and value for value in provenance.values()):
+        status = _installation.validation_status(repo, provenance)
+        if status.get("required") is True:
+            return {
+                "id": "installation-validation", "skill": "$validate-zzzops-installation", "intent": "inspect",
+                "audience": "root", "phase": "context",
+                "action": "Validate the installed ZzzOps package for this repository, then invoke workflow again.",
+                "reason": f"Repository installation validation is required ({status.get('reason')}).",
+            }
+    inspection = inspect_initialization(repo)
+    if inspection.get("initialized") is True:
+        return None
+    if inspection.get("state") is None:
+        return {
+            "id": "bootstrap", "skill": "$bootstrap-zzzops-repository", "intent": "inspect",
+            "audience": "root", "phase": "context",
+            "action": "Bootstrap repository policy and canonical context, then invoke workflow again.",
+            "reason": str(inspection.get("state_error") or "Canonical project policy is missing."),
+        }
+    return {
+        "id": "policy-review", "skill": "$review-zzzops-policy", "intent": "inspect",
+        "audience": "root", "phase": "context",
+        "action": "Inspect policy state and prepare the required review input.",
+        "reason": "; ".join(inspection.get("decision_blockers") or ["Project policy is not ready."]),
+    }
+
+
 def workflow_routing_step(intent: str, settings: Any, request: Any) -> dict[str, Any]:
     """Turn reviewed routing facts into an imperative workflow instruction.
 
@@ -2203,13 +2233,11 @@ def main() -> int:
                           "reason": "The source skill cannot initiate the requested workflow intent."}]
                 print(json.dumps(workflow_envelope(args.intent, steps), ensure_ascii=False, sort_keys=True, separators=(",", ":")))
                 return 0
-            try:
-                project = reviewed_project_state(repo)
-            except ValueError:
-                steps = [{"id": "policy-review", "skill": "$review-zzzops-policy", "intent": "inspect",
-                          "audience": "root", "phase": "context", "action": "Inspect policy state and prepare the required review input.",
-                          "reason": "Project policy is missing, stale, or invalid."}]
+            context_step = workflow_context_step(repo, package)
+            if context_step is not None:
+                steps = [context_step]
             else:
+                project = reviewed_project_state(repo)
                 if args.goal is not None:
                     try:
                         if not args.phase_inputs:
