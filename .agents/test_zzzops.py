@@ -4589,7 +4589,7 @@ class WorkflowContractTests(unittest.TestCase):
         section = next(item for item in plan["policy"]["sections"] if item["id"] == "model_routing")
         self.assertEqual("capability_derived", section["decision"])
         self.assertEqual("model_plus_effort", section["settings"]["routing_unit"])
-        self.assertEqual("direct_root_no_subagent", section["settings"]["root_boundary"]["equal_root"])
+        self.assertEqual("direct_root_only", section["settings"]["root_boundary"]["human_interaction"])
         self.assertEqual("session_override_required", section["settings"]["root_boundary"]["above_root"])
         self.assertEqual("durable_blocker_continue_safe_work", section["settings"]["escalation"]["handling"])
         self.assertEqual("refresh_and_re_evaluate", section["settings"]["model_inventory"]["stale"])
@@ -4600,7 +4600,7 @@ class WorkflowContractTests(unittest.TestCase):
 
         invalid = json.loads(json.dumps(plan["policy"]))
         routing = next(item for item in invalid["sections"] if item["id"] == "model_routing")
-        routing["settings"]["root_boundary"]["equal_root"] = "spawn_equal_root"
+        routing["settings"]["root_boundary"]["human_interaction"] = "delegate_human_interaction"
         self.assertTrue(any("model_routing.settings.root_boundary" in error for error in zzzops.validate_policy(invalid, True)))
 
         settings = section["settings"]
@@ -4677,7 +4677,13 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual({"model": "economy", "effort": "low"}, economical["selected"])
         intermediate = zzzops.route_phase(phase="implementation", required_capability=2, inventory=inventory, root_pair=root)
         self.assertEqual({"model": "intermediate", "effort": "medium"}, intermediate["selected"])
-        direct = zzzops.route_phase(phase="architecture", required_capability=3, inventory=inventory, root_pair=root)
+        root_equivalent = zzzops.route_phase(phase="architecture", required_capability=3, inventory=inventory, root_pair=root)
+        self.assertEqual("delegated", root_equivalent["mode"])
+        self.assertEqual({"model": "root", "effort": "high"}, root_equivalent["selected"])
+        direct = zzzops.route_phase(
+            phase="architecture", required_capability=3, inventory=inventory,
+            root_pair=root, requires_human=True,
+        )
         self.assertEqual("direct_root", direct["mode"])
         with self.assertRaisesRegex(ValueError, "above-root"):
             zzzops.route_phase(phase="architecture", required_capability=4, inventory=inventory, root_pair=root)
@@ -4685,10 +4691,8 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("delegated_override", elevated["mode"])
         self.assertEqual({"model": "stronger", "effort": "high"}, elevated["selected"])
 
-        invalid = {**direct, "mode": "delegated", "fork_turns": "all", "parallelism": 1}
-        invalid["selected"] = {"model": "root", "effort": "high"}
-        with self.assertRaisesRegex(ValueError, "root-equivalent"):
-            zzzops.validate_launch_plan(invalid, root_pair=root)
+        root_worker = {**root_equivalent, "fork_turns": "all", "parallelism": 1}
+        self.assertTrue(zzzops.validate_launch_plan(root_worker, root_pair=root)["valid"])
         delegated = {**intermediate, "fork_turns": "2", "parallelism": 1}
         self.assertTrue(zzzops.validate_launch_plan(delegated, root_pair=root)["valid"])
         event = zzzops.routing_event(intermediate, outcome="verified")

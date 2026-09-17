@@ -660,7 +660,7 @@ def _routing_settings_errors(settings: Any) -> list[str]:
         if catch_all != 1:
             errors.append("settings.assessment_tree requires one final catch-all")
     boundary = settings.get("root_boundary")
-    if boundary != {"root_capability": "current_root_agent", "equal_root": "direct_root_no_subagent", "above_root": "session_override_required"}:
+    if boundary != {"root_capability": "current_root_agent", "human_interaction": "direct_root_only", "above_root": "session_override_required"}:
         errors.append("settings.root_boundary is invalid")
     escalation = settings.get("escalation")
     if not isinstance(escalation, dict) or set(escalation) != {"triggers", "handling"} or not isinstance(escalation.get("triggers"), list) or not escalation["triggers"] or escalation.get("handling") != "durable_blocker_continue_safe_work":

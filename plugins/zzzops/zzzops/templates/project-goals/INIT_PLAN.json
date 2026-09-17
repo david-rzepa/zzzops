@@ -187,7 +187,7 @@
           "capability_basis": "effective_engineering_rigor_and_bounded_commitment",
           "routing_unit": "model_plus_effort",
           "model_inventory": {"source": "runtime_available_models", "effort": "runtime_supported_effort_levels", "missing": "root_best_effort_web_research", "stale": "refresh_and_re_evaluate", "unsupported": "durable_blocker", "reviewed_pairs": []},
-          "root_boundary": {"root_capability": "current_root_agent", "equal_root": "direct_root_no_subagent", "above_root": "session_override_required"},
+          "root_boundary": {"root_capability": "current_root_agent", "human_interaction": "direct_root_only", "above_root": "session_override_required"},
           "tiers": [
             {"id": "routine", "rank": 1}, {"id": "bounded", "rank": 2},
             {"id": "reasoning", "rank": 3}, {"id": "architectural", "rank": 4}
