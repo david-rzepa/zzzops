@@ -169,6 +169,12 @@ Architectural. A reviewed tier mapping selects the least-cost available
 `(model, effort)` pair that satisfies that phase. New models or efforts outside
 the reviewed inventory make policy review stale.
 
+Architectural consequence or unbounded work escalates before any phase default
+is considered. Test design has a Reasoning floor because it must translate the
+accepted behavior into capable regression checks; understanding remains a
+root-owned interaction phase and keeps its Routine default when no risk rule
+raises it.
+
 The root records the routing comparison and either dispatches a worker with the
 selected pair or records why it retains work. A worker never asks the user,
 changes canonical goal state, approves, publishes, or delegates recursively.

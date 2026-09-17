@@ -469,18 +469,14 @@
           "assessment_tree": [
             {
               "when": {
-                "phase_type": [
-                  "understand",
-                  "test_design"
+                "consequence": [
+                  "architectural"
                 ]
               },
-              "tier": "routine"
+              "tier": "architectural"
             },
             {
               "when": {
-                "consequence": [
-                  "architectural"
-                ],
                 "boundedness": [
                   "unbounded"
                 ]
@@ -491,13 +487,25 @@
               "when": {
                 "consequence": [
                   "consequential"
-                ],
-                "boundedness": [
-                  "bounded",
-                  "unbounded"
                 ]
               },
               "tier": "reasoning"
+            },
+            {
+              "when": {
+                "phase_type": [
+                  "test_design"
+                ]
+              },
+              "tier": "reasoning"
+            },
+            {
+              "when": {
+                "phase_type": [
+                  "understand"
+                ]
+              },
+              "tier": "routine"
             },
             {
               "when": {
