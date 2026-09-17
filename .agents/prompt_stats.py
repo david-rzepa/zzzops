@@ -103,6 +103,43 @@ WORKFLOW_PROMPTS = {
     ),
 }
 
+# Entry is the skill initially loaded by the harness. Hot is the first instruction
+# returned by the public checkpoint. Cold documents are loaded only by a selected
+# phase or branch of that instruction and never belong to the initial prompt.
+ENTRY_PROMPTS = {
+    "bootstrap-greenfield": ("plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md",),
+    "bootstrap-brownfield": ("plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md",),
+    "capture": ("plugins/zzzops/skills/add-zzzops-goal/SKILL.md",),
+    "execution": ("plugins/zzzops/skills/execute-zzzops/SKILL.md",),
+    "policy-review": ("plugins/zzzops/skills/review-zzzops-policy/SKILL.md",),
+    "migration": ("plugins/zzzops/skills/migrate-to-zzzops/SKILL.md",),
+    "suggestion": ("plugins/zzzops/skills/suggest-zzzops-work/SKILL.md",),
+    "installation-validation": ("plugins/zzzops/skills/validate-zzzops-installation/SKILL.md",),
+    "acceptance": (".agents/skills/run-zzzops-acceptance/SKILL.md",),
+    "feedback": ("plugins/zzzops/skills/send-zzzops-feedback/SKILL.md",),
+}
+
+COLD_WORKFLOW_PROMPTS = {
+    "bootstrap-greenfield": (
+        "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
+        "plugins/zzzops/zzzops/references/bootstrap/PLAN.md",
+        "plugins/zzzops/zzzops/references/bootstrap/GREENFIELD.md",
+    ),
+    "bootstrap-brownfield": (
+        "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
+        "plugins/zzzops/zzzops/references/bootstrap/PLAN.md",
+        "plugins/zzzops/zzzops/references/bootstrap/BROWNFIELD.md",
+    ),
+    "execution": tuple(
+        f"plugins/zzzops/skills/execute-zzzops/references/phases/{path.name}"
+        for path in sorted((Path(__file__).parents[1] / "plugins/zzzops/skills/execute-zzzops/references/phases").glob("*.md"))
+    ),
+    "suggestion": (
+        "plugins/zzzops/skills/suggest-zzzops-work/references/AGENT_OBSERVABILITY.md",
+        "plugins/zzzops/skills/suggest-zzzops-work/references/VERIFICATION_EFFICIENCY.md",
+    ),
+}
+
 WORKFLOW_SIGNALS = {
     "bootstrap-greenfield": ("never silently de-escalate", "adaptive product interview", "exactly one canonical top-level product-outcome goal", "canonical verification", "Continue from harness outcomes into product milestones", "ordered PR review queue", PROACTIVE_DELEGATION_SIGNAL),
     "bootstrap-brownfield": ("evidence-led product/harness audit", "top-level product-outcome goal", "reconcile it in place", "$migrate-to-zzzops", "canonical verification", "until exhaustion", PROACTIVE_DELEGATION_SIGNAL),
@@ -167,6 +204,15 @@ def prompt_profile(root: Path, paths: tuple[str, ...]) -> tuple[int, int, str]:
 
 def workflow_profile(root: Path, workflow: str, harness: str) -> tuple[int, int, str]:
     return prompt_profile(root, (*HARNESS_PROMPTS[harness], *WORKFLOW_PROMPTS[workflow]))
+
+
+def workflow_path_profiles(root: Path, workflow: str, harness: str) -> dict[str, tuple[int, int]]:
+    """Measure progressive-disclosure paths without charging cold prompts to entry."""
+    return {
+        "entry": prompt_profile(root, (*HARNESS_PROMPTS[harness], *ENTRY_PROMPTS[workflow]))[:2],
+        "hot": workflow_profile(root, workflow, harness)[:2],
+        "cold": prompt_profile(root, COLD_WORKFLOW_PROMPTS.get(workflow, ()))[:2],
+    }
 
 
 def enforced_context_profiles(root: Path) -> dict[str, tuple[int, int]]:
@@ -257,14 +303,14 @@ def render_workflow_report(root: Path) -> str:
     table = [
         "# Advisory routed workflow prompt report",
         "",
-        "Directly routed plugin prompts plus the Codex repository root; conditional execution create/unblock documents are excluded. Capture and execution also have blocking limits in `--check`.",
+        "Entry measures the initially loaded skill. Hot measures the first CLI-returned instruction. Conditional cold measures phase or branch instructions and is never charged to entry. Capture and execution hot paths also have blocking limits in `--check`.",
         "",
-        "| Workflow | Codex bytes | Codex est. tokens |",
-        "| --- | ---: | ---: |",
+        "| Workflow | Entry tokens | Hot tokens | Conditional cold tokens |",
+        "| --- | ---: | ---: | ---: |",
     ]
     for workflow in WORKFLOW_PROMPTS:
-        codex = workflow_profile(root, workflow, "codex")
-        table.append(f"| {workflow} | {codex[0]} | {codex[1]} |")
+        profiles = workflow_path_profiles(root, workflow, "codex")
+        table.append(f"| {workflow} | {profiles['entry'][1]} | {profiles['hot'][1]} | {profiles['cold'][1]} |")
     return "\n".join(table) + "\n"
 
 

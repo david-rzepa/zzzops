@@ -109,11 +109,14 @@ class PromptStatsTests(unittest.TestCase):
             set(prompt_stats.WORKFLOW_PROMPTS),
         )
         self.assertEqual(set(prompt_stats.WORKFLOW_PROMPTS), set(prompt_stats.WORKFLOW_SIGNALS))
-        self.assertIn("| Workflow | Codex bytes | Codex est. tokens |", report)
+        self.assertIn("| Workflow | Entry tokens | Hot tokens | Conditional cold tokens |", report)
         self.assertIn("Advisory routed workflow", report)
         self.assertEqual({"codex"}, set(prompt_stats.HARNESS_PROMPTS))
         for workflow in prompt_stats.WORKFLOW_PROMPTS:
             self.assertIn(f"| {workflow} |", report)
+            profiles = prompt_stats.workflow_path_profiles(root, workflow, "codex")
+            self.assertEqual({"entry", "hot", "cold"}, set(profiles))
+            self.assertGreater(profiles["entry"][1], 0)
 
     def test_cli_routing_signal_reaches_every_applicable_workflow(self) -> None:
         root = SCRIPT.parents[1]
