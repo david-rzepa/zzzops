@@ -2535,14 +2535,19 @@ def main() -> int:
                         }]}
                 elif args.intent not in {"execute", "preview"}:
                     raise ValueError("Goal phase checkpoints require execute or preview intent")
-                elif args.input:
-                    payload = json.loads(args.input.resolve().read_text(encoding="utf-8-sig"))
-                    result = workflow_submit(repo, args.goal, args.intent, payload)
                 else:
-                    if args.runtime is None:
-                        raise ValueError("Goal phase checkpoints require current runtime evidence")
-                    runtime = json.loads(args.runtime.resolve().read_text(encoding="utf-8-sig"))
-                    result = workflow_checkpoint(repo, args.goal, args.intent, runtime)
+                    source_skill = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
+                    context = workflow_context_step(repo, package, source_skill=source_skill)
+                    if context is not None:
+                        result = {"next_steps": [context]}
+                    elif args.input:
+                        payload = json.loads(args.input.resolve().read_text(encoding="utf-8-sig"))
+                        result = workflow_submit(repo, args.goal, args.intent, payload)
+                    else:
+                        if args.runtime is None:
+                            raise ValueError("Goal phase checkpoints require current runtime evidence")
+                        runtime = json.loads(args.runtime.resolve().read_text(encoding="utf-8-sig"))
+                        result = workflow_checkpoint(repo, args.goal, args.intent, runtime)
                 print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
                 return 0
             except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:

@@ -974,6 +974,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
         expected = {"next_steps": [{"kind": "execute", "phase": "understand"}]}
         with (
             mock.patch.object(zzzops, "configure_cli_stdout"),
+            mock.patch.object(zzzops, "workflow_context_step", return_value=None),
             mock.patch.object(zzzops._package, "package_status", return_value={"ok": True}),
             mock.patch.object(zzzops, "workflow_checkpoint", return_value=expected) as checkpoint,
             mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--goal", "42", "--intent", "execute", "--runtime", str(runtime)]),
@@ -1015,6 +1016,27 @@ class DiagnosticsModuleTests(unittest.TestCase):
             self.assertEqual(0, zzzops.main())
         self.assertEqual(expected, json.loads(stream.getvalue()))
 
+    def test_workflow_cli_gates_goal_checkpoint_on_context(self):
+        runtime = self.repo / "runtime.json"
+        runtime.write_text(json.dumps({"root_pair": {"model": "root", "effort": "medium"}, "available_pairs": [{"model": "root", "effort": "medium"}]}), encoding="utf-8")
+        gate = {
+            "id": "policy-review", "skill": "$review-zzzops-policy", "intent": "inspect",
+            "audience": "root", "phase": "context", "action": "Inspect policy state and prepare the required review input.",
+            "reason": "Project policy is not ready.",
+        }
+        with (
+            mock.patch.object(zzzops, "configure_cli_stdout"),
+            mock.patch.object(zzzops._package, "package_status", return_value={"ok": True, "version": "0.0.0-dev", "revision": "a" * 40}),
+            mock.patch.object(zzzops, "workflow_context_step", return_value=gate) as context,
+            mock.patch.object(zzzops, "workflow_checkpoint") as checkpoint,
+            mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--goal", "42", "--intent", "execute", "--runtime", str(runtime)]),
+            mock.patch.object(sys, "stdout", io.StringIO()) as stream,
+        ):
+            self.assertEqual(0, zzzops.main())
+        context.assert_called_once_with(self.repo.resolve(), {"ok": True, "version": "0.0.0-dev", "revision": "a" * 40}, source_skill="$execute-zzzops")
+        checkpoint.assert_not_called()
+        self.assertEqual({"next_steps": [gate]}, json.loads(stream.getvalue()))
+
     def test_workflow_cli_submits_phase_evidence_through_the_same_command(self):
         runtime, payload_path = self.repo / "runtime.json", self.repo / "result.json"
         runtime.write_text(json.dumps({"root_pair": {"model": "root", "effort": "medium"}, "available_pairs": [{"model": "root", "effort": "medium"}]}), encoding="utf-8")
@@ -1023,6 +1045,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
         expected = {"next_steps": []}
         with (
             mock.patch.object(zzzops, "configure_cli_stdout"),
+            mock.patch.object(zzzops, "workflow_context_step", return_value=None),
             mock.patch.object(zzzops._package, "package_status", return_value={"ok": True}),
             mock.patch.object(zzzops, "workflow_submit", return_value=expected) as submit,
             mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--goal", "42", "--intent", "execute", "--runtime", str(runtime), "--input", str(payload_path)]),
