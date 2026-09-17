@@ -4107,6 +4107,22 @@ class ReservationTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_workflow_skill_registry_allows_execute_approval_and_resume_only(self):
+        for intent in ("execute", "approve", "resume"):
+            step = {
+                "id": f"{intent}-step", "skill": "$execute-zzzops", "intent": intent,
+                "audience": "root", "phase": "context", "action": "Follow the public workflow step.",
+                "reason": "The source skill supports this workflow intent.",
+            }
+            self.assertEqual({"schema_version": 1, "next_steps": [step]}, zzzops.workflow_envelope(intent, [step]))
+        invalid = {
+            "id": "capture-step", "skill": "$execute-zzzops", "intent": "capture",
+            "audience": "root", "phase": "context", "action": "Follow the public workflow step.",
+            "reason": "The source skill does not support capture.",
+        }
+        with self.assertRaisesRegex(ValueError, "next step"):
+            zzzops.workflow_envelope("capture", [invalid])
+
     def test_policy_review_reuses_capability_evidence_before_tool_selection(self):
         review = (
             PLUGIN_ROOT / "skills" / "review-zzzops-policy" / "SKILL.md"

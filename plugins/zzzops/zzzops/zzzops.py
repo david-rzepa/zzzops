@@ -189,11 +189,11 @@ WORKFLOW_DEFAULT_SKILLS = {
     "resume": "$execute-zzzops", "inspect": "$review-zzzops-policy",
 }
 WORKFLOW_SKILL_INTENTS = {
-    "$add-zzzops-goal": "capture", "$execute-zzzops": "execute",
-    "$bootstrap-zzzops-repository": "inspect", "$migrate-to-zzzops": "inspect",
-    "$review-agentic-engineering": "inspect", "$review-zzzops-entropy": "execute",
-    "$review-zzzops-policy": "inspect", "$send-zzzops-feedback": "execute",
-    "$suggest-zzzops-work": "inspect", "$validate-zzzops-installation": "inspect",
+    "$add-zzzops-goal": {"capture"}, "$execute-zzzops": {"execute", "approve", "resume"},
+    "$bootstrap-zzzops-repository": {"inspect"}, "$migrate-to-zzzops": {"inspect"},
+    "$review-agentic-engineering": {"inspect"}, "$review-zzzops-entropy": {"execute"},
+    "$review-zzzops-policy": {"inspect"}, "$send-zzzops-feedback": {"execute"},
+    "$suggest-zzzops-work": {"inspect"}, "$validate-zzzops-installation": {"inspect"},
 }
 WORKFLOW_SOURCE_ACTIONS = {
     "$add-zzzops-goal": "Capture the requested outcome and durable goal evidence.",
@@ -218,7 +218,7 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
         optional_fields = {"directive", "model", "effort"}
         if not isinstance(step, dict) or not fields <= set(step) or set(step) - fields - optional_fields or step.get("id") in seen:
             raise ValueError("workflow next step is invalid")
-        if step.get("intent") not in WORKFLOW_INTENTS or WORKFLOW_SKILL_INTENTS.get(step.get("skill")) != step["intent"] or step.get("audience") not in {"root", "worker"}:
+        if step.get("intent") not in WORKFLOW_INTENTS or step["intent"] not in WORKFLOW_SKILL_INTENTS.get(step.get("skill"), set()) or step.get("audience") not in {"root", "worker"}:
             raise ValueError("workflow next step is invalid")
         if any(not isinstance(step.get(field), str) or not step[field] for field in fields):
             raise ValueError("workflow next step is invalid")
@@ -2178,7 +2178,7 @@ def main() -> int:
         return 2
     try:
         if args.command == "workflow":
-            if args.source_skill and WORKFLOW_SKILL_INTENTS[args.source_skill] != args.intent:
+            if args.source_skill and args.intent not in WORKFLOW_SKILL_INTENTS[args.source_skill]:
                 steps = [{"id": "workflow-source", "skill": WORKFLOW_DEFAULT_SKILLS[args.intent], "intent": args.intent,
                           "audience": "root", "phase": "context",
                           "action": "Invoke workflow again with the source skill's declared intent.",
