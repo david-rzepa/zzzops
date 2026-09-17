@@ -3628,6 +3628,10 @@ class ReservationTests(unittest.TestCase):
         renew.assert_not_called()
         uncertain = zzzops.PhaseLeaseHeartbeat(mock.Mock(side_effect=zzzops.ReservationProviderError("lost")), lambda: True)
         self.assertEqual("uncertain", uncertain.tick()["outcome"])
+        scheduled = zzzops.PhaseLeaseHeartbeat(mock.Mock(return_value={"acquired": True}), lambda: False)
+        scheduled.start(0.001)
+        scheduled.join(1)
+        self.assertEqual("worker_not_live", scheduled.result["outcome"])
 
     def test_storage_lock_serializes_writers_and_batch_preserves_results(self):
         adapter = FakeReservationAdapter()

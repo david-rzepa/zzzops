@@ -786,6 +786,7 @@ class PhaseLeaseHeartbeat:
         self._renew = renew
         self._alive = alive
         self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
         self.result: dict[str, Any] | None = None
 
     def tick(self) -> dict[str, Any]:
@@ -803,3 +804,20 @@ class PhaseLeaseHeartbeat:
 
     def stop(self) -> None:
         self._stop.set()
+
+    def start(self, interval_seconds: float) -> None:
+        if interval_seconds <= 0:
+            raise ValueError("heartbeat interval must be positive")
+        if self._thread is not None and self._thread.is_alive():
+            raise ValueError("heartbeat is already running")
+        def run() -> None:
+            while not self._stop.wait(interval_seconds):
+                outcome = self.tick()
+                if outcome.get("outcome") in {"worker_not_live", "uncertain"}:
+                    return
+        self._thread = threading.Thread(target=run, name="zzzops-phase-lease-heartbeat", daemon=True)
+        self._thread.start()
+
+    def join(self, timeout: float | None = None) -> None:
+        if self._thread is not None:
+            self._thread.join(timeout)
