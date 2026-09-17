@@ -35,8 +35,8 @@ class ReleaseValidationTests(unittest.TestCase):
         self.assertIn("validate-linux:", workflow)
         self.assertIn("validate-windows:", workflow)
         self.assertIn("validate-claude:", workflow)
-        self.assertIn("npm install --global @anthropic-ai/claude-code@2.1.241", workflow)
-        self.assertIn("python .agents/claude_plugin_acceptance.py --claude-version 2.1.241", workflow)
+        self.assertIn("npm install --global @anthropic-ai/claude-code@2.1.270", workflow)
+        self.assertIn("python .agents/claude_plugin_acceptance.py --claude-version 2.1.270", workflow)
         self.assertIn("needs: [validate-linux, validate-windows, validate-claude]", workflow)
         self.assertIn("python .github/scripts/run_product_validation.py --platform linux", workflow)
         self.assertIn("python .github/scripts/run_product_validation.py --platform windows", workflow)
@@ -52,8 +52,8 @@ class ReleaseValidationTests(unittest.TestCase):
     def test_pr_required_gate_includes_pinned_claude_acceptance(self):
         workflow = (ROOT / ".github" / "workflows" / "validate.yml").read_text(encoding="utf-8")
         self.assertIn("validate-claude:", workflow)
-        self.assertIn("npm install --global @anthropic-ai/claude-code@2.1.241", workflow)
-        self.assertIn("python .agents/claude_plugin_acceptance.py --claude-version 2.1.241", workflow)
+        self.assertIn("npm install --global @anthropic-ai/claude-code@2.1.270", workflow)
+        self.assertIn("python .agents/claude_plugin_acceptance.py --claude-version 2.1.270", workflow)
         self.assertIn("needs: [validate-linux, validate-windows, validate-macos, validate-claude]", workflow)
         self.assertIn("claude=${{ needs.validate-claude.result }}", workflow)
 

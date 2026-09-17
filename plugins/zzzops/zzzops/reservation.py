@@ -623,6 +623,22 @@ def storage_lock_description(repository: str, key: str, owner: str, run_id: str,
     return value
 
 
+def parse_storage_lock_description(value: Any) -> dict[str, Any]:
+    if not isinstance(value, str) or not value.startswith("z3|"):
+        raise ReservationProviderError("Storage lock metadata is invalid; no ownership assumed.")
+    fields = dict(part.split("=", 1) for part in value.split("|")[1:] if "=" in part)
+    if set(fields) != {"r", "k", "o", "u", "x"}:
+        raise ReservationProviderError("Storage lock metadata is incomplete; no ownership assumed.")
+    try:
+        return {
+            "repository_key": fields["r"], "key": _reservation_actor(fields["k"], "storage key", 24),
+            "owner": _reservation_actor(fields["o"], "owner", 20), "run_id": _reservation_actor(fields["u"], "run-id", 32),
+            "expires_at": int(fields["x"]),
+        }
+    except ValueError as exc:
+        raise ReservationProviderError("Storage lock metadata is invalid; no ownership assumed.") from exc
+
+
 def acquire_storage_lock(adapter: Any, repository: str, key: str, owner: str, run_id: str, ttl_seconds: int = 60, now: datetime | None = None) -> dict[str, Any]:
     if not isinstance(ttl_seconds, int) or isinstance(ttl_seconds, bool) or not 10 <= ttl_seconds <= 300:
         raise ValueError("storage-lock ttl-seconds must be from 10 to 300")
@@ -631,13 +647,10 @@ def acquire_storage_lock(adapter: Any, repository: str, key: str, owner: str, ru
     expected = storage_lock_description(repository, key, owner, run_id, now_epoch + ttl_seconds)
     existing = adapter.get_label(name)
     if existing is not None:
-        text = existing.get("description")
-        if not isinstance(text, str) or not text.startswith("z3|"):
-            raise ReservationProviderError("Storage lock metadata is invalid; no ownership assumed.")
-        fields = dict(part.split("=", 1) for part in text.split("|")[1:] if "=" in part)
-        if fields.get("r") != reservation_repository_key(repository) or fields.get("k") != key:
+        current = parse_storage_lock_description(existing.get("description"))
+        if current["repository_key"] != reservation_repository_key(repository) or current["key"] != key:
             raise ReservationProviderError("Storage lock identity is invalid; no ownership assumed.")
-        if int(fields.get("x", "-1")) > now_epoch:
+        if current["expires_at"] > now_epoch:
             return {"acquired": False, "outcome": "contended", "key": key}
         adapter.delete_label(existing["node_id"])
     created = adapter.create_label(name, expected)
@@ -646,6 +659,37 @@ def acquire_storage_lock(adapter: Any, repository: str, key: str, owner: str, ru
     if created.get("description") != expected or not created.get("node_id"):
         raise ReservationProviderError("GitHub did not confirm storage lock ownership; no ownership assumed.")
     return {"acquired": True, "outcome": "acquired", "key": key, "expires_at": now_epoch + ttl_seconds}
+
+
+def renew_storage_lock(adapter: Any, repository: str, key: str, owner: str, run_id: str, ttl_seconds: int = 60, now: datetime | None = None) -> dict[str, Any]:
+    now_epoch = int((now or datetime.now(timezone.utc)).timestamp())
+    existing = adapter.get_label(storage_lock_label_name(key))
+    if existing is None:
+        return {"acquired": False, "outcome": "missing", "key": key}
+    current = parse_storage_lock_description(existing.get("description"))
+    if (current["repository_key"] != reservation_repository_key(repository) or current["key"] != key
+            or current["owner"] != owner or current["run_id"] != run_id):
+        return {"acquired": False, "outcome": "not_owned", "key": key}
+    expected = storage_lock_description(repository, key, owner, run_id, now_epoch + ttl_seconds)
+    adapter.update_label(existing["node_id"], expected)
+    confirmed = adapter.get_label(storage_lock_label_name(key))
+    if confirmed is None or confirmed.get("node_id") != existing["node_id"] or confirmed.get("description") != expected:
+        raise ReservationProviderError("GitHub did not confirm storage lock renewal; no ownership assumed.")
+    return {"acquired": True, "outcome": "renewed", "key": key, "expires_at": now_epoch + ttl_seconds}
+
+
+def release_storage_lock(adapter: Any, repository: str, key: str, owner: str, run_id: str) -> dict[str, Any]:
+    existing = adapter.get_label(storage_lock_label_name(key))
+    if existing is None:
+        return {"released": True, "outcome": "already_released", "key": key}
+    current = parse_storage_lock_description(existing.get("description"))
+    if (current["repository_key"] != reservation_repository_key(repository) or current["key"] != key
+            or current["owner"] != owner or current["run_id"] != run_id):
+        return {"released": False, "outcome": "not_owned", "key": key}
+    adapter.delete_label(existing["node_id"])
+    if adapter.get_label(storage_lock_label_name(key)) is not None:
+        raise ReservationProviderError("GitHub did not confirm storage lock release; no ownership assumed.")
+    return {"released": True, "outcome": "released", "key": key}
 
 
 def apply_independent_batch(items: list[dict[str, Any]], apply: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:

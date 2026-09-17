@@ -7,6 +7,8 @@ description: ZzzOps v0.0.0-dev — development plugin. Bootstrap an empty, early
 
 Read `../../rules/COMMUNICATION.md` for user-facing messages.
 
+First invoke `zzzops workflow --intent inspect --source-skill '$bootstrap-zzzops-repository'` and obey its `next_steps`. Do not invoke a private ZzzOps command named elsewhere in this skill; those references describe the workflow handler behind this public command.
+
 Establish a clear product outcome and the proportionate engineering harness agents need, then execute the authorized product DAG. Bootstrap coordinates policy, ordinary goals, execution, verification, and migration rather than duplicating them.
 
 1. Read [repository and product analysis](../../zzzops/references/bootstrap/ANALYZE.md) and `../../rules/DELEGATION.md` for isolated audit evidence. Before harness commitment, run the adaptive product interview to establish beneficiaries, observable success, scope/non-goals, initial milestone, constraints, and applicable risk/governance facts. This is discovery, not an approval gate. Classify the repository from evidence and use [[bounded commitment]](../../concepts/bounded-commitment.md) for unknown technical choices.
