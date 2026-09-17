@@ -379,6 +379,10 @@ def build_portfolio_snapshot(
 ) -> dict[str, Any]:
     _, normalize_resource_policy, _ = _require_configured()
     for record in records:
+        # Full phase payloads are fetched directly by workflow checkpoints; a
+        # portfolio is a compact scheduling projection.
+        for field in ("phase_evidence", "human_spec", "acceptance_criteria"):
+            record.pop(field, None)
         record["children"] = []
         record["blocks"] = []
     by_key = {record["key"]: record for record in records}
@@ -436,5 +440,8 @@ def compact_portfolio_output(snapshot: dict[str, Any]) -> dict[str, Any]:
             goals.append({"archived": True, **{field: goal.get(field) for field in terminal_fields}})
             archived += 1
         else:
-            goals.append(goal)
+            goals.append({
+                key: value for key, value in goal.items()
+                if key not in {"phase_evidence", "human_spec", "acceptance_criteria"}
+            })
     return {**snapshot, "goals": goals, "summary": {**snapshot["summary"], "archived": archived}}

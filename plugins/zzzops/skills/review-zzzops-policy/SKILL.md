@@ -7,6 +7,8 @@ description: ZzzOps v0.0.0-dev — development plugin. Review, initialize, summa
 
 Read `../../rules/COMMUNICATION.md` for user-facing messages.
 
+First invoke `zzzops workflow --intent inspect --source-skill '$review-zzzops-policy'` and obey its `next_steps`. Do not invoke a private ZzzOps command named elsewhere in this skill; those references describe the workflow handler behind this public command.
+
 Follow `../../rules/INITIALIZATION.md`; only this workflow changes or confirms policy.
 
 Before optional tools, reuse capabilities; never invoke an unavailable path—use an alternative or block once.

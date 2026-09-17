@@ -7,6 +7,8 @@ description: ZzzOps v0.0.0-dev — development plugin. Suggest, discover, or aud
 
 Read `../../rules/COMMUNICATION.md` for user-facing messages.
 
+First invoke `zzzops workflow --intent inspect --source-skill '$suggest-zzzops-work'` and obey its `next_steps`. Do not invoke a private ZzzOps command named elsewhere in this skill; those references describe the workflow handler behind this public command.
+
 Run `../../rules/INITIALIZATION.md`, then `../../rules/BACKENDS.md`. Read project instructions, charter, and minimal evidence; hydrate only likely duplicates, and history only when needed.
 
 1. Mode defaults to `dry-run`: no edits to source, Git, goals, or index. `apply` requires explicit user request or a `$execute-zzzops` invocation explicitly allowed by reviewed PROJECT refill policy.
