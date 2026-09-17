@@ -2479,6 +2479,20 @@ class PhaseEvidenceTests(unittest.TestCase):
         same_actor = zzzops.record_phase_result(evidence, "review", review, review_input)
         with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "independent"):
             zzzops.independent_review_ready(same_actor, "implement", "review")
+
+    def test_phase_review_binds_exact_record_and_requires_independent_reviewer(self):
+        envelope = self.envelope("plan")
+        evidence = zzzops.record_phase_result(
+            zzzops.empty_phase_evidence(), "plan", self.record("plan", envelope), envelope,
+        )
+        artifact = {"reference": "urn:sha256:" + "1" * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": "ok"})}
+        reviewed = zzzops.record_phase_review(evidence, "plan", artifact, "reviewer-2")
+        self.assertEqual("reviewer-2", reviewed["reviews"]["plan"]["reviewer"])
+        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "independent"):
+            zzzops.record_phase_review(evidence, "plan", artifact, "worker-1")
+        changed = zzzops.record_phase_result(reviewed, "plan", self.record("plan", envelope, "changed"), envelope)
+        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "stale"):
+            zzzops.normalize_phase_evidence(changed)
         with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "acyclic"):
             zzzops.derive_phase_eligibility(
                 self.goal(), self.graph({"id": "a", "depends_on": ["b"]}, {"id": "b", "depends_on": ["a"]}), {},
