@@ -3,6 +3,7 @@ import builtins
 import json
 import os
 import sys
+import subprocess
 import tempfile
 import time
 import unittest
@@ -35,6 +36,7 @@ args = sys.argv[1:]
 payload = json.loads(Path(args[args.index('--input') + 1]).read_text())
 with Path(%r).open('a') as handle:
     handle.write(json.dumps(payload, sort_keys=True) + '\\n')
+print(json.dumps({'next_steps': [{'kind': 'renewed', 'goal': int(args[args.index('--goal') + 1]), 'phase': payload['phase'], 'actor': payload['actor'], 'lease': payload['lease'], 'expires_at': __import__('time').time() + 900}]}))
 raise SystemExit(0)
 """ % str(self.cli_records))
         self.probe = self._script("fake-probe.py", """
@@ -183,6 +185,76 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
         self.assertEqual(3, len(unknown))
         self.assertTrue(all(item["detail"] == "TimeoutExpired" for item in unknown))
         self.assertFalse(any(item.get("lease") == "token-timeout" for item in self._lines(self.cli_records)))
+
+
+    def test_active_probe_with_zero_exit_repair_preserves_liveness(self):
+        self.cli.write_text("import json\nprint(json.dumps({'next_steps':[{'kind':'repair'}]}))\n")
+        result = self._start(71, "plan", "repair-token", "active")
+        self._wait(lambda: not heartbeat._pid_alive(result["pid"]))
+        events = self._lines(Path(result["log"]))
+        failed = [event for event in events if event["event"] == "renewal_failed"]
+        self.assertEqual(3, len(failed))
+        self.assertTrue(all(event["worker_status"] == "active" for event in failed))
+        self.assertFalse(any(event["event"] in {"liveness_unknown", "worker_stopped"} for event in events))
+        self.assertEqual("active", events[-1]["worker_status"])
+
+    def test_acknowledgement_requires_exact_identity_and_live_expiry(self):
+        lease = dict(goal=1, phase="plan", actor="worker", token="token")
+        step = dict(kind="renewed", goal=1, phase="plan", actor="worker", lease="token", expires_at=time.time()+60)
+        def result(value):
+            return subprocess.CompletedProcess([], 0, json.dumps(value), "")
+        self.assertTrue(heartbeat._renewal_acknowledged(result({'next_steps':[step]}), lease))
+        for key, value in [('goal',2), ('phase','review'), ('actor','other'), ('lease','other'), ('expires_at',0), ('expires_at',True), ('expires_at',float('inf')), ('kind','repair')]:
+            with self.subTest(key=key,value=value):
+                self.assertFalse(heartbeat._renewal_acknowledged(result({'next_steps':[{**step,key:value}]}),lease))
+        for malformed in ['not json', '{}', 'null', '{"next_steps": [null]}']:
+            self.assertFalse(heartbeat._renewal_acknowledged(subprocess.CompletedProcess([],0,malformed,''),lease))
+
+    def test_stop_during_probe_prevents_renewal(self):
+        ready, release = self.directory/'ready', self.directory/'release'
+        self.probe.write_text("from pathlib import Path\nimport time\nPath(%r).touch()\nwhile not Path(%r).exists(): time.sleep(.005)\n" % (str(ready),str(release)))
+        result = self._start(72,"plan","stop-token","active")
+        self._wait(ready.exists)
+        heartbeat.stop_heartbeat(repo=self.repo,root_id="root-a",goal=72,phase="plan",token="stop-token",state_dir=self.state)
+        release.touch()
+        self._wait(lambda:not heartbeat._pid_alive(result['pid']))
+        self.assertEqual([],self._lines(self.cli_records))
+
+    def test_stop_during_renewal_prevents_retry(self):
+        ready, release = self.directory/'renew-ready', self.directory/'renew-release'
+        self.cli.write_text("from pathlib import Path\nimport time\nwith Path(%r).open('a') as f: f.write('{}\\n')\nPath(%r).touch()\nwhile not Path(%r).exists(): time.sleep(.005)\nprint('{}')\n" % (str(self.cli_records),str(ready),str(release)))
+        result = self._start(73,'plan','inflight-token','active')
+        self._wait(ready.exists)
+        heartbeat.stop_heartbeat(repo=self.repo,root_id='root-a',goal=73,phase='plan',token='inflight-token',state_dir=self.state)
+        release.touch()
+        self._wait(lambda:not heartbeat._pid_alive(result['pid']))
+        self.assertEqual(1,len(self._lines(self.cli_records)))
+        self.assertEqual([],list(self.state.glob('renew-*.json')))
+        self.assertEqual([],self._lines(Path(result['log'])))
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process-group cleanup")
+    def test_watchdog_terminates_renewal_descendant(self):
+        child_pid = self.directory / 'child-pid'
+        self.cli.write_text("import subprocess,sys,time\nfrom pathlib import Path\np=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)'])\nPath(%r).write_text(str(p.pid))\ntime.sleep(30)\n" % str(child_pid))
+        config = dict(cli_path=str(self.cli),repo=str(self.repo),runtime_path=str(self.runtime),
+                      renewal_timeout_seconds=.05,renewal_cleanup_seconds=.05)
+        with self.assertRaises(subprocess.TimeoutExpired):
+            heartbeat._renew(config,dict(goal=1,phase='plan',token='token',actor='worker'),self.directory)
+        pid = int(child_pid.read_text())
+        self._wait(lambda: not heartbeat._pid_alive(pid))
+        self.assertEqual([], list(self.directory.glob('renew-*.json')))
+
+    def test_renewal_watchdog_is_bounded_and_cleans_payload(self):
+        marker = self.directory/'budgets.json'
+        self.cli.write_text("import os,json,time\nfrom pathlib import Path\nPath(%r).write_text(json.dumps([os.environ['ZZZOPS_RENEWAL_TIMEOUT_SECONDS'],os.environ['ZZZOPS_RENEWAL_CLEANUP_SECONDS']]))\ntime.sleep(20)\n" % str(marker))
+        config=dict(cli_path=str(self.cli),repo=str(self.repo),runtime_path=str(self.runtime),renewal_timeout_seconds=.05,renewal_cleanup_seconds=.05)
+        lease=dict(goal=1,phase='plan',token='token',actor='worker')
+        started=time.monotonic()
+        with self.assertRaises(subprocess.TimeoutExpired):
+            heartbeat._renew(config,lease,self.directory)
+        self.assertLess(time.monotonic()-started,8)
+        self.assertEqual(['0.05','0.05'],json.loads(marker.read_text()))
+        self.assertEqual([],list(self.directory.glob('renew-*.json')))
 
     def test_start_atomically_replaces_the_same_phase_lease(self):
         first = self._start(61, "plan", "old-token", "active")

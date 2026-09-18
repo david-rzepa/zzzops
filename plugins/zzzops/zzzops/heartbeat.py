@@ -9,6 +9,7 @@ import argparse
 import contextlib
 import hashlib
 import json
+import math
 import os
 import signal
 import subprocess
@@ -291,14 +292,66 @@ def _renew(config: dict[str, Any], lease: dict[str, Any], directory: Path) -> su
     try:
         cli_path = Path(config["cli_path"])
         cli = [sys.executable, str(cli_path)] if cli_path.suffix == ".py" or not os.access(cli_path, os.X_OK) else [str(cli_path)]
-        return subprocess.run(
-            [*cli, "--repo", config["repo"], "--intent", "execute",
-             "--goal", str(lease["goal"]), "--runtime", config["runtime_path"],
-             "--input", str(payload_path)],
-            cwd=config["repo"], capture_output=True, text=True, timeout=30, check=False,
-        )
+        work_timeout = float(config.get("renewal_timeout_seconds", 30))
+        cleanup_timeout = float(config.get("renewal_cleanup_seconds", 10))
+        if not all(math.isfinite(value) and value > 0 for value in (work_timeout, cleanup_timeout)):
+            raise ValueError("renewal budgets must be finite positive seconds")
+        environment = dict(os.environ, ZZZOPS_RENEWAL_TIMEOUT_SECONDS=str(work_timeout),
+                           ZZZOPS_RENEWAL_CLEANUP_SECONDS=str(cleanup_timeout))
+        command = [*cli, "--repo", config["repo"], "--intent", "execute",
+                   "--goal", str(lease["goal"]), "--runtime", config["runtime_path"],
+                   "--input", str(payload_path)]
+        process = subprocess.Popen(command, cwd=config["repo"], stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True, env=environment,
+                                   start_new_session=True)
+        try:
+            # Reserve four seconds of the watchdog margin for tree cleanup/reap.
+            stdout, stderr = process.communicate(timeout=work_timeout + cleanup_timeout + 1)
+        except subprocess.TimeoutExpired:
+            # Only terminate the process tree created for this renewal attempt.
+            if os.name == "posix":
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
+            elif os.name == "nt":
+                # Windows tree termination is best effort; always reap our child.
+                with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+                    subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   timeout=2, check=False)
+            with contextlib.suppress(ProcessLookupError):
+                process.kill()
+            # Do not wait indefinitely for pipes held by an escaped descendant.
+            process.stdout.close()
+            process.stderr.close()
+            process.wait(timeout=2)
+            raise
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
     finally:
         payload_path.unlink(missing_ok=True)
+
+
+def _renewal_acknowledged(result: subprocess.CompletedProcess[str], lease: dict[str, Any]) -> bool:
+    if result.returncode != 0:
+        return False
+    try:
+        response = json.loads(result.stdout)
+        steps = response["next_steps"]
+        if not isinstance(steps, list) or len(steps) != 1:
+            return False
+        step = steps[0]
+        expiry = step.get("expires_at")
+        return (step.get("kind") == "renewed"
+                and all(step.get(key) == lease[key] for key in ("goal", "phase", "actor"))
+                and step.get("lease") == lease["token"]
+                and isinstance(expiry, (int, float)) and not isinstance(expiry, bool)
+                and math.isfinite(expiry) and expiry > time.time())
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return False
+
+
+def _tracked(config_path: Path, lease: dict[str, Any]) -> bool:
+    return any(all(current.get(key) == lease.get(key) for key in ("goal", "phase", "token", "actor"))
+               for current in _read(config_path)["leases"])
 
 
 def _wait_for_config_change(config_path: Path, interval: float, observed: int) -> None:
@@ -348,6 +401,8 @@ def run(config_path: Path) -> int:
             log_path = Path(config["log_path"])
             for lease in leases:
                 token = lease["token"]
+                if not _tracked(config_path, lease):
+                    continue
                 try:
                     probe = subprocess.run(
                         _command(lease["probe_argv"], "probe_argv"), cwd=config["repo"],
@@ -358,6 +413,9 @@ def run(config_path: Path) -> int:
                 except (OSError, subprocess.TimeoutExpired) as exc:
                     status = "unknown"
                     probe = exc
+                if not _tracked(config_path, lease):
+                    failures.pop(token, None)
+                    continue
                 if status == "stopped":
                     _log(log_path, "worker_stopped", lease)
                     _remove_lease(config_path, update_lock, lease["goal"], lease["phase"], token)
@@ -366,20 +424,25 @@ def run(config_path: Path) -> int:
                 if status == "active":
                     try:
                         renewed = _renew(config, lease, config_path.parent)
-                    except (OSError, subprocess.TimeoutExpired) as exc:
-                        status = "unknown"
+                    except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
                         probe = exc
                     else:
-                        if renewed.returncode == 0:
+                        if _renewal_acknowledged(renewed, lease):
                             failures.pop(token, None)
                             continue
-                        status = "unknown"
                         probe = renewed
+                if not _tracked(config_path, lease):
+                    failures.pop(token, None)
+                    continue
                 failures[token] = failures.get(token, 0) + 1
                 detail = type(probe).__name__ if not isinstance(probe, subprocess.CompletedProcess) else f"exit_{probe.returncode}"
-                _log(log_path, "liveness_unknown", lease, attempt=failures[token], detail=detail)
+                if status == "active" and isinstance(probe, subprocess.CompletedProcess) and probe.returncode == 0:
+                    detail = "invalid_renewal_acknowledgement"
+                _log(log_path, "renewal_failed" if status == "active" else "liveness_unknown", lease,
+                     worker_status=status, attempt=failures[token], detail=detail)
                 if failures[token] >= limit:
-                    _log(log_path, "recovery_required", lease, attempts=failures[token])
+                    _log(log_path, "recovery_required", lease, worker_status=status,
+                         reason="renewal_failed" if status == "active" else "liveness_unknown", attempts=failures[token])
                     _remove_lease(config_path, update_lock, lease["goal"], lease["phase"], token)
                     failures.pop(token, None)
             _wait_for_config_change(config_path, interval, observed_config)
