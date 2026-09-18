@@ -144,5 +144,28 @@ class PolicyContextTests(unittest.TestCase):
             for step in result['next_steps']:
                 self.assertIn('model_routing', step['policy']['sections'])
 
+    def test_preview_policy_review_keeps_unreviewed_inspection_out_of_stdout_and_repo(self):
+        import test_zzzops as fixtures
+        z = fixtures.zzzops
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as output:
+            repo = Path(root)
+            inspection = {'state': self.project(), 'state_error': 'obsolete policy'}
+            real_mkdtemp = tempfile.mkdtemp
+            with (
+                mock.patch.object(z._package, 'package_status', return_value={'ok': True, 'version': '1', 'revision': 'abc'}),
+                mock.patch.object(z._installation, 'validation_status', return_value={'required': False}),
+                mock.patch.object(z, 'workflow_context_step', return_value={'id': 'policy-review'}),
+                mock.patch.object(z, 'inspect_initialization', return_value=inspection),
+                mock.patch.object(z._policy_context.tempfile, 'mkdtemp', side_effect=lambda **kw: real_mkdtemp(prefix=kw['prefix'], dir=output)),
+            ):
+                result = z._workflow.public_run(z, repo, 'preview', '$execute-zzzops', {}, None, None)
+            step = result['next_steps'][0]
+            self.assertNotIn('custom code_quality', json.dumps(result))
+            self.assertNotIn('policy', step)
+            path = Path(step['inspection'])
+            self.assertEqual(inspection, json.loads(path.read_text()))
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), step['inspection_sha256'])
+            self.assertEqual([], list(repo.iterdir()))
+
 if __name__ == '__main__':
     unittest.main()

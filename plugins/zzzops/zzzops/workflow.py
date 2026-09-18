@@ -1030,10 +1030,8 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         return {'next_steps': [{'kind': 'checkpoint', 'action': 'Reinvoke the original intent against the newly reviewed policy.'}]}
     if gate and gate.get('id') in {'bootstrap', 'policy-review'}:
         inspection = api.inspect_initialization(repo)
-        path = repo / '.zzzops' / 'diagnostics' / 'policy-review.json'
-        if not readonly:
-            api.atomic_text(path, json.dumps(inspection, ensure_ascii=False, sort_keys=True))
-        return {'next_steps': [{**gate, 'inspection': inspection if readonly else str(path), 'submission': {'operation': 'policy_propose', 'plan': '<complete initialization plan>'}, 'template': str(Path(api.__file__).parent / 'templates/project-goals/INIT_PLAN.json')}]}
+        reference = api._policy_context.write_inspection(repo, inspection)
+        return {'next_steps': [{**gate, 'inspection': reference['path'], 'inspection_sha256': reference['sha256'], 'submission': {'operation': 'policy_propose', 'plan': '<complete initialization plan>'}, 'template': str(Path(api.__file__).parent / 'templates/project-goals/INIT_PLAN.json')}]}
     project = api.reviewed_project_state(repo)
     if policy_snapshot is not None:
         policy_snapshot['project'] = project

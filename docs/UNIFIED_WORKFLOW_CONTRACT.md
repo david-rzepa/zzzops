@@ -89,6 +89,7 @@ policy blocks, including custom settings and exceptions, selected for the phase
 and operation; reviews additionally receive quality and verification policy.
 Unknown custom phases receive all blocks rather than silently losing constraints.
 Policy-proposal gates never label an unapproved proposal as reviewed policy.
+Their inspection is also a temporary file reference, including in preview mode.
 The CLI writes these private files outside the repository and never inlines their
 contents in stdout. Files are disposable disclosure, not durable evidence or
 authority: a fresh checkpoint regenerates a missing file, while phase freshness

@@ -50,6 +50,23 @@ def needs_context(result):
     return any(actionable(step) for step in steps(result))
 
 
+def temporary_directory(repo, root=None):
+    directory = Path(tempfile.mkdtemp(prefix='zzzops-policy-', dir=root)).resolve()
+    if directory.is_relative_to(Path(repo).resolve()):
+        directory.rmdir()
+        raise ValueError('Policy excerpts require a temporary directory outside the repository')
+    return directory
+
+
+def write_inspection(repo, inspection):
+    """Keep unreviewed policy inspection out of stdout, including in preview."""
+    content = (json.dumps(inspection, ensure_ascii=False, sort_keys=True, indent=2) + '\n').encode('utf-8')
+    path = temporary_directory(repo) / 'inspection.json'
+    with path.open('xb') as handle:
+        handle.write(content)
+    return {'path': str(path), 'sha256': hashlib.sha256(content).hexdigest()}
+
+
 def section_ids(step, source, available):
     selected = set(COMMON)
     phase = step.get('phase')
@@ -96,10 +113,7 @@ def attach(result, repo, project, *, source, temporary_root=None):
         sha256 = hashlib.sha256(content).hexdigest()
         if sha256 not in references:
             if directory is None:
-                directory = Path(tempfile.mkdtemp(prefix='zzzops-policy-', dir=temporary_root)).resolve()
-                if directory.is_relative_to(Path(repo).resolve()):
-                    directory.rmdir()
-                    raise ValueError('Policy excerpts require a temporary directory outside the repository')
+                directory = temporary_directory(repo, temporary_root)
             path = directory / (sha256 + '.json')
             # mkdtemp gives private directory permissions; exclusive creation
             # avoids replacing any prior file, including through a symlink.
