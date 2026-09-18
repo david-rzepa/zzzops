@@ -1,17 +1,17 @@
 {
   "approval": {
     "date": "2026-09-17",
-    "digest": "sha256:9c60adf2fcf7f9cdd9d62e4c0c8b39a7dfa8a05a998cc37f5e11f6be215665b9",
-    "reviewer": "user: I approve the policy change in this project (current conversation)"
+    "digest": "sha256:c650a61314079b06c622042481274e89d136345d42852bec2df55b8cc978cc3b",
+    "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
   },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:f57342ea10c0866a2a75aab723b8399bccc41c55772bcdc940bffcdab6eb6039",
+      "digest": "sha256:7bcc71b20d0d83e612b8eb2a0742b856f9570d039d62619af7f85973bd954819",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
-      "digest": "sha256:611f3fc3f6616cc4d88d1439805b40fc8732bb3850553d537a342d1f6209a943",
+      "digest": "sha256:53d08400c64c31be1c59fc26fd9083597df24796d3c60d0e6ea331fb92795eb5",
       "path": ".zzzops/PROJECT.md"
     }
   },
@@ -206,6 +206,18 @@
       "change": "Reviewed policy revision 36",
       "date": "2026-09-17",
       "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 37",
+      "date": "2026-09-17",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "user: I approve (temporary routing baseline pending goal #488)",
+      "change": "Reviewed policy revision 38",
+      "date": "2026-09-17",
+      "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e."
     }
   ],
   "initialized": true,
@@ -318,6 +330,12 @@
         "id": "E-SCHEMA2",
         "kind": "observed",
         "source": "Existing reviewed source-project policy and current shipped policy schema"
+      },
+      {
+        "finding": "Harness exposes 27 model/effort pairs, including ultra where the harness supports it. Mapping and relative cost scores are proposed estimates; model availability is tool evidence, not inferred from public API docs.",
+        "id": "E-RUNTIME-20260917",
+        "kind": "observed",
+        "source": "Current collaboration.spawn_agent tool schema; https://developers.openai.com/api/docs/models and https://developers.openai.com/api/docs/pricing (2026-09-17)"
       }
     ],
     "schema_version": 2,
@@ -350,8 +368,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-17",
-          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
-          "reviewer": "user: I approve the policy change in this project (current conversation)"
+          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
+          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
         },
         "source_ids": [
           "E-003",
@@ -391,8 +409,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-17",
-          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
-          "reviewer": "user: I approve the policy change in this project (current conversation)"
+          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
+          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
         },
         "source_ids": [
           "E-002",
@@ -431,8 +449,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-17",
-          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
-          "reviewer": "user: I approve the policy change in this project (current conversation)"
+          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
+          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
         },
         "source_ids": [
           "E-002",
@@ -471,8 +489,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-17",
-          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
-          "reviewer": "user: I approve the policy change in this project (current conversation)"
+          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
+          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
         },
         "source_ids": [
           "E-002",
@@ -505,8 +523,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-17",
-          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
-          "reviewer": "user: I approve the policy change in this project (current conversation)"
+          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
+          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
         },
         "source_ids": [
           "E-001",
@@ -544,8 +562,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-17",
-          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
-          "reviewer": "user: I approve the policy change in this project (current conversation)"
+          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
+          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
         },
         "source_ids": [
           "E-001",
@@ -578,8 +596,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-17",
-          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
-          "reviewer": "user: I approve the policy change in this project (current conversation)"
+          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
+          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
         },
         "source_ids": [
           "E-002",
@@ -613,8 +631,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-17",
-          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
-          "reviewer": "user: I approve the policy change in this project (current conversation)"
+          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
+          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
         },
         "source_ids": [
           "E-002",
@@ -663,8 +681,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-17",
-          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
-          "reviewer": "user: I approve the policy change in this project (current conversation)"
+          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
+          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
         },
         "source_ids": [
           "E-001",
@@ -734,7 +752,170 @@
             }
           ],
           "model_inventory": {
-            "reviewed_pairs": []
+            "reviewed_pairs": [
+              {
+                "cost": 600,
+                "effort": "low",
+                "model": "gpt-6-astra",
+                "tier": "architectural"
+              },
+              {
+                "cost": 1200,
+                "effort": "medium",
+                "model": "gpt-6-astra",
+                "tier": "architectural"
+              },
+              {
+                "cost": 1800,
+                "effort": "high",
+                "model": "gpt-6-astra",
+                "tier": "architectural"
+              },
+              {
+                "cost": 2400,
+                "effort": "xhigh",
+                "model": "gpt-6-astra",
+                "tier": "architectural"
+              },
+              {
+                "cost": 3600,
+                "effort": "max",
+                "model": "gpt-6-astra",
+                "tier": "architectural"
+              },
+              {
+                "cost": 4800,
+                "effort": "ultra",
+                "model": "gpt-6-astra",
+                "tier": "architectural"
+              },
+              {
+                "cost": 240,
+                "effort": "low",
+                "model": "gpt-5.6-sol",
+                "tier": "reasoning"
+              },
+              {
+                "cost": 480,
+                "effort": "medium",
+                "model": "gpt-5.6-sol",
+                "tier": "reasoning"
+              },
+              {
+                "cost": 720,
+                "effort": "high",
+                "model": "gpt-5.6-sol",
+                "tier": "architectural"
+              },
+              {
+                "cost": 960,
+                "effort": "xhigh",
+                "model": "gpt-5.6-sol",
+                "tier": "architectural"
+              },
+              {
+                "cost": 1440,
+                "effort": "max",
+                "model": "gpt-5.6-sol",
+                "tier": "architectural"
+              },
+              {
+                "cost": 1920,
+                "effort": "ultra",
+                "model": "gpt-5.6-sol",
+                "tier": "architectural"
+              },
+              {
+                "cost": 140,
+                "effort": "low",
+                "model": "gpt-5.6-terra",
+                "tier": "bounded"
+              },
+              {
+                "cost": 280,
+                "effort": "medium",
+                "model": "gpt-5.6-terra",
+                "tier": "reasoning"
+              },
+              {
+                "cost": 420,
+                "effort": "high",
+                "model": "gpt-5.6-terra",
+                "tier": "reasoning"
+              },
+              {
+                "cost": 560,
+                "effort": "xhigh",
+                "model": "gpt-5.6-terra",
+                "tier": "reasoning"
+              },
+              {
+                "cost": 840,
+                "effort": "max",
+                "model": "gpt-5.6-terra",
+                "tier": "reasoning"
+              },
+              {
+                "cost": 1120,
+                "effort": "ultra",
+                "model": "gpt-5.6-terra",
+                "tier": "reasoning"
+              },
+              {
+                "cost": 14,
+                "effort": "low",
+                "model": "gpt-5.6-luna",
+                "tier": "routine"
+              },
+              {
+                "cost": 28,
+                "effort": "medium",
+                "model": "gpt-5.6-luna",
+                "tier": "bounded"
+              },
+              {
+                "cost": 42,
+                "effort": "high",
+                "model": "gpt-5.6-luna",
+                "tier": "bounded"
+              },
+              {
+                "cost": 56,
+                "effort": "xhigh",
+                "model": "gpt-5.6-luna",
+                "tier": "bounded"
+              },
+              {
+                "cost": 84,
+                "effort": "max",
+                "model": "gpt-5.6-luna",
+                "tier": "bounded"
+              },
+              {
+                "cost": 350,
+                "effort": "low",
+                "model": "gpt-5.5",
+                "tier": "reasoning"
+              },
+              {
+                "cost": 700,
+                "effort": "medium",
+                "model": "gpt-5.5",
+                "tier": "reasoning"
+              },
+              {
+                "cost": 1050,
+                "effort": "high",
+                "model": "gpt-5.5",
+                "tier": "architectural"
+              },
+              {
+                "cost": 1400,
+                "effort": "xhigh",
+                "model": "gpt-5.5",
+                "tier": "architectural"
+              }
+            ]
           },
           "tiers": [
             {
@@ -755,114 +936,34 @@
             }
           ]
         },
-        "default_disposition": "accepted",
+        "default_disposition": "changed",
         "default_origin": "ZzzOps capability-derived routing fallback",
         "default_provenance": {
+          "catalog_digest": "sha256:bda26f1c497227b7a1ccaa8d11ccd26471d271499f033d9c89dc1bdace04bd77",
           "default_id": "zzzops.policy.model_routing",
-          "digest": "sha256:bda26f1c497227b7a1ccaa8d11ccd26471d271499f033d9c89dc1bdace04bd77",
           "schema_version": 2,
-          "snapshot": {
-            "configuration": {
-              "assessment_tree": [
-                {
-                  "tier": "architectural",
-                  "when": {
-                    "consequence": [
-                      "architectural"
-                    ]
-                  }
-                },
-                {
-                  "tier": "architectural",
-                  "when": {
-                    "boundedness": [
-                      "unbounded"
-                    ]
-                  }
-                },
-                {
-                  "tier": "reasoning",
-                  "when": {
-                    "consequence": [
-                      "consequential"
-                    ]
-                  }
-                },
-                {
-                  "tier": "reasoning",
-                  "when": {
-                    "phase_type": [
-                      "test_design"
-                    ]
-                  }
-                },
-                {
-                  "tier": "routine",
-                  "when": {
-                    "phase_type": [
-                      "understand"
-                    ]
-                  }
-                },
-                {
-                  "tier": "bounded",
-                  "when": {
-                    "boundedness": [
-                      "atomic",
-                      "bounded"
-                    ]
-                  }
-                },
-                {
-                  "tier": "architectural",
-                  "when": {}
-                }
-              ],
-              "model_inventory": {
-                "reviewed_pairs": []
-              },
-              "tiers": [
-                {
-                  "id": "routine",
-                  "rank": 1
-                },
-                {
-                  "id": "bounded",
-                  "rank": 2
-                },
-                {
-                  "id": "reasoning",
-                  "rank": 3
-                },
-                {
-                  "id": "architectural",
-                  "rank": 4
-                }
-              ]
-            },
-            "instructions": "Route each phase by effective rigor, consequence, boundedness, and phase type. Refresh runtime model and effort availability, select only reviewed pairs at sufficient capability and least cost, keep human interaction on root, require a session override above root capability, and persist a blocker when no reviewed capable pair is available."
-          },
           "source": {
             "revision": "1ae810a0fc2a7d347e9d7b1dd16813a95d32c0192112607e75cc29a8ce7f8a9b",
             "version": "0.0.0-dev"
           },
-          "status": "adopted"
+          "status": "customized"
         },
         "exceptions": [],
         "id": "model_routing",
         "instructions": "Route each phase by effective rigor, consequence, boundedness, and phase type. Refresh runtime model and effort availability, select only reviewed pairs at sufficient capability and least cost, keep human interaction on root, require a session override above root capability, and persist a blocker when no reviewed capable pair is available.",
-        "rationale": "Retain prior project authority and constraints while reviewing the schema-v2 representation and current workflow.",
+        "rationale": "Conservative capability estimates from the exposed harness model catalog. Relative cost scores use approximate short-context API input-plus-output rate ratios times assumed effort multipliers; they are routing estimates, not measured Codex subscription consumption. GPT-5.5 cost is a conservative estimate. Review actual execution efficacy over time. The reviewed inventory is project-wide and may include pairs unavailable in the current harness. Execution intersects it with current harness availability; narrower harnesses never remove reviewed entries or alone stale policy. Newly observed unreviewed pairs require review.",
         "required": true,
         "review": {
           "approved": true,
           "date": "2026-09-17",
-          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
-          "reviewer": "user: I approve the policy change in this project (current conversation)"
+          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
+          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
         },
         "source_ids": [
           "E-015",
           "E-016",
-          "E-SCHEMA2"
+          "E-SCHEMA2",
+          "E-RUNTIME-20260917"
         ],
         "title": "Model routing and delegation",
         "unresolved": []
@@ -1211,8 +1312,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-17",
-          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
-          "reviewer": "user: I approve the policy change in this project (current conversation)"
+          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
+          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
         },
         "source_ids": [
           "E-001",
@@ -1250,8 +1351,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-17",
-          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
-          "reviewer": "user: I approve the policy change in this project (current conversation)"
+          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
+          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
         },
         "source_ids": [
           "E-002",
@@ -1307,8 +1408,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-17",
-          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
-          "reviewer": "user: I approve the policy change in this project (current conversation)"
+          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
+          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
         },
         "source_ids": [
           "E-001",
@@ -1328,6 +1429,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 36,
+  "revision": 38,
   "schema_version": 1
 }
