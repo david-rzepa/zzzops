@@ -333,7 +333,7 @@ def audit_portfolio(
         review = (record.get("implementation") or {}).get("review") if isinstance(record.get("implementation"), dict) else None
         if isinstance(review, dict) and review.get("status") == "pending" and not review.get("checkpoint"):
             findings.append({"code": "pending_review_without_checkpoint", "goal": key, "detail": "checkpoint missing"})
-        if backend == "github_issues":
+        if backend == "github_issues" and not record.get("archived"):
             if _merge_classifier is not None and record.get("pull_request") is not None:
                 repository = record.get("repository")
                 merge = _merge_classifier(record, record.get("pull_request"), repository if isinstance(repository, str) else "")

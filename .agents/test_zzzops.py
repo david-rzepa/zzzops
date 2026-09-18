@@ -3549,6 +3549,16 @@ class GoalSchemaMigrationTests(unittest.TestCase):
 
 
 class PortfolioTests(unittest.TestCase):
+    def test_archived_summaries_remain_dependency_targets_without_provider_fields(self):
+        archived = {"key": 1, "status": "done", "archived": True}
+        live = {**self.goal(depends_on=[1]), "key": 2, "state": "open",
+                "labels": ["zzzops", "zzzops:status:ready", "zzzops:priority:P2"]}
+        self.assertEqual(zzzops.audit_portfolio([archived, live], "github_issues"), [])
+        live["depends_on"] = [3]
+        self.assertIn("missing_relation", {f["code"] for f in zzzops.audit_portfolio([archived, live], "github_issues")})
+        live["labels"] = []
+        self.assertIn("label_drift", {f["code"] for f in zzzops.audit_portfolio([archived, live], "github_issues")})
+
     def goal(self, **overrides):
         goal = {
             "schema_version": 1, "status": "ready", "priority": "P2", "value": "medium",
