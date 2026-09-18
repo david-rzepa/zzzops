@@ -191,17 +191,21 @@ class FullWorkflowJourneyTests(unittest.TestCase):
             self.assess(number, phase)
             step = self.engine.step(number)[0]
         self.assertEqual((kind, phase), (step["kind"], step["phase"]))
-        result, _goal = self.mutate(number, **step["start"])
+        z._policy_context.attach({'next_steps': [step]}, self.repo, self.project, source='$execute-zzzops')
+        receipt = json.loads(Path(step['policy']['path']).read_text())['policy_receipt']
+        result, _goal = self.mutate(number, **{**step["start"], 'policy_receipt': receipt})
         perform = result["next_steps"][0]
         self.assertEqual("perform", perform["kind"])
         return perform
 
     def bind(self, number, step, actor):
         lease = step["lease"]
+        z._policy_context.attach({'next_steps': [step]}, self.repo, self.project, source='$execute-zzzops')
+        receipt = json.loads(Path(step['policy']['path']).read_text())['policy_receipt']
         if lease["worker"] is None:
             self.mutate(
                 number, operation="bind", phase=step["phase"], lease=lease["token"],
-                actor=actor, selection=lease["selection"],
+                actor=actor, selection=lease["selection"], policy_receipt=receipt,
             )
         return lease
 

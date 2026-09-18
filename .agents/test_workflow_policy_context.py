@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -24,6 +26,87 @@ class PolicyContextTests(unittest.TestCase):
                          'verification_testing', 'git_review_release', 'model_routing',
                          'workflow_adherence', 'autonomy_approval_parallelism')
         ]}}
+
+    def test_receipt_and_file_are_stable_across_invocations_and_recreation(self):
+        with tempfile.TemporaryDirectory() as output:
+            def disclose():
+                result = {'next_steps': [{'kind': 'execute', 'phase': 'implement'}]}
+                context.attach(result, Path('.'), self.project(), source='$execute-zzzops', temporary_root=output)
+                return result
+            first = disclose()
+            ref = first['next_steps'][0]['policy']
+            path = Path(ref['path'])
+            content = path.read_bytes()
+            receipt = json.loads(content)['policy_receipt']
+            self.assertNotIn(receipt, json.dumps(first))
+            modified = path.stat().st_mtime_ns
+            self.assertEqual(ref, disclose()['next_steps'][0]['policy'])
+            self.assertEqual(modified, path.stat().st_mtime_ns)
+            path.unlink()
+            self.assertEqual(ref, disclose()['next_steps'][0]['policy'])
+            self.assertEqual(content, path.read_bytes())
+
+    def test_receipt_survives_fresh_processes_and_is_bound_only_to_disclosed_content(self):
+        with tempfile.TemporaryDirectory() as output:
+            project = self.project()
+            def disclose(project, phase='understand', kind='execute'):
+                script = (
+                    "import importlib.util,json,pathlib,sys; "
+                    "s=importlib.util.spec_from_file_location('c',sys.argv[1]); "
+                    "c=importlib.util.module_from_spec(s);s.loader.exec_module(c); "
+                    "r={'next_steps':[{'phase':sys.argv[4],'kind':sys.argv[5]}]}; "
+                    "c.attach(r,pathlib.Path('.'),json.loads(sys.argv[3]),source='$execute-zzzops',temporary_root=sys.argv[2]); "
+                    "print(json.dumps(r))"
+                )
+                result = json.loads(subprocess.check_output([sys.executable, '-c', script, str(MODULE), output, json.dumps(project), phase, kind], text=True))
+                ref = result['next_steps'][0]['policy']
+                return ref, json.loads(Path(ref['path']).read_text())['policy_receipt']
+            original, receipt = disclose(project)
+            self.assertEqual((original, receipt), disclose(project))
+            # Configuration and undisclosed policy must not churn this file.
+            project['policy']['sections'][2]['configuration']['custom'] = 'new config'
+            project['policy']['sections'][2]['instructions'] = 'undisclosed quality change'
+            self.assertEqual((original, receipt), disclose(project))
+            review, review_receipt = disclose(project, kind='review')
+            self.assertNotEqual(receipt, review_receipt)
+            with self.assertRaisesRegex(ValueError, 'policy_receipt'):
+                context.require_receipt(project, {'phase': 'understand', 'kind': 'review'}, {'policy_receipt': receipt})
+            context.require_receipt(project, {'phase': 'understand', 'kind': 'review'}, {'policy_receipt': review_receipt})
+            project['policy']['sections'][0]['exceptions'].append('New applicable exception')
+            changed, changed_receipt = disclose(project)
+            self.assertNotEqual(original, changed)
+            self.assertNotEqual(receipt, changed_receipt)
+            with self.assertRaisesRegex(ValueError, 'policy_receipt'):
+                context.require_receipt(project, {'phase': 'understand', 'kind': 'execute'}, {'policy_receipt': receipt})
+
+    def test_live_lease_checkpoint_restores_deleted_policy_without_new_receipt(self):
+        with tempfile.TemporaryDirectory() as output:
+            first = {'next_steps': [{'kind': 'perform', 'phase': 'understand', 'lease': {'kind': 'review'}}]}
+            context.attach(first, Path('.'), self.project(), source='$execute-zzzops', temporary_root=output)
+            ref = first['next_steps'][0]['policy']
+            path = Path(ref['path'])
+            original = path.read_bytes()
+            path.unlink()
+            resumed = {'next_steps': [{'kind': 'await_worker', 'phase': 'understand', 'lease': {'kind': 'review'}}]}
+            self.assertTrue(context.needs_context(resumed))
+            context.attach(resumed, Path('.'), self.project(), source='$execute-zzzops', temporary_root=output)
+            self.assertEqual(ref, resumed['next_steps'][0]['policy'])
+            self.assertEqual(original, path.read_bytes())
+
+    def test_windows_cache_root_does_not_follow_shared_temp(self):
+        home = Path(tempfile.gettempdir()) / 'private-profile'
+        with mock.patch.object(context.os, 'name', 'nt'), mock.patch.object(context.Path, 'home', return_value=home):
+            with mock.patch.object(context.tempfile, 'gettempdir', side_effect=AssertionError('Shared TEMP must not be used')):
+                self.assertEqual(home / 'AppData' / 'Local' / 'Temp', context.cache_root())
+
+    def test_review_handoff_discloses_same_receipt_as_review_start(self):
+        with tempfile.TemporaryDirectory() as output:
+            result = {'next_steps': [
+                {'phase': 'understand', 'kind': 'review'},
+                {'phase': 'understand', 'kind': 'perform', 'lease': {'kind': 'review'}},
+            ]}
+            context.attach(result, Path('.'), self.project(), source='$execute-zzzops', temporary_root=output)
+            self.assertEqual(result['next_steps'][0]['policy'], result['next_steps'][1]['policy'])
 
     def test_phase_extracts_exact_blocks_without_inlining_or_repository_writes(self):
         with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as output:

@@ -95,6 +95,22 @@ instructions and exceptions selected for the phase and operation; reviews
 additionally receive quality and verification policy. Unknown custom phases receive
 all applicable instruction blocks rather than silently losing constraints.
 Configuration and provenance snapshots never enter worker policy excerpts.
+Files also contain a `policy_receipt` derived from the disclosed content. It is not
+returned in stdout, paths, leases, or goal state. Phase/review starts and delegated
+worker binding require it; the public file hash is not an acknowledgment. This
+checks retrieval, not understanding or compliance. Independent review still checks
+whether the work follows policy.
+
+Identical content reuses a private content-addressed temporary file across CLI
+invocations and restarts. Receipt and bytes remain identical after cache deletion
+and regeneration, or configuration-only changes. Changed instructions or exceptions
+invalidate the receipt for work consuming them. The CLI derives expected receipts
+from the current reviewed snapshot rather than trusting cached files. Renewals and
+result submissions do not require repeated acknowledgment. Identical disclosed
+content deliberately shares a receipt across phases; phase inputs, leases, actors,
+and model selection independently constrain the assignment. On Windows, reusable
+files live under the private user-profile temporary subtree rather than a redirected
+shared `TEMP`; on POSIX the cache enforces current-user ownership and mode 0700.
 Policy-proposal gates never label an unapproved proposal as reviewed policy.
 Their inspection is also a temporary file reference, including in preview mode.
 The CLI writes these private files outside the repository and never inlines their

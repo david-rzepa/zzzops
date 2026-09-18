@@ -76,3 +76,22 @@ Validation of the configuration/instruction split passed the full Linux product
 command: 481 Python tests (one environment-dependent skip), four migration tests,
 manual acceptance coverage, plugin/release checks, prompt budgets, and compilation.
 Independent acceptance review found no remaining blocker.
+
+## Stable policy-read receipts
+
+Phase/review starts and delegated worker binding now require the receipt contained
+only in the disclosed policy file. The public file hash cannot substitute for it;
+missing or stale acknowledgment fails before durable goal writes. This checks
+retrieval, while independent review remains responsible for policy compliance.
+
+Unchanged disclosed content reuses its path, bytes, and receipt across processes,
+phases, retries, configuration-only changes, and deleted-cache regeneration. Phase
+inputs and executor leases independently bind the assigned work. Live-lease
+checkpoints can restore deleted files; renewals and submissions need no repeated
+acknowledgment. Cache publication is atomic and outside the repository, with POSIX
+ownership checks and a private user-profile temporary location on Windows.
+
+Validation: full Linux product validation passed (486 Python tests, one skip;
+four migration tests; plugin/release/manual coverage, prompt budgets, compilation).
+The final recovery addition passed the 100-test workflow suite. Independent
+acceptance and recovery review found no remaining blocker.

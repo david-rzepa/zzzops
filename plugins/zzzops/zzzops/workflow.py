@@ -512,7 +512,7 @@ class Workflow:
                     step.update(kind='publication_setup', assignment='root', goal=number, phase=phase,
                                 action='Fetch or record the declared implementation base before starting this phase; its exact commit is unavailable.')
                     continue
-            step['start'] = {'operation': 'start', 'phase': phase, 'kind': kind, 'input_hash': step['input_hash'], 'request_id': 'new-unique-id'}
+            step['start'] = {'operation': 'start', 'phase': phase, 'kind': kind, 'input_hash': step['input_hash'], 'policy_receipt': '<copy policy_receipt from policy.path>', 'request_id': 'new-unique-id'}
             step['assignment_group'] = nodes[phase].get('review', {}).get('assignment_group', 'review') if kind == 'review' else nodes[phase]['assignment_group']
             reusable = [w for w in state(goal)['workers'].values() if w.get('group') == step['assignment_group'] and w.get('selection') == step['selection'] and (kind != 'review' or w['id'] != (goal.get('phase_evidence') or {}).get('records', {}).get(phase, {}).get('actor'))]
             if reusable:
@@ -655,6 +655,7 @@ class Workflow:
                         other = self.read(row['key'])[1] if row['status'] not in {'done', 'cancelled'} else row
                         if other['key'] != number and any(k.startswith('publish:') for k in state(other)['leases']):
                             raise ValueError('Another goal owns publication; wait or recover its lease')
+                self.api._policy_context.require_receipt(self.project, step, payload)
                 key = phase + ':' + kind
                 evidence = goal.get('phase_evidence') or self.api.empty_phase_evidence()
                 lease = {'token': uuid.uuid4().hex, 'owner': root, 'worker': root if step['assignment'] == 'root' else None,
@@ -662,7 +663,7 @@ class Workflow:
                          'record_hash': digest(evidence['records'].get(phase)) if kind != 'execute' else None,
                          'review_hash': digest(evidence['reviews'].get(phase)) if kind == 'human_approval' else None}
                 durable['leases'][key] = lease
-                response = {'next_steps': [{**step, 'kind': 'perform', 'lease': lease, 'action': 'Perform the root step.' if lease['worker'] else 'Launch or resume the assigned worker, then bind its identity using operation=bind. Release the lease if dispatch fails.', 'bind': {'operation': 'bind', 'phase': phase, 'lease': lease['token'], 'actor': '<worker-id>', 'selection': lease['selection'], 'request_id': 'new-unique-id'}}]}
+                response = {'next_steps': [{**step, 'kind': 'perform', 'lease': lease, 'action': 'Perform the root step.' if lease['worker'] else 'Launch or resume the assigned worker, then bind its identity using operation=bind. Release the lease if dispatch fails.', 'bind': {'operation': 'bind', 'phase': phase, 'lease': lease['token'], 'actor': '<worker-id>', 'selection': lease['selection'], 'policy_receipt': '<worker copies policy_receipt from policy.path>', 'request_id': 'new-unique-id'}}]}
             elif operation == 'assess':
                 graph, nodes, live, _ = self.context(goal)
                 if phase not in nodes or payload.get('input_hash') != digest(live[phase]):
@@ -783,6 +784,7 @@ class Workflow:
                         raise ValueError('Autonomous phase work must be delegated')
                     if lease['kind'] == 'review' and actor == (goal.get('phase_evidence') or {}).get('records', {}).get(phase, {}).get('actor'):
                         raise ValueError('Reviewer must be independent')
+                    self.api._policy_context.require_receipt(self.project, {'phase': phase, 'kind': lease['kind']}, payload)
                     lease['worker'] = actor
                     durable['workers'][actor] = {'id': actor, 'group': lease['group'], 'selection': lease['selection']}
                     response = {'next_steps': [{'kind': 'heartbeat', 'assignment': 'root', 'goal': number, 'phase': phase, 'lease': lease, 'action': 'Configure a local liveness probe for the bound worker so the CLI can renew ownership. Exit 0 means active, 1 stopped, other/timeout unknown.', 'submission': {'operation': 'heartbeat', 'phase': phase, 'lease': lease['token'], 'probe': ['<local-worker-status-command>', '<worker-id>']}}]}

@@ -1,4 +1,4 @@
-"""Ephemeral, exact policy excerpts for actionable public workflow steps.
+"""Cached, exact policy excerpts for actionable public workflow steps.
 
 These files are disclosure, never authority. Policy freshness and phase evidence
 still use the canonical reviewed policy. No excerpts enter the working tree.
@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
 
@@ -40,6 +41,9 @@ def steps(result):
 
 def actionable(step):
     # A policy-proposal approval is a prerequisite, not work under that policy.
+    if step.get('kind') in {'await_worker', 'recover'}:
+        # Restore missing policy files for an already assigned worker too.
+        return bool(step.get('phase')) and step.get('lease', {}).get('kind') in {'execute', 'review', 'human_approval'}
     return step.get('kind') in WORK_KINDS or (
         step.get('kind') == 'human_approval'
         and step.get('submission', {}).get('operation') != 'policy_approve'
@@ -85,45 +89,82 @@ def section_ids(step, source, available):
         selected.update(available)
     if step.get('kind') in {'assess', 'capability_discovery', 'session_override'}:
         selected.update({'model_routing', 'engineering_rigor'})
-    if step.get('kind') == 'review':
+    if step.get('lease', {}).get('kind', step.get('kind')) in {'review', 'human_approval'}:
         selected.update({'code_quality', 'verification_testing'})
     return selected
 
 
-def attach(result, repo, project, *, source, temporary_root=None):
-    """Disclose only agent instructions, never CLI configuration or snapshots.
+def disclosure(project, step, *, source='$execute-zzzops'):
+    """Derive a stable receipt from precisely the instructions being disclosed.
 
-    A private temporary directory belongs to one invocation. Identical excerpts
-    share a file within that invocation; a later invocation regenerates them.
-    The OS/user may reclaim these files after the assigned work has finished.
+    This is a read acknowledgment, not a secret or proof of compliance. The
+    public file hash includes the receipt and cannot itself serve as the receipt.
     """
     sections = project.get('policy', {}).get('sections', [])
     available = {section['id'] for section in sections}
-    directory = None
-    references = {}
+    selected = section_ids(step, source, available)
+    blocks = [
+        {key: section[key] for key in ('id', 'title', 'instructions', 'exceptions') if key in section}
+        for section in sections
+        if section['id'] in selected and section.get('applicable') is not False
+    ]
+    canonical = json.dumps({'sections': blocks}, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+    receipt = hashlib.sha256(('zzzops-policy-read-v1\n' + canonical).encode('utf-8')).hexdigest()
+    return {'sections': blocks, 'policy_receipt': receipt}
+
+
+def require_receipt(project, step, payload):
+    expected = disclosure(project, step)['policy_receipt']
+    if payload.get('policy_receipt') != expected:
+        raise ValueError('Missing or stale policy_receipt: request the current checkpoint, read policy.path, and copy its policy_receipt into the start or bind request')
+
+
+def cache_root():
+    # Do not trust a redirected/shared Windows TEMP for reusable private files.
+    # The standard profile subtree inherits the user's private profile ACL.
+    return Path.home() / 'AppData' / 'Local' / 'Temp' if os.name == 'nt' else Path(tempfile.gettempdir())
+
+
+def cached_file(repo, content, root=None):
+    """Reuse immutable content outside the repository, including across runs."""
+    user = hashlib.sha256(str(Path.home()).encode('utf-8')).hexdigest()[:16]
+    directory = Path(root or cache_root()) / ('zzzops-policy-cache-' + user)
+    if directory.resolve().is_relative_to(Path(repo).resolve()):
+        raise ValueError('Policy excerpts require a temporary directory outside the repository')
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if directory.is_symlink() or not directory.is_dir():
+        raise ValueError('Policy cache must be a private directory')
+    if os.name != 'nt' and (directory.stat().st_uid != os.getuid() or directory.stat().st_mode & 0o077):
+        raise ValueError('Policy cache must be owned by the current user with private permissions')
+    sha256 = hashlib.sha256(content).hexdigest()
+    path = directory / (sha256 + '.json')
+    if path.is_symlink():
+        raise ValueError('Policy cache file must not be a symlink')
+    if path.exists():
+        if path.read_bytes() != content:
+            raise ValueError('Policy cache content changed; remove the damaged cached file and request a fresh checkpoint')
+    else:
+        # Publish a complete file atomically. Concurrent writers derive identical
+        # bytes; readers never observe a partially written policy.
+        with tempfile.NamedTemporaryFile(dir=directory, delete=False) as handle:
+            temporary = Path(handle.name)
+            handle.write(content)
+        try:
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return {'path': str(path.resolve()), 'sha256': sha256}
+
+
+def attach(result, repo, project, *, source, temporary_root=None):
+    """Disclose cached agent instructions and an in-file-only read receipt."""
     for step in steps(result):
         if not actionable(step):
             continue
-        selected = section_ids(step, source, available)
-        blocks = [
-            {key: section[key] for key in ('id', 'title', 'instructions', 'exceptions') if key in section}
-            for section in sections
-            if section['id'] in selected and section.get('applicable') is not False
-        ]
-        if not blocks:
+        document = disclosure(project, step, source=source)
+        if not document['sections']:
             continue
-        content = (json.dumps({'sections': blocks}, ensure_ascii=False, sort_keys=True,
-                              indent=2) + '\n').encode('utf-8')
-        sha256 = hashlib.sha256(content).hexdigest()
-        if sha256 not in references:
-            if directory is None:
-                directory = temporary_directory(repo, temporary_root)
-            path = directory / (sha256 + '.json')
-            # mkdtemp gives private directory permissions; exclusive creation
-            # avoids replacing any prior file, including through a symlink.
-            with path.open('xb') as handle:
-                handle.write(content)
-            references[sha256] = {'path': str(path), 'sha256': sha256,
-                                  'sections': [section['id'] for section in blocks]}
-        step['policy'] = dict(references[sha256])
+        content = (json.dumps(document, ensure_ascii=False, sort_keys=True, indent=2) + '\n').encode('utf-8')
+        step['policy'] = {**cached_file(repo, content, temporary_root),
+                          'sections': [section['id'] for section in document['sections']]}
     return result

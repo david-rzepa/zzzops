@@ -113,6 +113,15 @@ class PublicWorkflowJourneyTests(unittest.TestCase):
 
     def mutate(self, **payload):
         self.seq += 1
+        if payload.get('operation') in {'start', 'bind'}:
+            import json
+            kind = payload.get('kind')
+            if kind is None:
+                goal = z.github_goal_record(self.adapter.issue)
+                kind = next(v['kind'] for v in goal['workflow']['leases'].values() if v['token'] == payload['lease'])
+            step = {'phase': payload['phase'], 'kind': kind}
+            z._policy_context.attach({'next_steps': [step]}, self.repo, self.project, source='$execute-zzzops')
+            payload.setdefault('policy_receipt', json.loads(Path(step['policy']['path']).read_text())['policy_receipt'])
         return self.engine.mutate(42, {'request_id': str(self.seq), **payload})
 
     def start(self, kind):
@@ -130,6 +139,36 @@ class PublicWorkflowJourneyTests(unittest.TestCase):
         record = fixtures.PhaseEvidenceTests().record('plan', step['input_envelope'])
         record.update(actor='builder', selection=lease['selection'], routing=step['result_contract']['record']['routing'], output=self.engine.artifact(42, {'output': 'output'}))
         return lease, record
+
+    def test_start_and_worker_bind_require_current_policy_read_without_writes_on_rejection(self):
+        import json
+        assessment = self.engine.step(42)[0]
+        self.mutate(operation='assess', phase='plan', input_hash=assessment['input_hash'], files=[], dimensions={'consequence': 'bounded', 'boundedness': 'atomic', 'engineering_rigor': 'structured'})
+        step = self.engine.step(42)[0]
+        request = {**step['start'], 'request_id': 'policy-start'}
+        before = self.adapter.issue['body']
+        for receipt in (None, 'stale-receipt'):
+            with self.assertRaisesRegex(ValueError, 'policy_receipt'):
+                self.engine.mutate(42, {**request, 'policy_receipt': receipt})
+            self.assertEqual(before, self.adapter.issue['body'])
+        z._policy_context.attach({'next_steps': [step]}, self.repo, self.project, source='$execute-zzzops')
+        document = json.loads(Path(step['policy']['path']).read_text())
+        receipt = document['policy_receipt']
+        self.assertNotIn(receipt, json.dumps(step))
+        self.assertNotEqual(receipt, step['policy']['sha256'])
+        with self.assertRaisesRegex(ValueError, 'policy_receipt'):
+            self.engine.mutate(42, {**request, 'policy_receipt': step['policy']['sha256']})
+        result = self.engine.mutate(42, {**request, 'policy_receipt': receipt})
+        perform = result['next_steps'][0]
+        before = self.adapter.issue['body']
+        bind = {**perform['bind'], 'actor': 'builder', 'request_id': 'policy-bind'}
+        with self.assertRaisesRegex(ValueError, 'policy_receipt'):
+            self.engine.mutate(42, bind)
+        self.assertEqual(before, self.adapter.issue['body'])
+        self.engine.mutate(42, {**bind, 'policy_receipt': receipt})
+        # The acknowledgment is not copied into goal state or returned lease data.
+        self.assertNotIn(receipt, self.adapter.issue['body'])
+        self.assertNotIn(receipt, json.dumps(result))
 
     def test_persisted_execute_review_human_approval_journey(self):
         lease, record = self.prepare()
