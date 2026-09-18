@@ -6,6 +6,7 @@ import importlib.util
 import hashlib
 import io
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
 import sys
@@ -114,6 +115,42 @@ class InstallationValidationTests(unittest.TestCase):
                 )
             self.assertFalse(self.module.record_path(repo).exists())
 
+    def test_changed_audit_requires_fresh_signature_before_revalidation(self) -> None:
+        first_audit = {"safe": True, "cleanup_required": False, "signature": "d" * 64}
+        changed_audit = {"safe": True, "cleanup_required": False, "signature": "e" * 64}
+        first_time = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        second_time = datetime(2026, 1, 2, tzinfo=timezone.utc)
+        first_clock = SimpleNamespace(now=mock.Mock(return_value=first_time))
+        second_clock = SimpleNamespace(now=mock.Mock(return_value=second_time))
+        with tempfile.TemporaryDirectory() as directory:
+            repo = self.make_repo(directory)
+            with (
+                mock.patch.object(self.module, "installation_audit", return_value=first_audit),
+                mock.patch.object(self.module, "datetime", first_clock),
+            ):
+                original = self.module.record_validation(
+                    repo, self.provenance, outcome="clean", audit_signature=first_audit["signature"],
+                )
+            original_bytes = self.module.record_path(repo).read_bytes()
+
+            with mock.patch.object(self.module, "installation_audit", return_value=changed_audit):
+                with self.assertRaisesRegex(self.module.InstallationValidationError, "audit changed"):
+                    self.module.record_validation(
+                        repo, self.provenance, outcome="clean", audit_signature=first_audit["signature"],
+                    )
+            self.assertEqual(original_bytes, self.module.record_path(repo).read_bytes())
+
+            with (
+                mock.patch.object(self.module, "installation_audit", return_value=changed_audit),
+                mock.patch.object(self.module, "datetime", second_clock),
+            ):
+                revalidated = self.module.record_validation(
+                    repo, self.provenance, outcome="clean", audit_signature=changed_audit["signature"],
+                )
+            self.assertEqual("2026-01-01T00:00:00Z", original["record"]["validated_at"])
+            self.assertEqual("2026-01-02T00:00:00Z", revalidated["record"]["validated_at"])
+            self.assertEqual(changed_audit["signature"], revalidated["record"]["audit_signature"])
+
     def test_generated_pycache_does_not_make_proven_legacy_install_unsafe(self) -> None:
         source = ".agents/zzzops/zzzops.py"
         cache = ".agents/zzzops/__pycache__/zzzops.cpython-313.pyc"
@@ -169,14 +206,28 @@ class InstallationValidationTests(unittest.TestCase):
             request.write_text(json.dumps(submission), encoding="utf-8")
 
             required = {"required": True, "reason": "missing"}
-            with mock.patch.object(self.cli._installation, "validation_status", return_value=required):
+            first_time = datetime(2026, 2, 1, tzinfo=timezone.utc)
+            second_time = datetime(2026, 2, 2, tzinfo=timezone.utc)
+            first_clock = SimpleNamespace(now=mock.Mock(return_value=first_time))
+            second_clock = SimpleNamespace(now=mock.Mock(return_value=second_time))
+            with (
+                mock.patch.object(self.cli._installation, "validation_status", return_value=required),
+                mock.patch.object(self.cli._installation, "datetime", first_clock),
+            ):
                 code, recorded = invoke("--intent", "validate_installation", "--input", str(request))
                 self.assertEqual(0, code)
                 record_bytes = self.cli._installation.record_path(repo).read_bytes()
+            with (
+                mock.patch.object(self.cli._installation, "validation_status", return_value=required),
+                mock.patch.object(self.cli._installation, "datetime", second_clock),
+            ):
                 code, repeated = invoke("--intent", "validate_installation", "--input", str(request))
                 self.assertEqual(0, code)
             self.assertEqual(recorded, repeated)
             self.assertEqual(record_bytes, self.cli._installation.record_path(repo).read_bytes())
+            self.assertEqual("2026-02-01T00:00:00Z", json.loads(record_bytes)["validated_at"])
+            first_clock.now.assert_called_once_with(timezone.utc)
+            second_clock.now.assert_not_called()
 
             status = self.cli._installation.validation_status(repo, self.provenance)
             self.assertFalse(status["required"])
