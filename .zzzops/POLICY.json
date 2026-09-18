@@ -1,17 +1,17 @@
 {
   "approval": {
-    "date": "2026-09-16",
-    "digest": "sha256:513e563501e83165685fbc04ed111c6becf7ae7c92fc4c5474bf2460f8b127a9",
-    "reviewer": "user"
+    "date": "2026-09-17",
+    "digest": "sha256:9c60adf2fcf7f9cdd9d62e4c0c8b39a7dfa8a05a998cc37f5e11f6be215665b9",
+    "reviewer": "user: I approve the policy change in this project (current conversation)"
   },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:6bf77d8e883b9f8a1147f344ba7c5a2eaf352b546c534f1582db6a73c5746c54",
+      "digest": "sha256:f57342ea10c0866a2a75aab723b8399bccc41c55772bcdc940bffcdab6eb6039",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
-      "digest": "sha256:e8cdb3da439083b05cb682c66613d945a76f28a0363566603cd7591e34fa9743",
+      "digest": "sha256:611f3fc3f6616cc4d88d1439805b40fc8732bb3850553d537a342d1f6209a943",
       "path": ".zzzops/PROJECT.md"
     }
   },
@@ -194,6 +194,18 @@
       "change": "Reviewed policy revision 34",
       "date": "2026-09-16",
       "reason": "Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, autonomy_approval_parallelism, automated_design; source digest sha256:9f50a3a6121bd8966bbf7ece4f64b7a4d16c45891ce8ec36771c621e99efdb58."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 35",
+      "date": "2026-09-17",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "user: I approve the policy change in this project (current conversation)",
+      "change": "Reviewed policy revision 36",
+      "date": "2026-09-17",
+      "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9."
     }
   ],
   "initialized": true,
@@ -300,106 +312,95 @@
         "id": "E-017",
         "kind": "observed",
         "source": "goal #423 user request"
+      },
+      {
+        "finding": "Retain source-project authority, CI, resource, refill, engineering minimums and disabled automated design while replacing retired schema and phase definitions with the already implemented reviewed workflow.",
+        "id": "E-SCHEMA2",
+        "kind": "observed",
+        "source": "Existing reviewed source-project policy and current shipped policy schema"
       }
     ],
-    "schema_version": 1,
+    "schema_version": 2,
     "sections": [
       {
         "applicable": true,
-        "confidence": "high",
-        "decision": "github_issues",
-        "default_disposition": "accepted",
-        "default_origin": "user decision and current product scope",
+        "confidence": "medium",
+        "configuration": {
+          "authority": "github_issues",
+          "capability_evidence": "init inspect 2026-07-18",
+          "repository_identity": "david-rzepa/zzzops"
+        },
+        "default_disposition": "changed",
+        "default_origin": "ZzzOps GitHub-only authority",
+        "default_provenance": {
+          "catalog_digest": "sha256:78b7f471fb5730b69fac57a2411fb53e0d5b5ff00d96a963fb124278c35378e6",
+          "default_id": "zzzops.policy.backend",
+          "schema_version": 2,
+          "source": {
+            "revision": "1ae810a0fc2a7d347e9d7b1dd16813a95d32c0192112607e75cc29a8ce7f8a9b",
+            "version": "0.0.0-dev"
+          },
+          "status": "customized"
+        },
         "exceptions": [],
         "id": "backend",
-        "rationale": "GitHub capability is usable and completed issue #81 made it the only supported authority.",
+        "instructions": "Use the CLI-selected backend as the authority for shared goal state. Require the repository identity and observed capability evidence to match; never fall back silently.",
+        "rationale": "Retain prior project authority and constraints while reviewing the schema-v2 representation and current workflow.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-16",
-          "reviewed_digest": "sha256:9f50a3a6121bd8966bbf7ece4f64b7a4d16c45891ce8ec36771c621e99efdb58",
-          "reviewer": "user"
-        },
-        "settings": {
-          "authority": "github_issues",
-          "capability_evidence": "init inspect 2026-07-18",
-          "fallback": "forbidden",
-          "repository_identity": "david-rzepa/zzzops",
-          "tradeoffs": {
-            "github_issues": "shared native issue queue requiring GitHub access"
-          }
+          "date": "2026-09-17",
+          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
+          "reviewer": "user: I approve the policy change in this project (current conversation)"
         },
         "source_ids": [
           "E-003",
-          "E-004"
+          "E-004",
+          "E-SCHEMA2"
         ],
         "title": "Canonical goal backend",
         "unresolved": []
       },
       {
         "applicable": true,
-        "confidence": "high",
-        "decision": "Use one branch and PR per goal. Prefer GitHub-native stacked PRs when the official capability is installed and provider stack membership is verified; otherwise explicitly use chained PRs from exact reviewed checkpoints. Merge in dependency order, use Conventional Commits, collect human PR approval when safe work is exhausted, and retain owner-only main releases.",
+        "confidence": "medium",
+        "configuration": {
+          "legacy_migration": {
+            "release_status": "released"
+          },
+          "pull_request_mode": "github_stacked_when_verified_else_chained",
+          "review_pending_dependency": "stack_from_reviewed_checkpoint"
+        },
         "default_disposition": "changed",
-        "default_origin": "repository policy",
+        "default_origin": "ZzzOps exhaustion-time review fallback",
+        "default_provenance": {
+          "catalog_digest": "sha256:5bfd979d6f84774885d8e77757edb3b2228e4f3b5c331bdde4e7b38065a2632f",
+          "default_id": "zzzops.policy.git_review_release",
+          "schema_version": 2,
+          "source": {
+            "revision": "1ae810a0fc2a7d347e9d7b1dd16813a95d32c0192112607e75cc29a8ce7f8a9b",
+            "version": "0.0.0-dev"
+          },
+          "status": "customized"
+        },
         "exceptions": [],
         "id": "git_review_release",
-        "rationale": "The user selected GitHub-native stacked PRs as the preferred mode and named chained PRs as the safe fallback, while retaining per-goal review units, checks, ordered integration, and human authority.",
+        "instructions": "Follow repository rules and the CLI-selected pull-request mode. Keep one branch and pull request per source-changing goal and one active stack. Base dependent work on the exact reviewed dependency checkpoint, make verified sub-goal commits, collect human pull-request approval at true queue exhaustion, and integrate in dependency order. Never bypass policy review, required checks, merge authority, or release authority. Preserve released state; replace affected project-owned state only after explicit evidence that the project has never been released. Ordinary branches start from dev and pull requests target their preceding goal branch or dev. Only david-rzepa may force-update main after release preconditions; main updates run release CI.",
+        "rationale": "Retain prior project authority and constraints while reviewing the schema-v2 representation and current workflow.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-16",
-          "reviewed_digest": "sha256:9f50a3a6121bd8966bbf7ece4f64b7a4d16c45891ce8ec36771c621e99efdb58",
-          "reviewer": "user"
-        },
-        "settings": {
-          "active_stack": "one_active_stack",
-          "base_freshness": "latest_integrated_target",
-          "branch_base": "dev",
-          "child_target": "nearest_parent_branch",
-          "commit_style": "conventional",
-          "commit_unit": "verified_subgoal",
-          "conversational_approval": "never_for_goal_progress",
-          "dependency_base": "dependency_branch",
-          "execution_branch": "per_goal",
-          "legacy_migration": {
-            "ambiguous_evidence": "ask_user_or_persist_blocker",
-            "first_release_review": "required",
-            "never_released_requires_owner_declaration": true,
-            "owner_declaration": null,
-            "post_release_policy": "explicit_user_review",
-            "pre_release_default": "replace_and_reset_affected_project_owned_state",
-            "release_evidence": "public_github_release",
-            "release_status": "released"
-          },
-          "merge_after_approval": "when_authorized",
-          "multiple_dependency_base": "reviewed_base_containing_all",
-          "parent_pseudo_trunk": true,
-          "pr_approval": "required_when_repository_requires_pr",
-          "pull_request_mode": "github_stacked_when_verified_else_chained",
-          "pull_request_target": "preceding_goal_branch_then_dev",
-          "pull_request_unit": "per_goal",
-          "read_only_dependency_investigation": "allowed_before_completion",
-          "recovery": "explicit_abandoned_stack_decision",
-          "release_actor": "david-rzepa",
-          "release_branch": "main",
-          "release_update": "explicit_owner_force_push",
-          "release_workflow": "main_update_runs_release_ci",
-          "review_gate": "human_at_exhaustion",
-          "review_pending_dependency": "stack_from_reviewed_checkpoint",
-          "review_state_reads_per_checkpoint": 1,
-          "second_stack": "durable_blocker",
-          "shared_pull_request": "explicit_reviewed_override",
-          "stacked_capability": "official_gh_stack_extension_with_provider_membership_verification",
-          "stacked_tool_installation": "explicit_user_approval",
-          "stacked_unavailable_fallback": "chained_prs"
+          "date": "2026-09-17",
+          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
+          "reviewer": "user: I approve the policy change in this project (current conversation)"
         },
         "source_ids": [
           "E-002",
           "E-005",
           "E-007",
           "E-008",
-          "E-013"
+          "E-013",
+          "E-SCHEMA2"
         ],
         "title": "Git, review, and release",
         "unresolved": []
@@ -407,91 +408,37 @@
       {
         "applicable": true,
         "confidence": "high",
-        "decision": "Continue across actionable goals under reviewed dependency and resource policy, incorporate newly captured goals at the next safe checkpoint, and persist unanswered questions without live interviewing, notification, polling, or waiting.",
-        "default_disposition": "changed",
-        "default_origin": "ZzzOps default",
-        "exceptions": [],
-        "id": "execution_continuation",
-        "rationale": "Execution is unattended; durable blockers preserve every consequential request without requiring a live user.",
-        "required": true,
-        "review": {
-          "approved": true,
-          "date": "2026-09-16",
-          "reviewed_digest": "sha256:9f50a3a6121bd8966bbf7ece4f64b7a4d16c45891ce8ec36771c621e99efdb58",
-          "reviewer": "user"
+        "configuration": {
+          "required_ci": "inspect_exact_pr_head"
         },
-        "settings": {
-          "after_additive_capture": "resume_once_and_reprioritize",
-          "continue_while_actionable": true,
-          "cross_task": "require_explicit_harness_signal",
-          "execute_intent": "same_task_until_superseded",
-          "exhausted_handoff_retains_intent": true,
-          "human_unblock_watch": {
-            "enabled": false,
-            "max_blockers": 1,
-            "max_seconds": 180,
-            "notify_once": true,
-            "poll_seconds": 30,
-            "trigger": "disabled_for_unattended_execution"
+        "default_disposition": "changed",
+        "default_origin": "ZzzOps observable-work fallback",
+        "default_provenance": {
+          "catalog_digest": "sha256:290f6194cf4af283159b55de00e1038839f9941f13a0e69d1770e1ee9d448934",
+          "default_id": "zzzops.policy.verification_testing",
+          "schema_version": 2,
+          "source": {
+            "revision": "1ae810a0fc2a7d347e9d7b1dd16813a95d32c0192112607e75cc29a8ce7f8a9b",
+            "version": "0.0.0-dev"
           },
-          "max_easy_wins": 2,
-          "new_goal_checkpoint": "next_safe_checkpoint",
-          "stop_reasons_clear_intent": [
-            "user_stop",
-            "pause",
-            "replacement_request",
-            "capture_only",
-            "required_authority",
-            "blocking_boundary"
-          ],
-          "triage_new_first": true
+          "status": "customized"
         },
-        "source_ids": [
-          "E-001",
-          "E-005",
-          "E-008"
-        ],
-        "title": "Execution and work continuation",
-        "unresolved": []
-      },
-      {
-        "applicable": true,
-        "confidence": "high",
-        "decision": "Require artifact-appropriate observable evidence in small chunks; documentation and test cases need no recursive tests, while product behavior and reusable test infrastructure require direct verification.",
-        "default_disposition": "changed",
-        "default_origin": "repository policy",
         "exceptions": [],
         "id": "verification_testing",
-        "rationale": "Root instructions forbid unobservable implementation and unsanctioned test-bug fixes.",
+        "instructions": "Require artifact-appropriate observable evidence in small chunks. Documentation and test cases need no recursive tests; product behavior and reusable test infrastructure require direct verification. Use the smallest unique falsifiable local probe, widen when relevant, inspect exact pull-request-head CI when configured, and capture test-discovered product bugs separately. Capture test-discovered bugs as durable blockers. Preserve required exact-head CI.",
+        "rationale": "Retain prior project authority and constraints while reviewing the schema-v2 representation and current workflow.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-16",
-          "reviewed_digest": "sha256:9f50a3a6121bd8966bbf7ece4f64b7a4d16c45891ce8ec36771c621e99efdb58",
-          "reviewer": "user"
-        },
-        "settings": {
-          "artifact_verification": {
-            "documentation": "inspect_artifact_no_feature_test",
-            "product_runtime": "risk_proportionate_behavioral_probe",
-            "test_cases": "run_changed_tests_no_recursive_meta_test",
-            "test_harness": "focused_behavioral_regression"
-          },
-          "ci_deduplication": {
-            "failure": "inspect_logs_and_reprobe",
-            "local_probe": "smallest_unique_falsifiable_signal",
-            "required_ci": "inspect_exact_pr_head",
-            "skip_broad_local_when": "same_command_required_ci",
-            "unavailable": "durable_blocker"
-          },
-          "mode": "chunk_probe",
-          "test_bug": "capture_as_blocker",
-          "widen": "as_relevant"
+          "date": "2026-09-17",
+          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
+          "reviewer": "user: I approve the policy change in this project (current conversation)"
         },
         "source_ids": [
           "E-002",
           "E-005",
-          "E-008"
+          "E-008",
+          "E-SCHEMA2"
         ],
         "title": "Verification and testing",
         "unresolved": []
@@ -499,30 +446,37 @@
       {
         "applicable": true,
         "confidence": "medium",
-        "decision": "Preserve behavior unless a goal explicitly authorizes a behavior change.",
+        "configuration": {},
         "default_disposition": "accepted",
-        "default_origin": "ZzzOps default",
+        "default_origin": "ZzzOps conservative fallback",
+        "default_provenance": {
+          "default_id": "zzzops.policy.code_quality",
+          "digest": "sha256:3b512682b8c54cd50760f75e89e6278c76f55721f89bcc25eb3e63f99e5b340f",
+          "schema_version": 2,
+          "snapshot": {
+            "configuration": {},
+            "instructions": "Preserve behavior unless a goal explicitly authorizes a behavior change. Without a feature goal, limit cleanup to behavior-preserving changes; remove dead code only with evidence and treat dynamic, generated, and vendored code conservatively."
+          },
+          "source": {
+            "revision": "1ae810a0fc2a7d347e9d7b1dd16813a95d32c0192112607e75cc29a8ce7f8a9b",
+            "version": "0.0.0-dev"
+          },
+          "status": "adopted"
+        },
         "exceptions": [],
         "id": "code_quality",
-        "rationale": "A bounded self-review prevents unrelated cleanup from expanding work.",
+        "instructions": "Preserve behavior unless a goal explicitly authorizes a behavior change. Without a feature goal, limit cleanup to behavior-preserving changes; remove dead code only with evidence and treat dynamic, generated, and vendored code conservatively.",
+        "rationale": "Retain prior project authority and constraints while reviewing the schema-v2 representation and current workflow.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-16",
-          "reviewed_digest": "sha256:9f50a3a6121bd8966bbf7ece4f64b7a4d16c45891ce8ec36771c621e99efdb58",
-          "reviewer": "user"
-        },
-        "settings": {
-          "completion_self_review": "required_before_review_or_done",
-          "dead_code": "remove_only_if_evidenced_and_in_scope",
-          "dynamic_generated_vendor": "retain_without_proof",
-          "non_behavioral_only_without_feature_goal": true,
-          "record_clean_review": true,
-          "reverify_after_changes": true,
-          "review_scope": "goal_diff_tests_and_relevant_surroundings"
+          "date": "2026-09-17",
+          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
+          "reviewer": "user: I approve the policy change in this project (current conversation)"
         },
         "source_ids": [
-          "E-002"
+          "E-002",
+          "E-SCHEMA2"
         ],
         "title": "Code-quality and refactoring boundaries",
         "unresolved": []
@@ -530,153 +484,151 @@
       {
         "applicable": true,
         "confidence": "medium",
-        "decision": "Use project-native tooling; do not hand-edit generated or dependency-owned files; generate supported platform distributions from shared canonical sources and verify them with platform-native validation and acceptance evidence.",
-        "default_disposition": "accepted",
-        "default_origin": "ZzzOps default",
+        "configuration": {},
+        "default_disposition": "changed",
+        "default_origin": "ZzzOps conservative fallback",
+        "default_provenance": {
+          "catalog_digest": "sha256:844cb8813a86f6583e9b0e1f5804b9e485211250f3b5aededcab5fd42ad5173b",
+          "default_id": "zzzops.policy.dependencies_tooling",
+          "schema_version": 2,
+          "source": {
+            "revision": "1ae810a0fc2a7d347e9d7b1dd16813a95d32c0192112607e75cc29a8ce7f8a9b",
+            "version": "0.0.0-dev"
+          },
+          "status": "customized"
+        },
         "exceptions": [],
         "id": "dependencies_tooling",
-        "rationale": "Keeps deterministic mechanics portable, ownership clear, and Codex/Claude support aligned without divergent implementations.",
+        "instructions": "Use project-native tooling, do not hand-edit generated artifacts, and make dependency changes only with explicit goal scope and verification. Generate supported-platform distributions from shared canonical sources and verify with platform-native validation and acceptance evidence.",
+        "rationale": "Retain prior project authority and constraints while reviewing the schema-v2 representation and current workflow.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-16",
-          "reviewed_digest": "sha256:9f50a3a6121bd8966bbf7ece4f64b7a4d16c45891ce8ec36771c621e99efdb58",
-          "reviewer": "user"
-        },
-        "settings": {
-          "dependency_changes": "explicit_scope",
-          "generated_files": "source_or_generator_only",
-          "tooling": "project_native"
+          "date": "2026-09-17",
+          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
+          "reviewer": "user: I approve the policy change in this project (current conversation)"
         },
         "source_ids": [
           "E-001",
-          "E-012"
+          "E-012",
+          "E-SCHEMA2"
         ],
         "title": "Dependencies, tooling, and generated artifacts",
         "unresolved": []
       },
       {
         "applicable": true,
-        "confidence": "high",
-        "decision": "Repository policy may tighten but never weaken safety and authority boundaries.",
+        "confidence": "medium",
+        "configuration": {},
         "default_disposition": "accepted",
-        "default_origin": "ZzzOps safety boundary",
+        "default_origin": "immutable ZzzOps boundary",
+        "default_provenance": {
+          "default_id": "zzzops.policy.security_privacy_compliance",
+          "digest": "sha256:9e2b30b2000723d4f02177ec529550f8e786450831f90f1422de2df9401cbd20",
+          "schema_version": 2,
+          "snapshot": {
+            "configuration": {},
+            "instructions": "Never expose secrets or mutate production without authority. Repository rules may tighten but cannot weaken safety, privacy, or compliance boundaries."
+          },
+          "source": {
+            "revision": "1ae810a0fc2a7d347e9d7b1dd16813a95d32c0192112607e75cc29a8ce7f8a9b",
+            "version": "0.0.0-dev"
+          },
+          "status": "adopted"
+        },
         "exceptions": [],
         "id": "security_privacy_compliance",
-        "rationale": "The charter expressly forbids secret exposure and invented authority.",
+        "instructions": "Never expose secrets or mutate production without authority. Repository rules may tighten but cannot weaken safety, privacy, or compliance boundaries.",
+        "rationale": "Retain prior project authority and constraints while reviewing the schema-v2 representation and current workflow.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-16",
-          "reviewed_digest": "sha256:9f50a3a6121bd8966bbf7ece4f64b7a4d16c45891ce8ec36771c621e99efdb58",
-          "reviewer": "user"
-        },
-        "settings": {
-          "production_mutation": "explicit_authority",
-          "project_constraints": [],
-          "secrets": "never_expose"
+          "date": "2026-09-17",
+          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
+          "reviewer": "user: I approve the policy change in this project (current conversation)"
         },
         "source_ids": [
-          "E-001"
+          "E-001",
+          "E-SCHEMA2"
         ],
         "title": "Security, privacy, secrets, and compliance",
         "unresolved": []
       },
       {
         "applicable": true,
-        "confidence": "high",
-        "decision": "Follow evidenced repository documentation and style conventions; use outcome-first, low-technical-detail user updates by default while allowing explicit project policy to override the style.",
-        "default_disposition": "accepted",
-        "default_origin": "repository policy and user-preferred ZzzOps default",
+        "confidence": "medium",
+        "configuration": {},
+        "default_disposition": "changed",
+        "default_origin": "ZzzOps fallback overridden by repository or user evidence",
+        "default_provenance": {
+          "catalog_digest": "sha256:6fd1ee49143d97d9470fcc20ab866bba32a93d474128beb1f75a96589614fa9d",
+          "default_id": "zzzops.policy.documentation_style",
+          "schema_version": 2,
+          "source": {
+            "revision": "1ae810a0fc2a7d347e9d7b1dd16813a95d32c0192112607e75cc29a8ce7f8a9b",
+            "version": "0.0.0-dev"
+          },
+          "status": "customized"
+        },
         "exceptions": [],
         "id": "documentation_style",
-        "rationale": "Repository instructions require prompt-budget updates, and the user selected concise actionable communication as this project's default without making it universal policy.",
+        "instructions": "Follow evidenced repository documentation and style conventions, communicate outcomes first, and include implementation detail only where it helps decisions. Run .agents/prompt_stats.py --check after prompt Markdown changes. Do not commit generated counts or raise ceilings without explicit value justification.",
+        "rationale": "Retain prior project authority and constraints while reviewing the schema-v2 representation and current workflow.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-16",
-          "reviewed_digest": "sha256:9f50a3a6121bd8966bbf7ece4f64b7a4d16c45891ce8ec36771c621e99efdb58",
-          "reviewer": "user"
-        },
-        "settings": {
-          "communication": {
-            "style": "outcome_first",
-            "technical_detail": "decision_risk_failure_or_request",
-            "user_action": "one_clear_action_with_reason_and_next_step"
-          },
-          "documentation": "repository_conventions",
-          "installed_prompt_markdown_check": ".agents/prompt_stats.py --check",
-          "prompt_budget_ceiling": "explicit_value_justification",
-          "prompt_counts": "do_not_commit",
-          "style": "repository_conventions"
+          "date": "2026-09-17",
+          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
+          "reviewer": "user: I approve the policy change in this project (current conversation)"
         },
         "source_ids": [
           "E-002",
-          "E-006"
+          "E-006",
+          "E-SCHEMA2"
         ],
         "title": "Documentation and style",
         "unresolved": []
       },
       {
         "applicable": true,
-        "confidence": "high",
-        "decision": "Do not deploy without authority; choose bounded parallelism from the deterministic tracked-file repository size.",
-        "default_disposition": "accepted",
-        "default_origin": "repository policy",
+        "confidence": "medium",
+        "configuration": {},
+        "default_disposition": "changed",
+        "default_origin": "ZzzOps conservative fallback",
+        "default_provenance": {
+          "catalog_digest": "sha256:4775b62d22ebc91ceae400a637d4d119b8c31f2fae08ffa31356e5ba55ddaff3",
+          "default_id": "zzzops.policy.deployment_resources",
+          "schema_version": 2,
+          "source": {
+            "revision": "1ae810a0fc2a7d347e9d7b1dd16813a95d32c0192112607e75cc29a8ce7f8a9b",
+            "version": "0.0.0-dev"
+          },
+          "status": "customized"
+        },
         "exceptions": [],
         "id": "deployment_resources",
-        "rationale": "Repository release policy restricts main updates, while the tracked tree is below 100 MB and the user selected size-aware parallel defaults.",
+        "instructions": "Do not deploy without authority. Prefer bounded worktree parallelism below the reviewed 100 MiB tracked-worktree threshold and read-only investigation at or above it; wait rather than duplicate active delegated work. Wait for delegated work after 60 seconds rather than duplicating it.",
+        "rationale": "Retain prior project authority and constraints while reviewing the schema-v2 representation and current workflow.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-16",
-          "reviewed_digest": "sha256:9f50a3a6121bd8966bbf7ece4f64b7a4d16c45891ce8ec36771c621e99efdb58",
-          "reviewer": "user"
-        },
-        "settings": {
-          "delegate_wait_after_seconds": 60,
-          "deployment": "explicit_authority",
-          "resource_mode": "size_aware"
+          "date": "2026-09-17",
+          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
+          "reviewer": "user: I approve the policy change in this project (current conversation)"
         },
         "source_ids": [
           "E-002",
-          "E-007"
+          "E-007",
+          "E-SCHEMA2"
         ],
         "title": "Deployment, environment, and resources",
         "unresolved": []
       },
       {
         "applicable": true,
-        "confidence": "high",
-        "decision": "structured",
-        "default_disposition": "changed",
-        "default_origin": "ZzzOps production-oriented fallback",
-        "default_provenance": {
-          "catalog_digest": "sha256:b373fd8ee3e927e37fc252edd3556623574b334142ab19ed061566264b0223bf",
-          "default_id": "zzzops.policy.engineering_rigor",
-          "schema_version": 1,
-          "source": {
-            "revision": "02507a7f783bc40828169a47bad4902112d692591c235101ec266591b79ad403",
-            "version": "0.0.0-dev"
-          },
-          "status": "customized"
-        },
-        "exceptions": [],
-        "id": "engineering_rigor",
-        "rationale": "Balance production-oriented specification and verification with automatic escalation for high-risk work.",
-        "required": true,
-        "review": {
-          "approved": true,
-          "date": "2026-09-16",
-          "reviewed_digest": "sha256:9f50a3a6121bd8966bbf7ece4f64b7a4d16c45891ce8ec36771c621e99efdb58",
-          "reviewer": "user"
-        },
-        "settings": {
-          "escalation": {
-            "allow_automatic_deescalation": false,
-            "allow_automatic_escalation": true,
-            "enabled": true
-          },
+        "confidence": "medium",
+        "configuration": {
+          "level": "structured",
           "minimums": {
             "authentication": "agentic",
             "authorization": "agentic",
@@ -688,23 +640,36 @@
             "throwaway_prototypes": "vibe"
           },
           "overrides": {
-            "lowering": "explicit_user_authority",
-            "may_undercut_risk_minimum": false,
-            "per_goal": true,
-            "raising": "allowed"
-          },
-          "requirements_interview": {
-            "level_mapping": {
-              "agentic": "thorough",
-              "structured": "standard",
-              "vibe": "light"
-            },
-            "source": "effective_engineering_rigor"
+            "per_goal": true
           }
+        },
+        "default_disposition": "changed",
+        "default_origin": "ZzzOps production-oriented fallback",
+        "default_provenance": {
+          "catalog_digest": "sha256:e4e0fa9534b5811857e252e48e7f5f70b211ecf7ad2b4d64a00022ec234f73b2",
+          "default_id": "zzzops.policy.engineering_rigor",
+          "schema_version": 2,
+          "source": {
+            "revision": "1ae810a0fc2a7d347e9d7b1dd16813a95d32c0192112607e75cc29a8ce7f8a9b",
+            "version": "0.0.0-dev"
+          },
+          "status": "customized"
+        },
+        "exceptions": [],
+        "id": "engineering_rigor",
+        "instructions": "Assess engineering risk and commitment carefully, raise rigor when evidence warrants it, and scale requirements discovery from light through thorough with effective rigor.",
+        "rationale": "Retain prior project authority and constraints while reviewing the schema-v2 representation and current workflow.",
+        "required": true,
+        "review": {
+          "approved": true,
+          "date": "2026-09-17",
+          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
+          "reviewer": "user: I approve the policy change in this project (current conversation)"
         },
         "source_ids": [
           "E-001",
-          "E-002"
+          "E-002",
+          "E-SCHEMA2"
         ],
         "title": "Engineering rigor",
         "unresolved": []
@@ -712,37 +677,13 @@
       {
         "applicable": true,
         "confidence": "medium",
-        "decision": "capability_derived",
-        "default_disposition": "accepted",
-        "default_origin": "ZzzOps capability-derived routing fallback",
-        "default_provenance": {
-          "catalog_digest": "sha256:6c4205ff95d24272bbd4054f8109d73301379099b64cf37951b8ef7e3b74b0a2",
-          "default_id": "zzzops.policy.model_routing",
-          "schema_version": 1,
-          "source": {
-            "revision": "7f4471a886c293fa6afffa87244d606937bb0dfd0a37cb088662f0393db8efee",
-            "version": "0.0.0-dev"
-          },
-          "status": "customized"
-        },
-        "exceptions": [],
-        "id": "model_routing",
-        "rationale": "Select the least expensive available model that satisfies the phase capability floor while keeping root-level and above-root authority explicit.",
-        "required": true,
-        "review": {
-          "approved": true,
-          "date": "2026-09-16",
-          "reviewed_digest": "sha256:9f50a3a6121bd8966bbf7ece4f64b7a4d16c45891ce8ec36771c621e99efdb58",
-          "reviewer": "user"
-        },
-        "settings": {
+        "configuration": {
           "assessment_tree": [
             {
-              "tier": "routine",
+              "tier": "architectural",
               "when": {
-                "phase_type": [
-                  "context",
-                  "verify"
+                "consequence": [
+                  "architectural"
                 ]
               }
             },
@@ -751,21 +692,30 @@
               "when": {
                 "boundedness": [
                   "unbounded"
-                ],
-                "consequence": [
-                  "architectural"
                 ]
               }
             },
             {
               "tier": "reasoning",
               "when": {
-                "boundedness": [
-                  "bounded",
-                  "unbounded"
-                ],
                 "consequence": [
                   "consequential"
+                ]
+              }
+            },
+            {
+              "tier": "reasoning",
+              "when": {
+                "phase_type": [
+                  "test_design"
+                ]
+              }
+            },
+            {
+              "tier": "routine",
+              "when": {
+                "phase_type": [
+                  "understand"
                 ]
               }
             },
@@ -783,39 +733,8 @@
               "when": {}
             }
           ],
-          "capability_basis": "effective_engineering_rigor_and_bounded_commitment",
-          "escalation": {
-            "handling": "durable_blocker_continue_safe_work",
-            "triggers": [
-              "risk_or_commitment_increase",
-              "uncertainty",
-              "failed_probe",
-              "contradictory_evidence",
-              "capability_mismatch"
-            ]
-          },
-          "evidence": "append_only_goal_history",
           "model_inventory": {
-            "effort": "runtime_supported_effort_levels",
-            "missing": "root_best_effort_web_research",
-            "reviewed_pairs": [],
-            "source": "runtime_available_models",
-            "stale": "refresh_and_re_evaluate",
-            "unsupported": "durable_blocker"
-          },
-          "parallelism": {
-            "below_root": "allowed_within_reviewed_worker_limits",
-            "root_or_above": "session_override_required"
-          },
-          "root_boundary": {
-            "above_root": "session_override_required",
-            "equal_root": "direct_root_no_subagent",
-            "root_capability": "current_root_agent"
-          },
-          "routing_unit": "model_plus_effort",
-          "telemetry": {
-            "source": "optional_provenance_backed_usage",
-            "unavailable": "record_unavailable_no_block"
+            "reviewed_pairs": []
           },
           "tiers": [
             {
@@ -836,84 +755,142 @@
             }
           ]
         },
+        "default_disposition": "accepted",
+        "default_origin": "ZzzOps capability-derived routing fallback",
+        "default_provenance": {
+          "default_id": "zzzops.policy.model_routing",
+          "digest": "sha256:bda26f1c497227b7a1ccaa8d11ccd26471d271499f033d9c89dc1bdace04bd77",
+          "schema_version": 2,
+          "snapshot": {
+            "configuration": {
+              "assessment_tree": [
+                {
+                  "tier": "architectural",
+                  "when": {
+                    "consequence": [
+                      "architectural"
+                    ]
+                  }
+                },
+                {
+                  "tier": "architectural",
+                  "when": {
+                    "boundedness": [
+                      "unbounded"
+                    ]
+                  }
+                },
+                {
+                  "tier": "reasoning",
+                  "when": {
+                    "consequence": [
+                      "consequential"
+                    ]
+                  }
+                },
+                {
+                  "tier": "reasoning",
+                  "when": {
+                    "phase_type": [
+                      "test_design"
+                    ]
+                  }
+                },
+                {
+                  "tier": "routine",
+                  "when": {
+                    "phase_type": [
+                      "understand"
+                    ]
+                  }
+                },
+                {
+                  "tier": "bounded",
+                  "when": {
+                    "boundedness": [
+                      "atomic",
+                      "bounded"
+                    ]
+                  }
+                },
+                {
+                  "tier": "architectural",
+                  "when": {}
+                }
+              ],
+              "model_inventory": {
+                "reviewed_pairs": []
+              },
+              "tiers": [
+                {
+                  "id": "routine",
+                  "rank": 1
+                },
+                {
+                  "id": "bounded",
+                  "rank": 2
+                },
+                {
+                  "id": "reasoning",
+                  "rank": 3
+                },
+                {
+                  "id": "architectural",
+                  "rank": 4
+                }
+              ]
+            },
+            "instructions": "Route each phase by effective rigor, consequence, boundedness, and phase type. Refresh runtime model and effort availability, select only reviewed pairs at sufficient capability and least cost, keep human interaction on root, require a session override above root capability, and persist a blocker when no reviewed capable pair is available."
+          },
+          "source": {
+            "revision": "1ae810a0fc2a7d347e9d7b1dd16813a95d32c0192112607e75cc29a8ce7f8a9b",
+            "version": "0.0.0-dev"
+          },
+          "status": "adopted"
+        },
+        "exceptions": [],
+        "id": "model_routing",
+        "instructions": "Route each phase by effective rigor, consequence, boundedness, and phase type. Refresh runtime model and effort availability, select only reviewed pairs at sufficient capability and least cost, keep human interaction on root, require a session override above root capability, and persist a blocker when no reviewed capable pair is available.",
+        "rationale": "Retain prior project authority and constraints while reviewing the schema-v2 representation and current workflow.",
+        "required": true,
+        "review": {
+          "approved": true,
+          "date": "2026-09-17",
+          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
+          "reviewer": "user: I approve the policy change in this project (current conversation)"
+        },
         "source_ids": [
           "E-015",
-          "E-016"
+          "E-016",
+          "E-SCHEMA2"
         ],
         "title": "Model routing and delegation",
         "unresolved": []
       },
       {
         "applicable": true,
-        "confidence": "high",
-        "decision": "tracked",
-        "default_disposition": "changed",
-        "default_origin": "ZzzOps tracked-work fallback",
-        "default_provenance": {
-          "catalog_digest": "sha256:dfbe065a419b6e3d781745b17dfef019d5b293b598394f1554c695ac54476313",
-          "default_id": "zzzops.policy.workflow_adherence",
-          "schema_version": 1,
-          "source": {
-            "revision": "02507a7f783bc40828169a47bad4902112d692591c235101ec266591b79ad403",
-            "version": "0.0.0-dev"
-          },
-          "status": "customized"
-        },
-        "exceptions": [],
-        "id": "workflow_adherence",
-        "rationale": "Require durable goal context for substantial agent work while preserving narrow administration and read-only exemptions.",
-        "required": true,
-        "review": {
-          "approved": true,
-          "date": "2026-09-16",
-          "reviewed_digest": "sha256:9f50a3a6121bd8966bbf7ece4f64b7a4d16c45891ce8ec36771c621e99efdb58",
-          "reviewer": "user"
-        },
-        "settings": {
-          "agents_projection": "review_workflow_reconciliation",
-          "exemptions": [
-            "read_only_investigation",
-            "zzzops_administration"
-          ],
-          "levels": {
-            "managed": "zzzops_workflow_required_for_repository_changes",
-            "optional": "direct_agent_work_allowed",
-            "tracked": "durable_goal_required_for_substantial_agent_work"
-          },
+        "confidence": "medium",
+        "configuration": {
           "phase_dag": {
             "phases": [
               {
                 "applicability": "always",
                 "assignment_group": "root",
                 "depends_on": [],
-                "id": "context",
-                "inputs": [
-                  "policy",
-                  "repository",
-                  "provider",
-                  "capabilities",
-                  "invocation"
-                ],
-                "not_required": "never",
-                "parent_gates": [],
-                "type": "context"
-              },
-              {
-                "applicability": "always",
-                "assignment_group": "root",
-                "depends_on": [
-                  "context"
-                ],
                 "id": "understand",
                 "inputs": [
                   "goal_spec",
                   "policy",
                   "capabilities",
-                  "invocation",
-                  "upstream_outputs"
+                  "invocation"
                 ],
                 "not_required": "never",
                 "parent_gates": [],
+                "review": {
+                  "assignment_group": "review",
+                  "human_approval": true,
+                  "independent": true
+                },
                 "type": "understand"
               },
               {
@@ -932,6 +909,11 @@
                 ],
                 "not_required": "atomic_goal",
                 "parent_gates": [],
+                "review": {
+                  "assignment_group": "review",
+                  "human_approval": false,
+                  "independent": true
+                },
                 "type": "decompose"
               },
               {
@@ -956,34 +938,45 @@
                 "parent_gates": [
                   "decompose"
                 ],
+                "review": {
+                  "assignment_group": "review",
+                  "human_approval": false,
+                  "independent": true
+                },
                 "type": "plan"
               },
               {
-                "applicability": "always",
-                "assignment_group": "review",
+                "applicability": "child_only",
+                "assignment_group": "planning",
                 "depends_on": [
                   "plan"
                 ],
-                "id": "architecture_review",
+                "id": "test_design",
                 "inputs": [
                   "goal_spec",
                   "policy",
                   "phase_dag",
-                  "parents",
-                  "dependencies",
+                  "repository",
+                  "provider",
+                  "capabilities",
                   "upstream_outputs"
                 ],
-                "not_required": "atomic_goal",
+                "not_required": "never",
                 "parent_gates": [
                   "plan"
                 ],
-                "type": "architecture_review"
+                "review": {
+                  "assignment_group": "review",
+                  "human_approval": false,
+                  "independent": true
+                },
+                "type": "test_design"
               },
               {
                 "applicability": "child_only",
                 "assignment_group": "implementation",
                 "depends_on": [
-                  "architecture_review"
+                  "test_design"
                 ],
                 "id": "implement",
                 "inputs": [
@@ -1000,51 +993,20 @@
                 "not_required": "never",
                 "parent_gates": [
                   "plan",
-                  "architecture_review"
+                  "test_design"
                 ],
+                "review": {
+                  "assignment_group": "review",
+                  "human_approval": false,
+                  "independent": true
+                },
                 "type": "implement"
-              },
-              {
-                "applicability": "always",
-                "assignment_group": "implementation",
-                "depends_on": [
-                  "implement"
-                ],
-                "id": "verify",
-                "inputs": [
-                  "goal_spec",
-                  "policy",
-                  "repository",
-                  "provider",
-                  "upstream_outputs"
-                ],
-                "not_required": "never",
-                "parent_gates": [],
-                "type": "verify"
-              },
-              {
-                "applicability": "always",
-                "assignment_group": "review",
-                "depends_on": [
-                  "verify"
-                ],
-                "id": "review",
-                "inputs": [
-                  "goal_spec",
-                  "policy",
-                  "repository",
-                  "provider",
-                  "upstream_outputs"
-                ],
-                "not_required": "never",
-                "parent_gates": [],
-                "type": "review"
               },
               {
                 "applicability": "always",
                 "assignment_group": "coordinator",
                 "depends_on": [
-                  "review"
+                  "implement"
                 ],
                 "id": "publish",
                 "inputs": [
@@ -1056,68 +1018,257 @@
                 ],
                 "not_required": "never",
                 "parent_gates": [],
+                "review": {
+                  "assignment_group": "review",
+                  "human_approval": false,
+                  "independent": true
+                },
                 "type": "publish"
               }
             ],
             "schema_version": 1
+          }
+        },
+        "default_disposition": "accepted",
+        "default_origin": "ZzzOps tracked-work fallback",
+        "default_provenance": {
+          "default_id": "zzzops.policy.workflow_adherence",
+          "digest": "sha256:be3361778ff8b8c15f55b3a35d71ddd25ed4159581585e6526487be1e94fed29",
+          "schema_version": 2,
+          "snapshot": {
+            "configuration": {
+              "phase_dag": {
+                "phases": [
+                  {
+                    "applicability": "always",
+                    "assignment_group": "root",
+                    "depends_on": [],
+                    "id": "understand",
+                    "inputs": [
+                      "goal_spec",
+                      "policy",
+                      "capabilities",
+                      "invocation"
+                    ],
+                    "not_required": "never",
+                    "parent_gates": [],
+                    "review": {
+                      "assignment_group": "review",
+                      "human_approval": true,
+                      "independent": true
+                    },
+                    "type": "understand"
+                  },
+                  {
+                    "applicability": "parent_only",
+                    "assignment_group": "planning",
+                    "depends_on": [
+                      "understand"
+                    ],
+                    "id": "decompose",
+                    "inputs": [
+                      "goal_spec",
+                      "policy",
+                      "parents",
+                      "dependencies",
+                      "upstream_outputs"
+                    ],
+                    "not_required": "atomic_goal",
+                    "parent_gates": [],
+                    "review": {
+                      "assignment_group": "review",
+                      "human_approval": false,
+                      "independent": true
+                    },
+                    "type": "decompose"
+                  },
+                  {
+                    "applicability": "always",
+                    "assignment_group": "planning",
+                    "depends_on": [
+                      "decompose"
+                    ],
+                    "id": "plan",
+                    "inputs": [
+                      "goal_spec",
+                      "policy",
+                      "phase_dag",
+                      "parents",
+                      "dependencies",
+                      "repository",
+                      "provider",
+                      "capabilities",
+                      "upstream_outputs"
+                    ],
+                    "not_required": "never",
+                    "parent_gates": [
+                      "decompose"
+                    ],
+                    "review": {
+                      "assignment_group": "review",
+                      "human_approval": false,
+                      "independent": true
+                    },
+                    "type": "plan"
+                  },
+                  {
+                    "applicability": "child_only",
+                    "assignment_group": "planning",
+                    "depends_on": [
+                      "plan"
+                    ],
+                    "id": "test_design",
+                    "inputs": [
+                      "goal_spec",
+                      "policy",
+                      "phase_dag",
+                      "repository",
+                      "provider",
+                      "capabilities",
+                      "upstream_outputs"
+                    ],
+                    "not_required": "never",
+                    "parent_gates": [
+                      "plan"
+                    ],
+                    "review": {
+                      "assignment_group": "review",
+                      "human_approval": false,
+                      "independent": true
+                    },
+                    "type": "test_design"
+                  },
+                  {
+                    "applicability": "child_only",
+                    "assignment_group": "implementation",
+                    "depends_on": [
+                      "test_design"
+                    ],
+                    "id": "implement",
+                    "inputs": [
+                      "goal_spec",
+                      "policy",
+                      "phase_dag",
+                      "parents",
+                      "dependencies",
+                      "repository",
+                      "provider",
+                      "capabilities",
+                      "upstream_outputs"
+                    ],
+                    "not_required": "never",
+                    "parent_gates": [
+                      "plan",
+                      "test_design"
+                    ],
+                    "review": {
+                      "assignment_group": "review",
+                      "human_approval": false,
+                      "independent": true
+                    },
+                    "type": "implement"
+                  },
+                  {
+                    "applicability": "always",
+                    "assignment_group": "coordinator",
+                    "depends_on": [
+                      "implement"
+                    ],
+                    "id": "publish",
+                    "inputs": [
+                      "goal_spec",
+                      "policy",
+                      "repository",
+                      "provider",
+                      "upstream_outputs"
+                    ],
+                    "not_required": "never",
+                    "parent_gates": [],
+                    "review": {
+                      "assignment_group": "review",
+                      "human_approval": false,
+                      "independent": true
+                    },
+                    "type": "publish"
+                  }
+                ],
+                "schema_version": 1
+              }
+            },
+            "instructions": "Require durable tracked goals for substantial repository work. Read-only investigation and ZzzOps administration are exempt; only explicit scoped user authority grants an exception. Execute the reviewed phase graph with its independent reviews and human approvals."
           },
-          "scoped_exception": "explicit_scoped_user_authority"
+          "source": {
+            "revision": "1ae810a0fc2a7d347e9d7b1dd16813a95d32c0192112607e75cc29a8ce7f8a9b",
+            "version": "0.0.0-dev"
+          },
+          "status": "adopted"
+        },
+        "exceptions": [],
+        "id": "workflow_adherence",
+        "instructions": "Require durable tracked goals for substantial repository work. Read-only investigation and ZzzOps administration are exempt; only explicit scoped user authority grants an exception. Execute the reviewed phase graph with its independent reviews and human approvals.",
+        "rationale": "Retain prior project authority and constraints while reviewing the schema-v2 representation and current workflow.",
+        "required": true,
+        "review": {
+          "approved": true,
+          "date": "2026-09-17",
+          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
+          "reviewer": "user: I approve the policy change in this project (current conversation)"
         },
         "source_ids": [
           "E-001",
-          "E-002"
+          "E-002",
+          "E-SCHEMA2"
         ],
         "title": "ZzzOps workflow adherence",
         "unresolved": []
       },
       {
         "applicable": true,
-        "confidence": "high",
-        "decision": "Interview adaptively during goal capture at the reviewed depth; treat the requesting user as the sole stakeholder; execute unattended by persisting consequential questions as durable blockers; repair in-scope CI failures without another approval; record privacy-safe execution reports; refill valuable bounded work; and use up to three size-aware workers.",
-        "default_disposition": "changed",
-        "default_origin": "user-selected ZzzOps defaults and project policy",
+        "confidence": "medium",
+        "configuration": {},
+        "default_disposition": "accepted",
+        "default_origin": "ZzzOps bounded-commitment automated-design fallback",
+        "default_provenance": {
+          "default_id": "zzzops.policy.automated_design",
+          "digest": "sha256:628ebff867c6e88d58995eeedc5fcf96101b68efddecaad1cde906f782e8a109",
+          "schema_version": 2,
+          "snapshot": {
+            "configuration": {},
+            "instructions": "Automated design is disabled by default. If an explicit reviewed policy enables it, limit it to bounded in-scope implementation: compare alternatives and structural cost for high-commitment choices, record assumptions and a falsifiable signal, prefer unambiguously risk-reducing privacy or security changes, and block on product scope, incompatible contracts, destructive migration, spending, deployment, external writes, human review, safety authority, or higher authority."
+          },
+          "source": {
+            "revision": "1ae810a0fc2a7d347e9d7b1dd16813a95d32c0192112607e75cc29a8ce7f8a9b",
+            "version": "0.0.0-dev"
+          },
+          "status": "adopted"
+        },
         "exceptions": [],
-        "id": "autonomy_approval_parallelism",
-        "rationale": "This separates present-user requirements discovery from unattended execution while preserving durable control, chained progress, and privacy-safe machinery feedback.",
+        "id": "automated_design",
+        "instructions": "Automated design is disabled by default. If an explicit reviewed policy enables it, limit it to bounded in-scope implementation: compare alternatives and structural cost for high-commitment choices, record assumptions and a falsifiable signal, prefer unambiguously risk-reducing privacy or security changes, and block on product scope, incompatible contracts, destructive migration, spending, deployment, external writes, human review, safety authority, or higher authority.",
+        "rationale": "Retain prior project authority and constraints while reviewing the schema-v2 representation and current workflow.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-16",
-          "reviewed_digest": "sha256:9f50a3a6121bd8966bbf7ece4f64b7a4d16c45891ce8ec36771c621e99efdb58",
-          "reviewer": "user"
+          "date": "2026-09-17",
+          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
+          "reviewer": "user: I approve the policy change in this project (current conversation)"
         },
-        "settings": {
-          "blocker_interview": "capture_only",
-          "blocker_order": [
-            "safety_access_human",
-            "cross_goal_decisions",
-            "specification",
-            "technical_unknown"
-          ],
-          "capture_defaults": {
-            "confidence": "low",
-            "difficulty": "unknown",
-            "priority": "P2"
-          },
-          "claim_ttl_hours": 4,
-          "dependency_implementation_gate": "stack_from_reviewed_checkpoint",
+        "source_ids": [
+          "E-002",
+          "E-011",
+          "E-SCHEMA2"
+        ],
+        "title": "Automated design authority",
+        "unresolved": []
+      },
+      {
+        "applicable": true,
+        "confidence": "medium",
+        "configuration": {
           "execution_reports": {
             "enabled": true
           },
-          "in_scope_ci_failure_repair": "authorized_without_additional_approval",
           "max_workers": 3,
-          "parallelization": {
-            "at_or_above_threshold_mode": "read_only",
-            "below_threshold_mode": "worktrees",
-            "measurement": "existing_git_tracked_worktree_bytes",
-            "threshold_bytes": 104857600
-          },
-          "planning": {
-            "decompose_at": "L",
-            "max_depth": 3
-          },
-          "project_parallel_ceiling": "size_aware",
-          "read_only_dependency_investigation": true,
           "refill": {
             "allowed_categories": [
               "documentation",
@@ -1125,13 +1276,7 @@
               "code_quality_non_behavioral"
             ],
             "enabled": true,
-            "max_per_run": 3
-          },
-          "requirements_interview": {
-            "capture_depth": "standard",
-            "execution_questions": "durable_blockers_only",
-            "mode": "adaptive",
-            "stakeholder_model": "requesting_user_only"
+            "max_suggestions": 3
           },
           "resource_reservations": {
             "exclusive_prefixes": [
@@ -1140,17 +1285,30 @@
             ],
             "exclusive_resources": [],
             "mode": "conflict_tolerant"
-          },
-          "worktree_lifecycle": {
-            "abandoned_or_dirty": "forbidden",
-            "after_task": "remove_or_retain_clean_for_reuse",
-            "reuse_requires": [
-              "clean_state",
-              "reviewed_base",
-              "new_goal_resources",
-              "safe_branch_reassignment"
-            ]
           }
+        },
+        "default_disposition": "changed",
+        "default_origin": "ZzzOps conservative fallback",
+        "default_provenance": {
+          "catalog_digest": "sha256:5b70ff2227d3a533eeccf2bd2a00ca82b7556e4098d607947c6131b366a6490d",
+          "default_id": "zzzops.policy.autonomy_approval_parallelism",
+          "schema_version": 2,
+          "source": {
+            "revision": "1ae810a0fc2a7d347e9d7b1dd16813a95d32c0192112607e75cc29a8ce7f8a9b",
+            "version": "0.0.0-dev"
+          },
+          "status": "customized"
+        },
+        "exceptions": [],
+        "id": "autonomy_approval_parallelism",
+        "instructions": "Capture requirements adaptively with the requesting user; during unattended execution persist consequential questions as blockers. Keep human interaction on root, enforce reviewed worker and resource limits, record privacy-safe execution diagnostics, and suggest only bounded valuable work in reviewed categories. Keep worktrees clean, remove or deliberately reuse them after work, and never abandon dirty worktrees. Do not automatically adopt suggested defaults without review. Repair in-scope CI failures without additional approval. Continue across actionable goals and reprioritize new work at safe checkpoints; persist unanswered questions without human-unblock watching, polling or notifications.",
+        "rationale": "Retain prior project authority and constraints while reviewing the schema-v2 representation and current workflow.",
+        "required": true,
+        "review": {
+          "approved": true,
+          "date": "2026-09-17",
+          "reviewed_digest": "sha256:04911758df9e1d3aaeefd2f9fe94ac1ced9fcfc37cd874581c6ad7fa68440ae9",
+          "reviewer": "user: I approve the policy change in this project (current conversation)"
         },
         "source_ids": [
           "E-001",
@@ -1158,85 +1316,10 @@
           "E-004",
           "E-007",
           "E-008",
-          "E-009"
+          "E-009",
+          "E-SCHEMA2"
         ],
         "title": "Autonomy, approvals, and parallelism",
-        "unresolved": []
-      },
-      {
-        "applicable": true,
-        "confidence": "medium",
-        "decision": "disabled",
-        "default_disposition": "changed",
-        "default_origin": "user decision",
-        "default_provenance": {
-          "catalog_digest": "sha256:d90cefdbd3d5d0e7822c2c5a5e3773054dcf50f4a95517de58a7bf5048ef7250",
-          "default_id": "zzzops.policy.automated_design",
-          "schema_version": 1,
-          "source": {
-            "revision": "65828e7ec5d088a93a978b19be73c8be5053d5e6781e3b52dd5065f203b7093a",
-            "version": "2.0.0"
-          },
-          "status": "customized"
-        },
-        "exceptions": [],
-        "id": "automated_design",
-        "rationale": "Require explicit user direction for design choices; unattended execution persists them as durable blockers.",
-        "required": true,
-        "review": {
-          "approved": true,
-          "date": "2026-09-16",
-          "reviewed_digest": "sha256:9f50a3a6121bd8966bbf7ece4f64b7a4d16c45891ce8ec36771c621e99efdb58",
-          "reviewer": "user"
-        },
-        "settings": {
-          "commitment": {
-            "high": "compare_evidence_cost_signal_or_explicit_current_design_review",
-            "low": "replace_verify_and_clean_within_one_goal_before_fanout",
-            "structural_cost_signals": [
-              "affected_goal_units",
-              "started_descendant_branches",
-              "started_descendant_prs",
-              "durable_data",
-              "public_or_integration_contracts",
-              "external_state",
-              "compatibility_paths",
-              "verification_breadth",
-              "clean_removal_path"
-            ]
-          },
-          "decision_record": [
-            "alternatives",
-            "rationale",
-            "assumptions",
-            "falsifiable_validation_signal"
-          ],
-          "hard_stops": [
-            "product_scope",
-            "incompatible_public_contract",
-            "destructive_migration",
-            "external_spending",
-            "deployment",
-            "external_write",
-            "human_review",
-            "safety_authority",
-            "higher_authority"
-          ],
-          "insufficient_evidence": "durable_design_blocker",
-          "privacy_security": "unambiguously_risk_reducing_without_material_behavior_change",
-          "scope": "bounded_commitment_in_scope_implementation",
-          "selection_basis": [
-            "project_objectives",
-            "kpi_evidence",
-            "constraints",
-            "precedence"
-          ]
-        },
-        "source_ids": [
-          "E-002",
-          "E-011"
-        ],
-        "title": "Automated design authority",
         "unresolved": []
       }
     ]
@@ -1245,6 +1328,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 34,
+  "revision": 36,
   "schema_version": 1
 }
