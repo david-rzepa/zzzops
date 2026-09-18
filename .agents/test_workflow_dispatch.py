@@ -21,8 +21,11 @@ class WorkflowDispatchTests(unittest.TestCase):
         engine = mock.Mock()
         engine.portfolio.return_value = goals
         engine.step.side_effect = lambda number: steps[number]
+        project = {"policy": {"sections": [{
+            "id": "autonomy_approval_parallelism", "settings": {"max_workers": 3},
+        }]}}
         with mock.patch.object(z._workflow, "Workflow", return_value=engine):
-            result = z._workflow.checkpoint(z, Path("."), {}, {})
+            result = z._workflow.checkpoint(z, Path("."), project, {})
         return result, engine
 
     def test_waiting_high_priority_goals_do_not_starve_later_runnable_goal(self):

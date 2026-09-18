@@ -82,6 +82,18 @@ Those go to a bounded local log artifact; a next step may reference that artifac
 only when inspecting it is necessary to resolve the step. Errors use the same
 envelope with an actionable repair step whenever a safe repair exists.
 
+Actionable steps include a `policy` reference with an absolute temporary `path`,
+the file's `sha256`, and the selected section IDs. Read that file before performing
+the step and pass the reference to its assigned worker. It contains exact reviewed
+policy blocks, including custom settings and exceptions, selected for the phase
+and operation; reviews additionally receive quality and verification policy.
+Unknown custom phases receive all blocks rather than silently losing constraints.
+Policy-proposal gates never label an unapproved proposal as reviewed policy.
+The CLI writes these private files outside the repository and never inlines their
+contents in stdout. Files are disposable disclosure, not durable evidence or
+authority: a fresh checkpoint regenerates a missing file, while phase freshness
+continues to depend on the full canonical policy hash.
+
 `skill` is a validated installed skill ID, never a free-form hint. The workflow
 owns this registry and rejects a response whose step is not mapped to a currently
 installed skill. It selects the indicated intent of that skill, which in turn

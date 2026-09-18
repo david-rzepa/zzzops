@@ -22,7 +22,6 @@ BACKENDS = {"github_issues"}
 POLICY_SECTION_IDS = (
     "backend",
     "git_review_release",
-    "execution_continuation",
     "verification_testing",
     "code_quality",
     "dependencies_tooling",
@@ -38,7 +37,6 @@ POLICY_SECTION_IDS = (
 POLICY_SECTION_TITLES = {
     "backend": "Goal storage",
     "git_review_release": "Git, review, and release",
-    "execution_continuation": "Work continuation",
     "verification_testing": "Verification and testing",
     "code_quality": "Code quality and refactoring",
     "dependencies_tooling": "Dependencies and tooling",
@@ -92,11 +90,19 @@ ACTIVE_STACK_SETTINGS = {
     "base_freshness": "latest_integrated_target",
     "recovery": "explicit_abandoned_stack_decision",
 }
-DEPENDENCY_IMPLEMENTATION_GATES = {"dependencies_done", "stack_from_reviewed_checkpoint"}
 WORK_SUGGESTION_CATEGORIES = frozenset({
     "documentation", "tests", "code_quality_non_behavioral", "agent_observability",
     "verification_efficiency",
 })
+
+CODE_QUALITY_SETTINGS_KEYS = {
+    "non_behavioral_only_without_feature_goal", "dead_code", "dynamic_generated_vendor",
+}
+AUTONOMY_SETTINGS_KEYS = {
+    "requirements_interview", "project_parallel_ceiling", "max_workers", "parallelization",
+    "execution_reports", "resource_reservations", "worktree_lifecycle", "refill", "capture_defaults",
+}
+REQUIRED_CI_MODES = {"inspect_exact_pr_head", "disabled", "existing_only"}
 
 WORKFLOW_ADHERENCE_SETTINGS = {
     "levels": {
@@ -1133,6 +1139,13 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                     f"{prefix}.git_review_release exhaustion review requires checkpoint stacking "
                     "and no conversational goal approval"
                 )
+        elif section_id == "verification_testing":
+            ci = section["settings"].get("ci_deduplication")
+            if not isinstance(ci, dict) or ci.get("required_ci") not in REQUIRED_CI_MODES:
+                errors.append(f"{prefix}.verification_testing.settings.ci_deduplication.required_ci is invalid")
+        elif section_id == "code_quality":
+            if set(section["settings"]) != CODE_QUALITY_SETTINGS_KEYS:
+                errors.append(f"{prefix}.code_quality.settings must contain only active behavior and refactoring choices")
         elif section_id == "engineering_rigor":
             settings = section["settings"]
             if section.get("decision") not in ENGINEERING_RIGOR_LEVELS:
@@ -1212,8 +1225,13 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                     errors.append(f"{prefix}.automated_design.settings.{field} must preserve the bounded contract")
         elif section_id == "autonomy_approval_parallelism":
             settings = section["settings"]
-            if settings.get("dependency_implementation_gate") not in DEPENDENCY_IMPLEMENTATION_GATES:
-                errors.append(f"{prefix}.settings.dependency_implementation_gate is invalid")
+            if set(settings) != AUTONOMY_SETTINGS_KEYS:
+                errors.append(f"{prefix}.autonomy_approval_parallelism.settings must contain only active capture, reporting, resource, refill, and worker choices")
+            if "max_workers" in settings and (
+                not isinstance(settings["max_workers"], int) or isinstance(settings["max_workers"], bool)
+                or not 1 <= settings["max_workers"] <= 20
+            ):
+                errors.append(f"{prefix}.settings.max_workers must be an integer from 1 to 20")
             if "execution_reports" in settings:
                 reporting = settings["execution_reports"]
                 if not isinstance(reporting, dict):

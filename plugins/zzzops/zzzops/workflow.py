@@ -45,6 +45,30 @@ def preflight_policy_proposal(api, repo, proposal):
     return prospective
 
 
+def policy_section(project, section_id):
+    sections = ((project.get('policy') or {}).get('sections') if isinstance(project.get('policy'), dict) else None)
+    section = next((item for item in sections or [] if isinstance(item, dict) and item.get('id') == section_id), None)
+    if not isinstance(section, dict) or not isinstance(section.get('settings'), dict):
+        raise ValueError(f'Reviewed project policy is missing {section_id} settings')
+    return section
+
+
+def worker_limit(project):
+    value = policy_section(project, 'autonomy_approval_parallelism')['settings'].get('max_workers')
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError('Reviewed project policy max_workers must be a positive integer')
+    return value
+
+
+def unresolved_lease_count(goals):
+    return sum(
+        1
+        for goal in goals
+        if goal.get('status') not in {'done', 'cancelled'}
+        for _lease in state(goal)['leases'].values()
+    )
+
+
 def state(goal):
     return copy.deepcopy(goal.get('workflow') or {'leases': {}, 'receipts': {}, 'workers': {}, 'assessments': {}, 'artifacts': {}})
 
@@ -349,6 +373,29 @@ class Workflow:
             return subprocess.run(['git', 'rev-parse', ref], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
         return {'head_oid': rev(implementation['branch']), 'base_oid': rev(implementation['base']), 'base_ref': implementation['base']}
 
+    def ci_checks_required(self, pull_request):
+        section = policy_section(self.project, 'verification_testing')
+        if section.get('applicable') is False:
+            return False
+        configured = section['settings'].get('ci_deduplication')
+        mode = configured.get('required_ci') if isinstance(configured, dict) else None
+        if mode == 'disabled':
+            return False
+        if mode == 'existing_only':
+            present = pull_request.get('checks_present')
+            if not isinstance(present, bool):
+                raise ValueError('Provider evidence does not distinguish absent CI checks for existing_only policy')
+            return present
+        if mode != 'inspect_exact_pr_head':
+            raise ValueError('Reviewed verification policy required_ci is unsupported')
+        return True
+
+    def classify_merge(self, goal, pull_request):
+        evidence = pull_request
+        if not self.ci_checks_required(pull_request):
+            evidence = {**pull_request, 'checks_verified': True}
+        return self.api.classify_pr_merge(goal, evidence, self.repository)
+
     def workspace_digest(self):
         files = subprocess.run(['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], cwd=self.repo, capture_output=True, text=True, check=True).stdout.split('\0')
         return digest(self.file_hashes(path for path in files if path and not path.startswith('.zzzops/')))
@@ -484,10 +531,10 @@ class Workflow:
         if not steps:
             if (goal.get('implementation') or {}).get('pr'):
                 current = self.pull_request(goal)
-                classification = self.api.classify_pr_merge(goal, current, self.repository)
+                classification = self.classify_merge(goal, current)
                 if classification['status'] != 'merged_verified':
                     if not current.get('merged'):
-                        return [{'kind': 'integration', 'assignment': 'root', 'goal': number, 'action': 'Confirm human merge approval and green checks for this exact PR head, then integrate through the CLI.', 'head': current['head_oid'], 'submission': {'operation': 'integrate', 'expected_head': current['head_oid'], 'approved_by': '<user>', 'request_id': 'new-unique-id'}}]
+                        return [{'kind': 'integration', 'assignment': 'root', 'goal': number, 'action': 'Confirm human merge approval and satisfy the reviewed CI policy for this exact PR head, then integrate through the CLI.', 'head': current['head_oid'], 'submission': {'operation': 'integrate', 'expected_head': current['head_oid'], 'approved_by': '<user>', 'request_id': 'new-unique-id'}}]
                     return [{'kind': 'repair', 'assignment': 'root', 'goal': number, 'action': 'Reconcile incomplete or stale merge evidence before completing this goal.', 'reasons': classification['reasons']}]
             return [{'kind': 'complete', 'goal': number, 'assignment': 'root', 'action': 'All required phase evidence is current. Record completion, then continue with the next goal.', 'submission': {'operation': 'complete', 'request_id': 'new-unique-id'}}]
         return steps
@@ -604,6 +651,8 @@ class Workflow:
                     raise ValueError('This phase is not eligible to start')
                 if step['input_hash'] != payload.get('input_hash'):
                     raise ValueError('Start inputs changed; request a fresh checkpoint')
+                if unresolved_lease_count(portfolio) >= worker_limit(self.project):
+                    raise ValueError('Reviewed max_workers limit is already occupied by active phase leases')
                 if phase == 'publish':
                     for row in self.portfolio():
                         other = self.read(row['key'])[1] if row['status'] not in {'done', 'cancelled'} else row
@@ -699,7 +748,7 @@ class Workflow:
                 if durable['leases']:
                     raise ValueError('Reconcile active workers before completing the goal')
                 if (goal.get('implementation') or {}).get('pr'):
-                    classification = self.api.classify_pr_merge(goal, self.pull_request(goal), self.repository)
+                    classification = self.classify_merge(goal, self.pull_request(goal))
                     if classification['status'] != 'merged_verified':
                         raise ValueError('Completion requires exact-head merged PR evidence: ' + str(classification))
                 desired['status'] = 'done'
@@ -711,8 +760,9 @@ class Workflow:
                 if frontier['execute'] or frontier['review'] or frontier['blocked'] or durable['leases']:
                     raise ValueError('Integration requires all phase reviews and reconciled workers')
                 current = self.pull_request(goal)
-                if not explicit_approval(payload.get('approved_by')) or payload.get('expected_head') != current['head_oid'] or not current.get('checks_verified'):
-                    raise ValueError('Integration requires exact-head human approval and current green checks')
+                checks_ready = not self.ci_checks_required(current) or current.get('checks_verified') is True
+                if not explicit_approval(payload.get('approved_by')) or payload.get('expected_head') != current['head_oid'] or not checks_ready:
+                    raise ValueError('Integration requires exact-head human approval and any CI checks required by reviewed policy')
                 if self.publication_gate(goal):
                     raise ValueError('Repair publication topology before integration')
                 if not current.get('merged'):
@@ -840,8 +890,10 @@ class Workflow:
                 evidence, phase, record, live[phase], phase_policy=nodes,
             )
         elif operation == 'record_review' and lease['kind'] == 'review':
-            if phase == 'publish' and (goal.get('implementation') or {}).get('pr') and not self.pull_request(goal).get('checks_verified'):
-                raise ValueError('Publication review requires current green CI checks')
+            if phase == 'publish' and (goal.get('implementation') or {}).get('pr'):
+                current = self.pull_request(goal)
+                if self.ci_checks_required(current) and current.get('checks_verified') is not True:
+                    raise ValueError('Publication review requires any CI checks required by reviewed policy')
             outcomes = payload.get('outcomes')
             if not isinstance(outcomes, dict) or set(outcomes) != {'acceptance', 'entropy'}:
                 raise ValueError('Review requires separate acceptance and entropy outcomes')
@@ -880,13 +932,39 @@ class Workflow:
 def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     engine = engine or Workflow(api, repo, project, runtime)
     goals = engine.portfolio()
+    limit = worker_limit(project)
+    remaining_starts = max(0, limit - unresolved_lease_count(goals))
+    capacity_blocked = False
+    def partition(steps, runnable, waiting):
+        nonlocal remaining_starts, capacity_blocked
+        for step in steps:
+            starts_worker = step.get('kind') in {'execute', 'review', 'human_approval'} and isinstance(step.get('start'), dict)
+            if starts_worker:
+                if remaining_starts:
+                    runnable.append(step)
+                    remaining_starts -= 1
+                else:
+                    capacity_blocked = True
+            elif step.get('kind') in {'blocker', 'dependency', 'await_worker'}:
+                waiting.append(step)
+            else:
+                runnable.append(step)
+    def capacity_step():
+        return {
+            'kind': 'await_worker', 'assignment': 'root',
+            'action': 'Reviewed max_workers capacity is occupied. Reconcile, release, or recover an existing phase lease before starting another worker.',
+            'active_leases': unresolved_lease_count(goals), 'max_workers': limit,
+        }
     if number is not None:
         if number not in {g['key'] for g in goals}:
             raise ValueError('Requested goal is not in the validated portfolio')
-        return {'next_steps': engine.step(number)}
+        runnable_steps, waiting_steps = [], []
+        partition(engine.step(number), runnable_steps, waiting_steps)
+        if capacity_blocked and len(runnable_steps) < limit:
+            runnable_steps.append(capacity_step())
+        return {'next_steps': (runnable_steps or waiting_steps)[:limit]}
     runnable_steps = []
     waiting_steps = []
-    waiting_kinds = {'blocker', 'dependency', 'await_worker'}
     for goal in sorted(goals, key=lambda g: (g.get('priority', 'P3'), g['key'])):
         if goal['status'] in {'done', 'cancelled'}:
             continue
@@ -894,14 +972,15 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
         if blocked:
             waiting_steps.append({'kind': 'dependency', 'assignment': 'root', 'goal': goal['key'], 'action': 'Complete or repair the prerequisite goals.', 'dependencies': [g['key'] for g in blocked]})
             continue
-        for step in engine.step(goal['key']):
-            (waiting_steps if step.get('kind') in waiting_kinds else runnable_steps).append(step)
-        if len(runnable_steps) >= 3:
+        partition(engine.step(goal['key']), runnable_steps, waiting_steps)
+        if len(runnable_steps) >= limit:
             break
-    return {'next_steps': (runnable_steps or waiting_steps)[:3]}
+    if capacity_blocked and len(runnable_steps) < limit:
+        runnable_steps.append(capacity_step())
+    return {'next_steps': (runnable_steps or waiting_steps)[:limit]}
 
 
-def public_run(api, repo, intent, source, runtime, payload, number):
+def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_snapshot=None):
     """Route every intent through context gates; repairs use the same entrypoint."""
     if payload is not None and not isinstance(payload, dict):
         raise ValueError('Submission must be a JSON object')
@@ -956,6 +1035,8 @@ def public_run(api, repo, intent, source, runtime, payload, number):
             api.atomic_text(path, json.dumps(inspection, ensure_ascii=False, sort_keys=True))
         return {'next_steps': [{**gate, 'inspection': inspection if readonly else str(path), 'submission': {'operation': 'policy_propose', 'plan': '<complete initialization plan>'}, 'template': str(Path(api.__file__).parent / 'templates/project-goals/INIT_PLAN.json')}]}
     project = api.reviewed_project_state(repo)
+    if policy_snapshot is not None:
+        policy_snapshot['project'] = project
     if runtime and runtime.get('delegation', {}).get('discovery_complete'):
         settings = api._workflow_section(project, 'model_routing')['settings']
         freshness = api._policy.model_inventory_freshness(settings['model_inventory']['reviewed_pairs'], {'status': 'complete', 'pairs': runtime['available_pairs']})
@@ -1075,3 +1156,13 @@ def public_run(api, repo, intent, source, runtime, payload, number):
     if source in {'$send-zzzops-feedback', '$suggest-zzzops-work'}:
         return {'next_steps': [{'kind': 'dispatch', 'assignment': 'root', 'instruction': api.workflow_instruction(source), 'action': api.WORKFLOW_SOURCE_ACTIONS[source]}]}
     return checkpoint(api, repo, project, runtime, number, engine=engine)
+
+
+def public_run(api, repo, intent, source, runtime, payload, number):
+    snapshot = {}
+    result = _public_run(api, repo, intent, source, runtime, payload, number, policy_snapshot=snapshot)
+    if api._policy_context.needs_context(result):
+        return api._policy_context.attach(
+            result, repo, snapshot['project'], source=source,
+        )
+    return result

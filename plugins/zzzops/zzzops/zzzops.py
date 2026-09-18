@@ -70,6 +70,12 @@ sys.modules[_POLICY_MODULE_SPEC.name] = _policy
 _POLICY_MODULE_SPEC.loader.exec_module(_policy)
 _policy.configure_entrypoint(package_provenance=_package.package_provenance)
 
+_POLICY_CONTEXT_SPEC = importlib.util.spec_from_file_location("zzzops_policy_context", Path(__file__).with_name("policy_context.py"))
+assert _POLICY_CONTEXT_SPEC and _POLICY_CONTEXT_SPEC.loader
+_policy_context = importlib.util.module_from_spec(_POLICY_CONTEXT_SPEC)
+sys.modules[_POLICY_CONTEXT_SPEC.name] = _policy_context
+_POLICY_CONTEXT_SPEC.loader.exec_module(_policy_context)
+
 _ROUTING_MODULE_PATH = Path(__file__).with_name("routing.py")
 _ROUTING_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_routing", _ROUTING_MODULE_PATH)
 assert _ROUTING_MODULE_SPEC and _ROUTING_MODULE_SPEC.loader
@@ -972,7 +978,7 @@ def _github_pull_request_states(
         __typename
         ... on CheckRun{name status conclusion}
         ... on StatusContext{context state}
-      }}}}}}
+      } pageInfo{hasNextPage}}}}}}
     }
   }
 }"""
@@ -1007,6 +1013,7 @@ def _github_pull_request_states(
                 "merge_commit": merge_commit.get("oid") if isinstance(merge_commit, dict) else None,
                 "repository": pr_repository.get("nameWithOwner") if isinstance(pr_repository, dict) else None,
                 "checks_verified": _pull_request_checks_verified(pull_request),
+                "checks_present": _pull_request_checks_present(pull_request),
                 "review_verified": pull_request.get("reviewDecision") == "APPROVED",
             }
         for issue_number in targets[(owner, name, number)]:
@@ -1028,6 +1035,9 @@ def _pull_request_checks_verified(pull_request: Any) -> bool:
     rollup = commit.get("statusCheckRollup") if isinstance(commit, dict) else None
     contexts = rollup.get("contexts") if isinstance(rollup, dict) else None
     checks = contexts.get("nodes") if isinstance(contexts, dict) else None
+    page_info = contexts.get("pageInfo") if isinstance(contexts, dict) else None
+    if not isinstance(page_info, dict) or page_info.get("hasNextPage") is not False:
+        return False
     if not isinstance(checks, list) or not checks:
         return False
     for check in checks:
@@ -1042,6 +1052,28 @@ def _pull_request_checks_verified(pull_request: Any) -> bool:
         else:
             return False
     return True
+
+
+def _pull_request_checks_present(pull_request: Any) -> bool | None:
+    """Distinguish an empty exact-head check rollup from unavailable evidence."""
+    if not isinstance(pull_request, dict):
+        return None
+    commits = pull_request.get("commits")
+    nodes = commits.get("nodes") if isinstance(commits, dict) else None
+    if not isinstance(nodes, list) or len(nodes) != 1 or not isinstance(nodes[0], dict):
+        return None
+    commit = nodes[0].get("commit")
+    rollup = commit.get("statusCheckRollup") if isinstance(commit, dict) else None
+    contexts = rollup.get("contexts") if isinstance(rollup, dict) else None
+    checks = contexts.get("nodes") if isinstance(contexts, dict) else None
+    if not isinstance(checks, list):
+        return None
+    if checks:
+        return True
+    page_info = contexts.get("pageInfo")
+    if not isinstance(page_info, dict) or page_info.get("hasNextPage") is not False:
+        return None
+    return False
 
 
 def github_issue_history(repo: Path, project: dict[str, Any], issue_number: int) -> list[dict[str, Any]]:

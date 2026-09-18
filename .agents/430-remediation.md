@@ -31,3 +31,25 @@ python3 .github/scripts/run_product_validation.py --platform linux
 ```
 
 Local validation passed: the full Python suite (426 tests, one environment-dependent skip), migration-script tests, manual acceptance coverage, plugin/release checks, prompt budgets and compilation. Additional platform-specific heartbeat checks run before commit; CI validates the pushed revision.
+
+## Policy cleanup and step disclosure
+
+Removed the retired continuation category, duplicate completion-review switches,
+legacy claim/dependency/decomposition controls, and standalone entropy scheduling
+instructions. Phase reviews retain mandatory acceptance and entropy outcomes.
+Retained resource restrictions and project exceptions remain available for review;
+an old policy containing retired settings stops at the policy-review gate without
+silently rewriting the user's choices.
+
+Actionable next steps reference private temporary files containing the applicable
+exact policy blocks, bound to the same validated snapshot used to derive the step.
+They never inline policy bodies or create repository artifacts. Worker limits now
+gate both dispatch and lease acquisition, and reviewed CI requirements gate
+publication review, integration, and completion. Unresolved leases retain capacity;
+unknown or truncated check evidence cannot satisfy a required check gate.
+
+Regression coverage: `test_policy_cleanup.py`, `test_workflow_policy_context.py`,
+`test_workflow_policy_enforcement.py`, and the initialization policy-review test.
+The full Linux product-validation run passed (457 Python tests, one skip), followed
+by the final 84-test workflow suite after independent-review corrections. Platform
+CI remains the validation of the pushed revision.

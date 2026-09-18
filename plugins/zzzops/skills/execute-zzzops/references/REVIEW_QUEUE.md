@@ -12,27 +12,13 @@ After every gate passes, prefer atomic stack merge. A rule rejection preserves i
 
 ## Exhaustion handoff
 
-<!-- entropy-exhaustion-protocol:start -->
-| State | Guard | Operation | Success | Failure |
-| --- | --- | --- | --- | --- |
-| `mark` | `observed=verified_checkpoint,integrated_change,completed_goal` | `entropy_mark_exact` | `recorded:cycle,duplicate:cycle` | `actionable_stop` |
-| `exhaustion` | `checkpoint_refreshed=true,safe_work=false` | `entropy_status_recent` | `due_unattempted:review,due_attempted:actionable_stop,not_due:refill` | `actionable_stop` |
-| `review` | `due=true,attempted_current_exact_state=false` | `phase_review_entropy_once` | `clean:refill,findings:refill` | `actionable_stop` |
-| `refill` | `review=clean,findings,not_due;refill_used=false,true` | `refill_gate_once` | `work:cycle,empty:handoff,disabled:handoff,used:handoff` | `actionable_stop` |
-| `handoff` | `safe_work=false,refill=used,disabled,empty` | `final_review_handoff` | `ready:stop` | `actionable_stop` |
-<!-- entropy-exhaustion-protocol:meta qualifying=verified_checkpoint,integrated_change,completed_goal;nonqualifying=claim,reservation,schema_repair,blocker_update,administrative_transition,new_suggested_goal;review_may_call_execute=false;same_exact_state_may_review_again=false;order=entropy_status_recent<phase_review_entropy_once<refill_gate_once<final_review_handoff;mark_before_next_exhaustion=true -->
-<!-- entropy-exhaustion-protocol:end -->
+After refreshed goals, dependencies, and blockers prove no safe work remains:
 
-Apply this order exactly after refreshed goals/dependencies and rebuilt blockers prove no safe `triage`, `prepare`, or `write` work remains:
+1. Reinvoke the public execute checkpoint. Follow any returned repair, review, approval, integration, or completion step exactly; do not schedule a separate repository entropy-review pass. Entropy findings and explicit no-findings evidence belong to each mandatory implementation review.
+2. If the checkpoint returns no executable goal work and PROJECT explicitly permits suggestion/refill, invoke `$suggest-zzzops-work` through its public workflow at most once for this exhaustion. Suggestion grants no goal-write authority; capture only through the returned public capture and approval contract.
+3. If suggestion creates work, return once to ordinary selection. Otherwise present one concise review queue in dependency/merge order. For each PR give its goal link, PR link, immediate target, check state, material risk or decision, and the action that resumes work. Separate non-review authority blockers. Do not ask for commands such as `approve goal 1`; the repository's PR review UI is the approval surface.
 
-1. Run `entropy review status` once against the current exact event frontier from [the event contract](ENTROPY_OBSERVATIONS.md). Freeze that frontier as the session attempt key.
-2. On `due:false`, continue to the refill gate. On `due:true`, stop if that exact frontier was already attempted in this session. Otherwise record the exact-frontier attempt first, then return the existing phase-review entropy step exactly once. Show the frozen recent scope and its evidenced findings or clean result. A genuinely new exact frontier may be checked and reviewed at a later exhaustion in the same session.
-3. Interruption, provider failure, malformed state, or drift leaves coverage due. Persist an actionable continuation, stop before refill/final-exhaustion claims, and never retry the same event set or alter identifiers in this session.
-4. Only after the exact completion receipt succeeds, apply at most one exhausted-queue refill when PROJECT explicitly enables it. Fixed review findings reuse suggestion category/cap and goal-creation authority; the automatic review itself grants none. Post-receipt review capture consumes the session refill. If that capture fails, persist the frozen finding set and an actionable continuation. Otherwise `$suggest-zzzops-work` may run once under the same policy.
-5. If refill creates work, return once to ordinary selection. Entropy review never invokes execute, execute never recursively invokes the same reviewed event set, and newly suggested goals do not themselves create review events.
-6. When no work was created, present one concise review queue in dependency/merge order. For each PR give its goal link, PR link, immediate target, check state, material risk or decision, and the action that resumes work. Separate non-review authority blockers. Do not ask for commands such as `approve goal 1`; the repository's PR review UI is the approval surface.
-
-The exact-frontier attempt guard is session-local; durable exact receipts alone establish coverage. Never retry the same frontier or enable or loop-refill. Once the session refill has been used, its gate routes every later exhaustion directly to handoff.
+An interruption, provider failure, malformed state, or drift leaves an actionable continuation. Never claim exhaustion while a returned public step remains unresolved, and never loop suggestion/refill in one exhaustion.
 
 ## Ancestor feedback
 
