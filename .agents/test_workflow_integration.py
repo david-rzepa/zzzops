@@ -140,6 +140,20 @@ class PublicWorkflowJourneyTests(unittest.TestCase):
         record.update(actor='builder', selection=lease['selection'], routing=step['result_contract']['record']['routing'], output=self.engine.artifact(42, {'output': 'output'}))
         return lease, record
 
+    def test_new_goal_with_null_rigor_reaches_assessment_and_assignment(self):
+        goal = z.parse_managed_goal(self.adapter.issue['body'], 42)
+        goal['engineering_rigor'] = None
+        self.adapter.issue['body'] = z.render_managed_goal(goal, '## Acceptance\n- Preserve the expected behavior.\n', 42)
+        self.engine.invalidate()
+        step = self.engine.step(42)[0]
+        self.assertEqual('assess', step['kind'])
+        self.mutate(operation='assess', phase='plan', input_hash=step['input_hash'], files=[],
+                    dimensions={'consequence': 'bounded', 'boundedness': 'atomic', 'engineering_rigor': 'structured'})
+        assignment = self.engine.step(42)[0]
+        self.assertEqual('execute', assignment['kind'])
+        self.assertEqual('delegate', assignment['assignment'])
+        self.assertEqual({'model': 'worker', 'effort': 'medium'}, assignment['selection'])
+
     def test_start_and_worker_bind_require_current_policy_read_without_writes_on_rejection(self):
         import json
         assessment = self.engine.step(42)[0]

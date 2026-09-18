@@ -1367,10 +1367,11 @@ def workflow_step_plan(
         return {"schema_version": WORKFLOW_STEP_SCHEMA_VERSION, "next_steps": [{
             "kind": "capability_discovery", "assignment": "root", "reason": "root model-plus-effort pair is not reviewed",
         }], "frontier": frontier}
+    rigor = goal.get("engineering_rigor") or {}
     dimensions_base = {
-        "consequence": "architectural" if "architecture" in goal.get("engineering_rigor", {}).get("risk_categories", []) else "bounded",
+        "consequence": "architectural" if "architecture" in rigor.get("risk_categories", []) else "bounded",
         "boundedness": "atomic" if goal.get("difficulty") in {"XS", "S"} else "bounded",
-        "engineering_rigor": goal.get("engineering_rigor", {}).get("effective") or "structured",
+        "engineering_rigor": rigor.get("effective") or "structured",
     }
     steps = []
     for kind, entries in (("execute", frontier["execute"]), ("review", frontier["review"])):
