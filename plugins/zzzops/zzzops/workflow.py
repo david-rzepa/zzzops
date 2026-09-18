@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import math
 import os
 import subprocess
 import time
@@ -15,8 +16,32 @@ import uuid
 import base64
 import zlib
 import re
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
+
+
+class RenewalBudget:
+    """Bound provider work while reserving independent time to release storage."""
+    def __init__(self, work_seconds=30, cleanup_seconds=10):
+        if any(not math.isfinite(v) or v <= 0 for v in (work_seconds, cleanup_seconds)):
+            raise ValueError('Renewal work and cleanup budgets must be finite and positive')
+        self.deadline = time.monotonic() + work_seconds
+        self.cleanup_seconds = cleanup_seconds
+
+    def timeout(self, maximum):
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError('Heartbeat renewal deadline exhausted; retry the same lease after cleanup')
+        return min(maximum, remaining)
+
+    @contextmanager
+    def cleanup(self):
+        previous = self.deadline
+        self.deadline = time.monotonic() + self.cleanup_seconds
+        try:
+            yield
+        finally:
+            self.deadline = previous
 
 
 def digest(value):
@@ -172,6 +197,9 @@ class Workflow:
         self.runtime = runtime
         self.repository = api._project_repository_identity(project)
         self.adapter = api.GitHubGoalTransitionAdapter(repo, self.repository)
+        self.budget = getattr(api, 'renewal_budget', None)
+        if self.budget:
+            self.adapter.timeout_budget = self.budget.timeout
         self._read_cache = {}
         self._portfolio_cache = None
 
@@ -250,30 +278,42 @@ class Workflow:
         owner, run = 'workflow', uuid.uuid4().hex
         if getattr(self, '_storage_reservation', None) is not None:
             raise ValueError('Nested workflow storage reservations are not supported')
+        budget = getattr(self, 'budget', None)
+        if budget:
+            adapter.timeout_budget = budget.timeout
         deadline = time.monotonic() + 10
-        while True:
-            acquired = api.acquire_storage_lock(adapter, self.repository, 'workflow', owner, run, 300)
-            if acquired.get('acquired'):
-                break
-            if time.monotonic() >= deadline:
-                raise ValueError('Another coordinator is updating goals; retry the same request')
-            time.sleep(.2)
-        expires_at = acquired.get('expires_at')
-        if not isinstance(expires_at, (int, float)) or isinstance(expires_at, bool):
-            api.release_storage_lock(adapter, self.repository, 'workflow', owner, run)
-            raise ValueError('Provider did not confirm the storage reservation expiry; no write is allowed')
-        reservation = {
-            'adapter': adapter, 'owner': owner, 'run': run,
-            'expires_at': expires_at, 'valid': True,
-        }
-        self._storage_reservation = reservation
-        self.invalidate()
+        reservation = None
+        attempted = False
         try:
+            while True:
+                if budget:
+                    budget.timeout(10)
+                # Even a lost acquisition confirmation may leave our label behind.
+                attempted = True
+                acquired = api.acquire_storage_lock(adapter, self.repository, 'workflow', owner, run, 300)
+                if acquired.get('acquired'):
+                    break
+                if time.monotonic() >= deadline:
+                    raise ValueError('Another coordinator is updating goals; retry the same request')
+                time.sleep(min(.2, budget.timeout(.2)) if budget else .2)
+            expires_at = acquired.get('expires_at')
+            if not isinstance(expires_at, (int, float)) or isinstance(expires_at, bool):
+                raise ValueError('Provider did not confirm the storage reservation expiry; no write is allowed')
+            reservation = {
+                'adapter': adapter, 'owner': owner, 'run': run,
+                'expires_at': expires_at, 'valid': True,
+            }
+            self._storage_reservation = reservation
+            self.invalidate()
             yield
         finally:
             if getattr(self, '_storage_reservation', None) is reservation:
                 self._storage_reservation = None
-            api.release_storage_lock(adapter, self.repository, 'workflow', owner, run)
+            if attempted:
+                # This checks exact owner/run and never deletes another holder.
+                # Unconfirmed remote writes remain uncertain, not safe takeover evidence.
+                with budget.cleanup() if budget else nullcontext():
+                    api.release_storage_lock(adapter, self.repository, 'workflow', owner, run)
 
     def save(self, issue, goal, desired, *, human_spec=None):
         reservation = getattr(self, '_storage_reservation', None)
@@ -624,7 +664,9 @@ class Workflow:
         if payload.get('operation') == 'verify' and _proof is None:
             return self.verify(number, payload)
         with self.locked():
-            portfolio = self.portfolio(allow_invalid=payload.get('operation') in {'revise', 'recover_legacy'})
+            # Public preflight already validated the portfolio. Renewal only touches
+            # this exact lease; rehydrating every goal under the lock caused timeouts.
+            portfolio = [] if payload.get('operation') == 'renew' else self.portfolio(allow_invalid=payload.get('operation') in {'revise', 'recover_legacy'})
             issue, goal = self.read(number)
             desired = self.api.parse_managed_goal(issue['body'], number)
             durable = state(goal)
@@ -633,7 +675,8 @@ class Workflow:
             if receipt:
                 if receipt['hash'] != fingerprint:
                     raise ValueError('request_id was already used with different inputs')
-                return {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'This request was already applied. Re-read current goal evidence.'}]}
+                response = {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'This request was already applied. Re-read current goal evidence.'}]}
+                return self.stop_completed_heartbeat(number, payload, durable, response)
             operation = payload.get('operation')
             human_spec = None
             phase = payload.get('phase')
@@ -822,6 +865,12 @@ class Workflow:
             if operation != 'renew':
                 durable['receipts'][payload['request_id']] = {'hash': fingerprint}
             self.save(issue, goal, desired, human_spec=human_spec)
+            if operation == 'renew':
+                response = {'next_steps': [{'kind': 'renewed', 'goal': number, 'phase': phase,
+                    'actor': lease['worker'], 'lease': lease['token'], 'expires_at': lease['expires_at'],
+                    'action': 'Ownership renewal was saved. Continue monitoring the bound worker.'}]}
+            else:
+                response = self.stop_completed_heartbeat(number, payload, durable, response)
             if operation == 'verify' and response['next_steps'][0]['kind'] == 'record_result':
                 artifact = response['next_steps'][0]['verification']
                 next_step = next(s for s in self.step(number) if s.get('phase') == phase)
@@ -836,6 +885,23 @@ class Workflow:
                 next_step['verification'] = artifact
                 return {'next_steps': [next_step]}
             return response
+
+    def stop_completed_heartbeat(self, number, payload, durable, response):
+        token = payload.get('lease')
+        if not token or any(v['token'] == token for v in durable['leases'].values()):
+            return response
+        try:
+            self.api._heartbeat.stop_heartbeat(repo=self.repo, root_id=(self.runtime or {}).get('root_id'),
+                goal=number, phase=payload.get('phase'), token=token)
+        except (OSError, ValueError) as exc:
+            # The durable operation already succeeded. Its exact replay retries
+            # this local, idempotent cleanup without reapplying goal evidence.
+            response['next_steps'].append({'kind': 'repair', 'assignment': 'root',
+                'goal': number, 'phase': payload.get('phase'), 'actor': payload.get('actor'),
+                'action': 'The durable submission succeeded. Resolve the local heartbeat error, then replay this exact request to stop monitoring the completed lease.',
+                'reason': str(exc), 'submission': copy.deepcopy(payload),
+                'command': ['--intent', 'execute', '--goal', str(number), '--runtime', '<runtime.json>', '--input', '<submission.json>']})
+        return response
 
     def submit_evidence(self, goal, desired, durable, key, lease, payload):
         api = self.api

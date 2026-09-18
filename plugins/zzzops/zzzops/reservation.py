@@ -118,6 +118,8 @@ class GitHubReservationAdapter:
         self._identity_checked = False
 
     def _run(self, arguments: list[str], timeout: int = 30) -> subprocess.CompletedProcess[str]:
+        if getattr(self, 'timeout_budget', None):
+            timeout = self.timeout_budget(timeout)
         try:
             return subprocess.run(
                 [self.executable, *arguments], cwd=self.repo, capture_output=True, text=True,

@@ -662,6 +662,8 @@ class GitHubGoalTransitionAdapter:
     def _run(
         self, arguments: list[str], *, input_text: str | None = None, timeout: int = 30,
     ) -> subprocess.CompletedProcess[str]:
+        if getattr(self, 'timeout_budget', None):
+            timeout = self.timeout_budget(timeout)
         try:
             return subprocess.run(
                 [self.executable, *arguments], cwd=self.repo, capture_output=True, text=True,
@@ -2934,6 +2936,7 @@ def main() -> int:
     if len(sys.argv) == 1:
         parser.print_help()
         return 0
+    args, payload = None, None
     try:
         args = parser.parse_args(argv[1:])
         runtime = json.loads(args.runtime.read_text()) if args.runtime else None
@@ -2941,11 +2944,26 @@ def main() -> int:
         source = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
         services = SimpleNamespace(**globals())
         services.runtime_path = args.runtime.resolve() if args.runtime else None
+        if isinstance(payload, dict) and payload.get('operation') == 'renew':
+            services.renewal_budget = _workflow.RenewalBudget(
+                float(os.environ.get('ZZZOPS_RENEWAL_TIMEOUT_SECONDS', '30')),
+                float(os.environ.get('ZZZOPS_RENEWAL_CLEANUP_SECONDS', '10')),
+            )
         result = _workflow.public_run(services, args.repo.resolve(), args.intent, source, runtime, payload, args.goal)
         print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
         return 0
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
-        print(json.dumps({"next_steps": [{"kind": "repair", "assignment": "root", "action": "Correct this input or backend condition and retry the same request.", "reason": str(exc)}]}, ensure_ascii=False, separators=(",", ":")))
+        step = {"kind": "repair", "assignment": "root", "action": "Correct this input or backend condition and retry the same request.", "reason": str(exc)}
+        if args is not None and isinstance(payload, dict) and payload.get('operation') == 'renew':
+            retry_args = list(argv[1:])
+            if '--input' in retry_args:
+                retry_args[retry_args.index('--input') + 1] = '<submission.json>'
+            else:
+                retry_args = ['--input=<submission.json>' if value.startswith('--input=') else value for value in retry_args]
+            step.update(goal=args.goal, phase=payload.get('phase'), actor=payload.get('actor'),
+                action='Renewal was not confirmed; retain the worker evidence and current lease. After resolving the reported provider or storage condition, write submission to a JSON file and retry this command with that path. Timeout or expiry alone does not authorize takeover.',
+                submission=payload, command=[sys.executable, str(Path(__file__).resolve()), *retry_args])
+        print(json.dumps({"next_steps": [step]}, ensure_ascii=False, separators=(",", ":")))
         return 2
 
 
