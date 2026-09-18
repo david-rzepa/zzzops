@@ -82,6 +82,42 @@ Those go to a bounded local log artifact; a next step may reference that artifac
 only when inspecting it is necessary to resolve the step. Errors use the same
 envelope with an actionable repair step whenever a safe repair exists.
 
+Each reviewed category separates typed `configuration` from natural-language
+`instructions`. Only configuration controls CLI decisions; instruction prose never
+changes routing, capacity, review requirements, or CI gates. Both participate in
+default comparison, explicit approval, and phase evidence invalidation. Legacy
+mixed sections require re-review; they are never converted during execution.
+
+Actionable steps include a `policy` reference with an absolute temporary `path`,
+the file's `sha256`, and the selected section IDs. Read that file before performing
+the step and pass the reference to its assigned worker. It contains reviewed agent
+instructions and exceptions selected for the phase and operation; reviews
+additionally receive quality and verification policy. Unknown custom phases receive
+all applicable instruction blocks rather than silently losing constraints.
+Configuration and provenance snapshots never enter worker policy excerpts.
+Files also contain a `policy_receipt` derived from the disclosed content. It is not
+returned in stdout, paths, leases, or goal state. Phase/review starts and delegated
+worker binding require it; the public file hash is not an acknowledgment. This
+checks retrieval, not understanding or compliance. Independent review still checks
+whether the work follows policy.
+
+Identical content reuses a private content-addressed temporary file across CLI
+invocations and restarts. Receipt and bytes remain identical after cache deletion
+and regeneration, or configuration-only changes. Changed instructions or exceptions
+invalidate the receipt for work consuming them. The CLI derives expected receipts
+from the current reviewed snapshot rather than trusting cached files. Renewals and
+result submissions do not require repeated acknowledgment. Identical disclosed
+content deliberately shares a receipt across phases; phase inputs, leases, actors,
+and model selection independently constrain the assignment. On Windows, reusable
+files live under the private user-profile temporary subtree rather than a redirected
+shared `TEMP`; on POSIX the cache enforces current-user ownership and mode 0700.
+Policy-proposal gates never label an unapproved proposal as reviewed policy.
+Their inspection is also a temporary file reference, including in preview mode.
+The CLI writes these private files outside the repository and never inlines their
+contents in stdout. Files are disposable disclosure, not durable evidence or
+authority: a fresh checkpoint regenerates a missing file, while phase freshness
+continues to depend on the full canonical policy hash.
+
 `skill` is a validated installed skill ID, never a free-form hint. The workflow
 owns this registry and rejects a response whose step is not mapped to a currently
 installed skill. It selects the indicated intent of that skill, which in turn
@@ -168,6 +204,12 @@ decision boundedness, to the shipped tiers: Routine, Bounded, Reasoning, and
 Architectural. A reviewed tier mapping selects the least-cost available
 `(model, effort)` pair that satisfies that phase. New models or efforts outside
 the reviewed inventory make policy review stale.
+
+Architectural consequence or unbounded work escalates before any phase default
+is considered. Test design has a Reasoning floor because it must translate the
+accepted behavior into capable regression checks; understanding remains a
+root-owned interaction phase and keeps its Routine default when no risk rule
+raises it.
 
 The root records the routing comparison and either dispatches a worker with the
 selected pair or records why it retains work. A worker never asks the user,

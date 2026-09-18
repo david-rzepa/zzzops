@@ -50,7 +50,13 @@ def sha256_digest(value: Any) -> str:
 
 
 def empty_phase_evidence() -> dict[str, Any]:
-    return {"schema_version": PHASE_EVIDENCE_SCHEMA_VERSION, "records": {}, "reviews": {}, "withdrawals": []}
+    return {
+        "schema_version": PHASE_EVIDENCE_SCHEMA_VERSION,
+        "records": {},
+        "reviews": {},
+        "human_approvals": {},
+        "withdrawals": [],
+    }
 
 
 def _text(value: Any, field: str) -> str:
@@ -179,7 +185,7 @@ def goal_spec_digest(goal: dict[str, Any], *, title: str, human_spec: str) -> st
     if not isinstance(goal, dict):
         raise PhaseEvidenceError("goal specification must be an object")
     semantic = {
-        "title": _text(title, "title"), "human_spec": _text(human_spec, "human_spec"),
+        "title": _text(title, "title"), "human_spec": _text(human_spec.strip(), "human_spec"),
         "priority": goal.get("priority"), "value": goal.get("value"), "difficulty": goal.get("difficulty"),
         "confidence": goal.get("confidence"), "parent": goal.get("parent"),
         "depends_on": goal.get("depends_on"), "resources": goal.get("resources"),
@@ -261,13 +267,48 @@ def _test_design(value: Any, phase: str, envelope: dict[str, Any], status: str) 
     return {"baseline_failure": _artifact(value.get("baseline_failure"), "test-design baseline failure", required=True), "coverage": normalized}
 
 
+def _review_outcomes(value: Any, decision: str) -> dict[str, Any]:
+    """Validate durable acceptance and entropy outcomes for a phase review."""
+    if not isinstance(value, dict) or set(value) != {"acceptance", "entropy"}:
+        raise PhaseEvidenceError("phase review outcomes must contain acceptance and entropy")
+    acceptance = value.get("acceptance")
+    if acceptance not in {"approved", "changes_requested"} or acceptance != decision:
+        raise PhaseEvidenceError("phase review acceptance outcome must match its decision")
+    entropy = value.get("entropy")
+    if not isinstance(entropy, dict):
+        raise PhaseEvidenceError("phase review entropy outcome is invalid")
+    outcome = entropy.get("outcome")
+    required = {"outcome", "evidence"}
+    if outcome not in {"no_findings", "fixed", "follow_up"} or set(entropy) not in (required, required | {"goals"}):
+        raise PhaseEvidenceError("phase review entropy outcome is invalid")
+    normalized_entropy: dict[str, Any] = {
+        "outcome": outcome,
+        "evidence": _text(entropy.get("evidence"), "phase review entropy evidence"),
+    }
+    goals = entropy.get("goals", [])
+    if outcome == "follow_up":
+        if not isinstance(goals, list) or not goals or any(
+            not isinstance(goal, int) or isinstance(goal, bool) or goal < 1 for goal in goals
+        ):
+            raise PhaseEvidenceError("phase review entropy follow-up goals must be positive integers")
+        if len(goals) != len(set(goals)):
+            raise PhaseEvidenceError("phase review entropy follow-up goals must be unique")
+    elif not isinstance(goals, list) or goals:
+        raise PhaseEvidenceError("phase review entropy goals are only allowed for follow-up")
+    normalized_entropy["goals"] = list(goals)
+    return {"acceptance": acceptance, "entropy": normalized_entropy}
+
+
 def normalize_phase_evidence(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict) or set(value) != {"schema_version", "records", "reviews", "withdrawals"}:
+    if value is None:
+        value = {"schema_version": PHASE_EVIDENCE_SCHEMA_VERSION, "records": {}, "reviews": {}, "withdrawals": []}
+    fields = {"schema_version", "records", "reviews", "withdrawals"}
+    if not isinstance(value, dict) or set(value) not in (fields, fields | {"human_approvals"}):
         raise PhaseEvidenceError("phase evidence has invalid fields")
     if value.get("schema_version") != PHASE_EVIDENCE_SCHEMA_VERSION:
         raise PhaseEvidenceError("phase evidence schema version is invalid")
-    records, reviews, withdrawals = value.get("records"), value.get("reviews"), value.get("withdrawals")
-    if not isinstance(records, dict) or not isinstance(reviews, dict) or not isinstance(withdrawals, list):
+    records, reviews, approvals, withdrawals = value.get("records"), value.get("reviews"), value.get("human_approvals", {}), value.get("withdrawals")
+    if not isinstance(records, dict) or not isinstance(reviews, dict) or not isinstance(approvals, dict) or not isinstance(withdrawals, list):
         raise PhaseEvidenceError("phase evidence records, reviews, and withdrawals are required")
     normalized = empty_phase_evidence()
     for phase, record in records.items():
@@ -275,24 +316,48 @@ def normalize_phase_evidence(value: Any) -> dict[str, Any]:
         normalized["records"][phase] = _record(record, phase)
     for phase, review in reviews.items():
         _text(phase, "review phase")
-        if phase not in normalized["records"] or not isinstance(review, dict) or set(review) != {"record_hash", "input_hash", "output_hash", "artifact", "reviewer", "decision"}:
+        record = normalized["records"].get(phase)
+        binding_field = "output_hash" if record is not None and record["status"] == "completed" else "decision_hash"
+        required_review_fields = {"record_hash", "input_hash", binding_field, "artifact", "reviewer", "decision"}
+        if record is None or not isinstance(review, dict) or set(review) not in (required_review_fields, required_review_fields | {"outcomes"}):
             raise PhaseEvidenceError("phase review is invalid")
-        if review.get("record_hash") != sha256_digest(normalized["records"][phase]):
+        if review.get("record_hash") != sha256_digest(record):
             raise PhaseEvidenceError("phase review record hash is stale")
-        if review.get("input_hash") != normalized["records"][phase]["input_hash"]:
+        if review.get("input_hash") != record["input_hash"]:
             raise PhaseEvidenceError("phase review input hash is stale")
-        output = normalized["records"][phase]["output"]
-        if output is None or review.get("output_hash") != output["hash"]:
-            raise PhaseEvidenceError("phase review output hash is stale")
+        if binding_field == "output_hash":
+            if review.get(binding_field) != record["output"]["hash"]:
+                raise PhaseEvidenceError("phase review output hash is stale")
+        elif review.get(binding_field) != sha256_digest(record["not_required"]):
+            raise PhaseEvidenceError("phase review not-required decision hash is stale")
         decision = review.get("decision")
         if decision not in {"approved", "changes_requested"}:
             raise PhaseEvidenceError("phase review decision is invalid")
-        normalized["reviews"][phase] = {
+        normalized_review = {
             "record_hash": review["record_hash"],
-            "input_hash": review["input_hash"], "output_hash": review["output_hash"],
+            "input_hash": review["input_hash"], binding_field: review[binding_field],
             "artifact": _artifact(review.get("artifact"), "phase review artifact", required=True),
             "reviewer": _text(review.get("reviewer"), "phase reviewer"),
             "decision": decision,
+        }
+        if "outcomes" in review:
+            normalized_review["outcomes"] = _review_outcomes(review["outcomes"], decision)
+        normalized["reviews"][phase] = normalized_review
+    for phase, approval in approvals.items():
+        _text(phase, "human approval phase")
+        review = normalized["reviews"].get(phase)
+        record = normalized["records"].get(phase)
+        if record is None or not isinstance(approval, dict) or set(approval) != {"record_hash", "review_hash", "actor", "approval_token"}:
+            raise PhaseEvidenceError("phase human approval is invalid")
+        expected_review_hash = sha256_digest(review) if review is not None else None
+        if approval.get("record_hash") != sha256_digest(record) or approval.get("review_hash") != expected_review_hash:
+            raise PhaseEvidenceError("phase human approval is stale")
+        actor = _text(approval.get("actor"), "phase human approval actor")
+        if actor != "root":
+            raise PhaseEvidenceError("phase human approval actor must be root")
+        normalized["human_approvals"][phase] = {
+            "record_hash": approval["record_hash"], "review_hash": approval["review_hash"],
+            "actor": actor, "approval_token": _text(approval.get("approval_token"), "phase human approval token"),
         }
     seen = set()
     for withdrawal in withdrawals:
@@ -322,7 +387,10 @@ def _withdrawn(evidence: dict[str, Any], phase: str) -> bool:
     return any(item["phase"] == phase for item in evidence["withdrawals"])
 
 
-def record_phase_result(evidence: Any, phase: str, record: Any, current_input: dict[str, Any]) -> dict[str, Any]:
+def record_phase_result(
+    evidence: Any, phase: str, record: Any, current_input: dict[str, Any],
+    *, phase_policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Return updated evidence only when a submitted result matches current inputs."""
     normalized, phase = normalize_phase_evidence(evidence), _text(phase, "phase")
     normalized_record = _record(record, phase)
@@ -330,21 +398,44 @@ def record_phase_result(evidence: Any, phase: str, record: Any, current_input: d
     if normalized_record["input_hash"] != sha256_digest(current) or normalized_record["input_envelope"] != current:
         raise PhaseEvidenceError("phase result input evidence is stale")
     if phase == "implement":
-        _require_approved_test_design(normalized, normalized_record)
+        _require_approved_test_design(normalized, normalized_record, phase_policy=phase_policy)
     normalized["records"][phase] = normalized_record
     normalized["reviews"].pop(phase, None)
+    normalized["human_approvals"].pop(phase, None)
     normalized["withdrawals"] = [item for item in normalized["withdrawals"] if item["phase"] != phase]
     return normalized
 
 
-def _require_approved_test_design(evidence: dict[str, Any], implementation: dict[str, Any]) -> None:
+def _require_approved_test_design(
+    evidence: dict[str, Any], implementation: dict[str, Any],
+    *, phase_policy: dict[str, Any] | None = None,
+) -> None:
     """Implementation may only proceed from an approved, explicitly bound test design."""
+    independent, human_approval = True, False
+    if phase_policy is not None:
+        if not isinstance(phase_policy, dict) or not isinstance(phase_policy.get("test_design"), dict):
+            raise PhaseEvidenceError("test-design phase policy is invalid")
+        configured = phase_policy["test_design"]
+        review_policy = configured.get("review")
+        if (
+            not isinstance(review_policy, dict)
+            or not isinstance(review_policy.get("independent"), bool)
+            or not isinstance(review_policy.get("human_approval"), bool)
+            or configured.get("not_required", "never") != "never"
+        ):
+            raise PhaseEvidenceError("test-design phase policy is invalid")
+        independent = review_policy["independent"]
+        human_approval = review_policy["human_approval"]
     design = evidence["records"].get("test_design")
     review = evidence["reviews"].get("test_design")
     if design is None or design["status"] != "completed" or design["test_design"] is None or _withdrawn(evidence, "test_design"):
         raise PhaseEvidenceError("implementation requires completed test-design evidence")
-    if review is None or review["decision"] != "approved":
+    if review is not None and review["decision"] == "changes_requested":
+        raise PhaseEvidenceError("implementation is blocked by requested test-design changes")
+    if independent and (review is None or review["decision"] != "approved"):
         raise PhaseEvidenceError("implementation requires approved test-design review")
+    if human_approval and "test_design" not in evidence["human_approvals"]:
+        raise PhaseEvidenceError("implementation requires test-design human approval")
     output = design["output"]
     if output is None or not any(
         item["phase"] == "test_design" and item["hash"] == output["hash"]
@@ -353,7 +444,10 @@ def _require_approved_test_design(evidence: dict[str, Any], implementation: dict
         raise PhaseEvidenceError("implementation must bind the approved test-design output")
 
 
-def record_phase_review(evidence: Any, phase: str, artifact: Any, reviewer: str, *, decision: str = "approved", require_independent: bool = True) -> dict[str, Any]:
+def record_phase_review(
+    evidence: Any, phase: str, artifact: Any, reviewer: str, *, decision: str = "approved",
+    require_independent: bool = True, outcomes: Any = None,
+) -> dict[str, Any]:
     """Attach an independent immutable review to the exact current phase record."""
     normalized, phase = normalize_phase_evidence(evidence), _text(phase, "review phase")
     record = normalized["records"].get(phase)
@@ -366,14 +460,37 @@ def record_phase_review(evidence: Any, phase: str, artifact: Any, reviewer: str,
         raise PhaseEvidenceError("phase reviewer must be independent from phase actor")
     if decision not in {"approved", "changes_requested"}:
         raise PhaseEvidenceError("phase review decision is invalid")
-    if record["output"] is None:
-        raise PhaseEvidenceError("cannot review phase evidence without an output")
-    normalized["reviews"][phase] = {
+    binding = (
+        {"output_hash": record["output"]["hash"]}
+        if record["output"] is not None
+        else {"decision_hash": sha256_digest(record["not_required"])}
+    )
+    normalized_review = {
         "record_hash": sha256_digest(record),
-        "input_hash": record["input_hash"], "output_hash": record["output"]["hash"],
+        "input_hash": record["input_hash"], **binding,
         "artifact": _artifact(artifact, "phase review artifact", required=True),
         "reviewer": reviewer,
         "decision": decision,
+    }
+    if outcomes is not None:
+        normalized_review["outcomes"] = _review_outcomes(outcomes, decision)
+    normalized["reviews"][phase] = normalized_review
+    normalized["human_approvals"].pop(phase, None)
+    return normalized
+
+
+def record_phase_approval(evidence: Any, phase: str, actor: str, approval_token: str) -> dict[str, Any]:
+    """Bind explicit root approval to the exact current record and approved review."""
+    normalized, phase = normalize_phase_evidence(evidence), _text(phase, "approval phase")
+    record, review = normalized["records"].get(phase), normalized["reviews"].get(phase)
+    if record is None or (review is not None and review["decision"] != "approved"):
+        raise PhaseEvidenceError("human approval cannot bind a rejected phase review")
+    actor = _text(actor, "phase human approval actor")
+    if actor != "root":
+        raise PhaseEvidenceError("phase human approval actor must be root")
+    normalized["human_approvals"][phase] = {
+        "record_hash": sha256_digest(record), "review_hash": sha256_digest(review) if review is not None else None,
+        "actor": actor, "approval_token": _text(approval_token, "phase human approval token"),
     }
     return normalized
 
@@ -466,6 +583,7 @@ def derive_phase_eligibility(goal: dict[str, Any], graph: Any, live_inputs: dict
 def derive_phase_steps(
     goal: dict[str, Any], graph: Any, live_inputs: dict[str, dict[str, Any]],
     related_goals: dict[Any, dict[str, Any]] | None = None,
+    review_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Derive executable and review work from immutable evidence, with no cursor.
 
@@ -479,39 +597,117 @@ def derive_phase_steps(
     if goal.get("status") in {"done", "cancelled"} or goal.get("state") == "closed":
         return {"execute": [], "review": [], "stale": [], "blocked": [], "diagnostics": ["terminal_goal"]}
     evidence = normalize_phase_evidence(goal.get("phase_evidence", empty_phase_evidence()))
+    if review_policy is not None and not isinstance(review_policy, dict):
+        raise PhaseEvidenceError("phase review policy must be an object")
+
+    def requirements(phase: str) -> dict[str, Any]:
+        if review_policy is None:
+            return {"independent": True, "human_approval": False, "not_required": None}
+        configured = review_policy.get(phase, {})
+        if not isinstance(configured, dict):
+            raise PhaseEvidenceError(f"phase review policy for {phase} is invalid")
+        review = configured.get("review", configured)
+        if not isinstance(review, dict):
+            raise PhaseEvidenceError(f"phase review policy for {phase} is invalid")
+        independent = review.get("independent", True)
+        human_approval = review.get("human_approval", False)
+        if not isinstance(independent, bool) or not isinstance(human_approval, bool):
+            raise PhaseEvidenceError(f"phase review policy for {phase} is invalid")
+        not_required = configured.get("not_required", "never")
+        if not isinstance(not_required, str):
+            raise PhaseEvidenceError(f"phase not-required policy for {phase} is invalid")
+        return {"independent": independent, "human_approval": human_approval, "not_required": not_required}
+
+    policies = {phase: requirements(phase) for phase in nodes}
     if not isinstance(live_inputs, dict) or any(phase not in nodes for phase in live_inputs):
         raise PhaseEvidenceError("live phase inputs are invalid")
     normalized_inputs = {phase: _input_envelope(value, phase) for phase, value in live_inputs.items()}
     current = {
         phase: phase in evidence["records"] and phase in normalized_inputs and not _withdrawn(evidence, phase)
         and evidence["records"][phase]["input_hash"] == sha256_digest(normalized_inputs[phase])
+        and (
+            evidence["records"][phase]["status"] == "completed"
+            or policies[phase]["not_required"] is None
+            or (
+                policies[phase]["not_required"] != "never"
+                and evidence["records"][phase]["not_required"]["policy_rule"] == policies[phase]["not_required"]
+            )
+        )
         for phase in nodes
     }
-    approved = {
-        phase: current[phase] and evidence["reviews"].get(phase, {}).get("decision") == "approved"
+    review_approved = {
+        phase: current[phase]
+        and evidence["reviews"].get(phase, {}).get("decision") != "changes_requested"
+        and (
+            not policies[phase]["independent"]
+            or (
+                evidence["reviews"].get(phase, {}).get("decision") == "approved"
+                and evidence["reviews"][phase]["reviewer"] != evidence["records"][phase]["actor"]
+            )
+        )
         for phase in nodes
     }
+    locally_approved = {
+        phase: review_approved[phase]
+        and (
+            not policies[phase]["human_approval"]
+            or phase in evidence["human_approvals"]
+        )
+        for phase in nodes
+    }
+    approved: dict[str, bool] = {}
+
+    def dependencies_approved(phase: str) -> bool:
+        if phase not in approved:
+            approved[phase] = locally_approved[phase] and all(
+                dependencies_approved(dependency) for dependency in nodes[phase]["depends_on"]
+            )
+        return approved[phase]
+
+    for phase in nodes:
+        dependencies_approved(phase)
     stale = [phase for phase in nodes if phase in evidence["records"] and not current[phase]]
     related_goals = related_goals or {}
     parent = related_goals.get(goal.get("parent")) if goal.get("parent") is not None else None
     parent_goal = parent.get("goal") if isinstance(parent, dict) else None
     parent_inputs = parent.get("live_inputs") if isinstance(parent, dict) else None
     parent_evidence = normalize_phase_evidence(parent_goal.get("phase_evidence", empty_phase_evidence())) if isinstance(parent_goal, dict) else None
+
+    def parent_gate_missing(gate: str) -> bool:
+        if parent_evidence is None or not isinstance(parent_inputs, dict) or gate not in parent_inputs:
+            return True
+        record = parent_evidence["records"].get(gate)
+        review = parent_evidence["reviews"].get(gate)
+        policy = requirements(gate)
+        if record is None or _withdrawn(parent_evidence, gate):
+            return True
+        if record["input_hash"] != sha256_digest(_input_envelope(parent_inputs[gate], gate)):
+            return True
+        if record["status"] == "not_required" and policy["not_required"] is not None and (
+            policy["not_required"] == "never" or record["not_required"]["policy_rule"] != policy["not_required"]
+        ):
+            return True
+        if policy["independent"] and (
+            review is None or review["decision"] != "approved" or review["reviewer"] == record["actor"]
+        ):
+            return True
+        return policy["human_approval"] and gate not in parent_evidence["human_approvals"]
+
     execute, review, blocked, diagnostics = [], [], [], []
     for phase, node in nodes.items():
-        if current[phase]:
-            if not approved[phase]:
-                review.append({"phase": phase, "reason": "missing_or_unapproved_review"})
-            continue
         unmet = [dependency for dependency in node["depends_on"] if not approved[dependency]]
-        missing_parent = [
-            gate for gate in node["parent_gates"]
-            if parent_evidence is None or not isinstance(parent_inputs, dict) or gate not in parent_inputs
-            or gate not in parent_evidence["records"] or _withdrawn(parent_evidence, gate)
-            or parent_evidence["records"][gate]["status"] != "completed"
-            or parent_evidence["records"][gate]["input_hash"] != sha256_digest(_input_envelope(parent_inputs[gate], gate))
-            or parent_evidence["reviews"].get(gate, {}).get("decision") != "approved"
-        ]
+        missing_parent = [gate for gate in node["parent_gates"] if parent_gate_missing(gate)]
+        if current[phase] and (unmet or missing_parent):
+            blocked.append({"phase": phase, "dependencies": unmet, "parent_gates": missing_parent})
+            continue
+        if current[phase]:
+            if evidence["reviews"].get(phase, {}).get("decision") == "changes_requested":
+                execute.append({"phase": phase, "reason": "changes_requested"})
+            elif policies[phase]["independent"] and not review_approved[phase]:
+                review.append({"phase": phase, "reason": "missing_or_unapproved_review"})
+            elif policies[phase]["human_approval"] and phase not in evidence["human_approvals"]:
+                review.append({"phase": phase, "reason": "missing_human_approval"})
+            continue
         if unmet or missing_parent:
             blocked.append({"phase": phase, "dependencies": unmet, "parent_gates": missing_parent})
         elif phase not in normalized_inputs:
