@@ -86,7 +86,7 @@ class WorkflowInvocationCacheTests(unittest.TestCase):
         project = {
             "backend": "github_issues", "repository": {"identity": "synthetic/project"},
             "policy": {"sections": [{
-                "id": "autonomy_approval_parallelism", "settings": {"max_workers": 3},
+                "id": "autonomy_approval_parallelism", "configuration": {"max_workers": 3},
             }]},
         }
         with (
@@ -116,7 +116,7 @@ class AssessContractTests(unittest.TestCase):
             _project_repository_identity=lambda project: "synthetic/project",
             GitHubGoalTransitionAdapter=lambda repo, repository: adapter,
             github_goal_record=lambda issue: copy.deepcopy(issue["record"]),
-            _workflow_section=lambda project, section: {"settings": {}},
+            _workflow_section=lambda project, section: {"configuration": {}},
             workflow_step_plan=lambda *args, **kwargs: {
                 "next_steps": [{"kind": "execute", "phase": "understand", "assignment": "root", "selection": {"model": "synthetic", "effort": "low"}}],
                 "frontier": {"blocked": []},

@@ -151,8 +151,8 @@ TIMING_DIAGNOSTIC_ID = re.compile(r"^[0-9a-f]{64}$")
 def execution_reports_enabled(project: dict[str, Any]) -> bool:
     sections = ((project.get("policy") or {}).get("sections") if isinstance(project.get("policy"), dict) else None)
     section = next((item for item in sections or [] if isinstance(item, dict) and item.get("id") == "autonomy_approval_parallelism"), None)
-    settings = section.get("settings") if isinstance(section, dict) else None
-    configured = settings.get("execution_reports") if isinstance(settings, dict) else None
+    configuration = section.get("configuration") if isinstance(section, dict) else None
+    configured = configuration.get("execution_reports") if isinstance(configuration, dict) else None
     if not isinstance(configured, dict):
         raise ValueError("Reviewed project policy execution_reports must be an object")
     enabled = configured.get("enabled")

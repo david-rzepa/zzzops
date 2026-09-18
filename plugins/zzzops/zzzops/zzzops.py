@@ -801,19 +801,10 @@ PhaseLeaseHeartbeat = _reservation.PhaseLeaseHeartbeat
 apply_independent_batch = _reservation.apply_independent_batch
 
 
-def project_claim_ttl_seconds(project: dict[str, Any]) -> int:
-    sections = ((project.get("policy") or {}).get("sections") if isinstance(project.get("policy"), dict) else None)
-    section = next((item for item in sections or [] if isinstance(item, dict) and item.get("id") == "autonomy_approval_parallelism"), None)
-    hours = ((section.get("settings") or {}).get("claim_ttl_hours") if isinstance(section, dict) else None)
-    if not isinstance(hours, int) or isinstance(hours, bool) or not 1 <= hours <= 24:
-        raise ValueError("Reviewed project policy must set claim_ttl_hours from 1 to 24")
-    return hours * 3600
-
-
 def project_resource_policy(project: dict[str, Any]) -> dict[str, Any]:
     sections = ((project.get("policy") or {}).get("sections") if isinstance(project.get("policy"), dict) else None)
     section = next((item for item in sections or [] if isinstance(item, dict) and item.get("id") == "autonomy_approval_parallelism"), None)
-    settings = section.get("settings") if isinstance(section, dict) else None
+    settings = section.get("configuration") if isinstance(section, dict) else None
     configured = settings.get("resource_reservations") if isinstance(settings, dict) else None
     return normalize_resource_policy(configured)
 
@@ -1241,7 +1232,7 @@ def _portfolio_from_hydrated_goals(
         ignored=excluded + len(selected) - len(records),
         git_policy=next(
             (
-                section["settings"] for section in ((project.get("policy") or {}).get("sections") or [])
+                section["configuration"] for section in ((project.get("policy") or {}).get("sections") or [])
                 if isinstance(section, dict) and section.get("id") == "git_review_release"
             ),
             {},
@@ -1337,7 +1328,7 @@ def record_workflow_diagnostic(repo: Path, event: dict[str, Any]) -> None:
 
 def _workflow_section(project: dict[str, Any], identifier: str) -> dict[str, Any]:
     for section in project.get("policy", {}).get("sections", []):
-        if isinstance(section, dict) and section.get("id") == identifier and isinstance(section.get("settings"), dict):
+        if isinstance(section, dict) and section.get("id") == identifier and isinstance(section.get("configuration"), dict):
             return section
     raise ValueError(f"Reviewed {identifier} policy is unavailable")
 
@@ -1423,7 +1414,7 @@ def workflow_step_plan(
 
 def _workflow_phase_configuration(project: dict[str, Any], goal: dict[str, Any]) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     adherence = _workflow_section(project, "workflow_adherence")
-    dag = adherence["settings"].get("phase_dag")
+    dag = adherence["configuration"].get("phase_dag")
     graph = phase_evidence_graph(dag, has_parent=goal.get("parent") is not None)
     phase_nodes = {node["id"]: node for node in dag["phases"] if node["id"] in {item["id"] for item in graph["phases"]}}
     return graph, phase_nodes
@@ -1448,7 +1439,7 @@ def workflow_live_inputs(repo: Path, project: dict[str, Any], goal: dict[str, An
         raise ValueError("workflow intent is invalid")
     identity = _project_repository_identity(project)
     policy = project["policy"]
-    dag = _workflow_section(project, "workflow_adherence")["settings"]["phase_dag"]
+    dag = _workflow_section(project, "workflow_adherence")["configuration"]["phase_dag"]
     goal_digest = goal_spec_digest(goal, title=goal["title"], human_spec=goal["human_spec"])
     evidence = normalize_phase_evidence(goal.get("phase_evidence") or empty_phase_evidence())
     live = {}
@@ -1490,7 +1481,7 @@ def workflow_checkpoint(repo: Path, goal_number: int, intent: str, runtime: Any)
         parent = github_goal_record(parent_issue)
         parent_graph, _parent_nodes = _workflow_phase_configuration(project, parent)
         related[goal["parent"]] = {"goal": parent, "live_inputs": workflow_live_inputs(repo, project, parent, intent, parent_graph)}
-    routing = _workflow_section(project, "model_routing")["settings"]
+    routing = _workflow_section(project, "model_routing")["configuration"]
     result = workflow_step_plan(goal, graph, live_inputs, phase_nodes, routing, runtime, related_goals=related)
     record_workflow_diagnostic(repo, {"goal": goal_number, "intent": intent, "frontier": result["frontier"]})
     return {"next_steps": result["next_steps"]}
@@ -2185,19 +2176,14 @@ def validate_plan(repo: Path, plan: dict[str, Any]) -> list[str]:
             if unknown_sources:
                 errors.append(f"policy.sections[{index}].source_ids reference unknown evidence: {', '.join(unknown_sources)}")
             if section.get("id") == "backend":
-                if section.get("decision") != backend:
-                    errors.append("policy backend decision must equal backend")
-                settings = section.get("settings")
-                tradeoffs = settings.get("tradeoffs") if isinstance(settings, dict) else None
+                settings = section.get("configuration")
                 if (
                     not isinstance(settings, dict)
-                    or settings.get("fallback") != "forbidden"
+                    or settings.get("authority") != backend
                     or settings.get("repository_identity") != (repository or {}).get("identity")
                     or not text_present(settings.get("capability_evidence"))
-                    or not isinstance(tradeoffs, dict)
-                    or not all(text_present(tradeoffs.get(name)) for name in BACKENDS)
                 ):
-                    errors.append("policy backend settings must record capability evidence, supported-backend tradeoffs, repository identity, and forbidden fallback")
+                    errors.append("backend configuration must match the selected authority and repository and record capability evidence")
     return errors
 
 
@@ -2246,7 +2232,7 @@ def apply_plan(repo: Path, plan: dict[str, Any]) -> dict[str, Any]:
     previous_policy = old_state.get("policy") if old_state else None
     policy = prepare_policy_defaults(repo, plan["policy"], previous_policy)
     policy["evidence"] = plan["evidence"]
-    if previous_policy:
+    if previous_policy and previous_policy.get("schema_version") == policy.get("schema_version"):
         old_sections = {section["id"]: section for section in previous_policy["sections"]}
         old_evidence = previous_policy.get("evidence", [])
         for section in policy["sections"]:
@@ -2538,7 +2524,7 @@ def _private_main() -> int:
         reserve_command.add_argument("--resource", action="append", default=[], help="Known resource such as path:src/file")
         reserve_command.add_argument("--format", dest="output_format", choices=("summary", "json"), default="summary")
         if name != "release":
-            reserve_command.add_argument("--ttl-seconds", type=int, help="Override reviewed claim_ttl_hours")
+            reserve_command.add_argument("--ttl-seconds", type=int, required=True, help="Explicit duration for this private legacy reservation")
     coaching = commands.add_parser("coaching", help="Attribute bounded software-agent work evidence without writes")
     coaching_commands = coaching.add_subparsers(dest="coaching_command", required=True)
     coaching_attribute = coaching_commands.add_parser("attribute", help="Classify a bounded attribution request")
@@ -2835,7 +2821,7 @@ def _private_main() -> int:
             adapter = GitHubReservationAdapter(repo, repository)
             ttl_seconds = None
             if args.reserve_command != "release":
-                ttl_seconds = args.ttl_seconds if args.ttl_seconds is not None else project_claim_ttl_seconds(project)
+                ttl_seconds = args.ttl_seconds
             if args.reserve_command == "acquire":
                 result = acquire_reservation_bundle(
                     adapter, repository, args.goal, args.revision, args.owner, args.run_id, args.resource, ttl_seconds,

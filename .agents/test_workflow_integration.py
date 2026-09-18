@@ -16,7 +16,7 @@ class WorkflowIntegrationTests(unittest.TestCase):
         self.graph = {'phases': [{'id': 'plan'}]}
         self.nodes = {'plan': {'review': {'independent': True}}}
         self.project = {'backend': 'github_issues', 'repository': {'identity': 'owner/repo'},
-                        'policy': {'sections': [{'id': 'workflow_adherence', 'settings': {'phase_dag': self.graph}}]}}
+                        'policy': {'sections': [{'id': 'workflow_adherence', 'configuration': {'phase_dag': self.graph}}]}}
 
     def test_rendered_goal_produces_live_inputs_without_phase_evidence(self):
         goal = z.github_goal_record(self.adapter.issue)
@@ -27,6 +27,31 @@ class WorkflowIntegrationTests(unittest.TestCase):
         first = z.workflow_live_inputs(Path('.'), self.project, goal, 'execute', self.graph)
         goal['revision'] += 1
         self.assertEqual(first, z.workflow_live_inputs(Path('.'), self.project, goal, 'preview', self.graph))
+
+    def test_configuration_and_instruction_changes_each_invalidate_open_evidence(self):
+        self.project['policy']['sections'].append({
+            'id': 'verification_testing', 'configuration': {'required_ci': 'inspect_exact_pr_head'},
+            'instructions': 'Inspect failures before retrying.',
+        })
+        goal = z.github_goal_record(self.adapter.issue)
+        live = z.workflow_live_inputs(Path('.'), self.project, goal, 'execute', self.graph)
+        goal['phase_evidence'] = z.record_phase_result(
+            z.empty_phase_evidence(), 'plan', fixtures.PhaseEvidenceTests().record('plan', live['plan']), live['plan'],
+        )
+        for field in ('configuration', 'instructions'):
+            project = copy.deepcopy(self.project)
+            section = project['policy']['sections'][-1]
+            if field == 'configuration':
+                section[field]['required_ci'] = 'disabled'
+            else:
+                section[field] += ' Preserve the failing evidence.'
+            changed = z.workflow_live_inputs(Path('.'), project, goal, 'execute', self.graph)
+            with self.subTest(field=field):
+                self.assertNotEqual(live['plan']['policy'], changed['plan']['policy'])
+                frontier = z.derive_phase_steps(goal, self.graph, changed)
+                self.assertEqual(['plan'], [item['phase'] for item in frontier['execute']])
+                closed = {**goal, 'status': 'done'}
+                self.assertEqual([], z.derive_phase_steps(closed, self.graph, changed)['execute'])
 
     def test_submission_then_backend_reread_requires_review_not_reexecution(self):
         goal = z.github_goal_record(self.adapter.issue)
@@ -70,7 +95,7 @@ class PublicWorkflowJourneyTests(unittest.TestCase):
         self.adapter = fixtures.FakeGoalTransitionAdapter(fixtures.GoalTransitionTests().issue())
         template = json.loads((fixtures.PLUGIN_ROOT / 'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
         self.project = {'backend': 'github_issues', 'repository': {'identity': 'owner/repo'}, 'policy': template['policy']}
-        routing = next(s for s in self.project['policy']['sections'] if s['id'] == 'model_routing')['settings']
+        routing = next(s for s in self.project['policy']['sections'] if s['id'] == 'model_routing')['configuration']
         routing['model_inventory']['reviewed_pairs'] = [
             {'model': 'root', 'effort': 'high', 'tier': 'architectural', 'cost': 10},
             {'model': 'worker', 'effort': 'medium', 'tier': 'bounded', 'cost': 2}]

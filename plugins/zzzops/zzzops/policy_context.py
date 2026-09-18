@@ -91,7 +91,7 @@ def section_ids(step, source, available):
 
 
 def attach(result, repo, project, *, source, temporary_root=None):
-    """Attach local file references, preserving exact section values and order.
+    """Disclose only agent instructions, never CLI configuration or snapshots.
 
     A private temporary directory belongs to one invocation. Identical excerpts
     share a file within that invocation; a later invocation regenerates them.
@@ -105,7 +105,11 @@ def attach(result, repo, project, *, source, temporary_root=None):
         if not actionable(step):
             continue
         selected = section_ids(step, source, available)
-        blocks = [section for section in sections if section['id'] in selected]
+        blocks = [
+            {key: section[key] for key in ('id', 'title', 'instructions', 'exceptions') if key in section}
+            for section in sections
+            if section['id'] in selected and section.get('applicable') is not False
+        ]
         if not blocks:
             continue
         content = (json.dumps({'sections': blocks}, ensure_ascii=False, sort_keys=True,

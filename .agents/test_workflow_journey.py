@@ -81,7 +81,7 @@ class FullWorkflowJourneyTests(unittest.TestCase):
             "backend": "github_issues", "repository": {"identity": "owner/repo"},
             "policy": template["policy"],
         }
-        routing = z._workflow_section(self.project, "model_routing")["settings"]
+        routing = z._workflow_section(self.project, "model_routing")["configuration"]
         routing["model_inventory"]["reviewed_pairs"] = [
             {"model": "worker-routine", "effort": "low", "tier": "routine", "cost": 1},
             {"model": "worker-bounded", "effort": "medium", "tier": "bounded", "cost": 2},

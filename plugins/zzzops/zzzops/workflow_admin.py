@@ -115,6 +115,12 @@ def _suggest(api: Any, repo: Path, project: dict[str, Any], payload: dict[str, A
     if payload is not None:
         raise ValueError("Work suggestion is read-only; capture an approved recommendation through the goal workflow")
     observations = api.list_entropy_observations(repo, project)
+    if observations.get("enabled") is not True:
+        return {"next_steps": [{
+            "kind": "suggestions_disabled", "assignment": "root",
+            "action": "Automatic work suggestions are disabled by the reviewed project configuration. Continue existing goal work; propose enabling suggestions only if the user requests it.",
+            "blocked_by": {"configuration": "autonomy_approval_parallelism.refill.enabled", "value": False},
+        }]}
     timing = api.timing_suggestion(repo)
     evidence: dict[str, Any] = {"entropy": observations, "timing_status": timing.get("reason")}
     if timing.get("available") is True:

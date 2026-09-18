@@ -30,7 +30,7 @@ class StepAPI:
 
     @staticmethod
     def _workflow_section(_project, _section):
-        return {"settings": {}}
+        return {"configuration": {}}
 
     @staticmethod
     def workflow_instruction(name):

@@ -48,13 +48,13 @@ def preflight_policy_proposal(api, repo, proposal):
 def policy_section(project, section_id):
     sections = ((project.get('policy') or {}).get('sections') if isinstance(project.get('policy'), dict) else None)
     section = next((item for item in sections or [] if isinstance(item, dict) and item.get('id') == section_id), None)
-    if not isinstance(section, dict) or not isinstance(section.get('settings'), dict):
-        raise ValueError(f'Reviewed project policy is missing {section_id} settings')
+    if not isinstance(section, dict) or not isinstance(section.get('configuration'), dict):
+        raise ValueError(f'Reviewed project policy is missing {section_id} configuration')
     return section
 
 
 def worker_limit(project):
-    value = policy_section(project, 'autonomy_approval_parallelism')['settings'].get('max_workers')
+    value = policy_section(project, 'autonomy_approval_parallelism')['configuration'].get('max_workers')
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise ValueError('Reviewed project policy max_workers must be a positive integer')
     return value
@@ -375,10 +375,7 @@ class Workflow:
 
     def ci_checks_required(self, pull_request):
         section = policy_section(self.project, 'verification_testing')
-        if section.get('applicable') is False:
-            return False
-        configured = section['settings'].get('ci_deduplication')
-        mode = configured.get('required_ci') if isinstance(configured, dict) else None
+        mode = section['configuration'].get('required_ci')
         if mode == 'disabled':
             return False
         if mode == 'existing_only':
@@ -432,7 +429,7 @@ class Workflow:
             return [{'kind': 'recover_legacy', 'assignment': 'root', 'goal': number, 'action': 'Confirm the legacy worker stopped before replacing its claim with phase leases.', 'submission': {'operation': 'recover_legacy', 'claim_hash': digest(goal['claim']), 'worker_status': 'stopped', 'evidence': '<observed terminal state>', 'request_id': 'new-unique-id'}}]
         graph, nodes, live, related = self.context(goal)
         result = self.api.workflow_step_plan(goal, graph, live, nodes,
-                    self.api._workflow_section(self.project, 'model_routing')['settings'], self.runtime,
+                    self.api._workflow_section(self.project, 'model_routing')['configuration'], self.runtime,
                     related_goals=related)
         steps = result['next_steps']
         for step in steps:
@@ -673,7 +670,7 @@ class Workflow:
                 dimensions = payload.get('dimensions')
                 if not isinstance(dimensions, dict):
                     raise ValueError('Root capability assessment dimensions are required')
-                self.api.capability_tier(self.api._workflow_section(self.project, 'model_routing')['settings'], {**dimensions, 'phase_type': phase})
+                self.api.capability_tier(self.api._workflow_section(self.project, 'model_routing')['configuration'], {**dimensions, 'phase_type': phase})
                 files = payload.get('files')
                 if not isinstance(files, list) or any(not isinstance(path, str) or not path for path in files):
                     raise ValueError('Declared phase inputs must be repository-relative file paths')
@@ -1036,8 +1033,8 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
     if policy_snapshot is not None:
         policy_snapshot['project'] = project
     if runtime and runtime.get('delegation', {}).get('discovery_complete'):
-        settings = api._workflow_section(project, 'model_routing')['settings']
-        freshness = api._policy.model_inventory_freshness(settings['model_inventory']['reviewed_pairs'], {'status': 'complete', 'pairs': runtime['available_pairs']})
+        configuration = api._workflow_section(project, 'model_routing')['configuration']
+        freshness = api._policy.model_inventory_freshness(configuration['model_inventory']['reviewed_pairs'], {'status': 'complete', 'pairs': runtime['available_pairs']})
         if freshness['stale']:
             return {'next_steps': [{'kind': 'policy_review', 'assignment': 'root', 'action': 'Review policy tier mappings for newly discovered model/effort pairs before proceeding.', 'added': freshness['added'], 'submission': {'operation': 'policy_propose', 'plan': '<updated reviewed policy plan>'}}]}
     engine = Workflow(api, repo, project, runtime)

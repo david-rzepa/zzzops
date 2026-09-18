@@ -19,13 +19,13 @@ class RoutingDefaultTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         plan = json.loads(PLAN_PATH.read_text(encoding="utf-8"))
-        cls.settings = next(
-            section["settings"] for section in plan["policy"]["sections"]
+        cls.configuration = next(
+            section["configuration"] for section in plan["policy"]["sections"]
             if section["id"] == "model_routing"
         )
 
     def tier(self, **dimensions):
-        return policy.capability_tier(self.settings, dimensions)["tier"]
+        return policy.capability_tier(self.configuration, dimensions)["tier"]
 
     def test_architectural_test_design_escalates_before_phase_floor(self):
         self.assertEqual(

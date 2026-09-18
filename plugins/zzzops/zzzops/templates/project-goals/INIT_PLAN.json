@@ -63,7 +63,7 @@
     "usable": false
   },
   "policy": {
-    "schema_version": 1,
+    "schema_version": 2,
     "sections": [
       {
         "id": "backend",
@@ -71,7 +71,6 @@
         "title": "Canonical goal backend",
         "required": true,
         "applicable": true,
-        "decision": "github_issues",
         "rationale": "replace with capability evidence and repository identity",
         "source_ids": [
           "E-002"
@@ -79,19 +78,16 @@
         "confidence": "medium",
         "default_origin": "ZzzOps GitHub-only authority",
         "default_disposition": "accepted",
-        "settings": {
-          "authority": "github_issues",
-          "repository_identity": "owner/repository",
-          "fallback": "forbidden",
-          "capability_evidence": "replace with the GitHub capability probe result",
-          "tradeoffs": {
-            "github_issues": "shared native issue queue requiring GitHub access"
-          }
-        },
         "exceptions": [],
         "unresolved": [],
         "review": {
           "approved": false
+        },
+        "instructions": "Use the CLI-selected backend as the authority for shared goal state. Require the repository identity and observed capability evidence to match; never fall back silently.",
+        "configuration": {
+          "authority": "github_issues",
+          "repository_identity": "owner/repository",
+          "capability_evidence": "replace with the GitHub capability probe result"
         }
       },
       {
@@ -100,7 +96,6 @@
         "title": "Git, review, and release",
         "required": true,
         "applicable": true,
-        "decision": "Follow repository rules; otherwise keep one branch and PR per source-changing goal, prefer verified GitHub-native stacked PRs, and explicitly use chained PRs when native stacks are unavailable or unverified. Continue descendants from exact verified predecessor checkpoints, collect human PR approval at true queue exhaustion, and integrate in dependency order. Policy review, required checks, human merge approval, and release authority are never bypassed.",
         "rationale": "uses provider-native stack context when proven while preserving independently reviewable PR gates and a named compatible fallback",
         "source_ids": [
           "E-002"
@@ -108,47 +103,18 @@
         "confidence": "medium",
         "default_origin": "ZzzOps exhaustion-time review fallback",
         "default_disposition": "accepted",
-        "settings": {
-          "execution_branch": "per_goal",
-          "branch_base": "nearest_authorized_trunk",
-          "dependency_base": "dependency_branch",
-          "review_pending_dependency": "stack_from_reviewed_checkpoint",
-          "read_only_dependency_investigation": "allowed_before_completion",
-          "multiple_dependency_base": "reviewed_base_containing_all",
-          "parent_pseudo_trunk": true,
-          "child_target": "nearest_parent_branch",
-          "pull_request_unit": "per_goal",
-          "shared_pull_request": "explicit_reviewed_override",
-          "pull_request_mode": "github_stacked_when_verified_else_chained",
-          "stacked_capability": "official_gh_stack_extension_with_provider_membership_verification",
-          "stacked_tool_installation": "explicit_user_approval",
-          "stacked_unavailable_fallback": "chained_prs",
-          "commit_unit": "verified_subgoal",
-          "commit_style": "conventional",
-          "review_gate": "human_at_exhaustion",
-          "active_stack": "one_active_stack",
-          "second_stack": "durable_blocker",
-          "base_freshness": "latest_integrated_target",
-          "recovery": "explicit_abandoned_stack_decision",
-          "review_state_reads_per_checkpoint": 1,
-          "pr_approval": "required_when_repository_requires_pr",
-          "conversational_approval": "never_for_goal_progress",
-          "merge_after_approval": "when_authorized",
-          "legacy_migration": {
-            "release_evidence": "public_github_release",
-            "release_status": "unknown",
-            "owner_declaration": null,
-            "ambiguous_evidence": "ask_user_or_persist_blocker",
-            "never_released_requires_owner_declaration": true,
-            "pre_release_default": "replace_and_reset_affected_project_owned_state",
-            "first_release_review": "required",
-            "post_release_policy": "explicit_user_review"
-          }
-        },
         "exceptions": [],
         "unresolved": [],
         "review": {
           "approved": false
+        },
+        "instructions": "Follow repository rules and the CLI-selected pull-request mode. Keep one branch and pull request per source-changing goal and one active stack. Base dependent work on the exact reviewed dependency checkpoint, make verified sub-goal commits, collect human pull-request approval at true queue exhaustion, and integrate in dependency order. Never bypass policy review, required checks, merge authority, or release authority. Preserve released state; replace affected project-owned state only after explicit evidence that the project has never been released.",
+        "configuration": {
+          "review_pending_dependency": "stack_from_reviewed_checkpoint",
+          "pull_request_mode": "github_stacked_when_verified_else_chained",
+          "legacy_migration": {
+            "release_status": "unknown"
+          }
         }
       },
       {
@@ -157,7 +123,6 @@
         "title": "Verification and testing",
         "required": true,
         "applicable": true,
-        "decision": "Require artifact-appropriate observable evidence in small chunks; documentation and test cases need no recursive tests, while product behavior and reusable test infrastructure require direct verification.",
         "rationale": "prevents unobservable product changes and false confidence without manufacturing documentation or test meta-tests",
         "source_ids": [
           "E-002"
@@ -165,28 +130,14 @@
         "confidence": "high",
         "default_origin": "ZzzOps observable-work fallback",
         "default_disposition": "accepted",
-        "settings": {
-          "mode": "chunk_probe",
-          "widen": "as_relevant",
-          "test_bug": "capture_and_ask",
-          "ci_deduplication": {
-            "local_probe": "smallest_unique_falsifiable_signal",
-            "skip_broad_local_when": "same_command_required_ci",
-            "required_ci": "inspect_exact_pr_head",
-            "failure": "inspect_logs_and_reprobe",
-            "unavailable": "durable_blocker"
-          },
-          "artifact_verification": {
-            "product_runtime": "risk_proportionate_behavioral_probe",
-            "documentation": "inspect_artifact_no_feature_test",
-            "test_cases": "run_changed_tests_no_recursive_meta_test",
-            "test_harness": "focused_behavioral_regression"
-          }
-        },
         "exceptions": [],
         "unresolved": [],
         "review": {
           "approved": false
+        },
+        "instructions": "Require artifact-appropriate observable evidence in small chunks. Documentation and test cases need no recursive tests; product behavior and reusable test infrastructure require direct verification. Use the smallest unique falsifiable local probe, widen when relevant, inspect exact pull-request-head CI when configured, and capture test-discovered product bugs separately.",
+        "configuration": {
+          "required_ci": "inspect_exact_pr_head"
         }
       },
       {
@@ -195,7 +146,6 @@
         "title": "Code-quality and refactoring boundaries",
         "required": true,
         "applicable": true,
-        "decision": "Preserve behavior unless a goal explicitly authorizes a behavior change.",
         "rationale": "separates cleanup from product decisions",
         "source_ids": [
           "E-002"
@@ -203,16 +153,13 @@
         "confidence": "medium",
         "default_origin": "ZzzOps conservative fallback",
         "default_disposition": "accepted",
-        "settings": {
-          "non_behavioral_only_without_feature_goal": true,
-          "dead_code": "remove_only_if_evidenced_and_in_scope",
-          "dynamic_generated_vendor": "retain_without_proof"
-        },
         "exceptions": [],
         "unresolved": [],
         "review": {
           "approved": false
-        }
+        },
+        "instructions": "Preserve behavior unless a goal explicitly authorizes a behavior change. Without a feature goal, limit cleanup to behavior-preserving changes; remove dead code only with evidence and treat dynamic, generated, and vendored code conservatively.",
+        "configuration": {}
       },
       {
         "id": "dependencies_tooling",
@@ -220,7 +167,6 @@
         "title": "Dependencies, tooling, and generated artifacts",
         "required": true,
         "applicable": true,
-        "decision": "Use project-native tooling; do not hand-edit generated or dependency-owned files.",
         "rationale": "replace with repository-specific commands and ownership evidence",
         "source_ids": [
           "E-002"
@@ -228,16 +174,13 @@
         "confidence": "medium",
         "default_origin": "ZzzOps conservative fallback",
         "default_disposition": "accepted",
-        "settings": {
-          "tooling": "project_native",
-          "generated_files": "source_or_generator_only",
-          "dependency_changes": "explicit_scope"
-        },
         "exceptions": [],
         "unresolved": [],
         "review": {
           "approved": false
-        }
+        },
+        "instructions": "Use project-native tooling, do not hand-edit generated artifacts, and make dependency changes only with explicit goal scope and verification.",
+        "configuration": {}
       },
       {
         "id": "security_privacy_compliance",
@@ -245,7 +188,6 @@
         "title": "Security, privacy, secrets, and compliance",
         "required": true,
         "applicable": true,
-        "decision": "Repository policy may tighten but never weaken ZzzOps safety and authority boundaries.",
         "rationale": "record applicable project constraints without making safety optional",
         "source_ids": [
           "E-002"
@@ -253,16 +195,13 @@
         "confidence": "medium",
         "default_origin": "immutable ZzzOps boundary",
         "default_disposition": "accepted",
-        "settings": {
-          "secrets": "never_expose",
-          "production_mutation": "explicit_authority",
-          "project_constraints": []
-        },
         "exceptions": [],
         "unresolved": [],
         "review": {
           "approved": false
-        }
+        },
+        "instructions": "Never expose secrets or mutate production without authority. Repository rules may tighten but cannot weaken safety, privacy, or compliance boundaries.",
+        "configuration": {}
       },
       {
         "id": "documentation_style",
@@ -270,7 +209,6 @@
         "title": "Documentation and style",
         "required": true,
         "applicable": true,
-        "decision": "Follow evidenced repository documentation, style, and user-communication conventions.",
         "rationale": "keep communication project-appropriate while providing a concise ZzzOps fallback",
         "source_ids": [
           "E-002"
@@ -278,20 +216,13 @@
         "confidence": "medium",
         "default_origin": "ZzzOps fallback overridden by repository or user evidence",
         "default_disposition": "accepted",
-        "settings": {
-          "documentation": "repository_conventions",
-          "style": "repository_conventions",
-          "communication": {
-            "style": "outcome_first",
-            "technical_detail": "decision_risk_failure_or_request",
-            "user_action": "one_clear_action_with_reason_and_next_step"
-          }
-        },
         "exceptions": [],
         "unresolved": [],
         "review": {
           "approved": false
-        }
+        },
+        "instructions": "Follow evidenced repository documentation and style conventions, communicate outcomes first, and include implementation detail only where it helps decisions.",
+        "configuration": {}
       },
       {
         "id": "deployment_resources",
@@ -299,7 +230,6 @@
         "title": "Deployment, environment, and resources",
         "required": true,
         "applicable": true,
-        "decision": "Do not deploy without authority; choose bounded parallelism from the deterministic tracked-file repository size.",
         "rationale": "limits external impact and avoids multiplying large writable checkouts",
         "source_ids": [
           "E-002"
@@ -307,16 +237,13 @@
         "confidence": "medium",
         "default_origin": "ZzzOps conservative fallback",
         "default_disposition": "accepted",
-        "settings": {
-          "deployment": "explicit_authority",
-          "resource_mode": "size_aware",
-          "delegate_wait_after_seconds": 60
-        },
         "exceptions": [],
         "unresolved": [],
         "review": {
           "approved": false
-        }
+        },
+        "instructions": "Do not deploy without authority. Prefer bounded worktree parallelism below the reviewed 100 MiB tracked-worktree threshold and read-only investigation at or above it; wait rather than duplicate active delegated work.",
+        "configuration": {}
       },
       {
         "id": "engineering_rigor",
@@ -324,7 +251,6 @@
         "title": "Engineering rigor",
         "required": true,
         "applicable": true,
-        "decision": "structured",
         "rationale": "Balance production-oriented specification and verification with escalation-ready harness investment; higher-risk work can automatically require agentic evidence.",
         "source_ids": [
           "E-002"
@@ -332,12 +258,14 @@
         "confidence": "medium",
         "default_origin": "ZzzOps production-oriented fallback",
         "default_disposition": "accepted",
-        "settings": {
-          "escalation": {
-            "enabled": true,
-            "allow_automatic_escalation": true,
-            "allow_automatic_deescalation": false
-          },
+        "exceptions": [],
+        "unresolved": [],
+        "review": {
+          "approved": false
+        },
+        "instructions": "Assess engineering risk and commitment carefully, raise rigor when evidence warrants it, and scale requirements discovery from light through thorough with effective rigor.",
+        "configuration": {
+          "level": "structured",
           "minimums": {
             "authentication": "agentic",
             "authorization": "agentic",
@@ -348,24 +276,8 @@
             "throwaway_prototypes": "vibe"
           },
           "overrides": {
-            "per_goal": true,
-            "raising": "allowed",
-            "lowering": "explicit_user_authority",
-            "may_undercut_risk_minimum": false
-          },
-          "requirements_interview": {
-            "source": "effective_engineering_rigor",
-            "level_mapping": {
-              "vibe": "light",
-              "structured": "standard",
-              "agentic": "thorough"
-            }
+            "per_goal": true
           }
-        },
-        "exceptions": [],
-        "unresolved": [],
-        "review": {
-          "approved": false
         }
       },
       {
@@ -374,7 +286,6 @@
         "title": "Model routing and delegation",
         "required": true,
         "applicable": true,
-        "decision": "capability_derived",
         "rationale": "Select the least expensive available model that satisfies the phase capability floor while keeping root-level and above-root authority explicit.",
         "source_ids": [
           "E-002"
@@ -382,22 +293,13 @@
         "confidence": "medium",
         "default_origin": "ZzzOps capability-derived routing fallback",
         "default_disposition": "accepted",
-        "settings": {
-          "capability_basis": "effective_engineering_rigor_and_bounded_commitment",
-          "routing_unit": "model_plus_effort",
-          "model_inventory": {
-            "source": "runtime_available_models",
-            "effort": "runtime_supported_effort_levels",
-            "missing": "root_best_effort_web_research",
-            "stale": "refresh_and_re_evaluate",
-            "unsupported": "durable_blocker",
-            "reviewed_pairs": []
-          },
-          "root_boundary": {
-            "root_capability": "current_root_agent",
-            "human_interaction": "direct_root_only",
-            "above_root": "session_override_required"
-          },
+        "exceptions": [],
+        "unresolved": [],
+        "review": {
+          "approved": false
+        },
+        "instructions": "Route each phase by effective rigor, consequence, boundedness, and phase type. Refresh runtime model and effort availability, select only reviewed pairs at sufficient capability and least cost, keep human interaction on root, require a session override above root capability, and persist a blocker when no reviewed capable pair is available.",
+        "configuration": {
           "tiers": [
             {
               "id": "routine",
@@ -471,30 +373,9 @@
               "tier": "architectural"
             }
           ],
-          "escalation": {
-            "triggers": [
-              "risk_or_commitment_increase",
-              "uncertainty",
-              "failed_probe",
-              "contradictory_evidence",
-              "capability_mismatch"
-            ],
-            "handling": "durable_blocker_continue_safe_work"
-          },
-          "parallelism": {
-            "below_root": "allowed_within_reviewed_worker_limits",
-            "root_or_above": "session_override_required"
-          },
-          "telemetry": {
-            "source": "optional_provenance_backed_usage",
-            "unavailable": "record_unavailable_no_block"
-          },
-          "evidence": "append_only_goal_history"
-        },
-        "exceptions": [],
-        "unresolved": [],
-        "review": {
-          "approved": false
+          "model_inventory": {
+            "reviewed_pairs": []
+          }
         }
       },
       {
@@ -503,7 +384,6 @@
         "title": "ZzzOps workflow adherence",
         "required": true,
         "applicable": true,
-        "decision": "tracked",
         "rationale": "Require durable goal context for substantial agent work while allowing projects to review stricter or lighter routing.",
         "source_ids": [
           "E-002"
@@ -511,18 +391,13 @@
         "confidence": "medium",
         "default_origin": "ZzzOps tracked-work fallback",
         "default_disposition": "accepted",
-        "settings": {
-          "levels": {
-            "optional": "direct_agent_work_allowed",
-            "tracked": "durable_goal_required_for_substantial_agent_work",
-            "managed": "zzzops_workflow_required_for_repository_changes"
-          },
-          "exemptions": [
-            "read_only_investigation",
-            "zzzops_administration"
-          ],
-          "scoped_exception": "explicit_scoped_user_authority",
-          "agents_projection": "review_workflow_reconciliation",
+        "exceptions": [],
+        "unresolved": [],
+        "review": {
+          "approved": false
+        },
+        "instructions": "Require durable tracked goals for substantial repository work. Read-only investigation and ZzzOps administration are exempt; only explicit scoped user authority grants an exception. Execute the reviewed phase graph with its independent reviews and human approvals.",
+        "configuration": {
           "phase_dag": {
             "schema_version": 1,
             "phases": [
@@ -680,11 +555,6 @@
               }
             ]
           }
-        },
-        "exceptions": [],
-        "unresolved": [],
-        "review": {
-          "approved": false
         }
       },
       {
@@ -693,7 +563,6 @@
         "title": "Automated design authority",
         "required": true,
         "applicable": true,
-        "decision": "enabled",
         "rationale": "Allow unattended execution to resolve low-commitment in-scope design choices when reviewed project evidence is decisive, escalate high-commitment choices through early evidence, and retain hard authority gates.",
         "source_ids": [
           "E-002"
@@ -701,54 +570,13 @@
         "confidence": "medium",
         "default_origin": "ZzzOps bounded-commitment automated-design fallback",
         "default_disposition": "accepted",
-        "settings": {
-          "scope": "bounded_commitment_in_scope_implementation",
-          "commitment": {
-            "low": "replace_verify_and_clean_within_one_goal_before_fanout",
-            "high": "compare_evidence_cost_signal_or_explicit_current_design_review",
-            "structural_cost_signals": [
-              "affected_goal_units",
-              "started_descendant_branches",
-              "started_descendant_prs",
-              "durable_data",
-              "public_or_integration_contracts",
-              "external_state",
-              "compatibility_paths",
-              "verification_breadth",
-              "clean_removal_path"
-            ]
-          },
-          "selection_basis": [
-            "project_objectives",
-            "kpi_evidence",
-            "constraints",
-            "precedence"
-          ],
-          "decision_record": [
-            "alternatives",
-            "rationale",
-            "assumptions",
-            "falsifiable_validation_signal"
-          ],
-          "privacy_security": "unambiguously_risk_reducing_without_material_behavior_change",
-          "hard_stops": [
-            "product_scope",
-            "incompatible_public_contract",
-            "destructive_migration",
-            "external_spending",
-            "deployment",
-            "external_write",
-            "human_review",
-            "safety_authority",
-            "higher_authority"
-          ],
-          "insufficient_evidence": "durable_design_blocker"
-        },
         "exceptions": [],
         "unresolved": [],
         "review": {
           "approved": false
-        }
+        },
+        "instructions": "Automated design is disabled by default. If an explicit reviewed policy enables it, limit it to bounded in-scope implementation: compare alternatives and structural cost for high-commitment choices, record assumptions and a falsifiable signal, prefer unambiguously risk-reducing privacy or security changes, and block on product scope, incompatible contracts, destructive migration, spending, deployment, external writes, human review, safety authority, or higher authority.",
+        "configuration": {}
       },
       {
         "id": "autonomy_approval_parallelism",
@@ -756,7 +584,6 @@
         "title": "Autonomy, approvals, and parallelism",
         "required": true,
         "applicable": true,
-        "decision": "Interview adaptively during goal capture, retain privacy-safe execution reports, enforce reviewed resource conflicts and worker limits, and refill valuable bounded work.",
         "rationale": "keeps active capture, reporting, resource, concurrency, and refill choices while phase policy owns execution and approval behavior",
         "source_ids": [
           "E-002"
@@ -764,21 +591,14 @@
         "confidence": "medium",
         "default_origin": "ZzzOps conservative fallback",
         "default_disposition": "accepted",
-        "settings": {
-          "requirements_interview": {
-            "capture_depth": "standard",
-            "mode": "adaptive",
-            "stakeholder_model": "requesting_user_only",
-            "execution_questions": "durable_blockers_only"
-          },
-          "project_parallel_ceiling": "size_aware",
+        "exceptions": [],
+        "unresolved": [],
+        "review": {
+          "approved": false
+        },
+        "instructions": "Capture requirements adaptively with the requesting user; during unattended execution persist consequential questions as blockers. Keep human interaction on root, enforce reviewed worker and resource limits, record privacy-safe execution diagnostics, and suggest only bounded valuable work in reviewed categories. Keep worktrees clean, remove or deliberately reuse them after work, and never abandon dirty worktrees. Do not automatically adopt suggested defaults without review.",
+        "configuration": {
           "max_workers": 3,
-          "parallelization": {
-            "measurement": "existing_git_tracked_worktree_bytes",
-            "threshold_bytes": 104857600,
-            "below_threshold_mode": "worktrees",
-            "at_or_above_threshold_mode": "read_only"
-          },
           "execution_reports": {
             "enabled": true
           },
@@ -790,16 +610,6 @@
             ],
             "exclusive_resources": []
           },
-          "worktree_lifecycle": {
-            "after_task": "remove_or_retain_clean_for_reuse",
-            "abandoned_or_dirty": "forbidden",
-            "reuse_requires": [
-              "clean_state",
-              "reviewed_base",
-              "new_goal_resources",
-              "safe_branch_reassignment"
-            ]
-          },
           "refill": {
             "enabled": true,
             "allowed_categories": [
@@ -809,18 +619,8 @@
               "agent_observability",
               "verification_efficiency"
             ],
-            "max_per_run": 3
-          },
-          "capture_defaults": {
-            "priority": "P2",
-            "difficulty": "unknown",
-            "confidence": "low"
+            "max_suggestions": 3
           }
-        },
-        "exceptions": [],
-        "unresolved": [],
-        "review": {
-          "approved": false
         }
       }
     ]

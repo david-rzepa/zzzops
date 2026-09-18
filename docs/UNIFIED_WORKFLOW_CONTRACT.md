@@ -82,12 +82,19 @@ Those go to a bounded local log artifact; a next step may reference that artifac
 only when inspecting it is necessary to resolve the step. Errors use the same
 envelope with an actionable repair step whenever a safe repair exists.
 
+Each reviewed category separates typed `configuration` from natural-language
+`instructions`. Only configuration controls CLI decisions; instruction prose never
+changes routing, capacity, review requirements, or CI gates. Both participate in
+default comparison, explicit approval, and phase evidence invalidation. Legacy
+mixed sections require re-review; they are never converted during execution.
+
 Actionable steps include a `policy` reference with an absolute temporary `path`,
 the file's `sha256`, and the selected section IDs. Read that file before performing
-the step and pass the reference to its assigned worker. It contains exact reviewed
-policy blocks, including custom settings and exceptions, selected for the phase
-and operation; reviews additionally receive quality and verification policy.
-Unknown custom phases receive all blocks rather than silently losing constraints.
+the step and pass the reference to its assigned worker. It contains reviewed agent
+instructions and exceptions selected for the phase and operation; reviews
+additionally receive quality and verification policy. Unknown custom phases receive
+all applicable instruction blocks rather than silently losing constraints.
+Configuration and provenance snapshots never enter worker policy excerpts.
 Policy-proposal gates never label an unapproved proposal as reviewed policy.
 Their inspection is also a temporary file reference, including in preview mode.
 The CLI writes these private files outside the repository and never inlines their

@@ -119,41 +119,57 @@ def _read_observation(path: Path) -> dict[str, Any]:
     return {"fingerprint": path.stem, **value}
 
 
-def enabled_categories(project: dict[str, Any]) -> frozenset[str]:
-    """Use only explicitly reviewed suggestion/refill categories."""
+def refill_configuration(project: dict[str, Any]) -> dict[str, Any]:
+    """Return the explicitly reviewed automatic-suggestion controls."""
     sections = project.get("policy", {}).get("sections", []) if isinstance(project, dict) else []
     autonomy = next(
         (section for section in sections if isinstance(section, dict) and section.get("id") == "autonomy_approval_parallelism"),
         None,
     )
-    settings = autonomy.get("settings", {}) if isinstance(autonomy, dict) else {}
-    refill = settings.get("refill") if isinstance(settings, dict) else None
-    configured = refill.get("allowed_categories") if isinstance(refill, dict) else None
-    if configured is None:
-        raise EntropyObservationError("reviewed work-suggestion categories are required")
+    configuration = autonomy.get("configuration") if isinstance(autonomy, dict) else None
+    refill = configuration.get("refill") if isinstance(configuration, dict) else None
+    if not isinstance(refill, dict) or set(refill) != {"enabled", "allowed_categories", "max_suggestions"}:
+        raise EntropyObservationError("reviewed refill configuration is required")
+    enabled = refill.get("enabled")
+    configured = refill.get("allowed_categories")
+    maximum = refill.get("max_suggestions")
     if (
-        not isinstance(configured, list)
+        not isinstance(enabled, bool)
+        or not isinstance(configured, list)
         or any(not isinstance(item, str) for item in configured)
         or len(configured) != len(set(configured))
         or any(item not in ENTROPY_CATEGORIES for item in configured)
+        or not isinstance(maximum, int)
+        or isinstance(maximum, bool)
+        or maximum < 1
     ):
-        raise EntropyObservationError("reviewed work-suggestion categories are invalid")
-    return frozenset(configured)
+        raise EntropyObservationError("reviewed refill configuration is invalid")
+    return {"enabled": enabled, "allowed_categories": frozenset(configured), "max_suggestions": maximum}
+
+
+def enabled_categories(project: dict[str, Any]) -> frozenset[str]:
+    """Use categories only when automatic suggestions are explicitly enabled."""
+    refill = refill_configuration(project)
+    return refill["allowed_categories"] if refill["enabled"] else frozenset()
 
 
 def list_observations(repo: Path, project: dict[str, Any]) -> dict[str, Any]:
     """Return pending observations eligible under the existing category policy."""
+    refill = refill_configuration(project)
     directory = observation_directory(repo)
     observations = [_read_observation(path) for path in sorted(directory.glob("*.json"))] if directory.exists() else []
-    allowed = enabled_categories(project)
+    allowed = refill["allowed_categories"] if refill["enabled"] else frozenset()
     eligible = [item for item in observations if item["category"] in allowed]
+    selected = eligible[:refill["max_suggestions"]]
     return {
         "schema_version": SCHEMA_VERSION,
         "pending": len(observations),
-        "eligible": len(eligible),
-        "excluded": len(observations) - len(eligible),
+        "enabled": refill["enabled"],
+        "eligible": len(selected),
+        "excluded": len(observations) - len(selected),
         "enabled_categories": sorted(allowed),
-        "observations": eligible,
+        "max_suggestions": refill["max_suggestions"],
+        "observations": selected,
     }
 
 

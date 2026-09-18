@@ -29,9 +29,9 @@ class WorkflowPolicyApprovalTests(unittest.TestCase):
         plan["repository"] = {"identity": "synthetic/project", "remote": "local"}
         plan["github"] = {"usable": True}
         backend = next(section for section in plan["policy"]["sections"] if section["id"] == "backend")
-        backend["decision"] = "github_issues"
-        backend["settings"]["authority"] = "github_issues"
-        backend["settings"]["repository_identity"] = "synthetic/project"
+        backend["instructions"] = "Store canonical goals in GitHub Issues."
+        backend["configuration"]["authority"] = "github_issues"
+        backend["configuration"]["repository_identity"] = "synthetic/project"
         backend["default_disposition"] = "changed"
         return plan
 
@@ -101,7 +101,7 @@ class WorkflowPolicyApprovalTests(unittest.TestCase):
         policy_path = self.repo / ".zzzops" / "POLICY.json"
         legacy = json.loads(policy_path.read_text(encoding="utf-8"))
         routing = next(section for section in legacy["policy"]["sections"] if section["id"] == "model_routing")
-        routing["settings"]["model_inventory"]["reviewed_pairs"] = "legacy-invalid-value"
+        routing["configuration"]["model_inventory"]["reviewed_pairs"] = "legacy-invalid-value"
         policy_path.write_text(json.dumps(legacy, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         self.assertNotEqual([], z.validate_project_state(legacy))
 

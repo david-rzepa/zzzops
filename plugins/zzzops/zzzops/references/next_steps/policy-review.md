@@ -5,15 +5,15 @@ description: ZzzOps v0.0.0-dev — development plugin. Review, initialize, summa
 
 # Review ZzzOps Policy
 
-Only this workflow changes or confirms policy.
+Only this workflow changes or confirms the reviewed configuration and agent policy. Each category has typed `configuration` consumed by the CLI and natural-language `instructions` followed by agents. Put enforceable controls only in supported configuration keys; put judgment and project-specific constraints in instructions. Do not duplicate a configuration value in separately editable prose.
 
 Before optional tools, reuse capabilities; never invoke an unavailable path—use an alternative or block once.
 
-Use the inspection evidence returned for this workflow once. Never ask to start policy review. For missing, changed, or stale policy, inspect and show the proposal; after its table and changes, ask only for approval or adjustments, never approval to review. Show its `policy_review_table` exactly once before detail or action; never filter rows, even when policy is unchanged and approved. Keep detail progressive. Offer privacy-safe execution reports. For a missing automated-design section, explain enabled/disabled. For missing workflow-adherence sections, explain `optional`/`tracked`/`managed` and propose `tracked` for adherence; for missing rigor explain `vibe`/`structured`/`agentic` and propose `structured`—all without inferring approval.
+Use the inspection evidence returned for this workflow once. Never ask to start policy review. For missing, changed, or stale policy, inspect and show the proposal; after its table and changes, ask only for approval or adjustments, never approval to review. Show its `policy_review_table` exactly once before detail or action; never filter rows, even when policy is unchanged and approved. Keep detail progressive. Offer privacy-safe execution reports. Explain the proposed design authority and goal-tracking instructions. For missing rigor, explain the supported `configuration.level` values and propose `structured`, without inferring approval. When replacing a legacy schema, inspect every old choice, retain meaningful project constraints in instructions or supported configuration, and show the changes; old approval does not authorize the new representation.
 
 Show `capabilities.release_status` and `capabilities.legacy_migration_review` with the table. New/reviewed policy must include `legacy_migration`; an existing policy without it means treat execution as uninitialized and re-review before migration. A public GitHub Release is evidence; no release is ambiguous unless the owner says `never_released`. Route ambiguity to a decision/blocker. `never_released` stales at first release and blocks reset until review.
 
-Always foreground approval timing. Recommend `human_at_exhaustion`: policy approval gates execution once, verified per-goal PRs stack until safe work is exhausted, then the user reviews the ordered queue. Explain `human_after_checks` plus completed-dependency gating as the stricter per-goal alternative. Describe [[bounded commitment]](../../../concepts/bounded-commitment.md) before automated-design authority; neither option bypasses checks, PR approval, merge authority, or release policy.
+Foreground the configured phase DAG and its human-review requirements, CI mode, and the agent instructions for collecting PR approval. Explain which requirements the CLI enforces and which require agent judgment. Describe [[bounded commitment]](../../../concepts/bounded-commitment.md) before automated-design authority; neither option bypasses checks, PR approval, merge authority, or release policy.
 
 Alongside Git/review policy, show `capabilities.github_stack` and `stack_tooling_offer`
 from inspection. When native stacks are preferred and the official extension is
@@ -26,7 +26,7 @@ Never silently upgrade it. Existing usable tooling needs no offer.
 After approved installation, rerun only `gh --version`, `gh extension list`, and
 `gh stack --version`; verify official source plus usable version. Installation does
 not prove provider stack membership.
-If declined, record the offer's `capability_digest` as Git/review settings
+If declined, record the offer's `capability_digest` as Git/review configuration
 `stacked_tooling_decline` through normal reviewed policy changes; do not repeat an
 offer at unchanged capability. Explicit reconsideration removes that decline record;
 changed capability evidence makes it stale. Preserve explicit PR-mode decisions and

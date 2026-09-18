@@ -18,7 +18,7 @@ spec.loader.exec_module(context)
 class PolicyContextTests(unittest.TestCase):
     def project(self):
         return {'policy': {'sections': [
-            {'id': name, 'decision': 'custom ' + name, 'settings': {'custom': name},
+            {'id': name, 'title': name, 'instructions': 'custom ' + name, 'configuration': {'custom': 'CONFIGURATION_MUST_NOT_LEAK'}, 'default_provenance': {'snapshot': {'configuration': 'CONFIGURATION_MUST_NOT_LEAK'}},
              'exceptions': ['Keep this project-specific exception']}
             for name in ('security_privacy_compliance', 'documentation_style', 'code_quality',
                          'verification_testing', 'git_review_release', 'model_routing',
@@ -40,7 +40,8 @@ class PolicyContextTests(unittest.TestCase):
             self.assertNotIn('custom model_routing', text)
             self.assertNotIn('custom code_quality', json.dumps(result))
             self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), ref['sha256'])
-            self.assertEqual(self.project()['policy']['sections'][2], json.loads(text)['sections'][2])
+            self.assertEqual({'id', 'title', 'instructions', 'exceptions'}, set(json.loads(text)['sections'][2]))
+            self.assertNotIn('CONFIGURATION_MUST_NOT_LEAK', text)
 
     def test_policy_change_changes_excerpt_digest_and_review_gets_quality_policy(self):
         with tempfile.TemporaryDirectory() as output:
@@ -48,10 +49,21 @@ class PolicyContextTests(unittest.TestCase):
             first = {'next_steps': [{'kind': 'review', 'phase': 'plan'}]}
             second = {'next_steps': [{'kind': 'review', 'phase': 'plan'}]}
             context.attach(first, Path('.'), project, source='$execute-zzzops', temporary_root=output)
-            project['policy']['sections'][2]['decision'] = 'new reviewed boundary'
+            project['policy']['sections'][2]['instructions'] = 'new reviewed boundary'
             context.attach(second, Path('.'), project, source='$execute-zzzops', temporary_root=output)
             self.assertNotEqual(first['next_steps'][0]['policy']['sha256'], second['next_steps'][0]['policy']['sha256'])
             self.assertIn('new reviewed boundary', Path(second['next_steps'][0]['policy']['path']).read_text())
+
+    def test_configuration_changes_do_not_leak_into_instruction_excerpt(self):
+        with tempfile.TemporaryDirectory() as output:
+            project = self.project()
+            first = {'next_steps': [{'kind': 'execute', 'phase': 'implement'}]}
+            second = {'next_steps': [{'kind': 'execute', 'phase': 'implement'}]}
+            context.attach(first, Path('.'), project, source='$execute-zzzops', temporary_root=output)
+            project['policy']['sections'][2]['configuration']['custom'] = 'CHANGED_CONFIGURATION'
+            context.attach(second, Path('.'), project, source='$execute-zzzops', temporary_root=output)
+            self.assertEqual(first['next_steps'][0]['policy']['sha256'], second['next_steps'][0]['policy']['sha256'])
+            self.assertNotIn('CHANGED_CONFIGURATION', Path(second['next_steps'][0]['policy']['path']).read_text())
 
     def test_batch_steps_share_identical_extract_and_unknown_phase_keeps_all_blocks(self):
         with tempfile.TemporaryDirectory() as output:

@@ -22,7 +22,7 @@ class WorkflowDispatchTests(unittest.TestCase):
         engine.portfolio.return_value = goals
         engine.step.side_effect = lambda number: steps[number]
         project = {"policy": {"sections": [{
-            "id": "autonomy_approval_parallelism", "settings": {"max_workers": 3},
+            "id": "autonomy_approval_parallelism", "configuration": {"max_workers": 3},
         }]}}
         with mock.patch.object(z._workflow, "Workflow", return_value=engine):
             result = z._workflow.checkpoint(z, Path("."), project, {})

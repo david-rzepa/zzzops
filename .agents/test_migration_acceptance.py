@@ -12,7 +12,7 @@ SPEC.loader.exec_module(zzzops)
 
 def policy(status: str | None = "never_released") -> dict:
     settings = {} if status is None else {"legacy_migration": {"release_status": status}}
-    return {"sections": [{"id": "git_review_release", "settings": settings}]}
+    return {"sections": [{"id": "git_review_release", "configuration": settings}]}
 
 
 class MigrationAcceptanceTests(unittest.TestCase):

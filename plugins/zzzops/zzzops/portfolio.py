@@ -80,18 +80,20 @@ def derive_engineering_rigor(persisted: Any, policy: Any) -> dict[str, Any]:
         "risk_categories": categories, "override": override, "effective": None,
         "valid": not errors, "errors": errors,
     }
-    if not isinstance(policy, dict) or policy.get("decision") not in ENGINEERING_RIGOR_LEVELS:
+    configuration = policy.get("configuration") if isinstance(policy, dict) else None
+    if not isinstance(configuration, dict) or configuration.get("level") not in ENGINEERING_RIGOR_LEVELS:
+        errors.append("policy_configuration_invalid")
+        projection.update({"valid": False, "errors": errors})
         projection["provenance"] = {"status": "legacy_policy", "project_default": None, "matched_minimums": {}}
         return projection
-    settings = policy.get("settings") if isinstance(policy.get("settings"), dict) else {}
-    minimums = settings.get("minimums") if isinstance(settings.get("minimums"), dict) else {}
-    overrides = settings.get("overrides") if isinstance(settings.get("overrides"), dict) else {}
+    minimums = configuration.get("minimums") if isinstance(configuration.get("minimums"), dict) else {}
+    overrides = configuration.get("overrides") if isinstance(configuration.get("overrides"), dict) else {}
     rank = {level: index for index, level in enumerate(ENGINEERING_RIGOR_LEVELS)}
     unknown_categories = sorted({category for category in categories if category not in minimums})
     if unknown_categories:
         errors.append("unknown_risk_categories")
     matched = {category: minimums[category] for category in categories if minimums.get(category) in rank}
-    default = policy["decision"]
+    default = configuration["level"]
     risk_floor = max(matched.values(), key=rank.get) if matched else None
     floor = max((default, risk_floor), key=rank.get) if risk_floor else default
     effective = floor
@@ -100,14 +102,9 @@ def derive_engineering_rigor(persisted: Any, policy: Any) -> dict[str, Any]:
         if overrides.get("per_goal") is not True:
             errors.append("per_goal_override_disabled")
         elif rank[requested] >= rank[floor]:
-            if rank[requested] > rank[floor] and overrides.get("raising") != "allowed":
-                errors.append("override_raising_disabled")
-            else:
-                effective = requested
+            effective = requested
         elif risk_floor is not None and rank[requested] < rank[risk_floor]:
             errors.append("override_below_risk_minimum")
-        elif overrides.get("lowering") != "explicit_user_authority":
-            errors.append("override_lowering_disabled")
         elif override.get("authority") != "explicit_user":
             errors.append("override_authority_required")
         else:
@@ -176,9 +173,10 @@ def _dependencies_allow_write(
         return False
     if git_policy.get("review_pending_dependency") != "stack_from_reviewed_checkpoint":
         return False
-    if len(unfinished) == 1:
-        return git_policy.get("dependency_base") == "dependency_branch"
-    return git_policy.get("multiple_dependency_base") == "reviewed_base_containing_all"
+    # Reviewed checkpoints are always based directly on one dependency branch,
+    # or on a reviewed base containing every unfinished dependency. Those are
+    # workflow invariants rather than project-selectable policy.
+    return True
 
 
 def _work_state(
@@ -206,9 +204,6 @@ def active_stack_guard(
     *, candidate_goal: Any = None, policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Fail closed when a second active or stranded PR stack would be started."""
-    settings = policy if isinstance(policy, dict) else {}
-    if settings.get("active_stack") not in {None, "one_active_stack"}:
-        return {"allowed": True, "reason": "policy_does_not_enable_single_stack_guard", "stacks": []}
     open_ids = {
         str(item.get("number")) for item in (open_prs or [])
         if isinstance(item, dict) and item.get("number") is not None

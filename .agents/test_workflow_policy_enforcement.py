@@ -22,12 +22,12 @@ def project(*, max_workers=2, required_ci="inspect_exact_pr_head", verification_
         "policy": {"sections": [
             {
                 "id": "autonomy_approval_parallelism",
-                "settings": {"max_workers": max_workers},
+                "configuration": {"max_workers": max_workers},
             },
             {
                 "id": "verification_testing",
                 "applicable": verification_applicable,
-                "settings": {"ci_deduplication": {"required_ci": required_ci}},
+                "configuration": {"required_ci": required_ci},
             },
         ]},
     }
@@ -116,17 +116,15 @@ class PublishCiPolicyTests(unittest.TestCase):
         self.assertTrue(engine.ci_checks_required({"checks_verified": False}))
         self.assertEqual("merged_stale", engine.classify_merge({}, {"checks_verified": False})["status"])
 
-    def test_disabled_or_inapplicable_verification_does_not_invent_a_ci_gate(self):
-        for settings in (
-            {"required_ci": "disabled"},
-            {"required_ci": "inspect_exact_pr_head", "verification_applicable": False},
-        ):
-            with self.subTest(settings=settings):
-                engine = self.engine(**settings)
-                current = {"checks_verified": False}
-                self.assertFalse(engine.ci_checks_required(current))
-                self.assertEqual("merged_verified", engine.classify_merge({}, current)["status"])
-                self.assertFalse(current["checks_verified"])
+    def test_only_configuration_can_disable_ci(self):
+        engine = self.engine(required_ci="disabled")
+        current = {"checks_verified": False}
+        self.assertFalse(engine.ci_checks_required(current))
+        self.assertEqual("merged_verified", engine.classify_merge({}, current)["status"])
+        self.assertFalse(current["checks_verified"])
+        engine = self.engine(required_ci="inspect_exact_pr_head", verification_applicable=False)
+        self.assertTrue(engine.ci_checks_required(current))
+        self.assertEqual("merged_stale", engine.classify_merge({}, current)["status"])
 
     def test_existing_only_uses_explicit_check_presence_evidence(self):
         engine = self.engine(required_ci="existing_only")

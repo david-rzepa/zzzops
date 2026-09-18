@@ -42,7 +42,7 @@ an old policy containing retired settings stops at the policy-review gate withou
 silently rewriting the user's choices.
 
 Actionable next steps reference private temporary files containing the applicable
-exact policy blocks, bound to the same validated snapshot used to derive the step.
+agent instruction blocks, bound to the same validated snapshot used to derive the step.
 They never inline policy bodies or create repository artifacts. Worker limits now
 gate both dispatch and lease acquisition, and reviewed CI requirements gate
 publication review, integration, and completion. Unresolved leases retain capacity;
@@ -53,3 +53,26 @@ Regression coverage: `test_policy_cleanup.py`, `test_workflow_policy_context.py`
 The full Linux product-validation run passed (457 Python tests, one skip), followed
 by the final 84-test workflow suite after independent-review corrections. Platform
 CI remains the validation of the pushed revision.
+
+## Configuration and agent instructions
+
+Reviewed categories now separate typed `configuration` from natural-language
+`instructions`. Only supported controls enter configuration: the CLI validates and
+consumes them, while workers receive relevant instructions and exceptions through
+private temporary files. Configuration and default-provenance snapshots are not
+included in worker excerpts. Policy review displays both parts, and both participate
+in approval and phase-evidence hashes. Fixed invariants are not exposed as switches.
+
+Schema-v1 policy remains inspectable but cannot authorize execution under schema
+v2. Replacing it requires an explicit proposal and approval; old section approvals
+and default provenance cannot carry forward. Closed goals remain inert until
+reopened. Required security instructions cannot be hidden with applicability metadata.
+
+Behavioral regression tests cover instruction changes leaving CLI decisions
+unchanged, configuration changing worker/CI/refill decisions, stale evidence after
+either type of change, legacy re-review, and excerpts excluding configuration.
+
+Validation of the configuration/instruction split passed the full Linux product
+command: 481 Python tests (one environment-dependent skip), four migration tests,
+manual acceptance coverage, plugin/release checks, prompt budgets, and compilation.
+Independent acceptance review found no remaining blocker.

@@ -28,7 +28,7 @@ class WorkflowAdminTests(unittest.TestCase):
             load_execution_reports=mock.Mock(return_value=[{"id": "report-" + "1" * 64}]),
             list_diagnostics=mock.Mock(return_value={"count": 1, "diagnostics": [{"id": "2" * 64}]}),
             prepare_feedback=mock.Mock(), submit_feedback=mock.Mock(),
-            list_entropy_observations=mock.Mock(return_value={"observations": [{"category": "documentation"}]}),
+            list_entropy_observations=mock.Mock(return_value={"enabled": True, "observations": [{"category": "documentation"}]}),
             timing_suggestion=mock.Mock(return_value={"schema_version": 1, "available": False, "reason": "missing"}),
             _goals=SimpleNamespace(
                 GOAL_CREATE_SCHEMA_VERSION=7,

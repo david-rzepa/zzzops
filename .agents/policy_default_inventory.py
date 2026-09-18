@@ -77,7 +77,10 @@ def hot_prompt_paths(root: Path = ROOT) -> list[Path]:
 def _catalog(root: Path) -> dict[str, Any]:
     plan = json.loads((root / DEFAULT_CATALOG_PATH).read_text(encoding="utf-8-sig"))
     return {
-        section["id"]: {"decision": section["decision"], "settings": section["settings"]}
+        section["id"]: {
+            "instructions": section["instructions"],
+            "configuration": section["configuration"],
+        }
         for section in plan["policy"]["sections"]
     }
 
