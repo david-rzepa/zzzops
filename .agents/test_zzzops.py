@@ -1817,6 +1817,8 @@ class InitializationTests(unittest.TestCase):
         self.assertIn("current taxonomy", inspection["state_error"])
         self.assertIn("schema_version must be 2", inspection["state_error"])
         self.assertIn("unsupported fields: decision, settings", inspection["state_error"])
+        self.assertIn("legacy_migration:migration_policy_missing", inspection["decision_blockers"])
+        self.assertNotIn("legacy_migration:first_release_requires_policy_rereview", inspection["decision_blockers"])
         retired = next(item for item in inspection["state"]["policy"]["sections"] if item["id"] == "execution_continuation")
         self.assertEqual({"custom_limit": 7}, retired["settings"])
         retained = next(item for item in inspection["state"]["policy"]["sections"] if item["id"] == "autonomy_approval_parallelism")

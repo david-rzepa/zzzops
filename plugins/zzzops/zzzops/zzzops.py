@@ -1829,7 +1829,9 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
     }
     decision_blockers = policy_blockers(state.get("policy")) if state else ["policy:missing"]
     if migration_policy_invalidated:
-        decision_blockers = [*decision_blockers, "legacy_migration:first_release_requires_policy_rereview"]
+        reason = migration_policy_review["reason"]
+        blocker = "first_release_requires_policy_rereview" if reason == "first_release_invalidated_pre_release_policy" else reason
+        decision_blockers = [*decision_blockers, "legacy_migration:" + blocker]
     github_stack = github_stack_probe(repo)
     plugin_inventory = _plugin_freshness.native_plugin_inventory()
     cache_path = Path(plugin_inventory["cache_path"])

@@ -95,3 +95,16 @@ Validation: full Linux product validation passed (486 Python tests, one skip;
 four migration tests; plugin/release/manual coverage, prompt budgets, compilation).
 The final recovery addition passed the 100-test workflow suite. Independent
 acceptance and recovery review found no remaining blocker.
+
+## Additional dogfood findings
+
+- Missing legacy migration configuration must report `migration_policy_missing`,
+  not claim that a first release occurred. A synthetic schema-upgrade regression
+  reproduces the incorrect reason and verifies the corrected diagnostic.
+- Accepted follow-up: remove release-triggered policy invalidation. Keep one
+  standing migration rule based on whether the affected persistent state, API,
+  or contract shipped. Published project releases alone must neither mandate
+  migration for unreleased features nor require policy re-review. Planning and
+  independent review assess release evidence and ambiguity for the affected scope.
+  This behavior change is pending implementation; the diagnostic fix does not
+  claim to implement it.
