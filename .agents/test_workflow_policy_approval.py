@@ -114,6 +114,31 @@ class WorkflowPolicyApprovalTests(unittest.TestCase):
         self.assertEqual([], z.validate_project_state(state))
         self.assertEqual([], z.validate_project_artifacts(self.repo, state))
 
+    def test_release_observations_preserve_exact_approved_policy(self):
+        plan = self.plan()
+        git = next(s for s in plan['policy']['sections'] if s['id'] == 'git_review_release')
+        git['configuration'].pop('legacy_migration', None)
+        errors = z.validate_policy(plan['policy'], require_pending=True)
+        self.assertEqual([], errors, 'Standing migration rule must not require stored release facts')
+        self.approve(self.public({'operation': 'policy_propose', 'plan': plan}))
+        policy_file = self.repo / '.zzzops/POLICY.json'
+        original = policy_file.read_bytes()
+        approval = copy.deepcopy(z.read_project_state(self.repo)[2]['approval'])
+        for count in (0, 1, 2):
+            observed = [{'id': i + 1, 'tag_name': 'v' + str(i + 1), 'draft': False,
+                         'published_at': '2026-01-01T00:00:00Z'} for i in range(count)]
+            with self.subTest(releases=count), \
+                 mock.patch.object(z, 'github_repository_probe', return_value={'identity': 'synthetic/project', 'visibility': 'PUBLIC'}), \
+                 mock.patch.object(z, 'github_release_evidence', return_value={'available': True, 'releases': observed}), \
+                 mock.patch.object(z, 'github_stack_probe', return_value={}), \
+                 mock.patch.object(z, 'command_probe', return_value={'available': True}), \
+                 mock.patch.object(z._plugin_freshness, 'native_plugin_inventory', return_value={'cache_path': str(self.repo / 'absent-cache')}):
+                inspection = z.inspect_initialization(self.repo)
+                self.assertTrue(inspection['initialized'], inspection['decision_blockers'])
+                self.assertFalse(any('first_release' in str(x) for x in inspection['decision_blockers']))
+                self.assertEqual(original, policy_file.read_bytes())
+                self.assertEqual(approval, z.read_project_state(self.repo)[2]['approval'])
+
 
 if __name__ == "__main__":
     unittest.main()
