@@ -616,6 +616,7 @@ class OwnedOutputPublicTests(unittest.TestCase):
         s.git('commit', '-qm', 'fix: first child behavior')
         # Real public publication and completion. Existing fixture supplies provider PR observations.
         self.fixture.head_oid = s.git('rev-parse', 'HEAD')
+        self.fixture.base_oid = s.git('rev-parse', 'dev')
         child = s.goal(101)
         metadata = copy.deepcopy(child['implementation'])
         metadata['pr'] = 'https://github.com/owner/repo/pull/101'
