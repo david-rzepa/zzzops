@@ -267,6 +267,7 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.assertEqual(set(s.consumed), set(design['input_envelope']['repository']['snapshot']['files']))
         implementation, proof_ref = s.implement()
         goal = s.goal(101)
+        self.assertNotIn('predecessor', implementation['lease']['acquisition'])
         for phase, start in [('test_design', design), ('implement', implementation)]:
             self.assertEqual(start['input_hash'], goal['phase_evidence']['records'][phase]['input_hash'])
             self.assertEqual(start['input_envelope'], goal['phase_evidence']['records'][phase]['input_envelope'])
@@ -394,9 +395,10 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.assertFalse(any(x.get('phase') == 'implement' and x['kind'] == 'execute' for x in baseline))
         (self.repo / 'source.py').write_text('def answer():\n    return 99\n')
         changed = s.checkpoint(101)
-        self.assertTrue(any(x.get('phase') == 'implement' or x['kind'] in {'repair', 'blocker', 'dependency'}
+        self.assertTrue(any(x.get('phase') in {'understand', 'plan', 'implement'} or x['kind'] in {'repair', 'blocker', 'dependency'}
                             for x in changed), changed)
         self.assertNotEqual(baseline, changed)
+        self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] in {'assess', 'execute'} for x in changed))
 
     def test_durable_proof_rejects_tampered_acquisition_and_outputs(self):
         s = self.session
@@ -583,6 +585,7 @@ class OwnedOutputPublicTests(unittest.TestCase):
         s.phase(100, 'plan', parent)
         s.phase(101, 'plan', s.plan)
         s.phase(102, 'plan', second)
+        s.git('branch', 'goal-second')
         for number in [101, 102]:
             goal = s.goal(number)
             metadata = copy.deepcopy(goal['implementation'])
@@ -628,7 +631,8 @@ class OwnedOutputPublicTests(unittest.TestCase):
         s.call(101, completion['submission'])
         self.assertEqual('done', s.goal(101)['status'])
         first_closed = copy.deepcopy(s.provider.issues[101])
-        s.git('checkout', '-q', '-b', 'goal-second')
+        s.git('branch', '-f', 'goal-second', 'HEAD')
+        s.git('checkout', '-q', 'goal-second')
         s.test_path = 'second_test.py'
         design = s.start(102, 'test_design')
         (s.repo / s.test_path).write_text('from second_source import value\nassert value == 2, "second required behavior"\n')
@@ -725,6 +729,7 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] == 'execute' for x in steps), steps)
         s.review(101, 'implement', {'finding': 'Add explanation before acceptance.'}, acceptance='changes_requested')
         rejected_record = copy.deepcopy(s.goal(101)['phase_evidence']['records']['implement'])
+        rejected_review = copy.deepcopy(s.goal(101)['phase_evidence']['reviews']['implement'])
         self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] == 'execute' for x in s.checkpoint(101)))
         s.git('add', 'source.py')
         s.git('commit', '-qm', 'checkpoint: exact rejected output for correction')
@@ -752,10 +757,44 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.assertNotEqual(step['lease']['token'], correction['lease']['token'])
         self.assertNotEqual(step['input_hash'], correction['input_hash'])
         self.assertEqual(rejected_record, s.goal(101)['phase_evidence']['records']['implement'])
+        predecessor_ref = correction['lease']['acquisition']['predecessor']
+        predecessor = s.read(101, predecessor_ref)
+        self.assertEqual({'goal', 'phase', 'record', 'review', 'scope'}, set(predecessor))
+        self.assertEqual(101, predecessor['goal'])
+        self.assertEqual('implement', predecessor['phase'])
+        self.assertEqual(rejected_record, predecessor['record'])
+        self.assertEqual(rejected_review, predecessor['review'])
+        self.assertEqual('changes_requested', predecessor['review']['decision'])
+        self.assertEqual(s.plan['output_scope'], predecessor['scope'])
+        self.assertEqual(file_hash(s.repo / 'source.py'),
+                         correction['input_envelope']['repository']['snapshot']['files']['source.py'])
+        self.predecessor_fault_controls(s, correction, predecessor_ref, predecessor)
         (s.repo / 'source.py').write_text('def answer():\n    # Required observable value.\n    return 2\n')
         corrected_proof = s.verify(correction)['next_steps'][0]['verification']
         s.result(101, correction, {'files': {'source.py': file_hash(s.repo / 'source.py')}}, corrected_proof)
+        self.assertNotIn('implement:execute', s.goal(101)['workflow']['leases'])
+        corrected = s.read(101, corrected_proof)
+        self.assertEqual(predecessor_ref, corrected['acquisition']['predecessor'])
+        self.assertEqual(rejected_record, s.read(101, corrected['acquisition']['predecessor'])['record'])
+        self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] in {'assess', 'execute'}
+                             for x in s.checkpoint(101)))
+        # A second actual public correction traverses history after both overwrites.
+        s.review(101, 'implement', {'finding': 'Clarify the explanation further.'}, acceptance='changes_requested')
+        second_rejected = copy.deepcopy(s.goal(101)['phase_evidence']['records']['implement'])
+        s.git('add', 'source.py')
+        s.git('commit', '-qm', 'checkpoint: second exact rejected output')
+        second = s.start(101, 'implement')
+        second_predecessor = s.read(101, second['lease']['acquisition']['predecessor'])
+        self.assertEqual(second_rejected, second_predecessor['record'])
+        nested_proof = s.read(101, second_predecessor['record']['verification'])
+        self.assertEqual(predecessor_ref, nested_proof['acquisition']['predecessor'])
+        (s.repo / 'source.py').write_text('def answer():\n    # Return exactly the requested value.\n    return 2\n')
+        second_proof = s.verify(second)['next_steps'][0]['verification']
+        s.result(101, second, {'files': {'source.py': file_hash(s.repo / 'source.py')}}, second_proof)
+        self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] in {'assess', 'execute'}
+                             for x in s.checkpoint(101)))
         s.review(101, 'implement')
+        self.assertEqual('changes_requested', s.read(101, predecessor_ref)['review']['decision'])
         self.assertEqual(ancestors, s.goal(100)['phase_evidence'])
         self.assertTrue(any(x.get('phase') == 'publish' for x in s.checkpoint(101)))
         record = s.goal(101)['phase_evidence']['records']['implement']
@@ -763,6 +802,111 @@ class OwnedOutputPublicTests(unittest.TestCase):
                      'reason': 'Withdraw reviewed result; consumers must block.'})
         self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] in {'assess', 'execute'}
                              for x in s.checkpoint(101)))
+
+    def test_test_design_correction_retains_baseline_failure_predecessor(self):
+        s = self.session
+        s.prepare()
+        first = s.start(101, 'test_design')
+        (s.repo / s.test_path).write_text('from source import answer\nassert answer() == 2, "required value"\n')
+        failed = s.verify(first)['next_steps'][0]['verification']
+        self.assertFalse(s.read(101, failed)['passed'])
+        s.result(101, first, {'files': {s.test_path: file_hash(s.repo / s.test_path)}}, failed)
+        s.review(101, 'test_design', {'finding': 'Explain the regression assertion.'}, acceptance='changes_requested')
+        rejected = copy.deepcopy(s.goal(101)['phase_evidence']['records']['test_design'])
+        s.git('add', s.test_path)
+        s.git('commit', '-qm', 'checkpoint: exact rejected test output')
+        correction = s.start(101, 'test_design')
+        self.assertNotEqual(first['input_hash'], correction['input_hash'])
+        predecessor_ref = correction['lease']['acquisition']['predecessor']
+        predecessor = s.read(101, predecessor_ref)
+        self.assertEqual('test_design', predecessor['phase'])
+        self.assertEqual(rejected, predecessor['record'])
+        self.assertIsNone(predecessor['record']['verification'])
+        self.assertEqual(failed, predecessor['record']['test_design']['baseline_failure'])
+        (s.repo / s.test_path).write_text('from source import answer\n# The requested behavior returns two.\nassert answer() == 2, "required value"\n')
+        corrected = s.verify(correction)['next_steps'][0]['verification']
+        self.assertFalse(s.read(101, corrected)['passed'])
+        self.assertEqual(predecessor_ref, s.read(101, corrected)['acquisition']['predecessor'])
+        s.result(101, correction, {'files': {s.test_path: file_hash(s.repo / s.test_path)}}, corrected)
+        steps = s.checkpoint(101)
+        self.assertTrue(any(x.get('phase') == 'test_design' and x['kind'] == 'review' for x in steps), steps)
+        self.assertFalse(any(x.get('phase') == 'implement' and x['kind'] in {'assess', 'execute'} for x in steps))
+        # Public read exposes the exact failing proof reference for reviewer use.
+        observed = s.call(101, {'operation': 'read', 'phase': 'test_design'})['next_steps'][0]['content']
+        self.assertEqual(corrected, observed['phase_record']['test_design']['baseline_failure'])
+        s.review(101, 'test_design')
+        self.assertTrue(any(x.get('phase') == 'implement' and x['kind'] in {'assess', 'execute'}
+                            for x in s.checkpoint(101)))
+
+    def predecessor_fault_controls(self, s, correction, reference, predecessor):
+        """Corrupt provider reads, never workflow decisions or positive state."""
+        real_get = s.provider.get_issue
+        human_spec = s.goal(101)['human_spec']
+        mutations = []
+        for field, value in [('goal', 102), ('phase', 'test_design')]:
+            changed = copy.deepcopy(predecessor)
+            changed[field] = value
+            mutations.append((field, s.artifact(101, correction, changed)))
+        changed = copy.deepcopy(predecessor)
+        changed['scope']['implement'] = ['read_dependency.txt']
+        mutations.append(('scope', s.artifact(101, correction, changed)))
+        # Fully content-addressed but disconnected prior proof/record/review.
+        changed = copy.deepcopy(predecessor)
+        proof = s.read(101, changed['record']['verification'])
+        proof['workspace'] = 'sha256:' + '0' * 64
+        changed['record']['verification'] = s.artifact(101, correction, proof)
+        changed['review']['record_hash'] = content_hash(changed['record'])
+        mutations.append(('disconnected', s.artifact(101, correction, changed)))
+        # Provider-fault history is content-addressed and acyclic. It repeats a
+        # no-op snapshot to exceed the reviewed 32-hop bound; no invented SHA cycle.
+        deep_reference = reference
+        for _ in range(33):
+            item = copy.deepcopy(predecessor)
+            prior_proof = s.read(101, predecessor['record']['verification'])
+            prior_proof['acquisition'] = {
+                'git_commit': correction['lease']['acquisition']['git_commit'],
+                'workspace_digest': correction['lease']['acquisition']['workspace_digest'],
+                'input_hash': correction['input_hash'], 'predecessor': deep_reference,
+            }
+            prior_proof['workspace'] = correction['lease']['acquisition']['workspace_digest']
+            prior_proof['outputs'] = {'source.py': file_hash(s.repo / 'source.py')}
+            item['record']['input_envelope'] = copy.deepcopy(correction['input_envelope'])
+            item['record']['input_hash'] = correction['input_hash']
+            item['record']['verification'] = s.artifact(101, correction, prior_proof)
+            item['review']['input_hash'] = correction['input_hash']
+            item['review']['record_hash'] = content_hash(item['record'])
+            deep_reference = s.artifact(101, correction, item)
+        mutations.append(('depth', deep_reference))
+        mutations += [('null', None), ('partial', {'hash': reference['hash']}),
+                      ('missing', {'hash': 'sha256:' + '0' * 64, 'reference': 'urn:sha256:' + '0' * 64})]
+        for label, replacement in mutations:
+            with self.subTest(predecessor=label):
+                def damaged_issue(number):
+                    issue = real_get(number)
+                    if number == 101:
+                        raw = z.parse_managed_goal(issue['body'], number)
+                        raw['workflow']['leases']['implement:execute']['acquisition']['predecessor'] = replacement
+                        issue['body'] = z.render_managed_goal(raw, human_spec, number)
+                    return issue
+                with mock.patch.object(s.provider, 'get_issue', side_effect=damaged_issue):
+                    rejected = s.verify(correction, expected=2)
+                    self.assertRegex(json.dumps(rejected), r'(?i)(predecessor|acquisition|snapshot|artifact|scope|record|proof|phase|depth)')
+                    if label == 'depth':
+                        self.assertRegex(json.dumps(rejected), r'(?i)(depth|limit|chain)')
+        # Broken stored contents under an unchanged claimed hash reject; this is
+        # NOT a claim that a valid cryptographic self-referential artifact exists.
+        real_comments = s.provider.get_issue_comments
+        def damaged_comments(number):
+            comments = real_comments(number)
+            for comment in comments:
+                if comment['body'].startswith('<!-- zzzops-artifact ' + reference['hash'] + ' -->'):
+                    comment['body'] = '<!-- zzzops-artifact ' + reference['hash'] + ' -->\ninvalid cyclic/tampered bytes'
+            return comments
+        with mock.patch.object(s.provider, 'get_issue_comments', side_effect=damaged_comments):
+            rejected = s.verify(correction, expected=2)
+            self.assertRegex(json.dumps(rejected), r'(?i)(artifact|predecessor|malformed|hash)')
+        restored = s.verify(correction)['next_steps'][0]['verification']
+        self.assertTrue(s.read(101, restored)['passed'])
 
     @unittest.skipUnless(hasattr(os, 'symlink'), 'Platform cannot create symlinks')
     def test_owned_output_symlink_cannot_escape_the_worktree(self):
@@ -835,6 +979,7 @@ class OwnedOutputPublicTests(unittest.TestCase):
         proof = s.read(101, reference)
         self.assertEqual(step['lease']['token'], proof['lease'])
         self.assertEqual(step['input_hash'], proof['acquisition']['input_hash'])
+        self.assertNotIn('predecessor', proof['acquisition'])
         self.assertFalse(s.goal(101)['workflow']['leases'])
 
     def test_actual_old_dispatch_rejects_wrong_envelope_and_unrelated_output(self):
