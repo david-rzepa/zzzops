@@ -545,27 +545,65 @@ class MigrationDiscoveryJourneyTests(unittest.TestCase):
             self.assertFalse(example.get('author'), 'Never manufacture an agent or owner statement')
         self.assertFalse(examples['owner_attestation'].get('statement'))
         self.assertFalse(examples['contract_investigation'].get('rationale'))
-        for observation in examples['contract_investigation'].get('observations', []):
-            self.assertIsNone(observation.get('contract_present'), 'Examples must not claim absent/present facts')
+        self.observation_shapes(data)
         return data
 
+    def observation_shapes(self, resource):
+        observations = resource['evidence_templates']['contract_investigation'].get('observations')
+        self.assertIsInstance(observations, list)
+        presence = [o for o in observations if isinstance(o, dict) and
+                    {'commit', 'path', 'release_id', 'contract_present'} <= set(o)]
+        distribution = [o for o in observations if isinstance(o, dict) and
+                        {'commit', 'path', 'finding'} <= set(o)]
+        self.assertTrue(presence, 'Resource must expose fillable contract-presence observation fields')
+        self.assertTrue(distribution, 'Resource must expose fillable distribution-inspection fields')
+        for observation in observations:
+            self.assertFalse(observation.get('commit'), 'Do not fabricate an inspected commit')
+            self.assertFalse(observation.get('path'), 'Do not fabricate an inspected file')
+            self.assertIsNone(observation.get('contract_present'), 'Do not fabricate presence or absence')
+            self.assertFalse(observation.get('finding'), 'Do not fabricate a distribution finding')
+        guidance = resource.get('observation_guidance', {})
+        for kind in ('development', 'published', 'distribution', 'path'):
+            self.assertTrue(guidance.get(kind), f'Resource must explain {kind} observation semantics')
+        self.assertIn('release_id', guidance['development'])
+        self.assertIn('null', guidance['development'].lower())
+        for term in ('release_id', 'commit', 'release_snapshot', 'contract_present'):
+            self.assertIn(term, guidance['published'])
+        self.assertIn('finding', guidance['distribution'])
+        self.assertIn('relative', guidance['path'].lower())
+        return presence[0], distribution[0]
+
     def filled(self, resource, kind='contract_investigation'):
-        # Synthetic investigated facts are supplied here, never by CLI defaults.
-        from test_migration_acceptance import AgentContractInvestigationTests
-        source = AgentContractInvestigationTests().investigated()['assessment']['contracts'][0]
+        # Fill only shapes disclosed by the public resource. Facts below are
+        # explicit synthetic investigation, never private fixture wire format.
         document = copy.deepcopy(resource['template'])
         document['action'] = 'Replace only synthetic project cache-v2 records'
         contract = copy.deepcopy(document['contracts'][0])
-        contract.update(id=source['id'], boundary=source['boundary'], status='unreleased', scope=source['scope'])
+        contract.update(id='cache-v2', boundary='Only experimental project cache records',
+                        status='unreleased', scope=['project-cache/v2'])
         evidence = copy.deepcopy(resource['evidence_templates'][kind])
         evidence.update(kind=kind, author='synthetic-investigator' if kind == 'contract_investigation' else 'synthetic-owner',
                         goal=document['goal'], goal_spec=document['goal_spec'], release_snapshot=document['release_snapshot'],
                         contract=contract['id'], boundary=contract['boundary'], scope=contract['scope'])
         if kind == 'contract_investigation':
-            facts = source['evidence'][0]
             for key in ('conclusion', 'rationale', 'distribution_boundary', 'observations'):
                 self.assertIn(key, evidence)
-                evidence[key] = copy.deepcopy(facts[key])
+            presence, distribution = self.observation_shapes(resource)
+            development = copy.deepcopy(presence)
+            development.update(commit='c' * 40, path='cache/schema-v2.json', release_id=None, contract_present=True)
+            inspected_distribution = copy.deepcopy(distribution)
+            inspected_distribution.update(commit='c' * 40, path='distribution.json',
+                                          finding='Only published packages distribute this synthetic contract.')
+            observations = [development, inspected_distribution]
+            for release in document['release_snapshot']['releases']:
+                published = copy.deepcopy(presence)
+                published.update(commit=release['commit'], path='cache/schema-v2.json',
+                                 release_id=release['id'], contract_present=False)
+                observations.append(published)
+            evidence.update(conclusion='unreleased',
+                            rationale='Inspected the development schema and each published tree: this synthetic contract exists only in development.',
+                            distribution_boundary='Synthetic cache formats are distributed only in published packages; no separate deployment.',
+                            observations=observations)
         else:
             self.assertIn('statement', evidence)
             evidence['statement'] = 'I maintain this synthetic cache and confirm it has never been distributed.'
