@@ -410,6 +410,7 @@ class Workflow:
             }
         # Only explicitly consumed files invalidate a phase. HEAD/revision and
         # other operational bookkeeping must not invalidate a reviewed design.
+        migration_observation = None
         for phase, envelope in live.items():
             versions = self.owned_versions(goal, phase)
             node = next(node for node in graph['phases'] if node['id'] == phase)
@@ -433,6 +434,16 @@ class Workflow:
             assessment = state(goal)['assessments'].get(phase)
             paths = assessment.get('files', []) if assessment else prior.get('repository', {}).get('snapshot', {}).get('files', {})
             actual = self.file_hashes(paths)
+            migration_path = f".zzzops/migration/{goal['key']}.json"
+            migration_paths = [path for path in paths if path.startswith('.zzzops/migration/')]
+            if migration_paths:
+                if migration_paths == [migration_path]:
+                    if migration_observation is None:
+                        migration_observation = self.api.migration_assessment(self.repo, self.project, goal)
+                    envelope['provider']['snapshot']['migration'] = copy.deepcopy(migration_observation)
+                else:
+                    envelope['provider']['snapshot']['migration'] = {'decision': {
+                        'action': 'block', 'scope': 'none', 'reason': 'foreign_migration_evidence'}}
             lease = state(goal)['leases'].get(phase + ':execute', {})
             acquisition = self.acquisition(goal, phase, lease)
             frozen = acquisition.get('input_envelope', {}) if acquisition else prior
@@ -776,6 +787,8 @@ class Workflow:
             self.check_workspace(acquired, scope[phase])
             self.predecessor_edges(goal, phase, scope, acquired)
         graph, nodes, live, related = self.context(goal)
+        if live[phase].get('provider', {}).get('snapshot', {}).get('migration', {}).get('decision', {}).get('action') == 'block':
+            raise ValueError('Affected contract evidence requires investigation before execution')
         frontier = self.api.derive_phase_steps(goal, graph, live, related, review_policy=nodes)
         if phase not in {item['phase'] for item in frontier['execute']}:
             raise ValueError('Ancestor/review inputs changed; assignment is no longer eligible')
@@ -842,6 +855,48 @@ class Workflow:
             related[goal['parent']] = {'goal': parent, 'live_inputs': self.inputs(parent, parent_graph)}
         return graph, nodes, self.inputs(goal, graph), related
 
+    def migration_preparation(self, goal, envelope, migration):
+        """Link a small, truthful preparation contract; cache by exact content."""
+        snapshot = migration.get('release_snapshot', {'status': 'unavailable', 'releases': None})
+        bindings = {'goal': goal['key'], 'goal_spec': envelope['goal_spec'],
+                    'release_snapshot': snapshot}
+        scoped = {**bindings, 'author': None, 'contract': '', 'boundary': '', 'scope': []}
+        document = {
+            'instructions': (
+                'Use this resource only for the affected persistent-state or API compatibility work identified in the goal. '
+                'Investigate the actual contract, compatible-state boundary and distribution channels first. '
+                'Fill the local file from inspected facts; blank templates are not evidence. '
+                'Use a scoped agent investigation OR an actually available owner statement; never invent either or require a new human statement when investigation resolves the facts. '
+                'Set contract status to shipped, unreleased or unknown. Preserve or migrate shipped behavior. '
+                'Only sufficiently evidenced unreleased project-owned state is eligible for bounded replacement within existing authority; unrelated user, external and deployment state is excluded. '
+                'Keep unknown or unavailable facts unresolved: do not infer contract absence from missing releases. '
+                'Bind every evidence item to the same goal, goal_spec, release_snapshot, contract ID, boundary and scope. '
+                'Fill nonempty action, contract ID and boundary; scope lists bounded project-owned state identities. Investigations require author, rationale, distribution_boundary and observations, with conclusion equal to contract status. Owner evidence requires attributable author and actual statement. '
+                'Current release_snapshot must be complete and contains releases with integer id, tag, immutable resolved commit and published_at. '
+                'After preparing or correcting the local file, request the existing checkpoint; do not submit the file as a new backend operation. '
+                'If evidence remains unresolved after investigation, use the emitted block submission and continue independent work. '
+                'Changed goal scope or release facts require reassessment. Replace revoked/contradicted evidence with unknown or remove it; old recorded facts are historical. '
+                'Optional discussion links are provenance only, not monitored authority.'),
+            'template': {'schema_version': 1, 'repository': self.repository, **bindings, 'action': '',
+                         'contracts': [{'id': '', 'boundary': '', 'status': 'unknown', 'scope': [], 'evidence': []}]},
+            'evidence_templates': {
+                'owner_attestation': {**scoped, 'kind': 'owner_attestation', 'statement': None},
+                'contract_investigation': {**scoped, 'kind': 'contract_investigation', 'conclusion': None,
+                    'rationale': None, 'distribution_boundary': None,
+                    'observations': [
+                        {'commit': None, 'path': None, 'release_id': None, 'contract_present': None},
+                        {'commit': None, 'path': None, 'finding': None}]},
+            },
+            'observation_guidance': {
+                'development': 'Use release_id null for inspected development observations; fill immutable commit and contract_present from actual inspection. A published commit cannot be hidden behind the development label.',
+                'published': 'For each published release, copy release_id and commit exactly from current release_snapshot and inspect the scoped path. Set contract_present to the observed boolean; presence at a published commit contradicts an unreleased conclusion. Cover every current release.',
+                'distribution': 'Inspect an immutable commit/path defining the actual distribution boundary and capture its finding. Explain why these observed channels cover this contract; a bare SHA or no releases is insufficient.',
+                'path': 'Use a repository-relative inspected path, never an absolute or parent-traversal path. Presence facts for the same immutable contract/commit/path must agree across evidence items.',
+            },
+        }
+        return self.api._policy_context.cached_file(
+            self.repo, (json.dumps(document, sort_keys=True, indent=2) + '\n').encode('utf-8'))
+
     def step(self, number):
         _, goal = self.read(number)
         if goal['status'] in {'done', 'cancelled'}:
@@ -867,6 +922,18 @@ class Workflow:
                             runtime_contract={'root_pair': {'model': 'identifier', 'effort': 'identifier'}, 'available_pairs': [], 'root_id': 'thread-id', 'delegation': {'available': True, 'tool': 'actual harness tool name', 'discovery_complete': True}})
                 continue
             kind = step['kind']
+            migration = live.get(phase, {}).get('provider', {}).get('snapshot', {}).get('migration', {})
+            if migration.get('decision', {}).get('action') == 'block':
+                step.clear()
+                step.update(input_hash=digest(live[phase]), input_envelope=live[phase], kind='blocker', assignment='root', goal=number, phase=phase,
+                            action='Investigate affected contract evidence first. Prepare or correct the local goal/spec-bound assessment from available facts, then request a fresh checkpoint. Only if the evidence remains unresolved, submit the provided blocker contract and continue independent goals. Local evidence preparation is not a backend submission or reset authority.',
+                            evidence=migration, path=f'.zzzops/migration/{number}.json',
+                            preparation=self.migration_preparation(goal, live[phase], migration),
+                            command=['--intent', 'execute', '--goal', str(number), '--runtime', '<runtime.json>', '--input', '<submission.json>'],
+                            submission={'operation': 'block', 'phase': phase, 'category': 'technical-unknown',
+                                        'reason': f'Unresolved migration contract evidence for goal {number}, phase {phase}, .zzzops/migration/{number}.json: {migration["decision"]["reason"]}. Investigate and reassess before affected work.',
+                                        'request_id': 'new-unique-id'})
+                continue
             if phase in {'test_design', 'implement'} and kind in {'assess', 'execute'} and self.reviewed_scope(goal) is None:
                 repairs = []
                 for owner in ([self.read(goal['parent'])[1]] if goal.get('parent') else []) + [goal]:
@@ -911,7 +978,9 @@ class Workflow:
             if not assessment or assessment.get('goal_spec') != phase_input['goal_spec'] or assessment.get('policy') != phase_input['policy']:
                 step.clear()
                 step.update(kind='assess', assignment='root', goal=number, phase=phase,
-                            action='Assess consequence, boundedness and engineering rigor; declare every repository file consumed by this phase. Use an empty list only when no repository files are inputs.',
+                            action='Assess consequence, boundedness and engineering rigor; declare every repository file consumed by this phase. For affected persistent-state or API compatibility work, add migration_evidence.path to submission.files even if missing, then use the linked preparation resource returned by the next checkpoint. Determine applicability from the actual goal scope; do not infer it from project release status. Use an empty list only when no repository files are inputs.',
+                            migration_evidence={'path': f'.zzzops/migration/{number}.json',
+                                                'when': 'This phase changes or decides compatibility/replacement of persistent state or an API contract; root determines applicability from evidenced scope.'},
                             title=goal['title'], input_envelope=phase_input, input_hash=digest(phase_input),
                             goal_specification={'reference': goal['url'], 'hash': phase_input['goal_spec'], 'read': {'operation': 'read', 'phase': phase}},
                             command=['--intent', 'execute', '--goal', str(number), '--runtime', '<runtime.json>', '--input', '<submission.json>'],
@@ -1351,6 +1420,8 @@ class Workflow:
                 **payload, 'input_envelope': payload.get('record', {}).get('input_envelope'),
             })
         graph, nodes, live, related = self.context(goal)
+        if live[phase].get('provider', {}).get('snapshot', {}).get('migration', {}).get('decision', {}).get('action') == 'block':
+            raise ValueError('Affected contract evidence requires investigation before submission')
         frontier = api.derive_phase_steps(goal, graph, live, related, review_policy=nodes)
         expected_frontier = frontier['execute'] if lease['kind'] == 'execute' else frontier['review']
         if phase not in {item['phase'] for item in expected_frontier}:

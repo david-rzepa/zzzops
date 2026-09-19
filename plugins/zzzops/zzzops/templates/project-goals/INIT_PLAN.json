@@ -108,13 +108,10 @@
         "review": {
           "approved": false
         },
-        "instructions": "Follow repository rules and the CLI-selected pull-request mode. Keep one branch and pull request per source-changing goal and one active stack. Base dependent work on the exact reviewed dependency checkpoint, make verified sub-goal commits, collect human pull-request approval at true queue exhaustion, and integrate in dependency order. Never bypass policy review, required checks, merge authority, or release authority. Preserve released state; replace affected project-owned state only after explicit evidence that the project has never been released.",
+        "instructions": "Follow repository rules and the CLI-selected pull-request mode. Keep one branch and pull request per source-changing goal and one active stack. Base dependent work on the exact reviewed dependency checkpoint, make verified sub-goal commits, collect human pull-request approval at true queue exhaustion, and integrate in dependency order. Never bypass policy review, required checks, merge authority, or release authority. Preserve or migrate shipped contracts. Only evidenced unreleased contracts may permit bounded replacement of affected project-owned state within existing authority; ambiguous evidence blocks that action. Releases refresh affected contract evidence, not unchanged policy approval.",
         "configuration": {
           "review_pending_dependency": "stack_from_reviewed_checkpoint",
-          "pull_request_mode": "github_stacked_when_verified_else_chained",
-          "legacy_migration": {
-            "release_status": "unknown"
-          }
+          "pull_request_mode": "github_stacked_when_verified_else_chained"
         }
       },
       {
