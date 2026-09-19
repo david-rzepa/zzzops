@@ -1767,29 +1767,63 @@ def github_repository_probe(repo: Path) -> dict[str, Any]:
 
 
 def github_release_evidence(repo: Path, repository: dict[str, Any]) -> dict[str, Any]:
-    """Read public GitHub Releases; absence or failure remains ambiguous."""
+    """Capture all published releases with resolved tag commits, or fail closed."""
     identity = repository.get("identity") if isinstance(repository, dict) else None
     executable = shutil.which("gh")
+    unavailable = {"available": bool(executable), "status": "unavailable", "releases": None}
     if not executable or not isinstance(identity, str) or identity.count("/") != 1:
-        return {"available": False, "releases": None, "reason": "repository_identity_unavailable"}
+        return {**unavailable, "reason": "repository_identity_unavailable"}
+
+    def read(endpoint, *options):
+        result = subprocess.run([executable, "api", endpoint, *options], cwd=repo,
+                                capture_output=True, text=True, encoding="utf-8", timeout=8, check=False)
+        if result.returncode:
+            raise ValueError("release_api_failed")
+        return json.loads(result.stdout)
+
     try:
-        result = subprocess.run(
-            [executable, "api", f"repos/{identity}/releases", "--paginate", "--slurp"],
-            cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=8, check=False,
-        )
-    except (OSError, UnicodeError, subprocess.TimeoutExpired) as exc:
-        return {"available": True, "releases": None, "reason": type(exc).__name__}
-    if result.returncode != 0:
-        return {"available": True, "releases": None, "reason": "release_api_failed"}
+        pages = read(f"repos/{identity}/releases", "--paginate", "--slurp")
+        if not isinstance(pages, list) or any(not isinstance(page, list) for page in pages):
+            raise ValueError("release_api_malformed")
+        releases = []
+        for item in [item for page in pages for item in page]:
+            if not isinstance(item, dict) or type(item.get("draft")) is not bool:
+                raise ValueError("release_api_malformed")
+            if item["draft"]:
+                continue
+            if (type(item.get("id")) is not int or not isinstance(item.get("tag_name"), str)
+                    or not item["tag_name"].strip() or not isinstance(item.get("published_at"), str)
+                    or not item["published_at"].strip()):
+                raise ValueError("release_api_malformed")
+            commit = read(f"repos/{identity}/commits/{quote(item['tag_name'], safe='')}")
+            commit = commit.get("sha") if isinstance(commit, dict) else None
+            if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
+                raise ValueError("release_commit_unavailable")
+            releases.append({"id": item["id"], "tag": item["tag_name"], "commit": commit,
+                             "published_at": item["published_at"]})
+        if len({item["id"] for item in releases}) != len(releases):
+            raise ValueError("release_api_duplicate")
+        return {"available": True, "status": "complete", "releases": sorted(releases, key=lambda item: item["id"]), "reason": "ok"}
+    except (OSError, UnicodeError, subprocess.TimeoutExpired, ValueError) as exc:
+        return {**unavailable, "reason": str(exc) if type(exc) is ValueError else type(exc).__name__}
+
+
+def migration_assessment(repo: Path, project: dict[str, Any], goal: dict[str, Any]) -> dict[str, Any]:
+    """Observe the one goal-bound document and current release facts without adopting policy."""
+    path = repo / ".zzzops" / "migration" / f"{goal['key']}.json"
+    document = None
     try:
-        releases = json.loads(result.stdout)
-    except (UnicodeError, json.JSONDecodeError):
-        return {"available": True, "releases": None, "reason": "release_api_invalid_json"}
-    if isinstance(releases, list) and all(isinstance(page, list) for page in releases):
-        releases = [item for page in releases for item in page]
-    if not isinstance(releases, list):
-        return {"available": True, "releases": None, "reason": "release_api_malformed"}
-    return {"available": True, "releases": releases, "reason": "ok"}
+        if path.resolve().is_relative_to(repo.resolve()) and not path.is_symlink():
+            document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError):
+        pass
+    repository = _project_repository_identity(project)
+    observed = github_release_evidence(repo, {"identity": repository})
+    snapshot = {"status": observed.get("status", "unavailable"), "releases": observed.get("releases")}
+    context = {"repository": repository, "goal": goal["key"],
+               "goal_spec": goal_spec_digest(goal, title=goal['title'], human_spec=goal['human_spec']),
+               "release_snapshot": snapshot, "assessment": document}
+    return {"release_snapshot": snapshot, "decision": migration_boundary(project.get("policy", {}), context)}
 
 
 def inspect_initialization(repo: Path) -> dict[str, Any]:
@@ -1824,17 +1858,10 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         )
         review_policy = template["policy"]
         review_is_proposal = True
-    migration_policy_review = _policy.legacy_migration_review(review_policy, release_status)
     migration_action = _policy.migration_boundary(review_policy, release_status)
-    migration_policy_invalidated = migration_policy_review.get("reason") in {
-        "migration_policy_missing",
-        "first_release_invalidated_pre_release_policy",
-    }
     decision_blockers = policy_blockers(state.get("policy")) if state else ["policy:missing"]
-    if migration_policy_invalidated:
-        reason = migration_policy_review["reason"]
-        blocker = "first_release_requires_policy_rereview" if reason == "first_release_invalidated_pre_release_policy" else reason
-        decision_blockers = [*decision_blockers, "legacy_migration:" + blocker]
+    if error:
+        decision_blockers = [*decision_blockers, "policy:invalid_configuration"]
     github_stack = github_stack_probe(repo)
     plugin_inventory = _plugin_freshness.native_plugin_inventory()
     cache_path = Path(plugin_inventory["cache_path"])
@@ -1872,7 +1899,6 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
             "github_repository": github_repository,
             "github_release_evidence": github_releases,
             "release_status": release_status,
-            "legacy_migration_review": migration_policy_review,
             "migration_boundary": migration_action,
             "github_stack": github_stack,
         },
