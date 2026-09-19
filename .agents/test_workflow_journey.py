@@ -231,9 +231,13 @@ class FullWorkflowJourneyTests(unittest.TestCase):
                     } for index, criterion in enumerate(step["input_envelope"]["acceptance_criteria"])],
                 }
                 verification = None
+        output = {"output": f"{number}-{phase}{output_suffix}"}
+        if phase == "plan":
+            scope = {"parent": 100, "child": 101, "test_design": [], "implement": []}
+            output.update({"output_scopes": [scope]} if number == 100 else {"output_scope": scope})
         record = copy.deepcopy(step["result_contract"]["record"])
         record.update({
-            "output": self.engine.artifact(number, {"output": f"{number}-{phase}{output_suffix}"}), "actor": actor,
+            "output": self.engine.artifact(number, output), "actor": actor,
             "selection": copy.deepcopy(lease["selection"]), "verification": verification,
             "test_design": test_design,
         })
@@ -321,6 +325,12 @@ class FullWorkflowJourneyTests(unittest.TestCase):
         self.assertNotEqual("done", self.goal(100)["status"])
 
         self.phase(101, "plan")
+        child = self.goal(101)
+        implementation = copy.deepcopy(child["implementation"])
+        implementation.update(branch="goal-child", base="dev", target="dev")
+        self.mutate(101, operation="revise", expected_digest=child["digest"],
+                    changes={"implementation": implementation})
+        subprocess.run(["git", "checkout", "-q", "goal-child"], cwd=self.repo, check=True)
 
         # No result may claim behavioural tests without an observed failing baseline.
         design = self.start(101, "test_design", "execute")

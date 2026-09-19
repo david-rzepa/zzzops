@@ -259,6 +259,67 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.session.git('commit', '-qm', 'fixture: existing source and test')
         self.session.git('checkout', '-q', '-B', 'goal-child')
 
+    def test_mixed_checkout_raw_drift_and_dirty_acquisition(self):
+        s = self.session
+        s.git('config', 'core.autocrlf', 'true')
+        # Existing Windows fixture blobs may themselves contain CRLF.
+        # Normalize the committed baseline before constructing mixed raw bytes.
+        s.git('add', '--renormalize', '.')
+        s.git('commit', '--allow-empty', '-qm', 'fixture: normalized mixed-checkout baseline')
+        (self.repo / 'read_dependency.txt').unlink()
+        s.git('checkout', '--', 'read_dependency.txt')
+        self.assertIn(b'\r\n', (self.repo / 'read_dependency.txt').read_bytes())
+        source = self.repo / 'source.py'
+        source.write_bytes(source.read_bytes().replace(b'\r\n', b'\n'))
+        self.assertNotIn(b'\r\n', source.read_bytes())
+        # Refresh Git's index stat cache after changing raw checkout EOLs.
+        s.git('add', 'source.py')
+        self.assertEqual('', s.git('diff', '--cached', '--name-only'))
+        self.assertEqual('', s.git('status', '--porcelain'))
+        s.prepare()
+        step = s.start(101, 'test_design')
+        self.assertIn('acquisition', step['lease'], 'Owned execution must freeze exact checkout acquisition')
+        acquired = step['lease']['acquisition']
+        self.assertIn('checkout_overrides', acquired, 'Mixed Git-clean checkout requires frozen raw overrides')
+        self.assertIn('read_dependency.txt', acquired['checkout_overrides'])
+        self.assertNotIn('source.py', acquired['checkout_overrides'])
+        original = (self.repo / 'read_dependency.txt').read_bytes()
+        (self.repo / 'read_dependency.txt').write_bytes(original.replace(b'\r\n', b'\n'))
+        response = s.verify(step, expected=2)
+        self.assertRegex(response['next_steps'][0]['reason'], '(?i)(drift|changed)')
+        (self.repo / 'read_dependency.txt').write_bytes(original)
+        s.git('config', 'core.autocrlf', 'false')
+        s.verify(step)
+
+    def test_non_equivalent_dirty_checkout_rejects_acquisition(self):
+        s = self.session
+        s.git('config', 'core.autocrlf', 'true')
+        (self.repo / 'source.py').write_bytes(b'def answer():\r\n    return 999\r\n')
+        s.prepare()
+        with self.assertRaisesRegex(AssertionError, 'clean committed worktree baseline'):
+            s.start(101, 'test_design')
+
+    def test_crlf_correction_preserves_frozen_checkout_overrides(self):
+        s = self.session
+        s.git('config', 'core.autocrlf', 'true')
+        for path in ['source.py', 'behavior_test.py', 'read_dependency.txt']:
+            (self.repo / path).unlink()
+        s.git('checkout', '--', 'source.py', 'behavior_test.py', 'read_dependency.txt')
+        self.test_test_design_correction_retains_baseline_failure_predecessor()
+
+    def test_crlf_clean_checkout_public_acquisition(self):
+        s = self.session
+        s.git('config', 'core.autocrlf', 'true')
+        for path in ['source.py', 'behavior_test.py', 'read_dependency.txt']:
+            (self.repo / path).unlink()
+        s.git('checkout', '--', 'source.py', 'behavior_test.py', 'read_dependency.txt')
+        self.assertIn(b'\r\n', (self.repo / 'source.py').read_bytes())
+        self.assertEqual('', s.git('status', '--porcelain'))
+        s.prepare()
+        design, _ = s.design()
+        self.assertTrue(design['lease']['acquisition']['checkout_overrides'])
+        s.implement()
+
     def test_existing_consumed_test_and_source_red_to_green(self):
         s = self.session
         s.prepare()
@@ -410,6 +471,9 @@ class OwnedOutputPublicTests(unittest.TestCase):
         proof = s.read(101, reference)
         mutations = [
             lambda value: value.update(acquisition=None),
+            lambda value: value['acquisition'].update(checkout_overrides=None),
+            lambda value: value['acquisition'].update(checkout_overrides={'../escape': 'sha256:' + '0' * 64}),
+            lambda value: value['acquisition'].update(checkout_overrides={'source.py': 'sha256:' + '0' * 64}),
             lambda value: value.update(acquisition={'git_commit': '0' * 40}),
             lambda value: value['acquisition'].update(git_commit='0' * 40),
             lambda value: value['acquisition'].update(workspace_digest='sha256:' + '0' * 64),
@@ -804,6 +868,141 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] in {'assess', 'execute'}
                              for x in s.checkpoint(101)))
 
+    def test_explicit_withdrawal_restarts_from_clean_prior_checkout_without_stale_proof(self):
+        s = self.session
+        s.prepare()
+        design, _ = s.design()
+        before_commit = design['lease']['acquisition']['git_commit']
+        step = s.start(101, 'implement')
+        (s.repo / 'source.py').write_text('def answer():\n    return 2\n')
+        proof = s.verify(step)['next_steps'][0]['verification']
+        s.result(101, step, {'files': {'source.py': file_hash(s.repo / 'source.py')}}, proof)
+        s.review(101, 'implement', {'finding': 'Permanent regression required.'}, acceptance='changes_requested')
+        rejected = copy.deepcopy(s.goal(101)['phase_evidence']['records']['implement'])
+        previous_design = copy.deepcopy(s.goal(101)['phase_evidence']['records']['test_design'])
+        # Stage a separate clean owned checkout. Existing reviewed checkout bytes
+        # and rejected source output are preserved; no test edit occurs before lease.
+        previous_checkout = s.repo
+        previous_bytes = {p: (previous_checkout / p).read_bytes() for p in s.consumed}
+        checkout = tempfile.TemporaryDirectory()
+        self.addCleanup(checkout.cleanup)
+        s.git('worktree', 'add', '--detach', checkout.name, before_commit)
+        s.repo = Path(checkout.name)
+        s.git('checkout', '-q', '-b', 'goal-restart')
+        goal = s.goal(101)
+        metadata = copy.deepcopy(goal['implementation'])
+        metadata['branch'] = 'goal-restart'
+        s.call(101, {'operation': 'revise', 'expected_digest': goal['digest'], 'changes': {'implementation': metadata}})
+        for phase, record in [('implement', rejected), ('test_design', previous_design)]:
+            s.call(101, {'operation': 'withdraw', 'phase': phase, 'record_hash': content_hash(record),
+                         'reason': 'Explicitly restart from authenticated clean prior test baseline.'})
+        withdrawn = copy.deepcopy(s.goal(101)['phase_evidence'])
+        self.assertEqual(rejected, withdrawn['records']['implement'])
+        self.assertEqual(previous_design, withdrawn['records']['test_design'])
+        self.assertTrue({'implement', 'test_design'} <= {x['phase'] for x in withdrawn['withdrawals']})
+        self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] in {'assess', 'execute'}
+                             for x in s.checkpoint(101)))
+        reopened = s.start(101, 'test_design')
+        self.assertNotIn('output_drift', reopened['input_envelope']['repository']['snapshot'])
+        self.assertNotIn('predecessor', reopened['lease']['acquisition'])
+        self.assertEqual(set(s.consumed), set(reopened['input_envelope']['repository']['snapshot']['files']))
+        (s.repo / s.test_path).write_text('from source import answer\n# Permanent amended regression.\nassert answer() == 2\n')
+        failed = s.verify(reopened)['next_steps'][0]['verification']
+        self.assertFalse(s.read(101, failed)['passed'])
+        s.result(101, reopened, {'files': {s.test_path: file_hash(s.repo / s.test_path)}}, failed)
+        s.review(101, 'test_design')
+        actual = s.goal(101)['phase_evidence']['records']['test_design']
+        self.assertEqual(reopened['input_envelope'], actual['input_envelope'])
+        self.assertEqual(reopened['input_hash'], actual['input_hash'])
+        s.git('add', s.test_path)
+        s.git('commit', '-qm', 'test: reviewed amended regression')
+        fresh = s.start(101, 'implement')
+        self.assertNotIn('predecessor', fresh['lease']['acquisition'])
+        self.assertNotEqual(step['lease']['token'], fresh['lease']['token'])
+        (s.repo / 'source.py').write_text('def answer():\n    # Corrected required behavior.\n    return 2\n')
+        passed = s.verify(fresh)['next_steps'][0]['verification']
+        self.assertTrue(s.read(101, passed)['passed'])
+        s.result(101, fresh, {'files': {'source.py': file_hash(s.repo / 'source.py')}}, passed)
+        s.review(101, 'implement')
+        actual = s.goal(101)['phase_evidence']['records']['implement']
+        self.assertEqual(fresh['input_envelope'], actual['input_envelope'])
+        self.assertEqual(fresh['input_hash'], actual['input_hash'])
+        self.assertEqual(previous_bytes, {p: (previous_checkout / p).read_bytes() for p in s.consumed})
+
+    def require_implementation_human_approval(self):
+        configuration = z._workflow_section(self.session.project, 'workflow_adherence')['configuration']
+        implementation = next(node for node in configuration['phase_dag']['phases'] if node['id'] == 'implement')
+        implementation['review']['human_approval'] = True
+
+    def test_required_human_approval_blocks_sibling_consumption_until_current_approval(self):
+        s = self.session
+        self.require_implementation_human_approval()
+        public_review = s.review
+        checked = []
+        def review_and_approve(number, phase, content=None, *, acceptance='approved'):
+            result = public_review(number, phase, content, acceptance=acceptance)
+            if phase != 'implement' or acceptance != 'approved':
+                return result
+            producer = s.checkpoint(number)
+            self.assertTrue(any(x.get('phase') == phase and x['kind'] == 'human_approval' for x in producer), producer)
+            self.assertNotIn(phase, s.goal(number)['phase_evidence']['human_approvals'])
+            if number == 101:
+                blocked = s.checkpoint(102)
+                self.assertFalse(any(x.get('phase') == 'test_design' and x['kind'] in {'assess', 'execute'}
+                                     for x in blocked), blocked)
+            approval = s.start(number, phase, 'human_approval')
+            s.call(number, {'operation': 'approve', 'phase': phase, 'lease': approval['lease']['token'],
+                            'actor': approval['bound_actor'], 'approval': {
+                                'actor': approval['bound_actor'], 'approval_token': 'user: exact synthetic result approval'}})
+            if number == 101:
+                self.assertTrue(any(x.get('phase') == 'test_design' and x['kind'] == 'execute'
+                                    for x in s.checkpoint(102)))
+            checked.append(number)
+            return result
+        s.review = review_and_approve
+        self.test_sibling_scopes_connect_completed_first_child_without_rewriting_history()
+        self.assertEqual([101, 102], checked)
+
+    def test_composed_correction_requires_current_human_approval_after_record_replacement(self):
+        s = self.session
+        self.require_implementation_human_approval()
+        public_review = s.review
+        replacements = []
+        def review_and_approve(number, phase, content=None, *, acceptance='approved'):
+            result = public_review(number, phase, content, acceptance=acceptance)
+            if phase != 'implement':
+                return result
+            if acceptance == 'changes_requested':
+                replacements.append(copy.deepcopy(s.goal(number)['phase_evidence']['records'][phase]))
+                return result
+            self.assertEqual(2, len(replacements))
+            self.assertNotIn(phase, s.goal(number)['phase_evidence']['human_approvals'])
+            steps = s.checkpoint(number)
+            self.assertTrue(any(x.get('phase') == phase and x['kind'] == 'human_approval' for x in steps), steps)
+            self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] in {'assess', 'execute'} for x in steps), steps)
+            approval = s.start(number, phase, 'human_approval')
+            s.call(number, {'operation': 'approve', 'phase': phase, 'lease': approval['lease']['token'],
+                            'actor': approval['bound_actor'], 'approval': {
+                                'actor': approval['bound_actor'], 'approval_token': 'user: exact composed-result approval'}})
+            valid = s.checkpoint(number)
+            self.assertTrue(any(x.get('phase') == 'publish' for x in valid), valid)
+            real_get = s.provider.get_issue
+            spec = s.goal(number)['human_spec']
+            def stale_approval(key):
+                issue = real_get(key)
+                if key == number:
+                    raw = z.parse_managed_goal(issue['body'], key)
+                    raw['phase_evidence']['human_approvals'][phase]['record_hash'] = content_hash(replacements[0])
+                    issue['body'] = z.render_managed_goal(raw, spec, key)
+                return issue
+            with mock.patch.object(s.provider, 'get_issue', side_effect=stale_approval):
+                rejected = s.call(number, expected=2)
+                self.assertRegex(json.dumps(rejected), r'(?i)(approval.*stale|stale.*approval)')
+            self.assertEqual(valid, s.checkpoint(number))
+            return result
+        s.review = review_and_approve
+        self.test_recorded_output_exposes_own_review_and_correction_without_consumer_authority()
+
     def test_test_design_correction_retains_baseline_failure_predecessor(self):
         s = self.session
         s.prepare()
@@ -869,6 +1068,9 @@ class OwnedOutputPublicTests(unittest.TestCase):
                 'workspace_digest': correction['lease']['acquisition']['workspace_digest'],
                 'input_hash': correction['input_hash'], 'predecessor': deep_reference,
             }
+            if 'checkout_overrides' in correction['lease']['acquisition']:
+                prior_proof['acquisition']['checkout_overrides'] = copy.deepcopy(
+                    correction['lease']['acquisition']['checkout_overrides'])
             prior_proof['workspace'] = correction['lease']['acquisition']['workspace_digest']
             prior_proof['outputs'] = {'source.py': file_hash(s.repo / 'source.py')}
             item['record']['input_envelope'] = copy.deepcopy(correction['input_envelope'])
