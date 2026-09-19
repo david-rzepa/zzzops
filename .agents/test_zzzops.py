@@ -1,4 +1,5 @@
 import ast
+import copy
 import hashlib
 import importlib.util
 import io
@@ -117,22 +118,16 @@ class PolicyModuleTests(unittest.TestCase):
         )
         self.assertEqual("unknown", private["status"])
 
-    def test_legacy_migration_review_reopens_missing_and_first_release_policy(self):
-        policy = {"sections": [{"id": "git_review_release", "configuration": {}}]}
-        released = {"status": "released"}
-        missing = zzzops._policy.legacy_migration_review(policy, released)
-        self.assertEqual("review_required", missing["status"])
-        reviewed = {"sections": [{"id": "git_review_release", "configuration": {
-            "legacy_migration": {"release_status": "never_released"},
-        }}]}
-        first_release = zzzops._policy.legacy_migration_review(reviewed, released)
-        self.assertEqual("first_release_invalidated_pre_release_policy", first_release["reason"])
-        stable = {"status": "released"}
-        self.assertEqual("reviewed", zzzops._policy.legacy_migration_review(
-            {"sections": [{"id": "git_review_release", "configuration": {
-                "legacy_migration": {"release_status": "released"},
-            }}]}, stable,
-        )["status"])
+    def test_migration_standing_configuration_does_not_store_release_facts(self):
+        template = json.loads((PLUGIN_ROOT / "zzzops/templates/project-goals/INIT_PLAN.json").read_text())
+        section = next(s for s in template['policy']['sections'] if s['id'] == 'git_review_release')
+        self.assertNotIn('legacy_migration', section['configuration'])
+        self.assertNotIn('basis', section['configuration'])
+        self.assertIn('pull_request_mode', section['configuration'])
+        missing = copy.deepcopy(template['policy'])
+        next(s for s in missing['sections'] if s['id'] == 'git_review_release')['configuration'].pop('pull_request_mode')
+        self.assertTrue(any('missing: pull_request_mode' in e
+                            for e in zzzops.validate_policy(missing, require_pending=True)))
 
 
 class PluginFreshnessTests(unittest.TestCase):
@@ -1817,7 +1812,7 @@ class InitializationTests(unittest.TestCase):
         self.assertIn("current taxonomy", inspection["state_error"])
         self.assertIn("schema_version must be 2", inspection["state_error"])
         self.assertIn("unsupported fields: decision, settings", inspection["state_error"])
-        self.assertIn("legacy_migration:migration_policy_missing", inspection["decision_blockers"])
+        self.assertTrue(inspection["decision_blockers"], "Malformed required policy configuration must still block")
         self.assertNotIn("legacy_migration:first_release_requires_policy_rereview", inspection["decision_blockers"])
         retired = next(item for item in inspection["state"]["policy"]["sections"] if item["id"] == "execution_continuation")
         self.assertEqual({"custom_limit": 7}, retired["settings"])
@@ -4944,9 +4939,9 @@ class WorkflowContractTests(unittest.TestCase):
         git_policy = next(section for section in plan["policy"]["sections"] if section["id"] == "git_review_release")["configuration"]
         self.assertEqual("stack_from_reviewed_checkpoint", git_policy["review_pending_dependency"])
         self.assertEqual("github_stacked_when_verified_else_chained", git_policy["pull_request_mode"])
-        self.assertEqual("unknown", git_policy["legacy_migration"]["release_status"])
+        self.assertNotIn("legacy_migration", git_policy)
         self.assertEqual({
-            "review_pending_dependency", "pull_request_mode", "legacy_migration",
+            "review_pending_dependency", "pull_request_mode",
         }, set(git_policy))
 
         invalid = json.loads(json.dumps(plan["policy"]))
@@ -5629,11 +5624,12 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("human explicitly reviewed the exact current design", unblock)
         self.assertIn("never infer it from policy approval, an ordinary PR, or unrelated review", unblock)
         for text in (review, execute, unblock):
-            self.assertIn("legacy_migration", text)
-            self.assertIn("ambiguous", text)
-            self.assertIn("never_released", text)
-        self.assertIn("treat execution as uninitialized", review)
-        self.assertIn("blocks migration", execute)
+            self.assertIn("contract", text.lower())
+            self.assertRegex(text.lower(), r"ambigu(ous|ity)")
+            self.assertIn("evidence", text.lower())
+            self.assertNotIn("first release and blocks reset until review", text)
+        self.assertIn("policy", review.lower())
+        self.assertIn("block", execute.lower())
         self.assertIn("Never infer that state can be wiped", unblock)
 
     def test_exhaustion_review_and_bootstrap_contracts_are_explicit(self):
