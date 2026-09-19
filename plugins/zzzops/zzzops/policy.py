@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any, Callable
 
@@ -87,7 +88,7 @@ ENGINEERING_RIGOR_LEVELS = ("vibe", "structured", "agentic")
 POLICY_CONFIGURATION_KEYS = {
     "backend": {"authority", "repository_identity", "capability_evidence"},
     "git_review_release": {
-        "review_pending_dependency", "pull_request_mode", "legacy_migration",
+        "review_pending_dependency", "pull_request_mode",
     },
     "verification_testing": {"required_ci"},
     "code_quality": set(),
@@ -807,33 +808,127 @@ def classify_release_evidence(
     }
 
 
-def legacy_migration_review(policy: dict[str, Any], release_status: dict[str, Any]) -> dict[str, Any]:
-    """Report whether the migration choice needs review after release evidence changes."""
-    section = next((item for item in policy.get("sections", [])
-                    if isinstance(item, dict) and item.get("id") == "git_review_release"), {})
-    settings = section.get("configuration") if isinstance(section.get("configuration"), dict) else {}
-    recorded = settings.get("legacy_migration")
-    if not isinstance(recorded, dict):
-        return {"status": "review_required", "reason": "migration_policy_missing", "affected_work_blocked": True}
-    chosen = recorded.get("release_status")
-    observed = release_status.get("status")
-    if observed == "unknown":
-        return {"status": "review_required", "reason": "release_evidence_ambiguous", "affected_work_blocked": True}
-    if chosen not in {"never_released", "released"}:
-        return {"status": "review_required", "reason": "migration_release_status_unreviewed", "affected_work_blocked": True}
-    if observed == "released" and chosen == "never_released":
-        return {"status": "review_required", "reason": "first_release_invalidated_pre_release_policy", "affected_work_blocked": True}
-    return {"status": "reviewed", "reason": "release_status_matches_review", "affected_work_blocked": False}
-
-
-def migration_boundary(policy: dict[str, Any], release_status: dict[str, Any]) -> dict[str, Any]:
-    """Return the reviewed migration action without authorizing unrelated state changes."""
-    review = legacy_migration_review(policy, release_status)
-    if review.get("status") != "reviewed":
-        return {"action": "block", "scope": "none", "reason": review.get("reason"), "review": review}
-    if release_status.get("status") == "never_released":
-        return {"action": "replace_reset", "scope": "affected_project_owned", "reason": "explicit_never_released", "review": review}
-    return {"action": "preserve", "scope": "all_state", "reason": "released_or_unknown", "review": review}
+def migration_boundary(policy: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+    """Evaluate captured contract evidence; eligibility never grants reset authority."""
+    blocked = {"action": "block", "scope": "none", "reason": "contract_evidence_required"}
+    document = context.get("assessment")
+    snapshot = context.get("release_snapshot")
+    if not isinstance(document, dict) or type(document.get("schema_version")) is not int or document["schema_version"] != 1:
+        return blocked
+    if (type(context.get("goal")) is not int or type(document.get("goal")) is not int
+            or not _digest_text(context.get("goal_spec"))
+            or not text_present(context.get("repository"))
+            or any(document.get(key) != context.get(key) for key in ("repository", "goal", "goal_spec"))
+            or not text_present(document.get("action"))):
+        return blocked
+    if (not isinstance(snapshot, dict) or snapshot.get("status") != "complete"
+            or not isinstance(snapshot.get("releases"), list) or document.get("release_snapshot") != snapshot):
+        return blocked
+    seen_releases = set()
+    for release in snapshot["releases"]:
+        if (not isinstance(release, dict) or type(release.get("id")) is not int
+                or not text_present(release.get("tag")) or not text_present(release.get("published_at"))
+                or not isinstance(release.get("commit"), str)
+                or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", release["commit"])
+                or release["id"] in seen_releases):
+            return blocked
+        seen_releases.add(release["id"])
+    contracts = document.get("contracts")
+    if not isinstance(contracts, list) or not contracts:
+        return blocked
+    identifiers = [item.get("id") if isinstance(item, dict) else None for item in contracts]
+    if any(not text_present(key) for key in identifiers) or len(set(identifiers)) != len(identifiers):
+        return blocked
+    selected = context.get("contract_id")
+    if selected is not None:
+        contracts = [item for item in contracts if item["id"] == selected]
+        if not contracts:
+            return blocked
+    for contract in contracts:
+        scope = contract.get("scope")
+        if (contract.get("status") not in ("shipped", "unreleased")
+                or not text_present(contract.get("boundary"))
+                or not isinstance(scope, list) or not scope
+                or any(not text_present(item) for item in scope)
+                or len(set(scope)) != len(scope)):
+            return blocked
+        evidence = contract.get("evidence")
+        if not isinstance(evidence, list) or not evidence:
+            return blocked
+        presence_facts = {}
+        published_commits = {release["commit"] for release in snapshot["releases"]}
+        for item in evidence:
+            if (not isinstance(item, dict) or type(item.get("goal")) is not int
+                    or any(item.get(key) != document.get(key) for key in ("goal", "goal_spec", "release_snapshot"))
+                    or item.get("contract") != contract["id"]
+                    or item.get("boundary") != contract["boundary"] or item.get("scope") != scope):
+                return blocked
+            if item.get("kind") == "owner_attestation":
+                if not text_present(item.get("author")) or not text_present(item.get("statement")):
+                    return blocked
+            elif item.get("kind") == "contract_investigation":
+                # Captured agent findings are evidence, not owner approval or an
+                # automatic proof of arbitrary prose. Review checks the stated
+                # distribution boundary and interpretation of inspected facts.
+                if (not text_present(item.get("author")) or not text_present(item.get("rationale"))
+                        or not text_present(item.get("distribution_boundary"))
+                        or item.get("conclusion") != contract["status"]):
+                    return blocked
+                observations = item.get("observations")
+                if not isinstance(observations, list) or not observations:
+                    return blocked
+                published = {release["id"]: release["commit"] for release in snapshot["releases"]}
+                covered, development_present, distribution_inspected, shipped_present = set(), False, False, False
+                for observation in observations:
+                    if (not isinstance(observation, dict) or not isinstance(observation.get("commit"), str)
+                            or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", observation["commit"])
+                            or not text_present(observation.get("path"))
+                            or observation["path"].startswith(("/", "\\"))
+                            or ".." in observation["path"].replace("\\", "/").split("/")):
+                        return blocked
+                    if "contract_present" not in observation:
+                        if not text_present(observation.get("finding")):
+                            return blocked
+                        distribution_inspected = True
+                        continue
+                    if type(observation["contract_present"]) is not bool or "release_id" not in observation:
+                        return blocked
+                    identity = (observation["commit"], observation["path"])
+                    present = observation["contract_present"]
+                    if identity in presence_facts and presence_facts[identity] != present:
+                        return blocked
+                    presence_facts[identity] = present
+                    # Immutable identity wins over the author's development
+                    # label, including facts split across evidence items.
+                    if contract["status"] == "unreleased" and present and observation["commit"] in published_commits:
+                        return blocked
+                    release_id = observation["release_id"]
+                    if release_id is None:
+                        development_present |= observation["contract_present"]
+                    elif type(release_id) is int and published.get(release_id) == observation["commit"]:
+                        covered.add(release_id)
+                        shipped_present |= observation["contract_present"]
+                    else:
+                        return blocked
+                if not distribution_inspected or covered != set(published):
+                    return blocked
+                if contract["status"] == "unreleased" and (not development_present or shipped_present):
+                    return blocked
+                if contract["status"] == "shipped" and not shipped_present:
+                    return blocked
+            elif item.get("kind") == "release_reference":
+                # A captured release identity can support preservation, never
+                # prove a contract was absent or grant replacement authority.
+                if contract["status"] != "shipped" or item.get("release") not in snapshot["releases"]:
+                    return blocked
+            else:
+                return blocked
+    shipped = any(item["status"] == "shipped" for item in contracts)
+    return {"action": "preserve" if shipped else "replace_reset", "scope": "affected_project_owned",
+            "reason": "shipped_contract" if shipped else "evidenced_unreleased_contract",
+            "contracts": [{"id": item["id"], "action": "preserve" if item["status"] == "shipped" else "replace_reset",
+                           "scope": "affected_project_owned"} for item in contracts],
+            "authority": "Eligibility only; existing operation authority applies. Excludes unrelated user, external and deployment state."}
 
 
 def stack_tooling_offer(policy: dict[str, Any], capability: dict[str, Any]) -> dict[str, Any]:
@@ -1089,9 +1184,6 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                     errors.append(f"{prefix}.git_review_release.configuration.review_pending_dependency is invalid")
                 if configuration.get("pull_request_mode") not in GIT_REVIEW_SETTING_VALUES["pull_request_mode"]:
                     errors.append(f"{prefix}.git_review_release.configuration.pull_request_mode is invalid")
-                migration = configuration.get("legacy_migration")
-                if not isinstance(migration, dict) or set(migration) != {"release_status"} or migration.get("release_status") not in {"unknown", "never_released", "released"}:
-                    errors.append(f"{prefix}.git_review_release.configuration.legacy_migration is invalid")
                 if "stacked_tooling_decline" in configuration and not _digest_text(configuration["stacked_tooling_decline"]):
                     errors.append(f"{prefix}.git_review_release.configuration.stacked_tooling_decline is invalid")
             elif section_id == "verification_testing":

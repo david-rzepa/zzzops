@@ -42,6 +42,23 @@ class PolicyDefaultInventoryTests(unittest.TestCase):
         self.assertFalse(report["valid"])
         self.assertEqual("branch_done_fallback", report["forbidden_hot_defaults"][0]["family"])
 
+    def test_migration_prompts_do_not_reintroduce_project_wide_release_policy(self):
+        paths = [
+            'plugins/zzzops/zzzops/references/next_steps/policy-review.md',
+            'plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md',
+            'plugins/zzzops/skills/execute-zzzops/references/EXECUTE.md',
+            'plugins/zzzops/skills/execute-zzzops/references/UNBLOCK.md',
+        ]
+        stale = ['never_released` stales at first release',
+                 'Only an explicitly confirmed never-released project',
+                 'stale `never_released` blocks migration pending review',
+                 'Migration blockers require `legacy_migration`']
+        for path, obsolete in zip(paths, stale):
+            with self.subTest(path=path):
+                text = (ROOT / path).read_text()
+                self.assertNotIn(obsolete, text)
+                self.assertIn('contract', text.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

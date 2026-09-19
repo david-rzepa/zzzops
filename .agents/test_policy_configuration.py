@@ -17,7 +17,7 @@ z = fixtures.zzzops
 EXPECTED_CONFIGURATION_KEYS = {
     "backend": {"authority", "repository_identity", "capability_evidence"},
     "git_review_release": {
-        "review_pending_dependency", "pull_request_mode", "legacy_migration",
+        "review_pending_dependency", "pull_request_mode",
     },
     "verification_testing": {"required_ci"},
     "code_quality": set(),
