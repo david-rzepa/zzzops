@@ -95,7 +95,9 @@ def unresolved_lease_count(goals):
 
 
 def state(goal):
-    return copy.deepcopy(goal.get('workflow') or {'leases': {}, 'receipts': {}, 'workers': {}, 'assessments': {}, 'artifacts': {}})
+    result = copy.deepcopy(goal.get('workflow') or {'leases': {}, 'receipts': {}, 'workers': {}, 'assessments': {}, 'artifacts': {}})
+    result.setdefault('routing_choices', {})
+    return result
 
 
 def validate_state(value):
@@ -114,10 +116,16 @@ def validate_state(value):
             and all(text(entry) for entry in item.values())
         )
 
-    if not isinstance(value, dict) or set(value) != {'leases', 'receipts', 'workers', 'assessments', 'artifacts'}:
-        return ['workflow must contain leases, receipts, workers, assessments and artifacts']
+    required = {'leases', 'receipts', 'workers', 'assessments', 'artifacts'}
+    if not isinstance(value, dict) or set(value) not in (required, required | {'routing_choices'}):
+        return ['workflow must contain leases, receipts, workers, assessments, artifacts and optional routing choices']
     if any(not isinstance(v, dict) for v in value.values()):
         return ['workflow collections must be objects']
+    for phase, choice in value.get('routing_choices', {}).items():
+        if not text(phase) or not isinstance(choice, dict) or set(choice) != {'choice', 'root_pair', 'requested_pair', 'approved_by'}:
+            return ['workflow routing choice is invalid']
+        if choice['choice'] not in {'use_requested_pair', 'downgrade_to_root', 'delegate_at_root'} or not selection(choice['root_pair']) or (choice['requested_pair'] is not None and not selection(choice['requested_pair'])) or not explicit_approval(choice['approved_by']):
+            return ['workflow routing choice is invalid']
     for key, lease in value['leases'].items():
         if not text(key) or ':' not in key:
             return ['workflow lease map identity is invalid']
@@ -955,6 +963,14 @@ class Workflow:
                                           'field': 'output_scope', 'required_phase': 'plan', 'repairs': repairs})
                 continue
             if kind not in {'execute', 'review', 'human_approval'}:
+                if kind == 'capability_choice':
+                    human_only = 'downgrade_to_root' in step.get('choices', [])
+                    step.update(
+                        action=('Ask the user whether to use the requested stronger root pair or approve this human-interaction phase at the observed root pair.' if human_only else 'Ask the user whether to use the requested stronger pair or delegate this phase at the observed root pair.'),
+                        instruction=self.api.workflow_instruction('routing-evidence'),
+                        submission={'operation': 'route_choice', 'phase': phase, 'choice': '<one returned choice>', 'approved_by': '<user>', 'request_id': 'new-unique-id'},
+                    )
+                    continue
                 step.update(action='Resolve this routing prerequisite on root. If it needs user authority, persist a blocker and continue other goals; do not silently substitute root work.',
                             instruction=self.api.workflow_instruction('routing-evidence'),
                             submission={'operation': 'block', 'category': 'access-approval', 'reason': step.get('reason', 'Routing prerequisite unavailable'), 'request_id': 'new-unique-id'})
@@ -1226,6 +1242,16 @@ class Workflow:
                 self.file_hashes(files)
                 durable['assessments'][phase] = {'dimensions': dimensions, 'goal_spec': live[phase]['goal_spec'], 'policy': live[phase]['policy'], 'files': files}
                 response = {'next_steps': [{'kind': 'checkpoint', 'action': 'Re-evaluate the goal with the recorded capability assessment.', 'goal': number}]}
+            elif operation == 'route_choice':
+                step = next((item for item in self.step(number) if item.get('phase') == phase and item.get('kind') == 'capability_choice'), None)
+                choice = payload.get('choice')
+                if not step or choice not in step.get('choices', []) or not explicit_approval(payload.get('approved_by')):
+                    raise ValueError('Routing choice requires an explicit user-approved current capability checkpoint')
+                durable['routing_choices'][phase] = {
+                    'choice': choice, 'root_pair': step['root_pair'], 'requested_pair': step['requested_pair'],
+                    'approved_by': payload['approved_by'],
+                }
+                response = {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'The user-selected route is durable. Re-evaluate the phase.'}]}
             elif operation == 'withdraw':
                 evidence = goal.get('phase_evidence') or self.api.empty_phase_evidence()
                 record = evidence['records'].get(phase)

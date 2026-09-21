@@ -5482,11 +5482,15 @@ class WorkflowContractTests(unittest.TestCase):
         elevated_runtime = {"root_pair": root, "available_pairs": [root, high]}
         architectural_goal = {"status": "ready", "difficulty": "S", "engineering_rigor": {"risk_categories": ["architecture"], "effective": "structured"}}
         human = zzzops.workflow_step_plan(architectural_goal, graph, {"understand": input_envelope}, nodes, settings, elevated_runtime)
-        self.assertEqual("human-interaction phase exceeds root capability", human["next_steps"][0]["reason"])
+        self.assertEqual("capability_choice", human["next_steps"][0]["kind"])
+        self.assertEqual({"model": "root-model", "effort": "medium"}, human["next_steps"][0]["root_pair"])
+        self.assertEqual({"model": "high-model", "effort": "high"}, human["next_steps"][0]["requested_pair"])
+        self.assertEqual(["use_requested_pair", "downgrade_to_root"], human["next_steps"][0]["choices"])
         delegated = zzzops.workflow_step_plan(
             architectural_goal, {"phases": [{"id": "plan"}]}, {"plan": evidence_test.envelope("plan")}, {"plan": {"assignment_group": "planning"}}, settings, elevated_runtime,
         )
-        self.assertEqual("session_override", delegated["next_steps"][0]["kind"])
+        self.assertEqual("capability_choice", delegated["next_steps"][0]["kind"])
+        self.assertEqual(["use_requested_pair", "delegate_at_root"], delegated["next_steps"][0]["choices"])
 
     def test_workflow_checkpoint_rejects_an_invalid_portfolio_before_goal_execution(self):
         with (

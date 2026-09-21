@@ -1386,7 +1386,21 @@ def workflow_step_plan(
             dimensions = assessment.get("dimensions", dimensions_base)
             tier = capability_tier(routing_settings, {**dimensions, "phase_type": phase})["tier"]
             if requires_human and tiers[tier] > tiers[root_choice["tier"]]:
-                steps.append({"kind": "capability_discovery", "phase": phase, "assignment": "root", "reason": "human-interaction phase exceeds root capability"})
+                choice = _workflow.state(goal).get("routing_choices", {}).get(phase)
+                if choice and choice.get("choice") == "downgrade_to_root" and choice.get("root_pair") == runtime["root_pair"]:
+                    steps.append({
+                        "kind": "human_approval" if human_approval else kind, "phase": phase, "reason": entry["reason"],
+                        "skill": WORKFLOW_PHASE_PROMPTS[(phase, kind)], "assignment": "root", "selection": runtime["root_pair"],
+                    })
+                    continue
+                requested = reviewed_model_effort(routing_settings, tier, runtime["available_pairs"])
+                steps.append({
+                    "kind": "capability_choice", "phase": phase, "assignment": "root",
+                    "reason": "human-interaction phase exceeds root capability",
+                    "root_pair": runtime["root_pair"],
+                    "requested_pair": requested["selected"] if requested["available"] else None,
+                    "choices": ["use_requested_pair", "downgrade_to_root"],
+                })
                 continue
             overrides = runtime.get('overrides', [])
             if not isinstance(overrides, list):
@@ -1400,7 +1414,22 @@ def workflow_step_plan(
             chosen = reviewed_model_effort(routing_settings, tier, available)
             if not chosen["available"]:
                 all_choices = reviewed_model_effort(routing_settings, tier, runtime['available_pairs'])
-                steps.append({"kind": "session_override" if all_choices['available'] else "capability_discovery", "phase": phase, "assignment": "root", "reason": f"no permitted reviewed available model-plus-effort pair for {tier}"})
+                if all_choices['available']:
+                    choice = _workflow.state(goal).get("routing_choices", {}).get(phase)
+                    if choice and choice.get("choice") == "delegate_at_root" and choice.get("root_pair") == runtime["root_pair"]:
+                        steps.append({
+                            "kind": kind, "phase": phase, "reason": entry["reason"],
+                            "skill": WORKFLOW_PHASE_PROMPTS[(phase, kind)], "assignment": "delegate", "selection": runtime["root_pair"],
+                        })
+                        continue
+                    steps.append({
+                        "kind": "capability_choice", "phase": phase, "assignment": "root",
+                        "reason": f"no permitted reviewed available model-plus-effort pair for {tier}",
+                        "root_pair": runtime["root_pair"], "requested_pair": all_choices["selected"],
+                        "choices": ["use_requested_pair", "delegate_at_root"],
+                    })
+                else:
+                    steps.append({"kind": "capability_discovery", "phase": phase, "assignment": "root", "reason": f"no permitted reviewed available model-plus-effort pair for {tier}"})
                 continue
             selection = runtime["root_pair"] if requires_human else chosen["selected"]
             if tiers[tier] > tiers[root_choice["tier"]] and not overrides:
