@@ -523,7 +523,7 @@ def github_archived_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def validate_goal_create(request: Any) -> list[str]:
+def validate_goal_create(request: Any, *, allow_deferred: bool = False) -> list[str]:
     if not isinstance(request, dict):
         return ["goal create request must be an object"]
     errors = []
@@ -563,6 +563,14 @@ def validate_goal_create(request: Any) -> list[str]:
         if len({label.casefold() for label in labels if isinstance(label, str)}) != len(labels):
             errors.append("labels must be unique")
     goal = request.get("goal")
+    if allow_deferred:
+        if not isinstance(goal, dict):
+            errors.append("goal must be an object")
+        elif goal.get("schema_version") != GOAL_SCHEMA_VERSION:
+            errors.append(f"goal schema_version must be {GOAL_SCHEMA_VERSION}")
+        elif goal.get("status", "new") != "new":
+            errors.append("newly captured goals must have status new")
+        return errors
     errors.extend(validate_managed_goal(goal))
     if isinstance(goal, dict):
         if goal.get("status") != "new":
@@ -583,14 +591,24 @@ def load_goal_create(path: Path) -> dict[str, Any]:
         raise ValueError(f"Could not read goal create request: {type(exc).__name__}") from exc
 
 
-def apply_goal_create(adapter: Any, repository: str, request: dict[str, Any]) -> dict[str, Any]:
-    errors = validate_goal_create(request)
+def apply_goal_create(adapter: Any, repository: str, request: dict[str, Any], *, allow_deferred: bool = False) -> dict[str, Any]:
+    errors = validate_goal_create(request) if not allow_deferred else []
+    if allow_deferred:
+        goal = request.get("goal")
+        if not isinstance(goal, dict) or goal.get("schema_version") != GOAL_SCHEMA_VERSION:
+            errors.append("deferred goal must provide schema_version")
+        if isinstance(goal, dict) and goal.get("status", "new") != "new":
+            errors.append("deferred goal status must be new")
     if errors:
         raise ValueError("Invalid goal create request: " + "; ".join(errors))
     if adapter.repository.casefold() != repository.casefold():
         raise GoalTransitionProviderError("Repository identity changed; no goal was created.")
     goal = request["goal"]
-    body = render_managed_goal(goal, request["body"])
+    if allow_deferred:
+        separator = "\n\n" if request["body"] and not request["body"].endswith("\n\n") else ""
+        body = f"{request['body']}{separator}{GOAL_BLOCK_START}\n{json.dumps(goal, ensure_ascii=False, sort_keys=True, separators=(',', ':'))}\n{GOAL_BLOCK_END}\n"
+    else:
+        body = render_managed_goal(goal, request["body"])
     if len(body) > 65536:
         raise ValueError("Rendered goal body exceeds GitHub's issue limit")
     labels = [

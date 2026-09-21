@@ -1680,7 +1680,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         return {'next_steps': [{'kind': 'perform', 'goal': number, 'phase': payload['phase'], 'action': 'The local coordinator is monitoring this worker. Continue its assigned work.'}]}
     if operation == 'capture_propose':
         request = payload['request']
-        errors = api.validate_goal_create(request)
+        errors = api.validate_goal_create(request, allow_deferred=True)
         if errors:
             raise ValueError('; '.join(errors))
         if not api._goals.goal_acceptance_criteria(request['body']):
@@ -1700,7 +1700,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             if any(item['phase'] == 'understand' for key in ('execute', 'review', 'blocked') for item in frontier[key]):
                 raise ValueError('Child capture requires current parent design approval')
         with engine.locked():
-            api.apply_goal_create(engine.adapter, engine.repository, payload['request'])
+            api.apply_goal_create(engine.adapter, engine.repository, payload['request'], allow_deferred=True)
         return {'next_steps': [{'kind': 'checkpoint', 'action': 'Continue execution with the newly captured goal.'}]}
     if operation == 'adopt':
         with engine.locked():
