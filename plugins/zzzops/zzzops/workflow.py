@@ -327,7 +327,17 @@ class Workflow:
             self._portfolio_cache = self.api.portfolio_snapshot(self.repo)
         portfolio = self._portfolio_cache
         if not portfolio.get('complete') or (not allow_invalid and not portfolio.get('valid')):
-            raise ValueError('Repair the goal portfolio before starting or submitting work')
+            findings = portfolio.get('findings') if isinstance(portfolio, dict) else None
+            if isinstance(findings, list) and findings:
+                details = '; '.join(
+                    f"goal {item.get('goal', '?')}: {item.get('code', 'validation_error')} — {item.get('detail', 'inspect the goal record')}"
+                    for item in findings if isinstance(item, dict)
+                )
+                raise ValueError(
+                    'Repair the goal portfolio before starting or submitting work. '
+                    f"Observed validation findings: {details}. Correct the cited goal records and retry."
+                )
+            raise ValueError('Repair the goal portfolio before starting or submitting work; no detailed findings were returned by the portfolio validator.')
         return copy.deepcopy(portfolio['goals'])
 
     @contextmanager
