@@ -122,9 +122,9 @@ def validate_state(value):
     if any(not isinstance(v, dict) for v in value.values()):
         return ['workflow collections must be objects']
     for phase, choice in value.get('routing_choices', {}).items():
-        if not text(phase) or not isinstance(choice, dict) or set(choice) != {'choice', 'root_pair', 'requested_pair', 'approved_by'}:
+        if not text(phase) or not isinstance(choice, dict) or set(choice) not in ({'choice', 'root_pair', 'requested_pair', 'approved_by'}, {'choice', 'root_pair', 'requested_pair', 'approved_by', 'selection'}):
             return ['workflow routing choice is invalid']
-        if choice['choice'] not in {'use_requested_pair', 'downgrade_to_root', 'delegate_at_root'} or not selection(choice['root_pair']) or (choice['requested_pair'] is not None and not selection(choice['requested_pair'])) or not explicit_approval(choice['approved_by']):
+        if choice['choice'] not in {'use_requested_pair', 'downgrade_to_root', 'delegate_at_root'} or not selection(choice['root_pair']) or (choice['requested_pair'] is not None and not selection(choice['requested_pair'])) or ('selection' in choice and not selection(choice['selection'])) or not explicit_approval(choice['approved_by']):
             return ['workflow routing choice is invalid']
     for key, lease in value['leases'].items():
         if not text(key) or ':' not in key:
@@ -1257,10 +1257,15 @@ class Workflow:
                 choice = payload.get('choice')
                 if not step or choice not in step.get('choices', []) or not explicit_approval(payload.get('approved_by')):
                     raise ValueError('Routing choice requires an explicit user-approved current capability checkpoint')
+                override = payload.get('selection')
+                if override is not None and (not isinstance(override, dict) or set(override) != {'model', 'effort'} or any(not isinstance(value, str) or not value.strip() for value in override.values())):
+                    raise ValueError('An explicit model override must contain nonempty model and effort strings')
                 durable['routing_choices'][phase] = {
                     'choice': choice, 'root_pair': step['root_pair'], 'requested_pair': step['requested_pair'],
                     'approved_by': payload['approved_by'],
                 }
+                if override is not None:
+                    durable['routing_choices'][phase]['selection'] = override
                 response = {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'The user-selected route is durable. Re-evaluate the phase.'}]}
             elif operation == 'withdraw':
                 evidence = goal.get('phase_evidence') or self.api.empty_phase_evidence()

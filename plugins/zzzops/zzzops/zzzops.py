@@ -1390,7 +1390,7 @@ def workflow_step_plan(
                 if choice and choice.get("choice") == "downgrade_to_root" and choice.get("root_pair") == runtime["root_pair"]:
                     steps.append({
                         "kind": "human_approval" if human_approval else kind, "phase": phase, "reason": entry["reason"],
-                        "skill": WORKFLOW_PHASE_PROMPTS[(phase, kind)], "assignment": "root", "selection": runtime["root_pair"],
+                        "skill": WORKFLOW_PHASE_PROMPTS[(phase, kind)], "assignment": "root", "selection": choice.get("selection", runtime["root_pair"]),
                     })
                     continue
                 requested = reviewed_model_effort(routing_settings, tier, runtime["available_pairs"])
@@ -1419,7 +1419,7 @@ def workflow_step_plan(
                     if choice and choice.get("choice") == "delegate_at_root" and choice.get("root_pair") == runtime["root_pair"]:
                         steps.append({
                             "kind": kind, "phase": phase, "reason": entry["reason"],
-                            "skill": WORKFLOW_PHASE_PROMPTS[(phase, kind)], "assignment": "delegate", "selection": runtime["root_pair"],
+                            "skill": WORKFLOW_PHASE_PROMPTS[(phase, kind)], "assignment": "delegate", "selection": choice.get("selection", runtime["root_pair"]),
                         })
                         continue
                     steps.append({
