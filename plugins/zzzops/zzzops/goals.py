@@ -92,7 +92,7 @@ def validate_managed_goal(goal: Any, issue_number: int | None = None) -> list[st
     unknown = sorted(set(goal) - GOAL_FIELDS)
     if unknown:
         errors.append("unknown fields: " + ", ".join(unknown))
-    if "workflow" in goal:
+    if "workflow" in goal and goal["workflow"] not in (None, {}):
         errors.extend(_validate_workflow(goal["workflow"]) if _validate_workflow else ["workflow validation is unavailable"])
     if goal.get("schema_version") != GOAL_SCHEMA_VERSION:
         errors.append(f"schema_version must be {GOAL_SCHEMA_VERSION}")
@@ -167,7 +167,7 @@ def validate_managed_goal(goal: Any, issue_number: int | None = None) -> list[st
                         errors.append("engineering_rigor.override.evidence is required")
     if not isinstance(goal.get("revision"), int) or isinstance(goal.get("revision"), bool) or goal.get("revision", 0) < 1:
         errors.append("revision must be a positive integer")
-    if "phase_evidence" in goal:
+    if "phase_evidence" in goal and goal["phase_evidence"] is not None:
         if _validate_phase_evidence is None:
             errors.append("phase_evidence validation is unavailable")
         else:
