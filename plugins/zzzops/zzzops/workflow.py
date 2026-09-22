@@ -1255,6 +1255,11 @@ class Workflow:
             elif operation == 'route_choice':
                 step = next((item for item in self.step(number) if item.get('phase') == phase and item.get('kind') == 'capability_choice'), None)
                 choice = payload.get('choice')
+                existing = durable['routing_choices'].get(phase)
+                if not step and existing and payload.get('selection') is not None:
+                    step = {'root_pair': existing['root_pair'], 'requested_pair': existing.get('requested_pair'), 'choices': [existing['choice']]}
+                    if choice is None:
+                        choice = existing['choice']
                 if not step or choice not in step.get('choices', []) or not explicit_approval(payload.get('approved_by')):
                     raise ValueError('Routing choice requires an explicit user-approved current capability checkpoint')
                 override = payload.get('selection')
