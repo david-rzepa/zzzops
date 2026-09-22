@@ -9,6 +9,8 @@ import zlib
 import hmac
 import json
 import re
+import tempfile
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -615,8 +617,15 @@ def apply_goal_create(adapter: Any, repository: str, request: dict[str, Any], *,
         "zzzops", *request["labels"], current_goal_schema_label(),
         f"zzzops:status:{goal['status']}", f"zzzops:priority:{goal['priority']}",
     ]
+    request_digest = hashlib.sha256(json.dumps(request, sort_keys=True, default=str).encode()).hexdigest()
     created = adapter.create_issue({"title": request["title"], "body": body, "labels": labels})
+    def create_diagnostic(reason: str, **detail: Any) -> None:
+        record = {"time": time.time(), "repository": repository, "request_digest": request_digest, "reason": reason, **detail}
+        path = Path(tempfile.gettempdir()) / "zzzops-goal-create.log"
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")
     if not isinstance(created, dict):
+        create_diagnostic("response_not_object", response_type=type(created).__name__)
         raise GoalTransitionProviderError(
             "GitHub returned an unexpected goal-create response; success was not assumed."
         )
@@ -630,6 +639,7 @@ def apply_goal_create(adapter: Any, repository: str, request: dict[str, Any], *,
     try:
         returned_goal = parse_managed_goal(created.get("body"), number)
     except (TypeError, ValueError) as exc:
+        create_diagnostic("response_goal_parse_failed", response_keys=sorted(created), error=type(exc).__name__)
         raise GoalTransitionProviderError(
             "GitHub returned an unexpected goal-create response; success was not assumed."
         ) from exc
@@ -642,6 +652,8 @@ def apply_goal_create(adapter: Any, repository: str, request: dict[str, Any], *,
         or created.get("html_url") != expected_url
         or returned_goal != goal
     ):
+        create_diagnostic("response_invariant_mismatch", response_keys=sorted(created), number=number,
+                          state=created.get("state"), labels_type=type(returned_label_items).__name__)
         raise GoalTransitionProviderError(
             "GitHub returned an unexpected goal-create response; success was not assumed."
         )
