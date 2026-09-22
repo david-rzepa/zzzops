@@ -606,9 +606,14 @@ def apply_goal_create(adapter: Any, repository: str, request: dict[str, Any], *,
     if adapter.repository.casefold() != repository.casefold():
         raise GoalTransitionProviderError("Repository identity changed; no goal was created.")
     goal = request["goal"]
+    wire_goal = goal
+    if allow_deferred:
+        wire_goal = dict(goal)
+        wire_goal["workflow"] = {"leases": {}, "receipts": {}, "workers": {}, "assessments": {}, "artifacts": {}}
+        wire_goal["phase_evidence"] = {"schema_version": 1, "records": {}, "reviews": {}, "withdrawals": []}
     if allow_deferred:
         separator = "\n\n" if request["body"] and not request["body"].endswith("\n\n") else ""
-        body = f"{request['body']}{separator}{GOAL_BLOCK_START}\n{json.dumps(goal, ensure_ascii=False, sort_keys=True, separators=(',', ':'))}\n{GOAL_BLOCK_END}\n"
+        body = f"{request['body']}{separator}{GOAL_BLOCK_START}\n{json.dumps(wire_goal, ensure_ascii=False, sort_keys=True, separators=(',', ':'))}\n{GOAL_BLOCK_END}\n"
     else:
         body = render_managed_goal(goal, request["body"])
     if len(body) > 65536:
@@ -654,7 +659,7 @@ def apply_goal_create(adapter: Any, repository: str, request: dict[str, Any], *,
         or str(created.get("state", "")).casefold() != "open"
         or returned_labels != set(labels)
         or created.get("html_url") != expected_url
-        or returned_goal != goal
+        or returned_goal != wire_goal
     ):
         create_diagnostic("response_invariant_mismatch", response_keys=sorted(created), number=number,
                           state=created.get("state"), labels_type=type(returned_label_items).__name__)
