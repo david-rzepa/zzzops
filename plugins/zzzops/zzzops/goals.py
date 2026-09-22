@@ -637,7 +637,11 @@ def apply_goal_create(adapter: Any, repository: str, request: dict[str, Any], *,
         if isinstance(label, dict) and isinstance(label.get("name"), str)
     }
     try:
-        returned_goal = parse_managed_goal(created.get("body"), number)
+        if allow_deferred:
+            match = re.search(re.escape(GOAL_BLOCK_START) + r"\s*\n(.*?)\n" + re.escape(GOAL_BLOCK_END), created.get("body", ""), re.DOTALL)
+            returned_goal = json.loads(match.group(1)) if match else None
+        else:
+            returned_goal = parse_managed_goal(created.get("body"), number)
     except (TypeError, ValueError) as exc:
         create_diagnostic("response_goal_parse_failed", response_keys=sorted(created), error=type(exc).__name__)
         raise GoalTransitionProviderError(
