@@ -304,7 +304,7 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
     seen, normalized = set(), []
     for step in steps:
         fields = {"id", "skill", "intent", "audience", "phase", "action", "reason"}
-        optional_fields = {"directive", "model", "effort", "instruction"}
+        optional_fields = {"directive", "model", "effort", "instruction", "diagnostic"}
         if not isinstance(step, dict) or not fields <= set(step) or set(step) - fields - optional_fields or step.get("id") in seen:
             raise ValueError("workflow next step is invalid")
         if step.get("intent") not in WORKFLOW_INTENTS or step["intent"] not in WORKFLOW_SKILL_INTENTS.get(step.get("skill"), set()) or step.get("audience") not in {"root", "worker"}:
@@ -328,19 +328,59 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
             or any(not isinstance(instruction.get(field), str) or not instruction[field] for field in instruction)
         ):
             raise ValueError("workflow next step is invalid")
+        diagnostic = step.get("diagnostic")
+        if diagnostic is not None and (
+            not isinstance(diagnostic, dict) or "failed_invariant" not in diagnostic
+            or set(diagnostic) - {"failed_invariant", "goal", "phase", "operation"}
+            or not isinstance(diagnostic["failed_invariant"], str) or not diagnostic["failed_invariant"]
+            or ("goal" in diagnostic and (not isinstance(diagnostic["goal"], int) or isinstance(diagnostic["goal"], bool) or diagnostic["goal"] < 1))
+            or any(not isinstance(diagnostic[field], str) or not diagnostic[field] for field in ("phase", "operation") if field in diagnostic)
+        ):
+            raise ValueError("workflow next step is invalid")
         seen.add(step["id"])
         normalized.append(dict(step))
     return {"schema_version": 1, "next_steps": normalized}
 
 
-def workflow_repair_step(intent: str, reason: str, action: str, *, source_skill: str | None = None) -> dict[str, Any]:
+def workflow_failure_invariant(reason: str) -> str:
+    """Classify public workflow failures by deterministic repair precedence."""
+    text = reason.casefold()
+    for marker, invariant in (
+        ("baseline failure", "missing_failing_baseline"),
+        ("passing verification", "missing_passing_verification"),
+        ("proof provenance", "invalid_proof_provenance"),
+        ("stored proof", "invalid_proof_provenance"),
+        ("acquisition", "stale_acquisition"),
+        ("policy_receipt", "missing_authority"),
+        ("bound worker", "missing_authority"),
+        ("must be", "malformed_structure"),
+        ("invalid", "malformed_structure"),
+    ):
+        if marker in text:
+            return invariant
+    return "generic_provenance"
+
+
+def workflow_repair_step(
+    intent: str, reason: str, action: str, *, source_skill: str | None = None,
+    goal: int | None = None, phase: str | None = None, operation: str | None = None,
+) -> dict[str, Any]:
     """Return the one actionable repair step for a failed public invocation."""
     skill = source_skill if source_skill in WORKFLOW_SKILL_INTENTS and intent in WORKFLOW_SKILL_INTENTS[source_skill] else WORKFLOW_DEFAULT_SKILLS[intent]
-    return {
+    result = {
         "id": "workflow-repair", "skill": skill, "intent": intent,
         "audience": "root", "phase": "context", "directive": "resolve_blocker",
         "action": action, "reason": reason, "instruction": workflow_instruction("workflow-repair"),
     }
+    context = {"failed_invariant": workflow_failure_invariant(reason)}
+    if goal is not None:
+        context["goal"] = goal
+    if phase is not None:
+        context["phase"] = phase
+    if operation is not None:
+        context["operation"] = operation
+    result["diagnostic"] = context
+    return result
 
 
 def workflow_context_step(
@@ -2667,7 +2707,7 @@ def _private_main() -> int:
             repair = workflow_repair_step(
                 args.intent, "The ZzzOps Agent Plugin package is invalid.",
                 "Repair or reinstall the ZzzOps Agent Plugin package, then invoke workflow again.",
-                source_skill=args.source_skill,
+                source_skill=args.source_skill, goal=getattr(args, "goal", None),
             )
             print(json.dumps({"next_steps": [repair]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 2
@@ -2968,7 +3008,7 @@ def _private_main() -> int:
         if args.command == "workflow":
             repair = workflow_repair_step(
                 args.intent, str(exc), "Repair the reported workflow input or current repository state, then invoke workflow again.",
-                source_skill=args.source_skill,
+                source_skill=args.source_skill, goal=getattr(args, "goal", None),
             )
             print(json.dumps({"next_steps": [repair]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 2

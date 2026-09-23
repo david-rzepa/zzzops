@@ -4981,6 +4981,23 @@ class WorkflowContractTests(unittest.TestCase):
         )
         self.assertEqual("$add-zzzops-goal", fallback["skill"])
 
+    def test_workflow_failure_diagnostics_use_specific_safe_precedence(self):
+        cases = {
+            "submission has invalid proof provenance and missing passing verification": "missing_passing_verification",
+            "submission has invalid proof provenance and missing baseline failure": "missing_failing_baseline",
+            "phase acquisition is stale": "stale_acquisition",
+            "policy_receipt is invalid": "missing_authority",
+            "submission must be an object": "malformed_structure",
+            "unrecognized provider response": "generic_provenance",
+        }
+        for reason, invariant in cases.items():
+            with self.subTest(reason=reason):
+                self.assertEqual(invariant, zzzops.workflow_failure_invariant(reason))
+        repair = zzzops.workflow_repair_step(
+            "execute", "missing passing verification", "Repair.", goal=17, phase="implement", operation="record_result",
+        )
+        self.assertEqual({"failed_invariant": "missing_passing_verification", "goal": 17, "phase": "implement", "operation": "record_result"}, repair["diagnostic"])
+
     def test_policy_review_reuses_capability_evidence_before_tool_selection(self):
         review = (
             PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "policy-review.md"
