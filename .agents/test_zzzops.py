@@ -2683,6 +2683,52 @@ class GoalCreateTests(unittest.TestCase):
         self.assertEqual(zzzops.empty_phase_evidence(), persisted["phase_evidence"])
         self.assertEqual([], zzzops.validate_phase_evidence(persisted["phase_evidence"]))
 
+    def test_child_create_requires_an_independent_implementation_contract(self):
+        request = self.request()
+        request["goal"]["parent"] = 7
+        errors = zzzops._goals.child_goal_readiness_errors(request)
+        self.assertEqual([
+            "child.scope is required", "child.first_falsifiable_probe is required",
+            "child.resolved_decisions is required", "child.migration_evidence is required",
+            "child.independent_delivery is required", "child.merge_boundary is required",
+            "child.acceptance_criteria is required",
+        ], errors)
+
+        request["body"] = """## Outcome
+
+Deliver an independently releasable CLI behavior.
+
+## Acceptance
+
+- [ ] The documented command returns the expected result.
+
+## Scope
+
+Only `plugins/zzzops/zzzops/goals.py` and its focused tests.
+
+## First falsifiable probe
+
+Run the focused goal-create tests before changing validation.
+
+## Decisions
+
+The child owns only its validation rule; no unresolved design decision remains.
+
+## Migration evidence
+
+Not applicable: this changes no persistent state or public API contract.
+
+## Independent delivery
+
+This rule is valuable and testable without the parent implementation.
+
+## Merge boundary
+
+One reviewable validation change with focused tests.
+"""
+        self.assertEqual([], zzzops._goals.child_goal_readiness_errors(request))
+        self.assertEqual([], zzzops.validate_goal_create(request, allow_deferred=True))
+
     def test_create_rejects_malformed_input_before_provider_write(self):
         for change in ("title", "marker", "reserved_label", "long_label", "status", "revision", "implementation"):
             adapter = FakeGoalTransitionAdapter({})

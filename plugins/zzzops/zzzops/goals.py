@@ -465,6 +465,53 @@ def goal_acceptance_criteria(body: str) -> list[str]:
     return criteria
 
 
+def child_goal_readiness_errors(request: Any) -> list[str]:
+    """Return field-specific omissions for a proposed independently runnable child.
+
+    A child adds its own scheduling, merge and lifecycle cost.  Unlike a
+    top-level exploratory capture, it therefore must describe the bounded work
+    that can survive independently before it is created.
+    """
+    if not isinstance(request, dict):
+        return ["child goal request must be an object"]
+    goal, body = request.get("goal"), request.get("body")
+    if not isinstance(goal, dict) or goal.get("parent") is None:
+        return []
+    if not isinstance(body, str):
+        return ["child body is required"]
+
+    headings: dict[str, str] = {}
+    current = None
+    for line in body.split(GOAL_BLOCK_START, 1)[0].splitlines():
+        match = re.match(r"^#{1,3}\s+(.+?)\s*$", line)
+        if match:
+            current = re.sub(r"\s+", " ", match.group(1).casefold())
+            headings.setdefault(current, "")
+        elif current is not None and line.strip():
+            headings[current] += line.strip() + "\n"
+
+    required = {
+        "outcome": "outcome",
+        "scope": "scope",
+        "first falsifiable probe": "first_falsifiable_probe",
+        "decisions": "resolved_decisions",
+        "migration evidence": "migration_evidence",
+        "independent delivery": "independent_delivery",
+        "merge boundary": "merge_boundary",
+    }
+    errors = [f"child.{field} is required" for heading, field in required.items()
+              if not headings.get(heading, "").strip()]
+    try:
+        criteria = goal_acceptance_criteria(body)
+    except ValueError:
+        criteria = []
+    if not criteria:
+        errors.append("child.acceptance_criteria is required")
+    if not isinstance(goal.get("depends_on"), list):
+        errors.append("child.depends_on is required")
+    return errors
+
+
 def current_goal_schema_label() -> str:
     return f"{GOAL_SCHEMA_LABEL_PREFIX}{GOAL_SCHEMA_VERSION}"
 
@@ -572,7 +619,7 @@ def validate_goal_create(request: Any, *, allow_deferred: bool = False) -> list[
             errors.append(f"goal schema_version must be {GOAL_SCHEMA_VERSION}")
         elif goal.get("status", "new") != "new":
             errors.append("newly captured goals must have status new")
-        return errors
+        return errors + child_goal_readiness_errors(request)
     errors.extend(validate_managed_goal(goal))
     if isinstance(goal, dict):
         if goal.get("status") != "new":
@@ -583,7 +630,7 @@ def validate_goal_create(request: Any, *, allow_deferred: bool = False) -> list[
             errors.append("newly created goals must not have a claim")
         if goal.get("implementation") is not None:
             errors.append("newly created goals must not have implementation state")
-    return errors
+    return errors + child_goal_readiness_errors(request)
 
 
 def load_goal_create(path: Path) -> dict[str, Any]:
@@ -594,7 +641,7 @@ def load_goal_create(path: Path) -> dict[str, Any]:
 
 
 def apply_goal_create(adapter: Any, repository: str, request: dict[str, Any], *, allow_deferred: bool = False) -> dict[str, Any]:
-    errors = validate_goal_create(request) if not allow_deferred else []
+    errors = validate_goal_create(request, allow_deferred=allow_deferred)
     if allow_deferred:
         goal = request.get("goal")
         if not isinstance(goal, dict) or goal.get("schema_version") != GOAL_SCHEMA_VERSION:
