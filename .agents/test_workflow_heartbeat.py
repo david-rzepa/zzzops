@@ -197,6 +197,50 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
         self.assertTrue(all(item["detail"] == "TimeoutExpired" for item in unknown))
         self.assertFalse(any(item.get("lease") == "token-timeout" for item in self._lines(self.cli_records)))
 
+    def test_health_classifies_progress_without_releasing_a_quiet_worker(self):
+        result = self._start(53, "implement", "health-token", "active")
+        self._wait(lambda: any(item.get("event") == "renewal_succeeded" for item in self._lines(Path(result["log"]))))
+        active = heartbeat.heartbeat_health(
+            repo=self.repo, root_id="root-a", goal=53, phase="implement", token="health-token", state_dir=self.state,
+        )
+        self.assertEqual("active", active["classification"])
+        heartbeat.record_health(
+            repo=self.repo, root_id="root-a", goal=53, phase="implement", token="health-token",
+            health={"operation_at": 1.0}, state_dir=self.state,
+        )
+        suspect = heartbeat.heartbeat_health(
+            repo=self.repo, root_id="root-a", goal=53, phase="implement", token="health-token", state_dir=self.state, now=time.time() + 1000,
+        )
+        self.assertEqual("suspect", suspect["classification"])
+        self.assertTrue(any(lease["token"] == "health-token" for lease in heartbeat._read(Path(result["config"]))["leases"]))
+        heartbeat.record_health(
+            repo=self.repo, root_id="root-a", goal=53, phase="implement", token="health-token",
+            health={"harness_status": "provider_call"}, state_dir=self.state,
+        )
+        idle = heartbeat.heartbeat_health(
+            repo=self.repo, root_id="root-a", goal=53, phase="implement", token="health-token", state_dir=self.state, now=time.time() + 1000,
+        )
+        self.assertEqual("idle-but-expected", idle["classification"])
+        heartbeat.stop_heartbeat(repo=self.repo, root_id="root-a", goal=53, phase="implement", token="health-token", state_dir=self.state)
+
+    def test_health_stopped_requires_a_terminal_probe_record(self):
+        result = self._start(54, "implement", "stopped-health", "stopped")
+        self._wait(lambda: any(item.get("event") == "worker_stopped" for item in self._lines(Path(result["log"]))))
+        health = heartbeat.heartbeat_health(
+            repo=self.repo, root_id="root-a", goal=54, phase="implement", token="stopped-health", state_dir=self.state,
+        )
+        self.assertEqual("stopped", health["classification"])
+
+    def test_health_rejects_malformed_signals_without_changing_lease(self):
+        result = self._start(55, "implement", "malformed-health", "active")
+        with self.assertRaisesRegex(ValueError, "health"):
+            heartbeat.record_health(
+                repo=self.repo, root_id="root-a", goal=55, phase="implement", token="malformed-health",
+                health={"operation_at": "not-a-time"}, state_dir=self.state,
+            )
+        self.assertTrue(any(lease["token"] == "malformed-health" for lease in heartbeat._read(Path(result["config"]))["leases"]))
+        heartbeat.stop_heartbeat(repo=self.repo, root_id="root-a", goal=55, phase="implement", token="malformed-health", state_dir=self.state)
+
 
     def test_active_probe_with_zero_exit_repair_preserves_liveness(self):
         self.cli.write_text("import json\nprint(json.dumps({'next_steps':[{'kind':'repair'}]}))\n")

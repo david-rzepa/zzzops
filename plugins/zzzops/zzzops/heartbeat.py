@@ -34,6 +34,8 @@ except ImportError:  # POSIX
 
 _PROCESSES: dict[int, subprocess.Popen[Any]] = {}
 _WAKE = threading.Event()
+_HEALTH_SIGNAL_FIELDS = frozenset({"activity_at", "output_at", "cpu_progress_at", "io_progress_at", "operation_at"})
+_EXPECTED_IDLE_STATUSES = frozenset({"waiting", "awaiting_input", "provider_call", "sleeping"})
 
 
 def _ignore_wake_signal() -> None:
@@ -200,11 +202,132 @@ def _windows_pid_alive(pid: int, kernel32: Any = None) -> bool:
 def _log(path: Path, event: str, lease: dict[str, Any], **detail: Any) -> None:
     record = {
         "time": time.time(), "event": event, "goal": lease.get("goal"),
-        "phase": lease.get("phase"), **detail,
+        "phase": lease.get("phase"), "token": lease.get("token"), "actor": lease.get("actor"), **detail,
     }
     descriptor = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
     with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n")
+
+
+def _recent_events(path: Path, maximum_bytes: int = 65536) -> list[dict[str, Any]]:
+    """Return a bounded, structured tail of coordinator-owned log records."""
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            handle.seek(max(0, handle.tell() - maximum_bytes))
+            data = handle.read().decode("utf-8", errors="replace")
+    except OSError:
+        return []
+    if len(data) >= maximum_bytes:
+        data = data.split("\n", 1)[-1]
+    events = []
+    for line in data.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            events.append(event)
+    return events
+
+
+def _health_signal_snapshot(value: Any) -> tuple[dict[str, float], str | None]:
+    if value is None:
+        return {}, None
+    if not isinstance(value, dict):
+        return {}, "malformed_health_signals"
+    signals: dict[str, float] = {}
+    for field in _HEALTH_SIGNAL_FIELDS:
+        signal_at = value.get(field)
+        if signal_at is None:
+            continue
+        if not isinstance(signal_at, (int, float)) or isinstance(signal_at, bool) or not math.isfinite(signal_at):
+            return {}, "malformed_health_signals"
+        signals[field] = float(signal_at)
+    return signals, None
+
+
+def heartbeat_health(
+    *, repo: Path, root_id: str, goal: int, phase: str, token: str,
+    state_dir: Path | None = None, now: float | None = None,
+) -> dict[str, Any]:
+    """Classify local worker health without changing durable or local lease state.
+
+    Health is diagnostic only.  In particular, quiet output, low resource use,
+    a stale provider operation, and an unknown probe never become a stopped
+    result and never remove a lease.
+    """
+    current = time.time() if now is None else now
+    paths = _paths(repo.resolve(), root_id, state_dir)
+    try:
+        config = _read(paths["config"])
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {"classification": "unknown", "evidence_at": current,
+                "explanation": ["The local heartbeat state is malformed or unreadable."],
+                "next_action": "Inspect the local heartbeat state, harness worker status, latest result file, and backend lease before recovery."}
+    lease = next((item for item in config["leases"] if
+                  (item.get("goal"), item.get("phase"), item.get("token")) == (goal, phase, token)), None)
+    events = [event for event in _recent_events(paths["log"])
+              if (event.get("goal"), event.get("phase"), event.get("token")) == (goal, phase, token)]
+    latest = events[-1] if events else None
+    evidence_at = latest.get("time") if isinstance(latest, dict) else None
+    if latest and latest.get("event") == "worker_stopped":
+        return {"classification": "stopped", "evidence_at": evidence_at,
+                "explanation": ["The bound liveness probe recorded a terminal worker status."],
+                "next_action": "Inspect the latest result file and backend lease, then recover only if the durable phase remains incomplete."}
+    if lease is None:
+        return {"classification": "unknown", "evidence_at": evidence_at,
+                "explanation": ["No matching local heartbeat lease is currently tracked; no terminal worker status was observed."],
+                "next_action": "Inspect the real process, harness worker status, latest result file, and backend lease before recovery."}
+    signals, malformed = _health_signal_snapshot(lease.get("health"))
+    if malformed:
+        return {"classification": "unknown", "evidence_at": evidence_at,
+                "explanation": ["The worker health signal data is malformed."],
+                "next_action": "Inspect the real process, harness worker status, latest result file, and backend lease before recovery."}
+    if latest and latest.get("event") == "liveness_unknown":
+        return {"classification": "unknown", "evidence_at": evidence_at,
+                "explanation": ["The liveness probe did not establish a terminal worker status."],
+                "next_action": "Inspect the real process, harness worker status, latest result file, and backend lease before recovery."}
+    harness_status = lease.get("health", {}).get("harness_status") if isinstance(lease.get("health"), dict) else None
+    newest_signal = max(signals.values(), default=evidence_at if isinstance(evidence_at, (int, float)) else None)
+    threshold = 900.0 if phase in {"understanding", "test_design", "test_execution"} else 300.0
+    if harness_status in _EXPECTED_IDLE_STATUSES:
+        classification = "idle-but-expected"
+        explanation = [f"Harness reports expected idle state: {harness_status}."]
+    elif newest_signal is None:
+        classification = "unknown"
+        explanation = ["No privacy-safe activity signal has been recorded yet."]
+    elif current - newest_signal <= threshold:
+        classification = "active"
+        explanation = ["Recent heartbeat renewal or worker progress signal was observed."]
+    else:
+        classification = "suspect"
+        explanation = [f"No progress signal has been observed for {current - newest_signal:.0f}s (threshold {threshold:.0f}s)."]
+    return {"classification": classification, "evidence_at": newest_signal,
+            "signals": sorted(signals), "harness_status": harness_status,
+            "explanation": explanation,
+            "next_action": "Wait and recheck." if classification in {"active", "idle-but-expected"} else
+                           "Inspect the real process, harness worker status, latest result file, and backend lease before recovery."}
+
+
+def record_health(
+    *, repo: Path, root_id: str, goal: int, phase: str, token: str,
+    health: dict[str, Any], state_dir: Path | None = None,
+) -> None:
+    """Persist timestamp-only health evidence for one already-tracked lease."""
+    signals, malformed = _health_signal_snapshot(health)
+    status = health.get("harness_status") if isinstance(health, dict) else None
+    if malformed or (status is not None and not isinstance(status, str)):
+        raise ValueError("health must contain only finite timestamp signals and an optional text harness_status")
+    paths = _paths(repo.resolve(), root_id, state_dir)
+    with _locked(paths["update_lock"]):
+        config = _read(paths["config"])
+        for lease in config["leases"]:
+            if (lease.get("goal"), lease.get("phase"), lease.get("token")) == (goal, phase, token):
+                lease["health"] = {**signals, **({"harness_status": status} if status else {})}
+                _atomic_write(paths["config"], config)
+                return
+    raise ValueError("heartbeat lease is not tracked")
 
 
 def _remove_lease(config_path: Path, update_lock: Path, goal: int, phase: str, token: str) -> None:
@@ -438,6 +561,7 @@ def run(config_path: Path) -> int:
                         probe = exc
                     else:
                         if _renewal_acknowledged(renewed, lease):
+                            _log(log_path, "renewal_succeeded", lease, worker_status="active")
                             failures.pop(token, None)
                             continue
                         probe = renewed

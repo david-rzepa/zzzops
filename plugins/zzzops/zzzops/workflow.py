@@ -1129,6 +1129,17 @@ class Workflow:
                         'heartbeat': 'Use the bound worker liveness probe as the primary monitor: active means wait; stopped means inspect results before recovery; unknown means diagnose the real worker and backend lease.',
                         'recovery': step['recovery_contract'],
                     }
+                    try:
+                        step['monitor']['health'] = self.api._heartbeat.heartbeat_health(
+                            repo=self.repo, root_id=lease['owner'], goal=number, phase=phase,
+                            token=lease['token'],
+                        )
+                    except (OSError, ValueError):
+                        step['monitor']['health'] = {
+                            'classification': 'unknown',
+                            'explanation': ['Local heartbeat health could not be read.'],
+                            'next_action': 'Inspect the real process, harness worker status, latest result file, and backend lease before recovery.',
+                        }
             else:
                 step['action'] = 'Acquire this phase with the start request before doing work; bind the actual executor before submitting evidence.'
         if not steps and result['frontier']['blocked']:
