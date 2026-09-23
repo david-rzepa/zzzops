@@ -968,7 +968,9 @@ class Workflow:
             self.repo, (json.dumps(document, sort_keys=True, indent=2) + '\n').encode('utf-8'))
 
     def step(self, number):
-        _, goal = self.read(number)
+        # Phase contracts must be derived from the same exact body that the
+        # locked mutation path validates.
+        goal = self.api.github_goal_record(self.adapter.get_issue(number))
         if goal['status'] in {'done', 'cancelled'}:
             return []
         if goal.get('needs_human'):
@@ -1285,7 +1287,10 @@ class Workflow:
             # Public preflight already validated the portfolio. Renewal only touches
             # this exact lease; rehydrating every goal under the lock caused timeouts.
             portfolio = [] if payload.get('operation') == 'renew' else self.portfolio(allow_invalid=payload.get('operation') in {'revise', 'recover_legacy'})
-            issue, goal = self.read(number)
+            # A mutation must re-read its exact provider body under the storage
+            # lock; read-only workflow context remains portfolio-gateway-only.
+            issue = self.adapter.get_issue(number)
+            goal = self.api.github_goal_record(issue)
             if portfolio and payload.get('operation') not in {'revise', 'recover_legacy'}:
                 projected = next((record for record in portfolio if record['key'] == number), None)
                 if projected is not None:
@@ -1707,6 +1712,26 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
                 'action': 'Recheck active leases after the interval; do not start work beyond the reviewed capacity.',
             },
         }
+    # Understanding is the portfolio intake gate. It exposes unresolved human
+    # scope and authority questions before new downstream work is dispatched;
+    # existing leases are counted above but never revoked here.
+    pending_understanding = []
+    for goal in goals:
+        if goal.get('status') in {'done', 'cancelled'}:
+            continue
+        evidence = goal.get('phase_evidence') or {}
+        record = (evidence.get('records') or {}).get('understand')
+        review = (evidence.get('reviews') or {}).get('understand')
+        if not isinstance(record, dict) or not isinstance(review, dict) or review.get('record_hash') != digest(record):
+            pending_understanding.append(goal)
+    if pending_understanding and number is None:
+        steps = []
+        for goal in pending_understanding:
+            steps.extend(step for step in engine.step(goal['key']) if step.get('phase') == 'understand')
+            if len(steps) >= limit:
+                break
+        if steps:
+            return {'next_steps': steps[:limit]}
     if number is not None:
         if number not in {g['key'] for g in goals}:
             raise ValueError('Requested goal is not in the validated portfolio')
@@ -1871,7 +1896,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         # Capture occurs while the human who approved the goal is present.
         # Surface its required understanding work now instead of losing that
         # review opportunity behind a generic later checkpoint.
-        return {'next_steps': engine.step(created['number'])}
+        return checkpoint(api, repo, project, runtime, engine=engine)
     if operation == 'adopt':
         with engine.locked():
             api.migrate_open_repository_goals(repo, project, limit=payload.get('limit', 25))
