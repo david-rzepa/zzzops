@@ -1866,8 +1866,12 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             if any(item['phase'] == 'understand' for key in ('execute', 'review', 'blocked') for item in frontier[key]):
                 raise ValueError('Child capture requires current parent design approval')
         with engine.locked():
-            api.apply_goal_create(engine.adapter, engine.repository, payload['request'], allow_deferred=True)
-        return {'next_steps': [{'kind': 'checkpoint', 'action': 'Continue execution with the newly captured goal.'}]}
+            created = api.apply_goal_create(engine.adapter, engine.repository, payload['request'], allow_deferred=True)
+        engine.invalidate()
+        # Capture occurs while the human who approved the goal is present.
+        # Surface its required understanding work now instead of losing that
+        # review opportunity behind a generic later checkpoint.
+        return {'next_steps': engine.step(created['number'])}
     if operation == 'adopt':
         with engine.locked():
             api.migrate_open_repository_goals(repo, project, limit=payload.get('limit', 25))
