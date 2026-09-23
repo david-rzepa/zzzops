@@ -4755,6 +4755,10 @@ class WorkflowContractTests(unittest.TestCase):
         package = {"version": "0.0.0-dev", "revision": "a" * 40}
         status.return_value = {"required": True, "reason": "package_changed"}
         self.assertEqual("installation-validation", zzzops.workflow_context_step(Path("."), package)["id"])
+        inspection.return_value = {"initialized": True}
+        self.assertIsNone(
+            zzzops.workflow_context_step(Path("."), package, skip_installation_validation=True)
+        )
         inspection.return_value = {"initialized": False, "state": {}, "decision_blockers": ["policy:model_routing"]}
         self.assertIsNone(
             zzzops.workflow_context_step(Path("."), package, source_skill="$validate-zzzops-installation")

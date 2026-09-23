@@ -345,12 +345,13 @@ def workflow_repair_step(intent: str, reason: str, action: str, *, source_skill:
 
 def workflow_context_step(
     repo: Path, package: dict[str, Any], *, source_skill: str | None = None,
+    skip_installation_validation: bool = False,
 ) -> dict[str, Any] | None:
     """Derive the mandatory shared context gate without retaining workflow state."""
     provenance = {field: package.get(field) for field in ("version", "revision")}
     if all(isinstance(value, str) and value for value in provenance.values()):
         status = _installation.validation_status(repo, provenance)
-        if status.get("required") is True:
+        if status.get("required") is True and not skip_installation_validation:
             if source_skill == "$validate-zzzops-installation":
                 return None
             return {
@@ -2519,6 +2520,7 @@ def _private_main() -> int:
     workflow_parser.add_argument("--source-skill", choices=sorted(WORKFLOW_SKILL_INTENTS), help="Named skill that initiated this public workflow call")
     workflow_parser.add_argument("--runtime", type=Path, help="Current root and available model-effort pairs as JSON")
     workflow_parser.add_argument("--input", type=Path, help="UTF-8 result or review submission JSON")
+    workflow_parser.add_argument("--skip-installation-validation", action="store_true", help="Proceed despite an unrecorded local plugin-package change")
     installation = commands.add_parser("installation", help="Check or record per-repository plugin validation")
     installation_commands = installation.add_subparsers(dest="installation_command", required=True)
     installation_commands.add_parser("status", help="Report whether this installed package needs repository validation")
@@ -2739,7 +2741,10 @@ def _private_main() -> int:
                     if args.runtime is not None or args.input is not None:
                         raise ValueError("Workflow runtime and phase-evidence input require a managed goal")
                     source_skill = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
-                    context = workflow_context_step(repo, package, source_skill=source_skill)
+                    context = workflow_context_step(
+                        repo, package, source_skill=source_skill,
+                        **({"skip_installation_validation": True} if args.skip_installation_validation else {}),
+                    )
                     if context is not None:
                         result = {"next_steps": [context]}
                     else:
@@ -2752,7 +2757,10 @@ def _private_main() -> int:
                     raise ValueError("Goal phase checkpoints require execute or preview intent")
                 else:
                     source_skill = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
-                    context = workflow_context_step(repo, package, source_skill=source_skill)
+                    context = workflow_context_step(
+                        repo, package, source_skill=source_skill,
+                        **({"skip_installation_validation": True} if args.skip_installation_validation else {}),
+                    )
                     if context is not None:
                         result = {"next_steps": [context]}
                     elif args.input:
@@ -2990,6 +2998,7 @@ def main() -> int:
     parser.add_argument("--goal", type=int)
     parser.add_argument("--runtime", type=Path)
     parser.add_argument("--input", type=Path)
+    parser.add_argument("--skip-installation-validation", action="store_true")
     if len(sys.argv) == 1:
         parser.print_help()
         return 0
@@ -3006,7 +3015,10 @@ def main() -> int:
                 float(os.environ.get('ZZZOPS_RENEWAL_TIMEOUT_SECONDS', '30')),
                 float(os.environ.get('ZZZOPS_RENEWAL_CLEANUP_SECONDS', '10')),
             )
-        result = _workflow.public_run(services, args.repo.resolve(), args.intent, source, runtime, payload, args.goal)
+        result = _workflow.public_run(
+            services, args.repo.resolve(), args.intent, source, runtime, payload, args.goal,
+            skip_installation_validation=args.skip_installation_validation,
+        )
         print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
         return 0
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:

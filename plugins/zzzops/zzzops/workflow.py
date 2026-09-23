@@ -1612,7 +1612,7 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     return {'next_steps': (runnable_steps or waiting_steps)[:limit]}
 
 
-def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_snapshot=None):
+def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_snapshot=None, skip_installation_validation=False):
     """Route every intent through context gates; repairs use the same entrypoint."""
     if payload is not None and not isinstance(payload, dict):
         raise ValueError('Submission must be a JSON object')
@@ -1628,11 +1628,11 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
     if readonly and payload is not None:
         raise ValueError('Preview never accepts mutations')
     provenance = {f: package.get(f) for f in ('version', 'revision')}
-    gate = api.workflow_context_step(repo, package)
+    gate = api.workflow_context_step(repo, package, skip_installation_validation=skip_installation_validation)
     # These operations repair only the prerequisite they own. Other intents do
     # not skip gates merely because their skill name was supplied by a caller.
     installation = api._installation.validation_status(repo, provenance) if all(isinstance(v, str) for v in provenance.values()) else {'required': False}
-    if installation.get('required'):
+    if installation.get('required') and not skip_installation_validation:
         audit = api._installation.installation_audit(repo)
         if operation == 'installation_record':
             api._installation.record_validation(repo, provenance, outcome=payload['outcome'], audit_signature=payload['audit_signature'])
@@ -1788,9 +1788,12 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
     return checkpoint(api, repo, project, runtime, number, engine=engine)
 
 
-def public_run(api, repo, intent, source, runtime, payload, number):
+def public_run(api, repo, intent, source, runtime, payload, number, *, skip_installation_validation=False):
     snapshot = {}
-    result = _public_run(api, repo, intent, source, runtime, payload, number, policy_snapshot=snapshot)
+    result = _public_run(
+        api, repo, intent, source, runtime, payload, number, policy_snapshot=snapshot,
+        skip_installation_validation=skip_installation_validation,
+    )
     if api._policy_context.needs_context(result):
         return api._policy_context.attach(
             result, repo, snapshot['project'], source=source,
