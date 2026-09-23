@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import importlib.util
 import hashlib
 import hmac
@@ -1151,6 +1152,33 @@ def github_issue_history(repo: Path, project: dict[str, Any], issue_number: int)
         raise ValueError("GitHub goal-history read is incomplete or malformed") from exc
 
 
+def _github_goal_by_number(repo: Path, executable: str, owner: str, name: str, number: int) -> tuple[dict[str, Any], int]:
+    """Read one relation target that was absent from the open-goal broadphase.
+
+    This is deliberately a single issue read, not a closed-history query.  It
+    is used only after an open goal has named the target as its parent or
+    dependency, so archived history remains out of ordinary execution.
+    """
+    if isinstance(number, bool) or not isinstance(number, int) or number < 1:
+        raise ValueError("goal relation target must be a positive integer")
+    try:
+        result = subprocess.run(
+            [executable, "api", f"repos/{owner}/{name}/issues/{number}"],
+            cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError(f"GitHub goal relation read failed: {type(exc).__name__}") from exc
+    if result.returncode:
+        raise ValueError("GitHub goal relation read failed: " + (result.stderr.strip() or "unknown gh error"))
+    try:
+        issue = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise ValueError("GitHub goal relation read returned invalid JSON") from exc
+    if not isinstance(issue, dict) or issue.get("number") != number:
+        raise ValueError("GitHub goal relation read returned the wrong issue")
+    return issue, len(result.stdout.encode("utf-8"))
+
+
 def _github_repository_capability(data: dict[str, Any]) -> dict[str, Any]:
     permission = data.get("viewerPermission")
     issues_enabled = data.get("hasIssuesEnabled") is True
@@ -1386,6 +1414,27 @@ def github_repository_portfolio_snapshot(
             valid_open.append(candidate)
         except (KeyError, TypeError, ValueError) as exc:
             findings.append({"code": "malformed_record", "goal": issue["number"], "detail": str(exc)})
+    # The broadphase contains every open goal.  Only relations it cannot
+    # resolve there may need an exact archived-goal projection.
+    discovered_keys = {issue["number"] for issue in selected}
+    relation_targets = {
+        target
+        for record in open_records
+        for target in [record.get("parent"), *(record.get("depends_on") or [])]
+        if isinstance(target, int) and not isinstance(target, bool) and target not in discovered_keys
+    }
+    archived_records = []
+    relation_bytes = 0
+    relation_processes = 0
+    for target in sorted(relation_targets):
+        try:
+            issue, raw_bytes = _github_goal_by_number(repo, executable, owner, name, target)
+            relation_bytes += raw_bytes
+            relation_processes += 1
+            if str(issue.get("state", "")).casefold() == "closed":
+                archived_records.append(github_archived_goal_record(issue))
+        except (KeyError, TypeError, ValueError) as exc:
+            findings.append({"code": "relation_read_failed", "goal": target, "detail": str(exc)})
     if hydration_processes:
         _store_open_bodies(repo, identity, include_feedback, selected, bodies, {record["key"]: record for record in open_records})
     pull_request_states, pull_request_bytes, pull_request_processes = _github_pull_request_states(
@@ -1398,8 +1447,9 @@ def github_repository_portfolio_snapshot(
             record["repository"] = project["repository"]["identity"]
     snapshot = _timed_call(
         timing, "graph_validation", lambda: _portfolio_from_hydrated_goals(
-            project, selected, open_records, findings, discovery_bytes, discovery_reads,
-            hydration_bytes + pull_request_bytes, hydration_processes + pull_request_processes, excluded,
+            project, selected, open_records + archived_records, findings, discovery_bytes, discovery_reads,
+            hydration_bytes + relation_bytes + pull_request_bytes,
+            hydration_processes + relation_processes + pull_request_processes, excluded,
         ),
     )
     return repository_probe, snapshot

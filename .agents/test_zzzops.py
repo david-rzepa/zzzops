@@ -3757,13 +3757,56 @@ class PortfolioTests(unittest.TestCase):
         with mock.patch.object(zzzops.shutil, "which", return_value="gh"), \
              mock.patch.object(zzzops, "github_repository_goal_index", return_value=({}, selected, [], 0, 1, 0)), \
              mock.patch.object(zzzops, "_github_goal_bodies", return_value=(bodies, 0, 1)), \
-             mock.patch.object(zzzops, "_github_pull_request_states", return_value=({}, 0, 0)) as pull_requests:
+            mock.patch.object(zzzops, "_github_pull_request_states", return_value=({}, 0, 0)) as pull_requests:
             _, snapshot = zzzops.github_repository_portfolio_snapshot(Path("."), project)
 
         self.assertTrue(snapshot["valid"])
         self.assertEqual([1], [goal["key"] for goal in snapshot["goals"]])
         self.assertEqual(["malformed_record"], [finding["code"] for finding in snapshot["findings"]])
         self.assertEqual([1], [issue["number"] for issue in pull_requests.call_args.args[2]])
+
+    def test_open_goal_hydrates_only_its_exact_closed_dependency_without_unrelated_pr_reads(self):
+        open_child = self.issue(1, depends_on=[2])
+        closed_parent = self.issue(2, status="done")
+        bodies = {1: {"body": open_child["body"], "updated_at": open_child["updated_at"]}}
+        project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {"sections": [
+            {"id": "autonomy_approval_parallelism", "configuration": TEST_AUTONOMY_CONFIGURATION},
+            TEST_RIGOR_POLICY,
+        ]}}
+        with (
+            mock.patch.object(zzzops.shutil, "which", return_value="gh"),
+            mock.patch.object(zzzops, "github_repository_goal_index", return_value=({}, [open_child], [], 0, 1, 0)),
+            mock.patch.object(zzzops, "_github_goal_bodies", return_value=(bodies, 0, 1)),
+            mock.patch.object(zzzops, "_github_goal_by_number", return_value=(closed_parent, 20)) as relation_read,
+            mock.patch.object(zzzops, "_github_pull_request_states", return_value=({}, 0, 0)) as pull_requests,
+        ):
+            _, snapshot = zzzops.github_repository_portfolio_snapshot(Path("."), project)
+
+        self.assertTrue(snapshot["valid"])
+        self.assertEqual([1, 2], [goal["key"] for goal in snapshot["goals"]])
+        relation_read.assert_called_once_with(Path("."), "gh", "owner", "repo", 2)
+        self.assertEqual([1], [issue["number"] for issue in pull_requests.call_args.args[2]])
+
+    def test_history_audit_reuses_discovered_closed_relation_without_exact_refetch(self):
+        open_child = self.issue(1, depends_on=[2])
+        closed_parent = self.issue(2, status="done")
+        bodies = {1: {"body": open_child["body"], "updated_at": open_child["updated_at"]}}
+        project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {"sections": [
+            {"id": "autonomy_approval_parallelism", "configuration": TEST_AUTONOMY_CONFIGURATION},
+            TEST_RIGOR_POLICY,
+        ]}}
+        with (
+            mock.patch.object(zzzops.shutil, "which", return_value="gh"),
+            mock.patch.object(zzzops, "github_repository_goal_index", return_value=({}, [open_child, closed_parent], [], 0, 1, 0)),
+            mock.patch.object(zzzops, "_github_goal_bodies", return_value=(bodies, 0, 1)),
+            mock.patch.object(zzzops, "_github_goal_by_number") as relation_read,
+            mock.patch.object(zzzops, "_github_pull_request_states", return_value=({}, 0, 0)),
+        ):
+            _, snapshot = zzzops.github_repository_portfolio_snapshot(Path("."), project, include_history=True)
+
+        self.assertTrue(snapshot["valid"])
+        self.assertEqual([1, 2], [goal["key"] for goal in snapshot["goals"]])
+        relation_read.assert_not_called()
 
     def test_snapshot_projects_explicit_work_states(self):
         records = [
