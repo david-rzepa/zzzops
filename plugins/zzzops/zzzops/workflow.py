@@ -121,7 +121,8 @@ def validate_state(value):
     for key, lease in value['leases'].items():
         if not text(key) or ':' not in key:
             return ['workflow lease map identity is invalid']
-        if not isinstance(lease, dict) or set(lease) != {'token', 'owner', 'worker', 'selection', 'kind', 'input_hash', 'expires_at', 'group', 'record_hash', 'review_hash'}:
+        fields = {'token', 'owner', 'worker', 'selection', 'kind', 'input_hash', 'expires_at', 'group', 'record_hash', 'review_hash'}
+        if not isinstance(lease, dict) or set(lease) not in (fields, fields | {'acquisition'}):
             return ['workflow lease fields are invalid']
         phase, separator, kind = key.rpartition(':')
         if not separator or not text(phase) or kind not in {'execute', 'review', 'human_approval'} or lease['kind'] != kind:
@@ -140,8 +141,17 @@ def validate_state(value):
         if kind == 'execute':
             if lease['record_hash'] is not None or lease['review_hash'] is not None:
                 return ['workflow lease evidence binding is invalid']
+            acquisition = lease.get('acquisition')
+            if 'acquisition' in lease and (
+                not valid_acquisition(acquisition, envelope=True)
+                or digest(acquisition['input_envelope']) != lease['input_hash']
+                or acquisition['input_envelope'].get('phase') != phase
+            ):
+                return ['workflow lease acquisition is invalid']
         elif not sha256(lease['record_hash']) or (kind == 'review' and lease['review_hash'] is not None) or (kind == 'human_approval' and not sha256(lease['review_hash'])):
             return ['workflow lease evidence binding is invalid']
+        elif 'acquisition' in lease:
+            return ['Only execution leases carry acquisition evidence']
     for request_id, receipt in value['receipts'].items():
         if not text(request_id) or not isinstance(receipt, dict) or set(receipt) != {'hash'} or not sha256(receipt['hash']):
             return ['workflow receipt is invalid']
@@ -169,8 +179,16 @@ def validate_state(value):
         if not isinstance(files, list) or any(not text(path) for path in files) or len(files) != len(set(files)):
             return ['workflow assessment files are invalid']
     for phase, artifact in value['artifacts'].items():
-        if not text(phase) or not isinstance(artifact, dict) or set(artifact) != {'commands', 'workspace', 'passed'}:
+        fields = {'commands', 'workspace', 'passed'}
+        if not text(phase) or not isinstance(artifact, dict) or set(artifact) not in (fields, fields | {'acquisition', 'phase', 'lease', 'actor', 'outputs'}):
             return ['workflow verification artifact is invalid']
+        if 'acquisition' in artifact and (
+            not valid_acquisition(artifact['acquisition']) or artifact['phase'] != phase
+            or not all(text(artifact[field]) for field in ('lease', 'actor'))
+            or not isinstance(artifact['outputs'], dict)
+            or any(not text(path) or (value != 'missing' and not sha256(value)) for path, value in artifact['outputs'].items())
+        ):
+            return ['workflow verification acquisition/output evidence is invalid']
         commands = artifact.get('commands')
         if not sha256(artifact.get('workspace')) or not isinstance(artifact.get('passed'), bool) or not isinstance(commands, list) or not commands:
             return ['workflow verification artifact is invalid']
@@ -189,6 +207,29 @@ def validate_state(value):
         if artifact['passed'] != all(result['exit_code'] == 0 for result in commands):
             return ['workflow verification result is inconsistent']
     return []
+
+
+def valid_predecessor_reference(value):
+    return (isinstance(value, dict) and set(value) == {'reference', 'hash'}
+            and isinstance(value['hash'], str)
+            and re.fullmatch(r'sha256:[0-9a-f]{64}', value['hash']) is not None
+            and value['reference'] == 'urn:' + value['hash'])
+
+
+def valid_acquisition(value, *, envelope=False):
+    fields = {'git_commit', 'workspace_digest', 'input_envelope' if envelope else 'input_hash'}
+    return (
+        isinstance(value, dict) and set(value) in (fields, fields | {'predecessor'}, fields | {'checkout_overrides'}, fields | {'predecessor', 'checkout_overrides'})
+        and ('checkout_overrides' not in value or (isinstance(value['checkout_overrides'], dict) and all(isinstance(k, str) and bool(k) and not k.startswith('/') and '\\' not in k and all(part not in ('', '.', '..') for part in k.split('/')) and not k.startswith('.zzzops/') and isinstance(v, str) and re.fullmatch(r'sha256:[0-9a-f]{64}', v) for k, v in value['checkout_overrides'].items())))
+        and ('predecessor' not in value or valid_predecessor_reference(value['predecessor']))
+        and isinstance(value['git_commit'], str)
+        and re.fullmatch(r'[0-9a-f]{40,64}', value['git_commit']) is not None
+        and isinstance(value['workspace_digest'], str)
+        and re.fullmatch(r'sha256:[0-9a-f]{64}', value['workspace_digest']) is not None
+        and (isinstance(value['input_envelope'], dict) and value['input_envelope'].get('schema_version') == 2
+             and isinstance(value['input_envelope'].get('repository'), dict) if envelope else
+             isinstance(value['input_hash'], str) and re.fullmatch(r'sha256:[0-9a-f]{64}', value['input_hash']) is not None)
+    )
 
 
 class Workflow:
@@ -234,6 +275,16 @@ class Workflow:
         return {'reference': 'urn:' + identity, 'hash': identity}
 
     def read_artifact(self, number, artifact):
+        # Content-addressed successful reads may be reused within this invocation.
+        # Live records/review bindings are still checked independently each time.
+        key = (number, digest(artifact))
+        cache = getattr(self, '_immutable_artifacts', {})
+        if key not in cache:
+            cache[key] = self._read_artifact(number, artifact)
+            self._immutable_artifacts = cache
+        return copy.deepcopy(cache[key])
+
+    def _read_artifact(self, number, artifact):
         artifact = self.api._phase_evidence._artifact(artifact, 'artifact', required=True)
         reference, expected = artifact['reference'], artifact['hash']
         if reference.startswith('git:'):
@@ -360,6 +411,7 @@ class Workflow:
         # Only explicitly consumed files invalidate a phase. HEAD/revision and
         # other operational bookkeeping must not invalidate a reviewed design.
         for phase, envelope in live.items():
+            versions = self.owned_versions(goal, phase)
             node = next(node for node in graph['phases'] if node['id'] == phase)
             if goal.get('parent'):
                 _, parent = self.read(goal['parent'])
@@ -380,7 +432,20 @@ class Workflow:
             prior = evidence['records'].get(phase, {}).get('input_envelope', {})
             assessment = state(goal)['assessments'].get(phase)
             paths = assessment.get('files', []) if assessment else prior.get('repository', {}).get('snapshot', {}).get('files', {})
-            envelope['repository']['snapshot'] = {'files': self.file_hashes(paths)}
+            actual = self.file_hashes(paths)
+            lease = state(goal)['leases'].get(phase + ':execute', {})
+            acquisition = self.acquisition(goal, phase, lease)
+            frozen = acquisition.get('input_envelope', {}) if acquisition else prior
+            before = frozen.get('repository', {}).get('snapshot', {}).get('files', {})
+            review = evidence['reviews'].get(phase)
+            if not acquisition and review and review['decision'] == 'changes_requested':
+                # Correction reads the actual produced baseline, not the rejected
+                # execution's historical input map. Prerequisites stay historical.
+                before = {}
+            for path, value in before.items():
+                if path in actual and value in versions.get(path, set()):
+                    actual[path] = value
+            envelope['repository']['snapshot'] = {'files': actual}
             if assessment:
                 envelope['capabilities']['snapshot'] = {'assessment': assessment}
             if phase == 'publish' and not goal.get('parent'):
@@ -392,9 +457,331 @@ class Workflow:
             if phase == 'publish' and (goal.get('implementation') or {}).get('branch'):
                 envelope['provider']['snapshot']['publication'] = self.publication_identity(goal)
             proof = state(goal)['artifacts'].get(phase)
-            if proof and proof.get('workspace') and proof['workspace'] != self.workspace_digest():
+            withdrawn = any(item['phase'] == phase for item in evidence['withdrawals'])
+            if not withdrawn and proof and proof.get('workspace') and proof['workspace'] != self.workspace_digest() and not (versions and self.historical_proof(goal, phase, proof)):
                 envelope['repository']['snapshot']['output_drift'] = self.workspace_digest()
         return live
+
+    def historical_proof(self, goal, phase, proof):
+        if phase not in {'test_design', 'implement'}:
+            return False
+        lease = state(goal)['leases'].get(phase + ':execute')
+        if lease and self.acquisition(goal, phase, lease):
+            return True
+        return proof.get('workspace') in getattr(self, '_connected_workspaces', set())
+
+    def reviewed_scope(self, goal):
+        """Only substantive reviewed plans grant the small, finite output scope."""
+        if not goal.get('parent'):
+            return None
+        scopes = []
+        for current in (self.read(goal['parent'])[1], goal):
+            evidence = current.get('phase_evidence') or self.api.empty_phase_evidence()
+            record, review = evidence['records'].get('plan'), evidence['reviews'].get('plan')
+            if not record or not review or review['decision'] != 'approved' or review['reviewer'] == record['actor']:
+                return None
+            if any(item['phase'] == 'plan' for item in evidence['withdrawals']):
+                return None
+            if review['record_hash'] != digest(record) or review['input_hash'] != record['input_hash']:
+                return None
+            graph, _ = self.api._workflow_phase_configuration(self.project, current)
+            live = self.api.workflow_live_inputs(self.repo, self.project, current, 'execute', graph)['plan']
+            if any(record['input_envelope'][field] != live[field] for field in ('goal_spec', 'policy', 'phase_dag')):
+                return None
+            content = self.read_artifact(current['key'], record['output'])
+            scope = content.get('output_scope') if isinstance(content, dict) else None
+            if current['key'] == goal['parent'] and isinstance(content, dict) and 'output_scopes' in content:
+                entries = content['output_scopes']
+                if scope is not None or not isinstance(entries, list) or any(not isinstance(x, dict) for x in entries):
+                    return None
+                identifiers = [x.get('child') for x in entries]
+                if any(not isinstance(x, int) or isinstance(x, bool) for x in identifiers) or len(identifiers) != len(set(identifiers)):
+                    return None
+                scope = next((x for x in entries if x.get('child') == goal['key']), None)
+            if not isinstance(scope, dict) or set(scope) != {'parent', 'child', 'test_design', 'implement'}:
+                return None
+            if scope['parent'] != goal['parent'] or scope['child'] != goal['key']:
+                return None
+            paths = scope['test_design'] + scope['implement'] if all(isinstance(scope[p], list) for p in ('test_design', 'implement')) else []
+            if not all(isinstance(scope[p], list) for p in ('test_design', 'implement')) or any(not isinstance(p, str) for p in paths) or len(paths) != len(set(paths)):
+                raise ValueError('Reviewed output scope must contain distinct finite paths')
+            for path in paths:
+                if not isinstance(path, str) or Path(path).is_absolute() or Path(path).as_posix() != path or '..' in Path(path).parts or path.startswith('.zzzops/') or path == 'AGENTS.md':
+                    raise ValueError('Output scope paths must be canonical repository files')
+            self.file_hashes(paths)  # Resolves symlinks and rejects worktree escapes.
+            scopes.append(scope)
+        if scopes[0] != scopes[1]:
+            return None
+        return scopes[0]
+
+    def git_files(self, commit):
+        cache = getattr(self, '_git_snapshots', {})
+        if commit in cache:
+            return copy.deepcopy(cache[commit])
+        result = {}
+        raw = subprocess.run(['git', 'ls-tree', '-rz', '--full-tree', commit], cwd=self.repo, capture_output=True, check=True).stdout
+        for entry in raw.split(b'\0'):
+            if not entry:
+                continue
+            metadata, name = entry.split(b'\t', 1)
+            path = name.decode('utf-8')
+            if path.startswith('.zzzops/'):
+                continue
+            _, kind, oid = metadata.split()
+            if kind != b'blob':
+                raise ValueError('Acquisition snapshot requires ordinary Git file entries')
+            content = subprocess.run(['git', 'cat-file', 'blob', oid.decode()], cwd=self.repo, capture_output=True, check=True).stdout
+            result[path] = 'sha256:' + hashlib.sha256(content).hexdigest()
+        self._git_snapshots = {**cache, commit: result}
+        return copy.deepcopy(result)
+
+    def acquisition_files(self, acquisition):
+        baseline = self.git_files(acquisition['git_commit'])
+        overrides = acquisition.get('checkout_overrides', {})
+        if set(overrides) - set(baseline) or any(baseline.get(p) == h for p, h in overrides.items()):
+            raise ValueError('Acquisition checkout identities name unknown Git paths')
+        return {**baseline, **overrides}
+
+    def clean_checkout_overrides(self, commit, baseline, actual):
+        if set(baseline) != set(actual):
+            raise ValueError('Owned phase acquisition requires a clean committed worktree baseline')
+        overrides = {}
+        for path in baseline:
+            if baseline[path] == actual[path]:
+                continue
+            expected = subprocess.run(['git', 'rev-parse', commit + ':' + path], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
+            content = (self.repo / path).read_bytes()
+            if 'sha256:' + hashlib.sha256(content).hexdigest() != actual[path]:
+                raise ValueError('Checkout bytes changed during acquisition')
+            cleaned = subprocess.run(['git', 'hash-object', '--path=' + path, '--stdin'], input=content, cwd=self.repo, capture_output=True, check=True).stdout.decode().strip()
+            if expected != cleaned:
+                raise ValueError('Owned phase acquisition requires a clean committed worktree baseline')
+            overrides[path] = actual[path]
+        return overrides
+
+    def workspace_files(self):
+        paths = subprocess.run(['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], cwd=self.repo, capture_output=True, text=True, check=True).stdout.split('\0')
+        files = self.file_hashes(path for path in paths if path and not path.startswith('.zzzops/'))
+        # Missing is an input/output identity, not a file in a produced tree.
+        # Thus committing a deletion does not change the workspace identity.
+        return {path: value for path, value in files.items() if value != 'missing'}
+
+    def acquisition(self, goal, phase, lease):
+        return lease.get('acquisition') or getattr(self, '_recovered_acquisitions', {}).get((goal['key'], phase))
+
+    def check_workspace(self, acquisition, outputs):
+        baseline = self.acquisition_files(acquisition)
+        if digest(baseline) != acquisition['workspace_digest']:
+            raise ValueError('Acquisition Git snapshot does not match its baseline workspace')
+        actual = self.workspace_files()
+        changed = {path for path in baseline.keys() | actual.keys() if baseline.get(path, 'missing') != actual.get(path, 'missing')}
+        if changed - set(outputs):
+            raise ValueError('Unexpected output or read input drift outside the reviewed phase scope')
+        return baseline, actual
+
+    def owned_versions(self, goal, input_phase=None):
+        """Reconstruct connected scoped snapshots; no stored chain or cursor."""
+        parent = goal.get('parent') or goal['key']
+        children = [self.read(row['key'])[1] for row in self.portfolio()
+                    if row.get('parent') == parent and row.get('status') != 'cancelled']
+        requester = getattr(self, '_input_requester', goal['key'])
+        edges = []
+        for child in children:
+            scope = self.reviewed_scope(child)
+            if scope is None:
+                continue
+            durable = state(child)
+            evidence = child.get('phase_evidence') or self.api.empty_phase_evidence()
+            normalized = self.api._phase_evidence.normalize_phase_evidence(evidence)
+            _, child_nodes = self.api._workflow_phase_configuration(self.project, child)
+            for phase in ('test_design', 'implement'):
+                record = evidence['records'].get(phase)
+                proof = durable['artifacts'].get(phase)
+                review = evidence['reviews'].get(phase)
+                withdrawn = any(x['phase'] == phase for x in evidence['withdrawals'])
+                if record and proof and proof.get('acquisition') and not withdrawn:
+                    reference = record.get('verification') if phase == 'implement' else (record.get('test_design') or {}).get('baseline_failure')
+                    accepted = bool(review and review['decision'] == 'approved'
+                                    and review['record_hash'] == digest(record)
+                                    and review['input_hash'] == record['input_hash']
+                                    and review.get('output_hash') == (record.get('output') or {}).get('hash')
+                                    and review['reviewer'] != record['actor']
+                                    and (not child_nodes[phase]['review'].get('human_approval', False)
+                                         or phase in normalized['human_approvals']))
+                    order = {'understand': 0, 'decompose': 1, 'plan': 2, 'test_design': 3, 'implement': 4, 'publish': 5}
+                    local = child['key'] == requester and input_phase != 'publish' and (
+                        goal['key'] != requester or order.get(input_phase, 99) <= order[phase])
+                    try:
+                        if not reference or reference['hash'] != digest(proof) or self.read_artifact(child['key'], reference) != proof:
+                            raise ValueError('Stored proof does not bind the current recorded result')
+                        acquired = proof['acquisition']
+                        if acquired['input_hash'] != record['input_hash'] or proof['actor'] != record['actor'] or proof['phase'] != phase:
+                            raise ValueError('Stored proof does not bind the current recorded result')
+                        before = self.acquisition_files(acquired)
+                        if digest(before) != acquired['workspace_digest'] or set(proof['outputs']) != set(scope[phase]):
+                            raise ValueError('Stored proof does not bind the current recorded result')
+                        after = {**before, **proof['outputs']}
+                        after = {p: v for p, v in after.items() if v != 'missing'}
+                        if digest(after) != proof['workspace']:
+                            raise ValueError('Stored proof does not bind the current recorded result')
+                        # Pending/rejected output is factual only for its own review
+                        # or correction, never for a sibling or downstream consumer.
+                        if accepted or local:
+                            edges.extend(self.predecessor_edges(child, phase, scope, acquired))
+                            edges.append((digest(before), digest(after), before, after, scope[phase]))
+                    except ValueError:
+                        pass
+                lease = durable['leases'].get(phase + ':execute', {})
+                acquired = self.acquisition(child, phase, lease)
+                if acquired and child['key'] == requester:
+                    try:
+                        before, after = self.check_workspace(acquired, scope[phase])
+                    except ValueError:
+                        continue
+                    edges.append((digest(before), digest(after), before, after, scope[phase]))
+                    edges.extend(self.predecessor_edges(child, phase, scope, acquired))
+                    # Old CLI test_design proof has no acquisition. Its exact
+                    # reviewed output and before map connect only at this baseline.
+                    design = evidence['records'].get('test_design')
+                    if phase == 'implement' and design:
+                        prior_proof = self.read_artifact(child['key'], design['test_design']['baseline_failure'])
+                        if prior_proof['workspace'] == digest(before) and not prior_proof.get('acquisition'):
+                            old = dict(before)
+                            old.update({p: v for p, v in design['input_envelope']['repository']['snapshot']['files'].items()
+                                        if p in scope['test_design']})
+                            old = {p: v for p, v in old.items() if v != 'missing'}
+                            edges.append((digest(old), digest(before), old, before, scope['test_design']))
+        if not edges:
+            self._connected_workspaces = set()
+            return {}
+        connected, versions = {self.workspace_digest()}, {}
+        pending = list(edges)
+        while pending:
+            matching = [edge for edge in pending if edge[1] in connected]
+            if not matching:
+                break
+            for edge in matching:
+                pending.remove(edge)
+                start, end, before, after, paths = edge
+                connected.add(start)
+                for path in paths:
+                    versions.setdefault(path, set()).update((before.get(path, 'missing'), after.get(path, 'missing')))
+        self._connected_workspaces = connected
+        return versions
+
+    def predecessor_edges(self, goal, phase, scope, acquisition):
+        """Authenticate the immutable correction history referenced at acquisition."""
+        edges, seen = [], set()
+        reference = acquisition.get('predecessor')
+        expected = acquisition['workspace_digest']
+        while reference is not None:
+            if not valid_predecessor_reference(reference):
+                raise ValueError('Malformed correction predecessor reference')
+            if reference['hash'] in seen or len(seen) >= 32:
+                raise ValueError('Correction predecessor chain cycle/depth limit exceeded')
+            seen.add(reference['hash'])
+            previous = self.read_artifact(goal['key'], reference)
+            if not isinstance(previous, dict) or set(previous) != {'goal', 'phase', 'record', 'review', 'scope'}:
+                raise ValueError('Malformed correction predecessor artifact')
+            if previous['goal'] != goal['key'] or previous['phase'] != phase or previous['scope'] != scope:
+                raise ValueError('Correction predecessor goal, phase or scope differs')
+            record, review = previous['record'], previous['review']
+            if (not isinstance(record, dict) or not isinstance(review, dict)
+                or digest(record.get('input_envelope')) != record.get('input_hash')
+                or review.get('decision') != 'changes_requested'
+                or review.get('record_hash') != digest(record)
+                or review.get('input_hash') != record['input_hash']
+                or review.get('output_hash') != (record.get('output') or {}).get('hash')
+                or review.get('reviewer') == record.get('actor')):
+                raise ValueError('Correction predecessor record/review binding is invalid')
+            proof_reference = record.get('verification') if phase == 'implement' else (record.get('test_design') or {}).get('baseline_failure')
+            if not proof_reference:
+                raise ValueError('Correction predecessor verification proof is missing')
+            proof = self.read_artifact(goal['key'], proof_reference)
+            acquired = proof.get('acquisition')
+            if (not valid_acquisition(acquired) or proof.get('phase') != phase
+                or proof.get('actor') != record.get('actor') or not isinstance(proof.get('lease'), str) or not proof['lease']
+                or acquired['input_hash'] != record['input_hash']
+                or proof.get('workspace') != expected
+                or set(proof.get('outputs', {})) != set(scope[phase])):
+                raise ValueError('Correction predecessor proof/acquisition snapshot is disconnected')
+            before = self.acquisition_files(acquired)
+            if digest(before) != acquired['workspace_digest']:
+                raise ValueError('Correction predecessor baseline snapshot is invalid')
+            after = {**before, **proof['outputs']}
+            after = {p: v for p, v in after.items() if v != 'missing'}
+            if digest(after) != expected:
+                raise ValueError('Correction predecessor output snapshot is disconnected')
+            edges.append((digest(before), digest(after), before, after, scope[phase]))
+            expected, reference = acquired['workspace_digest'], acquired.get('predecessor')
+        return edges
+
+    def correction_predecessor(self, goal, phase, scope, baseline):
+        evidence = goal.get('phase_evidence') or self.api.empty_phase_evidence()
+        record, review = evidence['records'].get(phase), evidence['reviews'].get(phase)
+        if (not review or review['decision'] != 'changes_requested'
+            or any(item['phase'] == phase for item in evidence['withdrawals'])):
+            return None
+        if not record or review['record_hash'] != digest(record):
+            raise ValueError('Correction requires exact rejected record/review')
+        proof_reference = record.get('verification') if phase == 'implement' else (record.get('test_design') or {}).get('baseline_failure')
+        if not proof_reference:
+            raise ValueError('Correction verification proof is missing')
+        proof = self.read_artifact(goal['key'], proof_reference)
+        if proof != state(goal)['artifacts'].get(phase) or proof.get('workspace') != baseline:
+            raise ValueError('Correction baseline differs from exact recorded verification')
+        previous = {'goal': goal['key'], 'phase': phase, 'record': record, 'review': review, 'scope': scope}
+        reference = self.artifact(goal['key'], previous)
+        self.predecessor_edges(goal, phase, scope, {'workspace_digest': baseline, 'predecessor': reference})
+        return reference
+
+    def recover_acquisition(self, goal, phase, lease, envelope):
+        if not isinstance(envelope, dict) or digest(envelope) != lease['input_hash']:
+            raise ValueError('Legacy acquisition requires the exact original input envelope/hash')
+        if phase != 'implement':
+            raise ValueError('Legacy acquisition has no reviewed implementation baseline')
+        evidence = goal.get('phase_evidence') or self.api.empty_phase_evidence()
+        record, review = evidence['records'].get('test_design'), evidence['reviews'].get('test_design')
+        if not record or not review or review['decision'] != 'approved' or review['record_hash'] != digest(record) or any(item['phase'] == 'test_design' for item in evidence['withdrawals']):
+            raise ValueError('Legacy acquisition requires a current reviewed test-design baseline')
+        proof = self.read_artifact(goal['key'], record['test_design']['baseline_failure'])
+        commit = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
+        baseline = self.git_files(commit)
+        if proof['passed'] or digest(baseline) != proof['workspace']:
+            raise ValueError('Candidate Git acquisition snapshot differs from the reviewed baseline')
+        tests = self.read_artifact(goal['key'], record['output']).get('files', {})
+        if not tests or any(baseline.get(path, 'missing') != value for path, value in tests.items()):
+            raise ValueError('Candidate snapshot does not contain the exact reviewed test outputs')
+        if any(baseline.get(path, 'missing') != value for path, value in envelope['repository']['snapshot']['files'].items()):
+            raise ValueError('Candidate acquisition snapshot differs from the original consumed inputs')
+        return {'input_envelope': copy.deepcopy(envelope), 'git_commit': commit, 'workspace_digest': proof['workspace']}
+
+    def execution_preflight(self, goal, phase, lease, payload):
+        if lease['kind'] != 'execute' or lease['expires_at'] <= time.time() or lease['owner'] != (self.runtime or {}).get('root_id'):
+            raise ValueError('A current owned execution lease is required')
+        scope = self.reviewed_scope(goal) if phase in {'test_design', 'implement'} else None
+        acquired = self.acquisition(goal, phase, lease)
+        if phase in {'test_design', 'implement'} and scope is None:
+            raise ValueError('Policy or plan input changed; current reviewed output scope is unavailable')
+        if scope:
+            if not acquired:
+                acquired = self.recover_acquisition(goal, phase, lease, payload.get('input_envelope'))
+                self._recovered_acquisitions = {(goal['key'], phase): acquired}
+            if payload.get('input_envelope') is not None and payload['input_envelope'] != acquired['input_envelope']:
+                raise ValueError('Verification input envelope differs from the acquired input hash')
+            branch = (goal.get('implementation') or {}).get('branch')
+            current = subprocess.run(['git', 'branch', '--show-current'], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
+            if not branch or current != branch:
+                raise ValueError('Execution checkout does not match the assigned implementation branch')
+            self.check_workspace(acquired, scope[phase])
+            self.predecessor_edges(goal, phase, scope, acquired)
+        graph, nodes, live, related = self.context(goal)
+        frontier = self.api.derive_phase_steps(goal, graph, live, related, review_policy=nodes)
+        if phase not in {item['phase'] for item in frontier['execute']}:
+            raise ValueError('Ancestor/review inputs changed; assignment is no longer eligible')
+        if digest(live[phase]) != lease['input_hash']:
+            raise ValueError('Phase inputs changed while work was in flight')
+        return acquired, scope
 
     def pull_request(self, goal):
         issue, _ = self.read(goal['key'])
@@ -434,8 +821,7 @@ class Workflow:
         return self.api.classify_pr_merge(goal, evidence, self.repository)
 
     def workspace_digest(self):
-        files = subprocess.run(['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], cwd=self.repo, capture_output=True, text=True, check=True).stdout.split('\0')
-        return digest(self.file_hashes(path for path in files if path and not path.startswith('.zzzops/')))
+        return digest(self.workspace_files())
 
     def file_hashes(self, paths):
         result = {}
@@ -447,6 +833,7 @@ class Workflow:
         return result
 
     def context(self, goal):
+        self._input_requester = goal['key']
         graph, nodes = self.api._workflow_phase_configuration(self.project, goal)
         related = {}
         if goal.get('parent'):
@@ -480,6 +867,26 @@ class Workflow:
                             runtime_contract={'root_pair': {'model': 'identifier', 'effort': 'identifier'}, 'available_pairs': [], 'root_id': 'thread-id', 'delegation': {'available': True, 'tool': 'actual harness tool name', 'discovery_complete': True}})
                 continue
             kind = step['kind']
+            if phase in {'test_design', 'implement'} and kind in {'assess', 'execute'} and self.reviewed_scope(goal) is None:
+                repairs = []
+                for owner in ([self.read(goal['parent'])[1]] if goal.get('parent') else []) + [goal]:
+                    record = (owner.get('phase_evidence') or {}).get('records', {}).get('plan')
+                    repair = {'goal': owner['key'], 'phase': 'plan',
+                              'field': 'output_scope' if owner.get('parent') else 'output_scopes',
+                              'command': ['--intent', 'execute', '--goal', str(owner['key'])]}
+                    review = (owner.get('phase_evidence') or {}).get('reviews', {}).get('plan')
+                    if record and (not review or review.get('record_hash') != digest(record)):
+                        repair['action'] = 'Request this goal checkpoint and acquire its exact current independent plan review before editing.'
+                        repair['required_kind'] = 'review'
+                    elif record:
+                        repair['submission'] = {'operation': 'withdraw', 'phase': 'plan',
+                                                'record_hash': digest(record), 'request_id': 'new-unique-id',
+                                                'reason': 'Correct finite output scope and independently review before file execution.'}
+                    repairs.append(repair)
+                step.update(kind='repair', action='Correct and independently review the parent plan output_scopes entry and matching child plan output_scope before acquiring this phase. If content already matches, complete its current independent review instead of replacing content.',
+                            scope_repair={'goal': number, 'parent': goal.get('parent'), 'phase': phase,
+                                          'field': 'output_scope', 'required_phase': 'plan', 'repairs': repairs})
+                continue
             if kind not in {'execute', 'review', 'human_approval'}:
                 step.update(action='Resolve this routing prerequisite on root. If it needs user authority, persist a blocker and continue other goals; do not silently substitute root work.',
                             instruction=self.api.workflow_instruction('routing-evidence'),
@@ -520,7 +927,11 @@ class Workflow:
             records = (goal.get('phase_evidence') or {}).get('records', {})
             step['upstream_evidence'] = {entry['phase']: records[entry['phase']].get('output') for entry in phase_input['upstream_outputs'] if entry['phase'] in records}
             if kind != 'execute':
-                step['review_target'] = {'record_hash': digest(records.get(phase)), 'output': records.get(phase, {}).get('output'), 'verification': records.get(phase, {}).get('verification')}
+                step['review_target'] = {'record_hash': digest(records.get(phase)), 'output': records.get(phase, {}).get('output'), 'verification': records.get(phase, {}).get('verification') or (records.get(phase, {}).get('test_design') or {}).get('baseline_failure')}
+                proof = state(goal)['artifacts'].get(phase, {})
+                if proof.get('acquisition', {}).get('predecessor'):
+                    step['review_target']['predecessor'] = proof['acquisition']['predecessor']
+                    step['review_target']['correction_review'] = 'Inspect the composed change and rejected predecessor facts; approval applies only to this latest result.'
                 if step['review_target']['output']:
                     step['review_target']['read'] = {'operation': 'read', 'artifact': step['review_target']['output']}
             step['submission'] = {'operation': 'record_result' if kind == 'execute' else 'record_review' if kind == 'review' else 'approve', 'phase': phase, 'request_id': 'new-unique-id', 'lease': 'token from start', 'actor': 'bound worker identity'}
@@ -531,12 +942,21 @@ class Workflow:
                 'review': {'artifact': {'reference': '<immutable review reference>', 'hash': '<sha256 digest>'}, 'outcomes': {'acceptance': 'approved or changes_requested', 'entropy': {'outcome': 'no_findings, fixed or follow_up', 'evidence': '<concrete finding or inspected scope>', 'goals': []}}},
                 'approval': {'actor': '<root-id>', 'approval_token': '<explicit user approval reference>'},
             }
+            if phase == 'plan':
+                step['output_contract'] = {
+                    'output_scope': {'parent': goal.get('parent') or goal['key'],
+                                     'child': goal['key'] if goal.get('parent') else '<implementation-child-id>',
+                                     'test_design': ['<exact test output path>'], 'implement': ['<exact source output path>']},
+                    'action': 'Parent plans declare finite output_scopes entries selected uniquely by child; each child declares its matching output_scope. Both test_design and implement arrays are required; [] permits no file changes. Independently review both plans before acquisition. Keep changing provenance out of substantive content.',
+                }
             step['recovery_contract'] = {'operation': 'recover', 'phase': phase, 'lease': '<exact-token>', 'worker_status': 'stopped', 'evidence': '<observed terminal state>', 'request_id': 'new-unique-id'}
             if nodes[phase].get('not_required', 'never') != 'never':
                 step['result_contract']['not_required'] = {'status': 'not_required', 'output': None, 'not_required': {'reason': '<evidence supporting this exception>', 'policy_rule': nodes[phase]['not_required']}}
             step['command'] = ['--intent', 'execute', '--goal', str(number), '--runtime', '<runtime.json>', '--input', '<submission.json>']
             if phase in {'test_design', 'implement', 'publish'}:
                 step['verification'] = {'operation': 'verify', 'phase': phase, 'lease': '<current-token>', 'actor': '<bound-worker>', 'commands': [['<project-test-runner>', '<arguments>']], 'request_id': 'new-unique-id'}
+                if lease and kind == 'execute' and not lease.get('acquisition') and self.reviewed_scope(goal):
+                    step['verification']['input_envelope'] = '<exact original envelope from the acquired start; its digest must match the lease>'
                 try:
                     implementation = goal.get('implementation') or {}
                     if implementation.get('pr'):
@@ -640,6 +1060,9 @@ class Workflow:
         lease = next((v for v in state(goal)['leases'].values() if v['token'] == payload.get('lease')), None)
         if not lease or payload.get('actor') != lease['worker']:
             raise ValueError('Verification requires the bound phase executor')
+        if lease['kind'] != 'execute' or lease['owner'] != (self.runtime or {}).get('root_id') or lease['expires_at'] <= time.time():
+            raise ValueError('Verification requires a current owned execution lease')
+        acquired, scope = self.execution_preflight(goal, payload['phase'], lease, payload)
         commands = payload.get('commands')
         if not isinstance(commands, list) or not commands or any(not isinstance(command, list) or not command or any(not isinstance(arg, str) or not arg for arg in command) for command in commands):
             raise ValueError('Verification commands must be nonempty argument arrays')
@@ -656,6 +1079,9 @@ class Workflow:
         if before != after:
             raise ValueError('Verification changed repository inputs; inspect generated changes and rerun')
         proof = {'commands': results, 'workspace': after, 'passed': all(r['exit_code'] == 0 for r in results)}
+        if acquired:
+            proof.update(acquisition={**{k: acquired[k] for k in ('git_commit', 'workspace_digest', 'predecessor', 'checkout_overrides') if k in acquired}, 'input_hash': lease['input_hash']},
+                         phase=payload['phase'], lease=lease['token'], actor=lease['worker'], outputs=self.file_hashes(scope[payload['phase']]))
         return self.mutate(number, payload, _proof=proof)
 
     def mutate(self, number, payload, *, _proof=None):
@@ -705,6 +1131,16 @@ class Workflow:
                          'selection': step['selection'], 'kind': kind, 'input_hash': step['input_hash'], 'expires_at': time.time() + 900, 'group': step['assignment_group'],
                          'record_hash': digest(evidence['records'].get(phase)) if kind != 'execute' else None,
                          'review_hash': digest(evidence['reviews'].get(phase)) if kind == 'human_approval' else None}
+                if kind == 'execute' and phase in {'test_design', 'implement'} and self.reviewed_scope(goal):
+                    commit = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
+                    baseline, actual = self.git_files(commit), self.workspace_files()
+                    overrides = self.clean_checkout_overrides(commit, baseline, actual)
+                    lease['acquisition'] = {'input_envelope': copy.deepcopy(step['input_envelope']), 'git_commit': commit, 'workspace_digest': digest(actual)}
+                    if overrides:
+                        lease['acquisition']['checkout_overrides'] = overrides
+                    predecessor = self.correction_predecessor(goal, phase, self.reviewed_scope(goal), digest(actual))
+                    if predecessor:
+                        lease['acquisition']['predecessor'] = predecessor
                 durable['leases'][key] = lease
                 response = {'next_steps': [{**step, 'kind': 'perform', 'lease': lease, 'action': 'Perform the root step.' if lease['worker'] else 'Launch or resume the assigned worker, then bind its identity using operation=bind. Release the lease if dispatch fails.', 'bind': {'operation': 'bind', 'phase': phase, 'lease': lease['token'], 'actor': '<worker-id>', 'selection': lease['selection'], 'policy_receipt': '<worker copies policy_receipt from policy.path>', 'request_id': 'new-unique-id'}}]}
             elif operation == 'assess':
@@ -835,6 +1271,7 @@ class Workflow:
                     if payload.get('actor') != lease['worker'] or lease['kind'] != 'execute':
                         raise ValueError('Only the bound executor can verify phase work')
                     proof = _proof
+                    self.execution_preflight(goal, phase, lease, payload)
                     if proof['workspace'] != self.workspace_digest():
                         raise ValueError('Verification inputs changed before persistence')
                     results = proof['commands']
@@ -908,6 +1345,11 @@ class Workflow:
         phase, operation = payload['phase'], payload['operation']
         if not lease['worker'] or payload.get('actor') != lease['worker']:
             raise ValueError('Only the bound executor may submit evidence')
+        acquired, scope = None, None
+        if lease['kind'] == 'execute' and operation == 'record_result':
+            acquired, scope = self.execution_preflight(goal, phase, lease, {
+                **payload, 'input_envelope': payload.get('record', {}).get('input_envelope'),
+            })
         graph, nodes, live, related = self.context(goal)
         frontier = api.derive_phase_steps(goal, graph, live, related, review_policy=nodes)
         expected_frontier = frontier['execute'] if lease['kind'] == 'execute' else frontier['review']
@@ -933,9 +1375,17 @@ class Workflow:
             files = payload.get('files', [])
             actual = self.file_hashes(files)
             expected = record['input_envelope']['repository']['snapshot'].get('files', {})
-            if actual != expected:
+            writable = set(scope[phase]) if acquired else set()
+            if set(actual) != set(expected) or any(actual[path] != expected[path] for path in actual if path not in writable):
                 raise ValueError('Declared file evidence changed or was omitted')
-            live[phase]['repository']['snapshot']['files'] = actual
+            live[phase]['repository']['snapshot']['files'] = expected if acquired else actual
+            if acquired:
+                proof = durable['artifacts'].get(phase) or {}
+                if (proof.get('acquisition') != {**{k: acquired[k] for k in ('git_commit', 'workspace_digest', 'predecessor', 'checkout_overrides') if k in acquired}, 'input_hash': lease['input_hash']}
+                    or proof.get('actor') != lease['worker'] or proof.get('lease') != lease['token']
+                    or proof.get('phase') != phase or proof.get('outputs') != self.file_hashes(scope[phase])):
+                    requirement = 'failing-baseline' if phase == 'test_design' else 'passing verification'
+                    raise ValueError(f'Current {requirement} proof does not bind this acquisition, actor, lease and output')
             if phase in {'implement', 'publish'} and record.get('status') != 'not_required':
                 proof = durable['artifacts'].get(phase)
                 if not proof or not proof.get('passed') or proof.get('workspace') != self.workspace_digest() or (record.get('verification') or {}).get('hash') != digest(proof):

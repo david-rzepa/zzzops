@@ -252,6 +252,83 @@ the current lease generation, route, and evidence freshness, then atomically
 records the result or returns a recovery next step. This is the sole worker
 handoff and reconciliation interface.
 
+### Owned source and test outputs
+
+Parent plans declare finite `output_scopes` entries selected uniquely by child;
+each child declares one matching `output_scope` with `parent`, `child`, and
+`test_design`/`implement` path lists. The singular parent form remains shorthand
+for one child. Both plans need current independent review before file execution.
+Missing or mismatched scope returns a plan repair action; `[]` explicitly permits
+no file outputs, including new files. Paths cannot overlap across phases, escape
+the checkout, or exempt project policy. Scope is substantive plan content;
+changing input hashes, Git identities and review bindings never belong in reusable
+plan or review text.
+
+A scoped write phase starts from a clean committed checkout. Its existing lease
+gains an optional `acquisition` containing the exact `input_envelope`, immutable
+`git_commit` and start `workspace_digest`. Every consumed file remains declared,
+including files that will be edited. The coordinator assigns one exclusive writer
+to the checkout; the CLI checks the registered branch and exact actor/lease.
+Hashes detect content drift, not the identity of a malicious external writer.
+There is no cross-goal branch lock or ownership registry.
+
+Verification compares the complete workspace to the acquired Git tree and permits
+only the phase's reviewed output paths to differ. Specification, policy, graph,
+read dependencies and parent reviews remain live prerequisites. A produced proof
+retains `acquisition: {git_commit, workspace_digest, input_hash}`, `phase`, `lease`,
+`actor` and an `outputs` after-identity map alongside commands and the verified
+workspace. These facts survive lease deletion; the completed phase record retains
+the full before envelope. Missing files use an explicit `missing` input/output
+identity but are absent from workspace trees, so committing a deletion does not
+change its produced-workspace identity.
+
+Recognized source edits preserve consumed historical versions in prerequisite
+records. A test-design failure remains valid historical evidence when its exact
+workspace became the implementation baseline; reviewed test output bytes remain
+pinned. This does not exempt publication proofs or stale verification: submission
+still requires an exact current workspace and produced map. Unknown changes stay
+live and invalidate affected evidence.
+
+Historical transformations are reconstructed from connected before/after workspace
+snapshots in existing verified records and proofs, including completed siblings.
+A disconnected mixture of individually historical file versions is not valid.
+Closed sibling records remain unchanged. A snapshot becomes consumable only after
+its exact independent review and every configured human approval are current.
+The producing phase retains local access for its own review and approval; that
+access grants no sibling or downstream eligibility. A just-recorded result may explain only
+its own review and unchanged prerequisites before independent approval; other
+phases and consumers cannot use that provisional result.
+
+A `changes_requested` correction starts under a fresh lease from a clean commit
+exactly reproducing the rejected result. Its acquisition optionally freezes a
+`predecessor` artifact reference. The artifact contains the exact same-goal/phase
+`record`, rejected `review` and finite `scope`; the record references its original
+proof. The correction proof carries the same reference, preserving these facts
+after record replacement and lease deletion. New inputs describe the actual
+correction baseline. Each predecessor must reconstruct the next baseline exactly;
+wrong scope, missing/tampered facts, disconnected snapshots and chains exceeding
+32 corrections fail closed. Existing immutable artifact storage holds these facts;
+there is no history registry or workflow cursor. Explicit withdrawal instead
+permits a fresh execution from a clean approved baseline: the withdrawn proof
+does not inject old output drift into new inputs and the rejected record is not
+forced into a correction predecessor. Withdrawal does not approve discarded
+outputs or exempt current dependencies, scope, ownership or verification checks. The newest independent approval
+accepts the composed result, never the rejected intermediate output. Review targets
+expose the failing test baseline or passing verification and predecessor reference.
+
+For an old implementation lease without acquisition, the public `verify` request
+supplies the exact original `input_envelope`; its digest must equal the old lease
+hash. The unchanged candidate Git tree must reproduce the independently reviewed
+failing-test workspace and test output identities. Missing or inconsistent evidence
+fails closed. This supports a new-test bootstrap without changing old input hashes,
+rewriting closed goals, or introducing a migration framework.
+
+Reassessment may explicitly reuse byte-identical plan output. The new record
+invalidates old review and human-approval bindings. An independent reviewer may
+reuse byte-identical substantive review text after examining changed inputs, but
+must record a fresh exact binding. Downstream substantive identities remain stable
+only after all current review and approval gates pass.
+
 ## Approval, leases, and batches
 
 Policy/bootstrap validation gates every intent, including goal capture. When a
@@ -278,9 +355,8 @@ rebases onto the current stack tip and has no side branch. Agents resolve rebase
 and conflicts; the CLI validates topology and emits the next repair step.
 
 Adoption is bounded and lossless. Open goals and policy state gain the minimum
-evidence needed to derive phases; old evidence is preserved. Closed goals are
-read only for minimal terminal metadata and are never migrated, hydrated, or
-rewritten. Reopening a closed goal makes normal adoption rules apply.
+evidence needed to derive phases; old evidence is preserved. Closed goals are never migrated or rewritten. Their immutable recorded
+proofs may be read to authenticate a connected sibling snapshot transformation. Reopening a closed goal makes normal adoption rules apply.
 
 ## Representative decisions
 
@@ -292,3 +368,10 @@ rewritten. Reopening a closed goal makes normal adoption rules apply.
 | Evidence changes but plan output is byte-identical | Re-record evidence hashes and continue without unnecessary replanning. |
 | A lease heartbeat becomes uncertain | Root runs the workflow recovery next step; it does not start another worker. |
 | Acceptance finds out-of-scope entropy | Create a separate goal through `$add-zzzops-goal` and continue unless correctness or safety requires a block. |
+
+
+### Exact checkout identities under Git conversion
+
+A scoped acquisition may include `checkout_overrides`, a sparse map from tracked canonical paths to exact raw SHA-256 identities where checkout bytes differ from committed blob bytes. The same optional map is copied into the durable verification acquisition and participates in exact lease/proof binding. Acquisition validates the captured raw bytes against their recorded SHA and passes those same bytes to Git's actual-path clean conversion; its object identity must equal the committed blob. Non-equivalent dirty content remains rejected.
+
+Historical snapshots reconstruct the immutable Git blob map plus frozen overrides and verify the recorded workspace digest. They never rerun current filters or reinterpret recorded raw identities. Raw input/output hashes remain unchanged, so later undeclared EOL-only changes still invalidate evidence. Correction predecessors retain each acquisition's own overrides. Missing overrides preserve the original exact-blob interpretation. Legacy leases without acquisition data cannot infer conversion overrides from edited outputs: when exact reconstruction cannot match the independently reviewed baseline, handoff fails closed and requires an explicit clean-baseline restart.

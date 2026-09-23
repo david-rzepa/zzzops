@@ -29,6 +29,16 @@ class StepAPI:
         }
 
     @staticmethod
+    def _workflow_phase_configuration(_project, _goal):
+        return {"phases": [{"id": "implement"}]}, {}
+
+    @staticmethod
+    def workflow_live_inputs(_repo, _project, _goal, _intent, _graph):
+        return {"plan": {"goal_spec": "sha256:" + "1" * 64,
+                         "policy": "sha256:" + "2" * 64,
+                         "phase_dag": "sha256:" + "3" * 64}}
+
+    @staticmethod
     def _workflow_section(_project, _section):
         return {"configuration": {}}
 
@@ -96,7 +106,27 @@ class WorkflowPublicationContractTests(unittest.TestCase):
             engine.api, engine.repo, engine.project, engine.runtime = StepAPI(), repo, {}, {
                 "delegation": {"available": True, "discovery_complete": True, "tool": "spawn_agent"},
             }
-            engine.read = lambda _number: ({}, goal)
+            # This isolated base-selection test supplies explicit artifact-only
+            # scope evidence; it does not mock the scope eligibility decision.
+            goal["parent"] = 1
+            parent = {"key": 1, "parent": None}
+            scope = {"parent": 1, "child": 7, "test_design": [], "implement": []}
+            artifacts = {}
+            for owner, content in [(parent, {"output_scopes": [scope]}),
+                                   (goal, {"output_scope": scope})]:
+                identity = workflow.digest(content)
+                output = {"reference": "urn:" + identity, "hash": identity}
+                artifacts[identity] = content
+                envelope = StepAPI.workflow_live_inputs(repo, {}, owner, "execute", {})["plan"]
+                record = {"actor": "plan-author", "input_envelope": envelope,
+                          "input_hash": workflow.digest(envelope), "output": output}
+                review = {"decision": "approved", "reviewer": "independent-reviewer",
+                          "record_hash": workflow.digest(record), "input_hash": record["input_hash"],
+                          "output_hash": identity}
+                owner["phase_evidence"] = {"records": {"plan": record},
+                                           "reviews": {"plan": review}, "withdrawals": []}
+            engine.read = lambda number: ({}, parent if number == 1 else goal)
+            engine.read_artifact = lambda _number, reference: artifacts[reference["hash"]]
             engine.context = lambda _goal: (
                 {"phases": [{"id": "implement"}]},
                 {"implement": {"assignment_group": "implementation", "review": {}, "not_required": "never"}},
