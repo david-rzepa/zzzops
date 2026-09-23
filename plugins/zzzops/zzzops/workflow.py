@@ -1109,6 +1109,16 @@ class Workflow:
                         'command': ['--intent', 'execute', '--goal', str(number), '--runtime', '<runtime.json>'],
                         'action': 'Recheck this exact leased phase after the interval; do not start a replacement worker.',
                     }
+                    receipts = state(goal).get('receipts', {})
+                    step['monitor'] = {
+                        'worker': lease.get('worker'),
+                        'lease': lease.get('token'),
+                        'expires_at': lease.get('expires_at'),
+                        'last_durable_operation': next(reversed(receipts), None),
+                        'instruction': 'skills/execute-zzzops/references/MONITOR.md',
+                        'heartbeat': 'Use the bound worker liveness probe as the primary monitor: active means wait; stopped means inspect results before recovery; unknown means diagnose the real worker and backend lease.',
+                        'recovery': step['recovery_contract'],
+                    }
             else:
                 step['action'] = 'Acquire this phase with the start request before doing work; bind the actual executor before submitting evidence.'
         if not steps and result['frontier']['blocked']:
