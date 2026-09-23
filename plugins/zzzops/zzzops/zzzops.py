@@ -3075,7 +3075,16 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
         return 0
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
-        step = {"kind": "repair", "assignment": "root", "action": "Correct this input or backend condition and retry the same request.", "reason": str(exc)}
+        if args is not None:
+            operation = payload.get("operation") if isinstance(payload, dict) else None
+            phase = payload.get("phase") if isinstance(payload, dict) else None
+            step = workflow_repair_step(
+                args.intent, str(exc),
+                "Repair the reported workflow input or current repository state, then invoke workflow again.",
+                source_skill=args.source_skill, goal=args.goal, phase=phase, operation=operation,
+            )
+        else:
+            step = {"kind": "repair", "assignment": "root", "action": "Correct this input or backend condition and retry the same request.", "reason": str(exc)}
         if args is not None and isinstance(payload, dict) and payload.get('operation') == 'renew':
             retry_args = list(argv[1:])
             if '--input' in retry_args:

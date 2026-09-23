@@ -1087,6 +1087,20 @@ class DiagnosticsModuleTests(unittest.TestCase):
             self.assertEqual("Correct the workflow input or context error, then invoke workflow again.", payload["next_steps"][0]["action"])
             self.assertTrue(payload["next_steps"][0]["reason"])
 
+    def test_public_workflow_cli_preserves_operation_diagnostic_context(self):
+        payload_path = self.repo / "submission.json"
+        payload_path.write_text(json.dumps({"operation": "record_result", "phase": "implement"}), encoding="utf-8")
+        with (
+            mock.patch.object(zzzops, "configure_cli_stdout"),
+            mock.patch.object(zzzops._workflow, "public_run", side_effect=ValueError("missing passing verification")),
+            mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "--goal", "42", "--intent", "execute", "--input", str(payload_path)]),
+            mock.patch.object(sys, "stdout", io.StringIO()) as stream,
+        ):
+            self.assertEqual(2, zzzops.main())
+        step = json.loads(stream.getvalue())["next_steps"][0]
+        self.assertEqual("resolve_blocker", step["directive"])
+        self.assertEqual({"failed_invariant": "missing_passing_verification", "goal": 42, "phase": "implement", "operation": "record_result"}, step["diagnostic"])
+
     def test_workflow_cli_gates_no_goal_dispatch_on_context(self):
         gate = {
             "id": "bootstrap", "skill": "$bootstrap-zzzops-repository", "intent": "inspect",
