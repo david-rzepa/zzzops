@@ -61,6 +61,15 @@ class WorkflowDispatchTests(unittest.TestCase):
         self.assertEqual([steps[1][0], steps[2][0], steps[3][0]], result["next_steps"])
         self.assertEqual(4, engine.step.call_count)
 
+    def test_completed_or_empty_portfolio_reports_explicit_exhaustion(self):
+        result, engine = self.checkpoint([], {})
+
+        self.assertEqual([{
+            "kind": "terminal_report", "assignment": "root", "state": "complete",
+            "action": "All goals are complete or the portfolio is empty. Report workflow exhaustion; no CLI command is required.",
+        }], result["next_steps"])
+        engine.step.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

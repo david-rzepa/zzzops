@@ -1103,6 +1103,12 @@ class Workflow:
                 step['lease'] = lease
                 step['kind'] = 'recover' if lease['expires_at'] <= time.time() else 'await_worker'
                 step['action'] = 'Check the bound worker. Reconcile completion or explicitly recover only after confirming it stopped; expiry is not permission to duplicate work.'
+                if step['kind'] == 'await_worker':
+                    step['recheck'] = {
+                        'after_seconds': 30,
+                        'command': ['--intent', 'execute', '--goal', str(number), '--runtime', '<runtime.json>'],
+                        'action': 'Recheck this exact leased phase after the interval; do not start a replacement worker.',
+                    }
             else:
                 step['action'] = 'Acquire this phase with the start request before doing work; bind the actual executor before submitting evidence.'
         if not steps and result['frontier']['blocked']:
@@ -1623,6 +1629,11 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
             'kind': 'await_worker', 'assignment': 'root',
             'action': 'Reviewed max_workers capacity is occupied. Reconcile, release, or recover an existing phase lease before starting another worker.',
             'active_leases': unresolved_lease_count(goals), 'max_workers': limit,
+            'recheck': {
+                'after_seconds': 30,
+                'command': ['--intent', 'execute', '--runtime', '<runtime.json>'],
+                'action': 'Recheck active leases after the interval; do not start work beyond the reviewed capacity.',
+            },
         }
     if number is not None:
         if number not in {g['key'] for g in goals}:
@@ -1637,7 +1648,11 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
         partition(engine.step(number), runnable_steps, waiting_steps)
         if capacity_blocked and len(runnable_steps) < limit:
             runnable_steps.append(capacity_step())
-        return {'next_steps': (runnable_steps or waiting_steps)[:limit]}
+        steps = (runnable_steps or waiting_steps)[:limit]
+        if not steps:
+            steps = [{'kind': 'terminal_report', 'assignment': 'root', 'goal': number,
+                      'state': 'complete', 'action': 'This goal has no remaining workflow work. Report completion; no CLI command is required.'}]
+        return {'next_steps': steps}
     runnable_steps = []
     waiting_steps = []
     for goal in sorted(goals, key=lambda g: (g.get('priority', 'P3'), g['key'])):
@@ -1658,7 +1673,11 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
             break
     if capacity_blocked and len(runnable_steps) < limit:
         runnable_steps.append(capacity_step())
-    return {'next_steps': (runnable_steps or waiting_steps)[:limit]}
+    steps = (runnable_steps or waiting_steps)[:limit]
+    if not steps:
+        steps = [{'kind': 'terminal_report', 'assignment': 'root', 'state': 'complete',
+                  'action': 'All goals are complete or the portfolio is empty. Report workflow exhaustion; no CLI command is required.'}]
+    return {'next_steps': steps}
 
 
 def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_snapshot=None, skip_installation_validation=False):
