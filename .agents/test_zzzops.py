@@ -3738,6 +3738,53 @@ class PortfolioTests(unittest.TestCase):
             zzzops._portfolio_cache_path(repo).write_text("not json", encoding="utf-8")
             self.assertIsNone(zzzops._cached_open_bodies(repo, "owner/repo", False, selected))
 
+    def test_pull_request_broadphase_batches_and_reuses_unchanged_scheduling_evidence(self):
+        implementation = {"branch": "goal/x", "base": "dev", "target": "dev", "review": {"status": "not_started", "checkpoint": None}}
+        first, second = self.issue(1, implementation={**implementation, "pr": "https://github.com/owner/repo/pull/11"}), self.issue(2, implementation={**implementation, "pr": "https://github.com/owner/repo/pull/12"})
+        selected = [{"number": item["number"]} for item in (first, second)]
+        bodies = {item["number"]: {"body": item["body"]} for item in (first, second)}
+
+        def response(command, **_kwargs):
+            query = next(value[6:] for value in command if value.startswith("query="))
+            detail = "baseRefName" in query
+            values = {}
+            for number in (11, 12):
+                values[f"pr_{number}"] = {
+                    "number": number, "state": "OPEN", "updatedAt": f"2026-09-{number}T00:00:00Z",
+                    "merged": False, "mergedAt": None, "headRefOid": f"head-{number}",
+                }
+                if detail:
+                    values[f"pr_{number}"].update({
+                        "baseRefName": "dev", "baseRefOid": "base", "mergeCommit": None,
+                        "repository": {"nameWithOwner": "owner/repo"}, "reviewDecision": "APPROVED",
+                        "commits": {"nodes": [{"commit": {"statusCheckRollup": {
+                            "contexts": {"nodes": [], "pageInfo": {"hasNextPage": False}},
+                        }}}]},
+                    })
+            return SimpleNamespace(returncode=0, stdout=json.dumps({"data": {"repository": values}}), stderr="")
+
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(zzzops.subprocess, "run", side_effect=response) as run:
+            repo = Path(temporary)
+            (repo / ".zzzops").mkdir()
+            states, _bytes, processes = zzzops._github_pull_request_states(repo, "gh", selected, bodies)
+            self.assertEqual(2, processes)
+            self.assertEqual({1, 2}, set(states))
+            self.assertEqual(2, run.call_count)
+            marker_query = next(value[6:] for value in run.call_args_list[0].args[0] if value.startswith("query="))
+            self.assertIn("pr_11:pullRequest(number:11)", marker_query)
+            self.assertIn("pr_12:pullRequest(number:12)", marker_query)
+            run.reset_mock()
+            states, _bytes, processes = zzzops._github_pull_request_states(repo, "gh", selected, bodies)
+            self.assertEqual(1, processes)
+            self.assertEqual({1, 2}, set(states))
+            self.assertEqual(1, run.call_count)
+            active = self.issue(1, status="in_progress", implementation={**implementation, "pr": "https://github.com/owner/repo/pull/11"})
+            active_bodies = {**bodies, 1: {"body": active["body"]}}
+            run.reset_mock()
+            _states, _bytes, processes = zzzops._github_pull_request_states(repo, "gh", selected, active_bodies)
+            self.assertEqual(2, processes)
+            self.assertEqual(2, run.call_count)
+
     def test_malformed_open_record_is_quarantined_without_invalidating_valid_graph(self):
         valid = zzzops.github_goal_record(self.issue(1))
         project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {"sections": [

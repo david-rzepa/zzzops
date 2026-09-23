@@ -577,6 +577,7 @@ query($owner:String!,$name:String!,$number:Int!,$endCursor:String){
 """.strip()
 GOAL_SCHEMA_LABEL = re.compile(r"^zzzops:schema:v(?P<version>[1-9][0-9]*)$")
 GOAL_HYDRATION_BATCH_SIZE = 100
+PULL_REQUEST_HYDRATION_BATCH_SIZE = 100
 MANAGED_SKILLS = (
     "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
     "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
@@ -1004,11 +1005,14 @@ def _github_goal_bodies(
     return hydrated, raw_bytes, processes
 
 
-def _github_pull_request_states(
-    repo: Path, executable: str, selected: list[dict[str, Any]], bodies: dict[int, dict[str, Any]],
-) -> tuple[dict[int, dict[str, Any]], int, int]:
-    """Read PR merge state for implementation URLs in one query per PR repository."""
+def _portfolio_pull_request_cache_path(repo: Path) -> Path:
+    return repo / ".zzzops" / "portfolio-pr-cache.json"
+
+
+def _pull_request_targets(selected: list[dict[str, Any]], bodies: dict[int, dict[str, Any]]) -> tuple[dict[tuple[str, str, int], list[int]], set[tuple[str, str, int]]]:
+    """Return deduplicated implementation PRs and those whose evidence is live."""
     targets: dict[tuple[str, str, int], list[int]] = {}
+    fresh: set[tuple[str, str, int]] = set()
     for issue in selected:
         body = bodies.get(issue["number"], {}).get("body")
         if not isinstance(body, str):
@@ -1022,50 +1026,136 @@ def _github_pull_request_states(
         parts = [part for part in parsed.path.split("/") if part]
         if len(parts) < 4 or parts[2].casefold() != "pull" or not parts[3].isdigit():
             continue
-        targets.setdefault((parts[0], parts[1], int(parts[3])), []).append(issue["number"])
-    states: dict[int, dict[str, Any]] = {}
+        target = (parts[0], parts[1], int(parts[3]))
+        targets.setdefault(target, []).append(issue["number"])
+        workflow = goal.get("workflow") if isinstance(goal, dict) else None
+        review = implementation.get("review") if isinstance(implementation, dict) else None
+        # Scheduling may reuse a verified snapshot.  An executing, publishing,
+        # integrating, or recovering goal must always observe fresh PR evidence.
+        if (
+            goal.get("status") == "in_progress"
+            or (isinstance(workflow, dict) and bool(workflow.get("leases")))
+            or (isinstance(review, dict) and review.get("status") not in (None, "not_started", "merged"))
+        ):
+            fresh.add(target)
+    return targets, fresh
+
+
+def _pull_request_marker_query(numbers: list[int]) -> str:
+    fields = "\n".join(
+        f"    pr_{number}:pullRequest(number:{number}){{number state updatedAt merged mergedAt headRefOid}}"
+        for number in numbers
+    )
+    return "query($owner:String!,$name:String!){\n  repository(owner:$owner,name:$name){\n" + fields + "\n  }\n}"
+
+
+def _pull_request_detail_query(numbers: list[int]) -> str:
+    fields = "\n".join(
+        f"""    pr_{number}:pullRequest(number:{number}){{
+      merged mergedAt headRefOid baseRefName baseRefOid
+      mergeCommit{{oid}}
+      repository{{nameWithOwner}}
+      reviewDecision
+      commits(last:1){{nodes{{commit{{statusCheckRollup{{contexts(first:100){{nodes{{
+        __typename
+        ... on CheckRun{{name status conclusion}}
+        ... on StatusContext{{context state}}
+      }} pageInfo{{hasNextPage}}}}}}}}}}}}
+    }}"""
+        for number in numbers
+    )
+    return "query($owner:String!,$name:String!){\n  repository(owner:$owner,name:$name){\n" + fields + "\n  }\n}"
+
+
+def _github_pr_query(repo: Path, executable: str, owner: str, name: str, query: str, detail: str) -> tuple[dict[str, Any], int]:
+    command = [executable, "api", "graphql", "-f", f"query={query}", "-F", f"owner={owner}", "-F", f"name={name}"]
+    try:
+        result = subprocess.run(command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError(f"GitHub pull-request {detail} read failed: {type(exc).__name__}") from exc
+    if result.returncode:
+        raise ValueError(f"GitHub pull-request {detail} read failed: " + (result.stderr.strip() or "unknown gh error"))
+    try:
+        payload = json.loads(result.stdout)
+        repository = payload["data"]["repository"]
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise ValueError(f"GitHub pull-request {detail} read returned invalid JSON") from exc
+    if not isinstance(repository, dict):
+        raise ValueError(f"GitHub pull-request {detail} read is incomplete or malformed")
+    return repository, len(result.stdout.encode("utf-8"))
+
+
+def _cached_pull_request_states(repo: Path, marker: list[dict[str, Any]]) -> dict[str, dict[str, Any]] | None:
+    try:
+        cache = json.loads(_portfolio_pull_request_cache_path(repo).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    states = cache.get("states") if isinstance(cache, dict) else None
+    if cache.get("schema_version") != 1 or cache.get("marker") != marker or not isinstance(states, dict):
+        return None
+    if any(not isinstance(value, dict) for value in states.values()):
+        return None
+    return copy.deepcopy(states)
+
+
+def _store_pull_request_states(repo: Path, marker: list[dict[str, Any]], states: dict[str, dict[str, Any]]) -> None:
+    try:
+        atomic_text(_portfolio_pull_request_cache_path(repo), json.dumps(
+            {"schema_version": 1, "marker": marker, "states": states}, sort_keys=True, separators=(",", ":"),
+        ))
+    except OSError:
+        pass
+
+
+def _github_pull_request_states(
+    repo: Path, executable: str, selected: list[dict[str, Any]], bodies: dict[int, dict[str, Any]],
+) -> tuple[dict[int, dict[str, Any]], int, int]:
+    """Broadphase referenced PRs, caching unchanged scheduling evidence."""
+    targets, fresh_targets = _pull_request_targets(selected, bodies)
+    if not targets:
+        return {}, 0, 0
+    markers: list[dict[str, Any]] = []
     raw_bytes = 0
     processes = 0
-    for owner, name, number in sorted(targets):
-        query = """query($owner:String!,$name:String!,$number:Int!){
-  repository(owner:$owner,name:$name){
-    nameWithOwner
-    pullRequest(number:$number){
-      merged mergedAt headRefOid baseRefName baseRefOid
-      mergeCommit{oid}
-      repository{nameWithOwner}
-      reviewDecision
-      commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{
-        __typename
-        ... on CheckRun{name status conclusion}
-        ... on StatusContext{context state}
-      } pageInfo{hasNextPage}}}}}}
-    }
-  }
-}"""
-        command = [
-            executable, "api", "graphql", "-f", f"query={query}",
-            "-F", f"owner={owner}", "-F", f"name={name}", "-F", f"number={number}",
-        ]
-        try:
-            result = subprocess.run(command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise ValueError(f"GitHub pull-request state read failed: {type(exc).__name__}") from exc
-        processes += 1
-        if result.returncode:
-            raise ValueError("GitHub pull-request state read failed: " + (result.stderr.strip() or "unknown gh error"))
-        try:
-            payload = json.loads(result.stdout)
-            data = payload["data"]["repository"]
-            pull_request = data.get("pullRequest")
-        except (json.JSONDecodeError, KeyError, TypeError) as exc:
-            raise ValueError("GitHub pull-request state read returned invalid JSON") from exc
-        if not isinstance(pull_request, dict):
-            normalized = None
+    grouped: dict[tuple[str, str], list[int]] = {}
+    for owner, name, number in targets:
+        grouped.setdefault((owner, name), []).append(number)
+    for (owner, name), numbers in sorted(grouped.items()):
+        for offset in range(0, len(numbers), PULL_REQUEST_HYDRATION_BATCH_SIZE):
+            batch = sorted(numbers[offset:offset + PULL_REQUEST_HYDRATION_BATCH_SIZE])
+            response, bytes_read = _github_pr_query(repo, executable, owner, name, _pull_request_marker_query(batch), "marker")
+            raw_bytes += bytes_read
+            processes += 1
+            for number in batch:
+                pr = response.get(f"pr_{number}")
+                if not isinstance(pr, dict) or pr.get("number") != number:
+                    raise ValueError(f"GitHub pull-request marker read omitted PR #{number}")
+                markers.append({"repository": f"{owner}/{name}", "number": number, "state": pr.get("state"), "updated_at": pr.get("updatedAt"), "merged": pr.get("merged") is True, "merged_at": pr.get("mergedAt"), "head_oid": pr.get("headRefOid")})
+    markers.sort(key=lambda item: (item["repository"], item["number"]))
+    cached = _cached_pull_request_states(repo, markers)
+    cached = cached if cached is not None else {}
+    needed = set(targets) if not cached else fresh_targets
+    states_by_target: dict[tuple[str, str, int], dict[str, Any]] = {}
+    for target in targets:
+        value = cached.get(f"{target[0]}/{target[1]}#{target[2]}")
+        if target not in needed and isinstance(value, dict):
+            states_by_target[target] = value
         else:
-            merge_commit = pull_request.get("mergeCommit")
-            pr_repository = pull_request.get("repository")
-            normalized = {
+            needed.add(target)
+    for (owner, name), numbers in sorted(grouped.items()):
+        pending = sorted(number for number in numbers if (owner, name, number) in needed)
+        for offset in range(0, len(pending), PULL_REQUEST_HYDRATION_BATCH_SIZE):
+            batch = pending[offset:offset + PULL_REQUEST_HYDRATION_BATCH_SIZE]
+            response, bytes_read = _github_pr_query(repo, executable, owner, name, _pull_request_detail_query(batch), "state")
+            raw_bytes += bytes_read
+            processes += 1
+            for number in batch:
+                pull_request = response.get(f"pr_{number}")
+                if not isinstance(pull_request, dict):
+                    continue
+                merge_commit = pull_request.get("mergeCommit")
+                pr_repository = pull_request.get("repository")
+                states_by_target[(owner, name, number)] = {
                 "merged": pull_request.get("merged") is True,
                 "merged_at": pull_request.get("mergedAt"),
                 "head_oid": pull_request.get("headRefOid"),
@@ -1076,11 +1166,15 @@ def _github_pull_request_states(
                 "checks_verified": _pull_request_checks_verified(pull_request),
                 "checks_present": _pull_request_checks_present(pull_request),
                 "review_verified": pull_request.get("reviewDecision") == "APPROVED",
-            }
-        for issue_number in targets[(owner, name, number)]:
-            if normalized is not None:
-                states[issue_number] = normalized
-        raw_bytes += len(result.stdout.encode("utf-8"))
+                }
+    stored = {f"{owner}/{name}#{number}": state for (owner, name, number), state in states_by_target.items()}
+    _store_pull_request_states(repo, markers, stored)
+    states: dict[int, dict[str, Any]] = {}
+    for target, issue_numbers in targets.items():
+        state = states_by_target.get(target)
+        if state is not None:
+            for issue_number in issue_numbers:
+                states[issue_number] = state
     return states, raw_bytes, processes
 
 
