@@ -46,8 +46,6 @@ ALLOWED_CATALOG_OCCURRENCES = {
     ("human_at_exhaustion", "plugins/zzzops/skills/execute-zzzops/references/BRANCH_REVIEW.md"): "selected-value interpreter",
     ("human_at_exhaustion", "plugins/zzzops/skills/execute-zzzops/references/REVIEW_QUEUE.md"): "selected-value interpreter",
     ("github_issues", "plugins/zzzops/rules/BACKENDS.md"): "runtime backend schema",
-    ("resume_once_and_reprioritize", "plugins/zzzops/rules/CONTINUATION.md"): "selected-value interpreter",
-    ("same_task_until_superseded", "plugins/zzzops/rules/CONTINUATION.md"): "selected-value interpreter",
     ("stack_from_reviewed_checkpoint", "plugins/zzzops/rules/GOAL_SYSTEM.md"): "selected-value interpreter",
     ("stack_from_reviewed_checkpoint", "plugins/zzzops/skills/execute-zzzops/references/BRANCH_REVIEW.md"): "selected-value interpreter",
     ("stack_from_reviewed_checkpoint", "plugins/zzzops/skills/execute-zzzops/references/REVIEW_QUEUE.md"): "selected-value interpreter",
@@ -57,7 +55,6 @@ CLASSIFIED_FAMILIES = {
     "artifact_verification": "PROJECT value plus interpreter; no missing-policy fallback",
     "dependency_gating": "PROJECT value plus ancestry invariant; no done fallback",
     "resource_parallelism": "PROJECT value plus mode interpreter; measurement is evidence only",
-    "blocker_order": "PROJECT value; missing policy routes to review",
     "execution_reports": "PROJECT boolean; missing policy routes to review",
     "refill_categories": "PROJECT list; missing policy routes to review",
     "review_modes": "PROJECT values interpreted in the review queue; recommendation stays cold",
@@ -80,7 +77,10 @@ def hot_prompt_paths(root: Path = ROOT) -> list[Path]:
 def _catalog(root: Path) -> dict[str, Any]:
     plan = json.loads((root / DEFAULT_CATALOG_PATH).read_text(encoding="utf-8-sig"))
     return {
-        section["id"]: {"decision": section["decision"], "settings": section["settings"]}
+        section["id"]: {
+            "instructions": section["instructions"],
+            "configuration": section["configuration"],
+        }
         for section in plan["policy"]["sections"]
     }
 

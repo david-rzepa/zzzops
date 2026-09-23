@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import hashlib
+import base64
+import zlib
 import hmac
 import json
 import re
@@ -21,7 +23,7 @@ GOAL_SCHEMA_LABEL_PREFIX = "zzzops:schema:v"
 GOAL_FIELDS = {
     "schema_version", "status", "priority", "value", "difficulty", "confidence",
     "parent", "depends_on", "claim", "blockers", "evidence", "next_action",
-    "revision", "implementation", "resources", "engineering_rigor", "phase_evidence",
+    "revision", "implementation", "resources", "engineering_rigor", "phase_evidence", "workflow",
 }
 GOAL_STATUSES = {"new", "triaged", "ready", "in_progress", "blocked", "done", "cancelled"}
 GOAL_PRIORITIES = {"P0", "P1", "P2", "P3"}
@@ -43,6 +45,7 @@ HISTORICAL_HUMAN_SECTIONS = {
 _normalize_resources: Callable[[Any], list[str]] | None = None
 _text_present: Callable[[Any], bool] | None = None
 _validate_phase_evidence: Callable[[Any], list[str]] | None = None
+_validate_workflow: Callable[[Any], list[str]] | None = None
 
 
 class GoalTransitionProviderError(ValueError):
@@ -51,9 +54,11 @@ class GoalTransitionProviderError(ValueError):
 def configure_entrypoint(
     *, normalize_resources: Callable[[Any], list[str]], text_present: Callable[[Any], bool],
     validate_phase_evidence: Callable[[Any], list[str]] | None = None,
+    validate_workflow: Callable[[Any], list[str]] | None = None,
 ) -> None:
-    global _normalize_resources, _text_present, _validate_phase_evidence
+    global _normalize_resources, _text_present, _validate_phase_evidence, _validate_workflow
     _normalize_resources, _text_present, _validate_phase_evidence = normalize_resources, text_present, validate_phase_evidence
+    _validate_workflow = validate_workflow
 
 def _require_configured() -> tuple[Callable[[Any], list[str]], Callable[[Any], bool]]:
     if _normalize_resources is None or _text_present is None:
@@ -85,6 +90,8 @@ def validate_managed_goal(goal: Any, issue_number: int | None = None) -> list[st
     unknown = sorted(set(goal) - GOAL_FIELDS)
     if unknown:
         errors.append("unknown fields: " + ", ".join(unknown))
+    if "workflow" in goal:
+        errors.extend(_validate_workflow(goal["workflow"]) if _validate_workflow else ["workflow validation is unavailable"])
     if goal.get("schema_version") != GOAL_SCHEMA_VERSION:
         errors.append(f"schema_version must be {GOAL_SCHEMA_VERSION}")
     required_text = ("status", "priority", "value", "difficulty", "confidence", "next_action")
@@ -283,12 +290,19 @@ def render_goal_history(
         payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
     ).encode("utf-8")).hexdigest()
     block = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
+    displayed_prior = prior_body.rstrip()
+    if len(block) + len(displayed_prior) > 60000:
+        # Backend evidence is repetitive. Preserve the exact archive instead of
+        # truncating it or exceeding GitHub's per-comment size limit.
+        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        block = json.dumps({"encoding": "zlib-base64", "payload": base64.b64encode(zlib.compress(raw)).decode("ascii")}, sort_keys=True)
+        displayed_prior = compact_human_goal_text(prior_body).rstrip() + "\n\nThe exact prior machine state is preserved in the lossless archive below."
     next_action = desired.get("next_action", "")
     status = desired.get("status", "")
     return history_id, (
         f"## ZzzOps transition history\n\n"
         f"Archived canonical state before revision {desired['revision']}.\n\n"
-        f"### Archived canonical body\n\n{prior_body.rstrip()}\n\n"
+        f"### Archived canonical body\n\n{displayed_prior}\n\n"
         f"### Requested transition\n\n"
         f"- Status: `{status}`\n"
         f"- Next action:\n\n{next_action}\n\n"
@@ -315,7 +329,13 @@ def parse_goal_history(body: Any) -> dict[str, Any] | None:
         return None
     try:
         payload = json.loads(match.group(1))
-    except json.JSONDecodeError as exc:
+        if isinstance(payload, dict) and payload.get("encoding") == "zlib-base64":
+            decoder = zlib.decompressobj()
+            raw = decoder.decompress(base64.b64decode(payload["payload"], validate=True), 2_000_000)
+            if not decoder.eof or decoder.unused_data:
+                raise ValueError("Compressed goal history exceeds its bounded archive size or contains trailing data")
+            payload = json.loads(raw.decode("utf-8"))
+    except (ValueError, KeyError, zlib.error) as exc:
         raise ValueError(f"Invalid goal history JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise ValueError("Invalid goal history payload")
@@ -406,12 +426,14 @@ def github_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
         "confidence": goal["confidence"], "parent": goal["parent"],
         "depends_on": goal["depends_on"], "claim": goal["claim"], "resources": goal.get("resources", []),
         "needs_human": goal_needs_human(goal),
+        "blockers": goal["blockers"],
         "blocker_categories": sorted({blocker["category"] for blocker in goal["blockers"] if blocker.get("status") == "open"}),
         "next_action": goal["next_action"], "revision": goal["revision"],
         "digest": hashlib.sha256(digest_source.encode("utf-8")).hexdigest(),
         "updated_at": issue.get("updated_at"), "implementation": goal.get("implementation"),
         "engineering_rigor": goal.get("engineering_rigor"),
         "phase_evidence": goal.get("phase_evidence"),
+        "workflow": goal.get("workflow"),
         "human_spec": compact_human_goal_text(body),
         "acceptance_criteria": goal_acceptance_criteria(body),
         "labels": label_names, "schema_version": schema_versions[0] if len(schema_versions) == 1 else None,
@@ -420,10 +442,22 @@ def github_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
 
 
 def goal_acceptance_criteria(body: str) -> list[str]:
-    """Return the exact checked behavioural criteria from a managed goal body."""
+    """Read requirements regardless of their completion markers.
+
+    Plain bullets belong to an acceptance section; explicit checkboxes also
+    support older goal bodies without a dedicated heading.
+    """
     if not isinstance(body, str):
         raise ValueError("goal body must be text")
-    criteria = [match.group(1).strip() for match in re.finditer(r"^\s*-\s*\[x\]\s+(.+?)\s*$", body, re.IGNORECASE | re.MULTILINE)]
+    criteria = []
+    acceptance = False
+    for line in body.split(GOAL_BLOCK_START, 1)[0].splitlines():
+        if re.match(r"^#{1,3}\s", line):
+            acceptance = "acceptance" in line.casefold()
+            continue
+        match = re.match(r"^\s*[-*]\s+(?:\[([ xX])\]\s+)?(.+?)\s*$", line)
+        if match and (acceptance or match.group(1) is not None):
+            criteria.append(match.group(2).strip())
     if any(not item for item in criteria) or len(criteria) != len(set(criteria)):
         raise ValueError("goal acceptance criteria must be unique")
     return criteria
@@ -602,12 +636,14 @@ def validate_goal_transition(transition: Any, issue_number: int) -> list[str]:
     if not isinstance(transition, dict):
         return ["transition must be an object"]
     errors = []
-    unknown = sorted(set(transition) - GOAL_TRANSITION_FIELDS)
+    unknown = sorted(set(transition) - GOAL_TRANSITION_FIELDS - {"human_spec"})
     missing = sorted(GOAL_TRANSITION_FIELDS - set(transition))
     if unknown:
         errors.append("unknown transition fields: " + ", ".join(unknown))
     if missing:
         errors.append("missing transition fields: " + ", ".join(missing))
+    if "human_spec" in transition and (not _text_present(transition["human_spec"]) or GOAL_BLOCK_START in transition["human_spec"] or GOAL_BLOCK_END in transition["human_spec"]):
+        errors.append("human_spec must be nonempty human text without managed-state markers")
     if transition.get("schema_version") != GOAL_TRANSITION_SCHEMA_VERSION:
         errors.append(f"transition schema_version must be {GOAL_TRANSITION_SCHEMA_VERSION}")
     expected_revision = transition.get("expected_revision")
@@ -683,7 +719,7 @@ def apply_goal_transition(
 
     state = "closed" if desired["status"] in {"done", "cancelled"} else "open"
     if record["revision"] == desired["revision"]:
-        compact_body = render_managed_goal(desired, compact_human_goal_text(issue["body"]), issue_number)
+        compact_body = render_managed_goal(desired, transition.get("human_spec", compact_human_goal_text(issue["body"])), issue_number)
         returned_labels = {
             label["name"] for label in issue.get("labels", [])
             if isinstance(label, dict) and isinstance(label.get("name"), str)
@@ -712,7 +748,7 @@ def apply_goal_transition(
     if not hmac.compare_digest(record["digest"], transition["expected_digest"]):
         raise ValueError(f"Goal #{issue_number} digest changed; no update was made.")
 
-    body = render_managed_goal(desired, compact_human_goal_text(issue["body"]), issue_number)
+    body = render_managed_goal(desired, transition.get("human_spec", compact_human_goal_text(issue["body"])), issue_number)
     compact_errors = validate_compact_goal_body(body, issue_number)
     if compact_errors:
         raise ValueError("Invalid compact goal body: " + "; ".join(compact_errors))

@@ -12,6 +12,16 @@ SPEC.loader.exec_module(MODULE)
 
 
 class GoalHistoryRenderingTests(unittest.TestCase):
+    def test_large_workflow_history_is_lossless_and_fits_provider_limit(self):
+        prior = '## Outcome\n\nPreserve this.\n<!-- zzzops-goal\n' + ('{"evidence":"repeated"}\n' * 4000) + 'zzzops-goal -->\n'
+        desired = {"status": "ready", "revision": 99, "next_action": "Continue", "evidence": ['phase proof'] * 4000}
+        _, rendered = MODULE.render_goal_history(42, 'a' * 64, prior, desired)
+        self.assertLess(len(rendered), 65536)
+        self.assertIn('zlib-base64', rendered)
+        parsed = MODULE.parse_goal_history(rendered)
+        self.assertEqual(prior, parsed['prior_body'])
+        self.assertEqual(desired, parsed['requested_goal'])
+
     def test_human_sections_are_readable_and_payload_round_trips(self):
         prior = '## Outcome\n\nLine one.\n\nQuoted “text” and Unicode: café 🚀.\n'
         desired = {

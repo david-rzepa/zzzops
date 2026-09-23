@@ -28,7 +28,7 @@ class PolicyDefaultInventoryTests(unittest.TestCase):
 
     def test_new_catalog_value_in_hot_prompt_requires_explicit_classification(self) -> None:
         report = inventory.inventory(
-            catalog={"example": {"decision": "new_unique_operational_default", "settings": {}}},
+            catalog={"example": {"instructions": "new_unique_operational_default", "configuration": {}}},
             hot_texts={"plugins/zzzops/rules/EXAMPLE.md": "Use new_unique_operational_default."},
         )
         self.assertFalse(report["valid"])

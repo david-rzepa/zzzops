@@ -694,20 +694,40 @@ def release_storage_lock(adapter: Any, repository: str, key: str, owner: str, ru
 
 def apply_independent_batch(items: list[dict[str, Any]], apply: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:
     """Apply independent items in order, preserving confirmed per-item results."""
-    results = []
-    seen = set()
+    seen: set[str] = set()
+    validated_ids: list[str] = []
     for item in items:
         item_id = item.get("id") if isinstance(item, dict) else None
         if not isinstance(item_id, str) or not item_id or item_id in seen:
+            results = [{"id": value, "result": {"ok": False, "outcome": "batch_rejected"}}
+                       for value in validated_ids]
             return {"applied": False, "results": results, "error": "batch item id is invalid"}
         seen.add(item_id)
         if item.get("depends_on"):
+            results = [{"id": value, "result": {"ok": False, "outcome": "batch_rejected"}}
+                       for value in validated_ids]
             return {"applied": False, "results": results, "error": f"batch item {item_id} is dependent"}
-        result = apply(item)
+        validated_ids.append(item_id)
+
+    results = []
+    all_applied = True
+    for item in items:
+        item_id = item["id"]
+        try:
+            result = apply(item)
+        except Exception as exc:  # Each independent item owns its failure boundary.
+            all_applied = False
+            results.append({"id": item_id, "result": {
+                "ok": False, "outcome": "error", "error": f"{type(exc).__name__}: {exc}",
+            }})
+            continue
         results.append({"id": item_id, "result": result})
         if not isinstance(result, dict) or result.get("ok") is not True:
-            return {"applied": False, "results": results, "error": f"batch item {item_id} failed"}
-    return {"applied": True, "results": results}
+            all_applied = False
+    response: dict[str, Any] = {"applied": all_applied, "results": results}
+    if not all_applied:
+        response["error"] = "one or more independent batch items failed"
+    return response
 
 
 def phase_lease_description(
@@ -772,8 +792,8 @@ def acquire_phase_lease(
         if current["expires_at"] > now_epoch:
             return {"acquired": False, "outcome": "contended", "goal": goal, "phase": phase,
                     "holder": {key: current[key] for key in ("owner", "run_id", "generation", "expires_at")}}
-        adapter.delete_label(existing["node_id"])
-        generation = current["generation"] + 1
+        return {"acquired": False, "outcome": "recovery_required", "goal": goal, "phase": phase,
+                "holder": {key: current[key] for key in ("owner", "run_id", "generation", "expires_at")}}
     description = phase_lease_description(repository, goal, phase, revision, owner, run_id, now_epoch + ttl_seconds, generation)
     created = adapter.create_label(name, description)
     if created is None:
@@ -785,6 +805,62 @@ def acquire_phase_lease(
         raise ReservationProviderError("GitHub did not confirm phase lease ownership; no ownership assumed.")
     return {"acquired": True, "outcome": "acquired", "goal": goal, "phase": phase, "generation": generation,
             "expires_at": now_epoch + ttl_seconds}
+
+
+def recover_phase_lease(
+    adapter: Any, repository: str, goal: int, phase: str, revision: int,
+    observed_owner: str, observed_run_id: str, observed_generation: int,
+    replacement_owner: str, replacement_run_id: str, worker_stopped: bool,
+    ttl_seconds: int = 900, now: datetime | None = None,
+) -> dict[str, Any]:
+    """Replace an expired lease after its exact owner is confirmed stopped."""
+    if worker_stopped is not True:
+        return {"acquired": False, "outcome": "worker_not_confirmed_stopped", "goal": goal, "phase": phase}
+    if not isinstance(ttl_seconds, int) or isinstance(ttl_seconds, bool) or not 60 <= ttl_seconds <= 86400:
+        raise ValueError("ttl-seconds must be from 60 to 86400")
+    _validate_reservation_goal(adapter, repository, goal, revision, require_writable=True)
+    now_epoch = int((now or datetime.now(timezone.utc)).timestamp())
+    name = phase_lease_label_name(goal, phase)
+    existing = adapter.get_label(name)
+    if existing is None:
+        return {"acquired": False, "outcome": "missing", "goal": goal, "phase": phase}
+    current = parse_phase_lease_description(existing.get("description"))
+    if (current["repository_key"] != reservation_repository_key(repository) or current["goal"] != goal
+            or current["phase"] != phase):
+        raise ReservationProviderError("Phase lease identity is invalid; no ownership assumed.")
+    if (current["owner"] != observed_owner or current["run_id"] != observed_run_id
+            or current["generation"] != observed_generation):
+        return {"acquired": False, "outcome": "observation_stale", "goal": goal, "phase": phase}
+    if current["expires_at"] > now_epoch:
+        return {"acquired": False, "outcome": "not_expired", "goal": goal, "phase": phase}
+
+    try:
+        adapter.delete_label(existing["node_id"])
+    except ReservationProviderError:
+        # A lost delete response is safe to continue only when the exact label is
+        # observably absent. A replacement at the same name must be preserved.
+        confirmed = adapter.get_label(name)
+        if confirmed is not None:
+            return {"acquired": False, "outcome": "replacement_detected", "goal": goal, "phase": phase}
+    confirmed = adapter.get_label(name)
+    if confirmed is not None:
+        return {"acquired": False, "outcome": "replacement_detected", "goal": goal, "phase": phase}
+
+    generation = observed_generation + 1
+    description = phase_lease_description(
+        repository, goal, phase, revision, replacement_owner, replacement_run_id,
+        now_epoch + ttl_seconds, generation,
+    )
+    created = adapter.create_label(name, description)
+    if created is None:
+        confirmed = adapter.get_label(name)
+        if confirmed is None or confirmed.get("description") != description:
+            return {"acquired": False, "outcome": "contended", "goal": goal, "phase": phase}
+        created = confirmed
+    if created.get("description") != description or not created.get("node_id"):
+        raise ReservationProviderError("GitHub did not confirm recovered phase lease ownership; no ownership assumed.")
+    return {"acquired": True, "outcome": "recovered", "goal": goal, "phase": phase,
+            "generation": generation, "expires_at": now_epoch + ttl_seconds}
 
 
 def renew_phase_lease(adapter: Any, repository: str, goal: int, phase: str, revision: int, owner: str, run_id: str, generation: int, ttl_seconds: int = 900, now: datetime | None = None) -> dict[str, Any]:

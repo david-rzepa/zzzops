@@ -14,15 +14,14 @@ from typing import Any, Callable
 
 
 PROJECT_SCHEMA_VERSION = 1
-POLICY_SCHEMA_VERSION = 1
-POLICY_DEFAULT_SCHEMA_VERSION = 1
+POLICY_SCHEMA_VERSION = 2
+POLICY_DEFAULT_SCHEMA_VERSION = 2
 PROJECT_POLICY_RELATIVE = ".zzzops/POLICY.json"
 PROJECT_AUDIT_RELATIVE = ".zzzops/PROJECT_AUDIT.md"
 BACKENDS = {"github_issues"}
 POLICY_SECTION_IDS = (
     "backend",
     "git_review_release",
-    "execution_continuation",
     "verification_testing",
     "code_quality",
     "dependencies_tooling",
@@ -38,7 +37,6 @@ POLICY_SECTION_IDS = (
 POLICY_SECTION_TITLES = {
     "backend": "Goal storage",
     "git_review_release": "Git, review, and release",
-    "execution_continuation": "Work continuation",
     "verification_testing": "Verification and testing",
     "code_quality": "Code quality and refactoring",
     "dependencies_tooling": "Dependencies and tooling",
@@ -51,63 +49,18 @@ POLICY_SECTION_TITLES = {
     "automated_design": "Automated design",
     "autonomy_approval_parallelism": "Autonomy, approvals, and parallel work",
 }
-# New migration policy settings are introduced lazily so existing reviewed
-# projects can be read and re-reviewed without a schema migration. Missing
-# settings still invalidate execution until the policy is explicitly revisited.
-OPTIONAL_POLICY_SETTING_PREFIXES = {"git_review_release": ("settings.legacy_migration",)}
-
-AUTOMATED_DESIGN_SETTINGS = {
-    "scope": "bounded_commitment_in_scope_implementation",
-    "commitment": {
-        "low": "replace_verify_and_clean_within_one_goal_before_fanout",
-        "high": "compare_evidence_cost_signal_or_explicit_current_design_review",
-        "structural_cost_signals": [
-            "affected_goal_units", "started_descendant_branches", "started_descendant_prs",
-            "durable_data", "public_or_integration_contracts", "external_state",
-            "compatibility_paths", "verification_breadth", "clean_removal_path",
-        ],
-    },
-    "selection_basis": ["project_objectives", "kpi_evidence", "constraints", "precedence"],
-    "decision_record": ["alternatives", "rationale", "assumptions", "falsifiable_validation_signal"],
-    "privacy_security": "unambiguously_risk_reducing_without_material_behavior_change",
-    "hard_stops": [
-        "product_scope", "incompatible_public_contract", "destructive_migration", "external_spending",
-        "deployment", "external_write", "human_review", "safety_authority", "higher_authority",
-    ],
-    "insufficient_evidence": "durable_design_blocker",
-}
+OPTIONAL_POLICY_SETTING_PREFIXES: dict[str, tuple[str, ...]] = {}
 
 GIT_REVIEW_SETTING_VALUES = {
     "review_pending_dependency": {"wait_for_completed_dependencies", "stack_from_reviewed_checkpoint"},
-    "review_gate": {"human_after_checks", "human_at_exhaustion"},
-    "conversational_approval": {"allowed_otherwise", "never_for_goal_progress"},
     "pull_request_mode": {"github_stacked_when_verified_else_chained", "chained_prs"},
-    "stacked_capability": {"official_gh_stack_extension_with_provider_membership_verification"},
-    "stacked_tool_installation": {"explicit_user_approval"},
-    "stacked_unavailable_fallback": {"chained_prs"},
 }
-ACTIVE_STACK_SETTINGS = {
-    "active_stack": "one_active_stack",
-    "second_stack": "durable_blocker",
-    "base_freshness": "latest_integrated_target",
-    "recovery": "explicit_abandoned_stack_decision",
-}
-DEPENDENCY_IMPLEMENTATION_GATES = {"dependencies_done", "stack_from_reviewed_checkpoint"}
 WORK_SUGGESTION_CATEGORIES = frozenset({
     "documentation", "tests", "code_quality_non_behavioral", "agent_observability",
     "verification_efficiency",
 })
 
-WORKFLOW_ADHERENCE_SETTINGS = {
-    "levels": {
-        "optional": "direct_agent_work_allowed",
-        "tracked": "durable_goal_required_for_substantial_agent_work",
-        "managed": "zzzops_workflow_required_for_repository_changes",
-    },
-    "exemptions": ["read_only_investigation", "zzzops_administration"],
-    "scoped_exception": "explicit_scoped_user_authority",
-    "agents_projection": "review_workflow_reconciliation",
-}
+REQUIRED_CI_MODES = {"inspect_exact_pr_head", "disabled", "existing_only"}
 
 WORKFLOW_PHASE_IDS = (
     "understand", "decompose", "plan", "test_design", "implement", "publish",
@@ -131,16 +84,27 @@ ROUTING_DIMENSION_VALUES = {
 }
 
 ENGINEERING_RIGOR_LEVELS = ("vibe", "structured", "agentic")
-ENGINEERING_RIGOR_INTERVIEW_DEPTH = {
-    "vibe": "light", "structured": "standard", "agentic": "thorough",
+POLICY_CONFIGURATION_KEYS = {
+    "backend": {"authority", "repository_identity", "capability_evidence"},
+    "git_review_release": {
+        "review_pending_dependency", "pull_request_mode", "legacy_migration",
+    },
+    "verification_testing": {"required_ci"},
+    "code_quality": set(),
+    "dependencies_tooling": set(),
+    "security_privacy_compliance": set(),
+    "documentation_style": set(),
+    "deployment_resources": set(),
+    "engineering_rigor": {"level", "minimums", "overrides"},
+    "model_routing": {"tiers", "assessment_tree", "model_inventory"},
+    "workflow_adherence": {"phase_dag"},
+    "automated_design": set(),
+    "autonomy_approval_parallelism": {
+        "max_workers", "execution_reports", "resource_reservations", "refill",
+    },
 }
 
-MODEL_ROUTING_SETTINGS_KEYS = {
-    "capability_basis", "routing_unit", "model_inventory", "root_boundary", "tiers", "assessment_tree",
-    "escalation", "parallelism", "telemetry", "evidence",
-}
-
-POLICY_DEFAULT_CONTENT_FIELDS = ("decision", "settings")
+POLICY_DEFAULT_CONTENT_FIELDS = ("instructions", "configuration")
 _package_provenance: Callable[[Path | None], dict[str, str]] | None = None
 
 
@@ -211,7 +175,7 @@ def prepare_policy_defaults(
     previous = {
         section["id"]: section for section in (previous_policy or {}).get("sections", [])
         if isinstance(section, dict) and text_present(section.get("id"))
-    }
+    } if (previous_policy or {}).get("schema_version") == POLICY_SCHEMA_VERSION else {}
     source: dict[str, str] | None = None
     for section in prepared.get("sections", []):
         if not isinstance(section, dict):
@@ -455,7 +419,7 @@ def exclusive_resources(resources: Any, policy: Any = None) -> list[str]:
     ]
 
 
-def _missing_setting_paths(current: Any, expected: Any, prefix: str = "settings") -> list[str]:
+def _missing_setting_paths(current: Any, expected: Any, prefix: str = "configuration") -> list[str]:
     if not isinstance(expected, dict):
         return []
     if not isinstance(current, dict):
@@ -484,8 +448,8 @@ def missing_policy_settings(
         if not isinstance(section, dict) or section.get("id") not in by_section:
             continue
         section_id = section["id"]
-        expected = by_section[section_id].get("content", {}).get("settings", {})
-        missing = _missing_setting_paths(section.get("settings"), expected)
+        expected = by_section[section_id].get("content", {}).get("configuration", {})
+        missing = _missing_setting_paths(section.get("configuration"), expected)
         optional_prefixes = OPTIONAL_POLICY_SETTING_PREFIXES.get(section_id, ())
         missing = [path for path in missing if not path.startswith(optional_prefixes)]
         if missing:
@@ -573,111 +537,87 @@ def phase_evidence_graph(phase_dag: Any, *, has_parent: bool) -> dict[str, list[
     Applicability is resolved before handing the graph to the generic evaluator.
     In particular, a child consumes its parent's decomposition as a parent gate
     instead of receiving an impossible local decomposition dependency. The
-    generic #432 graph has no child-aggregation edge, so parent verification,
-    review, and publication stay absent until orchestration can supply that
-    canonical aggregate-completion evidence.
+    orchestration layer supplies child-completion evidence to parent publication.
     """
     errors = _workflow_phase_dag_errors(phase_dag)
     if errors:
         raise ValueError("Invalid workflow phase DAG: " + "; ".join(errors))
-    parent_finalization = {"publish"}
     included = {
         node["id"] for node in phase_dag["phases"]
         if node["applicability"] == "always"
         or (node["applicability"] == "child_only" and has_parent)
         or (node["applicability"] == "parent_only" and not has_parent)
-    } - (parent_finalization if not has_parent else set())
+    }
     result = []
     for node in phase_dag["phases"]:
         phase = node["id"]
         if phase not in included:
             continue
         dependencies = [dependency for dependency in node["depends_on"] if dependency in included]
-        parent_gates = list(node["parent_gates"] if has_parent else [])
+        parent_phases = {item["id"] for item in phase_dag["phases"] if item["applicability"] != "child_only"}
+        parent_gates = [gate for gate in node["parent_gates"] if gate in parent_phases] if has_parent else []
+        if phase == "publish" and not has_parent:
+            dependencies = ["plan"]
         result.append({"id": phase, "depends_on": dependencies, "parent_gates": parent_gates})
     return {"phases": result}
 
 
 def _routing_settings_errors(settings: Any) -> list[str]:
-    if not isinstance(settings, dict) or set(settings) != MODEL_ROUTING_SETTINGS_KEYS:
-        return ["settings must contain the declarative routing contract"]
+    if not isinstance(settings, dict) or set(settings) != POLICY_CONFIGURATION_KEYS["model_routing"]:
+        return ["configuration must contain the declarative routing contract"]
     errors = []
-    if settings.get("capability_basis") != "effective_engineering_rigor_and_bounded_commitment":
-        errors.append("settings.capability_basis is invalid")
-    if settings.get("routing_unit") != "model_plus_effort":
-        errors.append("settings.routing_unit is invalid")
     inventory = settings.get("model_inventory")
-    inventory_fields = {"source", "effort", "missing", "stale", "unsupported", "reviewed_pairs"}
+    inventory_fields = {"reviewed_pairs"}
     if not isinstance(inventory, dict) or set(inventory) != inventory_fields:
-        errors.append("settings.model_inventory is invalid")
+        errors.append("configuration.model_inventory is invalid")
     else:
-        if any(inventory.get(field) != expected for field, expected in {
-            "source": "runtime_available_models", "effort": "runtime_supported_effort_levels",
-            "missing": "root_best_effort_web_research", "stale": "refresh_and_re_evaluate",
-            "unsupported": "durable_blocker",
-        }.items()):
-            errors.append("settings.model_inventory is invalid")
         pairs = inventory.get("reviewed_pairs")
         seen_pairs = set()
         if not isinstance(pairs, list):
-            errors.append("settings.model_inventory.reviewed_pairs is invalid")
+            errors.append("configuration.model_inventory.reviewed_pairs is invalid")
         else:
             for item in pairs:
                 if not isinstance(item, dict) or set(item) != {"model", "effort", "tier", "cost"}:
-                    errors.append("settings.model_inventory.reviewed_pairs is invalid")
+                    errors.append("configuration.model_inventory.reviewed_pairs is invalid")
                     continue
                 pair = (item.get("model"), item.get("effort"))
                 if (not all(_policy_identifier(part) for part in pair) or item.get("tier") not in ROUTING_TIER_IDS
                         or not isinstance(item.get("cost"), int) or isinstance(item.get("cost"), bool) or item["cost"] < 0
                         or pair in seen_pairs):
-                    errors.append("settings.model_inventory.reviewed_pairs is invalid")
+                    errors.append("configuration.model_inventory.reviewed_pairs is invalid")
                 seen_pairs.add(pair)
     tiers = settings.get("tiers")
     if not isinstance(tiers, list) or len(tiers) != len(ROUTING_TIER_IDS):
-        errors.append("settings.tiers must define every shipped tier")
+        errors.append("configuration.tiers must define every shipped tier")
     else:
         expected_ranks = set(range(1, len(ROUTING_TIER_IDS) + 1))
         actual_ids = [item.get("id") for item in tiers if isinstance(item, dict)]
         ranks = [item.get("rank") for item in tiers if isinstance(item, dict)]
         if any(not isinstance(item, dict) or set(item) != {"id", "rank"} for item in tiers) or set(actual_ids) != set(ROUTING_TIER_IDS) or set(ranks) != expected_ranks:
-            errors.append("settings.tiers must define every shipped tier")
+            errors.append("configuration.tiers must define every shipped tier")
     tree = settings.get("assessment_tree")
     if not isinstance(tree, list) or not tree:
-        errors.append("settings.assessment_tree is invalid")
+        errors.append("configuration.assessment_tree is invalid")
     else:
         catch_all = 0
         for index, rule in enumerate(tree):
             if not isinstance(rule, dict) or set(rule) != {"when", "tier"} or rule.get("tier") not in ROUTING_TIER_IDS:
-                errors.append("settings.assessment_tree is invalid")
+                errors.append("configuration.assessment_tree is invalid")
                 continue
             when = rule.get("when")
             if not isinstance(when, dict) or set(when) - ROUTING_DIMENSIONS:
-                errors.append("settings.assessment_tree is invalid")
+                errors.append("configuration.assessment_tree is invalid")
                 continue
             if not when:
                 catch_all += 1
                 if index != len(tree) - 1:
-                    errors.append("settings.assessment_tree catch-all must be last")
+                    errors.append("configuration.assessment_tree catch-all must be last")
             for dimension, values in when.items():
                 allowed = ROUTING_DIMENSION_VALUES[dimension]
                 if not isinstance(values, list) or not values or any(value not in allowed for value in values) or len(set(values)) != len(values):
-                    errors.append("settings.assessment_tree is invalid")
+                    errors.append("configuration.assessment_tree is invalid")
         if catch_all != 1:
-            errors.append("settings.assessment_tree requires one final catch-all")
-    boundary = settings.get("root_boundary")
-    if boundary != {"root_capability": "current_root_agent", "human_interaction": "direct_root_only", "above_root": "session_override_required"}:
-        errors.append("settings.root_boundary is invalid")
-    escalation = settings.get("escalation")
-    if not isinstance(escalation, dict) or set(escalation) != {"triggers", "handling"} or not isinstance(escalation.get("triggers"), list) or not escalation["triggers"] or escalation.get("handling") != "durable_blocker_continue_safe_work":
-        errors.append("settings.escalation is invalid")
-    parallelism = settings.get("parallelism")
-    if parallelism != {"below_root": "allowed_within_reviewed_worker_limits", "root_or_above": "session_override_required"}:
-        errors.append("settings.parallelism is invalid")
-    telemetry = settings.get("telemetry")
-    if telemetry != {"source": "optional_provenance_backed_usage", "unavailable": "record_unavailable_no_block"}:
-        errors.append("settings.telemetry is invalid")
-    if settings.get("evidence") != "append_only_goal_history":
-        errors.append("settings.evidence is invalid")
+            errors.append("configuration.assessment_tree requires one final catch-all")
     return errors
 
 
@@ -871,7 +811,7 @@ def legacy_migration_review(policy: dict[str, Any], release_status: dict[str, An
     """Report whether the migration choice needs review after release evidence changes."""
     section = next((item for item in policy.get("sections", [])
                     if isinstance(item, dict) and item.get("id") == "git_review_release"), {})
-    settings = section.get("settings") if isinstance(section.get("settings"), dict) else {}
+    settings = section.get("configuration") if isinstance(section.get("configuration"), dict) else {}
     recorded = settings.get("legacy_migration")
     if not isinstance(recorded, dict):
         return {"status": "review_required", "reason": "migration_policy_missing", "affected_work_blocked": True}
@@ -900,7 +840,7 @@ def stack_tooling_offer(policy: dict[str, Any], capability: dict[str, Any]) -> d
     """Describe an interactive tooling decision without granting installation authority."""
     section = next((item for item in policy.get("sections", [])
                     if isinstance(item, dict) and item.get("id") == "git_review_release"), {})
-    settings = section.get("settings") if isinstance(section.get("settings"), dict) else {}
+    settings = section.get("configuration") if isinstance(section.get("configuration"), dict) else {}
     preferred = settings.get("pull_request_mode") == "github_stacked_when_verified_else_chained"
     digest = policy_content_digest({key: capability.get(key) for key in
                                     ("reason", "cli_version", "extension_version", "official_source")})
@@ -1078,18 +1018,27 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
             errors.append("evidence must be a non-empty list")
         else:
             for index, item in enumerate(evidence):
-                if not isinstance(item, dict) or not text_present(item.get("id")) or not text_present(item.get("source")) or not text_present(item.get("finding")):
+                if not isinstance(item, dict) or any(not text_present(item.get(field)) for field in ("id", "source", "finding")):
                     errors.append(f"evidence[{index}] requires id, source, and finding")
                 elif item["id"] in evidence_ids:
                     errors.append(f"evidence[{index}].id must be unique")
                 else:
                     evidence_ids.add(item["id"])
+    common_fields = {
+        "id", "title", "required", "applicable", "instructions", "rationale", "source_ids",
+        "confidence", "default_origin", "default_disposition", "configuration", "exceptions",
+        "unresolved", "review",
+    }
+    optional_fields = {"default_id", "default_resolution", "default_provenance"}
     seen = set()
     for index, section in enumerate(sections):
         prefix = f"sections[{index}]"
         if not isinstance(section, dict):
             errors.append(f"{prefix} must be an object")
             continue
+        unsupported = sorted(set(section) - common_fields - optional_fields)
+        if unsupported:
+            errors.append(f"{prefix} has unsupported fields: {', '.join(unsupported)}")
         section_id = section.get("id")
         if section_id not in POLICY_SECTION_IDS or section_id in seen:
             errors.append(f"{prefix}.id must be unique and from the current taxonomy")
@@ -1097,7 +1046,7 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
             seen.add(section_id)
         if section.get("default_id") is not None and section.get("default_id") != f"zzzops.policy.{section_id}":
             errors.append(f"{prefix}.default_id is inconsistent")
-        for field in ("title", "decision", "rationale", "confidence", "default_origin", "default_disposition"):
+        for field in ("title", "instructions", "rationale", "confidence", "default_origin", "default_disposition"):
             if not text_present(section.get(field)):
                 errors.append(f"{prefix}.{field} is required")
         if section.get("confidence") not in {"low", "medium", "high"}:
@@ -1113,151 +1062,88 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
             missing_sources = sorted(set(section["source_ids"]) - evidence_ids)
             if missing_sources:
                 errors.append(f"{prefix}.source_ids missing citations: {', '.join(missing_sources)}")
-        if not isinstance(section.get("settings"), dict):
-            errors.append(f"{prefix}.settings must be an object")
-        elif section_id == "git_review_release":
-            settings = section["settings"]
-            if "stacked_tooling_decline" in settings and not _digest_text(settings["stacked_tooling_decline"]):
-                errors.append(f"{prefix}.git_review_release.settings.stacked_tooling_decline is invalid")
-            for field, allowed in GIT_REVIEW_SETTING_VALUES.items():
-                if settings.get(field) not in allowed:
-                    errors.append(f"{prefix}.git_review_release.settings.{field} is invalid")
-            for field, expected in ACTIVE_STACK_SETTINGS.items():
-                if settings.get(field) != expected:
-                    errors.append(f"{prefix}.git_review_release.settings.{field} is invalid")
-            if settings.get("review_gate") == "human_at_exhaustion" and (
-                settings.get("review_pending_dependency") != "stack_from_reviewed_checkpoint"
-                or settings.get("conversational_approval") != "never_for_goal_progress"
-            ):
+        configuration = section.get("configuration")
+        if not isinstance(configuration, dict):
+            errors.append(f"{prefix}.configuration must be an object")
+        elif section_id in POLICY_CONFIGURATION_KEYS:
+            allowed = POLICY_CONFIGURATION_KEYS[section_id]
+            required = allowed
+            if section_id == "git_review_release":
+                allowed = allowed | {"stacked_tooling_decline"}
+            missing = sorted(required - set(configuration))
+            unknown = sorted(set(configuration) - allowed)
+            if missing or unknown:
                 errors.append(
-                    f"{prefix}.git_review_release exhaustion review requires checkpoint stacking "
-                    "and no conversational goal approval"
+                    f"{prefix}.{section_id}.configuration has unsupported configuration fields"
+                    + (f"; missing: {', '.join(missing)}" if missing else "")
+                    + (f"; unknown: {', '.join(unknown)}" if unknown else "")
                 )
-        elif section_id == "engineering_rigor":
-            settings = section["settings"]
-            if section.get("decision") not in ENGINEERING_RIGOR_LEVELS:
-                errors.append(f"{prefix}.engineering_rigor.decision must be vibe, structured, or agentic")
-            if set(settings) != {"escalation", "minimums", "overrides", "requirements_interview"}:
-                errors.append(f"{prefix}.engineering_rigor.settings must contain the bounded rigor contract")
-            escalation = settings.get("escalation")
-            if not isinstance(escalation, dict) or set(escalation) != {
-                "enabled", "allow_automatic_escalation", "allow_automatic_deescalation",
-            }:
-                errors.append(f"{prefix}.engineering_rigor.escalation is invalid")
-            else:
-                for field in ("enabled", "allow_automatic_escalation"):
-                    if not isinstance(escalation.get(field), bool):
-                        errors.append(f"{prefix}.engineering_rigor.escalation.{field} must be boolean")
-                if escalation.get("allow_automatic_escalation") is True and escalation.get("enabled") is not True:
-                    errors.append(f"{prefix}.engineering_rigor.escalation enabled conflicts with automatic escalation")
-                if escalation.get("allow_automatic_deescalation") is not False:
-                    errors.append(f"{prefix}.engineering_rigor.allow_automatic_deescalation must remain false")
-            minimums = settings.get("minimums")
-            if not isinstance(minimums, dict):
-                errors.append(f"{prefix}.engineering_rigor.minimums must be an object")
-            else:
-                for category, level in minimums.items():
-                    if (
-                        not isinstance(category, str) or not text_present(category)
-                        or category.casefold() != category or not category.replace("_", "").isalnum()
-                    ):
-                        errors.append(f"{prefix}.engineering_rigor.minimums category is invalid")
-                    if level not in ENGINEERING_RIGOR_LEVELS:
-                        errors.append(f"{prefix}.engineering_rigor.minimums {category!r} level is invalid")
-            overrides = settings.get("overrides")
-            if not isinstance(overrides, dict) or set(overrides) != {
-                "per_goal", "raising", "lowering", "may_undercut_risk_minimum",
-            }:
-                errors.append(f"{prefix}.engineering_rigor.overrides is invalid")
-            else:
-                if not isinstance(overrides.get("per_goal"), bool):
-                    errors.append(f"{prefix}.engineering_rigor.overrides.per_goal must be boolean")
-                if overrides.get("raising") != "allowed":
-                    errors.append(f"{prefix}.engineering_rigor.overrides.raising must be allowed")
-                if overrides.get("lowering") != "explicit_user_authority":
-                    errors.append(f"{prefix}.engineering_rigor.overrides.lowering requires explicit user authority")
-                if overrides.get("may_undercut_risk_minimum") is not False:
-                    errors.append(f"{prefix}.engineering_rigor.may_undercut_risk_minimum must remain false")
-            interview = settings.get("requirements_interview")
-            if not isinstance(interview, dict) or set(interview) != {"source", "level_mapping"}:
-                errors.append(f"{prefix}.engineering_rigor.requirements_interview is invalid")
-            else:
-                if interview.get("source") != "effective_engineering_rigor":
-                    errors.append(f"{prefix}.engineering_rigor.requirements_interview.source is invalid")
-                if interview.get("level_mapping") != ENGINEERING_RIGOR_INTERVIEW_DEPTH:
-                    errors.append(f"{prefix}.engineering_rigor.requirements_interview.level_mapping is invalid")
-        elif section_id == "workflow_adherence":
-            settings = section["settings"]
-            if section.get("decision") not in WORKFLOW_ADHERENCE_SETTINGS["levels"]:
-                errors.append(f"{prefix}.workflow_adherence.decision must be optional, tracked, or managed")
-            expected = set(WORKFLOW_ADHERENCE_SETTINGS) | {"phase_dag"}
-            if not isinstance(settings, dict) or set(settings) != expected:
-                errors.append(f"{prefix}.workflow_adherence.settings must contain the declarative workflow contract")
-            else:
-                for field, value in WORKFLOW_ADHERENCE_SETTINGS.items():
-                    if settings.get(field) != value:
-                        errors.append(f"{prefix}.workflow_adherence.settings.{field} is invalid")
-                errors.extend(f"{prefix}.workflow_adherence.{error}" for error in _workflow_phase_dag_errors(settings.get("phase_dag")))
-        elif section_id == "model_routing":
-            settings = section["settings"]
-            if section.get("decision") != "capability_derived":
-                errors.append(f"{prefix}.model_routing.decision must be capability_derived")
-            errors.extend(f"{prefix}.model_routing.{error}" for error in _routing_settings_errors(settings))
-        elif section_id == "automated_design":
-            settings = section["settings"]
-            if section.get("decision") not in {"enabled", "disabled"}:
-                errors.append(f"{prefix}.decision must be enabled or disabled")
-            for field, expected in AUTOMATED_DESIGN_SETTINGS.items():
-                if settings.get(field) != expected:
-                    errors.append(f"{prefix}.automated_design.settings.{field} must preserve the bounded contract")
-        elif section_id == "autonomy_approval_parallelism":
-            settings = section["settings"]
-            if settings.get("dependency_implementation_gate") not in DEPENDENCY_IMPLEMENTATION_GATES:
-                errors.append(f"{prefix}.settings.dependency_implementation_gate is invalid")
-            if "execution_reports" in settings:
-                reporting = settings["execution_reports"]
-                if not isinstance(reporting, dict):
-                    errors.append(f"{prefix}.settings.execution_reports must be an object")
-                elif not isinstance(reporting.get("enabled"), bool):
-                    errors.append(f"{prefix}.settings.execution_reports.enabled must be boolean")
-            if "requirements_interview" in settings:
-                interview = settings["requirements_interview"]
-                expected = {
-                    "capture_depth": {"light", "standard", "thorough"},
-                    "mode": {"adaptive"},
-                    "stakeholder_model": {"requesting_user_only"},
-                    "execution_questions": {"durable_blockers_only"},
-                }
-                if not isinstance(interview, dict):
-                    errors.append(f"{prefix}.settings.requirements_interview must be an object")
+            elif section_id == "backend":
+                if configuration.get("authority") not in BACKENDS:
+                    errors.append(f"{prefix}.backend.configuration.authority is invalid")
+                for field in ("repository_identity", "capability_evidence"):
+                    if not text_present(configuration.get(field)):
+                        errors.append(f"{prefix}.backend.configuration.{field} is required")
+            elif section_id == "git_review_release":
+                if configuration.get("review_pending_dependency") not in GIT_REVIEW_SETTING_VALUES["review_pending_dependency"]:
+                    errors.append(f"{prefix}.git_review_release.configuration.review_pending_dependency is invalid")
+                if configuration.get("pull_request_mode") not in GIT_REVIEW_SETTING_VALUES["pull_request_mode"]:
+                    errors.append(f"{prefix}.git_review_release.configuration.pull_request_mode is invalid")
+                migration = configuration.get("legacy_migration")
+                if not isinstance(migration, dict) or set(migration) != {"release_status"} or migration.get("release_status") not in {"unknown", "never_released", "released"}:
+                    errors.append(f"{prefix}.git_review_release.configuration.legacy_migration is invalid")
+                if "stacked_tooling_decline" in configuration and not _digest_text(configuration["stacked_tooling_decline"]):
+                    errors.append(f"{prefix}.git_review_release.configuration.stacked_tooling_decline is invalid")
+            elif section_id == "verification_testing":
+                if configuration.get("required_ci") not in REQUIRED_CI_MODES:
+                    errors.append(f"{prefix}.verification_testing.configuration.required_ci is invalid")
+            elif section_id == "engineering_rigor":
+                if configuration.get("level") not in ENGINEERING_RIGOR_LEVELS:
+                    errors.append(f"{prefix}.engineering_rigor.configuration.level is invalid")
+                minimums = configuration.get("minimums")
+                if not isinstance(minimums, dict):
+                    errors.append(f"{prefix}.engineering_rigor.configuration.minimums must be an object")
                 else:
-                    for field, allowed in expected.items():
-                        if interview.get(field) not in allowed:
-                            errors.append(f"{prefix}.settings.requirements_interview.{field} is invalid")
-            if "resource_reservations" in settings:
+                    for category, level in minimums.items():
+                        if not _policy_identifier(category) or level not in ENGINEERING_RIGOR_LEVELS:
+                            errors.append(f"{prefix}.engineering_rigor.configuration.minimums is invalid")
+                overrides = configuration.get("overrides")
+                if not isinstance(overrides, dict) or set(overrides) != {"per_goal"}:
+                    errors.append(f"{prefix}.engineering_rigor.configuration.overrides is invalid")
+                elif not isinstance(overrides.get("per_goal"), bool):
+                    errors.append(f"{prefix}.engineering_rigor.configuration.overrides is invalid")
+            elif section_id == "model_routing":
+                errors.extend(f"{prefix}.model_routing.{error}" for error in _routing_settings_errors(configuration))
+            elif section_id == "workflow_adherence":
+                errors.extend(f"{prefix}.workflow_adherence.{error}" for error in _workflow_phase_dag_errors(configuration.get("phase_dag")))
+            elif section_id == "autonomy_approval_parallelism":
+                maximum = configuration.get("max_workers")
+                if not isinstance(maximum, int) or isinstance(maximum, bool) or not 1 <= maximum <= 20:
+                    errors.append(f"{prefix}.autonomy_approval_parallelism.configuration.max_workers must be an integer from 1 to 20")
+                reporting = configuration.get("execution_reports")
+                if not isinstance(reporting, dict) or set(reporting) != {"enabled"} or not isinstance(reporting.get("enabled"), bool):
+                    errors.append(f"{prefix}.autonomy_approval_parallelism.configuration.execution_reports is invalid")
                 try:
-                    normalize_resource_policy(settings["resource_reservations"])
+                    normalize_resource_policy(configuration.get("resource_reservations"))
                 except ValueError as exc:
-                    errors.append(f"{prefix}.settings.{exc}")
-            if "refill" in settings:
-                refill = settings["refill"]
-                if not isinstance(refill, dict):
-                    errors.append(f"{prefix}.settings.refill must be an object")
+                    errors.append(f"{prefix}.autonomy_approval_parallelism.configuration.{exc}")
+                refill = configuration.get("refill")
+                if not isinstance(refill, dict) or set(refill) != {"enabled", "allowed_categories", "max_suggestions"}:
+                    errors.append(f"{prefix}.autonomy_approval_parallelism.configuration.refill is invalid")
                 else:
                     categories = refill.get("allowed_categories")
                     if (
-                        not isinstance(categories, list)
-                        or not categories
+                        not isinstance(categories, list) or not categories
                         or any(not isinstance(category, str) for category in categories)
                         or len(categories) != len(set(categories))
                         or any(category not in WORK_SUGGESTION_CATEGORIES for category in categories)
                     ):
-                        errors.append(f"{prefix}.settings.refill.allowed_categories is invalid")
+                        errors.append(f"{prefix}.autonomy_approval_parallelism.configuration.refill.allowed_categories is invalid")
                     if not isinstance(refill.get("enabled"), bool):
-                        errors.append(f"{prefix}.settings.refill.enabled must be boolean")
-                    maximum = refill.get("max_per_run")
+                        errors.append(f"{prefix}.autonomy_approval_parallelism.configuration.refill.enabled must be boolean")
+                    maximum = refill.get("max_suggestions")
                     if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum < 1:
-                        errors.append(f"{prefix}.settings.refill.max_per_run must be a positive integer")
+                        errors.append(f"{prefix}.autonomy_approval_parallelism.configuration.refill.max_suggestions must be a positive integer")
         review = section.get("review")
         if not isinstance(review, dict) or not isinstance(review.get("approved"), bool):
             errors.append(f"{prefix}.review.approved must be boolean")
@@ -1269,29 +1155,17 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
             errors.append(f"{prefix}.review cannot approve unresolved choices")
         if section.get("applicable") is False and not text_present(section.get("rationale")):
             errors.append(f"{prefix}.rationale is required for not applicable")
+        if section_id == "security_privacy_compliance" and (
+            section.get("required") is not True or section.get("applicable") is not True
+        ):
+            errors.append(f"{prefix}.security_privacy_compliance must be required and applicable")
         errors.extend(validate_default_provenance(section, prefix))
-    required_sections = set(POLICY_SECTION_IDS)
-    missing = sorted(required_sections - seen)
+    missing = sorted(set(POLICY_SECTION_IDS) - seen)
     if missing:
         errors.append("missing sections: " + ", ".join(missing))
     for section_id, paths in missing_policy_settings(policy).items():
-        errors.append(f"section {section_id} is missing operational policy settings: {', '.join(paths)}")
-    rigor = next((item for item in sections if isinstance(item, dict) and item.get("id") == "engineering_rigor"), None)
-    autonomy = next((item for item in sections if isinstance(item, dict) and item.get("id") == "autonomy_approval_parallelism"), None)
-    if isinstance(rigor, dict) and isinstance(autonomy, dict):
-        rigor_settings = rigor.get("settings") if isinstance(rigor.get("settings"), dict) else {}
-        rigor_interview = rigor_settings.get("requirements_interview")
-        rigor_interview = rigor_interview if isinstance(rigor_interview, dict) else {}
-        mapping = rigor_interview.get("level_mapping", {})
-        expected_depth = mapping.get(rigor.get("decision")) if isinstance(mapping, dict) else None
-        autonomy_settings = autonomy.get("settings") if isinstance(autonomy.get("settings"), dict) else {}
-        autonomy_interview = autonomy_settings.get("requirements_interview")
-        autonomy_interview = autonomy_interview if isinstance(autonomy_interview, dict) else {}
-        actual_depth = autonomy_interview.get("capture_depth")
-        if expected_depth is not None and actual_depth != expected_depth:
-            errors.append("engineering_rigor capture_depth conflicts with the reviewed default level")
+        errors.append(f"section {section_id} is missing operational policy configuration: {', '.join(paths)}")
     return errors
-
 
 def policy_blockers(policy: Any) -> list[str]:
     if not isinstance(policy, dict) or not isinstance(policy.get("sections"), list):
@@ -1319,7 +1193,7 @@ def cell(value: str) -> str:
 
 
 def _plain_policy_choice(section: dict[str, Any], limit: int = 140) -> str:
-    decision = " ".join(str(section.get("decision") or "Not configured").split())
+    decision = " ".join(str(section.get("instructions") or "Not configured").split())
     if decision and " " not in decision:
         decision = decision.replace("_", " ").capitalize()
         if decision == "Github issues":
@@ -1329,6 +1203,30 @@ def _plain_policy_choice(section: dict[str, Any], limit: int = 140) -> str:
     boundary = decision.rfind(" ", 0, limit - 20)
     boundary = boundary if boundary >= 50 else limit - 20
     return decision[:boundary].rstrip(" ,;:") + "… (details in audit)"
+
+
+def _plain_policy_configuration(section: dict[str, Any], limit: int = 160) -> str:
+    """Render a bounded review summary without hiding typed runtime choices."""
+    configuration = section.get("configuration")
+    if not isinstance(configuration, dict) or not configuration:
+        return "none"
+    parts: list[str] = []
+
+    def visit(prefix: str, value: Any) -> None:
+        if isinstance(value, dict):
+            for key in sorted(value):
+                visit(f"{prefix}.{key}" if prefix else key, value[key])
+        elif isinstance(value, list):
+            if value and all(isinstance(item, str) for item in value) and len(",".join(value)) <= 48:
+                parts.append(f"{prefix}={','.join(value)}")
+            else:
+                parts.append(f"{prefix}={len(value)} items")
+        else:
+            parts.append(f"{prefix}={json.dumps(value, ensure_ascii=False)}")
+
+    visit("", configuration)
+    summary = "; ".join(parts)
+    return summary if len(summary) <= limit else summary[: limit - 1].rstrip() + "…"
 
 
 def policy_review_rows(
@@ -1366,6 +1264,7 @@ def policy_review_rows(
         if section is None:
             rows.append({
                 "policy": POLICY_SECTION_TITLES[section_id], "current_choice": "Not configured",
+                "configuration": "Not configured",
                 "default_relationship": "Unknown — policy is missing",
                 "stale": "Yes — this policy is missing", "approved": "Not yet",
                 "applies": "Unknown", "needs_attention": "Add and review this policy",
@@ -1409,6 +1308,7 @@ def policy_review_rows(
         rows.append({
             "policy": POLICY_SECTION_TITLES[section_id],
             "current_choice": _plain_policy_choice(section),
+            "configuration": _plain_policy_configuration(section),
             "default_relationship": default_relationship, "stale": stale,
             "approved": "✅ Yes" if approved else "Not yet",
             "applies": "Yes" if section.get("applicable") is True else "No",
@@ -1423,11 +1323,11 @@ def render_policy_review_table(
 ) -> str:
     rows = policy_review_rows(policy, catalog, stale_reasons, proposal=proposal)
     header = (
-        "| Policy | Current choice | ZzzOps default? | Stale? | Approved | Applies? | Needs attention |\n"
-        "| --- | --- | --- | --- | --- | --- | --- |"
+        "| Policy | Agent instructions | CLI configuration | ZzzOps default? | Stale? | Approved | Applies? | Needs attention |\n"
+        "| --- | --- | --- | --- | --- | --- | --- | --- |"
     )
     body = "\n".join(
-        "| {policy} | {current_choice} | {default_relationship} | {stale} | {approved} | {applies} | {needs_attention} |".format(
+        "| {policy} | {current_choice} | {configuration} | {default_relationship} | {stale} | {approved} | {applies} | {needs_attention} |".format(
             **{key: cell(value) for key, value in row.items()}
         )
         for row in rows
@@ -1443,7 +1343,9 @@ def render_project(state: dict[str, Any]) -> str:
     bullets = lambda values: "\n".join(f"- {value}" for value in values)
     checks = "\n".join(f"- [x] {value}" for value in charter["acceptance_criteria"])
     policy = "\n".join(
-        f"- `[policy:{section['id']}]` **{section['title']}**: {section['decision']} ({default_provenance_label(section)})"
+        f"- `[policy:{section['id']}]` **{section['title']}** — Agent instructions: "
+        f"{section['instructions']} CLI configuration: {_plain_policy_configuration(section, limit=100)} "
+        f"({default_provenance_label(section)})"
         for section in state["policy"]["sections"]
     )
     return f"""# Project success charter
@@ -1500,19 +1402,19 @@ def render_policy_sections(policy: dict[str, Any]) -> str:
     for section in policy["sections"]:
         approved = section["review"]["approved"] is True
         applicable = "applicable" if section["applicable"] else "not applicable"
-        settings = json.dumps(section["settings"], ensure_ascii=False, sort_keys=True)
+        settings = json.dumps(section["configuration"], ensure_ascii=False, sort_keys=True)
         sources = "; ".join(
             "{}: {}".format(source_id, evidence.get(source_id, "missing citation"))
             for source_id in section["source_ids"]
         )
         rendered.append(
             f"- [{'x' if approved else ' '}] `[policy:{section['id']}]` **{section['title']}** ({applicable})\n"
-            f"  - Decision: {section['decision']}\n"
+            f"  - Instructions: {section['instructions']}\n"
             f"  - Rationale: {section['rationale']}\n"
             f"  - Sources: {sources}\n"
             f"  - Confidence/default: {section['confidence']}; {section['default_origin']} → {section['default_disposition']}\n"
             f"  - Provenance: {default_provenance_label(section)}\n"
-            f"  - Settings: `{settings}`\n"
+            f"  - Configuration: `{settings}`\n"
             f"  - Exceptions: {', '.join(section['exceptions']) or 'none'}\n"
             f"  - Unresolved: {', '.join(section['unresolved']) or 'none'}"
         )

@@ -13,8 +13,6 @@ SKILL_UI = {
     "bootstrap-zzzops-repository": ("Bootstrap Repository", "Create or strengthen an agent-ready repository"),
     "execute-zzzops": ("Execute", "Run the primary autonomous ZzzOps goal loop"),
     "migrate-to-zzzops": ("Migrate TODOs", "Discover and migrate repository TODOs safely"),
-    "review-agentic-engineering": ("Review Agentic Engineering", "Improve how you work with software agents"),
-    "review-zzzops-entropy": ("Review Entropy", "Review recent or full repository entropy"),
     "review-zzzops-policy": ("Review Policy", "Initialize or review project operating policy"),
     "send-zzzops-feedback": ("Send Feedback", "Preview and send privacy-safe ZzzOps feedback"),
     "suggest-zzzops-work": ("Suggest Work", "Audit project gaps and suggest durable work"),
@@ -101,7 +99,6 @@ class AgentPluginTests(unittest.TestCase):
         actual = {path.name for path in (PLUGIN / "skills").iterdir() if (path / "SKILL.md").is_file()}
         self.assertEqual(SHIPPED_SKILLS, actual)
         self.assertEqual(SHIPPED_SKILLS, package["SHIPPED_SKILLS"])
-        self.assertIn("review-zzzops-entropy", actual)
         self.assertFalse((PLUGIN / "skills" / "run-zzzops-acceptance").exists())
 
     def test_all_product_skills_load_shared_communication_contract(self) -> None:
@@ -116,9 +113,32 @@ class AgentPluginTests(unittest.TestCase):
             "progressive detail",
         ):
             self.assertIn(signal, guide_text)
-        for skill in SHIPPED_SKILLS:
+        for skill in set(SHIPPED_SKILLS) - {"add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work", "validate-zzzops-installation"}:
             text = (PLUGIN / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
             self.assertIn("../../rules/COMMUNICATION.md", text, skill)
+        feedback_instruction = (PLUGIN / "zzzops" / "references" / "next_steps" / "send-feedback.md").read_text(encoding="utf-8")
+        self.assertIn("Keep user text separate", feedback_instruction)
+        capture_instruction = (PLUGIN / "zzzops" / "references" / "next_steps" / "add-goal.md").read_text(encoding="utf-8")
+        self.assertIn("effective engineering rigor", capture_instruction)
+        installation_instruction = (PLUGIN / "zzzops" / "references" / "next_steps" / "installation-validation.md").read_text(encoding="utf-8")
+        self.assertIn("explicit removal confirmation", installation_instruction)
+        migration_instruction = (PLUGIN / "zzzops" / "references" / "next_steps" / "migrate.md").read_text(encoding="utf-8")
+        self.assertIn("Treat its candidates, types, confidence", migration_instruction)
+        suggestion_instruction = (PLUGIN / "zzzops" / "references" / "next_steps" / "suggest-work.md").read_text(encoding="utf-8")
+        self.assertIn("never manufacture work", suggestion_instruction)
+        bootstrap_instruction = (PLUGIN / "zzzops" / "references" / "next_steps" / "bootstrap.md").read_text(encoding="utf-8")
+        self.assertIn("canonical top-level product-outcome goal", bootstrap_instruction)
+        policy_instruction = (PLUGIN / "zzzops" / "references" / "next_steps" / "policy-review.md").read_text(encoding="utf-8")
+        self.assertIn("explicit approval of the current digest", policy_instruction)
+        cli_usage = (PLUGIN / "zzzops" / "references" / "CLI_USAGE.md").read_text(encoding="utf-8")
+        for field in ("`instruction`", "evidence fields", "`start`", "`bind`", "`submission`", "`command`"):
+            self.assertIn(field, cli_usage)
+        self.assertIn("Human approval is a separate step", cli_usage)
+        for retired in ("init inspect", "feedback prepare", "report list", "portfolio", "--include-feedback"):
+            self.assertNotIn(retired, cli_usage)
+        for skill in SHIPPED_SKILLS:
+            text = (PLUGIN / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("../../zzzops/references/CLI_USAGE.md", text, skill)
 
     def test_package_contains_valid_progressively_disclosed_concepts(self) -> None:
         package = runpy.run_path(str(PLUGIN / "zzzops" / "package.py"))
@@ -126,10 +146,6 @@ class AgentPluginTests(unittest.TestCase):
         self.assertTrue(status["ok"], status["detail"])
         self.assertTrue((PLUGIN / "concepts" / "bounded-commitment.md").is_file())
         self.assertTrue((PLUGIN / "zzzops" / "concepts.py").is_file())
-
-    def test_agentic_coaching_requires_explicit_invocation(self) -> None:
-        metadata = (PLUGIN / "skills" / "review-agentic-engineering" / "agents" / "openai.yaml").read_text(encoding="utf-8")
-        self.assertIn("allow_implicit_invocation: false", metadata)
 
     def test_legacy_installer_surfaces_are_absent(self) -> None:
         for relative in (
@@ -187,7 +203,7 @@ class AgentPluginTests(unittest.TestCase):
 
     def test_restricted_data_boundary_is_shipped(self) -> None:
         goal_rules = (PLUGIN / "rules" / "GOAL_SYSTEM.md").read_text(encoding="utf-8")
-        feedback_skill = (PLUGIN / "skills" / "send-zzzops-feedback" / "SKILL.md").read_text(encoding="utf-8")
+        feedback_skill = (PLUGIN / "zzzops" / "references" / "next_steps" / "send-feedback.md").read_text(encoding="utf-8")
         for restricted in (
             "credentials",
             "payment cards",

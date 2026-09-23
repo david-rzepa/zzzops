@@ -16,6 +16,7 @@ import sys
 import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from urllib.parse import quote, urlparse
 
@@ -69,6 +70,12 @@ sys.modules[_POLICY_MODULE_SPEC.name] = _policy
 _POLICY_MODULE_SPEC.loader.exec_module(_policy)
 _policy.configure_entrypoint(package_provenance=_package.package_provenance)
 
+_POLICY_CONTEXT_SPEC = importlib.util.spec_from_file_location("zzzops_policy_context", Path(__file__).with_name("policy_context.py"))
+assert _POLICY_CONTEXT_SPEC and _POLICY_CONTEXT_SPEC.loader
+_policy_context = importlib.util.module_from_spec(_POLICY_CONTEXT_SPEC)
+sys.modules[_POLICY_CONTEXT_SPEC.name] = _policy_context
+_POLICY_CONTEXT_SPEC.loader.exec_module(_policy_context)
+
 _ROUTING_MODULE_PATH = Path(__file__).with_name("routing.py")
 _ROUTING_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_routing", _ROUTING_MODULE_PATH)
 assert _ROUTING_MODULE_SPEC and _ROUTING_MODULE_SPEC.loader
@@ -109,6 +116,21 @@ assert _PHASE_EVIDENCE_MODULE_SPEC and _PHASE_EVIDENCE_MODULE_SPEC.loader
 _phase_evidence = importlib.util.module_from_spec(_PHASE_EVIDENCE_MODULE_SPEC)
 sys.modules[_PHASE_EVIDENCE_MODULE_SPEC.name] = _phase_evidence
 _PHASE_EVIDENCE_MODULE_SPEC.loader.exec_module(_phase_evidence)
+
+_WORKFLOW_SPEC = importlib.util.spec_from_file_location("zzzops_workflow", Path(__file__).with_name("workflow.py"))
+_workflow = importlib.util.module_from_spec(_WORKFLOW_SPEC)
+_WORKFLOW_SPEC.loader.exec_module(_workflow)
+
+_ADMIN_SPEC = importlib.util.spec_from_file_location("zzzops_workflow_admin", Path(__file__).with_name("workflow_admin.py"))
+_workflow_admin = importlib.util.module_from_spec(_ADMIN_SPEC)
+_ADMIN_SPEC.loader.exec_module(_workflow_admin)
+_HEARTBEAT_SPEC = importlib.util.spec_from_file_location("zzzops_heartbeat", Path(__file__).with_name("heartbeat.py"))
+_heartbeat = importlib.util.module_from_spec(_HEARTBEAT_SPEC)
+_HEARTBEAT_SPEC.loader.exec_module(_heartbeat)
+
+
+def workflow_engine(repo, project, runtime=None):
+    return _workflow.Workflow(SimpleNamespace(**globals()), repo, project, runtime)
 
 _GOALS_MODULE_PATH = Path(__file__).with_name("goals.py")
 _GOALS_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_goals", _GOALS_MODULE_PATH)
@@ -177,6 +199,7 @@ validate_phase_evidence = _phase_evidence.validate_phase_evidence
 normalize_phase_evidence = _phase_evidence.normalize_phase_evidence
 record_phase_result = _phase_evidence.record_phase_result
 record_phase_review = _phase_evidence.record_phase_review
+record_phase_approval = _phase_evidence.record_phase_approval
 withdraw_phase_evidence = _phase_evidence.withdraw_phase_evidence
 derive_phase_eligibility = _phase_evidence.derive_phase_eligibility
 derive_phase_steps = _phase_evidence.derive_phase_steps
@@ -184,29 +207,94 @@ BLOCKER_CATEGORIES = {
     "specification", "decision", "access-approval", "human-action",
     "external-dependency", "technical-unknown", "safety-compliance",
 }
-WORKFLOW_INTENTS = {"capture", "execute", "approve", "resume", "inspect"}
+WORKFLOW_INTENTS = {"capture", "execute", "preview", "approve", "resume", "inspect"}
 WORKFLOW_DEFAULT_SKILLS = {
-    "capture": "$add-zzzops-goal", "execute": "$execute-zzzops", "approve": "$execute-zzzops",
+    "capture": "$add-zzzops-goal", "execute": "$execute-zzzops", "preview": "$execute-zzzops", "approve": "$execute-zzzops",
     "resume": "$execute-zzzops", "inspect": "$review-zzzops-policy",
 }
 WORKFLOW_SKILL_INTENTS = {
-    "$add-zzzops-goal": {"capture"}, "$execute-zzzops": {"execute", "approve", "resume"},
+    "$add-zzzops-goal": {"capture"}, "$execute-zzzops": {"execute", "preview", "approve", "resume"},
     "$bootstrap-zzzops-repository": {"inspect"}, "$migrate-to-zzzops": {"inspect"},
-    "$review-agentic-engineering": {"inspect"}, "$review-zzzops-entropy": {"execute"},
     "$review-zzzops-policy": {"inspect"}, "$send-zzzops-feedback": {"execute"},
     "$suggest-zzzops-work": {"inspect"}, "$validate-zzzops-installation": {"inspect"},
 }
 WORKFLOW_SOURCE_ACTIONS = {
     "$add-zzzops-goal": "Capture the requested outcome and durable goal evidence.",
+    "$execute-zzzops": "Evaluate the goal workflow frontier and perform its required next step.",
     "$bootstrap-zzzops-repository": "Inspect repository and product evidence for the bootstrap workflow.",
     "$migrate-to-zzzops": "Inspect candidate legacy work and its adoption evidence.",
-    "$review-agentic-engineering": "Inspect completed-work evidence for the requested agentic-engineering review.",
-    "$review-zzzops-entropy": "Inspect the requested entropy-review evidence and coverage state.",
     "$review-zzzops-policy": "Inspect policy state and prepare the required review input.",
     "$send-zzzops-feedback": "Inspect the requested feedback evidence and exact submission preconditions.",
     "$suggest-zzzops-work": "Inspect bounded repository evidence for possible work suggestions.",
     "$validate-zzzops-installation": "Inspect installed-package validation evidence for this repository.",
 }
+
+WORKFLOW_ENTRY_INTENTS = {
+    "execute": ("execute", "$execute-zzzops"),
+    "preview": ("preview", "$execute-zzzops"),
+    "resume": ("resume", "$execute-zzzops"),
+    "approve": ("approve", "$execute-zzzops"),
+    "send_feedback": ("execute", "$send-zzzops-feedback"),
+    "add_goal": ("capture", "$add-zzzops-goal"),
+    "validate_installation": ("inspect", "$validate-zzzops-installation"),
+    "migrate": ("inspect", "$migrate-to-zzzops"),
+    "suggest_work": ("inspect", "$suggest-zzzops-work"),
+    "bootstrap": ("inspect", "$bootstrap-zzzops-repository"),
+    "review_policy": ("inspect", "$review-zzzops-policy"),
+}
+
+
+def normalize_workflow_entrypoint(argv: list[str]) -> list[str]:
+    """Expand a public semantic intent without exposing private handlers."""
+    if "--intent" not in argv:
+        return argv
+    index = argv.index("--intent")
+    if index + 1 >= len(argv):
+        return argv
+    route = WORKFLOW_ENTRY_INTENTS.get(argv[index + 1])
+    if route is None:
+        return argv
+    intent, source_skill = route
+    result = list(argv)
+    result[index + 1] = intent
+    if "workflow" not in result:
+        result.insert(index, "workflow")
+    if "--source-skill" not in result:
+        result.extend(("--source-skill", source_skill))
+    return result
+
+WORKFLOW_INSTRUCTION_PATHS = {
+    "workflow-repair": "zzzops/references/next_steps/workflow-repair.md",
+    "installation-validation": "zzzops/references/next_steps/installation-validation.md",
+    "bootstrap": "zzzops/references/next_steps/bootstrap.md",
+    "policy-review": "zzzops/references/next_steps/policy-review.md",
+    "routing-evidence": "zzzops/references/next_steps/routing-evidence.md",
+    "$add-zzzops-goal": "zzzops/references/next_steps/add-goal.md",
+    "$bootstrap-zzzops-repository": "zzzops/references/next_steps/bootstrap.md",
+    "$execute-zzzops": "zzzops/references/next_steps/execute.md",
+    "$migrate-to-zzzops": "zzzops/references/next_steps/migrate.md",
+    "$review-zzzops-policy": "zzzops/references/next_steps/policy-review.md",
+    "$send-zzzops-feedback": "zzzops/references/next_steps/send-feedback.md",
+    "$suggest-zzzops-work": "zzzops/references/next_steps/suggest-work.md",
+    "$validate-zzzops-installation": "zzzops/references/next_steps/installation-validation.md",
+}
+
+
+def workflow_instruction(identifier: str) -> dict[str, str]:
+    """Return an immutable reference to the package instruction for one step."""
+    relative = WORKFLOW_INSTRUCTION_PATHS.get(identifier)
+    if relative is None and identifier.startswith("phase:"):
+        _prefix, phase, operation = identifier.split(":", 2)
+        relative = f"skills/execute-zzzops/references/phases/{phase}-{operation}.md"
+    if not isinstance(relative, str):
+        raise ValueError("workflow instruction is not registered")
+    path = Path(__file__).resolve().parent.parent / relative
+    if not path.is_file():
+        raise ValueError("workflow instruction is missing")
+    return {
+        "path": relative,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    }
 
 
 def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
@@ -216,7 +304,7 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
     seen, normalized = set(), []
     for step in steps:
         fields = {"id", "skill", "intent", "audience", "phase", "action", "reason"}
-        optional_fields = {"directive", "model", "effort"}
+        optional_fields = {"directive", "model", "effort", "instruction"}
         if not isinstance(step, dict) or not fields <= set(step) or set(step) - fields - optional_fields or step.get("id") in seen:
             raise ValueError("workflow next step is invalid")
         if step.get("intent") not in WORKFLOW_INTENTS or step["intent"] not in WORKFLOW_SKILL_INTENTS.get(step.get("skill"), set()) or step.get("audience") not in {"root", "worker"}:
@@ -234,6 +322,12 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
             raise ValueError("workflow next step is invalid")
         if step.get("directive") != "delegate" and ("model" in step or "effort" in step):
             raise ValueError("workflow next step is invalid")
+        instruction = step.get("instruction")
+        if instruction is not None and (
+            not isinstance(instruction, dict) or set(instruction) != {"path", "sha256"}
+            or any(not isinstance(instruction.get(field), str) or not instruction[field] for field in instruction)
+        ):
+            raise ValueError("workflow next step is invalid")
         seen.add(step["id"])
         normalized.append(dict(step))
     return {"schema_version": 1, "next_steps": normalized}
@@ -245,7 +339,7 @@ def workflow_repair_step(intent: str, reason: str, action: str, *, source_skill:
     return {
         "id": "workflow-repair", "skill": skill, "intent": intent,
         "audience": "root", "phase": "context", "directive": "resolve_blocker",
-        "action": action, "reason": reason,
+        "action": action, "reason": reason, "instruction": workflow_instruction("workflow-repair"),
     }
 
 
@@ -256,28 +350,37 @@ def workflow_context_step(
     provenance = {field: package.get(field) for field in ("version", "revision")}
     if all(isinstance(value, str) and value for value in provenance.values()):
         status = _installation.validation_status(repo, provenance)
-        if status.get("required") is True and source_skill != "$validate-zzzops-installation":
+        if status.get("required") is True:
+            if source_skill == "$validate-zzzops-installation":
+                return None
             return {
                 "id": "installation-validation", "skill": "$validate-zzzops-installation", "intent": "inspect",
                 "audience": "root", "phase": "context",
                 "action": "Validate the installed ZzzOps package for this repository, then invoke workflow again.",
                 "reason": f"Repository installation validation is required ({status.get('reason')}).",
+                "instruction": workflow_instruction("installation-validation"),
             }
     inspection = inspect_initialization(repo)
     if inspection.get("initialized") is True:
         return None
     if inspection.get("state") is None:
+        if source_skill == "$bootstrap-zzzops-repository":
+            return None
         return {
             "id": "bootstrap", "skill": "$bootstrap-zzzops-repository", "intent": "inspect",
             "audience": "root", "phase": "context",
             "action": "Bootstrap repository policy and canonical context, then invoke workflow again.",
             "reason": str(inspection.get("state_error") or "Canonical project policy is missing."),
+            "instruction": workflow_instruction("bootstrap"),
         }
+    if source_skill == "$review-zzzops-policy":
+        return None
     return {
         "id": "policy-review", "skill": "$review-zzzops-policy", "intent": "inspect",
         "audience": "root", "phase": "context",
         "action": "Inspect policy state and prepare the required review input.",
         "reason": "; ".join(inspection.get("decision_blockers") or ["Project policy is not ready."]),
+        "instruction": workflow_instruction("policy-review"),
     }
 
 
@@ -311,6 +414,7 @@ def workflow_routing_step(intent: str, settings: Any, request: Any) -> dict[str,
             "action": directive["instruction"],
             "reason": "Reviewed routing requires a worker for this phase.",
             "model": selected["model"], "effort": selected["effort"],
+            "instruction": workflow_instruction(f"phase:{phase}:execute"),
         }
     if directive["action"] == "continue_root":
         return {
@@ -319,6 +423,7 @@ def workflow_routing_step(intent: str, settings: Any, request: Any) -> dict[str,
             "directive": "continue_root",
             "action": directive["instruction"],
             "reason": "Reviewed routing requires root execution for this phase.",
+            "instruction": workflow_instruction(f"phase:{phase}:execute"),
         }
     return {
         "id": f"routing-blocker-{phase}", "skill": "$execute-zzzops", "intent": "execute",
@@ -326,6 +431,7 @@ def workflow_routing_step(intent: str, settings: Any, request: Any) -> dict[str,
         "directive": "resolve_blocker",
         "action": directive["instruction"],
         "reason": str(assignment.get("reason") or "Routing is not executable."),
+        "instruction": workflow_instruction("routing-evidence"),
     }
 
 
@@ -360,6 +466,7 @@ def workflow_phase_frontier(
                 "audience": "root", "phase": phase, "directive": "continue_root",
                 "action": f"Perform the {phase} phase on the root agent.",
                 "reason": f"The reviewed phase DAG assigns {phase} to the root agent ({item['reason']}).",
+                "instruction": workflow_instruction(f"phase:{phase}:execute"),
             })
         else:
             steps.append({
@@ -367,6 +474,7 @@ def workflow_phase_frontier(
                 "audience": "root", "phase": phase,
                 "action": f"Record complete routing evidence for the {phase} phase, then invoke workflow routing.",
                 "reason": f"The {phase} phase is eligible ({item['reason']}) but its reviewed model-and-effort assignment has not yet been evaluated.",
+                "instruction": workflow_instruction("routing-evidence"),
             })
     return {"eligibility": eligibility, "next_steps": steps}
 GOAL_STATUSES = {"new", "triaged", "ready", "in_progress", "blocked", "done", "cancelled"}
@@ -405,7 +513,7 @@ GOAL_SCHEMA_LABEL = re.compile(r"^zzzops:schema:v(?P<version>[1-9][0-9]*)$")
 GOAL_HYDRATION_BATCH_SIZE = 100
 MANAGED_SKILLS = (
     "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
-    "review-agentic-engineering", "review-zzzops-entropy", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
+    "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
     "validate-zzzops-installation",
 )
 GITHUB_MANAGEMENT_PERMISSIONS = {"TRIAGE", "WRITE", "MAINTAIN", "ADMIN"}
@@ -693,19 +801,10 @@ PhaseLeaseHeartbeat = _reservation.PhaseLeaseHeartbeat
 apply_independent_batch = _reservation.apply_independent_batch
 
 
-def project_claim_ttl_seconds(project: dict[str, Any]) -> int:
-    sections = ((project.get("policy") or {}).get("sections") if isinstance(project.get("policy"), dict) else None)
-    section = next((item for item in sections or [] if isinstance(item, dict) and item.get("id") == "autonomy_approval_parallelism"), None)
-    hours = ((section.get("settings") or {}).get("claim_ttl_hours") if isinstance(section, dict) else None)
-    if not isinstance(hours, int) or isinstance(hours, bool) or not 1 <= hours <= 24:
-        raise ValueError("Reviewed project policy must set claim_ttl_hours from 1 to 24")
-    return hours * 3600
-
-
 def project_resource_policy(project: dict[str, Any]) -> dict[str, Any]:
     sections = ((project.get("policy") or {}).get("sections") if isinstance(project.get("policy"), dict) else None)
     section = next((item for item in sections or [] if isinstance(item, dict) and item.get("id") == "autonomy_approval_parallelism"), None)
-    settings = section.get("settings") if isinstance(section, dict) else None
+    settings = section.get("configuration") if isinstance(section, dict) else None
     configured = settings.get("resource_reservations") if isinstance(settings, dict) else None
     return normalize_resource_policy(configured)
 
@@ -870,7 +969,7 @@ def _github_pull_request_states(
         __typename
         ... on CheckRun{name status conclusion}
         ... on StatusContext{context state}
-      }}}}}}
+      } pageInfo{hasNextPage}}}}}}
     }
   }
 }"""
@@ -905,6 +1004,7 @@ def _github_pull_request_states(
                 "merge_commit": merge_commit.get("oid") if isinstance(merge_commit, dict) else None,
                 "repository": pr_repository.get("nameWithOwner") if isinstance(pr_repository, dict) else None,
                 "checks_verified": _pull_request_checks_verified(pull_request),
+                "checks_present": _pull_request_checks_present(pull_request),
                 "review_verified": pull_request.get("reviewDecision") == "APPROVED",
             }
         for issue_number in targets[(owner, name, number)]:
@@ -926,6 +1026,9 @@ def _pull_request_checks_verified(pull_request: Any) -> bool:
     rollup = commit.get("statusCheckRollup") if isinstance(commit, dict) else None
     contexts = rollup.get("contexts") if isinstance(rollup, dict) else None
     checks = contexts.get("nodes") if isinstance(contexts, dict) else None
+    page_info = contexts.get("pageInfo") if isinstance(contexts, dict) else None
+    if not isinstance(page_info, dict) or page_info.get("hasNextPage") is not False:
+        return False
     if not isinstance(checks, list) or not checks:
         return False
     for check in checks:
@@ -940,6 +1043,28 @@ def _pull_request_checks_verified(pull_request: Any) -> bool:
         else:
             return False
     return True
+
+
+def _pull_request_checks_present(pull_request: Any) -> bool | None:
+    """Distinguish an empty exact-head check rollup from unavailable evidence."""
+    if not isinstance(pull_request, dict):
+        return None
+    commits = pull_request.get("commits")
+    nodes = commits.get("nodes") if isinstance(commits, dict) else None
+    if not isinstance(nodes, list) or len(nodes) != 1 or not isinstance(nodes[0], dict):
+        return None
+    commit = nodes[0].get("commit")
+    rollup = commit.get("statusCheckRollup") if isinstance(commit, dict) else None
+    contexts = rollup.get("contexts") if isinstance(rollup, dict) else None
+    checks = contexts.get("nodes") if isinstance(contexts, dict) else None
+    if not isinstance(checks, list):
+        return None
+    if checks:
+        return True
+    page_info = contexts.get("pageInfo")
+    if not isinstance(page_info, dict) or page_info.get("hasNextPage") is not False:
+        return None
+    return False
 
 
 def github_issue_history(repo: Path, project: dict[str, Any], issue_number: int) -> list[dict[str, Any]]:
@@ -1107,7 +1232,7 @@ def _portfolio_from_hydrated_goals(
         ignored=excluded + len(selected) - len(records),
         git_policy=next(
             (
-                section["settings"] for section in ((project.get("policy") or {}).get("sections") or [])
+                section["configuration"] for section in ((project.get("policy") or {}).get("sections") or [])
                 if isinstance(section, dict) and section.get("id") == "git_review_release"
             ),
             {},
@@ -1203,19 +1328,19 @@ def record_workflow_diagnostic(repo: Path, event: dict[str, Any]) -> None:
 
 def _workflow_section(project: dict[str, Any], identifier: str) -> dict[str, Any]:
     for section in project.get("policy", {}).get("sections", []):
-        if isinstance(section, dict) and section.get("id") == identifier and isinstance(section.get("settings"), dict):
+        if isinstance(section, dict) and section.get("id") == identifier and isinstance(section.get("configuration"), dict):
             return section
     raise ValueError(f"Reviewed {identifier} policy is unavailable")
 
 
 def _workflow_runtime(runtime: Any) -> dict[str, Any]:
-    if not isinstance(runtime, dict) or set(runtime) != {"root_pair", "available_pairs"}:
+    if not isinstance(runtime, dict) or not {"root_pair", "available_pairs"} <= set(runtime) or set(runtime) - {"root_pair", "available_pairs", "root_id", "delegation", "overrides"}:
         raise ValueError("workflow runtime must contain root_pair and available_pairs")
     root, available = runtime["root_pair"], runtime["available_pairs"]
     if not isinstance(root, dict) or set(root) != {"model", "effort"} or not isinstance(available, list):
         raise ValueError("workflow runtime is invalid")
     # reviewed_model_effort performs the detailed identifier validation.
-    return {"root_pair": dict(root), "available_pairs": [dict(item) if isinstance(item, dict) else item for item in available]}
+    return {**runtime, "root_pair": dict(root), "available_pairs": [dict(item) if isinstance(item, dict) else item for item in available]}
 
 
 def workflow_step_plan(
@@ -1224,7 +1349,7 @@ def workflow_step_plan(
     *, related_goals: dict[Any, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Turn a pure evidence frontier into exact phase prompts and routing pairs."""
-    frontier = derive_phase_steps(goal, graph, live_inputs, related_goals)
+    frontier = derive_phase_steps(goal, graph, live_inputs, related_goals, review_policy=phase_nodes)
     try:
         runtime = _workflow_runtime(runtime)
     except ValueError as exc:
@@ -1242,30 +1367,47 @@ def workflow_step_plan(
         return {"schema_version": WORKFLOW_STEP_SCHEMA_VERSION, "next_steps": [{
             "kind": "capability_discovery", "assignment": "root", "reason": "root model-plus-effort pair is not reviewed",
         }], "frontier": frontier}
+    rigor = goal.get("engineering_rigor") or {}
     dimensions_base = {
-        "consequence": "architectural" if "architecture" in goal.get("engineering_rigor", {}).get("risk_categories", []) else "bounded",
+        "consequence": "architectural" if "architecture" in rigor.get("risk_categories", []) else "bounded",
         "boundedness": "atomic" if goal.get("difficulty") in {"XS", "S"} else "bounded",
-        "engineering_rigor": goal.get("engineering_rigor", {}).get("effective") or "structured",
+        "engineering_rigor": rigor.get("effective") or "structured",
     }
     steps = []
     for kind, entries in (("execute", frontier["execute"]), ("review", frontier["review"])):
         for entry in entries:
             phase = entry["phase"]
             node = phase_nodes[phase]
-            human_approval = kind == "review" and node.get("review", {}).get("human_approval") is True
-            tier = capability_tier(routing_settings, {**dimensions_base, "phase_type": phase})["tier"]
-            chosen = reviewed_model_effort(routing_settings, tier, runtime["available_pairs"])
-            if not chosen["available"]:
-                steps.append({"kind": "capability_discovery", "phase": phase, "assignment": "root", "reason": f"no reviewed available model-plus-effort pair for {tier}"})
+            human_approval = kind == "review" and entry["reason"] == "missing_human_approval"
+            requires_human = human_approval or (kind == "execute" and node["assignment_group"] == "root")
+            assessment = _workflow.state(goal)["assessments"].get(phase, {})
+            dimensions = assessment.get("dimensions", dimensions_base)
+            tier = capability_tier(routing_settings, {**dimensions, "phase_type": phase})["tier"]
+            if requires_human and tiers[tier] > tiers[root_choice["tier"]]:
+                steps.append({"kind": "capability_discovery", "phase": phase, "assignment": "root", "reason": "human-interaction phase exceeds root capability"})
                 continue
-            selection = runtime["root_pair"] if (human_approval or (kind == "execute" and node["assignment_group"] == "root")) else chosen["selected"]
-            if tiers[tier] > tiers[root_choice["tier"]] and selection != runtime["root_pair"]:
+            overrides = runtime.get('overrides', [])
+            if not isinstance(overrides, list):
+                raise ValueError('Session overrides must be a list of exact approved model/effort pairs')
+            def permitted(item):
+                normal = tiers[item['tier']] <= tiers[root_choice['tier']] and item['cost'] <= root_choice['cost']
+                explicit = any(isinstance(value, dict) and value.get('model') == item['model'] and value.get('effort') == item['effort'] and value.get('root_id') == runtime.get('root_id') and _workflow.explicit_approval(value.get('approved_by')) for value in overrides)
+                return normal or explicit
+            permitted_pairs = [{'model': item['model'], 'effort': item['effort']} for item in routing_settings['model_inventory']['reviewed_pairs'] if permitted(item)]
+            available = [pair for pair in runtime['available_pairs'] if pair in permitted_pairs]
+            chosen = reviewed_model_effort(routing_settings, tier, available)
+            if not chosen["available"]:
+                all_choices = reviewed_model_effort(routing_settings, tier, runtime['available_pairs'])
+                steps.append({"kind": "session_override" if all_choices['available'] else "capability_discovery", "phase": phase, "assignment": "root", "reason": f"no permitted reviewed available model-plus-effort pair for {tier}"})
+                continue
+            selection = runtime["root_pair"] if requires_human else chosen["selected"]
+            if tiers[tier] > tiers[root_choice["tier"]] and not overrides:
                 steps.append({"kind": "session_override", "phase": phase, "assignment": "root", "reason": "required model tier exceeds root capability"})
                 continue
             steps.append({
                 "kind": "human_approval" if human_approval else kind, "phase": phase, "reason": entry["reason"],
                 "skill": WORKFLOW_PHASE_PROMPTS[(phase, kind)],
-                "assignment": "root" if selection == runtime["root_pair"] else "delegate",
+                "assignment": "root" if requires_human else "delegate",
                 "selection": selection,
             })
     return {"schema_version": WORKFLOW_STEP_SCHEMA_VERSION, "next_steps": steps, "frontier": frontier}
@@ -1273,7 +1415,7 @@ def workflow_step_plan(
 
 def _workflow_phase_configuration(project: dict[str, Any], goal: dict[str, Any]) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     adherence = _workflow_section(project, "workflow_adherence")
-    dag = adherence["settings"].get("phase_dag")
+    dag = adherence["configuration"].get("phase_dag")
     graph = phase_evidence_graph(dag, has_parent=goal.get("parent") is not None)
     phase_nodes = {node["id"]: node for node in dag["phases"] if node["id"] in {item["id"] for item in graph["phases"]}}
     return graph, phase_nodes
@@ -1298,9 +1440,9 @@ def workflow_live_inputs(repo: Path, project: dict[str, Any], goal: dict[str, An
         raise ValueError("workflow intent is invalid")
     identity = _project_repository_identity(project)
     policy = project["policy"]
-    dag = _workflow_section(project, "workflow_adherence")["settings"]["phase_dag"]
+    dag = _workflow_section(project, "workflow_adherence")["configuration"]["phase_dag"]
     goal_digest = goal_spec_digest(goal, title=goal["title"], human_spec=goal["human_spec"])
-    evidence = normalize_phase_evidence(goal.get("phase_evidence", empty_phase_evidence()))
+    evidence = normalize_phase_evidence(goal.get("phase_evidence") or empty_phase_evidence())
     live = {}
     for node in graph["phases"]:
         phase = node["id"]
@@ -1311,10 +1453,10 @@ def workflow_live_inputs(repo: Path, project: dict[str, Any], goal: dict[str, An
                 upstream.append({"phase": dependency, "hash": output["hash"]})
         live[phase] = phase_input_envelope(
             phase, goal_digest, sha256_phase_evidence_digest(policy), sha256_phase_evidence_digest(dag),
-            repository=_workflow_repository_snapshot(repo, identity),
+            repository={"identity": identity, "snapshot": {}},
             provider={"identity": "github", "snapshot": {"repository": identity}},
             capabilities={"identity": "workflow-runtime", "snapshot": {"status": "declared_at_checkpoint"}},
-            invocation={"intent": intent, "inputs": {"goal": goal["key"], "revision": goal["revision"]}},
+            invocation={"intent": "execute", "inputs": {"goal": goal["key"]}},
             upstream_outputs=upstream, acceptance_criteria=goal.get("acceptance_criteria", []),
         )
     return live
@@ -1340,7 +1482,7 @@ def workflow_checkpoint(repo: Path, goal_number: int, intent: str, runtime: Any)
         parent = github_goal_record(parent_issue)
         parent_graph, _parent_nodes = _workflow_phase_configuration(project, parent)
         related[goal["parent"]] = {"goal": parent, "live_inputs": workflow_live_inputs(repo, project, parent, intent, parent_graph)}
-    routing = _workflow_section(project, "model_routing")["settings"]
+    routing = _workflow_section(project, "model_routing")["configuration"]
     result = workflow_step_plan(goal, graph, live_inputs, phase_nodes, routing, runtime, related_goals=related)
     record_workflow_diagnostic(repo, {"goal": goal_number, "intent": intent, "frontier": result["frontier"]})
     return {"next_steps": result["next_steps"]}
@@ -1688,7 +1830,9 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
     }
     decision_blockers = policy_blockers(state.get("policy")) if state else ["policy:missing"]
     if migration_policy_invalidated:
-        decision_blockers = [*decision_blockers, "legacy_migration:first_release_requires_policy_rereview"]
+        reason = migration_policy_review["reason"]
+        blocker = "first_release_requires_policy_rereview" if reason == "first_release_invalidated_pre_release_policy" else reason
+        decision_blockers = [*decision_blockers, "legacy_migration:" + blocker]
     github_stack = github_stack_probe(repo)
     plugin_inventory = _plugin_freshness.native_plugin_inventory()
     cache_path = Path(plugin_inventory["cache_path"])
@@ -2035,19 +2179,14 @@ def validate_plan(repo: Path, plan: dict[str, Any]) -> list[str]:
             if unknown_sources:
                 errors.append(f"policy.sections[{index}].source_ids reference unknown evidence: {', '.join(unknown_sources)}")
             if section.get("id") == "backend":
-                if section.get("decision") != backend:
-                    errors.append("policy backend decision must equal backend")
-                settings = section.get("settings")
-                tradeoffs = settings.get("tradeoffs") if isinstance(settings, dict) else None
+                settings = section.get("configuration")
                 if (
                     not isinstance(settings, dict)
-                    or settings.get("fallback") != "forbidden"
+                    or settings.get("authority") != backend
                     or settings.get("repository_identity") != (repository or {}).get("identity")
                     or not text_present(settings.get("capability_evidence"))
-                    or not isinstance(tradeoffs, dict)
-                    or not all(text_present(tradeoffs.get(name)) for name in BACKENDS)
                 ):
-                    errors.append("policy backend settings must record capability evidence, supported-backend tradeoffs, repository identity, and forbidden fallback")
+                    errors.append("backend configuration must match the selected authority and repository and record capability evidence")
     return errors
 
 
@@ -2064,6 +2203,7 @@ render_project_audit = _policy.render_project_audit
 _goals.configure_entrypoint(
     normalize_resources=normalize_resources, text_present=text_present,
     validate_phase_evidence=_phase_evidence.validate_phase_evidence,
+    validate_workflow=_workflow.validate_state,
 )
 _portfolio.configure_entrypoint(exclusive_resources=exclusive_resources, normalize_resource_policy=normalize_resource_policy, text_present=text_present, merge_classifier=classify_pr_merge)
 active_stack_guard = _portfolio.active_stack_guard
@@ -2095,7 +2235,7 @@ def apply_plan(repo: Path, plan: dict[str, Any]) -> dict[str, Any]:
     previous_policy = old_state.get("policy") if old_state else None
     policy = prepare_policy_defaults(repo, plan["policy"], previous_policy)
     policy["evidence"] = plan["evidence"]
-    if previous_policy:
+    if previous_policy and previous_policy.get("schema_version") == policy.get("schema_version"):
         old_sections = {section["id"]: section for section in previous_policy["sections"]}
         old_evidence = previous_policy.get("evidence", [])
         for section in policy["sections"]:
@@ -2282,11 +2422,23 @@ def _profiled_portfolio_cli(repo: Path, args: argparse.Namespace) -> tuple[int, 
         return 2, f"Could not load goals: {exc}"
 
 
-def main() -> int:
+class WorkflowArgumentError(Exception):
+    """A workflow-only parse error that must preserve the public JSON contract."""
+
+
+class WorkflowArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        if "workflow" in sys.argv:
+            raise WorkflowArgumentError(message)
+        super().error(message)
+
+
+def _private_main() -> int:
     configure_cli_stdout()
-    parser = argparse.ArgumentParser(description="ZzzOps project control CLI")
+    sys.argv = normalize_workflow_entrypoint(sys.argv)
+    parser = WorkflowArgumentParser(description="ZzzOps project control CLI")
     parser.add_argument("--repo", type=Path, default=Path.cwd(), help="Project root (default: current directory)")
-    commands = parser.add_subparsers(dest="command")
+    commands = parser.add_subparsers(dest="command", parser_class=WorkflowArgumentParser)
     init = commands.add_parser("init", help="Inspect, validate, or apply agent-driven project initialization")
     init_commands = init.add_subparsers(dest="init_command", required=True)
     init_commands.add_parser("inspect", help="Report initialization state and read-only capabilities as JSON")
@@ -2375,7 +2527,7 @@ def main() -> int:
         reserve_command.add_argument("--resource", action="append", default=[], help="Known resource such as path:src/file")
         reserve_command.add_argument("--format", dest="output_format", choices=("summary", "json"), default="summary")
         if name != "release":
-            reserve_command.add_argument("--ttl-seconds", type=int, help="Override reviewed claim_ttl_hours")
+            reserve_command.add_argument("--ttl-seconds", type=int, required=True, help="Explicit duration for this private legacy reservation")
     coaching = commands.add_parser("coaching", help="Attribute bounded software-agent work evidence without writes")
     coaching_commands = coaching.add_subparsers(dest="coaching_command", required=True)
     coaching_attribute = coaching_commands.add_parser("attribute", help="Classify a bounded attribution request")
@@ -2409,7 +2561,15 @@ def main() -> int:
         feedback_command.add_argument("--diagnostic-python", choices=sorted(_feedback.TIMING_PYTHONS), default="unknown")
         if name == "submit":
             feedback_command.add_argument("--confirm", required=True, help="Exact digest shown by feedback prepare")
-    args = parser.parse_args()
+    try:
+        args = parser.parse_args()
+    except WorkflowArgumentError as exc:
+        print(json.dumps({"next_steps": [{
+            "kind": "blocker", "assignment": "root",
+            "action": "Correct the workflow command arguments, then invoke workflow again.",
+            "reason": str(exc),
+        }]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+        return 2
     repo = args.repo.resolve()
     if args.command == "checkpoint" and args.profile:
         try:
@@ -2435,7 +2595,7 @@ def main() -> int:
                 "Repair or reinstall the ZzzOps Agent Plugin package, then invoke workflow again.",
                 source_skill=args.source_skill,
             )
-            print(json.dumps(workflow_envelope(args.intent, [repair]), ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+            print(json.dumps({"next_steps": [repair]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 2
         print(str(package.get("detail") or "The ZzzOps Agent Plugin package is invalid."))
         return 2
@@ -2517,25 +2677,43 @@ def main() -> int:
                 if args.source_skill and args.intent not in WORKFLOW_SKILL_INTENTS[args.source_skill]:
                     raise ValueError("The source skill cannot initiate the requested workflow intent")
                 if args.goal is None:
+                    if args.runtime is not None or args.input is not None:
+                        raise ValueError("Workflow runtime and phase-evidence input require a managed goal")
                     source_skill = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
-                    result = {"next_steps": [{
-                        "kind": "dispatch", "assignment": "root", "skill": source_skill,
-                        "intent": args.intent, "action": WORKFLOW_SOURCE_ACTIONS[source_skill],
-                    }]}
+                    context = workflow_context_step(repo, package, source_skill=source_skill)
+                    if context is not None:
+                        result = {"next_steps": [context]}
+                    else:
+                        result = {"next_steps": [{
+                            "kind": "dispatch", "assignment": "root", "skill": source_skill,
+                            "intent": args.intent, "action": WORKFLOW_SOURCE_ACTIONS[source_skill],
+                            "instruction": workflow_instruction(source_skill),
+                        }]}
                 elif args.intent not in {"execute", "preview"}:
                     raise ValueError("Goal phase checkpoints require execute or preview intent")
-                elif args.input:
-                    payload = json.loads(args.input.resolve().read_text(encoding="utf-8-sig"))
-                    result = workflow_submit(repo, args.goal, args.intent, payload)
                 else:
-                    if args.runtime is None:
-                        raise ValueError("Goal phase checkpoints require current runtime evidence")
-                    runtime = json.loads(args.runtime.resolve().read_text(encoding="utf-8-sig"))
-                    result = workflow_checkpoint(repo, args.goal, args.intent, runtime)
+                    source_skill = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
+                    context = workflow_context_step(repo, package, source_skill=source_skill)
+                    if context is not None:
+                        result = {"next_steps": [context]}
+                    elif args.input:
+                        if args.intent == "preview":
+                            raise ValueError("Preview workflow does not accept phase-evidence submissions")
+                        payload = json.loads(args.input.resolve().read_text(encoding="utf-8-sig"))
+                        result = workflow_submit(repo, args.goal, args.intent, payload)
+                    else:
+                        if args.runtime is None:
+                            raise ValueError("Goal phase checkpoints require current runtime evidence")
+                        runtime = json.loads(args.runtime.resolve().read_text(encoding="utf-8-sig"))
+                        result = workflow_checkpoint(repo, args.goal, args.intent, runtime)
                 print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
                 return 0
             except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
-                print(json.dumps({"next_steps": [{"kind": "blocker", "assignment": "root", "reason": str(exc)}]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+                print(json.dumps({"next_steps": [{
+                    "kind": "blocker", "assignment": "root",
+                    "action": "Correct the workflow input or context error, then invoke workflow again.",
+                    "reason": str(exc),
+                }]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
                 return 2
         if args.command == "init":
             if args.init_command == "inspect":
@@ -2646,7 +2824,7 @@ def main() -> int:
             adapter = GitHubReservationAdapter(repo, repository)
             ttl_seconds = None
             if args.reserve_command != "release":
-                ttl_seconds = args.ttl_seconds if args.ttl_seconds is not None else project_claim_ttl_seconds(project)
+                ttl_seconds = args.ttl_seconds
             if args.reserve_command == "acquire":
                 result = acquire_reservation_bundle(
                     adapter, repository, args.goal, args.revision, args.owner, args.run_id, args.resource, ttl_seconds,
@@ -2712,7 +2890,7 @@ def main() -> int:
                 args.intent, str(exc), "Repair the reported workflow input or current repository state, then invoke workflow again.",
                 source_skill=args.source_skill,
             )
-            print(json.dumps(workflow_envelope(args.intent, [repair]), ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+            print(json.dumps({"next_steps": [repair]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 2
         print(f"Could not continue: {exc}")
         return 2
@@ -2727,6 +2905,48 @@ _feedback.configure_entrypoint(
     delete_diagnostic=_diagnostics.delete_diagnostic,
     validate_diagnostic=_diagnostics.validate_diagnostic,
 )
+
+
+def main() -> int:
+    """Only the intent checkpoint is public; legacy parsers are internal adapters."""
+    configure_cli_stdout()
+    argv = list(sys.argv)
+    command_index = 3 if len(argv) > 2 and argv[1] == '--repo' else 1
+    if len(argv) > command_index and argv[command_index] == 'workflow':
+        argv.pop(command_index)
+    if '--intent' in argv:
+        index = argv.index('--intent')
+        route = WORKFLOW_ENTRY_INTENTS.get(argv[index + 1]) if index + 1 < len(argv) else None
+        if route:
+            argv[index + 1] = route[0]
+            if '--source-skill' not in argv:
+                argv.extend(('--source-skill', route[1]))
+    class WorkflowParser(argparse.ArgumentParser):
+        def error(self, message):
+            raise ValueError(message)
+    parser = WorkflowParser(description="ZzzOps actionable workflow checkpoint")
+    parser.add_argument("--repo", type=Path, default=Path.cwd())
+    parser.add_argument("--intent", choices=sorted(WORKFLOW_INTENTS), required=True)
+    parser.add_argument("--source-skill", choices=sorted(WORKFLOW_SKILL_INTENTS))
+    parser.add_argument("--goal", type=int)
+    parser.add_argument("--runtime", type=Path)
+    parser.add_argument("--input", type=Path)
+    if len(sys.argv) == 1:
+        parser.print_help()
+        return 0
+    try:
+        args = parser.parse_args(argv[1:])
+        runtime = json.loads(args.runtime.read_text()) if args.runtime else None
+        payload = json.loads(args.input.read_text()) if args.input else None
+        source = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
+        services = SimpleNamespace(**globals())
+        services.runtime_path = args.runtime.resolve() if args.runtime else None
+        result = _workflow.public_run(services, args.repo.resolve(), args.intent, source, runtime, payload, args.goal)
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+        return 0
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
+        print(json.dumps({"next_steps": [{"kind": "repair", "assignment": "root", "action": "Correct this input or backend condition and retry the same request.", "reason": str(exc)}]}, ensure_ascii=False, separators=(",", ":")))
+        return 2
 
 
 if __name__ == "__main__":

@@ -168,6 +168,17 @@ def record_validation(
         raise InstallationValidationError("declined is valid only when cleanup was offered")
     if not _valid_provenance(provenance):
         raise InstallationValidationError("installed package provenance is invalid")
+    path = record_path(repo)
+    existing, error = _load_record(path)
+    if not error and all(
+        existing[field] == value
+        for field, value in (
+            ("package", provenance),
+            ("outcome", outcome),
+            ("audit_signature", audit_signature),
+        )
+    ):
+        return {"recorded": True, "record": existing}
     record = {
         "schema_version": SCHEMA_VERSION,
         "package": provenance,
@@ -175,7 +186,6 @@ def record_validation(
         "audit_signature": audit_signature,
         "validated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     }
-    path = record_path(repo)
     _atomic_json(path, record)
     confirmed, error = _load_record(path)
     if error or confirmed != record:
