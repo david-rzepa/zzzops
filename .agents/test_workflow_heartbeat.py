@@ -69,7 +69,7 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
         result = heartbeat.start_heartbeat(
             repo=self.repo, root_id="root-a", runtime_path=self.runtime, cli_path=self.cli,
             goal=goal, phase=phase, token=token, actor=actor,
-            probe_argv=[sys.executable, str(self.probe), mode, phase], interval_seconds=.03,
+            probe_argv=[sys.executable, str(self.probe), mode, phase, actor], interval_seconds=.03,
             probe_timeout_seconds=.2, retry_limit=3, state_dir=self.state,
         )
         self.pids.add(result["pid"])
@@ -110,7 +110,7 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
             self.assertEqual(0o700, Path(first["config"]).parent.stat().st_mode & 0o777)
             self.assertEqual(0o600, Path(first["config"]).stat().st_mode & 0o777)
         self.assertEqual(["token-a"], [lease["token"] for lease in config["leases"]])
-        self.assertEqual([sys.executable, str(self.probe), "active", "implement"], config["leases"][0]["probe_argv"])
+        self.assertEqual([sys.executable, str(self.probe), "active", "implement", "worker-a"], config["leases"][0]["probe_argv"])
         heartbeat.stop_heartbeat(
             repo=self.repo, root_id="root-a", goal=41, phase="implement", token="token-a",
             state_dir=self.state,
@@ -132,6 +132,17 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
         with self.assertRaisesRegex(ValueError, "locking is unavailable.*explicit recovery"):
             with fallback._locked(self.directory / "unsupported.lock"):
                 pass
+
+    def test_probe_must_bind_the_worker_and_cannot_probe_its_own_shell(self):
+        arguments = {
+            "repo": self.repo, "root_id": "root-a", "runtime_path": self.runtime, "cli_path": self.cli,
+            "goal": 90, "phase": "implement", "token": "probe-token", "actor": "worker-a",
+            "state_dir": self.state,
+        }
+        with self.assertRaisesRegex(ValueError, "bound worker identity"):
+            heartbeat.start_heartbeat(**arguments, probe_argv=[sys.executable, str(self.probe), "active"])
+        with self.assertRaisesRegex(ValueError, "self-referential"):
+            heartbeat.start_heartbeat(**arguments, probe_argv=["/bin/sh", "-c", "kill -0 $$", "worker-a"])
 
     def test_windows_pid_check_uses_read_only_process_api(self):
         class Kernel32:

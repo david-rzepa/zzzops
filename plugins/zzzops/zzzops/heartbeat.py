@@ -53,6 +53,16 @@ def _command(value: list[str], field: str) -> list[str]:
     return list(value)
 
 
+def _worker_liveness_probe(value: list[str], actor: str) -> list[str]:
+    """Validate a probe is bound to the leased worker, not its probe shell."""
+    command = _command(value, "probe_argv")
+    if actor not in command[1:]:
+        raise ValueError("probe_argv must include the bound worker identity as an exact argument")
+    if any("$$" in argument or "$PPID" in argument or "$BASHPID" in argument for argument in command):
+        raise ValueError("probe_argv must not use a self-referential shell process identity")
+    return command
+
+
 def _default_state_dir(repo: Path) -> Path:
     key = hashlib.sha256(str(repo.resolve()).encode()).hexdigest()[:24]
     uid = getattr(os, "getuid", lambda: 0)()
@@ -219,7 +229,7 @@ def start_heartbeat(
     if not isinstance(goal, int) or isinstance(goal, bool) or goal < 1:
         raise ValueError("goal must be a positive integer")
     phase, token, actor = (_identity(phase, "phase"), _identity(token, "token"), _identity(actor, "actor"))
-    probe_argv = _command(probe_argv, "probe_argv")
+    probe_argv = _worker_liveness_probe(probe_argv, actor)
     if interval_seconds <= 0 or probe_timeout_seconds <= 0:
         raise ValueError("heartbeat intervals and timeouts must be positive")
     if not isinstance(retry_limit, int) or isinstance(retry_limit, bool) or retry_limit < 1:
