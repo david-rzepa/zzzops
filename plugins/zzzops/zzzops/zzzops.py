@@ -530,7 +530,7 @@ query($owner:String!,$name:String!,$labels:[String!],$states:[IssueState!],$endC
     nameWithOwner url hasIssuesEnabled viewerPermission
     issues(first:100,after:$endCursor,states:$states,labels:$labels,orderBy:{field:CREATED_AT,direction:ASC}){
       nodes{
-        number title state
+        number title state updatedAt
         labels(first:100){nodes{name}}
       }
       pageInfo{hasNextPage endCursor}
@@ -919,6 +919,7 @@ def _graphql_issue_index(issue: dict[str, Any], repository_url: str) -> dict[str
     return {
         "number": issue["number"], "title": issue["title"],
         "state": str(issue["state"]).lower(), "labels": labels,
+        "updated_at": issue.get("updatedAt"),
         "schema_version": schema_versions[0] if schema_versions else None,
         "html_url": f"{repository_url.rstrip('/')}/issues/{issue['number']}",
     }
@@ -1298,6 +1299,47 @@ def _portfolio_from_hydrated_goals(
     return compact_portfolio_output(snapshot)
 
 
+def _portfolio_cache_path(repo: Path) -> Path:
+    return repo / ".zzzops" / "portfolio-open-cache.json"
+
+
+def _cached_open_bodies(repo: Path, identity: str, include_feedback: bool, selected: list[dict[str, Any]]) -> dict[int, dict[str, Any]] | None:
+    """Return cached bodies only when the provider's complete open index agrees."""
+    marker = [{"number": item["number"], "updated_at": item.get("updated_at")} for item in selected if item["state"] == "open"]
+    if any(not isinstance(item["updated_at"], str) or not item["updated_at"] for item in marker):
+        return None
+    try:
+        cache = json.loads(_portfolio_cache_path(repo).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(cache, dict) or cache.get("schema_version") != 1 or cache.get("identity") != identity or cache.get("include_feedback") is not include_feedback or cache.get("marker") != marker:
+        return None
+    bodies = cache.get("bodies")
+    if not isinstance(bodies, dict):
+        return None
+    normalized = {}
+    for item in marker:
+        body = bodies.get(str(item["number"]))
+        if not isinstance(body, str):
+            return None
+        normalized[item["number"]] = {"body": body, "updated_at": item["updated_at"]}
+    return normalized
+
+
+def _store_open_bodies(repo: Path, identity: str, include_feedback: bool, selected: list[dict[str, Any]], bodies: dict[int, dict[str, Any]]) -> None:
+    marker = [{"number": item["number"], "updated_at": item.get("updated_at")} for item in selected if item["state"] == "open"]
+    if any(not isinstance(item["updated_at"], str) or not item["updated_at"] for item in marker):
+        return
+    values = {str(item["number"]): bodies.get(item["number"], {}).get("body") for item in marker}
+    if any(not isinstance(value, str) for value in values.values()):
+        return
+    path = _portfolio_cache_path(repo)
+    try:
+        atomic_text(path, json.dumps({"schema_version": 1, "identity": identity, "include_feedback": include_feedback, "marker": marker, "bodies": values}, sort_keys=True, separators=(",", ":")))
+    except OSError:
+        pass
+
+
 def github_repository_portfolio_snapshot(
     repo: Path, project: dict[str, Any], include_feedback: bool = False, *, include_history: bool = False, timing: Any = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -1312,11 +1354,16 @@ def github_repository_portfolio_snapshot(
         ),
     )
     open_selected = [issue for issue in selected if issue["state"] == "open"]
-    bodies, hydration_bytes, hydration_processes = _timed_call(
-        timing, "goal_hydration", lambda: _github_goal_bodies(
-            repo, executable, owner, name, [issue["number"] for issue in open_selected],
-        ),
-    )
+    bodies = _cached_open_bodies(repo, identity, include_feedback, selected)
+    if bodies is None:
+        bodies, hydration_bytes, hydration_processes = _timed_call(
+            timing, "goal_hydration", lambda: _github_goal_bodies(
+                repo, executable, owner, name, [issue["number"] for issue in open_selected],
+            ),
+        )
+        _store_open_bodies(repo, identity, include_feedback, selected, bodies)
+    else:
+        hydration_bytes, hydration_processes = 0, 0
     open_records = []
     valid_open = []
     for issue in open_selected:

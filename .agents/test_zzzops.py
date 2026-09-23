@@ -3681,6 +3681,18 @@ class PortfolioTests(unittest.TestCase):
         self.assertEqual(0, first["summary"]["total"])
         self.assertEqual([], first["findings"])
 
+    def test_open_goal_cache_reuses_only_an_exact_provider_revision_marker(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            selected = [{"number": 7, "state": "open", "updated_at": "2026-09-23T00:00:00Z"}]
+            bodies = {7: {"body": "managed goal", "updated_at": selected[0]["updated_at"]}}
+            zzzops._store_open_bodies(repo, "owner/repo", False, selected, bodies)
+            self.assertEqual(bodies, zzzops._cached_open_bodies(repo, "owner/repo", False, selected))
+            changed = [{**selected[0], "updated_at": "2026-09-24T00:00:00Z"}]
+            self.assertIsNone(zzzops._cached_open_bodies(repo, "owner/repo", False, changed))
+            zzzops._portfolio_cache_path(repo).write_text("not json", encoding="utf-8")
+            self.assertIsNone(zzzops._cached_open_bodies(repo, "owner/repo", False, selected))
+
     def test_malformed_open_record_is_quarantined_without_invalidating_valid_graph(self):
         valid = zzzops.github_goal_record(self.issue(1))
         project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {"sections": [
@@ -3996,7 +4008,8 @@ class PortfolioTests(unittest.TestCase):
         self.assertIn("states[]=OPEN", discovery)
         self.assertNotIn("states[]=CLOSED", discovery)
         issue_fields = discovery_query.split("nodes{", 1)[1].split("}", 1)[0]
-        for excluded in ("body", "updatedAt", "url", "comments"):
+        self.assertIn("updatedAt", issue_fields)
+        for excluded in ("body", "url", "comments"):
             self.assertNotIn(excluded, issue_fields)
         self.assertIn("goal_1:issue(number:1){number body updatedAt}", hydration_query)
         self.assertNotIn("goal_3:", hydration_query)
