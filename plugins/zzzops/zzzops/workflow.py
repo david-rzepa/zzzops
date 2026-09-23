@@ -971,6 +971,9 @@ class Workflow:
         # Phase contracts must be derived from the same exact body that the
         # locked mutation path validates.
         goal = self.api.github_goal_record(self.adapter.get_issue(number))
+        projected = self.read(number)[1]
+        if isinstance(projected.get('pull_request'), dict):
+            goal['pull_request'] = projected['pull_request']
         if goal['status'] in {'done', 'cancelled'}:
             return []
         if goal.get('needs_human'):
