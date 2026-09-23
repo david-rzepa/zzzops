@@ -2674,6 +2674,15 @@ class GoalCreateTests(unittest.TestCase):
             result,
         )
 
+    def test_deferred_create_uses_current_empty_phase_evidence(self):
+        adapter = FakeGoalTransitionAdapter({})
+
+        zzzops.apply_goal_create(adapter, "owner/repo", self.request(), allow_deferred=True)
+
+        persisted = zzzops.parse_managed_goal(adapter.updates[0]["body"], 42)
+        self.assertEqual(zzzops.empty_phase_evidence(), persisted["phase_evidence"])
+        self.assertEqual([], zzzops.validate_phase_evidence(persisted["phase_evidence"]))
+
     def test_create_rejects_malformed_input_before_provider_write(self):
         for change in ("title", "marker", "reserved_label", "long_label", "status", "revision", "implementation"):
             adapter = FakeGoalTransitionAdapter({})
@@ -3583,6 +3592,46 @@ class PortfolioTests(unittest.TestCase):
         self.assertEqual(first["portfolio_digest"], second["portfolio_digest"])
         self.assertEqual(0, first["summary"]["total"])
         self.assertEqual([], first["findings"])
+
+    def test_malformed_open_record_is_quarantined_without_invalidating_valid_graph(self):
+        valid = zzzops.github_goal_record(self.issue(1))
+        project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {"sections": [
+            {"id": "autonomy_approval_parallelism", "configuration": TEST_AUTONOMY_CONFIGURATION},
+            TEST_RIGOR_POLICY,
+        ]}}
+        snapshot = zzzops._portfolio_from_hydrated_goals(
+            project, [], [valid],
+            [{"code": "malformed_record", "goal": 2, "detail": "phase evidence has invalid fields"}],
+            0, 1, 0, 0, 0,
+        )
+
+        self.assertTrue(snapshot["complete"])
+        self.assertTrue(snapshot["valid"])
+        self.assertEqual([1], [goal["key"] for goal in snapshot["goals"]])
+        self.assertEqual(["malformed_record"], [finding["code"] for finding in snapshot["findings"]])
+
+    def test_malformed_open_record_does_not_trigger_pull_request_lookup(self):
+        valid = self.issue(1)
+        malformed = {**self.issue(2), "body": f"{zzzops.GOAL_BLOCK_START}\n{{}}\n{zzzops.GOAL_BLOCK_END}"}
+        selected = [valid, malformed]
+        bodies = {
+            1: {"body": valid["body"], "updated_at": valid["updated_at"]},
+            2: {"body": malformed["body"], "updated_at": malformed["updated_at"]},
+        }
+        project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {"sections": [
+            {"id": "autonomy_approval_parallelism", "configuration": TEST_AUTONOMY_CONFIGURATION},
+            TEST_RIGOR_POLICY,
+        ]}}
+        with mock.patch.object(zzzops.shutil, "which", return_value="gh"), \
+             mock.patch.object(zzzops, "github_repository_goal_index", return_value=({}, selected, [], 0, 1, 0)), \
+             mock.patch.object(zzzops, "_github_goal_bodies", return_value=(bodies, 0, 1)), \
+             mock.patch.object(zzzops, "_github_pull_request_states", return_value=({}, 0, 0)) as pull_requests:
+            _, snapshot = zzzops.github_repository_portfolio_snapshot(Path("."), project)
+
+        self.assertTrue(snapshot["valid"])
+        self.assertEqual([1], [goal["key"] for goal in snapshot["goals"]])
+        self.assertEqual(["malformed_record"], [finding["code"] for finding in snapshot["findings"]])
+        self.assertEqual([1], [issue["number"] for issue in pull_requests.call_args.args[2]])
 
     def test_snapshot_projects_explicit_work_states(self):
         records = [

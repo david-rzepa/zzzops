@@ -302,6 +302,16 @@ def _review_outcomes(value: Any, decision: str) -> dict[str, Any]:
 def normalize_phase_evidence(value: Any) -> dict[str, Any]:
     if value is None:
         value = {"schema_version": PHASE_EVIDENCE_SCHEMA_VERSION, "records": {}, "reviews": {}, "withdrawals": []}
+    # Legacy schema v1 writers could omit empty review state.  v2 makes that
+    # state explicit and adds human approvals, so project both defaults in
+    # memory without rewriting provider-owned goal history.
+    if isinstance(value, dict) and value.get("schema_version") == 1:
+        value = {
+            **value,
+            "schema_version": PHASE_EVIDENCE_SCHEMA_VERSION,
+            "reviews": value.get("reviews", {}),
+            "human_approvals": {},
+        }
     fields = {"schema_version", "records", "reviews", "withdrawals"}
     if not isinstance(value, dict) or set(value) not in (fields, fields | {"human_approvals"}):
         raise PhaseEvidenceError("phase evidence has invalid fields")

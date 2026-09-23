@@ -1200,27 +1200,11 @@ def github_repository_goal_index(
 
 
 def _portfolio_from_hydrated_goals(
-    project: dict[str, Any], selected: list[dict[str, Any]], bodies: dict[int, dict[str, Any]],
+    project: dict[str, Any], selected: list[dict[str, Any]], open_records: list[dict[str, Any]],
     findings: list[dict[str, Any]], discovery_bytes: int, discovery_reads: int,
     hydration_bytes: int, hydration_processes: int, excluded: int,
-    pull_request_states: dict[int, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    open_selected = [issue for issue in selected if issue["state"] == "open"]
-    managed = []
-    for issue in open_selected:
-        hydrated = bodies[issue["number"]]
-        candidate = {**issue, **hydrated}
-        if pull_request_states and issue["number"] in pull_request_states:
-            candidate["pull_request"] = pull_request_states[issue["number"]]
-            candidate["repository"] = project["repository"]["identity"]
-        if GOAL_BLOCK_START in candidate["body"]:
-            managed.append(candidate)
-    records = []
-    for issue in managed:
-        try:
-            records.append(github_goal_record(issue))
-        except (KeyError, TypeError, ValueError) as exc:
-            findings.append({"code": "malformed_record", "goal": issue.get("number", "unknown"), "detail": str(exc)})
+    records = list(open_records)
     for issue in selected:
         if issue["state"] != "closed":
             continue
@@ -1251,8 +1235,11 @@ def _portfolio_from_hydrated_goals(
     )
     snapshot["findings"] = sorted(snapshot["findings"] + findings, key=lambda item: (item["code"], str(item["goal"])))
     snapshot["summary"]["findings"] = len(snapshot["findings"])
-    snapshot["complete"] = not findings
-    snapshot["valid"] = not snapshot["findings"]
+    # A malformed provider record is reported and excluded from the graph.  It
+    # must not veto independent, valid goals; graph findings still do.
+    blocking_findings = [item for item in snapshot["findings"] if item["code"] != "malformed_record"]
+    snapshot["complete"] = True
+    snapshot["valid"] = not blocking_findings
     snapshot["summary"]["discovery_raw_bytes"] = discovery_bytes
     snapshot["summary"]["hydration_raw_bytes"] = hydration_bytes
     snapshot["summary"]["processes"] = 1 + hydration_processes
@@ -1276,14 +1263,29 @@ def github_repository_portfolio_snapshot(
             repo, executable, owner, name, [issue["number"] for issue in open_selected],
         ),
     )
+    open_records = []
+    valid_open = []
+    for issue in open_selected:
+        candidate = {**issue, **bodies[issue["number"]]}
+        if GOAL_BLOCK_START not in candidate["body"]:
+            continue
+        try:
+            open_records.append(github_goal_record(candidate))
+            valid_open.append(candidate)
+        except (KeyError, TypeError, ValueError) as exc:
+            findings.append({"code": "malformed_record", "goal": issue["number"], "detail": str(exc)})
     pull_request_states, pull_request_bytes, pull_request_processes = _github_pull_request_states(
-        repo, executable, open_selected, bodies,
+        repo, executable, valid_open, bodies,
     )
+    for record in open_records:
+        state = pull_request_states.get(record["key"])
+        if state is not None:
+            record["pull_request"] = state
+            record["repository"] = project["repository"]["identity"]
     snapshot = _timed_call(
         timing, "graph_validation", lambda: _portfolio_from_hydrated_goals(
-            project, selected, bodies, findings, discovery_bytes, discovery_reads,
+            project, selected, open_records, findings, discovery_bytes, discovery_reads,
             hydration_bytes + pull_request_bytes, hydration_processes + pull_request_processes, excluded,
-            pull_request_states,
         ),
     )
     return repository_probe, snapshot

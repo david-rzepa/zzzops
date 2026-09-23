@@ -610,7 +610,7 @@ def apply_goal_create(adapter: Any, repository: str, request: dict[str, Any], *,
     if allow_deferred:
         wire_goal = dict(goal)
         wire_goal["workflow"] = {"leases": {}, "receipts": {}, "workers": {}, "assessments": {}, "artifacts": {}}
-        wire_goal["phase_evidence"] = {"schema_version": 1, "records": {}, "reviews": {}, "withdrawals": []}
+        wire_goal["phase_evidence"] = {"schema_version": 2, "records": {}, "reviews": {}, "human_approvals": {}, "withdrawals": []}
     if allow_deferred:
         separator = "\n\n" if request["body"] and not request["body"].endswith("\n\n") else ""
         body = f"{request['body']}{separator}{GOAL_BLOCK_START}\n{json.dumps(wire_goal, ensure_ascii=False, sort_keys=True, separators=(',', ':'))}\n{GOAL_BLOCK_END}\n"
