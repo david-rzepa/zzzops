@@ -274,8 +274,20 @@ class Workflow:
 
     def read(self, number):
         if number not in self._read_cache:
-            issue = self.adapter.get_issue(number)
-            self._read_cache[number] = (issue, self.api.github_goal_record(issue))
+            self.portfolio(allow_invalid=True)
+            records = {item.get('key'): item for item in self._portfolio_cache.get('goals', []) if isinstance(item, dict)}
+            goal = records.get(number)
+            if not isinstance(goal, dict):
+                raise ValueError(f'Goal #{number} is absent from the current portfolio gateway')
+            goal = {
+                **goal,
+                "human_spec": goal.get("human_spec") or f"Archived goal #{number}; body unavailable.",
+                "acceptance_criteria": goal.get("acceptance_criteria", []),
+                "phase_evidence": goal.get("phase_evidence") or self.api.empty_phase_evidence(),
+            }
+            # Workflow context is allowed to consume only the portfolio gateway.
+            # Mutations still use their provider adapter at the write boundary.
+            self._read_cache[number] = ({'number': number}, copy.deepcopy(goal))
         return copy.deepcopy(self._read_cache[number])
 
     def artifact(self, number, content):
@@ -857,12 +869,10 @@ class Workflow:
         return acquired, scope
 
     def pull_request(self, goal):
-        issue, _ = self.read(goal['key'])
-        states, _, _ = self.api._github_pull_request_states(self.repo, getattr(self.adapter, 'executable', 'gh'), [{'number': goal['key']}], {goal['key']: {'body': issue['body']}})
-        value = states.get(goal['key'])
+        value = goal.get('pull_request')
         if not isinstance(value, dict):
             raise ValueError('Current provider PR evidence is unavailable')
-        return value
+        return copy.deepcopy(value)
 
     def publication_identity(self, goal):
         implementation = goal['implementation']

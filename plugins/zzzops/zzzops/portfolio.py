@@ -485,8 +485,7 @@ def compact_portfolio_output(snapshot: dict[str, Any]) -> dict[str, Any]:
             goals.append({"archived": True, **{field: goal.get(field) for field in terminal_fields}})
             archived += 1
         else:
-            goals.append({
-                key: value for key, value in goal.items()
-                if key not in {"phase_evidence", "human_spec", "acceptance_criteria"}
-            })
+            # The workflow gateway consumes the same snapshot. Retaining its
+            # phase inputs avoids a provider read for every dependency.
+            goals.append(dict(goal))
     return {**snapshot, "goals": goals, "summary": {**snapshot["summary"], "archived": archived}}

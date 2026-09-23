@@ -21,6 +21,8 @@ from types import SimpleNamespace
 from typing import Any
 from urllib.parse import quote, urlparse
 
+_release_evidence_cache: dict[tuple[str, Any], dict[str, Any]] = {}
+
 _PACKAGE_MODULE_PATH = Path(__file__).with_name("package.py")
 _PACKAGE_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_package", _PACKAGE_MODULE_PATH)
 assert _PACKAGE_MODULE_SPEC and _PACKAGE_MODULE_SPEC.loader
@@ -1568,7 +1570,10 @@ def github_repository_portfolio_snapshot(
     try:
         cache = json.loads(_portfolio_cache_path(repo).read_text(encoding="utf-8")) if hydration_processes == 0 else {}
         values = cache.get("records") if isinstance(cache, dict) else None
-        if isinstance(values, dict) and set(values) == {str(issue["number"]) for issue in open_selected} and all(isinstance(value, dict) for value in values.values()):
+        if isinstance(values, dict) and set(values) == {str(issue["number"]) for issue in open_selected} and all(
+            isinstance(value, dict) and {"human_spec", "acceptance_criteria", "phase_evidence"} <= set(value)
+            for value in values.values()
+        ):
             cached_records = {int(number): copy.deepcopy(value) for number, value in values.items()}
     except (OSError, ValueError, json.JSONDecodeError):
         cached_records = None
@@ -1629,6 +1634,20 @@ def github_repository_portfolio_snapshot(
             hydration_processes + relation_processes + pull_request_processes, excluded,
         ),
     )
+    # The public graph projection is intentionally compact, but the workflow
+    # gateway needs these already-hydrated fields to avoid exact issue rereads.
+    by_key = {record["key"]: record for record in open_records}
+    hydrated_by_key = {
+        item["number"]: github_goal_record(item)
+        for item in valid_open
+        if item["number"] not in by_key or not {"human_spec", "acceptance_criteria", "phase_evidence"} <= set(by_key[item["number"]])
+    }
+    for record in snapshot.get("goals", []):
+        source = by_key.get(record.get("key")) if isinstance(record, dict) else None
+        if source is not None and not {"human_spec", "acceptance_criteria", "phase_evidence"} <= set(source):
+            source = hydrated_by_key.get(record.get("key"))
+        if source is not None:
+            record.update({field: copy.deepcopy(source[field]) for field in ("human_spec", "acceptance_criteria", "phase_evidence")})
     return repository_probe, snapshot
 
 
@@ -1686,6 +1705,30 @@ def _workflow_runtime(runtime: Any) -> dict[str, Any]:
         raise ValueError("workflow runtime is invalid")
     # reviewed_model_effort performs the detailed identifier validation.
     return {**runtime, "root_pair": dict(root), "available_pairs": [dict(item) if isinstance(item, dict) else item for item in available]}
+
+
+def codex_thread_runtime() -> dict[str, Any] | None:
+    """Derive the root pair from the current local Codex thread, never guess it."""
+    thread = os.environ.get("CODEX_THREAD_ID")
+    if not isinstance(thread, str) or not thread:
+        return None
+    sessions = Path.home() / ".codex" / "sessions"
+    matches = sorted(sessions.rglob(f"*{thread}*.jsonl"), key=lambda path: path.stat().st_mtime, reverse=True)
+    if not matches:
+        return None
+    try:
+        for line in reversed(matches[0].read_text(encoding="utf-8").splitlines()):
+            event = json.loads(line)
+            payload = event.get("payload") if isinstance(event, dict) else None
+            if event.get("type") != "turn_context" or not isinstance(payload, dict):
+                continue
+            model, effort = payload.get("model"), payload.get("effort")
+            if isinstance(model, str) and model and isinstance(effort, str) and effort:
+                root = {"model": model, "effort": effort}
+                return {"root_pair": root, "available_pairs": [root], "root_id": thread}
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return None
 
 
 def workflow_step_plan(
@@ -2141,6 +2184,10 @@ def github_repository_probe(repo: Path) -> dict[str, Any]:
 def github_release_evidence(repo: Path, repository: dict[str, Any]) -> dict[str, Any]:
     """Capture all published releases with resolved tag commits, or fail closed."""
     identity = repository.get("identity") if isinstance(repository, dict) else None
+    cache_key = (str(repo.resolve()), identity)
+    cached = _release_evidence_cache.get(cache_key)
+    if cached is not None:
+        return copy.deepcopy(cached)
     executable = shutil.which("gh")
     unavailable = {"available": bool(executable), "status": "unavailable", "releases": None}
     if not executable or not isinstance(identity, str) or identity.count("/") != 1:
@@ -2175,9 +2222,13 @@ def github_release_evidence(repo: Path, repository: dict[str, Any]) -> dict[str,
                              "published_at": item["published_at"]})
         if len({item["id"] for item in releases}) != len(releases):
             raise ValueError("release_api_duplicate")
-        return {"available": True, "status": "complete", "releases": sorted(releases, key=lambda item: item["id"]), "reason": "ok"}
+        observed = {"available": True, "status": "complete", "releases": sorted(releases, key=lambda item: item["id"]), "reason": "ok"}
+        _release_evidence_cache[cache_key] = copy.deepcopy(observed)
+        return observed
     except (OSError, UnicodeError, subprocess.TimeoutExpired, ValueError) as exc:
-        return {**unavailable, "reason": str(exc) if type(exc) is ValueError else type(exc).__name__}
+        observed = {**unavailable, "reason": str(exc) if type(exc) is ValueError else type(exc).__name__}
+        _release_evidence_cache[cache_key] = copy.deepcopy(observed)
+        return observed
 
 
 def migration_assessment(repo: Path, project: dict[str, Any], goal: dict[str, Any]) -> dict[str, Any]:
@@ -3345,7 +3396,7 @@ def main() -> int:
     args, payload = None, None
     try:
         args = parser.parse_args(argv[1:])
-        runtime = json.loads(args.runtime.read_text()) if args.runtime else None
+        runtime = json.loads(args.runtime.read_text()) if args.runtime else codex_thread_runtime()
         payload = json.loads(args.input.read_text()) if args.input else None
         source = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
         services = SimpleNamespace(**globals())
