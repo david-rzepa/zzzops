@@ -326,7 +326,7 @@ class Workflow:
         if self._portfolio_cache is None:
             self._portfolio_cache = self.api.portfolio_snapshot(self.repo)
         portfolio = self._portfolio_cache
-        if not portfolio.get('complete') or (not allow_invalid and not portfolio.get('valid')):
+        if not portfolio.get('complete'):
             findings = portfolio.get('findings') if isinstance(portfolio, dict) else None
             if isinstance(findings, list) and findings:
                 details = '; '.join(
@@ -339,6 +339,27 @@ class Workflow:
                 )
             raise ValueError('Repair the goal portfolio before starting or submitting work; no detailed findings were returned by the portfolio validator.')
         return copy.deepcopy(portfolio['goals'])
+
+    def validation_blockers(self, goal):
+        """Return findings that affect this goal or one of its prerequisites."""
+        self.portfolio(allow_invalid=True)
+        records = {record['key']: record for record in self._portfolio_cache['goals']}
+        affected = set()
+        pending = [goal['key']]
+        while pending:
+            key = pending.pop()
+            if key in affected:
+                continue
+            affected.add(key)
+            record = records.get(key, {})
+            pending.extend(record.get('depends_on', []))
+            if record.get('parent') is not None:
+                pending.append(record['parent'])
+        return sorted(
+            (finding for finding in self._portfolio_cache.get('findings', [])
+             if isinstance(finding, dict) and finding.get('goal') in affected),
+            key=lambda finding: (str(finding.get('goal')), finding.get('code', ''), finding.get('detail', '')),
+        )
 
     @contextmanager
     def locked(self):
@@ -415,7 +436,7 @@ class Workflow:
 
     def inputs(self, goal, graph):
         live = self.api.workflow_live_inputs(self.repo, self.project, goal, 'execute', graph)
-        evidence = goal.get('phase_evidence') or self.api.empty_phase_evidence()
+        evidence = self.api.normalize_phase_evidence(goal.get('phase_evidence'))
         def completion_identity(completed):
             records = (completed.get('phase_evidence') or {}).get('records', {})
             return {
@@ -1189,6 +1210,16 @@ class Workflow:
             # this exact lease; rehydrating every goal under the lock caused timeouts.
             portfolio = [] if payload.get('operation') == 'renew' else self.portfolio(allow_invalid=payload.get('operation') in {'revise', 'recover_legacy'})
             issue, goal = self.read(number)
+            if portfolio and payload.get('operation') not in {'revise', 'recover_legacy'}:
+                projected = next((record for record in portfolio if record['key'] == number), None)
+                if projected is not None:
+                    findings = self.validation_blockers(projected)
+                    if findings:
+                        details = '; '.join(
+                            f"goal {finding.get('goal', '?')}: {finding.get('code', 'validation_error')} — {finding.get('detail', 'inspect the goal record')}"
+                            for finding in findings
+                        )
+                        raise ValueError(f'Repair validation findings relevant to goal {number} before submitting work: {details}')
             desired = self.api.parse_managed_goal(issue['body'], number)
             durable = state(goal)
             fingerprint = digest(payload)
@@ -1590,6 +1621,12 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     if number is not None:
         if number not in {g['key'] for g in goals}:
             raise ValueError('Requested goal is not in the validated portfolio')
+        goal = next(goal for goal in goals if goal['key'] == number)
+        findings = engine.validation_blockers(goal)
+        if findings:
+            return {'next_steps': [{'kind': 'blocker', 'assignment': 'root', 'goal': number,
+                'action': 'Repair this goal or one of its prerequisites before continuing.',
+                'findings': findings}]}
         runnable_steps, waiting_steps = [], []
         partition(engine.step(number), runnable_steps, waiting_steps)
         if capacity_blocked and len(runnable_steps) < limit:
@@ -1599,6 +1636,12 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     waiting_steps = []
     for goal in sorted(goals, key=lambda g: (g.get('priority', 'P3'), g['key'])):
         if goal['status'] in {'done', 'cancelled'}:
+            continue
+        findings = engine.validation_blockers(goal)
+        if findings:
+            waiting_steps.append({'kind': 'blocker', 'assignment': 'root', 'goal': goal['key'],
+                'action': 'Repair this goal or one of its prerequisites before continuing.',
+                'findings': findings})
             continue
         blocked = [g for g in goals if g['key'] in goal.get('depends_on', []) and g['status'] != 'done']
         if blocked:

@@ -4740,6 +4740,27 @@ class ReservationTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_workflow_scopes_portfolio_findings_to_the_affected_goal_and_prerequisites(self):
+        workflow = zzzops._workflow.Workflow.__new__(zzzops._workflow.Workflow)
+        workflow.repo = Path('.')
+        workflow.api = SimpleNamespace(portfolio_snapshot=lambda _repo: {
+            "complete": True, "valid": False,
+            "goals": [
+                {"key": 1, "parent": None, "depends_on": []},
+                {"key": 2, "parent": 1, "depends_on": []},
+                {"key": 3, "parent": None, "depends_on": []},
+            ],
+            "findings": [
+                {"code": "merged_pr_stale_checkpoint", "goal": 1, "detail": "stale"},
+                {"code": "merged_pr_stale_checkpoint", "goal": 3, "detail": "unrelated"},
+            ],
+        })
+        workflow._portfolio_cache = None
+
+        self.assertEqual([1, 2, 3], [goal["key"] for goal in workflow.portfolio()])
+        self.assertEqual([1], [finding["goal"] for finding in workflow.validation_blockers({"key": 2})])
+        self.assertEqual([3], [finding["goal"] for finding in workflow.validation_blockers({"key": 3})])
+
     def test_public_workflow_cli_has_one_parser_and_exposes_all_named_intents(self):
         result = subprocess.run(
             [sys.executable, str(MODULE_PATH), "workflow", "--help"],
