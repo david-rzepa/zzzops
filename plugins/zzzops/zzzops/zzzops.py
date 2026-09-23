@@ -345,12 +345,13 @@ def workflow_repair_step(intent: str, reason: str, action: str, *, source_skill:
 
 def workflow_context_step(
     repo: Path, package: dict[str, Any], *, source_skill: str | None = None,
+    skip_installation_validation: bool = False,
 ) -> dict[str, Any] | None:
     """Derive the mandatory shared context gate without retaining workflow state."""
     provenance = {field: package.get(field) for field in ("version", "revision")}
     if all(isinstance(value, str) and value for value in provenance.values()):
         status = _installation.validation_status(repo, provenance)
-        if status.get("required") is True:
+        if status.get("required") is True and not skip_installation_validation:
             if source_skill == "$validate-zzzops-installation":
                 return None
             return {
@@ -1200,27 +1201,11 @@ def github_repository_goal_index(
 
 
 def _portfolio_from_hydrated_goals(
-    project: dict[str, Any], selected: list[dict[str, Any]], bodies: dict[int, dict[str, Any]],
+    project: dict[str, Any], selected: list[dict[str, Any]], open_records: list[dict[str, Any]],
     findings: list[dict[str, Any]], discovery_bytes: int, discovery_reads: int,
     hydration_bytes: int, hydration_processes: int, excluded: int,
-    pull_request_states: dict[int, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    open_selected = [issue for issue in selected if issue["state"] == "open"]
-    managed = []
-    for issue in open_selected:
-        hydrated = bodies[issue["number"]]
-        candidate = {**issue, **hydrated}
-        if pull_request_states and issue["number"] in pull_request_states:
-            candidate["pull_request"] = pull_request_states[issue["number"]]
-            candidate["repository"] = project["repository"]["identity"]
-        if GOAL_BLOCK_START in candidate["body"]:
-            managed.append(candidate)
-    records = []
-    for issue in managed:
-        try:
-            records.append(github_goal_record(issue))
-        except (KeyError, TypeError, ValueError) as exc:
-            findings.append({"code": "malformed_record", "goal": issue.get("number", "unknown"), "detail": str(exc)})
+    records = list(open_records)
     for issue in selected:
         if issue["state"] != "closed":
             continue
@@ -1251,8 +1236,11 @@ def _portfolio_from_hydrated_goals(
     )
     snapshot["findings"] = sorted(snapshot["findings"] + findings, key=lambda item: (item["code"], str(item["goal"])))
     snapshot["summary"]["findings"] = len(snapshot["findings"])
-    snapshot["complete"] = not findings
-    snapshot["valid"] = not snapshot["findings"]
+    # A malformed provider record is reported and excluded from the graph.  It
+    # must not veto independent, valid goals; graph findings still do.
+    blocking_findings = [item for item in snapshot["findings"] if item["code"] != "malformed_record"]
+    snapshot["complete"] = True
+    snapshot["valid"] = not blocking_findings
     snapshot["summary"]["discovery_raw_bytes"] = discovery_bytes
     snapshot["summary"]["hydration_raw_bytes"] = hydration_bytes
     snapshot["summary"]["processes"] = 1 + hydration_processes
@@ -1276,14 +1264,29 @@ def github_repository_portfolio_snapshot(
             repo, executable, owner, name, [issue["number"] for issue in open_selected],
         ),
     )
+    open_records = []
+    valid_open = []
+    for issue in open_selected:
+        candidate = {**issue, **bodies[issue["number"]]}
+        if GOAL_BLOCK_START not in candidate["body"]:
+            continue
+        try:
+            open_records.append(github_goal_record(candidate))
+            valid_open.append(candidate)
+        except (KeyError, TypeError, ValueError) as exc:
+            findings.append({"code": "malformed_record", "goal": issue["number"], "detail": str(exc)})
     pull_request_states, pull_request_bytes, pull_request_processes = _github_pull_request_states(
-        repo, executable, open_selected, bodies,
+        repo, executable, valid_open, bodies,
     )
+    for record in open_records:
+        state = pull_request_states.get(record["key"])
+        if state is not None:
+            record["pull_request"] = state
+            record["repository"] = project["repository"]["identity"]
     snapshot = _timed_call(
         timing, "graph_validation", lambda: _portfolio_from_hydrated_goals(
-            project, selected, bodies, findings, discovery_bytes, discovery_reads,
+            project, selected, open_records, findings, discovery_bytes, discovery_reads,
             hydration_bytes + pull_request_bytes, hydration_processes + pull_request_processes, excluded,
-            pull_request_states,
         ),
     )
     return repository_probe, snapshot
@@ -1386,7 +1389,21 @@ def workflow_step_plan(
             dimensions = assessment.get("dimensions", dimensions_base)
             tier = capability_tier(routing_settings, {**dimensions, "phase_type": phase})["tier"]
             if requires_human and tiers[tier] > tiers[root_choice["tier"]]:
-                steps.append({"kind": "capability_discovery", "phase": phase, "assignment": "root", "reason": "human-interaction phase exceeds root capability"})
+                choice = _workflow.state(goal).get("routing_choices", {}).get(phase)
+                if choice and choice.get("choice") == "downgrade_to_root" and choice.get("root_pair") == runtime["root_pair"]:
+                    steps.append({
+                        "kind": "human_approval" if human_approval else kind, "phase": phase, "reason": entry["reason"],
+                        "skill": WORKFLOW_PHASE_PROMPTS[(phase, kind)], "assignment": "root", "selection": choice.get("selection", runtime["root_pair"]),
+                    })
+                    continue
+                requested = reviewed_model_effort(routing_settings, tier, runtime["available_pairs"])
+                steps.append({
+                    "kind": "capability_choice", "phase": phase, "assignment": "root",
+                    "reason": "human-interaction phase exceeds root capability",
+                    "root_pair": runtime["root_pair"],
+                    "requested_pair": requested["selected"] if requested["available"] else None,
+                    "choices": ["use_requested_pair", "downgrade_to_root"],
+                })
                 continue
             overrides = runtime.get('overrides', [])
             if not isinstance(overrides, list):
@@ -1400,7 +1417,22 @@ def workflow_step_plan(
             chosen = reviewed_model_effort(routing_settings, tier, available)
             if not chosen["available"]:
                 all_choices = reviewed_model_effort(routing_settings, tier, runtime['available_pairs'])
-                steps.append({"kind": "session_override" if all_choices['available'] else "capability_discovery", "phase": phase, "assignment": "root", "reason": f"no permitted reviewed available model-plus-effort pair for {tier}"})
+                if all_choices['available']:
+                    choice = _workflow.state(goal).get("routing_choices", {}).get(phase)
+                    if choice and choice.get("choice") == "delegate_at_root" and choice.get("root_pair") == runtime["root_pair"]:
+                        steps.append({
+                            "kind": kind, "phase": phase, "reason": entry["reason"],
+                            "skill": WORKFLOW_PHASE_PROMPTS[(phase, kind)], "assignment": "delegate", "selection": choice.get("selection", runtime["root_pair"]),
+                        })
+                        continue
+                    steps.append({
+                        "kind": "capability_choice", "phase": phase, "assignment": "root",
+                        "reason": f"no permitted reviewed available model-plus-effort pair for {tier}",
+                        "root_pair": runtime["root_pair"], "requested_pair": all_choices["selected"],
+                        "choices": ["use_requested_pair", "delegate_at_root"],
+                    })
+                else:
+                    steps.append({"kind": "capability_discovery", "phase": phase, "assignment": "root", "reason": f"no permitted reviewed available model-plus-effort pair for {tier}"})
                 continue
             selection = runtime["root_pair"] if requires_human else chosen["selected"]
             if tiers[tier] > tiers[root_choice["tier"]] and not overrides:
@@ -1767,29 +1799,63 @@ def github_repository_probe(repo: Path) -> dict[str, Any]:
 
 
 def github_release_evidence(repo: Path, repository: dict[str, Any]) -> dict[str, Any]:
-    """Read public GitHub Releases; absence or failure remains ambiguous."""
+    """Capture all published releases with resolved tag commits, or fail closed."""
     identity = repository.get("identity") if isinstance(repository, dict) else None
     executable = shutil.which("gh")
+    unavailable = {"available": bool(executable), "status": "unavailable", "releases": None}
     if not executable or not isinstance(identity, str) or identity.count("/") != 1:
-        return {"available": False, "releases": None, "reason": "repository_identity_unavailable"}
+        return {**unavailable, "reason": "repository_identity_unavailable"}
+
+    def read(endpoint, *options):
+        result = subprocess.run([executable, "api", endpoint, *options], cwd=repo,
+                                capture_output=True, text=True, encoding="utf-8", timeout=8, check=False)
+        if result.returncode:
+            raise ValueError("release_api_failed")
+        return json.loads(result.stdout)
+
     try:
-        result = subprocess.run(
-            [executable, "api", f"repos/{identity}/releases", "--paginate", "--slurp"],
-            cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=8, check=False,
-        )
-    except (OSError, UnicodeError, subprocess.TimeoutExpired) as exc:
-        return {"available": True, "releases": None, "reason": type(exc).__name__}
-    if result.returncode != 0:
-        return {"available": True, "releases": None, "reason": "release_api_failed"}
+        pages = read(f"repos/{identity}/releases", "--paginate", "--slurp")
+        if not isinstance(pages, list) or any(not isinstance(page, list) for page in pages):
+            raise ValueError("release_api_malformed")
+        releases = []
+        for item in [item for page in pages for item in page]:
+            if not isinstance(item, dict) or type(item.get("draft")) is not bool:
+                raise ValueError("release_api_malformed")
+            if item["draft"]:
+                continue
+            if (type(item.get("id")) is not int or not isinstance(item.get("tag_name"), str)
+                    or not item["tag_name"].strip() or not isinstance(item.get("published_at"), str)
+                    or not item["published_at"].strip()):
+                raise ValueError("release_api_malformed")
+            commit = read(f"repos/{identity}/commits/{quote(item['tag_name'], safe='')}")
+            commit = commit.get("sha") if isinstance(commit, dict) else None
+            if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
+                raise ValueError("release_commit_unavailable")
+            releases.append({"id": item["id"], "tag": item["tag_name"], "commit": commit,
+                             "published_at": item["published_at"]})
+        if len({item["id"] for item in releases}) != len(releases):
+            raise ValueError("release_api_duplicate")
+        return {"available": True, "status": "complete", "releases": sorted(releases, key=lambda item: item["id"]), "reason": "ok"}
+    except (OSError, UnicodeError, subprocess.TimeoutExpired, ValueError) as exc:
+        return {**unavailable, "reason": str(exc) if type(exc) is ValueError else type(exc).__name__}
+
+
+def migration_assessment(repo: Path, project: dict[str, Any], goal: dict[str, Any]) -> dict[str, Any]:
+    """Observe the one goal-bound document and current release facts without adopting policy."""
+    path = repo / ".zzzops" / "migration" / f"{goal['key']}.json"
+    document = None
     try:
-        releases = json.loads(result.stdout)
-    except (UnicodeError, json.JSONDecodeError):
-        return {"available": True, "releases": None, "reason": "release_api_invalid_json"}
-    if isinstance(releases, list) and all(isinstance(page, list) for page in releases):
-        releases = [item for page in releases for item in page]
-    if not isinstance(releases, list):
-        return {"available": True, "releases": None, "reason": "release_api_malformed"}
-    return {"available": True, "releases": releases, "reason": "ok"}
+        if path.resolve().is_relative_to(repo.resolve()) and not path.is_symlink():
+            document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError):
+        pass
+    repository = _project_repository_identity(project)
+    observed = github_release_evidence(repo, {"identity": repository})
+    snapshot = {"status": observed.get("status", "unavailable"), "releases": observed.get("releases")}
+    context = {"repository": repository, "goal": goal["key"],
+               "goal_spec": goal_spec_digest(goal, title=goal['title'], human_spec=goal['human_spec']),
+               "release_snapshot": snapshot, "assessment": document}
+    return {"release_snapshot": snapshot, "decision": migration_boundary(project.get("policy", {}), context)}
 
 
 def inspect_initialization(repo: Path) -> dict[str, Any]:
@@ -1824,17 +1890,10 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         )
         review_policy = template["policy"]
         review_is_proposal = True
-    migration_policy_review = _policy.legacy_migration_review(review_policy, release_status)
     migration_action = _policy.migration_boundary(review_policy, release_status)
-    migration_policy_invalidated = migration_policy_review.get("reason") in {
-        "migration_policy_missing",
-        "first_release_invalidated_pre_release_policy",
-    }
     decision_blockers = policy_blockers(state.get("policy")) if state else ["policy:missing"]
-    if migration_policy_invalidated:
-        reason = migration_policy_review["reason"]
-        blocker = "first_release_requires_policy_rereview" if reason == "first_release_invalidated_pre_release_policy" else reason
-        decision_blockers = [*decision_blockers, "legacy_migration:" + blocker]
+    if error:
+        decision_blockers = [*decision_blockers, "policy:invalid_configuration"]
     github_stack = github_stack_probe(repo)
     plugin_inventory = _plugin_freshness.native_plugin_inventory()
     cache_path = Path(plugin_inventory["cache_path"])
@@ -1872,7 +1931,6 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
             "github_repository": github_repository,
             "github_release_evidence": github_releases,
             "release_status": release_status,
-            "legacy_migration_review": migration_policy_review,
             "migration_boundary": migration_action,
             "github_stack": github_stack,
         },
@@ -2462,6 +2520,7 @@ def _private_main() -> int:
     workflow_parser.add_argument("--source-skill", choices=sorted(WORKFLOW_SKILL_INTENTS), help="Named skill that initiated this public workflow call")
     workflow_parser.add_argument("--runtime", type=Path, help="Current root and available model-effort pairs as JSON")
     workflow_parser.add_argument("--input", type=Path, help="UTF-8 result or review submission JSON")
+    workflow_parser.add_argument("--skip-installation-validation", action="store_true", help="Proceed despite an unrecorded local plugin-package change")
     installation = commands.add_parser("installation", help="Check or record per-repository plugin validation")
     installation_commands = installation.add_subparsers(dest="installation_command", required=True)
     installation_commands.add_parser("status", help="Report whether this installed package needs repository validation")
@@ -2682,7 +2741,10 @@ def _private_main() -> int:
                     if args.runtime is not None or args.input is not None:
                         raise ValueError("Workflow runtime and phase-evidence input require a managed goal")
                     source_skill = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
-                    context = workflow_context_step(repo, package, source_skill=source_skill)
+                    context = workflow_context_step(
+                        repo, package, source_skill=source_skill,
+                        **({"skip_installation_validation": True} if args.skip_installation_validation else {}),
+                    )
                     if context is not None:
                         result = {"next_steps": [context]}
                     else:
@@ -2695,7 +2757,10 @@ def _private_main() -> int:
                     raise ValueError("Goal phase checkpoints require execute or preview intent")
                 else:
                     source_skill = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
-                    context = workflow_context_step(repo, package, source_skill=source_skill)
+                    context = workflow_context_step(
+                        repo, package, source_skill=source_skill,
+                        **({"skip_installation_validation": True} if args.skip_installation_validation else {}),
+                    )
                     if context is not None:
                         result = {"next_steps": [context]}
                     elif args.input:
@@ -2933,6 +2998,7 @@ def main() -> int:
     parser.add_argument("--goal", type=int)
     parser.add_argument("--runtime", type=Path)
     parser.add_argument("--input", type=Path)
+    parser.add_argument("--skip-installation-validation", action="store_true")
     if len(sys.argv) == 1:
         parser.print_help()
         return 0
@@ -2949,7 +3015,10 @@ def main() -> int:
                 float(os.environ.get('ZZZOPS_RENEWAL_TIMEOUT_SECONDS', '30')),
                 float(os.environ.get('ZZZOPS_RENEWAL_CLEANUP_SECONDS', '10')),
             )
-        result = _workflow.public_run(services, args.repo.resolve(), args.intent, source, runtime, payload, args.goal)
+        result = _workflow.public_run(
+            services, args.repo.resolve(), args.intent, source, runtime, payload, args.goal,
+            skip_installation_validation=args.skip_installation_validation,
+        )
         print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
         return 0
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:

@@ -1,17 +1,17 @@
 {
   "approval": {
-    "date": "2026-09-17",
-    "digest": "sha256:c650a61314079b06c622042481274e89d136345d42852bec2df55b8cc978cc3b",
-    "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
+    "date": "2026-09-21",
+    "digest": "sha256:386ca14e760c462c4277173a045c7f5e6f85d72545c6290897576fde137fc64d",
+    "reviewer": "user"
   },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:7bcc71b20d0d83e612b8eb2a0742b856f9570d039d62619af7f85973bd954819",
+      "digest": "sha256:b43c6ec1199144a58effa2324e57ace753cce69c585a4a25cd3a51a0a21a8fc4",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
-      "digest": "sha256:53d08400c64c31be1c59fc26fd9083597df24796d3c60d0e6ea331fb92795eb5",
+      "digest": "sha256:40b07f66287401bbb24b31cb10b870235942e8a1448c2d6b595f4f0c5cae869e",
       "path": ".zzzops/PROJECT.md"
     }
   },
@@ -218,6 +218,30 @@
       "change": "Reviewed policy revision 38",
       "date": "2026-09-17",
       "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 39",
+      "date": "2026-09-21",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "user",
+      "change": "Reviewed policy revision 40",
+      "date": "2026-09-21",
+      "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:9a9fbfef2e28ed402929c03d4d0c07df78568d1ec339583708bd80f7316948e1."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 41",
+      "date": "2026-09-21",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "user",
+      "change": "Reviewed policy revision 42",
+      "date": "2026-09-21",
+      "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9."
     }
   ],
   "initialized": true,
@@ -367,9 +391,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-17",
-          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
-          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
+          "date": "2026-09-21",
+          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
+          "reviewer": "user"
         },
         "source_ids": [
           "E-003",
@@ -383,9 +407,6 @@
         "applicable": true,
         "confidence": "medium",
         "configuration": {
-          "legacy_migration": {
-            "release_status": "released"
-          },
           "pull_request_mode": "github_stacked_when_verified_else_chained",
           "review_pending_dependency": "stack_from_reviewed_checkpoint"
         },
@@ -408,9 +429,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-17",
-          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
-          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
+          "date": "2026-09-21",
+          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
+          "reviewer": "user"
         },
         "source_ids": [
           "E-002",
@@ -448,9 +469,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-17",
-          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
-          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
+          "date": "2026-09-21",
+          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
+          "reviewer": "user"
         },
         "source_ids": [
           "E-002",
@@ -488,9 +509,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-17",
-          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
-          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
+          "date": "2026-09-21",
+          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
+          "reviewer": "user"
         },
         "source_ids": [
           "E-002",
@@ -522,9 +543,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-17",
-          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
-          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
+          "date": "2026-09-21",
+          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
+          "reviewer": "user"
         },
         "source_ids": [
           "E-001",
@@ -561,9 +582,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-17",
-          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
-          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
+          "date": "2026-09-21",
+          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
+          "reviewer": "user"
         },
         "source_ids": [
           "E-001",
@@ -595,9 +616,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-17",
-          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
-          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
+          "date": "2026-09-21",
+          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
+          "reviewer": "user"
         },
         "source_ids": [
           "E-002",
@@ -630,9 +651,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-17",
-          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
-          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
+          "date": "2026-09-21",
+          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
+          "reviewer": "user"
         },
         "source_ids": [
           "E-002",
@@ -680,9 +701,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-17",
-          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
-          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
+          "date": "2026-09-21",
+          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
+          "reviewer": "user"
         },
         "source_ids": [
           "E-001",
@@ -914,6 +935,36 @@
                 "effort": "xhigh",
                 "model": "gpt-5.5",
                 "tier": "architectural"
+              },
+              {
+                "cost": 14,
+                "effort": "low",
+                "model": "gpt-reserve",
+                "tier": "routine"
+              },
+              {
+                "cost": 28,
+                "effort": "medium",
+                "model": "gpt-reserve",
+                "tier": "bounded"
+              },
+              {
+                "cost": 42,
+                "effort": "high",
+                "model": "gpt-reserve",
+                "tier": "bounded"
+              },
+              {
+                "cost": 56,
+                "effort": "xhigh",
+                "model": "gpt-reserve",
+                "tier": "bounded"
+              },
+              {
+                "cost": 84,
+                "effort": "max",
+                "model": "gpt-reserve",
+                "tier": "bounded"
               }
             ]
           },
@@ -955,9 +1006,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-17",
-          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
-          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
+          "date": "2026-09-21",
+          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
+          "reviewer": "user"
         },
         "source_ids": [
           "E-015",
@@ -1311,9 +1362,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-17",
-          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
-          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
+          "date": "2026-09-21",
+          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
+          "reviewer": "user"
         },
         "source_ids": [
           "E-001",
@@ -1350,9 +1401,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-17",
-          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
-          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
+          "date": "2026-09-21",
+          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
+          "reviewer": "user"
         },
         "source_ids": [
           "E-002",
@@ -1407,9 +1458,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-17",
-          "reviewed_digest": "sha256:91d3976cc987073215f5c2fb7812e01689b5be457dce7fe621ee8ebf15b16f3e",
-          "reviewer": "user: I approve (temporary routing baseline pending goal #488)"
+          "date": "2026-09-21",
+          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
+          "reviewer": "user"
         },
         "source_ids": [
           "E-001",
@@ -1429,6 +1480,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 38,
+  "revision": 42,
   "schema_version": 1
 }

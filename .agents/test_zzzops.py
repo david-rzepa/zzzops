@@ -1,4 +1,5 @@
 import ast
+import copy
 import hashlib
 import importlib.util
 import io
@@ -117,22 +118,16 @@ class PolicyModuleTests(unittest.TestCase):
         )
         self.assertEqual("unknown", private["status"])
 
-    def test_legacy_migration_review_reopens_missing_and_first_release_policy(self):
-        policy = {"sections": [{"id": "git_review_release", "configuration": {}}]}
-        released = {"status": "released"}
-        missing = zzzops._policy.legacy_migration_review(policy, released)
-        self.assertEqual("review_required", missing["status"])
-        reviewed = {"sections": [{"id": "git_review_release", "configuration": {
-            "legacy_migration": {"release_status": "never_released"},
-        }}]}
-        first_release = zzzops._policy.legacy_migration_review(reviewed, released)
-        self.assertEqual("first_release_invalidated_pre_release_policy", first_release["reason"])
-        stable = {"status": "released"}
-        self.assertEqual("reviewed", zzzops._policy.legacy_migration_review(
-            {"sections": [{"id": "git_review_release", "configuration": {
-                "legacy_migration": {"release_status": "released"},
-            }}]}, stable,
-        )["status"])
+    def test_migration_standing_configuration_does_not_store_release_facts(self):
+        template = json.loads((PLUGIN_ROOT / "zzzops/templates/project-goals/INIT_PLAN.json").read_text())
+        section = next(s for s in template['policy']['sections'] if s['id'] == 'git_review_release')
+        self.assertNotIn('legacy_migration', section['configuration'])
+        self.assertNotIn('basis', section['configuration'])
+        self.assertIn('pull_request_mode', section['configuration'])
+        missing = copy.deepcopy(template['policy'])
+        next(s for s in missing['sections'] if s['id'] == 'git_review_release')['configuration'].pop('pull_request_mode')
+        self.assertTrue(any('missing: pull_request_mode' in e
+                            for e in zzzops.validate_policy(missing, require_pending=True)))
 
 
 class PluginFreshnessTests(unittest.TestCase):
@@ -1817,7 +1812,7 @@ class InitializationTests(unittest.TestCase):
         self.assertIn("current taxonomy", inspection["state_error"])
         self.assertIn("schema_version must be 2", inspection["state_error"])
         self.assertIn("unsupported fields: decision, settings", inspection["state_error"])
-        self.assertIn("legacy_migration:migration_policy_missing", inspection["decision_blockers"])
+        self.assertTrue(inspection["decision_blockers"], "Malformed required policy configuration must still block")
         self.assertNotIn("legacy_migration:first_release_requires_policy_rereview", inspection["decision_blockers"])
         retired = next(item for item in inspection["state"]["policy"]["sections"] if item["id"] == "execution_continuation")
         self.assertEqual({"custom_limit": 7}, retired["settings"])
@@ -2678,6 +2673,15 @@ class GoalCreateTests(unittest.TestCase):
              "url": "https://github.com/owner/repo/issues/42"},
             result,
         )
+
+    def test_deferred_create_uses_current_empty_phase_evidence(self):
+        adapter = FakeGoalTransitionAdapter({})
+
+        zzzops.apply_goal_create(adapter, "owner/repo", self.request(), allow_deferred=True)
+
+        persisted = zzzops.parse_managed_goal(adapter.updates[0]["body"], 42)
+        self.assertEqual(zzzops.empty_phase_evidence(), persisted["phase_evidence"])
+        self.assertEqual([], zzzops.validate_phase_evidence(persisted["phase_evidence"]))
 
     def test_create_rejects_malformed_input_before_provider_write(self):
         for change in ("title", "marker", "reserved_label", "long_label", "status", "revision", "implementation"):
@@ -3588,6 +3592,46 @@ class PortfolioTests(unittest.TestCase):
         self.assertEqual(first["portfolio_digest"], second["portfolio_digest"])
         self.assertEqual(0, first["summary"]["total"])
         self.assertEqual([], first["findings"])
+
+    def test_malformed_open_record_is_quarantined_without_invalidating_valid_graph(self):
+        valid = zzzops.github_goal_record(self.issue(1))
+        project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {"sections": [
+            {"id": "autonomy_approval_parallelism", "configuration": TEST_AUTONOMY_CONFIGURATION},
+            TEST_RIGOR_POLICY,
+        ]}}
+        snapshot = zzzops._portfolio_from_hydrated_goals(
+            project, [], [valid],
+            [{"code": "malformed_record", "goal": 2, "detail": "phase evidence has invalid fields"}],
+            0, 1, 0, 0, 0,
+        )
+
+        self.assertTrue(snapshot["complete"])
+        self.assertTrue(snapshot["valid"])
+        self.assertEqual([1], [goal["key"] for goal in snapshot["goals"]])
+        self.assertEqual(["malformed_record"], [finding["code"] for finding in snapshot["findings"]])
+
+    def test_malformed_open_record_does_not_trigger_pull_request_lookup(self):
+        valid = self.issue(1)
+        malformed = {**self.issue(2), "body": f"{zzzops.GOAL_BLOCK_START}\n{{}}\n{zzzops.GOAL_BLOCK_END}"}
+        selected = [valid, malformed]
+        bodies = {
+            1: {"body": valid["body"], "updated_at": valid["updated_at"]},
+            2: {"body": malformed["body"], "updated_at": malformed["updated_at"]},
+        }
+        project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {"sections": [
+            {"id": "autonomy_approval_parallelism", "configuration": TEST_AUTONOMY_CONFIGURATION},
+            TEST_RIGOR_POLICY,
+        ]}}
+        with mock.patch.object(zzzops.shutil, "which", return_value="gh"), \
+             mock.patch.object(zzzops, "github_repository_goal_index", return_value=({}, selected, [], 0, 1, 0)), \
+             mock.patch.object(zzzops, "_github_goal_bodies", return_value=(bodies, 0, 1)), \
+             mock.patch.object(zzzops, "_github_pull_request_states", return_value=({}, 0, 0)) as pull_requests:
+            _, snapshot = zzzops.github_repository_portfolio_snapshot(Path("."), project)
+
+        self.assertTrue(snapshot["valid"])
+        self.assertEqual([1], [goal["key"] for goal in snapshot["goals"]])
+        self.assertEqual(["malformed_record"], [finding["code"] for finding in snapshot["findings"]])
+        self.assertEqual([1], [issue["number"] for issue in pull_requests.call_args.args[2]])
 
     def test_snapshot_projects_explicit_work_states(self):
         records = [
@@ -4696,6 +4740,27 @@ class ReservationTests(unittest.TestCase):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_workflow_scopes_portfolio_findings_to_the_affected_goal_and_prerequisites(self):
+        workflow = zzzops._workflow.Workflow.__new__(zzzops._workflow.Workflow)
+        workflow.repo = Path('.')
+        workflow.api = SimpleNamespace(portfolio_snapshot=lambda _repo: {
+            "complete": True, "valid": False,
+            "goals": [
+                {"key": 1, "parent": None, "depends_on": []},
+                {"key": 2, "parent": 1, "depends_on": []},
+                {"key": 3, "parent": None, "depends_on": []},
+            ],
+            "findings": [
+                {"code": "merged_pr_stale_checkpoint", "goal": 1, "detail": "stale"},
+                {"code": "merged_pr_stale_checkpoint", "goal": 3, "detail": "unrelated"},
+            ],
+        })
+        workflow._portfolio_cache = None
+
+        self.assertEqual([1, 2, 3], [goal["key"] for goal in workflow.portfolio()])
+        self.assertEqual([1], [finding["goal"] for finding in workflow.validation_blockers({"key": 2})])
+        self.assertEqual([3], [finding["goal"] for finding in workflow.validation_blockers({"key": 3})])
+
     def test_public_workflow_cli_has_one_parser_and_exposes_all_named_intents(self):
         result = subprocess.run(
             [sys.executable, str(MODULE_PATH), "workflow", "--help"],
@@ -4711,6 +4776,10 @@ class WorkflowContractTests(unittest.TestCase):
         package = {"version": "0.0.0-dev", "revision": "a" * 40}
         status.return_value = {"required": True, "reason": "package_changed"}
         self.assertEqual("installation-validation", zzzops.workflow_context_step(Path("."), package)["id"])
+        inspection.return_value = {"initialized": True}
+        self.assertIsNone(
+            zzzops.workflow_context_step(Path("."), package, skip_installation_validation=True)
+        )
         inspection.return_value = {"initialized": False, "state": {}, "decision_blockers": ["policy:model_routing"]}
         self.assertIsNone(
             zzzops.workflow_context_step(Path("."), package, source_skill="$validate-zzzops-installation")
@@ -4944,9 +5013,9 @@ class WorkflowContractTests(unittest.TestCase):
         git_policy = next(section for section in plan["policy"]["sections"] if section["id"] == "git_review_release")["configuration"]
         self.assertEqual("stack_from_reviewed_checkpoint", git_policy["review_pending_dependency"])
         self.assertEqual("github_stacked_when_verified_else_chained", git_policy["pull_request_mode"])
-        self.assertEqual("unknown", git_policy["legacy_migration"]["release_status"])
+        self.assertNotIn("legacy_migration", git_policy)
         self.assertEqual({
-            "review_pending_dependency", "pull_request_mode", "legacy_migration",
+            "review_pending_dependency", "pull_request_mode",
         }, set(git_policy))
 
         invalid = json.loads(json.dumps(plan["policy"]))
@@ -5487,11 +5556,15 @@ class WorkflowContractTests(unittest.TestCase):
         elevated_runtime = {"root_pair": root, "available_pairs": [root, high]}
         architectural_goal = {"status": "ready", "difficulty": "S", "engineering_rigor": {"risk_categories": ["architecture"], "effective": "structured"}}
         human = zzzops.workflow_step_plan(architectural_goal, graph, {"understand": input_envelope}, nodes, settings, elevated_runtime)
-        self.assertEqual("human-interaction phase exceeds root capability", human["next_steps"][0]["reason"])
+        self.assertEqual("capability_choice", human["next_steps"][0]["kind"])
+        self.assertEqual({"model": "root-model", "effort": "medium"}, human["next_steps"][0]["root_pair"])
+        self.assertEqual({"model": "high-model", "effort": "high"}, human["next_steps"][0]["requested_pair"])
+        self.assertEqual(["use_requested_pair", "downgrade_to_root"], human["next_steps"][0]["choices"])
         delegated = zzzops.workflow_step_plan(
             architectural_goal, {"phases": [{"id": "plan"}]}, {"plan": evidence_test.envelope("plan")}, {"plan": {"assignment_group": "planning"}}, settings, elevated_runtime,
         )
-        self.assertEqual("session_override", delegated["next_steps"][0]["kind"])
+        self.assertEqual("capability_choice", delegated["next_steps"][0]["kind"])
+        self.assertEqual(["use_requested_pair", "delegate_at_root"], delegated["next_steps"][0]["choices"])
 
     def test_workflow_checkpoint_rejects_an_invalid_portfolio_before_goal_execution(self):
         with (
@@ -5629,11 +5702,12 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("human explicitly reviewed the exact current design", unblock)
         self.assertIn("never infer it from policy approval, an ordinary PR, or unrelated review", unblock)
         for text in (review, execute, unblock):
-            self.assertIn("legacy_migration", text)
-            self.assertIn("ambiguous", text)
-            self.assertIn("never_released", text)
-        self.assertIn("treat execution as uninitialized", review)
-        self.assertIn("blocks migration", execute)
+            self.assertIn("contract", text.lower())
+            self.assertRegex(text.lower(), r"ambigu(ous|ity)")
+            self.assertIn("evidence", text.lower())
+            self.assertNotIn("first release and blocks reset until review", text)
+        self.assertIn("policy", review.lower())
+        self.assertIn("block", execute.lower())
         self.assertIn("Never infer that state can be wiped", unblock)
 
     def test_exhaustion_review_and_bootstrap_contracts_are_explicit(self):

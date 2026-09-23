@@ -95,7 +95,9 @@ def unresolved_lease_count(goals):
 
 
 def state(goal):
-    return copy.deepcopy(goal.get('workflow') or {'leases': {}, 'receipts': {}, 'workers': {}, 'assessments': {}, 'artifacts': {}})
+    result = copy.deepcopy(goal.get('workflow') or {'leases': {}, 'receipts': {}, 'workers': {}, 'assessments': {}, 'artifacts': {}})
+    result.setdefault('routing_choices', {})
+    return result
 
 
 def validate_state(value):
@@ -114,10 +116,16 @@ def validate_state(value):
             and all(text(entry) for entry in item.values())
         )
 
-    if not isinstance(value, dict) or set(value) != {'leases', 'receipts', 'workers', 'assessments', 'artifacts'}:
-        return ['workflow must contain leases, receipts, workers, assessments and artifacts']
+    required = {'leases', 'receipts', 'workers', 'assessments', 'artifacts'}
+    if not isinstance(value, dict) or set(value) not in (required, required | {'routing_choices'}):
+        return ['workflow must contain leases, receipts, workers, assessments, artifacts and optional routing choices']
     if any(not isinstance(v, dict) for v in value.values()):
         return ['workflow collections must be objects']
+    for phase, choice in value.get('routing_choices', {}).items():
+        if not text(phase) or not isinstance(choice, dict) or set(choice) not in ({'choice', 'root_pair', 'requested_pair', 'approved_by'}, {'choice', 'root_pair', 'requested_pair', 'approved_by', 'selection'}):
+            return ['workflow routing choice is invalid']
+        if choice['choice'] not in {'use_requested_pair', 'downgrade_to_root', 'delegate_at_root'} or not selection(choice['root_pair']) or (choice['requested_pair'] is not None and not selection(choice['requested_pair'])) or ('selection' in choice and not selection(choice['selection'])) or not explicit_approval(choice['approved_by']):
+            return ['workflow routing choice is invalid']
     for key, lease in value['leases'].items():
         if not text(key) or ':' not in key:
             return ['workflow lease map identity is invalid']
@@ -318,9 +326,43 @@ class Workflow:
         if self._portfolio_cache is None:
             self._portfolio_cache = self.api.portfolio_snapshot(self.repo)
         portfolio = self._portfolio_cache
-        if not portfolio.get('complete') or (not allow_invalid and not portfolio.get('valid')):
-            raise ValueError('Repair the goal portfolio before starting or submitting work')
+        if not portfolio.get('complete'):
+            findings = portfolio.get('findings') if isinstance(portfolio, dict) else None
+            if isinstance(findings, list) and findings:
+                details = '; '.join(
+                    f"goal {item.get('goal', '?')}: {item.get('code', 'validation_error')} — {item.get('detail', 'inspect the goal record')}"
+                    for item in findings if isinstance(item, dict)
+                )
+                raise ValueError(
+                    'Repair the goal portfolio before starting or submitting work. '
+                    f"Observed validation findings: {details}. Correct the cited goal records and retry."
+                )
+            raise ValueError('Repair the goal portfolio before starting or submitting work; no detailed findings were returned by the portfolio validator.')
         return copy.deepcopy(portfolio['goals'])
+
+    def validation_blockers(self, goal):
+        """Return findings that affect this goal or one of its prerequisites."""
+        self.portfolio(allow_invalid=True)
+        portfolio = getattr(self, '_portfolio_cache', None)
+        if not isinstance(portfolio, dict):
+            return []
+        records = {record['key']: record for record in portfolio['goals']}
+        affected = set()
+        pending = [goal['key']]
+        while pending:
+            key = pending.pop()
+            if key in affected:
+                continue
+            affected.add(key)
+            record = records.get(key, {})
+            pending.extend(record.get('depends_on', []))
+            if record.get('parent') is not None:
+                pending.append(record['parent'])
+        return sorted(
+            (finding for finding in portfolio.get('findings', [])
+             if isinstance(finding, dict) and finding.get('goal') in affected),
+            key=lambda finding: (str(finding.get('goal')), finding.get('code', ''), finding.get('detail', '')),
+        )
 
     @contextmanager
     def locked(self):
@@ -397,7 +439,10 @@ class Workflow:
 
     def inputs(self, goal, graph):
         live = self.api.workflow_live_inputs(self.repo, self.project, goal, 'execute', graph)
-        evidence = goal.get('phase_evidence') or self.api.empty_phase_evidence()
+        normalizer = getattr(self.api, 'normalize_phase_evidence', None)
+        evidence = normalizer(goal.get('phase_evidence')) if callable(normalizer) else (
+            goal.get('phase_evidence') or self.api.empty_phase_evidence()
+        )
         def completion_identity(completed):
             records = (completed.get('phase_evidence') or {}).get('records', {})
             return {
@@ -410,6 +455,7 @@ class Workflow:
             }
         # Only explicitly consumed files invalidate a phase. HEAD/revision and
         # other operational bookkeeping must not invalidate a reviewed design.
+        migration_observation = None
         for phase, envelope in live.items():
             versions = self.owned_versions(goal, phase)
             node = next(node for node in graph['phases'] if node['id'] == phase)
@@ -433,6 +479,16 @@ class Workflow:
             assessment = state(goal)['assessments'].get(phase)
             paths = assessment.get('files', []) if assessment else prior.get('repository', {}).get('snapshot', {}).get('files', {})
             actual = self.file_hashes(paths)
+            migration_path = f".zzzops/migration/{goal['key']}.json"
+            migration_paths = [path for path in paths if path.startswith('.zzzops/migration/')]
+            if migration_paths:
+                if migration_paths == [migration_path]:
+                    if migration_observation is None:
+                        migration_observation = self.api.migration_assessment(self.repo, self.project, goal)
+                    envelope['provider']['snapshot']['migration'] = copy.deepcopy(migration_observation)
+                else:
+                    envelope['provider']['snapshot']['migration'] = {'decision': {
+                        'action': 'block', 'scope': 'none', 'reason': 'foreign_migration_evidence'}}
             lease = state(goal)['leases'].get(phase + ':execute', {})
             acquisition = self.acquisition(goal, phase, lease)
             frozen = acquisition.get('input_envelope', {}) if acquisition else prior
@@ -776,6 +832,8 @@ class Workflow:
             self.check_workspace(acquired, scope[phase])
             self.predecessor_edges(goal, phase, scope, acquired)
         graph, nodes, live, related = self.context(goal)
+        if live[phase].get('provider', {}).get('snapshot', {}).get('migration', {}).get('decision', {}).get('action') == 'block':
+            raise ValueError('Affected contract evidence requires investigation before execution')
         frontier = self.api.derive_phase_steps(goal, graph, live, related, review_policy=nodes)
         if phase not in {item['phase'] for item in frontier['execute']}:
             raise ValueError('Ancestor/review inputs changed; assignment is no longer eligible')
@@ -842,6 +900,48 @@ class Workflow:
             related[goal['parent']] = {'goal': parent, 'live_inputs': self.inputs(parent, parent_graph)}
         return graph, nodes, self.inputs(goal, graph), related
 
+    def migration_preparation(self, goal, envelope, migration):
+        """Link a small, truthful preparation contract; cache by exact content."""
+        snapshot = migration.get('release_snapshot', {'status': 'unavailable', 'releases': None})
+        bindings = {'goal': goal['key'], 'goal_spec': envelope['goal_spec'],
+                    'release_snapshot': snapshot}
+        scoped = {**bindings, 'author': None, 'contract': '', 'boundary': '', 'scope': []}
+        document = {
+            'instructions': (
+                'Use this resource only for the affected persistent-state or API compatibility work identified in the goal. '
+                'Investigate the actual contract, compatible-state boundary and distribution channels first. '
+                'Fill the local file from inspected facts; blank templates are not evidence. '
+                'Use a scoped agent investigation OR an actually available owner statement; never invent either or require a new human statement when investigation resolves the facts. '
+                'Set contract status to shipped, unreleased or unknown. Preserve or migrate shipped behavior. '
+                'Only sufficiently evidenced unreleased project-owned state is eligible for bounded replacement within existing authority; unrelated user, external and deployment state is excluded. '
+                'Keep unknown or unavailable facts unresolved: do not infer contract absence from missing releases. '
+                'Bind every evidence item to the same goal, goal_spec, release_snapshot, contract ID, boundary and scope. '
+                'Fill nonempty action, contract ID and boundary; scope lists bounded project-owned state identities. Investigations require author, rationale, distribution_boundary and observations, with conclusion equal to contract status. Owner evidence requires attributable author and actual statement. '
+                'Current release_snapshot must be complete and contains releases with integer id, tag, immutable resolved commit and published_at. '
+                'After preparing or correcting the local file, request the existing checkpoint; do not submit the file as a new backend operation. '
+                'If evidence remains unresolved after investigation, use the emitted block submission and continue independent work. '
+                'Changed goal scope or release facts require reassessment. Replace revoked/contradicted evidence with unknown or remove it; old recorded facts are historical. '
+                'Optional discussion links are provenance only, not monitored authority.'),
+            'template': {'schema_version': 1, 'repository': self.repository, **bindings, 'action': '',
+                         'contracts': [{'id': '', 'boundary': '', 'status': 'unknown', 'scope': [], 'evidence': []}]},
+            'evidence_templates': {
+                'owner_attestation': {**scoped, 'kind': 'owner_attestation', 'statement': None},
+                'contract_investigation': {**scoped, 'kind': 'contract_investigation', 'conclusion': None,
+                    'rationale': None, 'distribution_boundary': None,
+                    'observations': [
+                        {'commit': None, 'path': None, 'release_id': None, 'contract_present': None},
+                        {'commit': None, 'path': None, 'finding': None}]},
+            },
+            'observation_guidance': {
+                'development': 'Use release_id null for inspected development observations; fill immutable commit and contract_present from actual inspection. A published commit cannot be hidden behind the development label.',
+                'published': 'For each published release, copy release_id and commit exactly from current release_snapshot and inspect the scoped path. Set contract_present to the observed boolean; presence at a published commit contradicts an unreleased conclusion. Cover every current release.',
+                'distribution': 'Inspect an immutable commit/path defining the actual distribution boundary and capture its finding. Explain why these observed channels cover this contract; a bare SHA or no releases is insufficient.',
+                'path': 'Use a repository-relative inspected path, never an absolute or parent-traversal path. Presence facts for the same immutable contract/commit/path must agree across evidence items.',
+            },
+        }
+        return self.api._policy_context.cached_file(
+            self.repo, (json.dumps(document, sort_keys=True, indent=2) + '\n').encode('utf-8'))
+
     def step(self, number):
         _, goal = self.read(number)
         if goal['status'] in {'done', 'cancelled'}:
@@ -867,6 +967,18 @@ class Workflow:
                             runtime_contract={'root_pair': {'model': 'identifier', 'effort': 'identifier'}, 'available_pairs': [], 'root_id': 'thread-id', 'delegation': {'available': True, 'tool': 'actual harness tool name', 'discovery_complete': True}})
                 continue
             kind = step['kind']
+            migration = live.get(phase, {}).get('provider', {}).get('snapshot', {}).get('migration', {})
+            if migration.get('decision', {}).get('action') == 'block':
+                step.clear()
+                step.update(input_hash=digest(live[phase]), input_envelope=live[phase], kind='blocker', assignment='root', goal=number, phase=phase,
+                            action='Investigate affected contract evidence first. Prepare or correct the local goal/spec-bound assessment from available facts, then request a fresh checkpoint. Only if the evidence remains unresolved, submit the provided blocker contract and continue independent goals. Local evidence preparation is not a backend submission or reset authority.',
+                            evidence=migration, path=f'.zzzops/migration/{number}.json',
+                            preparation=self.migration_preparation(goal, live[phase], migration),
+                            command=['--intent', 'execute', '--goal', str(number), '--runtime', '<runtime.json>', '--input', '<submission.json>'],
+                            submission={'operation': 'block', 'phase': phase, 'category': 'technical-unknown',
+                                        'reason': f'Unresolved migration contract evidence for goal {number}, phase {phase}, .zzzops/migration/{number}.json: {migration["decision"]["reason"]}. Investigate and reassess before affected work.',
+                                        'request_id': 'new-unique-id'})
+                continue
             if phase in {'test_design', 'implement'} and kind in {'assess', 'execute'} and self.reviewed_scope(goal) is None:
                 repairs = []
                 for owner in ([self.read(goal['parent'])[1]] if goal.get('parent') else []) + [goal]:
@@ -888,6 +1000,14 @@ class Workflow:
                                           'field': 'output_scope', 'required_phase': 'plan', 'repairs': repairs})
                 continue
             if kind not in {'execute', 'review', 'human_approval'}:
+                if kind == 'capability_choice':
+                    human_only = 'downgrade_to_root' in step.get('choices', [])
+                    step.update(
+                        action=('Ask the user whether to use the requested stronger root pair or approve this human-interaction phase at the observed root pair.' if human_only else 'Ask the user whether to use the requested stronger pair or delegate this phase at the observed root pair.'),
+                        instruction=self.api.workflow_instruction('routing-evidence'),
+                        submission={'operation': 'route_choice', 'phase': phase, 'choice': '<one returned choice>', 'approved_by': '<user>', 'request_id': 'new-unique-id'},
+                    )
+                    continue
                 step.update(action='Resolve this routing prerequisite on root. If it needs user authority, persist a blocker and continue other goals; do not silently substitute root work.',
                             instruction=self.api.workflow_instruction('routing-evidence'),
                             submission={'operation': 'block', 'category': 'access-approval', 'reason': step.get('reason', 'Routing prerequisite unavailable'), 'request_id': 'new-unique-id'})
@@ -911,7 +1031,9 @@ class Workflow:
             if not assessment or assessment.get('goal_spec') != phase_input['goal_spec'] or assessment.get('policy') != phase_input['policy']:
                 step.clear()
                 step.update(kind='assess', assignment='root', goal=number, phase=phase,
-                            action='Assess consequence, boundedness and engineering rigor; declare every repository file consumed by this phase. Use an empty list only when no repository files are inputs.',
+                            action='Assess consequence, boundedness and engineering rigor; declare every repository file consumed by this phase. For affected persistent-state or API compatibility work, add migration_evidence.path to submission.files even if missing, then use the linked preparation resource returned by the next checkpoint. Determine applicability from the actual goal scope; do not infer it from project release status. Use an empty list only when no repository files are inputs.',
+                            migration_evidence={'path': f'.zzzops/migration/{number}.json',
+                                                'when': 'This phase changes or decides compatibility/replacement of persistent state or an API contract; root determines applicability from evidenced scope.'},
                             title=goal['title'], input_envelope=phase_input, input_hash=digest(phase_input),
                             goal_specification={'reference': goal['url'], 'hash': phase_input['goal_spec'], 'read': {'operation': 'read', 'phase': phase}},
                             command=['--intent', 'execute', '--goal', str(number), '--runtime', '<runtime.json>', '--input', '<submission.json>'],
@@ -1094,6 +1216,16 @@ class Workflow:
             # this exact lease; rehydrating every goal under the lock caused timeouts.
             portfolio = [] if payload.get('operation') == 'renew' else self.portfolio(allow_invalid=payload.get('operation') in {'revise', 'recover_legacy'})
             issue, goal = self.read(number)
+            if portfolio and payload.get('operation') not in {'revise', 'recover_legacy'}:
+                projected = next((record for record in portfolio if record['key'] == number), None)
+                if projected is not None:
+                    findings = self.validation_blockers(projected)
+                    if isinstance(findings, list) and findings:
+                        details = '; '.join(
+                            f"goal {finding.get('goal', '?')}: {finding.get('code', 'validation_error')} — {finding.get('detail', 'inspect the goal record')}"
+                            for finding in findings
+                        )
+                        raise ValueError(f'Repair validation findings relevant to goal {number} before submitting work: {details}')
             desired = self.api.parse_managed_goal(issue['body'], number)
             durable = state(goal)
             fingerprint = digest(payload)
@@ -1157,6 +1289,26 @@ class Workflow:
                 self.file_hashes(files)
                 durable['assessments'][phase] = {'dimensions': dimensions, 'goal_spec': live[phase]['goal_spec'], 'policy': live[phase]['policy'], 'files': files}
                 response = {'next_steps': [{'kind': 'checkpoint', 'action': 'Re-evaluate the goal with the recorded capability assessment.', 'goal': number}]}
+            elif operation == 'route_choice':
+                step = next((item for item in self.step(number) if item.get('phase') == phase and item.get('kind') == 'capability_choice'), None)
+                choice = payload.get('choice')
+                existing = durable['routing_choices'].get(phase)
+                if not step and existing and payload.get('selection') is not None:
+                    step = {'root_pair': existing['root_pair'], 'requested_pair': existing.get('requested_pair'), 'choices': [existing['choice']]}
+                    if choice is None:
+                        choice = existing['choice']
+                if not step or choice not in step.get('choices', []) or not explicit_approval(payload.get('approved_by')):
+                    raise ValueError('Routing choice requires an explicit user-approved current capability checkpoint')
+                override = payload.get('selection')
+                if override is not None and (not isinstance(override, dict) or set(override) != {'model', 'effort'} or any(not isinstance(value, str) or not value.strip() for value in override.values())):
+                    raise ValueError('An explicit model override must contain nonempty model and effort strings')
+                durable['routing_choices'][phase] = {
+                    'choice': choice, 'root_pair': step['root_pair'], 'requested_pair': step['requested_pair'],
+                    'approved_by': payload['approved_by'],
+                }
+                if override is not None:
+                    durable['routing_choices'][phase]['selection'] = override
+                response = {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'The user-selected route is durable. Re-evaluate the phase.'}]}
             elif operation == 'withdraw':
                 evidence = goal.get('phase_evidence') or self.api.empty_phase_evidence()
                 record = evidence['records'].get(phase)
@@ -1351,6 +1503,8 @@ class Workflow:
                 **payload, 'input_envelope': payload.get('record', {}).get('input_envelope'),
             })
         graph, nodes, live, related = self.context(goal)
+        if live[phase].get('provider', {}).get('snapshot', {}).get('migration', {}).get('decision', {}).get('action') == 'block':
+            raise ValueError('Affected contract evidence requires investigation before submission')
         frontier = api.derive_phase_steps(goal, graph, live, related, review_policy=nodes)
         expected_frontier = frontier['execute'] if lease['kind'] == 'execute' else frontier['review']
         if phase not in {item['phase'] for item in expected_frontier}:
@@ -1473,6 +1627,12 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     if number is not None:
         if number not in {g['key'] for g in goals}:
             raise ValueError('Requested goal is not in the validated portfolio')
+        goal = next(goal for goal in goals if goal['key'] == number)
+        findings = engine.validation_blockers(goal)
+        if isinstance(findings, list) and findings:
+            return {'next_steps': [{'kind': 'blocker', 'assignment': 'root', 'goal': number,
+                'action': 'Repair this goal or one of its prerequisites before continuing.',
+                'findings': findings}]}
         runnable_steps, waiting_steps = [], []
         partition(engine.step(number), runnable_steps, waiting_steps)
         if capacity_blocked and len(runnable_steps) < limit:
@@ -1482,6 +1642,12 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     waiting_steps = []
     for goal in sorted(goals, key=lambda g: (g.get('priority', 'P3'), g['key'])):
         if goal['status'] in {'done', 'cancelled'}:
+            continue
+        findings = engine.validation_blockers(goal)
+        if isinstance(findings, list) and findings:
+            waiting_steps.append({'kind': 'blocker', 'assignment': 'root', 'goal': goal['key'],
+                'action': 'Repair this goal or one of its prerequisites before continuing.',
+                'findings': findings})
             continue
         blocked = [g for g in goals if g['key'] in goal.get('depends_on', []) and g['status'] != 'done']
         if blocked:
@@ -1495,7 +1661,7 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     return {'next_steps': (runnable_steps or waiting_steps)[:limit]}
 
 
-def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_snapshot=None):
+def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_snapshot=None, skip_installation_validation=False):
     """Route every intent through context gates; repairs use the same entrypoint."""
     if payload is not None and not isinstance(payload, dict):
         raise ValueError('Submission must be a JSON object')
@@ -1511,11 +1677,11 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
     if readonly and payload is not None:
         raise ValueError('Preview never accepts mutations')
     provenance = {f: package.get(f) for f in ('version', 'revision')}
-    gate = api.workflow_context_step(repo, package)
+    gate = api.workflow_context_step(repo, package, skip_installation_validation=skip_installation_validation)
     # These operations repair only the prerequisite they own. Other intents do
     # not skip gates merely because their skill name was supplied by a caller.
     installation = api._installation.validation_status(repo, provenance) if all(isinstance(v, str) for v in provenance.values()) else {'required': False}
-    if installation.get('required'):
+    if installation.get('required') and not skip_installation_validation:
         audit = api._installation.installation_audit(repo)
         if operation == 'installation_record':
             api._installation.record_validation(repo, provenance, outcome=payload['outcome'], audit_signature=payload['audit_signature'])
@@ -1583,7 +1749,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         return {'next_steps': [{'kind': 'perform', 'goal': number, 'phase': payload['phase'], 'action': 'The local coordinator is monitoring this worker. Continue its assigned work.'}]}
     if operation == 'capture_propose':
         request = payload['request']
-        errors = api.validate_goal_create(request)
+        errors = api.validate_goal_create(request, allow_deferred=True)
         if errors:
             raise ValueError('; '.join(errors))
         if not api._goals.goal_acceptance_criteria(request['body']):
@@ -1603,7 +1769,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             if any(item['phase'] == 'understand' for key in ('execute', 'review', 'blocked') for item in frontier[key]):
                 raise ValueError('Child capture requires current parent design approval')
         with engine.locked():
-            api.apply_goal_create(engine.adapter, engine.repository, payload['request'])
+            api.apply_goal_create(engine.adapter, engine.repository, payload['request'], allow_deferred=True)
         return {'next_steps': [{'kind': 'checkpoint', 'action': 'Continue execution with the newly captured goal.'}]}
     if operation == 'adopt':
         with engine.locked():
@@ -1671,9 +1837,10 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
     return checkpoint(api, repo, project, runtime, number, engine=engine)
 
 
-def public_run(api, repo, intent, source, runtime, payload, number):
+def public_run(api, repo, intent, source, runtime, payload, number, *, skip_installation_validation=False):
     snapshot = {}
-    result = _public_run(api, repo, intent, source, runtime, payload, number, policy_snapshot=snapshot)
+    options = {'skip_installation_validation': True} if skip_installation_validation else {}
+    result = _public_run(api, repo, intent, source, runtime, payload, number, policy_snapshot=snapshot, **options)
     if api._policy_context.needs_context(result):
         return api._policy_context.attach(
             result, repo, snapshot['project'], source=source,

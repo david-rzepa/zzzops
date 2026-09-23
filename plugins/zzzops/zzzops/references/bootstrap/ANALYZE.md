@@ -38,7 +38,7 @@ This stage is read-only in the target repository. Establish a product brief befo
    - `brownfield`: active product structure or conventions exist and must outrank generic preferences.
 6. Stop reading when mode, material constraints, tooling decision, and the next consequential decisions are supported. Record contradictory evidence instead of averaging it away.
 
-For brownfield repositories, include release evidence and the reviewed `legacy_migration` decision in the product brief before proposing any state or API replacement. Missing migration settings invalidate execution until policy re-review; ambiguous release evidence becomes a durable blocker. Only an explicitly confirmed never-released project may replace affected project-owned persistent state, and the brief must identify the bounded reset scope and preserve unrelated user, external, and deployment state.
+For brownfield repositories, identify affected contracts and compatible-state boundaries. Preserve shipped behavior; only evidenced unreleased project-owned state is eligible for bounded replacement within existing authority. Capture goal/spec-bound agent investigations with inspected immutable facts and distribution reasoning, or available owner attestations, alongside current release facts in `.zzzops/migration/<goal>.json`, declared in affected phase inputs. Reassess changed releases or replace revoked evidence; ambiguity blocks affected work. Preserve unrelated user, external and deployment state.
 
 ## Product interview and unknowns
 

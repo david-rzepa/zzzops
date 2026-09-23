@@ -9,6 +9,8 @@ import zlib
 import hmac
 import json
 import re
+import tempfile
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -90,7 +92,7 @@ def validate_managed_goal(goal: Any, issue_number: int | None = None) -> list[st
     unknown = sorted(set(goal) - GOAL_FIELDS)
     if unknown:
         errors.append("unknown fields: " + ", ".join(unknown))
-    if "workflow" in goal:
+    if "workflow" in goal and goal["workflow"] not in (None, {}):
         errors.extend(_validate_workflow(goal["workflow"]) if _validate_workflow else ["workflow validation is unavailable"])
     if goal.get("schema_version") != GOAL_SCHEMA_VERSION:
         errors.append(f"schema_version must be {GOAL_SCHEMA_VERSION}")
@@ -165,7 +167,7 @@ def validate_managed_goal(goal: Any, issue_number: int | None = None) -> list[st
                         errors.append("engineering_rigor.override.evidence is required")
     if not isinstance(goal.get("revision"), int) or isinstance(goal.get("revision"), bool) or goal.get("revision", 0) < 1:
         errors.append("revision must be a positive integer")
-    if "phase_evidence" in goal:
+    if "phase_evidence" in goal and goal["phase_evidence"] is not None:
         if _validate_phase_evidence is None:
             errors.append("phase_evidence validation is unavailable")
         else:
@@ -432,8 +434,8 @@ def github_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
         "digest": hashlib.sha256(digest_source.encode("utf-8")).hexdigest(),
         "updated_at": issue.get("updated_at"), "implementation": goal.get("implementation"),
         "engineering_rigor": goal.get("engineering_rigor"),
-        "phase_evidence": goal.get("phase_evidence"),
-        "workflow": goal.get("workflow"),
+        "phase_evidence": goal.get("phase_evidence") if goal.get("phase_evidence") is not None else {"schema_version": 2, "records": {}, "reviews": {}, "withdrawals": []},
+        "workflow": goal.get("workflow") if goal.get("workflow") else {"leases": {}, "receipts": {}, "workers": {}, "assessments": {}, "artifacts": {}},
         "human_spec": compact_human_goal_text(body),
         "acceptance_criteria": goal_acceptance_criteria(body),
         "labels": label_names, "schema_version": schema_versions[0] if len(schema_versions) == 1 else None,
@@ -523,7 +525,7 @@ def github_archived_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def validate_goal_create(request: Any) -> list[str]:
+def validate_goal_create(request: Any, *, allow_deferred: bool = False) -> list[str]:
     if not isinstance(request, dict):
         return ["goal create request must be an object"]
     errors = []
@@ -563,6 +565,14 @@ def validate_goal_create(request: Any) -> list[str]:
         if len({label.casefold() for label in labels if isinstance(label, str)}) != len(labels):
             errors.append("labels must be unique")
     goal = request.get("goal")
+    if allow_deferred:
+        if not isinstance(goal, dict):
+            errors.append("goal must be an object")
+        elif goal.get("schema_version") != GOAL_SCHEMA_VERSION:
+            errors.append(f"goal schema_version must be {GOAL_SCHEMA_VERSION}")
+        elif goal.get("status", "new") != "new":
+            errors.append("newly captured goals must have status new")
+        return errors
     errors.extend(validate_managed_goal(goal))
     if isinstance(goal, dict):
         if goal.get("status") != "new":
@@ -583,22 +593,44 @@ def load_goal_create(path: Path) -> dict[str, Any]:
         raise ValueError(f"Could not read goal create request: {type(exc).__name__}") from exc
 
 
-def apply_goal_create(adapter: Any, repository: str, request: dict[str, Any]) -> dict[str, Any]:
-    errors = validate_goal_create(request)
+def apply_goal_create(adapter: Any, repository: str, request: dict[str, Any], *, allow_deferred: bool = False) -> dict[str, Any]:
+    errors = validate_goal_create(request) if not allow_deferred else []
+    if allow_deferred:
+        goal = request.get("goal")
+        if not isinstance(goal, dict) or goal.get("schema_version") != GOAL_SCHEMA_VERSION:
+            errors.append("deferred goal must provide schema_version")
+        if isinstance(goal, dict) and goal.get("status", "new") != "new":
+            errors.append("deferred goal status must be new")
     if errors:
         raise ValueError("Invalid goal create request: " + "; ".join(errors))
     if adapter.repository.casefold() != repository.casefold():
         raise GoalTransitionProviderError("Repository identity changed; no goal was created.")
     goal = request["goal"]
-    body = render_managed_goal(goal, request["body"])
+    wire_goal = goal
+    if allow_deferred:
+        wire_goal = dict(goal)
+        wire_goal["workflow"] = {"leases": {}, "receipts": {}, "workers": {}, "assessments": {}, "artifacts": {}}
+        wire_goal["phase_evidence"] = {"schema_version": 2, "records": {}, "reviews": {}, "human_approvals": {}, "withdrawals": []}
+    if allow_deferred:
+        separator = "\n\n" if request["body"] and not request["body"].endswith("\n\n") else ""
+        body = f"{request['body']}{separator}{GOAL_BLOCK_START}\n{json.dumps(wire_goal, ensure_ascii=False, sort_keys=True, separators=(',', ':'))}\n{GOAL_BLOCK_END}\n"
+    else:
+        body = render_managed_goal(goal, request["body"])
     if len(body) > 65536:
         raise ValueError("Rendered goal body exceeds GitHub's issue limit")
     labels = [
         "zzzops", *request["labels"], current_goal_schema_label(),
         f"zzzops:status:{goal['status']}", f"zzzops:priority:{goal['priority']}",
     ]
+    request_digest = hashlib.sha256(json.dumps(request, sort_keys=True, default=str).encode()).hexdigest()
     created = adapter.create_issue({"title": request["title"], "body": body, "labels": labels})
+    def create_diagnostic(reason: str, **detail: Any) -> None:
+        record = {"time": time.time(), "repository": repository, "request_digest": request_digest, "reason": reason, **detail}
+        path = Path(tempfile.gettempdir()) / "zzzops-goal-create.log"
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")
     if not isinstance(created, dict):
+        create_diagnostic("response_not_object", response_type=type(created).__name__)
         raise GoalTransitionProviderError(
             "GitHub returned an unexpected goal-create response; success was not assumed."
         )
@@ -610,8 +642,13 @@ def apply_goal_create(adapter: Any, repository: str, request: dict[str, Any]) ->
         if isinstance(label, dict) and isinstance(label.get("name"), str)
     }
     try:
-        returned_goal = parse_managed_goal(created.get("body"), number)
+        if allow_deferred:
+            match = re.search(re.escape(GOAL_BLOCK_START) + r"\s*\n(.*?)\n" + re.escape(GOAL_BLOCK_END), created.get("body", ""), re.DOTALL)
+            returned_goal = json.loads(match.group(1)) if match else None
+        else:
+            returned_goal = parse_managed_goal(created.get("body"), number)
     except (TypeError, ValueError) as exc:
+        create_diagnostic("response_goal_parse_failed", response_keys=sorted(created), error=type(exc).__name__)
         raise GoalTransitionProviderError(
             "GitHub returned an unexpected goal-create response; success was not assumed."
         ) from exc
@@ -622,8 +659,10 @@ def apply_goal_create(adapter: Any, repository: str, request: dict[str, Any]) ->
         or str(created.get("state", "")).casefold() != "open"
         or returned_labels != set(labels)
         or created.get("html_url") != expected_url
-        or returned_goal != goal
+        or returned_goal != wire_goal
     ):
+        create_diagnostic("response_invariant_mismatch", response_keys=sorted(created), number=number,
+                          state=created.get("state"), labels_type=type(returned_label_items).__name__)
         raise GoalTransitionProviderError(
             "GitHub returned an unexpected goal-create response; success was not assumed."
         )
