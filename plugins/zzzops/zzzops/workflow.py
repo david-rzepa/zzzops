@@ -1607,6 +1607,14 @@ class Workflow:
 def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     engine = engine or Workflow(api, repo, project, runtime)
     goals = engine.portfolio()
+    ordering_policy = next(
+        (
+            section.get('configuration', {}).get('portfolio_order')
+            for section in project.get('policy', {}).get('sections', [])
+            if isinstance(section, dict) and section.get('id') == 'autonomy_approval_parallelism'
+        ),
+        None,
+    )
     limit = worker_limit(project)
     remaining_starts = max(0, limit - unresolved_lease_count(goals))
     capacity_blocked = False
@@ -1655,7 +1663,9 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
         return {'next_steps': steps}
     runnable_steps = []
     waiting_steps = []
-    for goal in sorted(goals, key=lambda g: (g.get('priority', 'P3'), g['key'])):
+    ordered_goals = api.effective_goal_order(goals, ordering_policy)
+    for item in ordered_goals:
+        goal = next(goal for goal in goals if goal['key'] == item['goal'])
         if goal['status'] in {'done', 'cancelled'}:
             continue
         findings = engine.validation_blockers(goal)

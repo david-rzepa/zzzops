@@ -63,6 +63,55 @@ def _portfolio_key(value: Any) -> tuple[int, Any]:
     return (0, value) if isinstance(value, int) and not isinstance(value, bool) else (1, str(value))
 
 
+def effective_goal_order(records: list[dict[str, Any]], decision: Any = None) -> list[dict[str, Any]]:
+    """Order a portfolio frontier without allowing preference to bypass its DAG."""
+    preferences = decision.get("ordered_goal_keys", []) if isinstance(decision, dict) else []
+    preference_rank = {key: index for index, key in enumerate(preferences)}
+    by_key = {record["key"]: record for record in records}
+    prerequisites = {
+        key: {item for item in ([record.get("parent")] if record.get("parent") is not None else []) + list(record.get("depends_on", [])) if item in by_key}
+        for key, record in by_key.items()
+    }
+    descendants = {key: set() for key in by_key}
+    for key, required in prerequisites.items():
+        for prerequisite in required:
+            descendants[prerequisite].add(key)
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+
+    def own_rank(key: Any) -> tuple[int, int, tuple[int, Any]]:
+        record = by_key[key]
+        priority = priority_rank.get(record.get("priority"), 4)
+        return (priority, preference_rank.get(key, len(preference_rank)), _portfolio_key(key))
+
+    def ordering_key(key: Any) -> tuple[Any, ...]:
+        reachable, pending = {key}, [key]
+        while pending:
+            current = pending.pop()
+            for child in descendants[current] - reachable:
+                reachable.add(child)
+                pending.append(child)
+        # A prerequisite inherits the strongest legal frontier it unlocks.
+        # This is still a rank, never a fabricated priority mutation.
+        return (*min(own_rank(item) for item in reachable), _portfolio_key(key))
+
+    pending, ordered = set(by_key), []
+    while pending:
+        ready = sorted((key for key in pending if not (prerequisites[key] & pending)), key=ordering_key)
+        if not ready:  # The audit reports the cycle; keep this projection deterministic.
+            ready = sorted(pending, key=ordering_key)
+        key = ready[0]
+        pending.remove(key)
+        record = by_key[key]
+        preferred = key in preference_rank
+        ordered.append({
+            "goal": key,
+            "reason": "portfolio_decision" if preferred else "priority_then_key",
+            "rationale": decision.get("rationale") if preferred and isinstance(decision, dict) else None,
+            "priority": record.get("priority"),
+        })
+    return ordered
+
+
 def derive_engineering_rigor(persisted: Any, policy: Any) -> dict[str, Any]:
     inputs = persisted if isinstance(persisted, dict) else {}
     raw_categories = inputs.get("risk_categories", [])
@@ -370,7 +419,7 @@ def audit_portfolio(
 def build_portfolio_snapshot(
     backend: str, records: list[dict[str, Any]], *, reads: int, raw_bytes: int,
     ignored: int = 0, as_of: datetime | None = None, git_policy: dict[str, Any] | None = None,
-    resource_policy: Any = None, rigor_policy: Any = None,
+    resource_policy: Any = None, rigor_policy: Any = None, portfolio_order: Any = None,
 ) -> dict[str, Any]:
     _, normalize_resource_policy, _ = _require_configured()
     for record in records:
@@ -417,6 +466,7 @@ def build_portfolio_snapshot(
         "schema_version": PORTFOLIO_SCHEMA_VERSION, "backend": backend, "complete": True,
         "valid": not findings,
         "portfolio_digest": portfolio_digest, "goals": sorted(records, key=lambda record: _portfolio_key(record["key"])),
+        "effective_order": effective_goal_order(records, portfolio_order),
         "findings": findings, "summary": {
             "total": len(records), "available": len(available), "writable": len(writable),
             "waiting": len(waiting), "blocked": len(blocked),

@@ -554,6 +554,7 @@ _portfolio_key = _portfolio._portfolio_key
 audit_portfolio = _portfolio.audit_portfolio
 build_portfolio_snapshot = _portfolio.build_portfolio_snapshot
 compact_portfolio_output = _portfolio.compact_portfolio_output
+effective_goal_order = _portfolio.effective_goal_order
 classify_pr_merge = _merge_reconciliation.classify_pr_merge
 build_reconciliation_transition = _merge_reconciliation.build_reconciliation_transition
 derive_engineering_rigor = _portfolio.derive_engineering_rigor
@@ -1232,6 +1233,14 @@ def _portfolio_from_hydrated_goals(
                 section for section in ((project.get("policy") or {}).get("sections") or [])
                 if isinstance(section, dict) and section.get("id") == "engineering_rigor"
                 and isinstance(section.get("review"), dict) and section["review"].get("approved") is True
+            ),
+            None,
+        ),
+        portfolio_order=next(
+            (
+                section["configuration"].get("portfolio_order")
+                for section in ((project.get("policy") or {}).get("sections") or [])
+                if isinstance(section, dict) and section.get("id") == "autonomy_approval_parallelism"
             ),
             None,
         ),
