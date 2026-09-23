@@ -1296,6 +1296,58 @@ def _github_goal_by_number(repo: Path, executable: str, owner: str, name: str, n
     return issue, len(result.stdout.encode("utf-8"))
 
 
+def _goal_relation_query(numbers: list[int]) -> str:
+    fields = "\n".join(
+        f"    goal_{number}:issue(number:{number}){{number title state url labels(first:100){{nodes{{name}}}}}}"
+        for number in numbers
+    )
+    return "query($owner:String!,$name:String!){\n  repository(owner:$owner,name:$name){\n" + fields + "\n  }\n}"
+
+
+def _github_goal_relations(
+    repo: Path, executable: str, owner: str, name: str, numbers: list[int],
+) -> tuple[dict[int, dict[str, Any]], int, int]:
+    """Read explicitly named missing relations in GraphQL batches, never by history search."""
+    targets = sorted(set(numbers))
+    if any(isinstance(number, bool) or not isinstance(number, int) or number < 1 for number in targets):
+        raise ValueError("goal relation target must be a positive integer")
+    relations: dict[int, dict[str, Any]] = {}
+    raw_bytes = 0
+    processes = 0
+    for offset in range(0, len(targets), GOAL_HYDRATION_BATCH_SIZE):
+        batch = targets[offset:offset + GOAL_HYDRATION_BATCH_SIZE]
+        command = [
+            executable, "api", "graphql", "-f", f"query={_goal_relation_query(batch)}",
+            "-F", f"owner={owner}", "-F", f"name={name}",
+        ]
+        try:
+            result = subprocess.run(command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ValueError(f"GitHub goal relation read failed: {type(exc).__name__}") from exc
+        processes += 1
+        if result.returncode:
+            raise ValueError("GitHub goal relation read failed: " + (result.stderr.strip() or "unknown gh error"))
+        try:
+            payload = json.loads(result.stdout)
+            repository = payload["data"]["repository"]
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise ValueError("GitHub goal relation read returned invalid JSON") from exc
+        if not isinstance(repository, dict):
+            raise ValueError("GitHub goal relation read is incomplete or malformed")
+        for number in batch:
+            issue = repository.get(f"goal_{number}")
+            labels = issue.get("labels") if isinstance(issue, dict) else None
+            nodes = labels.get("nodes") if isinstance(labels, dict) else None
+            if not isinstance(issue, dict) or issue.get("number") != number or not isinstance(nodes, list):
+                continue
+            relations[number] = {
+                "number": number, "title": issue.get("title"), "state": str(issue.get("state", "")).lower(),
+                "html_url": issue.get("url"), "labels": nodes,
+            }
+        raw_bytes += len(result.stdout.encode("utf-8"))
+    return relations, raw_bytes, processes
+
+
 def _github_repository_capability(data: dict[str, Any]) -> dict[str, Any]:
     permission = data.get("viewerPermission")
     issues_enabled = data.get("hasIssuesEnabled") is True
@@ -1543,11 +1595,19 @@ def github_repository_portfolio_snapshot(
     archived_records = []
     relation_bytes = 0
     relation_processes = 0
+    try:
+        relations, relation_bytes, relation_processes = _github_goal_relations(
+            repo, executable, owner, name, sorted(relation_targets),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        relations = {}
+        for target in sorted(relation_targets):
+            findings.append({"code": "relation_read_failed", "goal": target, "detail": str(exc)})
     for target in sorted(relation_targets):
         try:
-            issue, raw_bytes = _github_goal_by_number(repo, executable, owner, name, target)
-            relation_bytes += raw_bytes
-            relation_processes += 1
+            issue = relations.get(target)
+            if issue is None:
+                raise ValueError("GitHub goal relation read omitted target")
             if str(issue.get("state", "")).casefold() == "closed":
                 archived_records.append(github_archived_goal_record(issue))
         except (KeyError, TypeError, ValueError) as exc:

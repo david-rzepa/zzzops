@@ -3837,15 +3837,35 @@ class PortfolioTests(unittest.TestCase):
             mock.patch.object(zzzops.shutil, "which", return_value="gh"),
             mock.patch.object(zzzops, "github_repository_goal_index", return_value=({}, [open_child], [], 0, 1, 0)),
             mock.patch.object(zzzops, "_github_goal_bodies", return_value=(bodies, 0, 1)),
-            mock.patch.object(zzzops, "_github_goal_by_number", return_value=(closed_parent, 20)) as relation_read,
+            mock.patch.object(zzzops, "_github_goal_relations", return_value=({2: closed_parent}, 20, 1)) as relation_read,
             mock.patch.object(zzzops, "_github_pull_request_states", return_value=({}, 0, 0)) as pull_requests,
         ):
             _, snapshot = zzzops.github_repository_portfolio_snapshot(Path("."), project)
 
         self.assertTrue(snapshot["valid"])
         self.assertEqual([1, 2], [goal["key"] for goal in snapshot["goals"]])
-        relation_read.assert_called_once_with(Path("."), "gh", "owner", "repo", 2)
+        relation_read.assert_called_once_with(Path("."), "gh", "owner", "repo", [2])
         self.assertEqual([1], [issue["number"] for issue in pull_requests.call_args.args[2]])
+
+    def test_goal_relation_batch_reads_only_explicit_targets(self):
+        def response(command, **_kwargs):
+            query = next(value[6:] for value in command if value.startswith("query="))
+            self.assertIn("goal_2:issue(number:2)", query)
+            self.assertIn("goal_9:issue(number:9)", query)
+            payload = {"data": {"repository": {
+                f"goal_{number}": {"number": number, "title": f"Goal {number}", "state": "CLOSED",
+                                  "url": f"https://example.test/issues/{number}",
+                                  "labels": {"nodes": [{"name": "zzzops"}, {"name": "zzzops:status:done"}, {"name": "zzzops:priority:P2"}]}}
+                for number in (2, 9)
+            }}}
+            return SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
+
+        with mock.patch.object(zzzops.subprocess, "run", side_effect=response) as run:
+            relations, _bytes, processes = zzzops._github_goal_relations(Path("."), "gh", "owner", "repo", [9, 2])
+        self.assertEqual(1, processes)
+        self.assertEqual({2, 9}, set(relations))
+        self.assertEqual("closed", relations[2]["state"])
+        self.assertEqual(1, run.call_count)
 
     def test_history_audit_reuses_discovered_closed_relation_without_exact_refetch(self):
         open_child = self.issue(1, depends_on=[2])
@@ -3859,14 +3879,14 @@ class PortfolioTests(unittest.TestCase):
             mock.patch.object(zzzops.shutil, "which", return_value="gh"),
             mock.patch.object(zzzops, "github_repository_goal_index", return_value=({}, [open_child, closed_parent], [], 0, 1, 0)),
             mock.patch.object(zzzops, "_github_goal_bodies", return_value=(bodies, 0, 1)),
-            mock.patch.object(zzzops, "_github_goal_by_number") as relation_read,
+            mock.patch.object(zzzops, "_github_goal_relations") as relation_read,
             mock.patch.object(zzzops, "_github_pull_request_states", return_value=({}, 0, 0)),
         ):
             _, snapshot = zzzops.github_repository_portfolio_snapshot(Path("."), project, include_history=True)
 
         self.assertTrue(snapshot["valid"])
         self.assertEqual([1, 2], [goal["key"] for goal in snapshot["goals"]])
-        relation_read.assert_not_called()
+        relation_read.assert_called_once_with(Path("."), "gh", "owner", "repo", [])
 
     def test_snapshot_projects_explicit_work_states(self):
         records = [
