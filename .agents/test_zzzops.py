@@ -3681,6 +3681,13 @@ class PortfolioTests(unittest.TestCase):
         self.assertEqual(0, first["summary"]["total"])
         self.assertEqual([], first["findings"])
 
+    def test_empty_legacy_phase_evidence_projects_losslessly_without_mutation(self):
+        legacy = {"schema_version": 1, "records": {}, "reviews": {}, "withdrawals": []}
+        original = copy.deepcopy(legacy)
+        projected = zzzops._phase_evidence.normalize_phase_evidence(legacy)
+        self.assertEqual(original, legacy)
+        self.assertEqual({"schema_version": 2, "records": {}, "reviews": {}, "human_approvals": {}, "withdrawals": []}, projected)
+
     def test_open_goal_cache_reuses_only_an_exact_provider_revision_marker(self):
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary)
