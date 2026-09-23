@@ -553,7 +553,7 @@ def derive_phase_eligibility(goal: dict[str, Any], graph: Any, live_inputs: dict
     if not isinstance(goal, dict):
         raise PhaseEvidenceError("goal must be an object")
     if goal.get("status") in {"done", "cancelled"} or goal.get("state") == "closed":
-        return {"eligible": [], "stale": [], "blocked": [], "diagnostics": ["terminal_goal"]}
+        return {"eligible": [], "stale": [], "blocked": [], "invalidated_ancestor_gates": [], "diagnostics": ["terminal_goal"]}
     evidence = normalize_phase_evidence(goal.get("phase_evidence", empty_phase_evidence()))
     if not isinstance(live_inputs, dict) or any(phase not in nodes for phase in live_inputs):
         raise PhaseEvidenceError("live phase inputs are invalid")
@@ -587,7 +587,50 @@ def derive_phase_eligibility(goal: dict[str, Any], graph: Any, live_inputs: dict
             diagnostics.append(f"{phase}:missing_live_input")
         else:
             eligible.append({"phase": phase, "reason": "stale_input" if phase in stale else "missing_evidence"})
-    return {"eligible": eligible, "stale": stale, "blocked": blocked, "diagnostics": diagnostics}
+    return {
+        "eligible": eligible, "stale": stale, "blocked": blocked,
+        "invalidated_ancestor_gates": _invalidated_ancestor_gates(nodes, stale, blocked),
+        "diagnostics": diagnostics,
+    }
+
+
+def _invalidated_ancestor_gates(
+    nodes: dict[str, dict[str, list[str]]], stale: list[str], blocked: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Explain which stale phase gates block descendant phases in the DAG.
+
+    A flat ``stale`` list forces callers to reconstruct reachability before
+    they can tell whether a stale phase prevents dispatch.  Keep the original
+    frontier fields, but publish the exact stale ancestor-to-blocked-descendant
+    relationship in graph order.
+    """
+    blocked_by_phase = {item["phase"]: item for item in blocked}
+
+    def has_stale_ancestor(phase: str, ancestor: str, seen: set[str] | None = None) -> bool:
+        seen = set() if seen is None else seen
+        if phase in seen:
+            return False
+        seen.add(phase)
+        dependencies = nodes[phase]["depends_on"]
+        return ancestor in dependencies or any(
+            has_stale_ancestor(dependency, ancestor, seen) for dependency in dependencies
+        )
+
+    result = []
+    for ancestor in stale:
+        affected = []
+        for phase in nodes:
+            item = blocked_by_phase.get(phase)
+            if item is not None and has_stale_ancestor(phase, ancestor):
+                affected.append({
+                    "phase": phase,
+                    "blocked_phase": phase,
+                    "dependencies": list(item["dependencies"]),
+                    "parent_gates": list(item["parent_gates"]),
+                })
+        if affected:
+            result.append({"phase": ancestor, "reason": "stale_input", "affected_descendants": affected})
+    return result
 
 
 def derive_phase_steps(
@@ -605,7 +648,7 @@ def derive_phase_steps(
     if not isinstance(goal, dict):
         raise PhaseEvidenceError("goal must be an object")
     if goal.get("status") in {"done", "cancelled"} or goal.get("state") == "closed":
-        return {"execute": [], "review": [], "stale": [], "blocked": [], "diagnostics": ["terminal_goal"]}
+        return {"execute": [], "review": [], "stale": [], "blocked": [], "invalidated_ancestor_gates": [], "diagnostics": ["terminal_goal"]}
     evidence = normalize_phase_evidence(goal.get("phase_evidence", empty_phase_evidence()))
     if review_policy is not None and not isinstance(review_policy, dict):
         raise PhaseEvidenceError("phase review policy must be an object")
@@ -724,4 +767,8 @@ def derive_phase_steps(
             diagnostics.append(f"{phase}:missing_live_input")
         else:
             execute.append({"phase": phase, "reason": "stale_input" if phase in stale else "missing_evidence"})
-    return {"execute": execute, "review": review, "stale": stale, "blocked": blocked, "diagnostics": diagnostics}
+    return {
+        "execute": execute, "review": review, "stale": stale, "blocked": blocked,
+        "invalidated_ancestor_gates": _invalidated_ancestor_gates(nodes, stale, blocked),
+        "diagnostics": diagnostics,
+    }

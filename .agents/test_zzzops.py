@@ -3145,6 +3145,34 @@ class PhaseEvidenceTests(unittest.TestCase):
         self.assertEqual(["plan"], [item["phase"] for item in result["eligible"]])
         self.assertEqual(["plan", "implement"], result["stale"])
 
+    def test_phase_frontier_reports_stale_ancestor_gate_and_blocked_descendant(self):
+        graph = self.graph({"id": "decompose"}, {"id": "plan", "depends_on": ["decompose"]})
+        decompose_input, plan_input = self.envelope("decompose"), self.envelope("plan")
+        evidence = zzzops.record_phase_result(
+            zzzops.empty_phase_evidence(), "decompose", self.record("decompose", decompose_input), decompose_input,
+        )
+        evidence = zzzops.record_phase_result(evidence, "plan", self.record("plan", plan_input), plan_input)
+        for phase in ("decompose", "plan"):
+            review_hash = zzzops.sha256_phase_evidence_digest({"review": phase})
+            artifact = {
+                "reference": "urn:" + review_hash,
+                "hash": review_hash,
+            }
+            evidence = zzzops.record_phase_review(evidence, phase, artifact, "reviewer-2")
+
+        result = zzzops.derive_phase_steps(
+            self.goal(evidence), graph,
+            {"decompose": self.envelope("decompose", policy="policy-2"), "plan": plan_input},
+        )
+
+        self.assertEqual(["decompose"], result["stale"])
+        self.assertEqual([{"phase": "plan", "dependencies": ["decompose"], "parent_gates": []}], result["blocked"])
+        self.assertEqual([{
+            "phase": "decompose", "reason": "stale_input", "affected_descendants": [{
+                "phase": "plan", "blocked_phase": "plan", "dependencies": ["decompose"], "parent_gates": [],
+            }],
+        }], result["invalidated_ancestor_gates"])
+
     def test_parent_gates_unrelated_revisions_and_closed_goals(self):
         parent_input = self.envelope("architecture")
         parent_evidence = zzzops.record_phase_result(
