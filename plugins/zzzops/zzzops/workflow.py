@@ -343,7 +343,10 @@ class Workflow:
     def validation_blockers(self, goal):
         """Return findings that affect this goal or one of its prerequisites."""
         self.portfolio(allow_invalid=True)
-        records = {record['key']: record for record in self._portfolio_cache['goals']}
+        portfolio = getattr(self, '_portfolio_cache', None)
+        if not isinstance(portfolio, dict):
+            return []
+        records = {record['key']: record for record in portfolio['goals']}
         affected = set()
         pending = [goal['key']]
         while pending:
@@ -356,7 +359,7 @@ class Workflow:
             if record.get('parent') is not None:
                 pending.append(record['parent'])
         return sorted(
-            (finding for finding in self._portfolio_cache.get('findings', [])
+            (finding for finding in portfolio.get('findings', [])
              if isinstance(finding, dict) and finding.get('goal') in affected),
             key=lambda finding: (str(finding.get('goal')), finding.get('code', ''), finding.get('detail', '')),
         )
@@ -436,7 +439,10 @@ class Workflow:
 
     def inputs(self, goal, graph):
         live = self.api.workflow_live_inputs(self.repo, self.project, goal, 'execute', graph)
-        evidence = self.api.normalize_phase_evidence(goal.get('phase_evidence'))
+        normalizer = getattr(self.api, 'normalize_phase_evidence', None)
+        evidence = normalizer(goal.get('phase_evidence')) if callable(normalizer) else (
+            goal.get('phase_evidence') or self.api.empty_phase_evidence()
+        )
         def completion_identity(completed):
             records = (completed.get('phase_evidence') or {}).get('records', {})
             return {
@@ -1214,7 +1220,7 @@ class Workflow:
                 projected = next((record for record in portfolio if record['key'] == number), None)
                 if projected is not None:
                     findings = self.validation_blockers(projected)
-                    if findings:
+                    if isinstance(findings, list) and findings:
                         details = '; '.join(
                             f"goal {finding.get('goal', '?')}: {finding.get('code', 'validation_error')} — {finding.get('detail', 'inspect the goal record')}"
                             for finding in findings
@@ -1623,7 +1629,7 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
             raise ValueError('Requested goal is not in the validated portfolio')
         goal = next(goal for goal in goals if goal['key'] == number)
         findings = engine.validation_blockers(goal)
-        if findings:
+        if isinstance(findings, list) and findings:
             return {'next_steps': [{'kind': 'blocker', 'assignment': 'root', 'goal': number,
                 'action': 'Repair this goal or one of its prerequisites before continuing.',
                 'findings': findings}]}
@@ -1638,7 +1644,7 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
         if goal['status'] in {'done', 'cancelled'}:
             continue
         findings = engine.validation_blockers(goal)
-        if findings:
+        if isinstance(findings, list) and findings:
             waiting_steps.append({'kind': 'blocker', 'assignment': 'root', 'goal': goal['key'],
                 'action': 'Repair this goal or one of its prerequisites before continuing.',
                 'findings': findings})
@@ -1833,10 +1839,8 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
 
 def public_run(api, repo, intent, source, runtime, payload, number, *, skip_installation_validation=False):
     snapshot = {}
-    result = _public_run(
-        api, repo, intent, source, runtime, payload, number, policy_snapshot=snapshot,
-        skip_installation_validation=skip_installation_validation,
-    )
+    options = {'skip_installation_validation': True} if skip_installation_validation else {}
+    result = _public_run(api, repo, intent, source, runtime, payload, number, policy_snapshot=snapshot, **options)
     if api._policy_context.needs_context(result):
         return api._policy_context.attach(
             result, repo, snapshot['project'], source=source,

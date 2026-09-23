@@ -1140,7 +1140,7 @@ class OwnedOutputPublicTests(unittest.TestCase):
         original = copy.deepcopy(closed)
         s.prepare()
         self.assertEqual(original, s.provider.issues[102])
-        self.assertEqual({'leases', 'receipts', 'workers', 'assessments', 'artifacts'},
+        self.assertEqual({'leases', 'receipts', 'workers', 'assessments', 'artifacts', 'routing_choices'},
                          set(s.goal(101)['workflow']))
 
     def legacy_handoff(self):
