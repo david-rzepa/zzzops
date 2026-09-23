@@ -1215,6 +1215,14 @@ class Workflow:
         if receipt:
             if receipt['hash'] != digest(payload):
                 raise ValueError('request_id was already used with different inputs')
+            proof = state(goal)['artifacts'].get(payload.get('phase'))
+            if isinstance(proof, dict):
+                reference = {'reference': 'urn:sha256:' + digest(proof)[7:], 'hash': digest(proof)}
+                expected = not proof.get('passed') if payload.get('phase') == 'test_design' else proof.get('passed')
+                return {'next_steps': [{'kind': 'record_result' if expected else 'correct', 'goal': number,
+                    'phase': payload.get('phase'), 'verification': reference,
+                    'action': 'Verification was already recorded; submit this exact proof.' if expected else
+                              'Verification was already recorded and failed; correct the checks or implementation before a new verification request.'}]}
             return {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'Verification was already recorded; re-read its evidence.'}]}
         lease = next((v for v in state(goal)['leases'].values() if v['token'] == payload.get('lease')), None)
         if not lease or payload.get('actor') != lease['worker']:
