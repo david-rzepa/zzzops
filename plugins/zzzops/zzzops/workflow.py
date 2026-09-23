@@ -1047,7 +1047,17 @@ class Workflow:
             step['goal_specification'] = {'reference': goal['url'], 'hash': phase_input['goal_spec'], 'read': {'operation': 'read', 'phase': phase}}
             step['artifact_submission'] = {'operation': 'artifact', 'lease': '<current-token>', 'actor': '<bound-worker>', 'content': '<phase output or review content>'}
             records = (goal.get('phase_evidence') or {}).get('records', {})
+            prior_review = (goal.get('phase_evidence') or {}).get('reviews', {}).get(phase)
             step['upstream_evidence'] = {entry['phase']: records[entry['phase']].get('output') for entry in phase_input['upstream_outputs'] if entry['phase'] in records}
+            if kind == 'execute' and isinstance(prior_review, dict) and prior_review.get('decision') == 'changes_requested':
+                step['correction'] = {
+                    'prior_reviewer': prior_review.get('reviewer'),
+                    'prior_findings': prior_review.get('outcomes'),
+                    'prior_record_hash': prior_review.get('record_hash'),
+                    'scope': 'Correct only the recorded findings and revised artifact unless the phase inputs materially change.',
+                    'routing': 'Reuse the current assessment and routing choice while goal specification and policy digests remain unchanged.',
+                    'reviewer': 'Prefer the original independent reviewer; use a replacement only for unavailability or explicit escalation.',
+                }
             if kind != 'execute':
                 step['review_target'] = {'record_hash': digest(records.get(phase)), 'output': records.get(phase, {}).get('output'), 'verification': records.get(phase, {}).get('verification') or (records.get(phase, {}).get('test_design') or {}).get('baseline_failure')}
                 proof = state(goal)['artifacts'].get(phase, {})
