@@ -1927,9 +1927,11 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
 def public_run(api, repo, intent, source, runtime, payload, number, *, skip_installation_validation=False, payload_supplied=False):
     snapshot = {}
     options = {'skip_installation_validation': True} if skip_installation_validation else {}
+    if payload_supplied:
+        options['payload_supplied'] = True
     result = _public_run(
         api, repo, intent, source, runtime, payload, number,
-        policy_snapshot=snapshot, payload_supplied=payload_supplied, **options,
+        policy_snapshot=snapshot, **options,
     )
     if api._policy_context.needs_context(result):
         return api._policy_context.attach(

@@ -305,7 +305,7 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
     seen, normalized = set(), []
     for step in steps:
         fields = {"id", "skill", "intent", "audience", "phase", "action", "reason"}
-        optional_fields = {"directive", "model", "effort", "instruction", "diagnostic"}
+        optional_fields = {"kind", "directive", "model", "effort", "instruction", "diagnostic"}
         if not isinstance(step, dict) or not fields <= set(step) or set(step) - fields - optional_fields or step.get("id") in seen:
             raise ValueError("workflow next step is invalid")
         if step.get("intent") not in WORKFLOW_INTENTS or step["intent"] not in WORKFLOW_SKILL_INTENTS.get(step.get("skill"), set()) or step.get("audience") not in {"root", "worker"}:
@@ -313,6 +313,8 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
         if any(not isinstance(step.get(field), str) or not step[field] for field in fields):
             raise ValueError("workflow next step is invalid")
         if step.get("directive") not in {None, "delegate", "continue_root", "resolve_blocker"}:
+            raise ValueError("workflow next step is invalid")
+        if step.get("kind") not in {None, "repair"}:
             raise ValueError("workflow next step is invalid")
         if ("model" in step) != ("effort" in step) or any(
             not isinstance(step.get(field), str) or not step[field]
@@ -370,7 +372,7 @@ def workflow_repair_step(
     """Return the one actionable repair step for a failed public invocation."""
     skill = source_skill if source_skill in WORKFLOW_SKILL_INTENTS and intent in WORKFLOW_SKILL_INTENTS[source_skill] else WORKFLOW_DEFAULT_SKILLS[intent]
     result = {
-        "id": "workflow-repair", "skill": skill, "intent": intent,
+        "id": "workflow-repair", "kind": "repair", "skill": skill, "intent": intent,
         "audience": "root", "phase": "context", "directive": "resolve_blocker",
         "action": action, "reason": reason, "instruction": workflow_instruction("workflow-repair"),
     }
@@ -3194,6 +3196,10 @@ def main() -> int:
                 "Repair the reported workflow input or current repository state, then invoke workflow again.",
                 source_skill=args.source_skill, goal=args.goal, phase=phase, operation=operation,
             )
+            # Public callers historically consume ``assignment`` while the
+            # validated internal instruction envelope calls the same audience
+            # field ``audience``. Keep the public repair contract stable.
+            step["assignment"] = "root"
         else:
             step = {"kind": "repair", "assignment": "root", "action": "Correct this input or backend condition and retry the same request.", "reason": str(exc)}
         if args is not None and isinstance(payload, dict) and payload.get('operation') == 'renew':
