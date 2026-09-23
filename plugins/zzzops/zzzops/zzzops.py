@@ -485,10 +485,10 @@ GOAL_DIFFICULTIES = {"unknown", "XS", "S", "M", "L", "XL"}
 GOAL_CONFIDENCES = {"low", "medium", "high"}
 REDUNDANT_GOAL_TITLE_PREFIX = re.compile(r"^\[G-\d{8}-\d{3}-[^\]]+\]\s*")
 GITHUB_PORTFOLIO_QUERY = """
-query($owner:String!,$name:String!,$labels:[String!],$endCursor:String){
+query($owner:String!,$name:String!,$labels:[String!],$states:[IssueState!],$endCursor:String){
   repository(owner:$owner,name:$name){
     nameWithOwner url hasIssuesEnabled viewerPermission
-    issues(first:100,after:$endCursor,states:[OPEN,CLOSED],labels:$labels,orderBy:{field:CREATED_AT,direction:ASC}){
+    issues(first:100,after:$endCursor,states:$states,labels:$labels,orderBy:{field:CREATED_AT,direction:ASC}){
       nodes{
         number title state
         labels(first:100){nodes{name}}
@@ -1125,7 +1125,7 @@ def _github_repository_capability(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def github_repository_goal_index(
-    repo: Path, project: dict[str, Any], include_feedback: bool = False,
+    repo: Path, project: dict[str, Any], include_feedback: bool = False, *, include_history: bool = False,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], int, int, int]:
     """Read only provider-owned identity, state, and derived goal labels."""
     identity = _project_repository_identity(project)
@@ -1136,8 +1136,10 @@ def github_repository_goal_index(
     command = [
         executable, "api", "graphql", "--paginate", "--slurp",
         "-f", f"query={GITHUB_PORTFOLIO_QUERY}",
-        "-F", f"owner={owner}", "-F", f"name={name}", "-F", "labels[]=zzzops",
+        "-F", f"owner={owner}", "-F", f"name={name}", "-F", "labels[]=zzzops", "-F", "states[]=OPEN",
     ]
+    if include_history:
+        command.extend(("-F", "states[]=CLOSED"))
     try:
         result = subprocess.run(command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -1248,7 +1250,7 @@ def _portfolio_from_hydrated_goals(
 
 
 def github_repository_portfolio_snapshot(
-    repo: Path, project: dict[str, Any], include_feedback: bool = False, *, timing: Any = None,
+    repo: Path, project: dict[str, Any], include_feedback: bool = False, *, include_history: bool = False, timing: Any = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     identity = _project_repository_identity(project)
     owner, name = identity.split("/", 1)
@@ -1256,7 +1258,9 @@ def github_repository_portfolio_snapshot(
     if not executable:
         raise ValueError("GitHub CLI is unavailable")
     repository_probe, selected, findings, discovery_bytes, discovery_reads, excluded = _timed_call(
-        timing, "github_discovery", lambda: github_repository_goal_index(repo, project, include_feedback),
+        timing, "github_discovery", lambda: github_repository_goal_index(
+            repo, project, include_feedback, include_history=include_history,
+        ),
     )
     open_selected = [issue for issue in selected if issue["state"] == "open"]
     bodies, hydration_bytes, hydration_processes = _timed_call(

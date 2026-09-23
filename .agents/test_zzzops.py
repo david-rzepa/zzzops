@@ -3904,6 +3904,9 @@ class PortfolioTests(unittest.TestCase):
         self.assertIn("--paginate", discovery)
         self.assertIn("--slurp", discovery)
         self.assertIn("number title state", discovery_query)
+        self.assertIn("states:$states", discovery_query)
+        self.assertIn("states[]=OPEN", discovery)
+        self.assertNotIn("states[]=CLOSED", discovery)
         issue_fields = discovery_query.split("nodes{", 1)[1].split("}", 1)[0]
         for excluded in ("body", "updatedAt", "url", "comments"):
             self.assertNotIn(excluded, issue_fields)
