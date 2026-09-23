@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import date, datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,6 +23,7 @@ from typing import Any
 from urllib.parse import quote, urlparse
 
 _release_evidence_cache: dict[tuple[str, Any], dict[str, Any]] = {}
+RELEASE_EVIDENCE_CACHE_TTL_SECONDS = 60
 
 _PACKAGE_MODULE_PATH = Path(__file__).with_name("package.py")
 _PACKAGE_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_package", _PACKAGE_MODULE_PATH)
@@ -2188,6 +2190,19 @@ def github_release_evidence(repo: Path, repository: dict[str, Any]) -> dict[str,
     cached = _release_evidence_cache.get(cache_key)
     if cached is not None:
         return copy.deepcopy(cached)
+    disk_cache = repo / ".zzzops" / "portfolio-release-cache.json"
+    try:
+        persisted = json.loads(disk_cache.read_text(encoding="utf-8"))
+        if (
+            persisted.get("schema_version") == 1 and persisted.get("identity") == identity
+            and isinstance(persisted.get("checked_at"), (int, float))
+            and time.time() - persisted["checked_at"] < RELEASE_EVIDENCE_CACHE_TTL_SECONDS
+            and isinstance(persisted.get("evidence"), dict)
+        ):
+            _release_evidence_cache[cache_key] = copy.deepcopy(persisted["evidence"])
+            return copy.deepcopy(persisted["evidence"])
+    except (OSError, UnicodeError, ValueError, TypeError):
+        pass
     executable = shutil.which("gh")
     unavailable = {"available": bool(executable), "status": "unavailable", "releases": None}
     if not executable or not isinstance(identity, str) or identity.count("/") != 1:
@@ -2224,6 +2239,10 @@ def github_release_evidence(repo: Path, repository: dict[str, Any]) -> dict[str,
             raise ValueError("release_api_duplicate")
         observed = {"available": True, "status": "complete", "releases": sorted(releases, key=lambda item: item["id"]), "reason": "ok"}
         _release_evidence_cache[cache_key] = copy.deepcopy(observed)
+        try:
+            atomic_text(disk_cache, json.dumps({"schema_version": 1, "identity": identity, "checked_at": time.time(), "evidence": observed}, sort_keys=True, separators=(",", ":")))
+        except OSError:
+            pass
         return observed
     except (OSError, UnicodeError, subprocess.TimeoutExpired, ValueError) as exc:
         observed = {**unavailable, "reason": str(exc) if type(exc) is ValueError else type(exc).__name__}
