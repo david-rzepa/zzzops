@@ -1124,6 +1124,11 @@ class DiagnosticsModuleTests(unittest.TestCase):
                 self.assertEqual("resolve_blocker", step["directive"])
                 self.assertEqual("malformed_structure", step["diagnostic"]["failed_invariant"])
                 self.assertEqual("not_a_real_operation" if name == "unknown" else None, step["diagnostic"].get("operation"))
+                self.assertEqual(
+                    ["--intent", "execute", "--source-skill", "$execute-zzzops",
+                     "--input", "<corrected-submission.json>"],
+                    step["command"],
+                )
                 self.assertEqual(1, run.call_count)
 
     def test_workflow_cli_gates_no_goal_dispatch_on_context(self):

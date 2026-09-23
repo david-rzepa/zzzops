@@ -305,7 +305,7 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
     seen, normalized = set(), []
     for step in steps:
         fields = {"id", "skill", "intent", "audience", "phase", "action", "reason"}
-        optional_fields = {"kind", "directive", "model", "effort", "instruction", "diagnostic"}
+        optional_fields = {"kind", "directive", "model", "effort", "instruction", "diagnostic", "command"}
         if not isinstance(step, dict) or not fields <= set(step) or set(step) - fields - optional_fields or step.get("id") in seen:
             raise ValueError("workflow next step is invalid")
         if step.get("intent") not in WORKFLOW_INTENTS or step["intent"] not in WORKFLOW_SKILL_INTENTS.get(step.get("skill"), set()) or step.get("audience") not in {"root", "worker"}:
@@ -315,6 +315,11 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
         if step.get("directive") not in {None, "delegate", "continue_root", "resolve_blocker"}:
             raise ValueError("workflow next step is invalid")
         if step.get("kind") not in {None, "repair"}:
+            raise ValueError("workflow next step is invalid")
+        if "command" in step and (
+            not isinstance(step["command"], list) or not step["command"]
+            or any(not isinstance(value, str) or not value for value in step["command"])
+        ):
             raise ValueError("workflow next step is invalid")
         if ("model" in step) != ("effort" in step) or any(
             not isinstance(step.get(field), str) or not step[field]
@@ -385,6 +390,22 @@ def workflow_repair_step(
         context["operation"] = operation
     result["diagnostic"] = context
     return result
+
+
+def workflow_repair_command(args: argparse.Namespace) -> list[str]:
+    """Return the public continuation command with only repairable placeholders."""
+    command = ["--intent", args.intent]
+    if args.source_skill:
+        command.extend(("--source-skill", args.source_skill))
+    if args.goal is not None:
+        command.extend(("--goal", str(args.goal)))
+    if args.runtime is not None:
+        command.extend(("--runtime", str(args.runtime)))
+    if args.input is not None:
+        command.extend(("--input", "<corrected-submission.json>"))
+    if args.skip_installation_validation:
+        command.append("--skip-installation-validation")
+    return command
 
 
 def workflow_context_step(
@@ -3200,6 +3221,7 @@ def main() -> int:
             # validated internal instruction envelope calls the same audience
             # field ``audience``. Keep the public repair contract stable.
             step["assignment"] = "root"
+            step["command"] = workflow_repair_command(args)
         else:
             step = {"kind": "repair", "assignment": "root", "action": "Correct this input or backend condition and retry the same request.", "reason": str(exc)}
         if args is not None and isinstance(payload, dict) and payload.get('operation') == 'renew':
