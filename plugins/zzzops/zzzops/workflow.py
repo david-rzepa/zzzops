@@ -20,6 +20,21 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 
+# Public submissions are intentionally enumerated here, before any context or
+# provider work.  A misspelled operation must be repaired as such rather than
+# being routed through an unrelated installation, policy, lease, or portfolio
+# gate.
+PUBLIC_OPERATIONS = frozenset({
+    'adopt', 'approve', 'artifact', 'assess', 'batch', 'bind', 'block',
+    'capture', 'capture_propose', 'complete', 'feedback_prepare',
+    'feedback_submit', 'heartbeat', 'installation_record', 'integrate',
+    'policy_approve', 'policy_propose', 'read', 'record_result',
+    'record_review', 'recover', 'recover_legacy', 'release', 'renew',
+    'reopen', 'revise', 'route_choice', 'specify', 'start', 'verify',
+    'withdraw',
+})
+
+
 class RenewalBudget:
     """Bound provider work while reserving independent time to release storage."""
     def __init__(self, work_seconds=30, cleanup_seconds=10):
@@ -1729,12 +1744,16 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     return {'next_steps': steps}
 
 
-def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_snapshot=None, skip_installation_validation=False):
+def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_snapshot=None, skip_installation_validation=False, payload_supplied=False):
     """Route every intent through context gates; repairs use the same entrypoint."""
+    if payload_supplied and payload is None:
+        raise ValueError('Submission must be a JSON object; explicit JSON null is not omitted input')
     if payload is not None and not isinstance(payload, dict):
         raise ValueError('Submission must be a JSON object')
     if runtime is not None and not isinstance(runtime, dict):
         raise ValueError('Runtime evidence must be a JSON object')
+    if payload is not None and payload.get('operation') not in PUBLIC_OPERATIONS:
+        raise ValueError('Submission operation is missing or unsupported')
     if intent not in api.WORKFLOW_SKILL_INTENTS.get(source, set()):
         raise ValueError('The source skill cannot initiate this intent')
     package = api._package.package_status()
@@ -1905,10 +1924,13 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
     return checkpoint(api, repo, project, runtime, number, engine=engine)
 
 
-def public_run(api, repo, intent, source, runtime, payload, number, *, skip_installation_validation=False):
+def public_run(api, repo, intent, source, runtime, payload, number, *, skip_installation_validation=False, payload_supplied=False):
     snapshot = {}
     options = {'skip_installation_validation': True} if skip_installation_validation else {}
-    result = _public_run(api, repo, intent, source, runtime, payload, number, policy_snapshot=snapshot, **options)
+    result = _public_run(
+        api, repo, intent, source, runtime, payload, number,
+        policy_snapshot=snapshot, payload_supplied=payload_supplied, **options,
+    )
     if api._policy_context.needs_context(result):
         return api._policy_context.attach(
             result, repo, snapshot['project'], source=source,

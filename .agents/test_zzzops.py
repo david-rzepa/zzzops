@@ -1101,6 +1101,31 @@ class DiagnosticsModuleTests(unittest.TestCase):
         self.assertEqual("resolve_blocker", step["directive"])
         self.assertEqual({"failed_invariant": "missing_passing_verification", "goal": 42, "phase": "implement", "operation": "record_result"}, step["diagnostic"])
 
+    def test_public_workflow_cli_rejects_supplied_non_objects_and_unknown_operations_before_context(self):
+        """Public input errors are structured and cannot reach provider-facing gates."""
+        for name, value, expected_reason in (
+            ("null", None, "Submission must be a JSON object; explicit JSON null is not omitted input"),
+            ("array", [], "Submission must be a JSON object"),
+            ("scalar", "not an object", "Submission must be a JSON object"),
+            ("unknown", {"operation": "not_a_real_operation"}, "Submission operation is missing or unsupported"),
+        ):
+            with self.subTest(name=name):
+                payload_path = self.repo / f"{name}.json"
+                payload_path.write_text(json.dumps(value), encoding="utf-8")
+                with (
+                    mock.patch.object(zzzops, "configure_cli_stdout"),
+                    mock.patch.object(zzzops._workflow, "public_run", wraps=zzzops._workflow.public_run) as run,
+                    mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "--intent", "execute", "--input", str(payload_path)]),
+                    mock.patch.object(sys, "stdout", io.StringIO()) as stream,
+                ):
+                    self.assertEqual(2, zzzops.main())
+                step = json.loads(stream.getvalue())["next_steps"][0]
+                self.assertEqual(expected_reason, step["reason"])
+                self.assertEqual("resolve_blocker", step["directive"])
+                self.assertEqual("malformed_structure", step["diagnostic"]["failed_invariant"])
+                self.assertEqual("not_a_real_operation" if name == "unknown" else None, step["diagnostic"].get("operation"))
+                self.assertEqual(1, run.call_count)
+
     def test_workflow_cli_gates_no_goal_dispatch_on_context(self):
         gate = {
             "id": "bootstrap", "skill": "$bootstrap-zzzops-repository", "intent": "inspect",

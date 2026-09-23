@@ -353,6 +353,7 @@ def workflow_failure_invariant(reason: str) -> str:
         ("acquisition", "stale_acquisition"),
         ("policy_receipt", "missing_authority"),
         ("bound worker", "missing_authority"),
+        ("unsupported", "malformed_structure"),
         ("must be", "malformed_structure"),
         ("invalid", "malformed_structure"),
     ):
@@ -3130,6 +3131,7 @@ def main() -> int:
         result = _workflow.public_run(
             services, args.repo.resolve(), args.intent, source, runtime, payload, args.goal,
             skip_installation_validation=args.skip_installation_validation,
+            payload_supplied=args.input is not None,
         )
         print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
         return 0
