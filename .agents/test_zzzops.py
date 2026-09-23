@@ -2773,6 +2773,14 @@ One reviewable validation change with focused tests.
         self.assertEqual([], zzzops._goals.child_goal_readiness_errors(request))
         self.assertEqual([], zzzops.validate_goal_create(request, allow_deferred=True))
 
+    def test_decomposition_guidance_distinguishes_commitments_from_child_goals(self):
+        execute = (PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "phases" / "decompose-execute.md").read_text(encoding="utf-8")
+        review = (PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "phases" / "decompose-review.md").read_text(encoding="utf-8")
+        for text in (execute, review):
+            self.assertIn("bounded commitment", text)
+            self.assertIn("independently valuable", text)
+            self.assertIn("merge boundary", text)
+
     def test_create_rejects_malformed_input_before_provider_write(self):
         for change in ("title", "marker", "reserved_label", "long_label", "status", "revision", "implementation"):
             adapter = FakeGoalTransitionAdapter({})
