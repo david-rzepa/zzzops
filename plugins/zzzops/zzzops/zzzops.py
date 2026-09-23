@@ -1326,7 +1326,7 @@ def _cached_open_bodies(repo: Path, identity: str, include_feedback: bool, selec
     return normalized
 
 
-def _store_open_bodies(repo: Path, identity: str, include_feedback: bool, selected: list[dict[str, Any]], bodies: dict[int, dict[str, Any]]) -> None:
+def _store_open_bodies(repo: Path, identity: str, include_feedback: bool, selected: list[dict[str, Any]], bodies: dict[int, dict[str, Any]], records: dict[int, dict[str, Any]] | None = None) -> None:
     marker = [{"number": item["number"], "updated_at": item.get("updated_at")} for item in selected if item["state"] == "open"]
     if any(not isinstance(item["updated_at"], str) or not item["updated_at"] for item in marker):
         return
@@ -1335,7 +1335,10 @@ def _store_open_bodies(repo: Path, identity: str, include_feedback: bool, select
         return
     path = _portfolio_cache_path(repo)
     try:
-        atomic_text(path, json.dumps({"schema_version": 1, "identity": identity, "include_feedback": include_feedback, "marker": marker, "bodies": values}, sort_keys=True, separators=(",", ":")))
+        payload = {"schema_version": 1, "identity": identity, "include_feedback": include_feedback, "marker": marker, "bodies": values}
+        if records is not None:
+            payload["records"] = {str(number): records[number] for number in sorted(records)}
+        atomic_text(path, json.dumps(payload, sort_keys=True, separators=(",", ":")))
     except OSError:
         pass
 
@@ -1361,9 +1364,16 @@ def github_repository_portfolio_snapshot(
                 repo, executable, owner, name, [issue["number"] for issue in open_selected],
             ),
         )
-        _store_open_bodies(repo, identity, include_feedback, selected, bodies)
     else:
         hydration_bytes, hydration_processes = 0, 0
+    cached_records = None
+    try:
+        cache = json.loads(_portfolio_cache_path(repo).read_text(encoding="utf-8")) if hydration_processes == 0 else {}
+        values = cache.get("records") if isinstance(cache, dict) else None
+        if isinstance(values, dict) and set(values) == {str(issue["number"]) for issue in open_selected} and all(isinstance(value, dict) for value in values.values()):
+            cached_records = {int(number): copy.deepcopy(value) for number, value in values.items()}
+    except (OSError, ValueError, json.JSONDecodeError):
+        cached_records = None
     open_records = []
     valid_open = []
     for issue in open_selected:
@@ -1371,10 +1381,12 @@ def github_repository_portfolio_snapshot(
         if GOAL_BLOCK_START not in candidate["body"]:
             continue
         try:
-            open_records.append(github_goal_record(candidate))
+            open_records.append(cached_records[issue["number"]] if cached_records else github_goal_record(candidate))
             valid_open.append(candidate)
         except (KeyError, TypeError, ValueError) as exc:
             findings.append({"code": "malformed_record", "goal": issue["number"], "detail": str(exc)})
+    if hydration_processes:
+        _store_open_bodies(repo, identity, include_feedback, selected, bodies, {record["key"]: record for record in open_records})
     pull_request_states, pull_request_bytes, pull_request_processes = _github_pull_request_states(
         repo, executable, valid_open, bodies,
     )
