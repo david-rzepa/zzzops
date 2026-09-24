@@ -1,4 +1,4 @@
-# Simplification review and revision (candidate v7)
+# Simplification review and revision (candidate v8)
 
 User requested a conceptual review, prototype revision, then independent re-review.
 This does not approve production implementation or live migration. CONTRACT.md is
@@ -53,6 +53,16 @@ not make them disappear. Task sets are configuration construction, not another
 scheduler. A graph-edit witness proves the alternative can express the same fanout.
 
 ## Limits and resumption
+
+Second independent review verified the v7 artifact, 51 tests and passing timing,
+and judged the reduction substantive. It found one blocker: the first admission
+in a multi-finding bundle staled the subject used to validate the second. Atomic
+rollback worked, but compatible parallel findings could not coalesce. Root reproduced
+this failure before correcting it. V8 validates applicability against the acquired
+pre-bundle snapshot while checking conflicts in the combined prospective state.
+New tests prove two compatible findings survive acceptance/rebuild/resolution and
+that stale subjects or conflicting same-identity findings reject the entire bundle.
+V8 requires re-review; v7 was changes_requested, never approved.
 
 This is an in-memory behavioral model. Actor identity, graph-edit authority and
 external input ingestion are fixture assumptions. The host authenticates them in

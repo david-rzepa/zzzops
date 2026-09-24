@@ -232,7 +232,15 @@ class Model:
             if kind == 'admit':
                 key, target, subject, change = args
                 if target != scope: raise ValueError('scope mismatch')
-                candidate._correct(key, target, subject, change, actor)
+                # Applicability is checked against the acquired pre-bundle state.
+                # Other admissions must not make this inspected subject look late.
+                inspected = copy.deepcopy(self)
+                inspected._correct(key, target, subject, change, actor)
+                finding = inspected.findings[key]
+                # Combined revisions still must agree in the prospective state.
+                if key in candidate.findings and candidate.findings[key] != finding:
+                    raise ValueError('conflicting findings within bundle')
+                candidate.findings[key] = copy.deepcopy(finding)
                 accepted.append({'kind': kind, 'key': key, 'finding': copy.deepcopy(candidate.findings[key])})
             elif kind == 'replace':
                 key, expected, change, coverage, reason, generation = args

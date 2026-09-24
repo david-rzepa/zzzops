@@ -251,6 +251,9 @@ Acceptance is all-or-nothing:
    configured independence, output names/types and output-type/scope permissions.
 2. Validate the whole proposed bundle against one candidate state, including exact
    expected revision, transfer coverage, authority and prospective graph constraints.
+   Each admitted finding's subject applicability is checked against the acquired
+   pre-bundle snapshot, not an intermediate state changed by another admission.
+   Combined conflicts and revisions are checked in the prospective candidate.
    Replacement plus its required coverage decision become effective together.
 3. Append immutable outputs and the host-issued Result, and record the exact request
    receipt under cooperative ownership. Publish derived indexes only after success.

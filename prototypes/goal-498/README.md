@@ -1,8 +1,8 @@
 # Goal #498: generic evidence-driven DAG prototype
 
-Current candidate: v7 simplification revision. Read `SIMPLIFICATION_REVIEW.md` for
-the first independent critique, changes, evidence and limits. `CONTRACT.md` is v7;
-`CONTRACT_V6.md` and the snapshot history below preserve the prior design. V7 requires
+Current candidate: v8 simplification revision. Read `SIMPLIFICATION_REVIEW.md` for
+the independent critiques, changes, evidence and limits. `CONTRACT.md` is v8;
+`CONTRACT_V6.md` and the snapshot history below preserve the prior design. V8 requires
 fresh independent review and human approval; v6 approval does not transfer.
 
 Experimental design snapshot, 2026-09-24. This is not production code, an adopted
@@ -21,8 +21,8 @@ python3 -B -m unittest probe cooperative_migration journeys simplification -q
 python3 -B measure.py
 ```
 
-Current verification: 51 tests passed in 0.186s. Fixed/expanded frontier medians
-0.214760s/0.262818s (1.224x), within original bounds. Historical v5 snapshot:
+Current verification: 53 tests passed in 0.203s. Fixed/expanded frontier medians
+0.208048s/0.255374s (1.227x), within original bounds. Historical v5 snapshot:
 42 tests passed in 0.034s. Five-trial median local timings
 for 100 tasks x 100 evaluations: fixed 0.107199s, expanded 0.115994s (1.082x).
 These are synthetic measurements, not GitHub timings. Request budgets are modeled,
@@ -30,7 +30,7 @@ not measured against the live provider.
 
 ## Contents and authority
 
-- `CONTRACT.md`: latest proposed normative contract (candidate v7).
+- `CONTRACT.md`: latest proposed normative contract (candidate v8).
 - `probe.py`: compact behavioral model and unit tests, not a production parser.
 - `journeys.py`: composed workflows exercising that same model.
 - `cooperative_migration.py`: selected cooperative issue-body migration model.

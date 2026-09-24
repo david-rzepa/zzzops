@@ -55,6 +55,36 @@ class Simplification(unittest.TestCase):
                      [decision('admit', 'code', 'f', 'admit', 'hash', 'expand authority')])
         self.assertEqual(m.__dict__, before)
 
+    def test_compatible_findings_share_prebundle_subject_and_survive_rebuild(self):
+        m = self.correction_model(); subject = m.results['code']['output']
+        bundle = [decision('admit', 'code', key, 'code', subject, change)
+                  for key, change in [('a', 'fix A'), ('b', 'fix B')]]
+        m.submit('admit', m.begin('admit'), 'both admitted', 'root', bundle)
+        self.assertEqual(set(m.findings), {'a', 'b'})
+        self.assertIn('code', m.ready())
+        m.rebuild(); self.assertEqual(set(m.findings), {'a', 'b'})
+        m.run('code', 'A and B fixed')
+        producer = m.fingerprint('code')
+        m.submit('review', m.begin('review'), 'both verified', 'reviewer',
+                 [decision('resolve', 'code', key, 'review') for key in ('a', 'b')])
+        m.rebuild()
+        self.assertTrue(all(m.resolved(key) for key in ('a', 'b')))
+        self.assertEqual(m.fingerprint('code'), producer)
+        self.assertIn('publish', m.ready())
+
+    def test_stale_or_conflicting_admission_rejects_entire_bundle(self):
+        for conflict in (False, True):
+            with self.subTest(conflict=conflict):
+                m = self.correction_model(); old = m.results['code']['output']
+                m.inputs['spec'] = 'revised'; m.run('code', 'v2')
+                current = m.results['code']['output']
+                first = decision('admit', 'code', 'a', 'code', current, 'fix A')
+                second = (decision('admit', 'code', 'a', 'code', current, 'contradict A')
+                          if conflict else decision('admit', 'code', 'b', 'code', old, 'late'))
+                before = copy.deepcopy(m.__dict__)
+                with self.assertRaisesRegex(ValueError, 'conflicting|late finding'):
+                    m.submit('admit', m.begin('admit'), 'invalid bundle', 'root', [first, second])
+                self.assertEqual(m.__dict__, before)
     def test_exact_retry_survives_staleness_and_rejects_payload_change(self):
         m = self.correction_model(); token = m.begin('admit')
         args = [decision('admit', 'code', 'f', 'code', m.results['code']['output'], 'fix')]
