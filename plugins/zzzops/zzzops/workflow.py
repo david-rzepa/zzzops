@@ -20,6 +20,21 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 
+# Public submissions are intentionally enumerated here, before any context or
+# provider work.  A misspelled operation must be repaired as such rather than
+# being routed through an unrelated installation, policy, lease, or portfolio
+# gate.
+PUBLIC_OPERATIONS = frozenset({
+    'adopt', 'approve', 'artifact', 'assess', 'batch', 'bind', 'block',
+    'capture', 'capture_propose', 'complete', 'feedback_prepare',
+    'feedback_submit', 'heartbeat', 'installation_record', 'integrate',
+    'policy_approve', 'policy_propose', 'read', 'record_result',
+    'record_review', 'recover', 'recover_legacy', 'release', 'renew',
+    'reopen', 'revise', 'route_choice', 'specify', 'start', 'verify',
+    'withdraw',
+})
+
+
 class RenewalBudget:
     """Bound provider work while reserving independent time to release storage."""
     def __init__(self, work_seconds=30, cleanup_seconds=10):
@@ -259,8 +274,20 @@ class Workflow:
 
     def read(self, number):
         if number not in self._read_cache:
-            issue = self.adapter.get_issue(number)
-            self._read_cache[number] = (issue, self.api.github_goal_record(issue))
+            self.portfolio(allow_invalid=True)
+            records = {item.get('key'): item for item in self._portfolio_cache.get('goals', []) if isinstance(item, dict)}
+            goal = records.get(number)
+            if not isinstance(goal, dict):
+                raise ValueError(f'Goal #{number} is absent from the current portfolio gateway')
+            goal = {
+                **goal,
+                "human_spec": goal.get("human_spec") or f"Archived goal #{number}; body unavailable.",
+                "acceptance_criteria": goal.get("acceptance_criteria", []),
+                "phase_evidence": goal.get("phase_evidence") or self.api.empty_phase_evidence(),
+            }
+            # Workflow context is allowed to consume only the portfolio gateway.
+            # Mutations still use their provider adapter at the write boundary.
+            self._read_cache[number] = ({'number': number}, copy.deepcopy(goal))
         return copy.deepcopy(self._read_cache[number])
 
     def artifact(self, number, content):
@@ -842,12 +869,10 @@ class Workflow:
         return acquired, scope
 
     def pull_request(self, goal):
-        issue, _ = self.read(goal['key'])
-        states, _, _ = self.api._github_pull_request_states(self.repo, getattr(self.adapter, 'executable', 'gh'), [{'number': goal['key']}], {goal['key']: {'body': issue['body']}})
-        value = states.get(goal['key'])
+        value = goal.get('pull_request')
         if not isinstance(value, dict):
             raise ValueError('Current provider PR evidence is unavailable')
-        return value
+        return copy.deepcopy(value)
 
     def publication_identity(self, goal):
         implementation = goal['implementation']
@@ -943,7 +968,20 @@ class Workflow:
             self.repo, (json.dumps(document, sort_keys=True, indent=2) + '\n').encode('utf-8'))
 
     def step(self, number):
-        _, goal = self.read(number)
+        # Phase contracts must be derived from the same exact body that the
+        # locked mutation path validates.
+        projected = self.read(number)[1]
+        adapter = getattr(self, 'adapter', None)
+        exact_reader = getattr(self.api, 'github_goal_record', None)
+        if adapter is not None and callable(exact_reader):
+            goal = exact_reader(adapter.get_issue(number))
+        else:
+            # Isolated contract tests may deliberately supply only the
+            # portfolio gateway. Production Workflow instances always have an
+            # exact provider adapter, so this never broadens provider reads.
+            goal = copy.deepcopy(projected)
+        if isinstance(projected.get('pull_request'), dict):
+            goal['pull_request'] = projected['pull_request']
         if goal['status'] in {'done', 'cancelled'}:
             return []
         if goal.get('needs_human'):
@@ -1047,7 +1085,17 @@ class Workflow:
             step['goal_specification'] = {'reference': goal['url'], 'hash': phase_input['goal_spec'], 'read': {'operation': 'read', 'phase': phase}}
             step['artifact_submission'] = {'operation': 'artifact', 'lease': '<current-token>', 'actor': '<bound-worker>', 'content': '<phase output or review content>'}
             records = (goal.get('phase_evidence') or {}).get('records', {})
+            prior_review = (goal.get('phase_evidence') or {}).get('reviews', {}).get(phase)
             step['upstream_evidence'] = {entry['phase']: records[entry['phase']].get('output') for entry in phase_input['upstream_outputs'] if entry['phase'] in records}
+            if kind == 'execute' and isinstance(prior_review, dict) and prior_review.get('decision') == 'changes_requested':
+                step['correction'] = {
+                    'prior_reviewer': prior_review.get('reviewer'),
+                    'prior_findings': prior_review.get('outcomes'),
+                    'prior_record_hash': prior_review.get('record_hash'),
+                    'scope': 'Correct only the recorded findings and revised artifact unless the phase inputs materially change.',
+                    'routing': 'Reuse the current assessment and routing choice while goal specification and policy digests remain unchanged.',
+                    'reviewer': 'Prefer the original independent reviewer; use a replacement only for unavailability or explicit escalation.',
+                }
             if kind != 'execute':
                 step['review_target'] = {'record_hash': digest(records.get(phase)), 'output': records.get(phase, {}).get('output'), 'verification': records.get(phase, {}).get('verification') or (records.get(phase, {}).get('test_design') or {}).get('baseline_failure')}
                 proof = state(goal)['artifacts'].get(phase, {})
@@ -1103,6 +1151,33 @@ class Workflow:
                 step['lease'] = lease
                 step['kind'] = 'recover' if lease['expires_at'] <= time.time() else 'await_worker'
                 step['action'] = 'Check the bound worker. Reconcile completion or explicitly recover only after confirming it stopped; expiry is not permission to duplicate work.'
+                if step['kind'] == 'await_worker':
+                    step['recheck'] = {
+                        'after_seconds': 30,
+                        'command': ['--intent', 'execute', '--goal', str(number), '--runtime', '<runtime.json>'],
+                        'action': 'Recheck this exact leased phase after the interval; do not start a replacement worker.',
+                    }
+                    receipts = state(goal).get('receipts', {})
+                    step['monitor'] = {
+                        'worker': lease.get('worker'),
+                        'lease': lease.get('token'),
+                        'expires_at': lease.get('expires_at'),
+                        'last_durable_operation': next(reversed(receipts), None),
+                        'instruction': 'skills/execute-zzzops/references/MONITOR.md',
+                        'heartbeat': 'Use the bound worker liveness probe as the primary monitor: active means wait; stopped means inspect results before recovery; unknown means diagnose the real worker and backend lease.',
+                        'recovery': step['recovery_contract'],
+                    }
+                    try:
+                        step['monitor']['health'] = self.api._heartbeat.heartbeat_health(
+                            repo=self.repo, root_id=lease['owner'], goal=number, phase=phase,
+                            token=lease['token'],
+                        )
+                    except (OSError, ValueError):
+                        step['monitor']['health'] = {
+                            'classification': 'unknown',
+                            'explanation': ['Local heartbeat health could not be read.'],
+                            'next_action': 'Inspect the real process, harness worker status, latest result file, and backend lease before recovery.',
+                        }
             else:
                 step['action'] = 'Acquire this phase with the start request before doing work; bind the actual executor before submitting evidence.'
         if not steps and result['frontier']['blocked']:
@@ -1178,6 +1253,14 @@ class Workflow:
         if receipt:
             if receipt['hash'] != digest(payload):
                 raise ValueError('request_id was already used with different inputs')
+            proof = state(goal)['artifacts'].get(payload.get('phase'))
+            if isinstance(proof, dict):
+                reference = {'reference': 'urn:sha256:' + digest(proof)[7:], 'hash': digest(proof)}
+                expected = not proof.get('passed') if payload.get('phase') == 'test_design' else proof.get('passed')
+                return {'next_steps': [{'kind': 'record_result' if expected else 'correct', 'goal': number,
+                    'phase': payload.get('phase'), 'verification': reference,
+                    'action': 'Verification was already recorded; submit this exact proof.' if expected else
+                              'Verification was already recorded and failed; correct the checks or implementation before a new verification request.'}]}
             return {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'Verification was already recorded; re-read its evidence.'}]}
         lease = next((v for v in state(goal)['leases'].values() if v['token'] == payload.get('lease')), None)
         if not lease or payload.get('actor') != lease['worker']:
@@ -1215,9 +1298,21 @@ class Workflow:
             # Public preflight already validated the portfolio. Renewal only touches
             # this exact lease; rehydrating every goal under the lock caused timeouts.
             portfolio = [] if payload.get('operation') == 'renew' else self.portfolio(allow_invalid=payload.get('operation') in {'revise', 'recover_legacy'})
-            issue, goal = self.read(number)
+            # A mutation must re-read its exact provider body under the storage
+            # lock; read-only workflow context remains portfolio-gateway-only.
+            adapter = getattr(self, 'adapter', None)
+            exact_reader = getattr(self.api, 'github_goal_record', None)
+            if adapter is not None and callable(exact_reader):
+                issue = adapter.get_issue(number)
+                goal = exact_reader(issue)
+            else:
+                issue, goal = self.read(number)
+            projected = next((record for record in portfolio if record['key'] == number), None) if portfolio else None
+            if isinstance(projected, dict) and isinstance(projected.get('pull_request'), dict):
+                # The exact issue body is authoritative for a write, while the
+                # portfolio gateway owns the current cached PR observation.
+                goal['pull_request'] = copy.deepcopy(projected['pull_request'])
             if portfolio and payload.get('operation') not in {'revise', 'recover_legacy'}:
-                projected = next((record for record in portfolio if record['key'] == number), None)
                 if projected is not None:
                     findings = self.validation_blockers(projected)
                     if isinstance(findings, list) and findings:
@@ -1601,6 +1696,14 @@ class Workflow:
 def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     engine = engine or Workflow(api, repo, project, runtime)
     goals = engine.portfolio()
+    ordering_policy = next(
+        (
+            section.get('configuration', {}).get('portfolio_order')
+            for section in project.get('policy', {}).get('sections', [])
+            if isinstance(section, dict) and section.get('id') == 'autonomy_approval_parallelism'
+        ),
+        None,
+    )
     limit = worker_limit(project)
     remaining_starts = max(0, limit - unresolved_lease_count(goals))
     capacity_blocked = False
@@ -1623,7 +1726,37 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
             'kind': 'await_worker', 'assignment': 'root',
             'action': 'Reviewed max_workers capacity is occupied. Reconcile, release, or recover an existing phase lease before starting another worker.',
             'active_leases': unresolved_lease_count(goals), 'max_workers': limit,
+            'recheck': {
+                'after_seconds': 30,
+                'command': ['--intent', 'execute', '--runtime', '<runtime.json>'],
+                'action': 'Recheck active leases after the interval; do not start work beyond the reviewed capacity.',
+            },
         }
+    # Understanding is the portfolio intake gate. It exposes unresolved human
+    # scope and authority questions before new downstream work is dispatched;
+    # existing leases are counted above but never revoked here.
+    pending_understanding = []
+    for goal in goals:
+        if goal.get('status') in {'done', 'cancelled'}:
+            continue
+        # Legacy/minimal projections cannot establish a broad portfolio gate.
+        # The gate applies only when the canonical phase-evidence shape is
+        # present; normal per-goal dispatch still reports their next action.
+        if not isinstance(goal.get('phase_evidence'), dict):
+            continue
+        evidence = goal['phase_evidence']
+        record = (evidence.get('records') or {}).get('understand')
+        review = (evidence.get('reviews') or {}).get('understand')
+        if not isinstance(record, dict) or not isinstance(review, dict) or review.get('record_hash') != digest(record):
+            pending_understanding.append(goal)
+    if pending_understanding and number is None:
+        steps = []
+        for goal in pending_understanding:
+            steps.extend(step for step in engine.step(goal['key']) if step.get('phase') == 'understand')
+            if len(steps) >= limit:
+                break
+        if steps:
+            return {'next_steps': steps[:limit]}
     if number is not None:
         if number not in {g['key'] for g in goals}:
             raise ValueError('Requested goal is not in the validated portfolio')
@@ -1637,10 +1770,16 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
         partition(engine.step(number), runnable_steps, waiting_steps)
         if capacity_blocked and len(runnable_steps) < limit:
             runnable_steps.append(capacity_step())
-        return {'next_steps': (runnable_steps or waiting_steps)[:limit]}
+        steps = (runnable_steps or waiting_steps)[:limit]
+        if not steps:
+            steps = [{'kind': 'terminal_report', 'assignment': 'root', 'goal': number,
+                      'state': 'complete', 'action': 'This goal has no remaining workflow work. Report completion; no CLI command is required.'}]
+        return {'next_steps': steps}
     runnable_steps = []
     waiting_steps = []
-    for goal in sorted(goals, key=lambda g: (g.get('priority', 'P3'), g['key'])):
+    ordered_goals = api.effective_goal_order(goals, ordering_policy)
+    for item in ordered_goals:
+        goal = next(goal for goal in goals if goal['key'] == item['goal'])
         if goal['status'] in {'done', 'cancelled'}:
             continue
         findings = engine.validation_blockers(goal)
@@ -1658,15 +1797,23 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
             break
     if capacity_blocked and len(runnable_steps) < limit:
         runnable_steps.append(capacity_step())
-    return {'next_steps': (runnable_steps or waiting_steps)[:limit]}
+    steps = (runnable_steps or waiting_steps)[:limit]
+    if not steps:
+        steps = [{'kind': 'terminal_report', 'assignment': 'root', 'state': 'complete',
+                  'action': 'All goals are complete or the portfolio is empty. Report workflow exhaustion; no CLI command is required.'}]
+    return {'next_steps': steps}
 
 
-def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_snapshot=None, skip_installation_validation=False):
+def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_snapshot=None, skip_installation_validation=False, payload_supplied=False):
     """Route every intent through context gates; repairs use the same entrypoint."""
+    if payload_supplied and payload is None:
+        raise ValueError('Submission must be a JSON object; explicit JSON null is not omitted input')
     if payload is not None and not isinstance(payload, dict):
         raise ValueError('Submission must be a JSON object')
     if runtime is not None and not isinstance(runtime, dict):
         raise ValueError('Runtime evidence must be a JSON object')
+    if payload is not None and payload.get('operation') not in PUBLIC_OPERATIONS:
+        raise ValueError('Submission operation is missing or unsupported')
     if intent not in api.WORKFLOW_SKILL_INTENTS.get(source, set()):
         raise ValueError('The source skill cannot initiate this intent')
     package = api._package.package_status()
@@ -1769,8 +1916,12 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             if any(item['phase'] == 'understand' for key in ('execute', 'review', 'blocked') for item in frontier[key]):
                 raise ValueError('Child capture requires current parent design approval')
         with engine.locked():
-            api.apply_goal_create(engine.adapter, engine.repository, payload['request'], allow_deferred=True)
-        return {'next_steps': [{'kind': 'checkpoint', 'action': 'Continue execution with the newly captured goal.'}]}
+            created = api.apply_goal_create(engine.adapter, engine.repository, payload['request'], allow_deferred=True)
+        engine.invalidate()
+        # Capture occurs while the human who approved the goal is present.
+        # Surface its required understanding work now instead of losing that
+        # review opportunity behind a generic later checkpoint.
+        return checkpoint(api, repo, project, runtime, engine=engine)
     if operation == 'adopt':
         with engine.locked():
             api.migrate_open_repository_goals(repo, project, limit=payload.get('limit', 25))
@@ -1837,10 +1988,15 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
     return checkpoint(api, repo, project, runtime, number, engine=engine)
 
 
-def public_run(api, repo, intent, source, runtime, payload, number, *, skip_installation_validation=False):
+def public_run(api, repo, intent, source, runtime, payload, number, *, skip_installation_validation=False, payload_supplied=False):
     snapshot = {}
     options = {'skip_installation_validation': True} if skip_installation_validation else {}
-    result = _public_run(api, repo, intent, source, runtime, payload, number, policy_snapshot=snapshot, **options)
+    if payload_supplied:
+        options['payload_supplied'] = True
+    result = _public_run(
+        api, repo, intent, source, runtime, payload, number,
+        policy_snapshot=snapshot, **options,
+    )
     if api._policy_context.needs_context(result):
         return api._policy_context.attach(
             result, repo, snapshot['project'], source=source,

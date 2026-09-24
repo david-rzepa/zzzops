@@ -41,9 +41,10 @@ def file_hash(path):
 class PublicSession:
     """Public dispatch against real files and an in-memory remote provider."""
 
-    def __init__(self, repo, project, runtime, provider, control, api=z):
+    def __init__(self, repo, project, runtime, provider, control, api=z, pull_request_states=None):
         self.repo, self.project, self.runtime = Path(repo), project, runtime
         self.provider, self.control, self.api = provider, Path(control), api
+        self.pull_request_states = pull_request_states
         self.sequence = 0
         self.calls = []
         self.consumed = ['source.py', 'behavior_test.py', 'read_dependency.txt']
@@ -57,6 +58,18 @@ class PublicSession:
 
     def goal(self, number):
         return self.api.github_goal_record(self.provider.get_issue(number))
+
+    def portfolio_snapshot(self, *_args, **_kwargs):
+        """Mirror the production gateway, including hydrated PR evidence."""
+        goals = [self.goal(number) for number in sorted(self.provider.issues)]
+        targets = [goal for goal in goals if isinstance((goal.get('implementation') or {}).get('pr'), str)]
+        if targets and self.pull_request_states is not None:
+            selected = [{'number': goal['key']} for goal in targets]
+            bodies = {goal['key']: {'body': self.provider.get_issue(goal['key'])['body']} for goal in targets}
+            states, _bytes, _processes = self.pull_request_states(self.repo, 'gh', selected, bodies)
+            for goal in targets:
+                goal['pull_request'] = states.get(goal['key'])
+        return {'complete': True, 'valid': True, 'goals': goals}
 
     def call(self, number, payload=None, *, expected=0):
         self.sequence += 1
@@ -87,10 +100,7 @@ class PublicSession:
                 mock.patch.object(api, 'reviewed_project_state', side_effect=lambda _repo: copy.deepcopy(self.project)),
                 mock.patch.object(api, 'GitHubGoalTransitionAdapter', return_value=self.provider),
                 mock.patch.object(api, 'GitHubReservationAdapter', return_value=SimpleNamespace()),
-                mock.patch.object(api, 'portfolio_snapshot', side_effect=lambda *_a, **_k: {
-                    'complete': True, 'valid': True,
-                    'goals': [self.goal(n) for n in sorted(self.provider.issues)],
-                }),
+                mock.patch.object(api, 'portfolio_snapshot', side_effect=self.portfolio_snapshot),
                 mock.patch.object(api, 'acquire_storage_lock', side_effect=lambda *_a, **_k: {'acquired': True, 'expires_at': time.time() + 300}),
                 mock.patch.object(api, 'renew_storage_lock', side_effect=lambda *_a, **_k: {'acquired': True, 'expires_at': time.time() + 300}),
                 mock.patch.object(api, 'release_storage_lock', return_value={'released': True}),
@@ -254,7 +264,8 @@ class OwnedOutputPublicTests(unittest.TestCase):
         (self.repo / 'behavior_test.py').write_text('from source import answer\nassert answer() == 1\n')
         (self.repo / 'read_dependency.txt').write_text('unchanged dependency\n')
         self.session = PublicSession(self.repo, self.fixture.project, self.fixture.runtime,
-                                     self.fixture.provider, control.name)
+                                     self.fixture.provider, control.name,
+                                     pull_request_states=self.fixture.pull_request_states)
         self.session.git('add', 'source.py', 'behavior_test.py', 'read_dependency.txt')
         self.session.git('commit', '-qm', 'fixture: existing source and test')
         self.session.git('checkout', '-q', '-B', 'goal-child')
@@ -819,6 +830,10 @@ class OwnedOutputPublicTests(unittest.TestCase):
                                  for x in missing['next_steps']), missing)
             self.assertRegex(json.dumps(missing), r'(?i)(proof|verification|invalid|missing|evidence)')
         correction = s.start(101, 'implement')
+        self.assertEqual(rejected_review['reviewer'], correction['correction']['prior_reviewer'])
+        self.assertEqual(rejected_review['outcomes'], correction['correction']['prior_findings'])
+        self.assertEqual(rejected_review['record_hash'], correction['correction']['prior_record_hash'])
+        self.assertIn('Reuse the current assessment', correction['correction']['routing'])
         self.assertNotEqual(step['lease']['token'], correction['lease']['token'])
         self.assertNotEqual(step['input_hash'], correction['input_hash'])
         self.assertEqual(rejected_record, s.goal(101)['phase_evidence']['records']['implement'])

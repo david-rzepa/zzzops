@@ -5,3 +5,6 @@ migration/plan.json
 migration/SUMMARY.md
 migration/*.tmp
 execution-reports/
+portfolio-open-cache.json
+portfolio-pr-cache.json
+portfolio-release-cache.json

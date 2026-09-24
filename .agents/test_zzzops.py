@@ -1087,6 +1087,50 @@ class DiagnosticsModuleTests(unittest.TestCase):
             self.assertEqual("Correct the workflow input or context error, then invoke workflow again.", payload["next_steps"][0]["action"])
             self.assertTrue(payload["next_steps"][0]["reason"])
 
+    def test_public_workflow_cli_preserves_operation_diagnostic_context(self):
+        payload_path = self.repo / "submission.json"
+        payload_path.write_text(json.dumps({"operation": "record_result", "phase": "implement"}), encoding="utf-8")
+        with (
+            mock.patch.object(zzzops, "configure_cli_stdout"),
+            mock.patch.object(zzzops._workflow, "public_run", side_effect=ValueError("missing passing verification")),
+            mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "--goal", "42", "--intent", "execute", "--input", str(payload_path)]),
+            mock.patch.object(sys, "stdout", io.StringIO()) as stream,
+        ):
+            self.assertEqual(2, zzzops.main())
+        step = json.loads(stream.getvalue())["next_steps"][0]
+        self.assertEqual("resolve_blocker", step["directive"])
+        self.assertEqual({"failed_invariant": "missing_passing_verification", "goal": 42, "phase": "implement", "operation": "record_result"}, step["diagnostic"])
+
+    def test_public_workflow_cli_rejects_supplied_non_objects_and_unknown_operations_before_context(self):
+        """Public input errors are structured and cannot reach provider-facing gates."""
+        for name, value, expected_reason in (
+            ("null", None, "Submission must be a JSON object; explicit JSON null is not omitted input"),
+            ("array", [], "Submission must be a JSON object"),
+            ("scalar", "not an object", "Submission must be a JSON object"),
+            ("unknown", {"operation": "not_a_real_operation"}, "Submission operation is missing or unsupported"),
+        ):
+            with self.subTest(name=name):
+                payload_path = self.repo / f"{name}.json"
+                payload_path.write_text(json.dumps(value), encoding="utf-8")
+                with (
+                    mock.patch.object(zzzops, "configure_cli_stdout"),
+                    mock.patch.object(zzzops._workflow, "public_run", wraps=zzzops._workflow.public_run) as run,
+                    mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "--intent", "execute", "--input", str(payload_path)]),
+                    mock.patch.object(sys, "stdout", io.StringIO()) as stream,
+                ):
+                    self.assertEqual(2, zzzops.main())
+                step = json.loads(stream.getvalue())["next_steps"][0]
+                self.assertEqual(expected_reason, step["reason"])
+                self.assertEqual("resolve_blocker", step["directive"])
+                self.assertEqual("malformed_structure", step["diagnostic"]["failed_invariant"])
+                self.assertEqual("not_a_real_operation" if name == "unknown" else None, step["diagnostic"].get("operation"))
+                self.assertEqual(
+                    ["--intent", "execute", "--source-skill", "$execute-zzzops",
+                     "--input", "<corrected-submission.json>"],
+                    step["command"],
+                )
+                self.assertEqual(1, run.call_count)
+
     def test_workflow_cli_gates_no_goal_dispatch_on_context(self):
         gate = {
             "id": "bootstrap", "skill": "$bootstrap-zzzops-repository", "intent": "inspect",
@@ -2683,6 +2727,60 @@ class GoalCreateTests(unittest.TestCase):
         self.assertEqual(zzzops.empty_phase_evidence(), persisted["phase_evidence"])
         self.assertEqual([], zzzops.validate_phase_evidence(persisted["phase_evidence"]))
 
+    def test_child_create_requires_an_independent_implementation_contract(self):
+        request = self.request()
+        request["goal"]["parent"] = 7
+        errors = zzzops._goals.child_goal_readiness_errors(request)
+        self.assertEqual([
+            "child.scope is required", "child.first_falsifiable_probe is required",
+            "child.resolved_decisions is required", "child.migration_evidence is required",
+            "child.independent_delivery is required", "child.merge_boundary is required",
+            "child.acceptance_criteria is required",
+        ], errors)
+
+        request["body"] = """## Outcome
+
+Deliver an independently releasable CLI behavior.
+
+## Acceptance
+
+- [ ] The documented command returns the expected result.
+
+## Scope
+
+Only `plugins/zzzops/zzzops/goals.py` and its focused tests.
+
+## First falsifiable probe
+
+Run the focused goal-create tests before changing validation.
+
+## Decisions
+
+The child owns only its validation rule; no unresolved design decision remains.
+
+## Migration evidence
+
+Not applicable: this changes no persistent state or public API contract.
+
+## Independent delivery
+
+This rule is valuable and testable without the parent implementation.
+
+## Merge boundary
+
+One reviewable validation change with focused tests.
+"""
+        self.assertEqual([], zzzops._goals.child_goal_readiness_errors(request))
+        self.assertEqual([], zzzops.validate_goal_create(request, allow_deferred=True))
+
+    def test_decomposition_guidance_distinguishes_commitments_from_child_goals(self):
+        execute = (PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "phases" / "decompose-execute.md").read_text(encoding="utf-8")
+        review = (PLUGIN_ROOT / "skills" / "execute-zzzops" / "references" / "phases" / "decompose-review.md").read_text(encoding="utf-8")
+        for text in (execute, review):
+            self.assertIn("bounded commitment", text)
+            self.assertIn("independently valuable", text)
+            self.assertIn("merge boundary", text)
+
     def test_create_rejects_malformed_input_before_provider_write(self):
         for change in ("title", "marker", "reserved_label", "long_label", "status", "revision", "implementation"):
             adapter = FakeGoalTransitionAdapter({})
@@ -3145,6 +3243,34 @@ class PhaseEvidenceTests(unittest.TestCase):
         self.assertEqual(["plan"], [item["phase"] for item in result["eligible"]])
         self.assertEqual(["plan", "implement"], result["stale"])
 
+    def test_phase_frontier_reports_stale_ancestor_gate_and_blocked_descendant(self):
+        graph = self.graph({"id": "decompose"}, {"id": "plan", "depends_on": ["decompose"]})
+        decompose_input, plan_input = self.envelope("decompose"), self.envelope("plan")
+        evidence = zzzops.record_phase_result(
+            zzzops.empty_phase_evidence(), "decompose", self.record("decompose", decompose_input), decompose_input,
+        )
+        evidence = zzzops.record_phase_result(evidence, "plan", self.record("plan", plan_input), plan_input)
+        for phase in ("decompose", "plan"):
+            review_hash = zzzops.sha256_phase_evidence_digest({"review": phase})
+            artifact = {
+                "reference": "urn:" + review_hash,
+                "hash": review_hash,
+            }
+            evidence = zzzops.record_phase_review(evidence, phase, artifact, "reviewer-2")
+
+        result = zzzops.derive_phase_steps(
+            self.goal(evidence), graph,
+            {"decompose": self.envelope("decompose", policy="policy-2"), "plan": plan_input},
+        )
+
+        self.assertEqual(["decompose"], result["stale"])
+        self.assertEqual([{"phase": "plan", "dependencies": ["decompose"], "parent_gates": []}], result["blocked"])
+        self.assertEqual([{
+            "phase": "decompose", "reason": "stale_input", "affected_descendants": [{
+                "phase": "plan", "blocked_phase": "plan", "dependencies": ["decompose"], "parent_gates": [],
+            }],
+        }], result["invalidated_ancestor_gates"])
+
     def test_parent_gates_unrelated_revisions_and_closed_goals(self):
         parent_input = self.envelope("architecture")
         parent_evidence = zzzops.record_phase_result(
@@ -3593,6 +3719,72 @@ class PortfolioTests(unittest.TestCase):
         self.assertEqual(0, first["summary"]["total"])
         self.assertEqual([], first["findings"])
 
+    def test_empty_legacy_phase_evidence_projects_losslessly_without_mutation(self):
+        legacy = {"schema_version": 1, "records": {}, "reviews": {}, "withdrawals": []}
+        original = copy.deepcopy(legacy)
+        projected = zzzops._phase_evidence.normalize_phase_evidence(legacy)
+        self.assertEqual(original, legacy)
+        self.assertEqual({"schema_version": 2, "records": {}, "reviews": {}, "human_approvals": {}, "withdrawals": []}, projected)
+
+    def test_open_goal_cache_reuses_only_an_exact_provider_revision_marker(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            selected = [{"number": 7, "state": "open", "updated_at": "2026-09-23T00:00:00Z"}]
+            bodies = {7: {"body": "managed goal", "updated_at": selected[0]["updated_at"]}}
+            zzzops._store_open_bodies(repo, "owner/repo", False, selected, bodies)
+            self.assertEqual(bodies, zzzops._cached_open_bodies(repo, "owner/repo", False, selected))
+            changed = [{**selected[0], "updated_at": "2026-09-24T00:00:00Z"}]
+            self.assertIsNone(zzzops._cached_open_bodies(repo, "owner/repo", False, changed))
+            zzzops._portfolio_cache_path(repo).write_text("not json", encoding="utf-8")
+            self.assertIsNone(zzzops._cached_open_bodies(repo, "owner/repo", False, selected))
+
+    def test_pull_request_broadphase_batches_and_reuses_unchanged_scheduling_evidence(self):
+        implementation = {"branch": "goal/x", "base": "dev", "target": "dev", "review": {"status": "not_started", "checkpoint": None}}
+        first, second = self.issue(1, implementation={**implementation, "pr": "https://github.com/owner/repo/pull/11"}), self.issue(2, implementation={**implementation, "pr": "https://github.com/owner/repo/pull/12"})
+        selected = [{"number": item["number"]} for item in (first, second)]
+        bodies = {item["number"]: {"body": item["body"]} for item in (first, second)}
+
+        def response(command, **_kwargs):
+            query = next(value[6:] for value in command if value.startswith("query="))
+            detail = "baseRefName" in query
+            values = {}
+            for number in (11, 12):
+                values[f"pr_{number}"] = {
+                    "number": number, "state": "OPEN", "updatedAt": f"2026-09-{number}T00:00:00Z",
+                    "merged": False, "mergedAt": None, "headRefOid": f"head-{number}",
+                }
+                if detail:
+                    values[f"pr_{number}"].update({
+                        "baseRefName": "dev", "baseRefOid": "base", "mergeCommit": None,
+                        "repository": {"nameWithOwner": "owner/repo"}, "reviewDecision": "APPROVED",
+                        "commits": {"nodes": [{"commit": {"statusCheckRollup": {
+                            "contexts": {"nodes": [], "pageInfo": {"hasNextPage": False}},
+                        }}}]},
+                    })
+            return SimpleNamespace(returncode=0, stdout=json.dumps({"data": {"repository": values}}), stderr="")
+
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(zzzops.subprocess, "run", side_effect=response) as run:
+            repo = Path(temporary)
+            (repo / ".zzzops").mkdir()
+            states, _bytes, processes = zzzops._github_pull_request_states(repo, "gh", selected, bodies)
+            self.assertEqual(2, processes)
+            self.assertEqual({1, 2}, set(states))
+            self.assertEqual(2, run.call_count)
+            marker_query = next(value[6:] for value in run.call_args_list[0].args[0] if value.startswith("query="))
+            self.assertIn("pr_11:pullRequest(number:11)", marker_query)
+            self.assertIn("pr_12:pullRequest(number:12)", marker_query)
+            run.reset_mock()
+            states, _bytes, processes = zzzops._github_pull_request_states(repo, "gh", selected, bodies)
+            self.assertEqual(1, processes)
+            self.assertEqual({1, 2}, set(states))
+            self.assertEqual(1, run.call_count)
+            active = self.issue(1, status="in_progress", implementation={**implementation, "pr": "https://github.com/owner/repo/pull/11"})
+            active_bodies = {**bodies, 1: {"body": active["body"]}}
+            run.reset_mock()
+            _states, _bytes, processes = zzzops._github_pull_request_states(repo, "gh", selected, active_bodies)
+            self.assertEqual(2, processes)
+            self.assertEqual(2, run.call_count)
+
     def test_malformed_open_record_is_quarantined_without_invalidating_valid_graph(self):
         valid = zzzops.github_goal_record(self.issue(1))
         project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {"sections": [
@@ -3625,13 +3817,76 @@ class PortfolioTests(unittest.TestCase):
         with mock.patch.object(zzzops.shutil, "which", return_value="gh"), \
              mock.patch.object(zzzops, "github_repository_goal_index", return_value=({}, selected, [], 0, 1, 0)), \
              mock.patch.object(zzzops, "_github_goal_bodies", return_value=(bodies, 0, 1)), \
-             mock.patch.object(zzzops, "_github_pull_request_states", return_value=({}, 0, 0)) as pull_requests:
+            mock.patch.object(zzzops, "_github_pull_request_states", return_value=({}, 0, 0)) as pull_requests:
             _, snapshot = zzzops.github_repository_portfolio_snapshot(Path("."), project)
 
         self.assertTrue(snapshot["valid"])
         self.assertEqual([1], [goal["key"] for goal in snapshot["goals"]])
         self.assertEqual(["malformed_record"], [finding["code"] for finding in snapshot["findings"]])
         self.assertEqual([1], [issue["number"] for issue in pull_requests.call_args.args[2]])
+
+    def test_open_goal_hydrates_only_its_exact_closed_dependency_without_unrelated_pr_reads(self):
+        open_child = self.issue(1, depends_on=[2])
+        closed_parent = self.issue(2, status="done")
+        bodies = {1: {"body": open_child["body"], "updated_at": open_child["updated_at"]}}
+        project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {"sections": [
+            {"id": "autonomy_approval_parallelism", "configuration": TEST_AUTONOMY_CONFIGURATION},
+            TEST_RIGOR_POLICY,
+        ]}}
+        with (
+            mock.patch.object(zzzops.shutil, "which", return_value="gh"),
+            mock.patch.object(zzzops, "github_repository_goal_index", return_value=({}, [open_child], [], 0, 1, 0)),
+            mock.patch.object(zzzops, "_github_goal_bodies", return_value=(bodies, 0, 1)),
+            mock.patch.object(zzzops, "_github_goal_relations", return_value=({2: closed_parent}, 20, 1)) as relation_read,
+            mock.patch.object(zzzops, "_github_pull_request_states", return_value=({}, 0, 0)) as pull_requests,
+        ):
+            _, snapshot = zzzops.github_repository_portfolio_snapshot(Path("."), project)
+
+        self.assertTrue(snapshot["valid"])
+        self.assertEqual([1, 2], [goal["key"] for goal in snapshot["goals"]])
+        relation_read.assert_called_once_with(Path("."), "gh", "owner", "repo", [2])
+        self.assertEqual([1], [issue["number"] for issue in pull_requests.call_args.args[2]])
+
+    def test_goal_relation_batch_reads_only_explicit_targets(self):
+        def response(command, **_kwargs):
+            query = next(value[6:] for value in command if value.startswith("query="))
+            self.assertIn("goal_2:issue(number:2)", query)
+            self.assertIn("goal_9:issue(number:9)", query)
+            payload = {"data": {"repository": {
+                f"goal_{number}": {"number": number, "title": f"Goal {number}", "state": "CLOSED",
+                                  "url": f"https://example.test/issues/{number}",
+                                  "labels": {"nodes": [{"name": "zzzops"}, {"name": "zzzops:status:done"}, {"name": "zzzops:priority:P2"}]}}
+                for number in (2, 9)
+            }}}
+            return SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
+
+        with mock.patch.object(zzzops.subprocess, "run", side_effect=response) as run:
+            relations, _bytes, processes = zzzops._github_goal_relations(Path("."), "gh", "owner", "repo", [9, 2])
+        self.assertEqual(1, processes)
+        self.assertEqual({2, 9}, set(relations))
+        self.assertEqual("closed", relations[2]["state"])
+        self.assertEqual(1, run.call_count)
+
+    def test_history_audit_reuses_discovered_closed_relation_without_exact_refetch(self):
+        open_child = self.issue(1, depends_on=[2])
+        closed_parent = self.issue(2, status="done")
+        bodies = {1: {"body": open_child["body"], "updated_at": open_child["updated_at"]}}
+        project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {"sections": [
+            {"id": "autonomy_approval_parallelism", "configuration": TEST_AUTONOMY_CONFIGURATION},
+            TEST_RIGOR_POLICY,
+        ]}}
+        with (
+            mock.patch.object(zzzops.shutil, "which", return_value="gh"),
+            mock.patch.object(zzzops, "github_repository_goal_index", return_value=({}, [open_child, closed_parent], [], 0, 1, 0)),
+            mock.patch.object(zzzops, "_github_goal_bodies", return_value=(bodies, 0, 1)),
+            mock.patch.object(zzzops, "_github_goal_relations") as relation_read,
+            mock.patch.object(zzzops, "_github_pull_request_states", return_value=({}, 0, 0)),
+        ):
+            _, snapshot = zzzops.github_repository_portfolio_snapshot(Path("."), project, include_history=True)
+
+        self.assertTrue(snapshot["valid"])
+        self.assertEqual([1, 2], [goal["key"] for goal in snapshot["goals"]])
+        relation_read.assert_called_once_with(Path("."), "gh", "owner", "repo", [])
 
     def test_snapshot_projects_explicit_work_states(self):
         records = [
@@ -3904,8 +4159,12 @@ class PortfolioTests(unittest.TestCase):
         self.assertIn("--paginate", discovery)
         self.assertIn("--slurp", discovery)
         self.assertIn("number title state", discovery_query)
+        self.assertIn("states:$states", discovery_query)
+        self.assertIn("states[]=OPEN", discovery)
+        self.assertNotIn("states[]=CLOSED", discovery)
         issue_fields = discovery_query.split("nodes{", 1)[1].split("}", 1)[0]
-        for excluded in ("body", "updatedAt", "url", "comments"):
+        self.assertIn("updatedAt", issue_fields)
+        for excluded in ("body", "url", "comments"):
             self.assertNotIn(excluded, issue_fields)
         self.assertIn("goal_1:issue(number:1){number body updatedAt}", hydration_query)
         self.assertNotIn("goal_3:", hydration_query)
@@ -4903,6 +5162,23 @@ class WorkflowContractTests(unittest.TestCase):
             source_skill="$execute-zzzops",
         )
         self.assertEqual("$add-zzzops-goal", fallback["skill"])
+
+    def test_workflow_failure_diagnostics_use_specific_safe_precedence(self):
+        cases = {
+            "submission has invalid proof provenance and missing passing verification": "missing_passing_verification",
+            "submission has invalid proof provenance and missing baseline failure": "missing_failing_baseline",
+            "phase acquisition is stale": "stale_acquisition",
+            "policy_receipt is invalid": "missing_authority",
+            "submission must be an object": "malformed_structure",
+            "unrecognized provider response": "generic_provenance",
+        }
+        for reason, invariant in cases.items():
+            with self.subTest(reason=reason):
+                self.assertEqual(invariant, zzzops.workflow_failure_invariant(reason))
+        repair = zzzops.workflow_repair_step(
+            "execute", "missing passing verification", "Repair.", goal=17, phase="implement", operation="record_result",
+        )
+        self.assertEqual({"failed_invariant": "missing_passing_verification", "goal": 17, "phase": "implement", "operation": "record_result"}, repair["diagnostic"])
 
     def test_policy_review_reuses_capability_evidence_before_tool_selection(self):
         review = (

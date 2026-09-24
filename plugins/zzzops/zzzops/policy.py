@@ -101,7 +101,7 @@ POLICY_CONFIGURATION_KEYS = {
     "workflow_adherence": {"phase_dag"},
     "automated_design": set(),
     "autonomy_approval_parallelism": {
-        "max_workers", "execution_reports", "resource_reservations", "refill",
+        "max_workers", "execution_reports", "resource_reservations", "refill", "portfolio_order",
     },
 }
 
@@ -1162,7 +1162,7 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
             errors.append(f"{prefix}.configuration must be an object")
         elif section_id in POLICY_CONFIGURATION_KEYS:
             allowed = POLICY_CONFIGURATION_KEYS[section_id]
-            required = allowed
+            required = allowed - ({"portfolio_order"} if section_id == "autonomy_approval_parallelism" else set())
             if section_id == "git_review_release":
                 allowed = allowed | {"stacked_tooling_decline"}
             missing = sorted(required - set(configuration))
@@ -1220,6 +1220,17 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                 except ValueError as exc:
                     errors.append(f"{prefix}.autonomy_approval_parallelism.configuration.{exc}")
                 refill = configuration.get("refill")
+                portfolio_order = configuration.get("portfolio_order")
+                if portfolio_order is not None:
+                    if not isinstance(portfolio_order, dict) or set(portfolio_order) != {"ordered_goal_keys", "rationale"}:
+                        errors.append(f"{prefix}.autonomy_approval_parallelism.configuration.portfolio_order is invalid")
+                    elif (
+                        not isinstance(portfolio_order["ordered_goal_keys"], list)
+                        or any(not isinstance(key, int) or isinstance(key, bool) or key < 1 for key in portfolio_order["ordered_goal_keys"])
+                        or len(set(portfolio_order["ordered_goal_keys"])) != len(portfolio_order["ordered_goal_keys"])
+                        or not text_present(portfolio_order["rationale"])
+                    ):
+                        errors.append(f"{prefix}.autonomy_approval_parallelism.configuration.portfolio_order is invalid")
                 if not isinstance(refill, dict) or set(refill) != {"enabled", "allowed_categories", "max_suggestions"}:
                     errors.append(f"{prefix}.autonomy_approval_parallelism.configuration.refill is invalid")
                 else:

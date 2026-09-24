@@ -32,34 +32,35 @@ class WorkflowInvocationCacheTests(unittest.TestCase):
             _project_repository_identity=lambda project: "synthetic/project",
             GitHubGoalTransitionAdapter=lambda repo, repository: adapter,
             github_goal_record=lambda issue: copy.deepcopy(issue["record"]),
+            empty_phase_evidence=lambda: {"schema_version": 2, "records": {}, "reviews": {}, "human_approvals": {}, "withdrawals": []},
             portfolio_snapshot=mock.Mock(return_value=portfolio),
         )
 
     def test_reads_and_portfolio_are_cached_only_for_one_workflow_instance(self):
-        issues = {1: {"record": {"key": 1, "title": "Initial"}}}
+        issues = {1: {"record": {"key": 1, "title": "Initial", "status": "ready"}}}
         adapter = MemoryIssueAdapter(issues)
-        portfolio = {"complete": True, "valid": True, "goals": [{"key": 1, "status": "ready"}]}
+        portfolio = {"complete": True, "valid": True, "goals": [issues[1]["record"]]}
         api = self.api(adapter, portfolio)
         engine = z._workflow.Workflow(api, Path("."), {}, {})
 
         first_issue, first = engine.read(1)
         first["title"] = "Caller mutation"
-        first_issue["record"]["title"] = "Caller mutation"
+        first_issue["number"] = 99
         self.assertEqual("Initial", engine.read(1)[1]["title"])
         engine.portfolio()[0]["status"] = "done"
         self.assertEqual("ready", engine.portfolio()[0]["status"])
-        self.assertEqual(1, adapter.reads)
+        self.assertEqual(0, adapter.reads)
         api.portfolio_snapshot.assert_called_once()
 
         issues[1]["record"]["title"] = "Provider update"
         another = z._workflow.Workflow(api, Path("."), {}, {})
         self.assertEqual("Provider update", another.read(1)[1]["title"])
-        self.assertEqual(2, adapter.reads)
+        self.assertEqual(0, adapter.reads)
 
     def test_storage_lock_and_successful_save_each_invalidate_cached_authority(self):
         issues = {1: {"record": {"key": 1, "title": "Initial"}}}
         adapter = MemoryIssueAdapter(issues)
-        api = self.api(adapter, {"complete": True, "valid": True, "goals": []})
+        api = self.api(adapter, {"complete": True, "valid": True, "goals": [issues[1]["record"]]})
         api.GitHubReservationAdapter = lambda repo, repository: object()
         api.acquire_storage_lock = lambda *args: {"acquired": True, "expires_at": 10**12}
         api.release_storage_lock = lambda *args: {"released": True}
@@ -78,7 +79,7 @@ class WorkflowInvocationCacheTests(unittest.TestCase):
             self.assertEqual("Changed before lock", current["title"])
             engine.save(issue, {"key": 1, "revision": 1, "digest": "digest"}, {"status": "ready"})
             self.assertEqual("Saved provider state", engine.read(1)[1]["title"])
-        self.assertEqual(3, adapter.reads)
+        self.assertEqual(0, adapter.reads)
 
     def test_public_checkpoint_reuses_the_validated_workflow_engine(self):
         engine = mock.Mock()
@@ -99,7 +100,10 @@ class WorkflowInvocationCacheTests(unittest.TestCase):
         ):
             result = z._workflow.public_run(z, Path("."), "execute", "$execute-zzzops", {}, None, None)
 
-        self.assertEqual({"next_steps": []}, result)
+        self.assertEqual({"next_steps": [{
+            "kind": "terminal_report", "assignment": "root", "state": "complete",
+            "action": "All goals are complete or the portfolio is empty. Report workflow exhaustion; no CLI command is required.",
+        }]}, result)
         constructor.assert_called_once()
         self.assertEqual(2, engine.portfolio.call_count)
 
@@ -121,6 +125,8 @@ class AssessContractTests(unittest.TestCase):
                 "next_steps": [{"kind": "execute", "phase": "understand", "assignment": "root", "selection": {"model": "synthetic", "effort": "low"}}],
                 "frontier": {"blocked": []},
             },
+            empty_phase_evidence=lambda: {"schema_version": 2, "records": {}, "reviews": {}, "human_approvals": {}, "withdrawals": []},
+            portfolio_snapshot=lambda _repo: {"complete": True, "valid": True, "goals": [copy.deepcopy(goal)]},
         )
         engine = z._workflow.Workflow(api, Path("."), {}, {})
         engine.context = mock.Mock(return_value=({}, {"understand": {}}, {"understand": phase_input}, {}))

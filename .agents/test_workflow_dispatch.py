@@ -17,12 +17,15 @@ class WorkflowDispatchTests(unittest.TestCase):
     def goal(number, priority):
         return {"key": number, "priority": priority, "status": "ready", "depends_on": []}
 
-    def checkpoint(self, goals, steps):
+    def checkpoint(self, goals, steps, portfolio_order=None):
         engine = mock.Mock()
         engine.portfolio.return_value = goals
         engine.step.side_effect = lambda number: steps[number]
+        configuration = {"max_workers": 3}
+        if portfolio_order is not None:
+            configuration["portfolio_order"] = portfolio_order
         project = {"policy": {"sections": [{
-            "id": "autonomy_approval_parallelism", "configuration": {"max_workers": 3},
+            "id": "autonomy_approval_parallelism", "configuration": configuration,
         }]}}
         with mock.patch.object(z._workflow, "Workflow", return_value=engine):
             result = z._workflow.checkpoint(z, Path("."), project, {})
@@ -60,6 +63,33 @@ class WorkflowDispatchTests(unittest.TestCase):
 
         self.assertEqual([steps[1][0], steps[2][0], steps[3][0]], result["next_steps"])
         self.assertEqual(4, engine.step.call_count)
+
+    def test_completed_or_empty_portfolio_reports_explicit_exhaustion(self):
+        result, engine = self.checkpoint([], {})
+
+        self.assertEqual([{
+            "kind": "terminal_report", "assignment": "root", "state": "complete",
+            "action": "All goals are complete or the portfolio is empty. Report workflow exhaustion; no CLI command is required.",
+        }], result["next_steps"])
+        engine.step.assert_not_called()
+
+    def test_effective_dag_order_honors_a_reviewed_equal_priority_preference(self):
+        goals = [
+            {**self.goal(1, "P2"), "depends_on": []},
+            {**self.goal(3, "P1"), "depends_on": []},
+            {**self.goal(4, "P1"), "depends_on": [1]},
+        ]
+        steps = {number: [{"kind": "assess", "goal": number, "action": "Assess."}] for number in (1, 3, 4)}
+        decision = {"ordered_goal_keys": [4, 3], "rationale": "Remove portfolio friction before unrelated P1 work."}
+
+        result, engine = self.checkpoint(goals, steps, decision)
+
+        # The P2 prerequisite remains first; after it is safe, the reviewed
+        # equal-priority preference selects #4 ahead of #3 without making it P0.
+        self.assertEqual([steps[1][0], steps[3][0]], result["next_steps"])
+        self.assertEqual([mock.call(1), mock.call(3)], engine.step.call_args_list)
+        self.assertEqual([1, 4, 3], [item["goal"] for item in z.effective_goal_order(goals, decision)])
+        self.assertEqual("portfolio_decision", z.effective_goal_order(goals, decision)[1]["reason"])
 
 
 if __name__ == "__main__":

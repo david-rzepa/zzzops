@@ -69,7 +69,7 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
         result = heartbeat.start_heartbeat(
             repo=self.repo, root_id="root-a", runtime_path=self.runtime, cli_path=self.cli,
             goal=goal, phase=phase, token=token, actor=actor,
-            probe_argv=[sys.executable, str(self.probe), mode, phase], interval_seconds=.03,
+            probe_argv=[sys.executable, str(self.probe), mode, phase, actor], interval_seconds=.03,
             probe_timeout_seconds=.2, retry_limit=3, state_dir=self.state,
         )
         self.pids.add(result["pid"])
@@ -110,7 +110,7 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
             self.assertEqual(0o700, Path(first["config"]).parent.stat().st_mode & 0o777)
             self.assertEqual(0o600, Path(first["config"]).stat().st_mode & 0o777)
         self.assertEqual(["token-a"], [lease["token"] for lease in config["leases"]])
-        self.assertEqual([sys.executable, str(self.probe), "active", "implement"], config["leases"][0]["probe_argv"])
+        self.assertEqual([sys.executable, str(self.probe), "active", "implement", "worker-a"], config["leases"][0]["probe_argv"])
         heartbeat.stop_heartbeat(
             repo=self.repo, root_id="root-a", goal=41, phase="implement", token="token-a",
             state_dir=self.state,
@@ -132,6 +132,17 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
         with self.assertRaisesRegex(ValueError, "locking is unavailable.*explicit recovery"):
             with fallback._locked(self.directory / "unsupported.lock"):
                 pass
+
+    def test_probe_must_bind_the_worker_and_cannot_probe_its_own_shell(self):
+        arguments = {
+            "repo": self.repo, "root_id": "root-a", "runtime_path": self.runtime, "cli_path": self.cli,
+            "goal": 90, "phase": "implement", "token": "probe-token", "actor": "worker-a",
+            "state_dir": self.state,
+        }
+        with self.assertRaisesRegex(ValueError, "bound worker identity"):
+            heartbeat.start_heartbeat(**arguments, probe_argv=[sys.executable, str(self.probe), "active"])
+        with self.assertRaisesRegex(ValueError, "self-referential"):
+            heartbeat.start_heartbeat(**arguments, probe_argv=["/bin/sh", "-c", "kill -0 $$", "worker-a"])
 
     def test_windows_pid_check_uses_read_only_process_api(self):
         class Kernel32:
@@ -185,6 +196,52 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
         self.assertEqual(3, len(unknown))
         self.assertTrue(all(item["detail"] == "TimeoutExpired" for item in unknown))
         self.assertFalse(any(item.get("lease") == "token-timeout" for item in self._lines(self.cli_records)))
+
+    def test_health_classifies_progress_without_releasing_a_quiet_worker(self):
+        result = self._start(53, "implement", "health-token", "active")
+        self._wait(lambda: any(item.get("event") == "renewal_succeeded" for item in self._lines(Path(result["log"]))))
+        active = heartbeat.heartbeat_health(
+            repo=self.repo, root_id="root-a", goal=53, phase="implement", token="health-token", state_dir=self.state,
+        )
+        self.assertEqual("active", active["classification"])
+        heartbeat.record_health(
+            repo=self.repo, root_id="root-a", goal=53, phase="implement", token="health-token",
+            health={"operation_at": 1.0}, state_dir=self.state,
+        )
+        suspect = heartbeat.heartbeat_health(
+            repo=self.repo, root_id="root-a", goal=53, phase="implement", token="health-token", state_dir=self.state, now=time.time() + 1000,
+        )
+        self.assertEqual("suspect", suspect["classification"])
+        self.assertTrue(any(lease["token"] == "health-token" for lease in heartbeat._read(Path(result["config"]))["leases"]))
+        heartbeat.record_health(
+            repo=self.repo, root_id="root-a", goal=53, phase="implement", token="health-token",
+            health={"harness_status": "provider_call"}, state_dir=self.state,
+        )
+        idle = heartbeat.heartbeat_health(
+            repo=self.repo, root_id="root-a", goal=53, phase="implement", token="health-token", state_dir=self.state, now=time.time() + 1000,
+        )
+        self.assertEqual("idle-but-expected", idle["classification"])
+        heartbeat.stop_heartbeat(repo=self.repo, root_id="root-a", goal=53, phase="implement", token="health-token", state_dir=self.state)
+        self._wait(lambda: not heartbeat._pid_alive(result["pid"]))
+
+    def test_health_stopped_requires_a_terminal_probe_record(self):
+        result = self._start(54, "implement", "stopped-health", "stopped")
+        self._wait(lambda: any(item.get("event") == "worker_stopped" for item in self._lines(Path(result["log"]))))
+        health = heartbeat.heartbeat_health(
+            repo=self.repo, root_id="root-a", goal=54, phase="implement", token="stopped-health", state_dir=self.state,
+        )
+        self.assertEqual("stopped", health["classification"])
+
+    def test_health_rejects_malformed_signals_without_changing_lease(self):
+        result = self._start(55, "implement", "malformed-health", "active")
+        with self.assertRaisesRegex(ValueError, "health"):
+            heartbeat.record_health(
+                repo=self.repo, root_id="root-a", goal=55, phase="implement", token="malformed-health",
+                health={"operation_at": "not-a-time"}, state_dir=self.state,
+            )
+        self.assertTrue(any(lease["token"] == "malformed-health" for lease in heartbeat._read(Path(result["config"]))["leases"]))
+        heartbeat.stop_heartbeat(repo=self.repo, root_id="root-a", goal=55, phase="implement", token="malformed-health", state_dir=self.state)
+        self._wait(lambda: not heartbeat._pid_alive(result["pid"]))
 
 
     def test_active_probe_with_zero_exit_repair_preserves_liveness(self):

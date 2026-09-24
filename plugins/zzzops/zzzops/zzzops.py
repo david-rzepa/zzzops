@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import importlib.util
 import hashlib
 import hmac
@@ -14,11 +15,14 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import date, datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import quote, urlparse
+
+RELEASE_EVIDENCE_CACHE_TTL_SECONDS = 60
 
 _PACKAGE_MODULE_PATH = Path(__file__).with_name("package.py")
 _PACKAGE_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_package", _PACKAGE_MODULE_PATH)
@@ -304,7 +308,7 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
     seen, normalized = set(), []
     for step in steps:
         fields = {"id", "skill", "intent", "audience", "phase", "action", "reason"}
-        optional_fields = {"directive", "model", "effort", "instruction"}
+        optional_fields = {"kind", "directive", "model", "effort", "instruction", "diagnostic", "command"}
         if not isinstance(step, dict) or not fields <= set(step) or set(step) - fields - optional_fields or step.get("id") in seen:
             raise ValueError("workflow next step is invalid")
         if step.get("intent") not in WORKFLOW_INTENTS or step["intent"] not in WORKFLOW_SKILL_INTENTS.get(step.get("skill"), set()) or step.get("audience") not in {"root", "worker"}:
@@ -312,6 +316,13 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
         if any(not isinstance(step.get(field), str) or not step[field] for field in fields):
             raise ValueError("workflow next step is invalid")
         if step.get("directive") not in {None, "delegate", "continue_root", "resolve_blocker"}:
+            raise ValueError("workflow next step is invalid")
+        if step.get("kind") not in {None, "repair"}:
+            raise ValueError("workflow next step is invalid")
+        if "command" in step and (
+            not isinstance(step["command"], list) or not step["command"]
+            or any(not isinstance(value, str) or not value for value in step["command"])
+        ):
             raise ValueError("workflow next step is invalid")
         if ("model" in step) != ("effort" in step) or any(
             not isinstance(step.get(field), str) or not step[field]
@@ -328,19 +339,76 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
             or any(not isinstance(instruction.get(field), str) or not instruction[field] for field in instruction)
         ):
             raise ValueError("workflow next step is invalid")
+        diagnostic = step.get("diagnostic")
+        if diagnostic is not None and (
+            not isinstance(diagnostic, dict) or "failed_invariant" not in diagnostic
+            or set(diagnostic) - {"failed_invariant", "goal", "phase", "operation"}
+            or not isinstance(diagnostic["failed_invariant"], str) or not diagnostic["failed_invariant"]
+            or ("goal" in diagnostic and (not isinstance(diagnostic["goal"], int) or isinstance(diagnostic["goal"], bool) or diagnostic["goal"] < 1))
+            or any(not isinstance(diagnostic[field], str) or not diagnostic[field] for field in ("phase", "operation") if field in diagnostic)
+        ):
+            raise ValueError("workflow next step is invalid")
         seen.add(step["id"])
         normalized.append(dict(step))
     return {"schema_version": 1, "next_steps": normalized}
 
 
-def workflow_repair_step(intent: str, reason: str, action: str, *, source_skill: str | None = None) -> dict[str, Any]:
+def workflow_failure_invariant(reason: str) -> str:
+    """Classify public workflow failures by deterministic repair precedence."""
+    text = reason.casefold()
+    for marker, invariant in (
+        ("baseline failure", "missing_failing_baseline"),
+        ("passing verification", "missing_passing_verification"),
+        ("proof provenance", "invalid_proof_provenance"),
+        ("stored proof", "invalid_proof_provenance"),
+        ("acquisition", "stale_acquisition"),
+        ("policy_receipt", "missing_authority"),
+        ("bound worker", "missing_authority"),
+        ("unsupported", "malformed_structure"),
+        ("must be", "malformed_structure"),
+        ("invalid", "malformed_structure"),
+    ):
+        if marker in text:
+            return invariant
+    return "generic_provenance"
+
+
+def workflow_repair_step(
+    intent: str, reason: str, action: str, *, source_skill: str | None = None,
+    goal: int | None = None, phase: str | None = None, operation: str | None = None,
+) -> dict[str, Any]:
     """Return the one actionable repair step for a failed public invocation."""
     skill = source_skill if source_skill in WORKFLOW_SKILL_INTENTS and intent in WORKFLOW_SKILL_INTENTS[source_skill] else WORKFLOW_DEFAULT_SKILLS[intent]
-    return {
-        "id": "workflow-repair", "skill": skill, "intent": intent,
+    result = {
+        "id": "workflow-repair", "kind": "repair", "skill": skill, "intent": intent,
         "audience": "root", "phase": "context", "directive": "resolve_blocker",
         "action": action, "reason": reason, "instruction": workflow_instruction("workflow-repair"),
     }
+    context = {"failed_invariant": workflow_failure_invariant(reason)}
+    if goal is not None:
+        context["goal"] = goal
+    if phase is not None:
+        context["phase"] = phase
+    if operation is not None:
+        context["operation"] = operation
+    result["diagnostic"] = context
+    return result
+
+
+def workflow_repair_command(args: argparse.Namespace) -> list[str]:
+    """Return the public continuation command with only repairable placeholders."""
+    command = ["--intent", args.intent]
+    if args.source_skill:
+        command.extend(("--source-skill", args.source_skill))
+    if args.goal is not None:
+        command.extend(("--goal", str(args.goal)))
+    if args.runtime is not None:
+        command.extend(("--runtime", str(args.runtime)))
+    if args.input is not None:
+        command.extend(("--input", "<corrected-submission.json>"))
+    if args.skip_installation_validation:
+        command.append("--skip-installation-validation")
+    return command
 
 
 def workflow_context_step(
@@ -485,12 +553,12 @@ GOAL_DIFFICULTIES = {"unknown", "XS", "S", "M", "L", "XL"}
 GOAL_CONFIDENCES = {"low", "medium", "high"}
 REDUNDANT_GOAL_TITLE_PREFIX = re.compile(r"^\[G-\d{8}-\d{3}-[^\]]+\]\s*")
 GITHUB_PORTFOLIO_QUERY = """
-query($owner:String!,$name:String!,$labels:[String!],$endCursor:String){
+query($owner:String!,$name:String!,$labels:[String!],$states:[IssueState!],$endCursor:String){
   repository(owner:$owner,name:$name){
     nameWithOwner url hasIssuesEnabled viewerPermission
-    issues(first:100,after:$endCursor,states:[OPEN,CLOSED],labels:$labels,orderBy:{field:CREATED_AT,direction:ASC}){
+    issues(first:100,after:$endCursor,states:$states,labels:$labels,orderBy:{field:CREATED_AT,direction:ASC}){
       nodes{
-        number title state
+        number title state updatedAt
         labels(first:100){nodes{name}}
       }
       pageInfo{hasNextPage endCursor}
@@ -512,6 +580,7 @@ query($owner:String!,$name:String!,$number:Int!,$endCursor:String){
 """.strip()
 GOAL_SCHEMA_LABEL = re.compile(r"^zzzops:schema:v(?P<version>[1-9][0-9]*)$")
 GOAL_HYDRATION_BATCH_SIZE = 100
+PULL_REQUEST_HYDRATION_BATCH_SIZE = 100
 MANAGED_SKILLS = (
     "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
     "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
@@ -554,6 +623,7 @@ _portfolio_key = _portfolio._portfolio_key
 audit_portfolio = _portfolio.audit_portfolio
 build_portfolio_snapshot = _portfolio.build_portfolio_snapshot
 compact_portfolio_output = _portfolio.compact_portfolio_output
+effective_goal_order = _portfolio.effective_goal_order
 classify_pr_merge = _merge_reconciliation.classify_pr_merge
 build_reconciliation_transition = _merge_reconciliation.build_reconciliation_transition
 derive_engineering_rigor = _portfolio.derive_engineering_rigor
@@ -878,6 +948,7 @@ def _graphql_issue_index(issue: dict[str, Any], repository_url: str) -> dict[str
     return {
         "number": issue["number"], "title": issue["title"],
         "state": str(issue["state"]).lower(), "labels": labels,
+        "updated_at": issue.get("updatedAt"),
         "schema_version": schema_versions[0] if schema_versions else None,
         "html_url": f"{repository_url.rstrip('/')}/issues/{issue['number']}",
     }
@@ -937,11 +1008,14 @@ def _github_goal_bodies(
     return hydrated, raw_bytes, processes
 
 
-def _github_pull_request_states(
-    repo: Path, executable: str, selected: list[dict[str, Any]], bodies: dict[int, dict[str, Any]],
-) -> tuple[dict[int, dict[str, Any]], int, int]:
-    """Read PR merge state for implementation URLs in one query per PR repository."""
+def _portfolio_pull_request_cache_path(repo: Path) -> Path:
+    return repo / ".zzzops" / "portfolio-pr-cache.json"
+
+
+def _pull_request_targets(selected: list[dict[str, Any]], bodies: dict[int, dict[str, Any]]) -> tuple[dict[tuple[str, str, int], list[int]], set[tuple[str, str, int]]]:
+    """Return deduplicated implementation PRs and those whose evidence is live."""
     targets: dict[tuple[str, str, int], list[int]] = {}
+    fresh: set[tuple[str, str, int]] = set()
     for issue in selected:
         body = bodies.get(issue["number"], {}).get("body")
         if not isinstance(body, str):
@@ -955,50 +1029,136 @@ def _github_pull_request_states(
         parts = [part for part in parsed.path.split("/") if part]
         if len(parts) < 4 or parts[2].casefold() != "pull" or not parts[3].isdigit():
             continue
-        targets.setdefault((parts[0], parts[1], int(parts[3])), []).append(issue["number"])
-    states: dict[int, dict[str, Any]] = {}
+        target = (parts[0], parts[1], int(parts[3]))
+        targets.setdefault(target, []).append(issue["number"])
+        workflow = goal.get("workflow") if isinstance(goal, dict) else None
+        review = implementation.get("review") if isinstance(implementation, dict) else None
+        # Scheduling may reuse a verified snapshot.  An executing, publishing,
+        # integrating, or recovering goal must always observe fresh PR evidence.
+        if (
+            goal.get("status") == "in_progress"
+            or (isinstance(workflow, dict) and bool(workflow.get("leases")))
+            or (isinstance(review, dict) and review.get("status") not in (None, "not_started", "merged"))
+        ):
+            fresh.add(target)
+    return targets, fresh
+
+
+def _pull_request_marker_query(numbers: list[int]) -> str:
+    fields = "\n".join(
+        f"    pr_{number}:pullRequest(number:{number}){{number state updatedAt merged mergedAt headRefOid}}"
+        for number in numbers
+    )
+    return "query($owner:String!,$name:String!){\n  repository(owner:$owner,name:$name){\n" + fields + "\n  }\n}"
+
+
+def _pull_request_detail_query(numbers: list[int]) -> str:
+    fields = "\n".join(
+        f"""    pr_{number}:pullRequest(number:{number}){{
+      merged mergedAt headRefOid baseRefName baseRefOid
+      mergeCommit{{oid}}
+      repository{{nameWithOwner}}
+      reviewDecision
+      commits(last:1){{nodes{{commit{{statusCheckRollup{{contexts(first:100){{nodes{{
+        __typename
+        ... on CheckRun{{name status conclusion}}
+        ... on StatusContext{{context state}}
+      }} pageInfo{{hasNextPage}}}}}}}}}}}}
+    }}"""
+        for number in numbers
+    )
+    return "query($owner:String!,$name:String!){\n  repository(owner:$owner,name:$name){\n" + fields + "\n  }\n}"
+
+
+def _github_pr_query(repo: Path, executable: str, owner: str, name: str, query: str, detail: str) -> tuple[dict[str, Any], int]:
+    command = [executable, "api", "graphql", "-f", f"query={query}", "-F", f"owner={owner}", "-F", f"name={name}"]
+    try:
+        result = subprocess.run(command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError(f"GitHub pull-request {detail} read failed: {type(exc).__name__}") from exc
+    if result.returncode:
+        raise ValueError(f"GitHub pull-request {detail} read failed: " + (result.stderr.strip() or "unknown gh error"))
+    try:
+        payload = json.loads(result.stdout)
+        repository = payload["data"]["repository"]
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise ValueError(f"GitHub pull-request {detail} read returned invalid JSON") from exc
+    if not isinstance(repository, dict):
+        raise ValueError(f"GitHub pull-request {detail} read is incomplete or malformed")
+    return repository, len(result.stdout.encode("utf-8"))
+
+
+def _cached_pull_request_states(repo: Path, marker: list[dict[str, Any]]) -> dict[str, dict[str, Any]] | None:
+    try:
+        cache = json.loads(_portfolio_pull_request_cache_path(repo).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    states = cache.get("states") if isinstance(cache, dict) else None
+    if cache.get("schema_version") != 1 or cache.get("marker") != marker or not isinstance(states, dict):
+        return None
+    if any(not isinstance(value, dict) for value in states.values()):
+        return None
+    return copy.deepcopy(states)
+
+
+def _store_pull_request_states(repo: Path, marker: list[dict[str, Any]], states: dict[str, dict[str, Any]]) -> None:
+    try:
+        atomic_text(_portfolio_pull_request_cache_path(repo), json.dumps(
+            {"schema_version": 1, "marker": marker, "states": states}, sort_keys=True, separators=(",", ":"),
+        ))
+    except OSError:
+        pass
+
+
+def _github_pull_request_states(
+    repo: Path, executable: str, selected: list[dict[str, Any]], bodies: dict[int, dict[str, Any]],
+) -> tuple[dict[int, dict[str, Any]], int, int]:
+    """Broadphase referenced PRs, caching unchanged scheduling evidence."""
+    targets, fresh_targets = _pull_request_targets(selected, bodies)
+    if not targets:
+        return {}, 0, 0
+    markers: list[dict[str, Any]] = []
     raw_bytes = 0
     processes = 0
-    for owner, name, number in sorted(targets):
-        query = """query($owner:String!,$name:String!,$number:Int!){
-  repository(owner:$owner,name:$name){
-    nameWithOwner
-    pullRequest(number:$number){
-      merged mergedAt headRefOid baseRefName baseRefOid
-      mergeCommit{oid}
-      repository{nameWithOwner}
-      reviewDecision
-      commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{
-        __typename
-        ... on CheckRun{name status conclusion}
-        ... on StatusContext{context state}
-      } pageInfo{hasNextPage}}}}}}
-    }
-  }
-}"""
-        command = [
-            executable, "api", "graphql", "-f", f"query={query}",
-            "-F", f"owner={owner}", "-F", f"name={name}", "-F", f"number={number}",
-        ]
-        try:
-            result = subprocess.run(command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise ValueError(f"GitHub pull-request state read failed: {type(exc).__name__}") from exc
-        processes += 1
-        if result.returncode:
-            raise ValueError("GitHub pull-request state read failed: " + (result.stderr.strip() or "unknown gh error"))
-        try:
-            payload = json.loads(result.stdout)
-            data = payload["data"]["repository"]
-            pull_request = data.get("pullRequest")
-        except (json.JSONDecodeError, KeyError, TypeError) as exc:
-            raise ValueError("GitHub pull-request state read returned invalid JSON") from exc
-        if not isinstance(pull_request, dict):
-            normalized = None
+    grouped: dict[tuple[str, str], list[int]] = {}
+    for owner, name, number in targets:
+        grouped.setdefault((owner, name), []).append(number)
+    for (owner, name), numbers in sorted(grouped.items()):
+        for offset in range(0, len(numbers), PULL_REQUEST_HYDRATION_BATCH_SIZE):
+            batch = sorted(numbers[offset:offset + PULL_REQUEST_HYDRATION_BATCH_SIZE])
+            response, bytes_read = _github_pr_query(repo, executable, owner, name, _pull_request_marker_query(batch), "marker")
+            raw_bytes += bytes_read
+            processes += 1
+            for number in batch:
+                pr = response.get(f"pr_{number}")
+                if not isinstance(pr, dict) or pr.get("number") != number:
+                    raise ValueError(f"GitHub pull-request marker read omitted PR #{number}")
+                markers.append({"repository": f"{owner}/{name}", "number": number, "state": pr.get("state"), "updated_at": pr.get("updatedAt"), "merged": pr.get("merged") is True, "merged_at": pr.get("mergedAt"), "head_oid": pr.get("headRefOid")})
+    markers.sort(key=lambda item: (item["repository"], item["number"]))
+    cached = _cached_pull_request_states(repo, markers)
+    cached = cached if cached is not None else {}
+    needed = set(targets) if not cached else fresh_targets
+    states_by_target: dict[tuple[str, str, int], dict[str, Any]] = {}
+    for target in targets:
+        value = cached.get(f"{target[0]}/{target[1]}#{target[2]}")
+        if target not in needed and isinstance(value, dict):
+            states_by_target[target] = value
         else:
-            merge_commit = pull_request.get("mergeCommit")
-            pr_repository = pull_request.get("repository")
-            normalized = {
+            needed.add(target)
+    for (owner, name), numbers in sorted(grouped.items()):
+        pending = sorted(number for number in numbers if (owner, name, number) in needed)
+        for offset in range(0, len(pending), PULL_REQUEST_HYDRATION_BATCH_SIZE):
+            batch = pending[offset:offset + PULL_REQUEST_HYDRATION_BATCH_SIZE]
+            response, bytes_read = _github_pr_query(repo, executable, owner, name, _pull_request_detail_query(batch), "state")
+            raw_bytes += bytes_read
+            processes += 1
+            for number in batch:
+                pull_request = response.get(f"pr_{number}")
+                if not isinstance(pull_request, dict):
+                    continue
+                merge_commit = pull_request.get("mergeCommit")
+                pr_repository = pull_request.get("repository")
+                states_by_target[(owner, name, number)] = {
                 "merged": pull_request.get("merged") is True,
                 "merged_at": pull_request.get("mergedAt"),
                 "head_oid": pull_request.get("headRefOid"),
@@ -1009,11 +1169,15 @@ def _github_pull_request_states(
                 "checks_verified": _pull_request_checks_verified(pull_request),
                 "checks_present": _pull_request_checks_present(pull_request),
                 "review_verified": pull_request.get("reviewDecision") == "APPROVED",
-            }
-        for issue_number in targets[(owner, name, number)]:
-            if normalized is not None:
-                states[issue_number] = normalized
-        raw_bytes += len(result.stdout.encode("utf-8"))
+                }
+    stored = {f"{owner}/{name}#{number}": state for (owner, name, number), state in states_by_target.items()}
+    _store_pull_request_states(repo, markers, stored)
+    states: dict[int, dict[str, Any]] = {}
+    for target, issue_numbers in targets.items():
+        state = states_by_target.get(target)
+        if state is not None:
+            for issue_number in issue_numbers:
+                states[issue_number] = state
     return states, raw_bytes, processes
 
 
@@ -1108,6 +1272,85 @@ def github_issue_history(repo: Path, project: dict[str, Any], issue_number: int)
         raise ValueError("GitHub goal-history read is incomplete or malformed") from exc
 
 
+def _github_goal_by_number(repo: Path, executable: str, owner: str, name: str, number: int) -> tuple[dict[str, Any], int]:
+    """Read one relation target that was absent from the open-goal broadphase.
+
+    This is deliberately a single issue read, not a closed-history query.  It
+    is used only after an open goal has named the target as its parent or
+    dependency, so archived history remains out of ordinary execution.
+    """
+    if isinstance(number, bool) or not isinstance(number, int) or number < 1:
+        raise ValueError("goal relation target must be a positive integer")
+    try:
+        result = subprocess.run(
+            [executable, "api", f"repos/{owner}/{name}/issues/{number}"],
+            cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError(f"GitHub goal relation read failed: {type(exc).__name__}") from exc
+    if result.returncode:
+        raise ValueError("GitHub goal relation read failed: " + (result.stderr.strip() or "unknown gh error"))
+    try:
+        issue = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise ValueError("GitHub goal relation read returned invalid JSON") from exc
+    if not isinstance(issue, dict) or issue.get("number") != number:
+        raise ValueError("GitHub goal relation read returned the wrong issue")
+    return issue, len(result.stdout.encode("utf-8"))
+
+
+def _goal_relation_query(numbers: list[int]) -> str:
+    fields = "\n".join(
+        f"    goal_{number}:issue(number:{number}){{number title state url labels(first:100){{nodes{{name}}}}}}"
+        for number in numbers
+    )
+    return "query($owner:String!,$name:String!){\n  repository(owner:$owner,name:$name){\n" + fields + "\n  }\n}"
+
+
+def _github_goal_relations(
+    repo: Path, executable: str, owner: str, name: str, numbers: list[int],
+) -> tuple[dict[int, dict[str, Any]], int, int]:
+    """Read explicitly named missing relations in GraphQL batches, never by history search."""
+    targets = sorted(set(numbers))
+    if any(isinstance(number, bool) or not isinstance(number, int) or number < 1 for number in targets):
+        raise ValueError("goal relation target must be a positive integer")
+    relations: dict[int, dict[str, Any]] = {}
+    raw_bytes = 0
+    processes = 0
+    for offset in range(0, len(targets), GOAL_HYDRATION_BATCH_SIZE):
+        batch = targets[offset:offset + GOAL_HYDRATION_BATCH_SIZE]
+        command = [
+            executable, "api", "graphql", "-f", f"query={_goal_relation_query(batch)}",
+            "-F", f"owner={owner}", "-F", f"name={name}",
+        ]
+        try:
+            result = subprocess.run(command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ValueError(f"GitHub goal relation read failed: {type(exc).__name__}") from exc
+        processes += 1
+        if result.returncode:
+            raise ValueError("GitHub goal relation read failed: " + (result.stderr.strip() or "unknown gh error"))
+        try:
+            payload = json.loads(result.stdout)
+            repository = payload["data"]["repository"]
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise ValueError("GitHub goal relation read returned invalid JSON") from exc
+        if not isinstance(repository, dict):
+            raise ValueError("GitHub goal relation read is incomplete or malformed")
+        for number in batch:
+            issue = repository.get(f"goal_{number}")
+            labels = issue.get("labels") if isinstance(issue, dict) else None
+            nodes = labels.get("nodes") if isinstance(labels, dict) else None
+            if not isinstance(issue, dict) or issue.get("number") != number or not isinstance(nodes, list):
+                continue
+            relations[number] = {
+                "number": number, "title": issue.get("title"), "state": str(issue.get("state", "")).lower(),
+                "html_url": issue.get("url"), "labels": nodes,
+            }
+        raw_bytes += len(result.stdout.encode("utf-8"))
+    return relations, raw_bytes, processes
+
+
 def _github_repository_capability(data: dict[str, Any]) -> dict[str, Any]:
     permission = data.get("viewerPermission")
     issues_enabled = data.get("hasIssuesEnabled") is True
@@ -1125,7 +1368,7 @@ def _github_repository_capability(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def github_repository_goal_index(
-    repo: Path, project: dict[str, Any], include_feedback: bool = False,
+    repo: Path, project: dict[str, Any], include_feedback: bool = False, *, include_history: bool = False,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], int, int, int]:
     """Read only provider-owned identity, state, and derived goal labels."""
     identity = _project_repository_identity(project)
@@ -1136,8 +1379,10 @@ def github_repository_goal_index(
     command = [
         executable, "api", "graphql", "--paginate", "--slurp",
         "-f", f"query={GITHUB_PORTFOLIO_QUERY}",
-        "-F", f"owner={owner}", "-F", f"name={name}", "-F", "labels[]=zzzops",
+        "-F", f"owner={owner}", "-F", f"name={name}", "-F", "labels[]=zzzops", "-F", "states[]=OPEN",
     ]
+    if include_history:
+        command.extend(("-F", "states[]=CLOSED"))
     try:
         result = subprocess.run(command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -1233,6 +1478,14 @@ def _portfolio_from_hydrated_goals(
             ),
             None,
         ),
+        portfolio_order=next(
+            (
+                section["configuration"].get("portfolio_order")
+                for section in ((project.get("policy") or {}).get("sections") or [])
+                if isinstance(section, dict) and section.get("id") == "autonomy_approval_parallelism"
+            ),
+            None,
+        ),
     )
     snapshot["findings"] = sorted(snapshot["findings"] + findings, key=lambda item: (item["code"], str(item["goal"])))
     snapshot["summary"]["findings"] = len(snapshot["findings"])
@@ -1247,8 +1500,52 @@ def _portfolio_from_hydrated_goals(
     return compact_portfolio_output(snapshot)
 
 
+def _portfolio_cache_path(repo: Path) -> Path:
+    return repo / ".zzzops" / "portfolio-open-cache.json"
+
+
+def _cached_open_bodies(repo: Path, identity: str, include_feedback: bool, selected: list[dict[str, Any]]) -> dict[int, dict[str, Any]] | None:
+    """Return cached bodies only when the provider's complete open index agrees."""
+    marker = [{"number": item["number"], "updated_at": item.get("updated_at")} for item in selected if item["state"] == "open"]
+    if any(not isinstance(item["updated_at"], str) or not item["updated_at"] for item in marker):
+        return None
+    try:
+        cache = json.loads(_portfolio_cache_path(repo).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(cache, dict) or cache.get("schema_version") != 1 or cache.get("identity") != identity or cache.get("include_feedback") is not include_feedback or cache.get("marker") != marker:
+        return None
+    bodies = cache.get("bodies")
+    if not isinstance(bodies, dict):
+        return None
+    normalized = {}
+    for item in marker:
+        body = bodies.get(str(item["number"]))
+        if not isinstance(body, str):
+            return None
+        normalized[item["number"]] = {"body": body, "updated_at": item["updated_at"]}
+    return normalized
+
+
+def _store_open_bodies(repo: Path, identity: str, include_feedback: bool, selected: list[dict[str, Any]], bodies: dict[int, dict[str, Any]], records: dict[int, dict[str, Any]] | None = None) -> None:
+    marker = [{"number": item["number"], "updated_at": item.get("updated_at")} for item in selected if item["state"] == "open"]
+    if any(not isinstance(item["updated_at"], str) or not item["updated_at"] for item in marker):
+        return
+    values = {str(item["number"]): bodies.get(item["number"], {}).get("body") for item in marker}
+    if any(not isinstance(value, str) for value in values.values()):
+        return
+    path = _portfolio_cache_path(repo)
+    try:
+        payload = {"schema_version": 1, "identity": identity, "include_feedback": include_feedback, "marker": marker, "bodies": values}
+        if records is not None:
+            payload["records"] = {str(number): records[number] for number in sorted(records)}
+        atomic_text(path, json.dumps(payload, sort_keys=True, separators=(",", ":")))
+    except OSError:
+        pass
+
+
 def github_repository_portfolio_snapshot(
-    repo: Path, project: dict[str, Any], include_feedback: bool = False, *, timing: Any = None,
+    repo: Path, project: dict[str, Any], include_feedback: bool = False, *, include_history: bool = False, timing: Any = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     identity = _project_repository_identity(project)
     owner, name = identity.split("/", 1)
@@ -1256,14 +1553,31 @@ def github_repository_portfolio_snapshot(
     if not executable:
         raise ValueError("GitHub CLI is unavailable")
     repository_probe, selected, findings, discovery_bytes, discovery_reads, excluded = _timed_call(
-        timing, "github_discovery", lambda: github_repository_goal_index(repo, project, include_feedback),
-    )
-    open_selected = [issue for issue in selected if issue["state"] == "open"]
-    bodies, hydration_bytes, hydration_processes = _timed_call(
-        timing, "goal_hydration", lambda: _github_goal_bodies(
-            repo, executable, owner, name, [issue["number"] for issue in open_selected],
+        timing, "github_discovery", lambda: github_repository_goal_index(
+            repo, project, include_feedback, include_history=include_history,
         ),
     )
+    open_selected = [issue for issue in selected if issue["state"] == "open"]
+    bodies = _cached_open_bodies(repo, identity, include_feedback, selected)
+    if bodies is None:
+        bodies, hydration_bytes, hydration_processes = _timed_call(
+            timing, "goal_hydration", lambda: _github_goal_bodies(
+                repo, executable, owner, name, [issue["number"] for issue in open_selected],
+            ),
+        )
+    else:
+        hydration_bytes, hydration_processes = 0, 0
+    cached_records = None
+    try:
+        cache = json.loads(_portfolio_cache_path(repo).read_text(encoding="utf-8")) if hydration_processes == 0 else {}
+        values = cache.get("records") if isinstance(cache, dict) else None
+        if isinstance(values, dict) and set(values) == {str(issue["number"]) for issue in open_selected} and all(
+            isinstance(value, dict) and {"human_spec", "acceptance_criteria", "phase_evidence"} <= set(value)
+            for value in values.values()
+        ):
+            cached_records = {int(number): copy.deepcopy(value) for number, value in values.items()}
+    except (OSError, ValueError, json.JSONDecodeError):
+        cached_records = None
     open_records = []
     valid_open = []
     for issue in open_selected:
@@ -1271,10 +1585,41 @@ def github_repository_portfolio_snapshot(
         if GOAL_BLOCK_START not in candidate["body"]:
             continue
         try:
-            open_records.append(github_goal_record(candidate))
+            open_records.append(cached_records[issue["number"]] if cached_records else github_goal_record(candidate))
             valid_open.append(candidate)
         except (KeyError, TypeError, ValueError) as exc:
             findings.append({"code": "malformed_record", "goal": issue["number"], "detail": str(exc)})
+    # The broadphase contains every open goal.  Only relations it cannot
+    # resolve there may need an exact archived-goal projection.
+    discovered_keys = {issue["number"] for issue in selected}
+    relation_targets = {
+        target
+        for record in open_records
+        for target in [record.get("parent"), *(record.get("depends_on") or [])]
+        if isinstance(target, int) and not isinstance(target, bool) and target not in discovered_keys
+    }
+    archived_records = []
+    relation_bytes = 0
+    relation_processes = 0
+    try:
+        relations, relation_bytes, relation_processes = _github_goal_relations(
+            repo, executable, owner, name, sorted(relation_targets),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        relations = {}
+        for target in sorted(relation_targets):
+            findings.append({"code": "relation_read_failed", "goal": target, "detail": str(exc)})
+    for target in sorted(relation_targets):
+        try:
+            issue = relations.get(target)
+            if issue is None:
+                raise ValueError("GitHub goal relation read omitted target")
+            if str(issue.get("state", "")).casefold() == "closed":
+                archived_records.append(github_archived_goal_record(issue))
+        except (KeyError, TypeError, ValueError) as exc:
+            findings.append({"code": "relation_read_failed", "goal": target, "detail": str(exc)})
+    if hydration_processes:
+        _store_open_bodies(repo, identity, include_feedback, selected, bodies, {record["key"]: record for record in open_records})
     pull_request_states, pull_request_bytes, pull_request_processes = _github_pull_request_states(
         repo, executable, valid_open, bodies,
     )
@@ -1285,10 +1630,25 @@ def github_repository_portfolio_snapshot(
             record["repository"] = project["repository"]["identity"]
     snapshot = _timed_call(
         timing, "graph_validation", lambda: _portfolio_from_hydrated_goals(
-            project, selected, open_records, findings, discovery_bytes, discovery_reads,
-            hydration_bytes + pull_request_bytes, hydration_processes + pull_request_processes, excluded,
+            project, selected, open_records + archived_records, findings, discovery_bytes, discovery_reads,
+            hydration_bytes + relation_bytes + pull_request_bytes,
+            hydration_processes + relation_processes + pull_request_processes, excluded,
         ),
     )
+    # The public graph projection is intentionally compact, but the workflow
+    # gateway needs these already-hydrated fields to avoid exact issue rereads.
+    by_key = {record["key"]: record for record in open_records}
+    hydrated_by_key = {
+        item["number"]: github_goal_record(item)
+        for item in valid_open
+        if item["number"] not in by_key or not {"human_spec", "acceptance_criteria", "phase_evidence"} <= set(by_key[item["number"]])
+    }
+    for record in snapshot.get("goals", []):
+        source = by_key.get(record.get("key")) if isinstance(record, dict) else None
+        if source is not None and not {"human_spec", "acceptance_criteria", "phase_evidence"} <= set(source):
+            source = hydrated_by_key.get(record.get("key"))
+        if source is not None:
+            record.update({field: copy.deepcopy(source[field]) for field in ("human_spec", "acceptance_criteria", "phase_evidence")})
     return repository_probe, snapshot
 
 
@@ -1346,6 +1706,30 @@ def _workflow_runtime(runtime: Any) -> dict[str, Any]:
         raise ValueError("workflow runtime is invalid")
     # reviewed_model_effort performs the detailed identifier validation.
     return {**runtime, "root_pair": dict(root), "available_pairs": [dict(item) if isinstance(item, dict) else item for item in available]}
+
+
+def codex_thread_runtime() -> dict[str, Any] | None:
+    """Derive the root pair from the current local Codex thread, never guess it."""
+    thread = os.environ.get("CODEX_THREAD_ID")
+    if not isinstance(thread, str) or not thread:
+        return None
+    sessions = Path.home() / ".codex" / "sessions"
+    matches = sorted(sessions.rglob(f"*{thread}*.jsonl"), key=lambda path: path.stat().st_mtime, reverse=True)
+    if not matches:
+        return None
+    try:
+        for line in reversed(matches[0].read_text(encoding="utf-8").splitlines()):
+            event = json.loads(line)
+            payload = event.get("payload") if isinstance(event, dict) else None
+            if event.get("type") != "turn_context" or not isinstance(payload, dict):
+                continue
+            model, effort = payload.get("model"), payload.get("effort")
+            if isinstance(model, str) and model and isinstance(effort, str) and effort:
+                root = {"model": model, "effort": effort}
+                return {"root_pair": root, "available_pairs": [root], "root_id": thread}
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return None
 
 
 def workflow_step_plan(
@@ -1801,6 +2185,20 @@ def github_repository_probe(repo: Path) -> dict[str, Any]:
 def github_release_evidence(repo: Path, repository: dict[str, Any]) -> dict[str, Any]:
     """Capture all published releases with resolved tag commits, or fail closed."""
     identity = repository.get("identity") if isinstance(repository, dict) else None
+    disk_cache = repo / ".zzzops" / "portfolio-release-cache.json"
+    cache_directory_exists = disk_cache.parent.is_dir()
+    if cache_directory_exists:
+        try:
+            persisted = json.loads(disk_cache.read_text(encoding="utf-8"))
+            if (
+                persisted.get("schema_version") == 1 and persisted.get("identity") == identity
+                and isinstance(persisted.get("checked_at"), (int, float))
+                and time.time() - persisted["checked_at"] < RELEASE_EVIDENCE_CACHE_TTL_SECONDS
+                and isinstance(persisted.get("evidence"), dict)
+            ):
+                return copy.deepcopy(persisted["evidence"])
+        except (OSError, UnicodeError, ValueError, TypeError):
+            pass
     executable = shutil.which("gh")
     unavailable = {"available": bool(executable), "status": "unavailable", "releases": None}
     if not executable or not isinstance(identity, str) or identity.count("/") != 1:
@@ -1835,9 +2233,16 @@ def github_release_evidence(repo: Path, repository: dict[str, Any]) -> dict[str,
                              "published_at": item["published_at"]})
         if len({item["id"] for item in releases}) != len(releases):
             raise ValueError("release_api_duplicate")
-        return {"available": True, "status": "complete", "releases": sorted(releases, key=lambda item: item["id"]), "reason": "ok"}
+        observed = {"available": True, "status": "complete", "releases": sorted(releases, key=lambda item: item["id"]), "reason": "ok"}
+        if cache_directory_exists:
+            try:
+                atomic_text(disk_cache, json.dumps({"schema_version": 1, "identity": identity, "checked_at": time.time(), "evidence": observed}, sort_keys=True, separators=(",", ":")))
+            except OSError:
+                pass
+        return observed
     except (OSError, UnicodeError, subprocess.TimeoutExpired, ValueError) as exc:
-        return {**unavailable, "reason": str(exc) if type(exc) is ValueError else type(exc).__name__}
+        observed = {**unavailable, "reason": str(exc) if type(exc) is ValueError else type(exc).__name__}
+        return observed
 
 
 def migration_assessment(repo: Path, project: dict[str, Any], goal: dict[str, Any]) -> dict[str, Any]:
@@ -2654,7 +3059,7 @@ def _private_main() -> int:
             repair = workflow_repair_step(
                 args.intent, "The ZzzOps Agent Plugin package is invalid.",
                 "Repair or reinstall the ZzzOps Agent Plugin package, then invoke workflow again.",
-                source_skill=args.source_skill,
+                source_skill=args.source_skill, goal=getattr(args, "goal", None),
             )
             print(json.dumps({"next_steps": [repair]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 2
@@ -2955,7 +3360,7 @@ def _private_main() -> int:
         if args.command == "workflow":
             repair = workflow_repair_step(
                 args.intent, str(exc), "Repair the reported workflow input or current repository state, then invoke workflow again.",
-                source_skill=args.source_skill,
+                source_skill=args.source_skill, goal=getattr(args, "goal", None),
             )
             print(json.dumps({"next_steps": [repair]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             return 2
@@ -3005,7 +3410,7 @@ def main() -> int:
     args, payload = None, None
     try:
         args = parser.parse_args(argv[1:])
-        runtime = json.loads(args.runtime.read_text()) if args.runtime else None
+        runtime = json.loads(args.runtime.read_text()) if args.runtime else codex_thread_runtime()
         payload = json.loads(args.input.read_text()) if args.input else None
         source = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
         services = SimpleNamespace(**globals())
@@ -3018,11 +3423,26 @@ def main() -> int:
         result = _workflow.public_run(
             services, args.repo.resolve(), args.intent, source, runtime, payload, args.goal,
             skip_installation_validation=args.skip_installation_validation,
+            payload_supplied=args.input is not None,
         )
         print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
         return 0
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
-        step = {"kind": "repair", "assignment": "root", "action": "Correct this input or backend condition and retry the same request.", "reason": str(exc)}
+        if args is not None:
+            operation = payload.get("operation") if isinstance(payload, dict) else None
+            phase = payload.get("phase") if isinstance(payload, dict) else None
+            step = workflow_repair_step(
+                args.intent, str(exc),
+                "Repair the reported workflow input or current repository state, then invoke workflow again.",
+                source_skill=args.source_skill, goal=args.goal, phase=phase, operation=operation,
+            )
+            # Public callers historically consume ``assignment`` while the
+            # validated internal instruction envelope calls the same audience
+            # field ``audience``. Keep the public repair contract stable.
+            step["assignment"] = "root"
+            step["command"] = workflow_repair_command(args)
+        else:
+            step = {"kind": "repair", "assignment": "root", "action": "Correct this input or backend condition and retry the same request.", "reason": str(exc)}
         if args is not None and isinstance(payload, dict) and payload.get('operation') == 'renew':
             retry_args = list(argv[1:])
             if '--input' in retry_args:
