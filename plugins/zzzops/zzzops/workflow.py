@@ -583,27 +583,34 @@ class Workflow:
             return True
         return proof.get('workspace') in getattr(self, '_connected_workspaces', set())
 
+    def scope_phase(self, *, composition=False):
+        phases = policy_section(self.project, 'workflow_adherence')['configuration']['phase_dag']['phases']
+        if any(node['id'] == 'plan' for node in phases):
+            return 'plan'  # Compatibility until the reviewed default is adopted.
+        return 'decompose' if composition else 'understand'
+
     def reviewed_scope(self, goal):
-        """Only substantive reviewed plans grant the small, finite output scope."""
+        """Reviewed understanding owns leaf scope; decomposition allocates children."""
         parent = goal.get('parent') or goal['key']
         scopes = []
         owners = (self.read(parent)[1], goal) if goal.get('parent') else (goal,)
         for current in owners:
+            phase = self.scope_phase(composition=current['key'] != goal['key'])
             evidence = current.get('phase_evidence') or self.api.empty_phase_evidence()
-            record, review = evidence['records'].get('plan'), evidence['reviews'].get('plan')
+            record, review = evidence['records'].get(phase), evidence['reviews'].get(phase)
             if not record or not review or review['decision'] != 'approved' or review['reviewer'] == record['actor']:
                 return None
-            if any(item['phase'] == 'plan' for item in evidence['withdrawals']):
+            if any(item['phase'] == phase for item in evidence['withdrawals']):
                 return None
             if review['record_hash'] != digest(record) or review['input_hash'] != record['input_hash']:
                 return None
             graph, _ = self.api._workflow_phase_configuration(self.project, current)
-            live = self.api.workflow_live_inputs(self.repo, self.project, current, 'execute', graph)['plan']
+            live = self.api.workflow_live_inputs(self.repo, self.project, current, 'execute', graph)[phase]
             if any(record['input_envelope'][field] != live[field] for field in ('goal_spec', 'policy', 'phase_dag')):
                 return None
             content = self.read_artifact(current['key'], record['output'])
             scope = content.get('output_scope') if isinstance(content, dict) else None
-            if current['key'] == goal['parent'] and isinstance(content, dict) and 'output_scopes' in content:
+            if current['key'] == goal.get('parent') and isinstance(content, dict) and 'output_scopes' in content:
                 entries = content['output_scopes']
                 if scope is not None or not isinstance(entries, list) or any(not isinstance(x, dict) for x in entries):
                     return None
@@ -697,6 +704,8 @@ class Workflow:
         parent = goal.get('parent') or goal['key']
         children = [self.read(row['key'])[1] for row in self.portfolio()
                     if row.get('parent') == parent and row.get('status') != 'cancelled']
+        if not goal.get('parent') and not children:
+            children = [goal]
         requester = getattr(self, '_input_requester', goal['key'])
         edges = []
         for child in children:
@@ -875,7 +884,7 @@ class Workflow:
         scope = self.reviewed_scope(goal) if phase in {'test_design', 'implement'} else None
         acquired = self.acquisition(goal, phase, lease)
         if phase in {'test_design', 'implement'} and scope is None:
-            raise ValueError('Policy or plan input changed; current reviewed output scope is unavailable')
+            raise ValueError('Policy or scope evidence changed; current reviewed output scope is unavailable')
         if scope:
             if not acquired:
                 acquired = self.recover_acquisition(goal, phase, lease, payload.get('input_envelope'))
@@ -951,11 +960,13 @@ class Workflow:
         children = {key for key, row in rows.items()
                     if row.get('parent') == goal['key'] and row.get('status') != 'cancelled'}
         evidence = goal.get('phase_evidence') or {}
-        record = evidence.get('records', {}).get('plan')
-        review = evidence.get('reviews', {}).get('plan')
-        if (record and review and review.get('decision') == 'approved'
+        phase = self.scope_phase(composition=True)
+        record = evidence.get('records', {}).get(phase)
+        review = evidence.get('reviews', {}).get(phase)
+        if (record and record.get('status') == 'completed' and record.get('output')
+                and review and review.get('decision') == 'approved'
                 and review.get('record_hash') == digest(record)
-                and not any(item['phase'] == 'plan' for item in evidence.get('withdrawals', []))):
+                and not any(item['phase'] == phase for item in evidence.get('withdrawals', []))):
             content = self.read_artifact(goal['key'], record['output'])
             for scope in content.get('output_scopes', []) if isinstance(content, dict) else []:
                 child = scope.get('child') if isinstance(scope, dict) else None
@@ -1073,22 +1084,23 @@ class Workflow:
             if phase in {'test_design', 'implement'} and kind in {'assess', 'execute'} and self.reviewed_scope(goal) is None:
                 repairs = []
                 for owner in ([self.read(goal['parent'])[1]] if goal.get('parent') else []) + [goal]:
-                    record = (owner.get('phase_evidence') or {}).get('records', {}).get('plan')
-                    repair = {'goal': owner['key'], 'phase': 'plan',
+                    scope_phase = self.scope_phase(composition=owner['key'] != goal['key'])
+                    record = (owner.get('phase_evidence') or {}).get('records', {}).get(scope_phase)
+                    repair = {'goal': owner['key'], 'phase': scope_phase,
                               'field': 'output_scope' if owner['key'] == goal['key'] else 'output_scopes',
                               'command': ['--intent', 'execute', '--goal', str(owner['key'])]}
-                    review = (owner.get('phase_evidence') or {}).get('reviews', {}).get('plan')
+                    review = (owner.get('phase_evidence') or {}).get('reviews', {}).get(scope_phase)
                     if record and (not review or review.get('record_hash') != digest(record)):
-                        repair['action'] = 'Request this goal checkpoint and acquire its exact current independent plan review before editing.'
+                        repair['action'] = 'Request this goal checkpoint and acquire its exact current independent scope review before editing.'
                         repair['required_kind'] = 'review'
                     elif record:
-                        repair['submission'] = {'operation': 'withdraw', 'phase': 'plan',
+                        repair['submission'] = {'operation': 'withdraw', 'phase': scope_phase,
                                                 'record_hash': digest(record), 'request_id': 'new-unique-id',
                                                 'reason': 'Correct finite output scope and independently review before file execution.'}
                     repairs.append(repair)
-                step.update(kind='repair', action='Correct and independently review the leaf plan output_scope and, when nested, its matching parent output_scopes entry before acquiring this phase. If content already matches, complete its current independent review instead of replacing content.',
+                step.update(kind='repair', action='Correct and independently review the leaf output_scope and, when nested, its matching parent output_scopes entry before acquiring this phase. If content already matches, complete its current independent review instead of replacing content.',
                             scope_repair={'goal': number, 'parent': goal.get('parent'), 'phase': phase,
-                                          'field': 'output_scope', 'required_phase': 'plan', 'repairs': repairs})
+                                          'field': 'output_scope', 'required_phase': self.scope_phase(), 'repairs': repairs})
                 continue
             if kind not in {'execute', 'review', 'human_approval'}:
                 if kind == 'capability_choice':
@@ -1150,6 +1162,7 @@ class Workflow:
                     'reviewer': 'Prefer the original independent reviewer; use a replacement only for unavailability or explicit escalation.',
                 }
             if kind != 'execute':
+                step['review_requirements'] = copy.deepcopy(nodes[phase]['review'])
                 step['review_target'] = {'record_hash': digest(records.get(phase)), 'output': records.get(phase, {}).get('output'), 'verification': records.get(phase, {}).get('verification') or (records.get(phase, {}).get('test_design') or {}).get('baseline_failure')}
                 proof = state(goal)['artifacts'].get(phase, {})
                 if proof.get('acquisition', {}).get('predecessor'):
@@ -1165,12 +1178,12 @@ class Workflow:
                 'review': {'artifact': {'reference': '<immutable review reference>', 'hash': '<sha256 digest>'}, 'outcomes': {'acceptance': 'approved or changes_requested', 'entropy': {'outcome': 'no_findings, fixed or follow_up', 'evidence': '<concrete finding or inspected scope>', 'goals': []}}},
                 'approval': {'actor': '<root-id>', 'approval_token': '<explicit user approval reference>'},
             }
-            if phase == 'plan':
+            if phase in {self.scope_phase(), self.scope_phase(composition=True)}:
                 step['output_contract'] = {
                     'output_scope': {'parent': goal.get('parent') or goal['key'],
                                      'child': '<implementation-child-id>' if 'implement' not in nodes else goal['key'],
                                      'test_design': ['<exact test output path>'], 'implement': ['<exact source output path>']},
-                    'action': 'Composition parents declare finite output_scopes entries selected uniquely by child. Leaves declare output_scope; nested leaves match their parent entry, while standalone leaves use their own goal id for parent and child. Both test_design and implement arrays are required; [] permits no file changes. Independently review the applicable plans before acquisition. Keep changing provenance out of substantive content.',
+                    'action': 'Leaves declare finite output_scope during understanding. Composition parents allocate output_scopes during decomposition, selected uniquely by child. Nested leaves match their parent entry; standalone leaves use their own id for parent and child. Both test_design and implement arrays are required; [] permits no file changes. Independently review scope before acquisition. Legacy policies place these fields in plan. Keep changing provenance out of substantive content.',
                 }
             step['recovery_contract'] = {'operation': 'recover', 'phase': phase, 'lease': '<exact-token>', 'worker_status': 'stopped', 'evidence': '<observed terminal state>', 'request_id': 'new-unique-id'}
             if nodes[phase].get('not_required', 'never') != 'never':

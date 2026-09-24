@@ -176,25 +176,31 @@ and evidence make stale phases visible.
 `Understand` is the root-owned boundary for user questions, capability
 assessment, goal-design approval, and routing decisions. A direct root skill is
 required for every human-facing step because only the root can ask or receive
-user input. `Decompose` may be marked not required for an atomic goal. Parent
-goals own understanding, decomposition, shared contracts, and aggregate review;
-all source implementation belongs to child goals. A child may plan after parent
-decomposition and implementation waits for parent planning and architectural
-review.
+user input. The shipped work phases are `understand`, `decompose`, `test_design`,
+`implement`, and `publish`. Planning and architecture are substantive work within
+understanding and test design, not a separate phase. Installation, bootstrap,
+policy and capability validation remain shared invocation preconditions.
 
-`Independent architecture review` is mandatory before consequential
-implementation. Policy decides when a goal is consequential and may mark the
-node not required only for a bounded atomic change. Its record names an actor
-independent of the plan author, the reviewed plan and evidence hashes, decision,
-findings, and the policy rule that allowed implementation. A child cannot pass
-its implementation edge until the parent or child record supplies that approved
-review artifact.
+`Decompose` may be marked not required for an atomic goal, including a nested
+leaf. Children exist only for independently deliverable outcomes. Leaves own
+test design and implementation; goals with genuine implementation children own
+composition and integration. Parent decomposition allocates child scope before
+child test design and implementation can begin.
 
-`Verify` runs the declared narrow and required checks. `Review` is mandatory and
-is performed by an actor independent of the implementation author. It combines
-acceptance review and entropy review: fix an in-scope, non-expanding rot finding
-in the current PR; otherwise create an entropy goal immediately. Only
-correctness or safety blocks the current PR.
+Each phase carries policy-configured independent review and human-approval
+requirements; routing considers consequence, rigor and boundedness. Understanding
+includes architecture review. Test design requires a genuinely failing behavioural
+baseline and a reviewed mapping of every acceptance criterion to a test or justified
+exclusion. Implementation requires passing verification and independent acceptance
+and entropy review. Verification is an operation, not a standalone DAG node.
+Every review binds the exact phase record; changed evidence invalidates that binding.
+`review.types` names the required review concerns. Optional `review.by_consequence`
+overrides review fields for an assessed consequence tier; the returned checkpoint
+exposes the effective `review_requirements`. Human approval always remains on root.
+
+Existing reviewed six-phase policies remain readable until adoption. Adopting the
+five-phase default invalidates affected open evidence without rewriting historical
+artifacts or closed goals; the next checkpoint requests reassessment under the new DAG.
 
 ## Routing and delegation
 
@@ -254,13 +260,14 @@ handoff and reconciliation interface.
 
 ### Owned source and test outputs
 
-Parent plans declare finite `output_scopes` entries selected uniquely by child;
-each child declares one matching `output_scope` with `parent`, `child`, and
-`test_design`/`implement` path lists. The singular parent form remains shorthand
-for one child. Both plans need current independent review before file execution.
-Missing or mismatched scope returns a plan repair action; `[]` explicitly permits
+Parent decomposition declares finite `output_scopes` entries selected uniquely by
+child; leaf understanding declares matching `output_scope` with `parent`, `child`,
+and `test_design`/`implement` path lists. A standalone leaf uses its own ID for both
+identities. The singular parent form remains shorthand for one child. Both scope
+records need current independent review before execution. Legacy policies retain
+scope in their plan phase. Missing scope returns a phase-specific repair; `[]` permits
 no file outputs, including new files. Paths cannot overlap across phases, escape
-the checkout, or exempt project policy. Scope is substantive plan content;
+the checkout, or exempt project policy. Scope is substantive design content;
 changing input hashes, Git identities and review bindings never belong in reusable
 plan or review text.
 

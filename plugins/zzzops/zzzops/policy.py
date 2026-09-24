@@ -64,9 +64,10 @@ WORK_SUGGESTION_CATEGORIES = frozenset({
 REQUIRED_CI_MODES = {"inspect_exact_pr_head", "disabled", "existing_only"}
 
 WORKFLOW_PHASE_IDS = (
-    "understand", "decompose", "plan", "test_design", "implement", "publish",
+    "understand", "decompose", "test_design", "implement", "publish",
 )
-WORKFLOW_PHASE_TYPES = frozenset(WORKFLOW_PHASE_IDS)
+# Existing reviewed policies remain readable until explicit default adoption.
+WORKFLOW_PHASE_TYPES = frozenset((*WORKFLOW_PHASE_IDS, "plan"))
 WORKFLOW_ASSIGNMENT_GROUPS = frozenset({"root", "planning", "implementation", "review", "coordinator"})
 WORKFLOW_APPLICABILITY = frozenset({"always", "parent_only", "child_only", "leaf_only"})
 WORKFLOW_NOT_REQUIRED = frozenset({"never", "atomic_goal"})
@@ -480,7 +481,7 @@ def _workflow_phase_dag_errors(value: Any) -> list[str]:
             errors.append(f"{prefix} has unsupported declarative fields")
             continue
         phase = node.get("id")
-        if phase not in WORKFLOW_PHASE_IDS or phase in nodes:
+        if phase not in WORKFLOW_PHASE_TYPES or phase in nodes:
             errors.append(f"{prefix}.id is invalid")
             continue
         if node.get("type") not in WORKFLOW_PHASE_TYPES or node.get("type") != phase:
@@ -496,24 +497,46 @@ def _workflow_phase_dag_errors(value: Any) -> list[str]:
         if node.get("not_required") == "atomic_goal" and phase != "decompose":
             errors.append(f"{prefix}.not_required is not allowed for this phase")
         review = node.get("review")
-        if not isinstance(review, dict) or set(review) != {"independent", "human_approval", "assignment_group"}:
+        review_fields = {"independent", "human_approval", "assignment_group"}
+        if not isinstance(review, dict) or not review_fields <= set(review) or set(review) - review_fields - {"types", "by_consequence"}:
             errors.append(f"{prefix}.review is invalid")
         elif not isinstance(review.get("independent"), bool) or not isinstance(review.get("human_approval"), bool) or review.get("assignment_group") != "review":
             errors.append(f"{prefix}.review is invalid")
+        if isinstance(review, dict):
+            variants = review.get('by_consequence', {})
+            if (not isinstance(variants, dict)
+                    or any(key not in ROUTING_DIMENSION_VALUES['consequence'] for key in variants)):
+                errors.append(f'{prefix}.review.by_consequence is invalid')
+                variants = {}
+            for variant in [review, *variants.values()]:
+                if not isinstance(variant, dict):
+                    errors.append(f'{prefix}.review override must be an object')
+                    continue
+                if variant is not review and (not variant or set(variant) - review_fields - {'types'}):
+                    errors.append(f'{prefix}.review override has unsupported fields')
+                for flag in ('independent', 'human_approval'):
+                    if flag in variant and not isinstance(variant[flag], bool):
+                        errors.append(f'{prefix}.review.{flag} must be boolean')
+                if 'assignment_group' in variant and variant['assignment_group'] != 'review':
+                    errors.append(f'{prefix}.review must use the review assignment group')
+                if 'types' in variant and (not isinstance(variant['types'], list) or not variant['types']
+                        or any(not _policy_identifier(t) for t in variant['types'])
+                        or len(set(variant['types'])) != len(variant['types'])):
+                    errors.append(f'{prefix}.review.types must be distinct review identifiers')
         dependencies, parent_gates = node.get("depends_on"), node.get("parent_gates")
-        if not isinstance(dependencies, list) or any(item not in WORKFLOW_PHASE_IDS for item in dependencies) or len(set(dependencies)) != len(dependencies):
+        if not isinstance(dependencies, list) or any(item not in WORKFLOW_PHASE_TYPES for item in dependencies) or len(set(dependencies)) != len(dependencies):
             errors.append(f"{prefix}.depends_on is invalid")
-        if not isinstance(parent_gates, list) or any(item not in WORKFLOW_PHASE_IDS for item in parent_gates) or len(set(parent_gates)) != len(parent_gates):
+        if not isinstance(parent_gates, list) or any(item not in WORKFLOW_PHASE_TYPES for item in parent_gates) or len(set(parent_gates)) != len(parent_gates):
             errors.append(f"{prefix}.parent_gates is invalid")
         inputs = node.get("inputs")
         if not isinstance(inputs, list) or not inputs or any(item not in WORKFLOW_INPUT_CATEGORIES for item in inputs) or len(set(inputs)) != len(inputs):
             errors.append(f"{prefix}.inputs is invalid")
         nodes[phase] = node
-    if set(nodes) != set(WORKFLOW_PHASE_IDS):
+    if set(nodes) not in (set(WORKFLOW_PHASE_IDS), set(WORKFLOW_PHASE_TYPES)):
         errors.append("phase_dag must define every shipped phase exactly once")
     for phase, node in nodes.items():
         dependencies = node.get("depends_on", [])
-        if phase in dependencies or any(dependency not in nodes for dependency in dependencies):
+        if phase in dependencies or any(dependency not in nodes for dependency in dependencies) or any(gate not in nodes for gate in node.get('parent_gates', [])):
             errors.append(f"phase_dag dependencies for {phase} are invalid")
     visiting, visited = set(), set()
     def visit(phase: str) -> None:
@@ -561,7 +584,7 @@ def phase_evidence_graph(phase_dag: Any, *, has_parent: bool, has_children: bool
         parent_phases = {item["id"] for item in phase_dag["phases"] if item["applicability"] not in {"child_only", "leaf_only"}}
         parent_gates = [gate for gate in node["parent_gates"] if gate in parent_phases] if has_parent else []
         if phase == "publish" and "implement" not in included:
-            dependencies = ["plan"]
+            dependencies = ["plan" if "plan" in included else "decompose"]
         result.append({"id": phase, "depends_on": dependencies, "parent_gates": parent_gates})
     return {"phases": result}
 

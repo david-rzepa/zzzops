@@ -1,5 +1,5 @@
 # Understand Execute
 
-Run this prompt only when the public workflow returns this exact step. Clarify the requested outcome, constraints, affected behaviour, and unanswered human decisions.
+Run this prompt only when the public workflow returns this exact step. Challenge ambiguities with goal-specific questions; synthesize requirements, constraints, viable architecture, risks, and human decisions. Planning belongs here and in test design, not in a separate phase. For a leaf, declare the returned finite output scope. During unattended execution, persist unanswered decisions as blockers.
 
 Use the returned model-plus-effort pair and assignment exactly. Submit the returned `start` request to acquire the phase before doing work. When delegated, launch or resume only the selected executor and submit the returned `bind` request with its actual identity. Work only from the returned input envelope and upstream evidence. Submit the requested immutable artifact under the acquired lease by completing the returned `submission` and using its `command`. If required evidence is unavailable, submit the documented blocker; do not invent it or invoke another ZzzOps command. Release or recover a lease only as the workflow directs.
