@@ -137,10 +137,15 @@ class FullWorkflowJourneyTests(unittest.TestCase):
         }
 
     def portfolio(self, _repo):
-        return {
-            "complete": True, "valid": True,
-            "goals": [z.github_goal_record(self.provider.get_issue(number)) for number in sorted(self.provider.issues)],
-        }
+        goals = [z.github_goal_record(self.provider.get_issue(number)) for number in sorted(self.provider.issues)]
+        targets = [goal for goal in goals if isinstance((goal.get("implementation") or {}).get("pr"), str)]
+        if targets:
+            selected = [{"number": goal["key"]} for goal in targets]
+            bodies = {goal["key"]: {"body": self.provider.get_issue(goal["key"])["body"]} for goal in targets}
+            states, _bytes, _processes = self.pull_request_states(_repo, "gh", selected, bodies)
+            for goal in targets:
+                goal["pull_request"] = states.get(goal["key"])
+        return {"complete": True, "valid": True, "goals": goals}
 
     def pull_request_states(self, _repo, executable, selected, bodies):
         self.assertEqual("gh", executable)

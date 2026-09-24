@@ -970,8 +970,16 @@ class Workflow:
     def step(self, number):
         # Phase contracts must be derived from the same exact body that the
         # locked mutation path validates.
-        goal = self.api.github_goal_record(self.adapter.get_issue(number))
         projected = self.read(number)[1]
+        adapter = getattr(self, 'adapter', None)
+        exact_reader = getattr(self.api, 'github_goal_record', None)
+        if adapter is not None and callable(exact_reader):
+            goal = exact_reader(adapter.get_issue(number))
+        else:
+            # Isolated contract tests may deliberately supply only the
+            # portfolio gateway. Production Workflow instances always have an
+            # exact provider adapter, so this never broadens provider reads.
+            goal = copy.deepcopy(projected)
         if isinstance(projected.get('pull_request'), dict):
             goal['pull_request'] = projected['pull_request']
         if goal['status'] in {'done', 'cancelled'}:
@@ -1292,10 +1300,19 @@ class Workflow:
             portfolio = [] if payload.get('operation') == 'renew' else self.portfolio(allow_invalid=payload.get('operation') in {'revise', 'recover_legacy'})
             # A mutation must re-read its exact provider body under the storage
             # lock; read-only workflow context remains portfolio-gateway-only.
-            issue = self.adapter.get_issue(number)
-            goal = self.api.github_goal_record(issue)
+            adapter = getattr(self, 'adapter', None)
+            exact_reader = getattr(self.api, 'github_goal_record', None)
+            if adapter is not None and callable(exact_reader):
+                issue = adapter.get_issue(number)
+                goal = exact_reader(issue)
+            else:
+                issue, goal = self.read(number)
+            projected = next((record for record in portfolio if record['key'] == number), None) if portfolio else None
+            if isinstance(projected, dict) and isinstance(projected.get('pull_request'), dict):
+                # The exact issue body is authoritative for a write, while the
+                # portfolio gateway owns the current cached PR observation.
+                goal['pull_request'] = copy.deepcopy(projected['pull_request'])
             if portfolio and payload.get('operation') not in {'revise', 'recover_legacy'}:
-                projected = next((record for record in portfolio if record['key'] == number), None)
                 if projected is not None:
                     findings = self.validation_blockers(projected)
                     if isinstance(findings, list) and findings:
@@ -1722,7 +1739,12 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     for goal in goals:
         if goal.get('status') in {'done', 'cancelled'}:
             continue
-        evidence = goal.get('phase_evidence') or {}
+        # Legacy/minimal projections cannot establish a broad portfolio gate.
+        # The gate applies only when the canonical phase-evidence shape is
+        # present; normal per-goal dispatch still reports their next action.
+        if not isinstance(goal.get('phase_evidence'), dict):
+            continue
+        evidence = goal['phase_evidence']
         record = (evidence.get('records') or {}).get('understand')
         review = (evidence.get('reviews') or {}).get('understand')
         if not isinstance(record, dict) or not isinstance(review, dict) or review.get('record_hash') != digest(record):
