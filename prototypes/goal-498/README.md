@@ -56,8 +56,15 @@ Durable goal artifacts already recorded:
 - V4 candidate: `urn:sha256:5d4c4876c86faf65b58c44e1db154dd4fadafdf4ebff5b5537ab2ea7b926b001`
 - V4 review: `urn:sha256:81aee8e5abaab3df4f9793742a399b5e7a3d5b71f8f9e163914f6d88f36c06c0`
 
-Next: persist the v5 candidate through the repository CLI, obtain re-review from
-the existing independent reviewer, then request explicit human design approval.
+V5 was independently re-reviewed: the reviewer reproduced a generation-binding
+bypass in `Model.resolve`. The current v6 correction rejects resolution against
+a different subject generation until authorized transfer. The existing composed
+journey now first attempts that bypass (observed failing before the fix), then
+checks that transfer, correction and review release the join. All 42 tests pass.
+The normative design is unchanged. V6 still requires independent re-review.
+
+Next: persist v6 through the repository CLI, obtain re-review from the existing
+independent reviewer, then request explicit human design approval.
 Production output scope remains empty until that approval and child allocation.
 Real provider failures, authentication, distributed timing and released-body
 fixtures require production tests; fixture authority is not authentication.

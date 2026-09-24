@@ -239,6 +239,13 @@ class Journeys(unittest.TestCase):
         self.assertEqual(m.exact_member('work', 'a', 1), exact)  # historical address retained
         self.assertEqual(m.results['work/b'], sibling)
         self.assertTrue(m.current('work/b'))
+        m.run('work/a', 'new generation without inherited correction')
+        m.nodes['review_a'] = Node(needs=('work/a',), independent=True)
+        m.run('review_a', 'new generation reviewed', 'reviewer')
+        with self.assertRaisesRegex(ValueError, 'generation'):
+            m.resolve('migration-gap', 'review_a')
+        self.assertFalse(m.resolved('migration-gap'))
+        self.assertNotIn('publish', m.ready())
         m.supersede('migration-gap', digest(m.findings['migration-gap']), 'preserve history',
                     'root', 'carried', 'explicitly inherit old obligation', generation=2)
         m.run('work/a', 'history preserved')

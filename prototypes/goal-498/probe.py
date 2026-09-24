@@ -252,6 +252,8 @@ class Model:
 
     def resolve(self, key, review):
         target = self.findings[key]['target']
+        if self.findings[key]['generation'] != self.generations.get(target, 1):
+            raise ValueError('resolution subject generation requires explicit transfer')
         if not self.current(target) or not self.current(review):
             raise ValueError('stale resolution')
         if (not self.nodes[review].independent or self.nodes[review].gate
