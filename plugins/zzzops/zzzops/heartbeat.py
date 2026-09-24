@@ -271,8 +271,9 @@ def heartbeat_health(
               if (event.get("goal"), event.get("phase"), event.get("token")) == (goal, phase, token)]
     latest = events[-1] if events else None
     evidence_at = latest.get("time") if isinstance(latest, dict) else None
-    if latest and latest.get("event") == "worker_stopped":
-        return {"classification": "stopped", "evidence_at": evidence_at,
+    terminal = next((event for event in reversed(events) if event.get("event") == "worker_stopped"), None)
+    if terminal is not None:
+        return {"classification": "stopped", "evidence_at": terminal.get("time"),
                 "explanation": ["The bound liveness probe recorded a terminal worker status."],
                 "next_action": "Inspect the latest result file and backend lease, then recover only if the durable phase remains incomplete."}
     if lease is None:
