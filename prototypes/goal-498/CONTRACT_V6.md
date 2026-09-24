@@ -1,4 +1,4 @@
-# Candidate contract 2 — reduced primitives, not an installed schema
+# Candidate contract 1 — normative design, not an installed schema
 
 This document supersedes provisional shapes in DESIGN.md for review purposes.
 It specifies observable semantics; production encodings/indexes remain implementation
@@ -22,26 +22,28 @@ Content same as a retired generation cannot accept its old worker result.
 ```
 GoalEnvelope = {schema_version:2, repository:string, issue:positive-int,
                 revision:positive-int, state:open|archived, payload:Ref}
-Payload = {spec:Ref, graph:Ref, evidence:[Ref],
+Payload = {spec:Ref, graph:Ref, artifacts:[Ref], results:[Ref],
            operational:{leases:[Lease], receipts:[Receipt]}}
 Artifact = {type:ID, content:JSON, producer:AttemptID|null,
             provenance:{actor:string, source:Ref|null, policy:Hash}}
 Binding = {name:ID, source:Ref, path:[string|nonnegative-int],
            mode:content|identity}
 Result = {node:QualifiedNode, attempt:ID, contract:Hash,
-          inputs:[Binding], executor:string, outputs:{ID:Ref}}
+          inputs:[Binding], executor:string, outputs:{ID:Ref},
+          outcome:produced|excluded, exclusion:Ref|null}
 Node = {id:ID, prompt:Markdown-string, inputs:{ID:Input}, outputs:{ID:TypeContract},
-        requires:[NodeSelector], executor:ExecutorContract,
-        independent_of:[NodeSelector], gates:[Scope], resolves:[Scope],
-        permits:[{type:ID, scope:Scope}]}
-Input = {producer:{node:NodeSelector}|{slot:ID}, output:ID, path:[string|nonnegative-int],
+        requires:[ID], applicability:Input|null, executor:ExecutorContract,
+        independent_of:[ID], gates:[Scope], resolves:[Scope]}
+Input = {producer:ID|external-slot, output:ID, path:[string|nonnegative-int],
          mode:content|identity, type:TypeContract}
-TaskSet = {id:ID, source:Input, template:Node}
-Graph = {nodes:[Node], task_sets:[TaskSet], terminals:[NodeSelector]}
+Expand = {id:ID, source:Input, template:Node}
+Graph = {nodes:[Node], expansions:[Expand], terminals:[ID]}
+Scope = {goal:positive-int, producer:ID, output:ID}
 ```
 
-Node.id and TaskSet.id are local declaration names. Every node reference position
-(Input.producer.node, requires, independent_of, terminals and Scope.subject) uses:
+The unqualified node IDs in the compact shapes above are local declaration names,
+not a reference encoding. Every reference position (Input.producer.node, requires,
+independent_of, terminals and Scope.subject) uses this closed selector grammar:
 
 ```
 NodeSelector = {kind:node, goal:positive-int, node:ID}
@@ -51,11 +53,11 @@ NodeSelector = {kind:node, goal:positive-int, node:ID}
 Scope = {subject:NodeSelector, output:ID}
 ```
 
-A node selector resolves to
+This Scope replaces the shorthand Scope shown above. A node selector resolves to
 that static node (generation 1). Member/current is allowed only in configuration;
 acquisition and persisted bindings resolve it to an exact positive generation.
 Exact retired generations remain valid historical addresses, but cannot start work.
-Join prerequisites mean all selected members; a join input is a sorted map
+Join prerequisites mean all current required members; a join input is a sorted map
 of item IDs to exact generation/output bindings. Join gates/resolves additionally
 retain outstanding scopes from retired generations until an authorized disposition.
 No plain string can ambiguously mean a member or a join.
@@ -79,7 +81,7 @@ TypeContract is a closed structural schema built from string, boolean, integer,
 null, arrays, fixed-field objects and explicit enum alternatives. No code, regex
 execution, coercion, unbounded recursive references or network validators. All
 types/slots resolve in the reviewed graph; a missing path is unresolved, never null.
-The first design supports only typed paths and explicit selected membership;
+The first design supports only typed paths and equality-to-enum applicability;
 arbitrary query expressions and script predicates are excluded.
 
 Exact TypeContract alternatives are {kind:string|boolean|integer|null},
@@ -87,7 +89,8 @@ Exact TypeContract alternatives are {kind:string|boolean|integer|null},
 and {kind:enum, values:[distinct JSON scalars]}. Nullable values use an enum
 containing null or an explicit {kind:union, variants:[TypeContract]} with disjoint
 validated alternatives. Limit nesting to 16 levels and decoded records to 1 MiB;
-reject, do not truncate. Input.producer uses the closed selector/slot union above.
+reject, do not truncate. Input.producer is encoded as exactly one of {node:ID}
+or {slot:ID}; the displayed shorthand above is not an ambiguous string union.
 AttemptID is an ID unique within its qualified node generation.
 
 ```
@@ -99,8 +102,8 @@ Receipt = {request:ID, payload:Hash, result:Ref}
 
 Artifact authority is checked against authenticated host/provider provenance plus
 reviewed scope rules, never against an arbitrary actor string supplied in content.
-Every Result supplies exactly the configured output names/types. There is no
-excluded Result: not selecting a task is a decision in current selection evidence.
+A produced Result supplies exactly the configured output names/types and exclusion
+null; an excluded Result has outputs={} and the current validated exclusion Ref.
 Graph.terminal IDs reference nodes or expansion joins; successful completion is
 not represented by an arbitrary true boolean in an artifact.
 
@@ -109,18 +112,9 @@ policy authority scope. Capability inventory and model/effort selection reuse
 reviewed routing. Root interaction cannot be delegated; workers cannot self-grant
 authority. Unavailable capability yields a reasoned wait/block, never a lower route.
 
-There is one evidence repository. Result is the content contract of a host-issued
-Artifact with type=result, not a second storage class. Findings, selections,
-admissions, retirements and resolutions are also typed evidence. Result indexes,
-task membership and obligations are derived projections, not independent authority.
-The host constructs Result identity/executor/input fields from the acquired attempt.
-Submitting ordinary content labelled "result" grants no execution/approval authority.
-Output provenance uses the acquired AttemptID, never the future Result hash, so
-result/output references cannot form a content-addressing cycle.
-
-The semantic core is evidence, task contracts, deterministic task-set construction,
-and authorized revision. This is a decomposition of responsibilities, not a claim
-that four nouns prove mathematical minimality. Domain phases are configuration.
+Artifact and result are the durable evidence classes. Applicability, findings,
+admissions, exclusions and resolutions below are ordinary artifacts with validated
+types. Obligations are derived from graph/contracts, not another mutable task list.
 
 ## 2. Bindings and validity
 
@@ -142,35 +136,27 @@ compares the actual actors of declared subjects, including selected artifact
 provenance, not merely node labels. Upstream results and authority must still be
 valid at persistence. Reject stale work, do not overwrite it into the current index.
 
-## 3. One mechanism for selected work: zero, one or many
+## 3. Applicability, expansion and retirement
 
-A task-set source emits Selection = {items:{ID:JSON}, rationale:nonempty-string}.
-Its producer Result binds exact subject inputs, reviewed policy, executor and
-authority. Items are specifications, not executable task definitions. The reviewed
-TaskSet owns the immutable template, independence, permitted output types/scopes and
-routing. An item cannot override these by including similarly named JSON fields.
-Prospective instances, references and cycles are validated before accepting a bundle.
+Applicability content is {decision:required|excluded|unresolved, rationale:string,
+subjects:[Ref], authority:Ref}. Required schedules work. Unresolved/missing blocks
+the dependent obligation. Excluded needs nonempty rationale and authority satisfying
+the configured exclusion contract. Its result binds the exact decision evidence;
+an excluded result is not permission to omit other unresolved findings.
 
-Missing, stale, invalid or unavailable selection is unresolved membership, never
-an empty set. A current authorized empty object is positive evidence of no selected
-work. A join requires that selection to remain current even when there are no
-members. A conditional specialist is the zero-or-one case; investigations are the
-many case. No applicability scheduler, synthetic excluded task result, or separate
-join executor exists. Joins are universal requirements over the current selected set.
+Expansion source is a typed object keyed by stable item ID. Its values are immutable
+item specifications. An empty current object means no members; missing/stale source
+means unresolved membership. The scheduler automatically derives instances and join
+requirements from that source. Item content bindings avoid rerunning unchanged
+siblings when another item is added. Source validity is still a prerequisite.
 
-Stable keys and exact generation identities retain unchanged sibling results.
-Item content bindings avoid rerunning A when B is added, but the selection producer
-must itself be current. Replacing selection binds expected prior version; conflicting
-proposals require a decision rather than last-writer-wins adoption.
-
-Retiring a member with outstanding findings requires authority-bound retirement
-evidence, and preserves those findings in their exact historical Scope. Reactivation
-creates a new generation. Findings transfer only via the existing explicit coverage/
-authority contract. An empty current set does not erase a historical obligation.
-
-Ordinary reviewed graph edits can express the same fanout. Task sets are chosen for
-deterministic construction, stable identity and reduced repetitive edits, not extra
-expressive power or a second scheduler.
+Manifest replacement binds expected prior manifest identity and authorized producer.
+Competing proposals are findings/decisions, not silent last-writer-wins merges.
+Validate duplicate IDs, references and cycles on the prospective expanded graph
+before activating it. Retire via a version-bound authorized exclusion/retirement
+artifact. Preserve unresolved findings in their immutable Scope even after producer
+retirement. New owners must explicitly inherit them or a configured authority must
+disposition them; removing an item cannot erase its obligation.
 
 ## 4. Corrections and disposition
 
@@ -183,11 +169,6 @@ Resolution = {finding:Ref, subjects:[Ref], reviewer_result:Ref,
               decision:resolved|rejected|needs_work, rationale:string}
 ```
 
-The named evidence types below are not agent-facing operations. They are output
-contracts of ordinary tasks, accepted through the same submission path as any other
-result. Narrow validators retain their distinct freshness and authority semantics;
-a generic arbitrary patch/script language is explicitly out of scope.
-
 Findings are proposals until admission validates target identity, subject provenance,
 scope authority and applicability to current work. Configured in-scope admission
 can be agent-driven. Parent-contract/scope changes require the root authority artifact.
@@ -195,12 +176,6 @@ An unavailable/ambiguous target remains unresolved. External comments supply sou
 evidence, never admission or approval authority by themselves.
 
 An applicable admission adds semantic correction content to the target's next inputs.
-Admission is an acceptance-time authorization: after its exact subjects, policy and
-authority have been checked, its accepted revision remains effective until explicitly
-superseded or withdrawn. It does NOT depend on the admitting task remaining current.
-Otherwise its own correction could stale its inspected producer, invalidate its own
-authority, and oscillate. This rule does not preserve review/approval freshness:
-resolution and approval must still cover their configured current subjects.
 Several compatible findings on the same reviewed version coalesce into one attempt.
 Contradictory requests require an explicit interpretation/decision artifact before
 dispatch; no last writer wins. Finding edits create revision n+1 with supersedes
@@ -239,39 +214,25 @@ dependencies in graph validation: a resolver cannot depend on an action gated by
 same Scope. Reject self-resolution, resolver/gate cycles and unsatisfiable authority.
 The static graph must declare potential resolver scopes so this check precedes work.
 
-## 5. One acceptance operation, separate operational ownership
+## 5. Transition table
 
-The semantic write surface is submit(acquired_attempt, output_bundle, request_id).
-External source ingestion and human decisions are outputs of configured host/root
-tasks; they cannot impersonate a result record. Start, wait and stopped-worker
-recovery are operational ownership mechanisms, not additional kinds of semantic work.
+| Input/action | Required checks | Durable result / next state |
+|---|---|---|
+| external evidence | source, type, writer authority, expected slot version | append artifact; derive affected validity |
+| node start | current inputs/prerequisites/applicability, capability/resources | lease exact generation/fingerprint |
+| node result | same current lease/inputs, output types, authority/independence | append result; release lease; derive frontier |
+| finding proposal | immutable source/subjects, resolvable target contract | proposed artifact; no automatic authority |
+| admission | current version, applicability, configured/root authority | selected correction revision; producer becomes stale |
+| resolution | exact finding/subject, current independent result | disposition; release only matching gated obligations |
+| manifest change | expected version, authority, expanded-graph validation | new membership; preserve retired scopes/history |
+| human answer/approval | root, exact question/subject/policy binding | ordinary authoritative artifact; affected reruns only |
+| infrastructure failure | evidence of unavailable execution prerequisite | retain existing substantive results; affected work waits |
+| lease recovery | exact token/owner, observed terminal worker, no live replacement | revoke old token; permit fresh acquisition |
 
-Acceptance is all-or-nothing:
-1. Verify exact lease, incarnation, current input/contract fingerprint, actual executor,
-   configured independence, output names/types and output-type/scope permissions.
-2. Validate the whole proposed bundle against one candidate state, including exact
-   expected revision, transfer coverage, authority and prospective graph constraints.
-   Replacement plus its required coverage decision become effective together.
-3. Append immutable outputs and the host-issued Result, and record the exact request
-   receipt under cooperative ownership. Publish derived indexes only after success.
-   On any failure publish none of the bundle, result, membership or revision changes.
-4. Recompute validity/frontier. Accepted revisions remain; current-subject decisions
-   are checked against current evidence. Bookkeeping never alters substantive inputs.
-
-Receipts bind request identity to exact payload. Exact retry after a lost response
-returns the original result even if that result's inputs are now stale. Different
-payload under the same request fails. This is local/cooperative transactional
-acceptance, not a claim that GitHub offers conditional or multi-resource transactions.
-
-Replay/index rebuild consumes only previously accepted, authenticated evidence.
-It cannot promote imported JSON merely because its type field says result. Preserve
-accepted admission and transfer history; derive current resolution from exact review
-and subject evidence. Operational receipts remain separate from semantic fingerprints.
-
-Expiry alone never proves a worker stopped. Unknown liveness blocks recovery.
-Recover only exact token/owner with observed stopped work, then permit fresh acquisition.
-Infrastructure failure records evidence and blocks/retries the affected task; it does
-not manufacture a correction to otherwise valid implementation evidence.
+Expiry alone never proves a worker stopped. Unknown worker liveness blocks recovery.
+All writes have request receipts bound to exact payload. Same request/payload retries
+reuse the result; changed payload under same request ID fails. Coordinator validates
+under short cooperative ownership; execution leases are per node instance.
 
 ## 6. Migration bootstrap
 
@@ -317,9 +278,9 @@ dropping fields. Mapping never changes closed state or silently reopens a goal.
 
 | Option | Retained complexity | New complexity | Decision |
 |---|---|---|---|
-| Reviewed explicit graph edits | smallest evaluator; full expressive power | repeated authorized edits must preserve membership, history and joins | viable baseline; task sets reduce repetitive construction |
+| Fixed nodes | smallest evaluator | each novel bucket needs policy edit or hidden scheduler | baseline fixture; insufficient autonomous keyed expansion |
 | Extend old phase slots | two-mode results, phase operations and migration mapping | multiple review slots, dynamic IDs, correction ledger, compatibility branches | nearly same new work plus dual semantics; reject unless prototype fails |
-| Single schema, generic tasks + task sets | existing provider cache/authority/lease concepts | typed evidence, deterministic construction and revision validators | candidate; one acceptance path, explicit migration |
+| Single schema, generic nodes + keyed expansion | existing provider cache/authority/lease concepts | typed artifacts, expansion and correction validity | candidate; explicit migration instead of dual execution |
 
 Design GO requires all normative examples and negative cases to pass, no observed
 bookkeeping-only rerun, no unrelated-goal blocking, no stale worker/approval acceptance,

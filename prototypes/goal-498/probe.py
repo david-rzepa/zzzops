@@ -19,11 +19,11 @@ class Node:
     inputs: tuple = ()
     needs: tuple = ()
     joins: tuple = ()
-    when: str | None = None
     independent: bool = False
     gate: bool = False
     capability: str = 'base'
     root_only: bool = False
+    permits: tuple = ()  # (typed decision, exact target scope); reviewed configuration
 
 
 class Model:
@@ -41,7 +41,8 @@ class Model:
         self.expansion_sources = {}
         self.output_values = {}
         self.capabilities = {'base'}
-        self.exclusions = {}
+        self.evidence = {}  # accepted immutable result evidence, insertion ordered
+        self.receipts = {}  # operational replay protection, not semantic inputs
         self.history = []
         self.validate()
 
@@ -59,7 +60,7 @@ class Model:
         for name in self.nodes:
             visit(name, ())
 
-    def expand(self, collection, items, template, expected=None):
+    def _expand(self, collection, items, template, expected=None):
         # Stable per-item identity/input: adding B does not rerun unchanged A.
         if expected is not None and expected != self.collection_version(collection):
             raise ValueError('stale collection revision')
@@ -96,7 +97,11 @@ class Model:
     def refresh_expansions(self):
         for collection, (source, template) in self.expansion_sources.items():
             if self.current(source):
-                self.expand(collection, self.output_values[source], template)
+                manifest = self.output_values[source]
+                if (not isinstance(manifest, dict) or set(manifest) != {'items', 'rationale'}
+                        or not isinstance(manifest['items'], dict) or not manifest['rationale']):
+                    raise ValueError('selection requires explicit items and rationale')
+                self._expand(collection, manifest['items'], template)
 
     def active(self, name):
         return all(name not in self.nodes or not name.startswith(group + '/')
@@ -113,6 +118,14 @@ class Model:
         return deps
 
     def fingerprint(self, name, path=()):
+        cache = getattr(self, '_evaluation_cache', None)
+        if cache is None:
+            return self._fingerprint(name, path)
+        if name not in cache:
+            cache[name] = self._fingerprint(name, path)
+        return cache[name]
+
+    def _fingerprint(self, name, path=()):
         if name in path:
             raise ValueError('cycle')
         node = self.nodes[name]
@@ -122,9 +135,7 @@ class Model:
         if node.gate and any(f['target'] in self.ancestors(name) and not self.resolved(key)
                              for key, f in self.findings.items()):
             return None
-        applicability = self.inputs.get(node.when) if node.when else True
-        if not self.active(name) or (applicability is not True and not (
-                applicability is False and self.exclusions.get(name) == digest(node.__dict__))):
+        if not self.active(name):
             return None
         if any(key not in self.inputs for key in node.inputs):
             return None
@@ -137,13 +148,13 @@ class Model:
             result = self.results.get(dep)
             if expected is None or not result or result['input'] != expected:
                 return None
-            upstream[dep] = result['output']
+            upstream[dep] = ({'output': result['output'], 'generation': self.generations.get(dep, 1)}
+                             if node.independent else result['output'])
         corrections = {key: f for key, f in self.findings.items() if f['target'] == name
                        and f['generation'] == self.generations.get(name, 1)
                        and self.withdrawals.get(key) != digest(f)}
         # Resolution bookkeeping intentionally absent from producer inputs.
         return digest({'contract': node.__dict__, 'generation': self.generations.get(name),
-                       'applicability': applicability,
                        'inputs': {k: self.inputs[k] for k in node.inputs},
                        'upstream': upstream, 'corrections': corrections})
 
@@ -167,23 +178,20 @@ class Model:
         return fingerprint is not None and self.results.get(name, {}).get('input') == fingerprint
 
     def ready(self):
-        return sorted(name for name, node in self.nodes.items()
-                      if node.capability in self.capabilities
-                      and self.fingerprint(name) is not None and not self.current(name))
-
-    def exclude(self, name, actor, reason):
-        node = self.nodes[name]
-        if actor != 'root' or not reason or not node.when or self.inputs.get(node.when) is not False:
-            raise ValueError('unauthorized exclusion')
-        self.exclusions[name] = digest(node.__dict__)
-        self.run(name, {'excluded': reason}, actor)
+        self._evaluation_cache = {}  # one immutable evaluation only; never cross writes
+        try:
+            return sorted(name for name, node in self.nodes.items()
+                          if node.capability in self.capabilities
+                          and self.fingerprint(name) is not None and not self.current(name))
+        finally:
+            del self._evaluation_cache
 
     def begin(self, name):
         if name not in self.ready():
             raise ValueError('not ready')
         return self.fingerprint(name)
 
-    def finish(self, name, token, value, actor='worker'):
+    def _finish(self, name, token, value, actor='worker'):
         if name not in self.ready() or token != self.fingerprint(name):
             raise ValueError('stale attempt')
         if self.nodes[name].root_only and actor != 'root':
@@ -195,12 +203,115 @@ class Model:
         self.results[name] = record
         self.output_values[name] = copy.deepcopy(value)
         self.history.append((name, copy.deepcopy(record), copy.deepcopy(value)))
-        self.refresh_expansions()
 
     def run(self, name, value, actor='worker'):
-        self.finish(name, self.begin(name), value, actor)
+        self.submit(name, self.begin(name), value, actor)
 
-    def correct(self, key, target, subject, change, authority='root'):
+    def submit(self, name, token, value, actor='worker', decisions=(), request=None):
+        """Only acceptance path. Fixture actor is authenticated by the host in production.
+
+        Validate an isolated candidate, then publish its complete evidence bundle.
+        Decision types are closed contracts, not scripts or arbitrary field writes.
+        """
+        payload = digest([name, token, value, actor, decisions])
+        request = request or 'attempt_' + str(len(self.evidence))
+        if request in self.receipts:
+            prior, ref = self.receipts[request]
+            if prior != payload:
+                raise ValueError('conflicting request replay')
+            return ref
+        candidate = copy.deepcopy(self)
+        candidate._finish(name, token, value, actor)
+        accepted = []
+        for decision in decisions:
+            if not isinstance(decision, dict) or set(decision) != {'kind', 'scope', 'args'}:
+                raise ValueError('invalid decision record')
+            kind, scope, args = decision['kind'], decision['scope'], decision['args']
+            if (kind, scope) not in self.nodes[name].permits:
+                raise ValueError('undeclared output type or scope')
+            if kind == 'admit':
+                key, target, subject, change = args
+                if target != scope: raise ValueError('scope mismatch')
+                candidate._correct(key, target, subject, change, actor)
+                accepted.append({'kind': kind, 'key': key, 'finding': copy.deepcopy(candidate.findings[key])})
+            elif kind == 'replace':
+                key, expected, change, coverage, reason, generation = args
+                if candidate.findings[key]['target'] != scope: raise ValueError('scope mismatch')
+                candidate._supersede(key, expected, change, actor, coverage, reason, generation)
+                accepted.append({'kind': kind, 'key': key, 'finding': copy.deepcopy(candidate.findings[key])})
+            elif kind == 'withdraw':
+                key, expected, reason = args
+                if candidate.findings[key]['target'] != scope: raise ValueError('scope mismatch')
+                candidate._withdraw(key, expected, actor, reason)
+                accepted.append({'kind': kind, 'key': key, 'finding_hash': expected})
+            elif kind == 'retire':
+                target, reason = args
+                if target != scope: raise ValueError('scope mismatch')
+                candidate._authorize_retirement(target, actor, reason)
+                accepted.append({'kind': kind, 'target': target, 'generation': candidate.generations[target]})
+            elif kind == 'resolve':
+                key, review = args
+                if candidate.findings[key]['target'] != scope: raise ValueError('scope mismatch')
+                if actor != candidate.results[review]['actor']:
+                    raise ValueError('resolution must be submitted by its reviewer')
+                candidate._resolve(key, review)
+                accepted.append({'kind': kind, 'key': key, 'resolution': copy.deepcopy(candidate.resolutions[key])})
+            else:
+                raise ValueError('unsupported decision type')
+        candidate.refresh_expansions()  # prospective membership/cycle validation
+        selections = {group: {'items': copy.deepcopy(candidate.output_values[source]['items']),
+                              'template': copy.deepcopy(template)}
+                      for group, (source, template) in candidate.expansion_sources.items()
+                      if candidate.current(source)}
+        result = copy.deepcopy(candidate.results[name])
+        event = {'type': 'result', 'node': name,
+                 'generation': candidate.generations.get(name, 1),
+                 'attempt': request, 'contract': digest(self.nodes[name].__dict__),
+                 'result': result, 'value': copy.deepcopy(value), 'accepted': accepted,
+                 'selections': selections}
+        ref = digest(event)
+        candidate.evidence[ref] = event
+        candidate.receipts[request] = (payload, ref)
+        self.__dict__.update(candidate.__dict__)
+        return ref
+
+    def finish(self, name, token, value, actor='worker'):
+        return self.submit(name, token, value, actor)
+
+    def rebuild(self):
+        """Rebuild disposable indexes from previously accepted evidence, not imports.
+
+        Acceptance is a host trust boundary. A dict supplied by a caller is NOT a
+        result import API. Membership/inputs are derived from current graph/evidence.
+        """
+        self.results, self.output_values, self.history = {}, {}, []
+        self.findings, self.finding_history = {}, {}
+        self.resolutions, self.withdrawals, self.retirements = {}, {}, set()
+        self.members, self.generations = {}, {}
+        for ref, event in self.evidence.items():
+            if digest(event) != ref: raise ValueError('corrupt accepted evidence')
+            name, record, value = event['node'], event['result'], event['value']
+            self.results[name] = copy.deepcopy(record)
+            self.output_values[name] = copy.deepcopy(value)
+            self.history.append((name, copy.deepcopy(record), copy.deepcopy(value)))
+            for fact in event['accepted']:
+                kind = fact['kind']
+                if kind in ('admit', 'replace'):
+                    key = fact['key']
+                    if kind == 'replace':
+                        self.finding_history.setdefault(key, []).append(copy.deepcopy(self.findings[key]))
+                        self.resolutions.pop(key, None); self.withdrawals.pop(key, None)
+                    self.findings[key] = copy.deepcopy(fact['finding'])
+                elif kind == 'withdraw': self.withdrawals[fact['key']] = fact['finding_hash']
+                elif kind == 'retire': self.retirements.add((fact['target'], fact['generation']))
+                elif kind == 'resolve': self.resolutions[fact['key']] = copy.deepcopy(fact['resolution'])
+            for group, selection in event['selections'].items():
+                self._expand(group, selection['items'], selection['template'])
+        # Accepted corrections remain effective even if their emitting task is stale.
+        # Review resolution is still checked against current subjects by resolved().
+        self.refresh_expansions()
+
+    def _correct(self, key, target, subject, change, authority='root'):
         if authority != 'root':
             raise ValueError('unadmitted correction')
         if target not in self.nodes or not any(n == target and r['output'] == subject for n, r, _ in self.history):
@@ -215,7 +326,7 @@ class Model:
             raise ValueError('late finding needs explicit applicability assessment')
         self.findings[key] = finding
 
-    def supersede(self, key, expected, change, authority, coverage, reason, generation=None):
+    def _supersede(self, key, expected, change, authority, coverage, reason, generation=None):
         old = self.findings[key]
         if authority != 'root' or coverage not in {'carried', 'narrowed'} or not reason:
             raise ValueError('authorized coverage disposition required')
@@ -233,12 +344,12 @@ class Model:
         self.resolutions.pop(key, None)
         self.withdrawals.pop(key, None)
 
-    def withdraw(self, key, expected, authority, reason):
+    def _withdraw(self, key, expected, authority, reason):
         if authority != 'root' or not reason or expected != digest(self.findings[key]):
             raise ValueError('authorized exact withdrawal required')
         self.withdrawals[key] = expected
 
-    def authorize_retirement(self, name, authority, reason):
+    def _authorize_retirement(self, name, authority, reason):
         if authority != 'root' or not reason:
             raise ValueError('authorized retirement required')
         self.retirements.add((name, self.generations[name]))
@@ -250,7 +361,7 @@ class Model:
         return {'kind': 'member', 'goal': 498, 'expansion': expansion,
                 'item': item, 'generation': generation}
 
-    def resolve(self, key, review):
+    def _resolve(self, key, review):
         target = self.findings[key]['target']
         if self.findings[key]['generation'] != self.generations.get(target, 1):
             raise ValueError('resolution subject generation requires explicit transfer')
@@ -268,6 +379,52 @@ class Model:
             return False
         review, record = self.resolutions[key]
         return self.current(review) and self.results[review] == record
+
+
+class Fixture(Model):
+    """Test-only graph authoring; every helper uses the same Model.submit path.
+
+    Fixture policy explicitly permits installing/removing one-shot decision tasks.
+    Production graph edits require reviewed authority, never worker self-permission.
+    """
+    def emit(self, kind, scope, args, actor='root', needs=()):
+        name = 'request_' + str(len(self.evidence))
+        self.nodes[name] = Node(needs=needs, permits=((kind, scope),))
+        try:
+            return self.submit(name, self.begin(name), {'rationale': 'fixture decision'}, actor,
+                               ({'kind': kind, 'scope': scope, 'args': args},))
+        finally:
+            self.nodes.pop(name, None)
+
+    def expand(self, collection, items, template, expected=None):
+        if expected is not None and expected != self.collection_version(collection):
+            raise ValueError('stale collection revision')
+        before = copy.deepcopy(self.__dict__)
+        source, slot = 'select_' + collection, 'selection_' + collection
+        self.nodes[source] = Node(inputs=(slot,), root_only=True)
+        self.inputs[slot] = copy.deepcopy(items)
+        self.expansion_sources[collection] = (source, template)
+        try:
+            self.run(source, {'items': items, 'rationale': 'explicit fixture membership'}, 'root')
+        except (ValueError, TypeError):
+            self.__dict__.clear(); self.__dict__.update(before)
+            raise
+
+    def correct(self, key, target, subject, change, authority='root'):
+        return self.emit('admit', target, (key, target, subject, change), authority)
+
+    def supersede(self, key, expected, change, authority, coverage, reason, generation=None):
+        return self.emit('replace', self.findings[key]['target'],
+                         (key, expected, change, coverage, reason, generation), authority)
+
+    def withdraw(self, key, expected, authority, reason):
+        return self.emit('withdraw', self.findings[key]['target'], (key, expected, reason), authority)
+
+    def authorize_retirement(self, name, authority, reason):
+        return self.emit('retire', name, (name, reason), authority)
+
+    def resolve(self, key, review):
+        return self.emit('resolve', self.findings[key]['target'], (key, review), self.results[review]['actor'])
 
 
 class Activation:
@@ -323,7 +480,7 @@ class MigrationProbe(unittest.TestCase):
 
 class Probe(unittest.TestCase):
     def linear(self):
-        return Model({'design': Node(inputs=('spec',)),
+        return Fixture({'design': Node(inputs=('spec',)),
                       'code': Node(needs=('design',)),
                       'review': Node(needs=('code',), independent=True),
                       'publish': Node(needs=('review',), gate=True)}, {'spec': 'v1'})
@@ -333,7 +490,7 @@ class Probe(unittest.TestCase):
         m.run('review', 'accepted', 'reviewer')
 
     def test_dynamic_join_preserves_unaffected_bucket(self):
-        m = Model({'synthesis': Node(joins=('buckets',))}, {})
+        m = Fixture({'synthesis': Node(joins=('buckets',))}, {})
         self.assertEqual(m.ready(), [])  # missing is not an empty collection
         m.expand('buckets', {'a': 'requirements'}, {})
         m.run('buckets/a', 'answer'); m.run('synthesis', 'summary')
@@ -343,7 +500,7 @@ class Probe(unittest.TestCase):
         self.assertEqual(m.ready(), ['synthesis'])
 
     def test_human_answer_changes_only_affected_bucket(self):
-        m = Model({'synthesis': Node(joins=('buckets',))}, {})
+        m = Fixture({'synthesis': Node(joins=('buckets',))}, {})
         m.expand('buckets', {'a': 'question', 'b': 'stable'}, {})
         m.run('buckets/a', 'assumption'); m.run('buckets/b', 'fact')
         m.expand('buckets', {'a': 'human answer', 'b': 'stable'}, {})
@@ -381,19 +538,20 @@ class Probe(unittest.TestCase):
 
     def test_cycle_rejected(self):
         with self.assertRaisesRegex(ValueError, 'cycle'):
-            Model({'a': Node(needs=('b',)), 'b': Node(needs=('a',))}, {})
+            Fixture({'a': Node(needs=('b',)), 'b': Node(needs=('a',))}, {})
 
     def test_unknown_applicability_not_ready(self):
-        m = Model({'specialist': Node(when='risk')}, {})
+        m = Fixture({'join': Node(joins=('risk',))}, {})
         self.assertEqual(m.ready(), [])
-        m.inputs['risk'] = True; self.assertEqual(m.ready(), ['specialist'])
+        m.expand('risk', {'specialist': 'required'}, {})
+        self.assertEqual(m.ready(), ['risk/specialist'])
 
     def test_independent_review_required(self):
         m = self.linear(); m.run('design', 'tests'); m.run('code', 'code')
         with self.assertRaisesRegex(ValueError, 'self review'): m.run('review', 'ok')
 
     def test_retirement_cannot_erase_finding(self):
-        m = Model({}, {}); m.expand('buckets', {'a': 'scope'}, {})
+        m = Fixture({}, {}); m.expand('buckets', {'a': 'scope'}, {})
         m.run('buckets/a', 'answer')
         m.correct('f', 'buckets/a', m.results['buckets/a']['output'], 'reconsider')
         with self.assertRaisesRegex(ValueError, 'unresolved'): m.expand('buckets', {}, {})
@@ -420,14 +578,14 @@ class Probe(unittest.TestCase):
         self.assertNotIn('publish', m.ready(), 'old resolution does not cover new review')
 
     def test_independent_goal_not_blocked(self):
-        m = Model({'a': Node(inputs=('a',)), 'b': Node(inputs=('b',)),
+        m = Fixture({'a': Node(inputs=('a',)), 'b': Node(inputs=('b',)),
                    'publish_b': Node(needs=('b',), gate=True)}, {'a': 'A', 'b': 'B'})
         m.run('a', 'A'); m.run('b', 'B')
         m.correct('f', 'a', m.results['a']['output'], 'fix A')
         self.assertIn('publish_b', m.ready())
 
     def test_parent_correction_stales_only_consuming_child(self):
-        m = Model({'parent': Node(inputs=('contract',)),
+        m = Fixture({'parent': Node(inputs=('contract',)),
                    'child': Node(needs=('parent',)), 'unrelated': Node(inputs=('other',))},
                   {'contract': 'v1', 'other': 'unchanged'})
         m.run('parent', 'contract'); m.run('child', 'child'); m.run('unrelated', 'other')
@@ -436,19 +594,19 @@ class Probe(unittest.TestCase):
         self.assertFalse(m.current('child')); self.assertTrue(m.current('unrelated'))
 
     def test_retired_worker_cannot_submit_after_reactivation(self):
-        m = Model({}, {}); m.expand('work', {'a': 'same'}, {})
+        m = Fixture({}, {}); m.expand('work', {'a': 'same'}, {})
         token = m.begin('work/a')
         m.expand('work', {}, {}); m.expand('work', {'a': 'same'}, {})
         with self.assertRaisesRegex(ValueError, 'stale'): m.finish('work/a', token, 'old')
 
     def test_dynamic_cycle_rejected_without_partial_mutation(self):
-        m = Model({'join': Node(joins=('work',))}, {})
+        m = Fixture({'join': Node(joins=('work',))}, {})
         with self.assertRaisesRegex(ValueError, 'cycle'):
             m.expand('work', {'a': 'question'}, {'needs': ('join',)})
         self.assertNotIn('work/a', m.nodes); self.assertNotIn('work', m.members)
 
     def test_collection_conflict_rejected(self):
-        m = Model({}, {}); m.expand('work', {'a': 'original'}, {})
+        m = Fixture({}, {}); m.expand('work', {'a': 'original'}, {})
         expected = m.collection_version('work')
         m.expand('work', {'a': 'new question'}, {}, expected)
         with self.assertRaisesRegex(ValueError, 'stale collection'):

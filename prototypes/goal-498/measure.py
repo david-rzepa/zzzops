@@ -2,7 +2,7 @@
 import json
 import statistics
 import time
-from probe import Model, Node
+from probe import Fixture as Model, Node
 
 
 def timed(expanded):

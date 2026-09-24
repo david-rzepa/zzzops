@@ -5,7 +5,7 @@ These are not real agents or a complete normative-schema implementation.
 import copy
 import unittest
 from dataclasses import replace
-from probe import Model, Node, digest
+from probe import Fixture as Model, Node, digest
 from cooperative_migration import Store
 
 
@@ -34,7 +34,7 @@ class Journeys(unittest.TestCase):
                    'approve': Node(needs=('grill',), root_only=True, gate=True)}, {'spec': 'request'})
         m.expand_from('investigate', 'frame', {})
         self.assertEqual(m.ready(), ['frame'])
-        m.run('frame', {'requirements': 'scope?', 'migration': 'compatibility?'})
+        m.run('frame', {'items': {'requirements': 'scope?', 'migration': 'compatibility?'}, 'rationale': 'initial buckets'})
         m.run('investigate/requirements', 'requirements', 'analyst1')
         m.run('investigate/migration', 'assume v1 retention', 'analyst2')
         m.run('synthesis', 'ask retention policy', 'synthesizer')
@@ -44,7 +44,7 @@ class Journeys(unittest.TestCase):
         m.correct('human-answer', 'frame', m.results['frame']['output'],
                   'migration bucket must investigate preservation')
         self.assertEqual(m.ready(), ['frame'])
-        m.run('frame', {'requirements': 'scope?', 'migration': 'preserve historical evidence'})
+        m.run('frame', {'items': {'requirements': 'scope?', 'migration': 'preserve historical evidence'}, 'rationale': 'human answer'})
         self.assertTrue(m.current('investigate/requirements'))
         self.assertEqual(m.ready(), ['investigate/migration'])
         m.run('investigate/migration', 'explicit preservation plan', 'analyst2')
@@ -106,17 +106,21 @@ class Journeys(unittest.TestCase):
         self.assertEqual(m.ready(), ['parent'])
 
     def test_exclusion_is_authorized_and_capability_wait_not_invalidation(self):
-        m = Model({'base': Node(inputs=('spec',)), 'specialist': Node(needs=('base',), when='risk', capability='special'),
-                   'join': Node(needs=('base', 'specialist'))}, {'spec': 'request'})
-        m.run('base', 'done'); self.assertEqual(m.ready(), [])
-        m.inputs['risk'] = False
-        with self.assertRaisesRegex(ValueError, 'unauthorized'): m.exclude('specialist', 'worker', 'not relevant')
-        m.capabilities.add('special'); m.exclude('specialist', 'root', 'reviewed exclusion')
+        m = Model({'base': Node(inputs=('spec',)),
+                   'select': Node(needs=('base',), root_only=True),
+                   'join': Node(needs=('base',), joins=('risk',))}, {'spec': 'request'})
+        m.expand_from('risk', 'select', {'capability': 'special'})
+        m.run('base', 'done')
+        self.assertEqual(m.ready(), ['select'])
+        with self.assertRaisesRegex(ValueError, 'root-only'):
+            m.run('select', {'items': {}, 'rationale': 'not relevant'}, 'worker')
+        m.run('select', {'items': {}, 'rationale': 'reviewed no risk'}, 'root')
         self.assertEqual(m.ready(), ['join'])
-        m.inputs['risk'] = True; m.capabilities.remove('special')
+        m.correct('risk', 'select', m.results['select']['output'], 'new risk')
+        m.run('select', {'items': {'specialist': 'required'}, 'rationale': 'new risk'}, 'root')
         self.assertEqual(m.ready(), [])
         self.assertTrue(m.current('base'))
-        m.capabilities.add('special'); self.assertEqual(m.ready(), ['specialist'])
+        m.capabilities.add('special'); self.assertEqual(m.ready(), ['risk/specialist'])
 
     def test_migration_entry_uses_same_nodes_and_preserves_gaps(self):
         nodes = {'analyze': Node(inputs=('source',)), 'convert': Node(needs=('analyze',)),
@@ -142,15 +146,14 @@ class Journeys(unittest.TestCase):
         self.assertEqual(entry({'schema_version': 2}, provider, policy)[0], 'normal')
 
     def test_authorized_exclusion_then_retirement_preserves_history(self):
-        m = Model({'join': Node(joins=('work',))}, {'applicable': False})
-        m.expand('work', {'a': 'obsolete investigation'}, {'when': 'applicable'})
-        with self.assertRaisesRegex(ValueError, 'unauthorized'):
-            m.exclude('work/a', 'worker', 'remove it')
-        m.exclude('work/a', 'root', 'reviewed scope exclusion')
+        m = Model({'join': Node(joins=('work',))}, {})
+        m.expand('work', {'a': 'obsolete investigation'}, {})
+        m.run('work/a', 'historical work')
         before = copy.deepcopy(m.history)
-        m.expand('work', {}, {})  # fixture root applies the admitted exclusion
-        self.assertEqual(m.history, before)
+        m.expand('work', {}, {})
+        self.assertEqual(m.history[:len(before)], before)
         self.assertIn('join', m.ready())
+        self.assertNotIn('work/a', m.ready())
 
     def test_identity_and_version_fail_closed(self):
         provider = {'state': 'open', 'repository': 'fixture', 'issue': 498}
