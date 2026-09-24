@@ -1996,44 +1996,6 @@ def inspect_repository_goal(repo: Path, project: dict[str, Any], issue_number: i
     return {"migration": migration, "goal": github_goal_record(issue)}
 
 
-def reconcile_merged_goal(repo: Path, project: dict[str, Any], issue_number: int, *, apply: bool = False) -> dict[str, Any]:
-    """Preview or apply one exact-evidence merged-PR goal reconciliation."""
-    repository = _project_repository_identity(project)
-    adapter = GitHubGoalTransitionAdapter(repo, repository)
-    issue = adapter.get_issue(issue_number)
-    record = github_goal_record(issue)
-    states, _raw_bytes, _processes = _github_pull_request_states(
-        repo, adapter.executable, [{"number": issue_number}], {issue_number: {"body": issue.get("body", "")}},
-    )
-    merge = classify_pr_merge(record, states.get(issue_number), repository)
-    result: dict[str, Any] = {"goal": issue_number, "merge": merge, "applied": False}
-    if merge.get("status") != "merged_verified":
-        return result
-    transition = build_reconciliation_transition(record, merge, github_goal_record(issue)["digest"])
-    result["transition"] = transition
-    if apply:
-        result["result"] = apply_goal_transition(adapter, repository, issue_number, transition)
-        updated_issue = adapter.get_issue(issue_number)
-        updated = github_goal_record(updated_issue)
-        implementation = updated.get("implementation") or {}
-        pr_url = implementation.get("pr")
-        tail = pr_url.rstrip("/").rsplit("/", 1)[-1] if isinstance(pr_url, str) else ""
-        event = {
-            "schema_version": 1,
-            "repository": repository,
-            "goal": issue_number,
-            "revision": updated["revision"],
-            "goal_digest": github_goal_record(updated_issue)["digest"],
-            "status": updated["status"],
-            "kind": "integrated_change",
-            "pr": int(tail) if tail.isdigit() else None,
-            "base_oid": merge.get("base_oid"),
-            "head_oid": merge.get("head_oid"),
-            "merge_oid": merge.get("merge_commit"),
-        }
-        result["entropy_event"] = record_entropy_review_event(repo, event)
-        result["applied"] = True
-    return result
 
 
 def render_portfolio_summary(snapshot: dict[str, Any], include_done: bool = False) -> str:
@@ -2988,9 +2950,6 @@ def _private_main() -> int:
     migrate_open_command.add_argument("--include-feedback", action="store_true")
     inspect_goal_command = goal_commands.add_parser("inspect", help="Inspect one goal and lazily compact legacy state")
     inspect_goal_command.add_argument("--goal", type=int, required=True)
-    reconcile_command = goal_commands.add_parser("reconcile-merged", help="Preview or apply one exact-evidence merged-PR reconciliation")
-    reconcile_command.add_argument("--goal", type=int, required=True)
-    reconcile_command.add_argument("--apply", action="store_true", help="Apply the guarded transition after previewing its exact evidence")
     reserve = commands.add_parser("reserve", help="Atomically reserve a GitHub-backed goal")
     reserve_commands = reserve.add_subparsers(dest="reserve_command", required=True)
     for name in ("acquire", "renew", "release"):
@@ -3293,8 +3252,6 @@ def _private_main() -> int:
                 result = migrate_open_repository_goals(
                     repo, project, limit=args.limit, include_feedback=args.include_feedback,
                 )
-            elif args.goal_command == "reconcile-merged":
-                result = reconcile_merged_goal(repo, project, args.goal, apply=args.apply)
             else:
                 result = inspect_repository_goal(repo, project, args.goal)
             print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))

@@ -27,6 +27,33 @@ class MemoryIssueAdapter:
 
 
 class WorkflowInvocationCacheTests(unittest.TestCase):
+    def test_attributed_merge_findings_do_not_block_independent_reads(self):
+        goals = [{'key': 433, 'status': 'ready'}, {'key': 435, 'status': 'ready'}]
+        portfolio = {'complete': False, 'goals': goals, 'findings': [
+            {'goal': 433, 'code': 'merged_pr_stale_checkpoint', 'detail': 'reviewed_head_mismatch'}]}
+        api = self.api(MemoryIssueAdapter({}), portfolio)
+        engine = z._workflow.Workflow(api, Path('.'), {}, {})
+        self.assertEqual(435, engine.read(435)[1]['key'])
+        self.assertEqual([], engine.validation_blockers(goals[1]))
+        self.assertEqual(433, engine.validation_blockers(goals[0])[0]['goal'])
+        goals[1]['depends_on'] = [433]
+        self.assertEqual(433, engine.validation_blockers(goals[1])[0]['goal'])
+        portfolio['error'] = 'provider inventory truncated'
+        with self.assertRaises(ValueError):
+            engine.portfolio(allow_invalid=True)
+
+    def test_merged_goal_emits_exact_public_reconciliation_contract(self):
+        engine = z._workflow.Workflow(self.api(MemoryIssueAdapter({}), {}), Path('.'), {}, {})
+        goal = {'key': 433, 'digest': 'a' * 64, 'status': 'ready',
+                'pull_request': {'merged': True, 'head_oid': 'head'}}
+        with mock.patch.object(engine, 'classify_merge', return_value={'status': 'merged_stale', 'reasons': ['reviewed_head_mismatch']}):
+            step = engine.reconciliation_step(goal)
+        self.assertEqual('reconcile', step['submission']['operation'])
+        self.assertEqual(goal['digest'], step['submission']['expected_digest'])
+        self.assertEqual(z._workflow.digest(goal['pull_request']), step['submission']['expected_merge'])
+        goal['status'] = 'done'
+        self.assertIsNone(engine.reconciliation_step(goal))
+
     def api(self, adapter, portfolio):
         return SimpleNamespace(
             _project_repository_identity=lambda project: "synthetic/project",
