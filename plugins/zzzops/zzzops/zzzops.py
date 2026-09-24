@@ -1835,7 +1835,12 @@ def _workflow_phase_configuration(project: dict[str, Any], goal: dict[str, Any])
     adherence = _workflow_section(project, "workflow_adherence")
     dag = adherence["configuration"].get("phase_dag")
     graph = phase_evidence_graph(dag, has_parent=goal.get("parent") is not None, has_children=bool(goal.get("children")))
-    phase_nodes = {node["id"]: node for node in dag["phases"] if node["id"] in {item["id"] for item in graph["phases"]}}
+    phase_nodes = {node["id"]: copy.deepcopy(node) for node in dag["phases"] if node["id"] in {item["id"] for item in graph["phases"]}}
+    assessments = (goal.get('workflow') or {}).get('assessments', {})
+    for phase, node in phase_nodes.items():
+        consequence = assessments.get(phase, {}).get('dimensions', {}).get('consequence')
+        overrides = node['review'].pop('by_consequence', {})
+        node['review'].update(overrides.get(consequence, {}))
     return graph, phase_nodes
 
 

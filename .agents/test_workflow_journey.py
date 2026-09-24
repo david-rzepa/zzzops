@@ -77,6 +77,9 @@ class FullWorkflowJourneyTests(unittest.TestCase):
         self.pr_merged = False
 
         template = json.loads((fixtures.PLUGIN_ROOT / "zzzops/templates/project-goals/INIT_PLAN.json").read_text(encoding="utf-8"))
+        # These journeys also guard compatibility for already reviewed policies.
+        legacy = json.loads((Path(__file__).parent / 'fixtures/legacy_phase_dag.json').read_text())
+        next(s for s in template['policy']['sections'] if s['id'] == 'workflow_adherence')['configuration']['phase_dag'] = legacy
         self.project = {
             "backend": "github_issues", "repository": {"identity": "owner/repo"},
             "policy": template["policy"],
