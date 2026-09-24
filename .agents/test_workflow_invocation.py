@@ -33,6 +33,7 @@ class WorkflowInvocationCacheTests(unittest.TestCase):
             {'goal': 433, 'code': 'merged_pr_stale_checkpoint', 'detail': 'reviewed_head_mismatch'}]}
         api = self.api(MemoryIssueAdapter({}), portfolio)
         engine = z._workflow.Workflow(api, Path('.'), {}, {})
+        self.assertEqual(goals, engine.portfolio(), 'Internal context reads must preserve goal-local isolation too')
         self.assertEqual(435, engine.read(435)[1]['key'])
         self.assertEqual([], engine.validation_blockers(goals[1]))
         self.assertEqual(433, engine.validation_blockers(goals[0])[0]['goal'])

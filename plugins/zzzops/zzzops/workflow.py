@@ -351,7 +351,7 @@ class Workflow:
                 return value['content']
         raise ValueError('Persist the phase artifact through operation=artifact before submitting its reference')
 
-    def portfolio(self, *, allow_invalid=False):
+    def portfolio(self, *, allow_invalid=True):
         if self._portfolio_cache is None:
             self._portfolio_cache = self.api.portfolio_snapshot(self.repo)
         portfolio = self._portfolio_cache
