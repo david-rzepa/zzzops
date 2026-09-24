@@ -180,6 +180,12 @@ class FullWorkflowJourneyTests(unittest.TestCase):
             self.engine.mutate(101, {**request, 'expected_digest': '0' * 64})
         with self.assertRaisesRegex(ValueError, 'merge evidence changed'):
             self.engine.mutate(101, {**request, 'expected_merge': 'sha256:' + '0' * 64})
+        exact_reader = self.engine.api.github_goal_record
+        def claimed(issue):
+            return {**exact_reader(issue), 'claim': {'owner': 'legacy-worker'}}
+        with mock.patch.object(self.engine.api, 'github_goal_record', side_effect=claimed):
+            with self.assertRaisesRegex(ValueError, 'legacy worker stopped'):
+                self.engine.mutate(101, request)
         self.engine.mutate(101, request)
         after = self.goal(101)
         self.assertEqual('blocked', after['status'])  # No phase proof: merge is not completion.

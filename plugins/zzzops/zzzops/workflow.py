@@ -1544,6 +1544,8 @@ class Workflow:
                     raise ValueError('Reconciliation merge evidence changed; request a fresh checkpoint. No update was made.')
                 if durable['leases']:
                     raise ValueError('Reconcile active workers before merged-PR recovery')
+                if goal.get('claim'):
+                    raise ValueError('Confirm the legacy worker stopped and recover its claim before merged-PR recovery')
                 merge = self.classify_merge(goal, current)
                 reasons = list(merge['reasons'])
                 findings = self.validation_blockers(projected or goal)
