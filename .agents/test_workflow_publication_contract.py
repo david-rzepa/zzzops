@@ -142,7 +142,7 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         api = PublicationAPI()
         engine = workflow.Workflow.__new__(workflow.Workflow)
         engine.api, engine.repo = api, Path("/repo")
-        engine.portfolio = lambda: [{"implementation": {"branch": "goal-7"}}]
+        engine.portfolio = lambda: [{"key": 7, "parent": 1, "implementation": {"branch": "goal-7"}}]
         engine.publication_identity = lambda _goal: {
             "head_oid": provider_head, "base_oid": provider_base, "base_ref": "dev",
         }

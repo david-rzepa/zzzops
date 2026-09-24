@@ -59,6 +59,7 @@ class WorkflowIntegrationTests(unittest.TestCase):
         live = z.workflow_live_inputs(Path('.'), self.project, goal, 'execute', self.graph)
         record = fixtures.PhaseEvidenceTests().record('plan', live['plan'])
         with mock.patch.object(z, 'reviewed_project_state', return_value=self.project), \
+             mock.patch.object(z, 'portfolio_snapshot', return_value={'complete': True, 'valid': True, 'goals': [goal]}), \
              mock.patch.object(z, 'GitHubGoalTransitionAdapter', return_value=self.adapter), \
              mock.patch.object(z, '_workflow_phase_configuration', return_value=(self.graph, self.nodes)):
             z.workflow_submit(Path('.'), 42, 'execute', {'operation': 'record_result', 'phase': 'plan', 'record': record})
