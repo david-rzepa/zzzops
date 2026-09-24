@@ -238,8 +238,10 @@ class FullWorkflowJourneyTests(unittest.TestCase):
                 verification = None
         output = {"output": f"{number}-{phase}{output_suffix}"}
         if phase == "plan":
-            scope = {"parent": 100, "child": 101, "test_design": [], "implement": []}
-            output.update({"output_scopes": [scope]} if number == 100 else {"output_scope": scope})
+            has_child = number == 100 and 101 in self.provider.issues
+            scope = {"parent": 100, "child": 101 if has_child or number == 101 else 100,
+                     "test_design": [], "implement": []}
+            output.update({"output_scopes": [scope]} if has_child else {"output_scope": scope})
         record = copy.deepcopy(step["result_contract"]["record"])
         record.update({
             "output": self.engine.artifact(number, output), "actor": actor,
@@ -305,6 +307,45 @@ class FullWorkflowJourneyTests(unittest.TestCase):
         node = z._workflow_phase_configuration(self.project, self.goal(number))[1][phase]
         if node["review"]["human_approval"]:
             self.approve(number, phase)
+
+    def test_top_level_leaf_reaches_test_design_before_publication(self):
+        del self.provider.issues[101]
+        self.engine.invalidate()
+        self.phase(100, 'understand')
+        self.phase(100, 'decompose')
+        self.phase(100, 'plan')
+        goal = self.goal(100)
+        implementation = copy.deepcopy(goal['implementation'])
+        implementation.update(branch='goal-child', base='dev', target='dev')
+        self.mutate(100, operation='revise', expected_digest=goal['digest'],
+                    changes={'implementation': implementation})
+        subprocess.run(['git', 'checkout', '-q', 'goal-child'], cwd=self.repo, check=True)
+        self.phase(100, 'test_design', verifier='fail')
+        self.phase(100, 'implement', verifier='pass')
+        real_run = subprocess.run
+        def provider_command(command, *args, **kwargs):
+            if command[:3] == ['gh', 'pr', 'list']:
+                return subprocess.CompletedProcess(command, 0, stdout='[]', stderr='')
+            return real_run(command, *args, **kwargs)
+        with mock.patch.object(subprocess, 'run', side_effect=provider_command):
+            step = self.engine.step(100)[0]
+        self.assertEqual('publish', step['phase'])
+        self.assertEqual('assess', step['kind'])
+        self.assertEqual({'parent': 100, 'child': 100, 'test_design': [], 'implement': []},
+                         self.engine.reviewed_scope(self.goal(100)))
+
+    def test_parent_does_not_become_leaf_when_planned_child_leaves_open_index(self):
+        self.phase(100, 'understand')
+        self.phase(100, 'decompose')
+        self.phase(100, 'plan')
+        del self.provider.issues[101]
+        self.engine.invalidate()
+        graph, nodes, _, _ = self.engine.context(self.goal(100))
+        self.assertNotIn('implement', nodes)
+        self.assertNotIn('test_design', nodes)
+        blocker = self.engine.publication_gate(self.goal(100))
+        self.assertEqual('dependency', blocker['kind'])
+        self.assertEqual([101], blocker['children'])
 
     def test_parent_and_child_complete_only_from_reviewed_full_dag_evidence(self):
         # Parent understanding is independently reviewed and explicitly approved.

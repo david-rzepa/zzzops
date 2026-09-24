@@ -68,7 +68,7 @@ WORKFLOW_PHASE_IDS = (
 )
 WORKFLOW_PHASE_TYPES = frozenset(WORKFLOW_PHASE_IDS)
 WORKFLOW_ASSIGNMENT_GROUPS = frozenset({"root", "planning", "implementation", "review", "coordinator"})
-WORKFLOW_APPLICABILITY = frozenset({"always", "parent_only", "child_only"})
+WORKFLOW_APPLICABILITY = frozenset({"always", "parent_only", "child_only", "leaf_only"})
 WORKFLOW_NOT_REQUIRED = frozenset({"never", "atomic_goal"})
 WORKFLOW_INPUT_CATEGORIES = frozenset({
     "goal_spec", "policy", "phase_dag", "parents", "dependencies", "repository", "provider",
@@ -532,13 +532,15 @@ def _workflow_phase_dag_errors(value: Any) -> list[str]:
     return errors
 
 
-def phase_evidence_graph(phase_dag: Any, *, has_parent: bool) -> dict[str, list[dict[str, Any]]]:
+def phase_evidence_graph(phase_dag: Any, *, has_parent: bool, has_children: bool = False) -> dict[str, list[dict[str, Any]]]:
     """Project reviewed policy nodes into the exact graph consumed by #432.
 
     Applicability is resolved before handing the graph to the generic evaluator.
     In particular, a child consumes its parent's decomposition as a parent gate
     instead of receiving an impossible local decomposition dependency. The
     orchestration layer supplies child-completion evidence to parent publication.
+    Leaf-owned phases depend on child relationships, not structural parenthood.
+    Legacy child_only policies retain their meaning until reviewed adoption.
     """
     errors = _workflow_phase_dag_errors(phase_dag)
     if errors:
@@ -547,6 +549,7 @@ def phase_evidence_graph(phase_dag: Any, *, has_parent: bool) -> dict[str, list[
         node["id"] for node in phase_dag["phases"]
         if node["applicability"] == "always"
         or (node["applicability"] == "child_only" and has_parent)
+        or (node["applicability"] == "leaf_only" and not has_children)
         or (node["applicability"] == "parent_only" and not has_parent)
     }
     result = []
@@ -555,9 +558,9 @@ def phase_evidence_graph(phase_dag: Any, *, has_parent: bool) -> dict[str, list[
         if phase not in included:
             continue
         dependencies = [dependency for dependency in node["depends_on"] if dependency in included]
-        parent_phases = {item["id"] for item in phase_dag["phases"] if item["applicability"] != "child_only"}
+        parent_phases = {item["id"] for item in phase_dag["phases"] if item["applicability"] not in {"child_only", "leaf_only"}}
         parent_gates = [gate for gate in node["parent_gates"] if gate in parent_phases] if has_parent else []
-        if phase == "publish" and not has_parent:
+        if phase == "publish" and "implement" not in included:
             dependencies = ["plan"]
         result.append({"id": phase, "depends_on": dependencies, "parent_gates": parent_gates})
     return {"phases": result}
