@@ -222,6 +222,7 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
         )
         self.assertEqual("idle-but-expected", idle["classification"])
         heartbeat.stop_heartbeat(repo=self.repo, root_id="root-a", goal=53, phase="implement", token="health-token", state_dir=self.state)
+        self._wait(lambda: not heartbeat._pid_alive(result["pid"]))
 
     def test_health_stopped_requires_a_terminal_probe_record(self):
         result = self._start(54, "implement", "stopped-health", "stopped")
@@ -240,6 +241,7 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
             )
         self.assertTrue(any(lease["token"] == "malformed-health" for lease in heartbeat._read(Path(result["config"]))["leases"]))
         heartbeat.stop_heartbeat(repo=self.repo, root_id="root-a", goal=55, phase="implement", token="malformed-health", state_dir=self.state)
+        self._wait(lambda: not heartbeat._pid_alive(result["pid"]))
 
 
     def test_active_probe_with_zero_exit_repair_preserves_liveness(self):
