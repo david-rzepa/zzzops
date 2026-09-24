@@ -166,6 +166,60 @@ class FullWorkflowJourneyTests(unittest.TestCase):
     def goal(self, number):
         return z.github_goal_record(self.provider.get_issue(number))
 
+    def test_external_merge_reconciliation_is_exact_and_replay_safe(self):
+        issue = self.provider.issues[101]
+        managed = z.parse_managed_goal(issue['body'], 101)
+        managed['implementation'].update(branch='goal-child', base='dev', target='dev',
+            pr='https://github.com/owner/repo/pull/9', review={'status': 'approved', 'checkpoint': self.head_oid})
+        issue['body'] = z.render_managed_goal(managed, z._goals.compact_human_goal_text(issue['body']), 101)
+        self.pr_merged = True
+        self.engine.invalidate()
+        goal = self.engine.read(101)[1]
+        request = {**self.engine.reconciliation_step(goal)['submission'], 'request_id': 'external-merge'}
+        with self.assertRaisesRegex(ValueError, 'goal changed'):
+            self.engine.mutate(101, {**request, 'expected_digest': '0' * 64})
+        with self.assertRaisesRegex(ValueError, 'merge evidence changed'):
+            self.engine.mutate(101, {**request, 'expected_merge': 'sha256:' + '0' * 64})
+        exact_reader = self.engine.api.github_goal_record
+        def claimed(issue):
+            return {**exact_reader(issue), 'claim': {'owner': 'legacy-worker'}}
+        with mock.patch.object(self.engine.api, 'github_goal_record', side_effect=claimed):
+            with self.assertRaisesRegex(ValueError, 'legacy worker stopped'):
+                self.engine.mutate(101, request)
+        self.engine.mutate(101, request)
+        after = self.goal(101)
+        self.assertEqual('blocked', after['status'])  # No phase proof: merge is not completion.
+        self.assertEqual(self.head_oid, after['implementation']['review']['checkpoint'])
+        self.assertEqual('merged-pr-evidence', after['blockers'][-1]['id'])
+        self.assertEqual(managed.get('phase_evidence'), z.parse_managed_goal(self.provider.issues[101]['body'], 101).get('phase_evidence'))
+        self.engine.mutate(101, request)
+        self.assertEqual(after['revision'], self.goal(101)['revision'])
+        self.assertEqual('blocker', self.engine.reconciliation_step(self.engine.read(101)[1])['kind'])
+
+    def test_external_merge_closes_only_with_current_frontier(self):
+        issue = self.provider.issues[101]
+        managed = z.parse_managed_goal(issue['body'], 101)
+        managed['implementation'].update(branch='goal-child', base='dev', target='dev',
+            pr='https://github.com/owner/repo/pull/9', review={'status': 'approved', 'checkpoint': self.head_oid})
+        issue['body'] = z.render_managed_goal(managed, z._goals.compact_human_goal_text(issue['body']), 101)
+        self.pr_merged = True
+        self.engine.invalidate()
+        request = {**self.engine.reconciliation_step(self.engine.read(101)[1])['submission'], 'request_id': 'verified-external-merge'}
+        with mock.patch.object(self.engine.api, 'derive_phase_steps', return_value={'execute': [], 'review': [], 'blocked': [], 'approve': []}):
+            self.engine.mutate(101, request)
+        self.assertEqual('done', self.goal(101)['status'])
+        revision = self.goal(101)['revision']
+        self.engine.mutate(101, request)
+        self.assertEqual(revision, self.goal(101)['revision'])
+        self.assertEqual(self.head_oid, self.goal(101)['implementation']['review']['checkpoint'])
+        # A provider may save the body but fail to close the issue. A receipt
+        # alone must not falsely report that such a partial write completed.
+        self.provider.issues[101]['state'] = 'open'
+        replay = self.engine.mutate(101, request)
+        self.assertEqual('repair', replay['next_steps'][0]['kind'])
+        self.assertEqual('revise', replay['next_steps'][0]['submission']['operation'])
+        self.assertEqual(revision, self.goal(101)['revision'])
+
     def mutate(self, number, **payload):
         self.sequence += 1
         request_id = f"journey-{self.sequence}"
