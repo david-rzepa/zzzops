@@ -1,9 +1,12 @@
 # Goal #498: generic evidence-driven DAG prototype
 
-Current candidate: v8 simplification revision. Read `SIMPLIFICATION_REVIEW.md` for
-the independent critiques, changes, evidence and limits. `CONTRACT.md` is v8;
-`CONTRACT_V6.md` and the snapshot history below preserve the prior design. V8 requires
-fresh independent review and human approval; v6 approval does not transfer.
+Current candidate: v9 grammar amendment to approved v8. Read `SIMPLIFICATION_REVIEW.md` for
+the independent critiques, changes, evidence and limits. `CONTRACT.md` is v9;
+`CONTRACT_V6.md` and git history preserve prior designs. V8 was independently reviewed
+and explicitly approved. The user approved v9's two additions: output type/schema
+binding and bounded string-keyed maps. No requirements or architecture reset.
+Preparatory independent review approved the amendment; formal CLI evidence review
+is recorded separately and must not be inferred from this document.
 
 Experimental design snapshot, 2026-09-24. This is not production code, an adopted
 schema, or approval to migrate live goals. Preserved at the user's request on
@@ -17,11 +20,11 @@ Requires Python 3.10+ and only the standard library; no provider credentials.
 From this directory:
 
 ```sh
-python3 -B -m unittest probe cooperative_migration journeys simplification -q
+python3 -B -m unittest probe cooperative_migration journeys simplification type_contract_probe -q
 python3 -B measure.py
 ```
 
-Current verification: 53 tests passed in 0.203s. Fixed/expanded frontier medians
+V8 verification: 53 tests passed in 0.203s. Fixed/expanded frontier medians
 0.208048s/0.255374s (1.227x), within original bounds. Historical v5 snapshot:
 42 tests passed in 0.034s. Five-trial median local timings
 for 100 tasks x 100 evaluations: fixed 0.107199s, expanded 0.115994s (1.082x).
@@ -30,7 +33,11 @@ not measured against the live provider.
 
 ## Contents and authority
 
-- `CONTRACT.md`: latest proposed normative contract (candidate v8).
+- `CONTRACT.md`: latest proposed normative contract (candidate v9).
+- `type_contract_probe.py`: bounded output/map grammar experiment (12 tests), not
+  a production parser or a replacement for the scheduling model. It omits enum
+  validation and full admission authority/freshness; contract-hash differences do
+  not alone prove downstream invalidation. New provider/request behavior is absent.
 - `probe.py`: compact behavioral model and unit tests, not a production parser.
 - `journeys.py`: composed workflows exercising that same model.
 - `cooperative_migration.py`: selected cooperative issue-body migration model.
@@ -46,6 +53,10 @@ window, backups, drift detection and retry recovery. No GitHub CAS guarantee and
 no append-only authoritative storage are claimed.
 
 ## Review and resumption
+
+Current next step: persist the v9 amendment and unchanged finite production scope
+through the repository CLI, independently review the exact evidence, then resume
+partial production test design. The prior v6 narrative below is historical.
 
 V4 independent review requested changes. Migration bootstrap/recovery and
 alternatives/measurement findings were cleared for the design stage. Three bounded

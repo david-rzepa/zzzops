@@ -30,7 +30,8 @@ Binding = {name:ID, source:Ref, path:[string|nonnegative-int],
            mode:content|identity}
 Result = {node:QualifiedNode, attempt:ID, contract:Hash,
           inputs:[Binding], executor:string, outputs:{ID:Ref}}
-Node = {id:ID, prompt:Markdown-string, inputs:{ID:Input}, outputs:{ID:TypeContract},
+OutputContract = {type:ID, schema:TypeContract}
+Node = {id:ID, prompt:Markdown-string, inputs:{ID:Input}, outputs:{ID:OutputContract},
         requires:[NodeSelector], executor:ExecutorContract,
         independent_of:[NodeSelector], gates:[Scope], resolves:[Scope],
         permits:[{type:ID, scope:Scope}]}
@@ -76,7 +77,7 @@ in history. Fixture names such as investigate/migration are display aliases for
 these selectors, not valid normative ID strings.
 
 TypeContract is a closed structural schema built from string, boolean, integer,
-null, arrays, fixed-field objects and explicit enum alternatives. No code, regex
+null, arrays, fixed-field objects, string-keyed maps and explicit enum alternatives. No code, regex
 execution, coercion, unbounded recursive references or network validators. All
 types/slots resolve in the reviewed graph; a missing path is unresolved, never null.
 The first design supports only typed paths and explicit selected membership;
@@ -84,11 +85,20 @@ arbitrary query expressions and script predicates are excluded.
 
 Exact TypeContract alternatives are {kind:string|boolean|integer|null},
 {kind:array, items:TypeContract}, {kind:object, fields:{ID:TypeContract}},
+{kind:map, values:TypeContract},
 and {kind:enum, values:[distinct JSON scalars]}. Nullable values use an enum
 containing null or an explicit {kind:union, variants:[TypeContract]} with disjoint
 validated alternatives. Limit nesting to 16 levels and decoded records to 1 MiB;
 reject, do not truncate. Input.producer uses the closed selector/slot union above.
 AttemptID is an ID unique within its qualified node generation.
+
+A map accepts a JSON object with arbitrary string keys and validates every value
+against its declared value schema. Empty maps are valid. Fixed-field objects remain
+closed; a map is not an unknown-field escape for them. Duplicate JSON keys are
+rejected before decoding loses them, and canonical hashing sorts map keys.
+Selection.items additionally requires ID-shaped keys. Union alternatives must be
+disjoint over their whole value sets: two maps overlap on the empty object even
+when their value schemas differ, so that union is invalid. Do not choose by order.
 
 ```
 ExecutorContract = {role:root|worker, capability:ID, resources:[ID], authority:Scope}
@@ -101,6 +111,15 @@ Artifact authority is checked against authenticated host/provider provenance plu
 reviewed scope rules, never against an arbitrary actor string supplied in content.
 Every Result supplies exactly the configured output names/types. There is no
 excluded Result: not selecting a task is a decision in current selection evidence.
+Submission supplies only the declared slot-to-content mapping. The host derives
+each Artifact.type from that slot's OutputContract, validates its structural schema
+and semantic type/scope rules, and constructs provenance from the acquired attempt.
+Different slots may declare the same evidence type; slot names do not imply types.
+Both type and schema enter the task contract hash. A permissive structural schema
+never bypasses admission, freshness, authority or other semantic validators.
+The evidence type `result` is reserved for host issuance and is invalid in ordinary
+output declarations. Caller content resembling an artifact or result is only data;
+it cannot override the host's type, producer, actor, policy or execution identity.
 Graph.terminal IDs reference nodes or expansion joins; successful completion is
 not represented by an arbitrary true boolean in an artifact.
 
@@ -145,6 +164,10 @@ valid at persistence. Reject stale work, do not overwrite it into the current in
 ## 3. One mechanism for selected work: zero, one or many
 
 A task-set source emits Selection = {items:{ID:JSON}, rationale:nonempty-string}.
+Its output declares type=selection and an object schema whose items field uses the
+map constructor with a reviewed value schema; JSON above is notation, not an
+unconstrained TypeContract constructor. Newly discovered ID-shaped keys therefore
+need no graph revision, while item values still satisfy the reviewed schema.
 Its producer Result binds exact subject inputs, reviewed policy, executor and
 authority. Items are specifications, not executable task definitions. The reviewed
 TaskSet owns the immutable template, independence, permitted output types/scopes and
