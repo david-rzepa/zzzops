@@ -5,6 +5,7 @@ existing implementation. Public/provider failures live alongside these focused
 contract tests so missing-module assertions are not the behavioral baseline.
 """
 import copy
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -61,7 +62,24 @@ class ExactTextPatchContractTests(unittest.TestCase):
         self.codec = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.codec)
 
+    @staticmethod
+    def exact_patch(before, after, edits):
+        # Independent wire fixture: do not ask the generator to compute either
+        # coordinates or endpoint metadata for reader/resource assertions.
+        return {'schema_version': 1, 'base_hash': 'sha256:' + hashlib.sha256(before.encode('utf-8')).hexdigest(),
+                'result_hash': 'sha256:' + hashlib.sha256(after.encode('utf-8')).hexdigest(),
+                'base_length': len(before), 'result_length': len(after), 'edits': edits}
+
     def test_unicode_original_base_offsets_and_exact_newlines(self):
+        before = 'A😀e\u0301BC🌍D'
+        after = 'AXY😀e\u0301bC🌍!'
+        # Original code-point indices: A=0, emoji=1, e=2, accent=3, B=4,
+        # C=5, globe=6, D=7. The first insertion changes subsequent live offsets.
+        edits = [[1, 0, 'XY'], [4, 1, 'b'], [7, 1, '!']]
+        manual = self.exact_patch(before, after, edits)
+        self.assertEqual(after, self.codec.apply_text_patch(before, manual))
+        generated = self.codec.make_text_patch(before, after)
+        self.assertEqual(edits, generated['edits'], 'Generator must emit original-base Unicode code-point coordinates')
         for before, after in [('A😀é\r\nlast', 'A😀É\r\nlast!'), ('abcXYZdef', '!abcXdef?'), ('', '😀'), ('text\n', '')]:
             with self.subTest(before=before):
                 patch = self.codec.make_text_patch(before, after)
@@ -99,13 +117,25 @@ class ExactTextPatchContractTests(unittest.TestCase):
             self.assertEqual(after, self.codec.apply_text_patch(before, patch))
 
     def test_insertion_and_edit_count_bounded_before_output_allocation(self):
-        patch = self.codec.make_text_patch('a', 'b')
-        patch['edits'] = [[0, 0, 'z' * 1_000_001]]
-        with self.assertRaises(ValueError):
-            self.codec.apply_text_patch('a', patch)
-        patch['edits'] = [[0, 0, ''] for _ in range(10001)]
-        with self.assertRaises(ValueError):
-            self.codec.apply_text_patch('a', patch)
+        with self.subTest(resource='insertion/output bytes'):
+            before = 'a'
+            within = 'z' * 999_999 + 'a'
+            self.assertEqual(within, self.codec.apply_text_patch(
+                before, self.exact_patch(before, within, [[0, 0, 'z' * 999_999]])))
+            over = 'z' * 1_000_001 + 'a'
+            patch = self.exact_patch(before, over, [[0, 0, 'z' * 1_000_001]])
+            with self.assertRaisesRegex(ValueError, r'(?i)(insert|output|reconstruct|materializ).*(limit|budget|exceed|bound)'):
+                self.codec.apply_text_patch(before, patch)
+        with self.subTest(resource='edit count'):
+            before = 'a' * 20_003
+            within = 'ba' * 10_000 + 'aaa'
+            edits = [[2 * index, 1, 'b'] for index in range(10_000)]
+            self.assertEqual(within, self.codec.apply_text_patch(before, self.exact_patch(before, within, edits)))
+            over = 'ba' * 10_001 + 'a'
+            edits = [[2 * index, 1, 'b'] for index in range(10_001)]
+            patch = self.exact_patch(before, over, edits)
+            with self.assertRaisesRegex(ValueError, r'(?i)(edit.*(limit|budget|exceed|bound)|too many.*edit)'):
+                self.codec.apply_text_patch(before, patch)
 
 
 if __name__ == '__main__':
