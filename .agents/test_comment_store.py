@@ -70,6 +70,34 @@ class ExactTextPatchContractTests(unittest.TestCase):
                 'result_hash': 'sha256:' + hashlib.sha256(after.encode('utf-8')).hexdigest(),
                 'base_length': len(before), 'result_length': len(after), 'edits': edits}
 
+    def test_aggregate_envelope_decode_work_is_bounded_across_distinct_records(self):
+        codec = self.codec
+        values = [str(i) + ':' + 'x' * 999000 for i in range(17)]
+        records = [{'kind': 'full', 'type': 'text', 'text': value,
+                    'hash': codec.digest(value)} for value in values]
+        bodies = codec.pack_envelopes({'goal': 42, 'transaction': 'aggregate-budget'}, records)
+        self.assertGreater(len(bodies), 1)
+        comments = [{'body': body} for body in bodies]
+        # Distinct, individually valid records, not duplicates or a deep chain.
+        control = codec.pack_envelopes({'goal': 42, 'transaction': 'control'}, records[:1])
+        self.assertEqual(values[0], codec.ArtifactIndex([{'body': b} for b in control]).resolve(records[0]['hash'])[0])
+        decoded = 0
+        unpack = codec.unpack
+        def metered(*args, **kwargs):
+            nonlocal decoded
+            result = unpack(*args, **kwargs)
+            decoded += len(result)
+            return result
+        with mock.patch.object(codec, 'unpack', side_effect=metered):
+            try:
+                result = codec.ArtifactIndex(comments).resolve(records[0]['hash'])[0]
+            except ValueError as exc:
+                self.assertRegex(str(exc), r'(?i)(work|decoded|reconstruct).*(limit|budget|exceed|bound)')
+            else:
+                self.assertEqual(values[0], result)
+        self.assertLessEqual(decoded, codec.MAX_RECONSTRUCTION_WORK_BYTES,
+                             'Lookup materialized unrelated envelopes beyond its total budget before returning or rejecting')
+
     def test_unicode_original_base_offsets_and_exact_newlines(self):
         before = 'A😀e\u0301BC🌍D'
         after = 'AXY😀e\u0301bC🌍!'

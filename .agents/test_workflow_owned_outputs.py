@@ -1855,6 +1855,72 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         self.assertEqual(content, s.read(101, self.reference(content)))
         self.assertTrue(any(x['kind'] == 'human_approval' for x in s.checkpoint(101)))
 
+    def test_pending_variable_verification_reuses_exact_proof_and_log(self):
+        s = self.session
+        s.prepare()
+        step = s.start(101, 'test_design')
+        request = {'operation': 'verify', 'phase': step['phase'], 'lease': step['lease']['token'],
+                   'actor': step['bound_actor'], 'request_id': 'variable-verification-retry',
+                   'input_envelope': copy.deepcopy(step['input_envelope']),
+                   'commands': [[sys.executable, '-c', 'import time; print(time.time_ns()); raise SystemExit(1)']]}
+        attempted = []
+        def unavailable(number, payload):
+            attempted.append(copy.deepcopy(payload))
+            raise z.GoalTransitionProviderError('lost before body publication')
+        with mock.patch.object(s.provider, 'update_issue', side_effect=unavailable):
+            s.call(101, request, expected=None)
+        self.assertEqual(1, len(attempted))
+        proof = z.parse_managed_goal(attempted[0]['body'], 101)['workflow']['artifacts']['test_design']
+        log = Path(proof['commands'][0]['log'])
+        original_log = log.read_bytes()
+        before = copy.deepcopy(s.provider.comments[101])
+        original_run = subprocess.run
+        reruns = []
+        def observe(command, *args, **kwargs):
+            if command == request['commands'][0]:
+                reruns.append(command)
+            return original_run(command, *args, **kwargs)
+        with mock.patch.object(subprocess, 'run', side_effect=observe):
+            response = s.call(101, request, expected=None)
+        self.assertEqual([], reruns, 'Pending verification must recover its proof before executing commands')
+        self.assertEqual(original_log, log.read_bytes())
+        self.assertEqual(0, s.calls[-1]['code'], response)
+        self.assertEqual(self.reference(proof), response['next_steps'][0]['verification'])
+        self.assertEqual(proof, s.read(101, self.reference(proof)))
+        self.assertEqual(before, s.provider.comments[101])
+
+    def test_renew_retry_preserves_expiry_before_body_publication(self):
+        self.check_renew_retry('before')
+
+    def test_renew_retry_preserves_expiry_after_body_publication(self):
+        self.check_renew_retry('after')
+
+    def check_renew_retry(self, boundary):
+        s = self.session
+        step = s.start(101, 'understand')
+        request = {'operation': 'renew', 'phase': 'understand', 'lease': step['lease']['token'],
+                   'actor': step['bound_actor'], 'worker_status': 'active',
+                   'request_id': 'renew-retry-' + boundary}
+        attempted = []
+        original = s.provider.update_issue
+        before_comments = len(s.provider.comments[101])
+        before_updates = len(s.provider.updates)
+        def unavailable(number, payload):
+            attempted.append(copy.deepcopy(payload))
+            if boundary == 'after':
+                original(number, payload)
+            raise z.GoalTransitionProviderError('lost ' + boundary + ' body publication')
+        with mock.patch.object(s.provider, 'update_issue', side_effect=unavailable):
+            s.call(101, request, expected=None)
+        self.assertEqual(1, len(attempted))
+        persisted = z.parse_managed_goal(attempted[0]['body'], 101)['workflow']['leases']['understand:execute']
+        response = s.call(101, request, expected=None)
+        self.assertEqual(0, s.calls[-1]['code'], response)
+        self.assertEqual(persisted['expires_at'], response['next_steps'][0]['expires_at'])
+        self.assertEqual(persisted, s.goal(101)['workflow']['leases']['understand:execute'])
+        self.assertEqual(before_comments + 1, len(s.provider.comments[101]))
+        self.assertEqual(before_updates + 1, len(s.provider.updates))
+
     def test_verification_proof_and_transition_share_one_comment(self):
         s = self.session
         s.prepare()

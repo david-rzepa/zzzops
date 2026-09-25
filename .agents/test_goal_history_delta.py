@@ -8,6 +8,7 @@ import copy
 import hashlib
 import json
 import unittest
+from unittest import mock
 
 import test_zzzops as fixtures
 
@@ -136,6 +137,40 @@ class ReverseHistoryTests(unittest.TestCase):
                 z.apply_goal_transition(adapter, 'owner/repo', 42, transition)
                 self.assertEqual(before, adapter.comments)
                 self.assertEqual(1, len(adapter.updates))
+
+
+    def test_legacy_pending_retry_rechecks_publication_authority(self):
+        transition = self.fixture.transition(self.issue)
+        self.adapter.create_issue_comment(42, legacy_history_body(self.issue, transition))
+        before = copy.deepcopy(self.adapter.comments)
+        reject = mock.Mock(side_effect=ValueError('authorization expired'))
+        with self.assertRaisesRegex(ValueError, 'authorization expired'):
+            z.apply_goal_transition(self.adapter, 'owner/repo', 42, transition, before_publish=reject)
+        reject.assert_called_once()
+        self.assertEqual([], self.adapter.updates)
+        self.assertEqual(self.issue['body'], self.adapter.issue['body'])
+        allow = mock.Mock()
+        z.apply_goal_transition(self.adapter, 'owner/repo', 42, transition, before_publish=allow)
+        allow.assert_called_once()
+        self.assertEqual(1, len(self.adapter.updates))
+        self.assertEqual(before, self.adapter.comments)
+
+    def test_legacy_pending_retry_preserves_concurrent_human_edit(self):
+        transition = self.fixture.transition(self.issue)
+        self.adapter.create_issue_comment(42, legacy_history_body(self.issue, transition))
+        before = copy.deepcopy(self.adapter.comments)
+        original = self.adapter.get_issue_comments
+        def racing(*args):
+            result = original(*args)
+            self.adapter.issue['body'] = self.adapter.issue['body'].replace(
+                'Preserve this human text.', 'Concurrent human edit.')
+            return result
+        with mock.patch.object(self.adapter, 'get_issue_comments', side_effect=racing):
+            with self.assertRaises((ValueError, z.GoalTransitionProviderError)):
+                z.apply_goal_transition(self.adapter, 'owner/repo', 42, transition, before_publish=mock.Mock())
+        self.assertEqual([], self.adapter.updates)
+        self.assertIn('Concurrent human edit.', self.adapter.issue['body'])
+        self.assertEqual(before, self.adapter.comments)
 
 
 if __name__ == '__main__':
