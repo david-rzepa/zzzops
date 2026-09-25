@@ -1196,14 +1196,32 @@ class OwnedOutputPublicTests(unittest.TestCase):
         # Broken stored contents under an unchanged claimed hash reject; this is
         # NOT a claim that a valid cryptographic self-referential artifact exists.
         real_comments = s.provider.get_issue_comments
+        damaged_records = 0
         def damaged_comments(number):
+            nonlocal damaged_records
             comments = real_comments(number)
             for comment in comments:
                 if comment['body'].startswith('<!-- zzzops-artifact ' + reference['hash'] + ' -->'):
                     comment['body'] = '<!-- zzzops-artifact ' + reference['hash'] + ' -->\ninvalid cyclic/tampered bytes'
+                    damaged_records += 1
+                elif comment['body'].startswith('<!-- zzzops-envelope\n'):
+                    path = Path(z.__file__).parent / 'comment_store.py'
+                    spec = importlib.util.spec_from_file_location('predecessor_envelope_test', path)
+                    codec = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(codec)
+                    envelope = codec.decode_envelope(comment['body'])
+                    for record in envelope['artifacts']:
+                        if record['hash'] == reference['hash']:
+                            # Keep the claimed artifact identity but give it
+                            # different content under a valid transport checksum.
+                            record.clear()
+                            record.update(hash=reference['hash'], kind='full', type='json', text='null')
+                            comment['body'] = codec.encode_envelope(envelope)
+                            damaged_records += 1
             return comments
         with mock.patch.object(s.provider, 'get_issue_comments', side_effect=damaged_comments):
             rejected = s.verify(correction, expected=2)
+            self.assertGreater(damaged_records, 0, 'The referenced predecessor must actually be corrupted')
             self.assertRegex(json.dumps(rejected), r'(?i)(artifact|predecessor|malformed|hash)')
         restored = s.verify(correction)['next_steps'][0]['verification']
         self.assertTrue(s.read(101, restored)['passed'])
