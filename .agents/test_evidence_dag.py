@@ -29,7 +29,7 @@ def task(name, predecessors=(), *, role="worker"):
         "id": name,
         "prompt": "Read the exact declared evidence and return the requested value.",
         "inputs": {},
-        "outputs": {"value": {"kind": "string"}},
+        "outputs": {"value": {"type": "text", "schema": {"kind": "string"}}},
         "requires": [selector(item) for item in predecessors],
         "executor": {
             "role": role, "capability": "bounded", "resources": [],
@@ -110,17 +110,17 @@ class EvidenceGraphGrammarTests(unittest.TestCase):
                                r"(?i)field|unsupported|unknown")
 
     def test_executable_type_contract_is_rejected(self):
-        self.rejected_mutation(lambda g: g["nodes"][0]["outputs"].update(value={"kind": "python", "code": "True"}),
+        self.rejected_mutation(lambda g: g["nodes"][0]["outputs"]["value"].update(schema={"kind": "python", "code": "True"}),
                                r"(?i)type|contract|unsupported|kind")
 
     def test_closed_nested_types_are_accepted(self):
         graph = review_graph()
-        graph["nodes"][0]["outputs"]["detail"] = {
+        graph["nodes"][0]["outputs"]["detail"] = {"type": "detail", "schema": {
             "kind": "object", "fields": {
                 "items": {"kind": "array", "items": {"kind": "integer"}},
                 "decision": {"kind": "enum", "values": ["yes", "no", None]},
             },
-        }
+        }}
         self.accepted(graph)
 
     def test_plain_string_cannot_ambiguously_select_a_member_or_join(self):
@@ -150,6 +150,51 @@ class EvidenceGraphGrammarTests(unittest.TestCase):
         graph = review_graph()
         graph["nodes"][0]["executor"]["role"] = "root"
         self.accepted(graph)
+
+    def test_maps_accept_dynamic_keys_but_do_not_open_fixed_objects(self):
+        graph = review_graph()
+        graph["nodes"][0]["outputs"]["buckets"] = {"type": "selection", "schema": {
+            "kind": "object", "fields": {
+                "items": {"kind": "map", "values": {"kind": "string"}},
+                "rationale": {"kind": "string"}}}}
+        self.accepted(graph)
+        invalid = copy.deepcopy(graph)
+        invalid["nodes"][0]["outputs"]["buckets"]["schema"]["extra"] = True
+        self.assertRegex("; ".join(self.errors(invalid)), r"(?i)field|unknown|schema")
+
+    def test_reserved_result_type_cannot_be_declared_as_an_output(self):
+        self.rejected_mutation(lambda g: g["nodes"][0]["outputs"]["value"].update(type="result"),
+                               r"(?i)reserved|host|result")
+
+    def test_map_union_overlaps_on_empty_object(self):
+        self.rejected_mutation(lambda g: g["nodes"][0]["outputs"]["value"].update(schema={
+            "kind": "union", "variants": [
+                {"kind": "map", "values": {"kind": "string"}},
+                {"kind": "map", "values": {"kind": "integer"}}]}), r"(?i)overlap|disjoint|union")
+
+    def test_resolver_cannot_depend_on_its_own_gated_consumer(self):
+        producer = task("produce")
+        gated = task("gated", ["produce"])
+        resolver = task("resolver", ["gated"])
+        resolver["resolves"] = [scope("produce")]
+        graph = {"nodes": [producer, gated, resolver], "task_sets": [], "terminals": [selector("resolver")]}
+        self.accepted(graph)
+        # requires remains produce -> gated -> resolver: only the implicit
+        # resolution/gate relationship makes the resulting work unsatisfiable.
+        graph["nodes"][1]["gates"] = [scope("produce")]
+        self.assertRegex("; ".join(self.errors(graph)), r"(?i)cycle|gate|resolver")
+
+    def test_template_identity_is_unique_across_task_sets_and_static_nodes(self):
+        from test_evidence_dag_journeys import selected_graph
+        graph = selected_graph()
+        self.accepted(graph)
+        duplicate = copy.deepcopy(graph["task_sets"][0])
+        duplicate["id"] = "other_buckets"
+        graph["task_sets"].append(duplicate)
+        self.assertRegex("; ".join(self.errors(graph)), r"(?i)duplicate|identity|unique|template")
+        graph = selected_graph()
+        graph["nodes"].append(task("investigate"))
+        self.assertRegex("; ".join(self.errors(graph)), r"(?i)duplicate|identity|unique|template")
 
 
 if __name__ == "__main__":
