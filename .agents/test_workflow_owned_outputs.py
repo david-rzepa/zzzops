@@ -332,6 +332,23 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.session.git('commit', '-qm', 'fixture: existing source and test')
         self.session.git('checkout', '-q', '-B', 'goal-child')
 
+    def test_verification_accepts_gateway_rigor_projection_without_scope_drift(self):
+        s = self.session
+        original = s.portfolio_snapshot
+        def projected(*args, **kwargs):
+            snapshot = original(*args, **kwargs)
+            for goal in snapshot['goals']:
+                goal['engineering_rigor_inputs'] = copy.deepcopy(goal.get('engineering_rigor'))
+                goal['engineering_rigor'] = {**(goal.get('engineering_rigor') or {}),
+                    'effective': 'agentic', 'valid': True, 'errors': [],
+                    'provenance': {'status': 'derived'}}
+            return snapshot
+        s.portfolio_snapshot = projected
+        s.prepare()
+        # This follows public start/bind/verify/result/review, rather than
+        # treating a matching hash alone as proof of accepted verification.
+        s.design()
+
     def test_mixed_checkout_raw_drift_and_dirty_acquisition(self):
         s = self.session
         s.git('config', 'core.autocrlf', 'true')

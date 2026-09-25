@@ -281,6 +281,7 @@ class Workflow:
                 raise ValueError(f'Goal #{number} is absent from the current portfolio gateway')
             goal = {
                 **goal,
+                'engineering_rigor': copy.deepcopy(goal.get('engineering_rigor_inputs', goal.get('engineering_rigor'))),
                 'children': [row['key'] for row in records.values()
                              if row.get('parent') == number and row.get('status') != 'cancelled'],
                 "human_spec": goal.get("human_spec") or f"Archived goal #{number}; body unavailable.",

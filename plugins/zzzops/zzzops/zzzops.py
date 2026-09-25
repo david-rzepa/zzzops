@@ -1649,6 +1649,9 @@ def github_repository_portfolio_snapshot(
             source = hydrated_by_key.get(record.get("key"))
         if source is not None:
             record.update({field: copy.deepcopy(source[field]) for field in ("human_spec", "acceptance_criteria", "phase_evidence")})
+            # Scheduling keeps the derived assessment; workflow identity must
+            # retain the exact persisted inputs, including null/absent defaults.
+            record["engineering_rigor_inputs"] = copy.deepcopy(source.get("engineering_rigor"))
     return repository_probe, snapshot
 
 

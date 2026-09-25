@@ -3680,6 +3680,40 @@ class GoalSchemaMigrationTests(unittest.TestCase):
 
 
 class PortfolioTests(unittest.TestCase):
+    def test_workflow_gateway_preserves_persisted_rigor_identity_without_rereads(self):
+        project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {"sections": [
+            {"id": "autonomy_approval_parallelism", "configuration": TEST_AUTONOMY_CONFIGURATION},
+            TEST_RIGOR_POLICY,
+        ]}}
+        def digest(goal):
+            return zzzops.goal_spec_digest(goal, title=goal["title"], human_spec=goal["human_spec"])
+        for rigor in (None, {"risk_categories": []}, {"risk_categories": ["authorization"], "override": None}):
+            with self.subTest(rigor=rigor), tempfile.TemporaryDirectory() as temporary:
+                repo = Path(temporary)
+                (repo / ".zzzops").mkdir()
+                issue = self.issue(1, engineering_rigor=rigor)
+                exact = zzzops.github_goal_record(issue)
+                bodies = {1: {"body": issue["body"], "updated_at": issue["updated_at"]}}
+                with mock.patch.object(zzzops.shutil, "which", return_value="gh"), \
+                     mock.patch.object(zzzops, "github_repository_goal_index", return_value=({}, [issue], [], 0, 1, 0)), \
+                     mock.patch.object(zzzops, "_github_goal_bodies", return_value=(bodies, 0, 1)), \
+                     mock.patch.object(zzzops, "_github_pull_request_states", return_value=({}, 0, 0)):
+                    _, snapshot = zzzops.github_repository_portfolio_snapshot(repo, project)
+                projected = snapshot["goals"][0]
+                self.assertIn("effective", projected["engineering_rigor"])
+                engine = zzzops._workflow.Workflow(zzzops, repo, project)
+                engine._portfolio_cache = snapshot
+                with mock.patch.object(engine.adapter, "get_issue", side_effect=AssertionError("Unexpected provider reread")):
+                    _, read = engine.read(1)
+                self.assertEqual(digest(exact), digest(read))
+                self.assertEqual(exact["engineering_rigor"], read["engineering_rigor"])
+                changed = copy.deepcopy(read)
+                changed["engineering_rigor"] = {"risk_categories": ["concurrency"], "override": None}
+                self.assertNotEqual(digest(exact), digest(changed))
+                changed["engineering_rigor"] = {"risk_categories": [], "override": {
+                    "level": "agentic", "authority": "human", "evidence": "Explicit approval"}}
+                self.assertNotEqual(digest(exact), digest(changed))
+
     def test_archived_summaries_remain_dependency_targets_without_provider_fields(self):
         archived = {"key": 1, "status": "done", "archived": True}
         live = {**self.goal(depends_on=[1]), "key": 2, "state": "open",
