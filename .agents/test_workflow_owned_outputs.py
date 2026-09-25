@@ -335,6 +335,32 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.session.git('commit', '-qm', 'fixture: existing source and test')
         self.session.git('checkout', '-q', '-B', 'goal-child')
 
+    def test_pending_entropy_correction_routes_to_same_goal_without_false_approval(self):
+        s = self.session
+        execution = s.start(100, 'understand')
+        s.result(100, execution, {'requirements': 'Return two.'})
+        review = s.start(100, 'understand', 'review')
+        self.assertIn('correction_required', review['result_contract']['review']['outcomes']['entropy']['outcome'])
+        artifact = s.artifact(100, review, {'finding': 'Repair duplication within this goal.'})
+        request = {'operation': 'record_review', 'phase': 'understand',
+                   'lease': review['lease']['token'], 'actor': review['bound_actor'], 'artifact': artifact,
+                   'outcomes': {'acceptance': 'approved', 'entropy': {
+                       'outcome': 'correction_required', 'evidence': 'Pending in-goal correction.', 'goals': []}}}
+        before = copy.deepcopy(s.provider.issues[100])
+        rejected = s.call(100, request, expected=2)
+        self.assertIn('changes_requested', json.dumps(rejected))
+        self.assertEqual(before, s.provider.issues[100])
+        request['outcomes']['acceptance'] = 'changes_requested'
+        s.call(100, request)
+        stored = s.goal(100)['phase_evidence']['reviews']['understand']
+        self.assertEqual('correction_required', stored['outcomes']['entropy']['outcome'])
+        self.assertEqual('changes_requested', stored['decision'])
+        self.assertEqual({100, 101}, set(s.provider.issues))
+        step = next(x for x in s.checkpoint(100) if x.get('phase') == 'understand')
+        self.assertEqual('execute', step['kind'])
+        s.phase(100, 'understand', {'requirements': 'Corrected: return two.'})
+        self.assertEqual('approved', s.goal(100)['phase_evidence']['reviews']['understand']['decision'])
+
     def test_verification_accepts_gateway_rigor_projection_without_scope_drift(self):
         s = self.session
         original = s.portfolio_snapshot

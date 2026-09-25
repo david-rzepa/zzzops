@@ -1225,7 +1225,7 @@ class Workflow:
                 step['submission']['files'] = list(phase_input['repository']['snapshot']['files'])
             step['result_contract'] = {
                 'record': {'status': 'completed', 'input_envelope': phase_input, 'input_hash': digest(phase_input), 'output': {'reference': '<immutable content reference>', 'hash': '<sha256 digest>'}, 'verification': None, 'routing': {'reference': 'urn:sha256:' + digest(assessment)[7:], 'hash': digest(assessment)}, 'selection': step['selection'], 'actor': '<bound-worker>', 'not_required': None, 'test_design': None},
-                'review': {'artifact': {'reference': '<immutable review reference>', 'hash': '<sha256 digest>'}, 'outcomes': {'acceptance': 'approved or changes_requested', 'entropy': {'outcome': 'no_findings, fixed or follow_up', 'evidence': '<concrete finding or inspected scope>', 'goals': []}}},
+                'review': {'artifact': {'reference': '<immutable review reference>', 'hash': '<sha256 digest>'}, 'outcomes': {'acceptance': 'approved or changes_requested', 'entropy': {'outcome': 'no_findings, fixed, correction_required or follow_up', 'evidence': '<concrete finding or inspected scope; correction_required means pending in-goal work and requires changes_requested acceptance; follow_up requires linked goals>', 'goals': []}}},
                 'approval': {'actor': '<root-id>', 'approval_token': '<explicit user approval reference>'},
             }
             if phase in {self.scope_phase(), self.scope_phase(composition=True)}:
@@ -1918,8 +1918,10 @@ class Workflow:
             if not isinstance(outcomes, dict) or set(outcomes) != {'acceptance', 'entropy'}:
                 raise ValueError('Review requires separate acceptance and entropy outcomes')
             entropy = outcomes['entropy']
-            if not isinstance(entropy, dict) or entropy.get('outcome') not in {'no_findings', 'fixed', 'follow_up'} or not entropy.get('evidence'):
+            if not isinstance(entropy, dict) or entropy.get('outcome') not in {'no_findings', 'fixed', 'follow_up', 'correction_required'} or not entropy.get('evidence'):
                 raise ValueError('Entropy review requires an explicit evidenced disposition')
+            if entropy['outcome'] == 'correction_required' and outcomes['acceptance'] != 'changes_requested':
+                raise ValueError('Pending in-goal entropy correction requires changes_requested acceptance')
             if entropy['outcome'] == 'follow_up':
                 ids = entropy.get('goals', [])
                 if not ids:

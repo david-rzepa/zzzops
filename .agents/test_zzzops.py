@@ -2938,6 +2938,26 @@ class PhaseEvidenceTests(unittest.TestCase):
             zzzops.sha256_phase_evidence_digest(["y", "x"]),
         )
 
+    def test_pending_entropy_correction_requires_rejection_and_stays_in_goal(self):
+        envelope = self.envelope("plan")
+        evidence = zzzops.record_phase_result(
+            zzzops.empty_phase_evidence(), "plan", self.record("plan", envelope), envelope,
+        )
+        artifact = {"reference": "urn:sha256:" + "1" * 64,
+                    "hash": zzzops.sha256_phase_evidence_digest({"review": "correct"})}
+        outcomes = {"acceptance": "changes_requested", "entropy": {
+            "outcome": "correction_required", "evidence": "Repair duplication within this goal.", "goals": []}}
+        reviewed = zzzops.record_phase_review(evidence, "plan", artifact, "reviewer-2",
+                                            decision="changes_requested", outcomes=outcomes)
+        self.assertEqual(outcomes, zzzops._phase_evidence.normalize_phase_evidence(reviewed)["reviews"]["plan"]["outcomes"])
+        for decision, goals, reason in [("approved", [], "changes_requested"),
+                                         ("changes_requested", [42], "follow-up")]:
+            with self.subTest(decision=decision, goals=goals):
+                invalid = {"acceptance": decision, "entropy": {**outcomes["entropy"], "goals": goals}}
+                with self.assertRaisesRegex(zzzops.PhaseEvidenceError, reason):
+                    zzzops.record_phase_review(evidence, "plan", artifact, "reviewer-2",
+                                              decision=decision, outcomes=invalid)
+
     def test_phase_review_binds_exact_record_and_requires_independent_reviewer(self):
         envelope = self.envelope("plan")
         evidence = zzzops.record_phase_result(
