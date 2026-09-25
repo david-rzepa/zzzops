@@ -3354,15 +3354,19 @@ class GoalTransitionTests(unittest.TestCase):
         )
         self.assertEqual({"number": 42, "revision": 2, "state": "open", "status": "blocked",
                           "url": "https://github.com/owner/repo/issues/42"}, result)
-        history = zzzops.parse_goal_history(adapter.comments[0]["body"])
-        self.assertEqual(issue["body"], history["prior_body"])
-        self.assertEqual(["Baseline."], history["requested_goal"]["evidence"])
+        reconstruct = getattr(zzzops._goals, "reconstruct_goal_history", None)
+        self.assertTrue(callable(reconstruct), "New history must reconstruct its complete semantic predecessor")
+        history = reconstruct(adapter, 42, 1)
+        self.assertEqual(self.goal(), history["goal"])
+        self.assertEqual("## Outcome / Why\n\nPreserve this human text.\n\n\n\n", history["human_spec"])
+        self.assertEqual(self.transition(issue)["goal"], history["submitted_goal"])
+        self.assertEqual(["Baseline."], history["submitted_goal"]["evidence"])
         self.assertEqual([], zzzops.parse_managed_goal(payload["body"], 42)["evidence"])
         self.assertEqual(
             {"risk_categories": ["authentication"], "override": None},
             zzzops.parse_managed_goal(payload["body"], 42)["engineering_rigor"],
         )
-        self.assertNotIn("effective", history["requested_goal"]["engineering_rigor"])
+        self.assertNotIn("effective", history["submitted_goal"]["engineering_rigor"])
 
         adapter = FakeGoalTransitionAdapter(issue)
         transition = self.transition(issue)
@@ -3509,8 +3513,25 @@ class GoalTransitionTests(unittest.TestCase):
         self.assertEqual(["B-001"], [blocker["id"] for blocker in compact["blockers"]])
         self.assertEqual([], zzzops.validate_compact_goal_body(adapter.issue["body"], 42))
 
-        history = zzzops.parse_goal_history(adapter.comments[0]["body"])
-        tampered = json.loads(json.dumps(history))
+        # Legacy parsing is tested against an explicit schema-1 fixture, never
+        # against a newly emitted reverse-diff envelope.
+        legacy = {
+            "schema_version": 1,
+            "id": zzzops._goals.goal_history_id(42, transition["expected_digest"], transition["goal"]),
+            "issue": 42, "expected_digest": transition["expected_digest"],
+            "from_revision": 1, "to_revision": 2,
+            "prior_body": issue["body"], "requested_goal": transition["goal"],
+        }
+        legacy["payload_digest"] = hashlib.sha256(json.dumps(
+            legacy, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        ).encode("utf-8")).hexdigest()
+        legacy_body = (
+            f"{zzzops._goals.GOAL_HISTORY_BLOCK_START}\n"
+            f"{json.dumps(legacy, sort_keys=True, separators=(',', ':'))}\n"
+            f"{zzzops._goals.GOAL_HISTORY_BLOCK_END}\n"
+        )
+        self.assertEqual(legacy, zzzops.parse_goal_history(legacy_body))
+        tampered = json.loads(json.dumps(legacy))
         tampered["prior_body"] += "tampered"
         tampered_body = (
             f"{zzzops._goals.GOAL_HISTORY_BLOCK_START}\n"
@@ -3519,6 +3540,17 @@ class GoalTransitionTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "Invalid goal history payload"):
             zzzops.parse_goal_history(tampered_body)
+
+        reconstruct = getattr(zzzops._goals, "reconstruct_goal_history", None)
+        self.assertTrue(callable(reconstruct), "New history must preserve compacted evidence and human text")
+        history = reconstruct(adapter, 42, 1)
+        self.assertEqual(self.goal(), history["goal"])
+        self.assertEqual(
+            "## Outcome / Why\n\nKeep this.\n\n```md\n## Evidence\nKeep fenced example.\n```\n\n"
+            "## Evidence\n\nArchive this.\n\n## Scope\n\nKeep scope.\n\n\n\n",
+            history["human_spec"],
+        )
+        self.assertEqual(transition["goal"], history["submitted_goal"])
 
     def test_transition_file_is_bom_tolerant(self):
         with tempfile.TemporaryDirectory() as directory:
