@@ -1,17 +1,17 @@
 {
   "approval": {
-    "date": "2026-09-24",
-    "digest": "sha256:a83100c270e5b38d2d39f9784edcea5f8c5942b2108592242bdf15adf0e210dc",
-    "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
+    "date": "2026-09-25",
+    "digest": "sha256:11dec9645d8fba5aea377138b845b46d84d33e57329f959756cf81d009ecdfcd",
+    "reviewer": "user: Approved, but make a goal to only block on new models at the beginning of an execution phase, new models should not block ongoing work (2026-09-25)"
   },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:468e18bbda7372cf736bfd65799014d60fa1aead8a378b2d896d7f242e5de4cd",
+      "digest": "sha256:33f88113f5fd86d127cf0c0ddb0e624b2d55ff0acfd534cb96e2411402f3edc3",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
-      "digest": "sha256:374c8ba78c84c1498a8b21801ec0005b051a909fb442f16e4713fb8dc2884cd7",
+      "digest": "sha256:64c7d9737b9e4bc9490ff91a4050e94b933e86fc5e1a8fdc4dc4be4200e78160",
       "path": ".zzzops/PROJECT.md"
     }
   },
@@ -266,6 +266,18 @@
       "change": "Reviewed policy revision 46",
       "date": "2026-09-24",
       "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 47",
+      "date": "2026-09-25",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "user: Approved, but make a goal to only block on new models at the beginning of an execution phase, new models should not block ongoing work (2026-09-25)",
+      "change": "Reviewed policy revision 48",
+      "date": "2026-09-25",
+      "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:7be7d19e39e20f47b06a6a7644c3e8708bb5a6d5129911eccc64f715c4f09e32."
     }
   ],
   "initialized": true,
@@ -415,9 +427,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-24",
-          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
-          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
+          "date": "2026-09-25",
+          "reviewed_digest": "sha256:7be7d19e39e20f47b06a6a7644c3e8708bb5a6d5129911eccc64f715c4f09e32",
+          "reviewer": "user: Approved, but make a goal to only block on new models at the beginning of an execution phase, new models should not block ongoing work (2026-09-25)"
         },
         "source_ids": [
           "E-003",
@@ -453,9 +465,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-24",
-          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
-          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
+          "date": "2026-09-25",
+          "reviewed_digest": "sha256:7be7d19e39e20f47b06a6a7644c3e8708bb5a6d5129911eccc64f715c4f09e32",
+          "reviewer": "user: Approved, but make a goal to only block on new models at the beginning of an execution phase, new models should not block ongoing work (2026-09-25)"
         },
         "source_ids": [
           "E-002",
@@ -493,9 +505,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-24",
-          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
-          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
+          "date": "2026-09-25",
+          "reviewed_digest": "sha256:7be7d19e39e20f47b06a6a7644c3e8708bb5a6d5129911eccc64f715c4f09e32",
+          "reviewer": "user: Approved, but make a goal to only block on new models at the beginning of an execution phase, new models should not block ongoing work (2026-09-25)"
         },
         "source_ids": [
           "E-002",
@@ -533,9 +545,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-24",
-          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
-          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
+          "date": "2026-09-25",
+          "reviewed_digest": "sha256:7be7d19e39e20f47b06a6a7644c3e8708bb5a6d5129911eccc64f715c4f09e32",
+          "reviewer": "user: Approved, but make a goal to only block on new models at the beginning of an execution phase, new models should not block ongoing work (2026-09-25)"
         },
         "source_ids": [
           "E-002",
@@ -567,9 +579,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-24",
-          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
-          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
+          "date": "2026-09-25",
+          "reviewed_digest": "sha256:7be7d19e39e20f47b06a6a7644c3e8708bb5a6d5129911eccc64f715c4f09e32",
+          "reviewer": "user: Approved, but make a goal to only block on new models at the beginning of an execution phase, new models should not block ongoing work (2026-09-25)"
         },
         "source_ids": [
           "E-001",
@@ -606,9 +618,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-24",
-          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
-          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
+          "date": "2026-09-25",
+          "reviewed_digest": "sha256:7be7d19e39e20f47b06a6a7644c3e8708bb5a6d5129911eccc64f715c4f09e32",
+          "reviewer": "user: Approved, but make a goal to only block on new models at the beginning of an execution phase, new models should not block ongoing work (2026-09-25)"
         },
         "source_ids": [
           "E-001",
@@ -640,9 +652,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-24",
-          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
-          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
+          "date": "2026-09-25",
+          "reviewed_digest": "sha256:7be7d19e39e20f47b06a6a7644c3e8708bb5a6d5129911eccc64f715c4f09e32",
+          "reviewer": "user: Approved, but make a goal to only block on new models at the beginning of an execution phase, new models should not block ongoing work (2026-09-25)"
         },
         "source_ids": [
           "E-002",
@@ -675,9 +687,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-24",
-          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
-          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
+          "date": "2026-09-25",
+          "reviewed_digest": "sha256:7be7d19e39e20f47b06a6a7644c3e8708bb5a6d5129911eccc64f715c4f09e32",
+          "reviewer": "user: Approved, but make a goal to only block on new models at the beginning of an execution phase, new models should not block ongoing work (2026-09-25)"
         },
         "source_ids": [
           "E-002",
@@ -725,9 +737,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-24",
-          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
-          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
+          "date": "2026-09-25",
+          "reviewed_digest": "sha256:7be7d19e39e20f47b06a6a7644c3e8708bb5a6d5129911eccc64f715c4f09e32",
+          "reviewer": "user: Approved, but make a goal to only block on new models at the beginning of an execution phase, new models should not block ongoing work (2026-09-25)"
         },
         "source_ids": [
           "E-001",
@@ -989,6 +1001,72 @@
                 "effort": "max",
                 "model": "gpt-reserve",
                 "tier": "bounded"
+              },
+              {
+                "cost": 240,
+                "effort": "low",
+                "model": "gpt-6-sol",
+                "tier": "reasoning"
+              },
+              {
+                "cost": 480,
+                "effort": "medium",
+                "model": "gpt-6-sol",
+                "tier": "reasoning"
+              },
+              {
+                "cost": 720,
+                "effort": "high",
+                "model": "gpt-6-sol",
+                "tier": "architectural"
+              },
+              {
+                "cost": 960,
+                "effort": "xhigh",
+                "model": "gpt-6-sol",
+                "tier": "architectural"
+              },
+              {
+                "cost": 1440,
+                "effort": "max",
+                "model": "gpt-6-sol",
+                "tier": "architectural"
+              },
+              {
+                "cost": 1920,
+                "effort": "ultra",
+                "model": "gpt-6-sol",
+                "tier": "architectural"
+              },
+              {
+                "cost": 14,
+                "effort": "low",
+                "model": "gpt-6-luna",
+                "tier": "routine"
+              },
+              {
+                "cost": 28,
+                "effort": "medium",
+                "model": "gpt-6-luna",
+                "tier": "bounded"
+              },
+              {
+                "cost": 42,
+                "effort": "high",
+                "model": "gpt-6-luna",
+                "tier": "bounded"
+              },
+              {
+                "cost": 56,
+                "effort": "xhigh",
+                "model": "gpt-6-luna",
+                "tier": "bounded"
+              },
+              {
+                "cost": 84,
+                "effort": "max",
+                "model": "gpt-6-luna",
+                "tier": "bounded"
               }
             ]
           },
@@ -1026,13 +1104,13 @@
         "exceptions": [],
         "id": "model_routing",
         "instructions": "Route each phase by effective rigor, consequence, boundedness, and phase type. Refresh runtime model and effort availability, select only reviewed pairs at sufficient capability and least cost, keep human interaction on root, require a session override above root capability, and persist a blocker when no reviewed capable pair is available.",
-        "rationale": "Conservative capability estimates from the exposed harness model catalog. Relative cost scores use approximate short-context API input-plus-output rate ratios times assumed effort multipliers; they are routing estimates, not measured Codex subscription consumption. GPT-5.5 cost is a conservative estimate. Review actual execution efficacy over time. The reviewed inventory is project-wide and may include pairs unavailable in the current harness. Execution intersects it with current harness availability; narrower harnesses never remove reviewed entries or alone stale policy. Newly observed unreviewed pairs require review.",
+        "rationale": "Conservative capability estimates from the exposed harness model catalog. Relative cost scores use approximate short-context API input-plus-output rate ratios times assumed effort multipliers; they are routing estimates, not measured Codex subscription consumption. GPT-5.5 cost is a conservative estimate. Review actual execution efficacy over time. The reviewed inventory is project-wide and may include pairs unavailable in the current harness. Execution intersects it with current harness availability; narrower harnesses never remove reviewed entries or alone stale policy. Newly observed unreviewed pairs require review. Proposed 2026-09-25 inventory refresh: carry forward the existing Sol and Luna family tier/cost estimates to the newly exposed GPT-6 Sol/Luna pairs. These are unbenchmarked provisional routing scores, not claimed current API prices. Existing mappings and all gates remain unchanged; #539 architectural routing remains gpt-6-astra/low.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-24",
-          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
-          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
+          "date": "2026-09-25",
+          "reviewed_digest": "sha256:7be7d19e39e20f47b06a6a7644c3e8708bb5a6d5129911eccc64f715c4f09e32",
+          "reviewer": "user: Approved, but make a goal to only block on new models at the beginning of an execution phase, new models should not block ongoing work (2026-09-25)"
         },
         "source_ids": [
           "E-015",
@@ -1368,9 +1446,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-24",
-          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
-          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
+          "date": "2026-09-25",
+          "reviewed_digest": "sha256:7be7d19e39e20f47b06a6a7644c3e8708bb5a6d5129911eccc64f715c4f09e32",
+          "reviewer": "user: Approved, but make a goal to only block on new models at the beginning of an execution phase, new models should not block ongoing work (2026-09-25)"
         },
         "source_ids": [
           "E-001",
@@ -1407,9 +1485,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-24",
-          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
-          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
+          "date": "2026-09-25",
+          "reviewed_digest": "sha256:7be7d19e39e20f47b06a6a7644c3e8708bb5a6d5129911eccc64f715c4f09e32",
+          "reviewer": "user: Approved, but make a goal to only block on new models at the beginning of an execution phase, new models should not block ongoing work (2026-09-25)"
         },
         "source_ids": [
           "E-002",
@@ -1464,9 +1542,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-24",
-          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
-          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
+          "date": "2026-09-25",
+          "reviewed_digest": "sha256:7be7d19e39e20f47b06a6a7644c3e8708bb5a6d5129911eccc64f715c4f09e32",
+          "reviewer": "user: Approved, but make a goal to only block on new models at the beginning of an execution phase, new models should not block ongoing work (2026-09-25)"
         },
         "source_ids": [
           "E-001",
@@ -1486,6 +1564,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 46,
+  "revision": 48,
   "schema_version": 1
 }
