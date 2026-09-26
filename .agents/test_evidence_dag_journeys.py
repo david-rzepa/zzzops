@@ -1297,7 +1297,7 @@ class WorkspaceAuthorityPublicTests(DagFixture):
                 nodes.extend([observe, accept])
         return {"nodes": nodes, "task_sets": [], "terminals": [selector("gamma")]}
 
-    def setup_workspace(self, mutate=None):
+    def setup_workspace(self, mutate=None, *, defer_authorization=False):
         (self.fixture.repo / "source.py").write_text("def value():\n    return 1\n")
         (self.fixture.repo / "read_dependency.txt").write_text("stable dependency\n")
         self.session.git("add", "source.py", "read_dependency.txt")
@@ -1310,6 +1310,8 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.permit = {"manifest": self.produced("charter", "grant"),
                        "tasks": [entry["task"] for entry in self.allocations["allocations"].values()],
                        "policy": content_hash(self.session.project["policy"]), "decision": "approved"}
+        if defer_authorization:
+            return
         review = self.session.acquire("inspect_charter", actor="allocation-reviewer")
         self.session.finish(review, {"permit": self.permit})
         self.session.finish(self.session.acquire("consent"), {"permit": self.permit})
@@ -1341,8 +1343,9 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.assertEqual(command, proof["commands"][0]["command"])
         self.assertEqual(expected_exit, proof["commands"][0]["exit_code"])
         for name in self.allocations["allocations"][work["node"]["node"]]["owned"]:
-            self.assertEqual("sha256:" + hashlib.sha256((self.fixture.repo / name).read_bytes()).hexdigest(),
-                             proof["outputs"][name])
+            path = self.fixture.repo / name
+            expected = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else "missing"
+            self.assertEqual(expected, proof["outputs"][name])
         self.assertFalse(any(lease["token"] == work["lease"]["token"]
                              for lease in self.payload()[1]["operational"]["leases"]))
         return proof_ref, proof
@@ -1364,23 +1367,185 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         return alpha, proof
 
     def test_permitted_red_to_green_edits_keep_fingerprints_and_downstream_proof_reuse(self):
-        self.setup_workspace()
+        obsolete = self.fixture.repo / "obsolete.txt"
+        obsolete.write_text("Authorized deletion fixture\n")
+        self.session.git("add", "obsolete.txt")
+        self.session.git("commit", "-qm", "tracked deletion baseline")
+        def deletion_allocation(_graph, manifest):
+            manifest["allocations"]["beta"]["owned"].append("obsolete.txt")
+            manifest["allocations"]["beta"]["consumed"].append("obsolete.txt")
+        self.setup_workspace(deletion_allocation)
         alpha, (red_ref, red) = self.red_candidate()
         self.assertEqual("missing", red["consumed"]["behavior_test.py"], "Pin pre-edit absence despite owned test creation")
         beta = self.acquire_workspace("beta")
+        pinned = copy.deepcopy(beta["lease"]["acquisition"])
+        self.session.call(100, {"operation": "renew", "node": beta["node"],
+            "lease": beta["lease"]["token"], "actor": beta["bound_actor"], "worker_status": "active"})
+        renewed = next(lease for lease in self.payload()[1]["operational"]["leases"]
+                       if lease["token"] == beta["lease"]["token"])
+        self.assertEqual(pinned, renewed["acquisition"])
+        self.assertEqual(beta["input_hash"], renewed["input_hash"])
         original = hashlib.sha256((self.fixture.repo / "source.py").read_bytes()).hexdigest()
+        deleted_hash = "sha256:" + hashlib.sha256(obsolete.read_bytes()).hexdigest()
+        obsolete.unlink()
         (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
         _green_ref, green = self.candidate(beta, 0)
         self.assertEqual("sha256:" + original, green["consumed"]["source.py"])
+        self.assertEqual(deleted_hash, green["consumed"]["obsolete.txt"])
+        self.assertEqual("missing", green["outputs"]["obsolete.txt"])
         self.assertNotIn("gamma", self.names())
         self.review_candidate("beta", 0)
         before = self.result("alpha")[0], self.result("beta")[0]
         self.session = TaskSession(self.fixture.repo, self.session.project, self.session.runtime,
                                    self.provider, self.session.control)
         gamma = self.acquire_workspace("gamma")
+        self.assertFalse(obsolete.exists(), "Accepted deletion must remain reusable downstream")
         self.assertEqual(before, (self.result("alpha")[0], self.result("beta")[0]))
         self.assertEqual(red, self.read_blob(red_ref), "Later green work cannot rewrite red baseline proof")
         self.session.finish(gamma, {"value": "Consumed accepted test and implementation output identities"})
+
+    def test_current_authorization_must_match_manifest_task_generation_and_policy(self):
+        self.setup_workspace(defer_authorization=True)
+        work = self.session.acquire("inspect_charter", actor="allocation-reviewer")
+        original = copy.deepcopy((self.provider.issues, self.provider.comments))
+        for change in ("manifest", "task", "generation", "policy"):
+            with self.subTest(change=change):
+                self.provider.issues, self.provider.comments = copy.deepcopy(original)
+                permit = copy.deepcopy(self.permit)
+                if change == "manifest":
+                    permit["manifest"] = self.blob({"allocations": {}})
+                elif change == "policy":
+                    permit["policy"] = "sha256:" + "f" * 64
+                else:
+                    permit["tasks"][0]["node" if change == "task" else "generation"] = "other" if change == "task" else 2
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                response = self.session.call(100, self.session.submission(work, {"permit": permit}, "wrong-" + change), expected=None)
+                if self.session.calls[-1]["code"] != 0:
+                    self.assertEqual(2, self.session.calls[-1]["code"])
+                    self.assertEqual(before, (self.provider.issues, self.provider.comments))
+                else:
+                    response = self.session.call(100, expected=None)
+                if any(s.get("kind") == "execute" and s.get("node", {}).get("node") == "consent"
+                       for s in response["next_steps"]):
+                    approval = self.session.acquire("consent")
+                    before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                    response = self.session.call(100, self.session.submission(approval, {"permit": permit}, "approve-" + change), expected=None)
+                    if self.session.calls[-1]["code"] != 0:
+                        self.assertEqual(2, self.session.calls[-1]["code"])
+                        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+                    else:
+                        response = self.session.call(100, expected=None)
+                self.assertEqual(self.permit["manifest"], self.produced("charter", "grant"),
+                                 "The producer stays current; only authorization content differs")
+                # A malformed authorization may remain factual evidence, but
+                # must never grant a writer. If rejected, publishing is atomic.
+                self.assertFalse(any(s.get("kind") == "execute" and s.get("node", {}).get("node") == "alpha"
+                                     for s in response["next_steps"]))
+                self.assert_workspace_blocker(response, r"(?i)manifest|allocation|authorization|policy|generation|authority")
+                # Checkpoint must not create a partial alpha lease or rewrite evidence.
+                state = copy.deepcopy((self.provider.issues, self.provider.comments))
+                self.session.call(100, expected=None)
+                self.assertEqual(state, (self.provider.issues, self.provider.comments))
+                self.assertFalse(any(l["node"]["node"] == "alpha" for l in self.payload()[1]["operational"]["leases"]))
+        self.provider.issues, self.provider.comments = copy.deepcopy(original)
+        self.session.finish(work, {"permit": self.permit})
+        self.session.finish(self.session.acquire("consent"), {"permit": self.permit})
+        self.acquire_workspace("alpha")
+
+    def assert_workspace_blocker(self, response, pattern):
+        # Task names and echoed input schemas are not rejection evidence.
+        # An unfinished review/approval alone must never satisfy a negative.
+        blockers = [step for step in response["next_steps"]
+                    if step.get("kind") in ("error", "repair", "blocked")
+                    or step.get("directive") == "resolve_blocker"]
+        self.assertTrue(blockers, "Expected an explicit authority/path rejection, not an unfinished prerequisite")
+        diagnostics = [{key: step[key] for key in ("reason", "diagnostic", "error", "message") if key in step}
+                       for step in blockers]
+        self.assertRegex(json.dumps(diagnostics), pattern)
+
+    def test_allocation_producer_cannot_self_authorize_and_intruder_cannot_publish(self):
+        self.setup_workspace(defer_authorization=True)
+        step = next(s for s in self.session.ready() if s["node"]["node"] == "inspect_charter")
+        receipt = json.loads(Path(step["policy"]["path"]).read_text())["policy_receipt"]
+        start = {**step["start"], "policy_receipt": receipt}
+        start.pop("request_id", None)
+        work = self.session.call(100, start)["next_steps"][0]
+        bind = {**work["bind"], "lease": work["lease"]["token"], "actor": "root-thread",
+                "selection": work["lease"]["selection"], "policy_receipt": receipt}
+        bind.pop("request_id", None)
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, bind, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)independent|actor|authoriz|producer")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.call(100, {**bind, "actor": "allocation-reviewer"})
+        work["bound_actor"] = "allocation-reviewer"
+        request = self.session.submission(work, {"permit": self.permit}, "intruder-authorization")
+        request["actor"] = "unbound-intruder"
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)actor|lease|owner|authoriz")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.finish(work, {"permit": self.permit})
+        self.session.finish(self.session.acquire("consent"), {"permit": self.permit})
+        self.acquire_workspace("alpha")
+
+    def test_unsafe_allocation_paths_and_undeclared_deletion_never_authorize_edits(self):
+        self.setup_workspace()
+        valid_graph = copy.deepcopy(self.graph)
+        original = copy.deepcopy((self.provider.issues, self.provider.comments))
+        with tempfile.TemporaryDirectory() as outside:
+            (self.fixture.repo / "escape").symlink_to(outside, target_is_directory=True)
+            (self.fixture.repo / "directory").mkdir()
+            for path in ("../outside.py", ".git/config", "directory", "*.py", "escape/outside.py"):
+                with self.subTest(path=path):
+                    self.provider.issues, self.provider.comments = copy.deepcopy(original)
+                    self.install(valid_graph)
+                    manifest = copy.deepcopy(self.allocations)
+                    manifest["allocations"]["alpha"]["owned"] = [path]
+                    work = self.session.acquire("charter")
+                    before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                    response = self.session.call(100, self.session.submission(work, {"grant": manifest}, "unsafe-" + path), expected=None)
+                    if self.session.calls[-1]["code"] != 0:
+                        self.assertEqual(2, self.session.calls[-1]["code"])
+                        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+                    else:
+                        response = self.session.call(100, expected=None)
+                    if any(s.get("kind") == "execute" and s.get("node", {}).get("node") == "inspect_charter"
+                           for s in response["next_steps"]):
+                        permit = {**self.permit, "manifest": self.produced("charter", "grant")}
+                        for name in ("inspect_charter", "consent"):
+                            if not any(s.get("kind") == "execute" and s.get("node", {}).get("node") == name
+                                       for s in response["next_steps"]):
+                                self.assert_workspace_blocker(response, r"(?i)path|scope|allocation|directory|glob|symlink|protected|traversal")
+                                break
+                            reviewer = self.session.acquire(name, actor="allocation-reviewer" if name == "inspect_charter" else "root-thread")
+                            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                            response = self.session.call(100, self.session.submission(reviewer, {"permit": permit}, "unsafe-" + name + path), expected=None)
+                            if self.session.calls[-1]["code"] != 0:
+                                self.assertEqual(2, self.session.calls[-1]["code"])
+                                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+                                break
+                            response = self.session.call(100, expected=None)
+                    self.assertFalse(any(s.get("kind") == "execute" and s.get("node", {}).get("node") == "alpha"
+                                         for s in response["next_steps"]))
+                    self.assert_workspace_blocker(response, r"(?i)path|scope|allocation|directory|glob|symlink|protected|traversal")
+                    before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                    self.session.call(100, expected=None)
+                    self.assertEqual(before, (self.provider.issues, self.provider.comments))
+            (self.fixture.repo / "escape").unlink()
+            (self.fixture.repo / "directory").rmdir()
+        self.provider.issues, self.provider.comments = copy.deepcopy(original)
+        work = self.acquire_workspace("alpha")
+        path = self.fixture.repo / "product.txt"
+        original_bytes = path.read_bytes()
+        path.unlink()
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, self.session.submission(work, {"value": "undeclared deletion"}, "delete-unowned"), expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)scope|workspace|delet|file|owned")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        path.write_bytes(original_bytes)
+        (self.fixture.repo / "behavior_test.py").write_text("from source import value\nassert value() == 2\n")
+        self.candidate(work, 1)
 
     def test_unowned_and_consumed_drift_reject_without_partial_candidate_then_allow_owned_edit(self):
         self.setup_workspace()
