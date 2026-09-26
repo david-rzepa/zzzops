@@ -18,6 +18,7 @@ import zlib
 import re
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
+import zzzops_comment_store as comment_store
 
 
 # Public submissions are intentionally enumerated here, before any context or
@@ -271,6 +272,7 @@ class Workflow:
         getattr(self, '_read_cache', {}).clear()
         self._read_cache = {}
         self._portfolio_cache = None
+        self._artifact_indexes = {}
 
     def read(self, number):
         if number not in self._read_cache:
@@ -294,25 +296,58 @@ class Workflow:
         return copy.deepcopy(self._read_cache[number])
 
     def artifact(self, number, content):
-        identity = digest(content)
-        marker = '<!-- zzzops-artifact ' + identity + ' -->'
-        raw = json.dumps({'hash': identity, 'content': content}, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
-        if len(raw.encode('utf-8')) > 1_000_000:
-            raise ValueError('Phase artifacts must be bounded to one megabyte')
-        encoded = base64.b64encode(zlib.compress(raw.encode('utf-8'))).decode('ascii')
-        body = marker + '\n<details><summary>Immutable phase artifact</summary>\n\n```text\n' + encoded + '\n```\n</details>'
-        if len(body) > 65000:
-            raise ValueError('Artifact is too large for one provider comment; use a published Git content reference')
-        existing = [c for c in self.adapter.get_issue_comments(number) if c.get('body', '').startswith(marker)]
-        if existing and any(c['body'] != body for c in existing):
-            raise ValueError('Stored artifact identity conflicts with its contents')
-        if not existing:
+        identity = comment_store.digest(content)
+        index = self.artifact_index(number)
+        record = index.record(content)
+        if record is not None:
+            bodies = comment_store.pack_envelopes({'goal': number, 'transaction': identity}, [record])
+            comments = self.adapter.get_issue_comments(number)
+            prospective = comment_store.preflight_comments(comments, bodies, [identity], previous=index)
+            body = bodies[0]
             stored = self.adapter.create_issue_comment(number, body)
             if stored.get('body') != body:
                 raise ValueError('Provider did not confirm the exact artifact')
+            confirmed = comment_store.ArtifactIndex(self.adapter.get_issue_comments(number), previous=prospective)
+            confirmed.resolve(identity)
+            self._artifact_indexes[number] = confirmed
         return {'reference': 'urn:' + identity, 'hash': identity}
 
+    def artifact_index(self, number):
+        if not hasattr(self, '_artifact_indexes'):
+            self._artifact_indexes = {}
+        if number not in self._artifact_indexes:
+            self._artifact_indexes[number] = comment_store.ArtifactIndex(self.adapter.get_issue_comments(number))
+        return self._artifact_indexes[number]
+
+    def stage_artifact(self, number, content, base=None):
+        self._referenced_artifacts.add((number, comment_store.digest(content)))
+        index = self.artifact_index(number)
+        record = index.record(content, base)
+        if record is not None:
+            self._pending_artifacts.append(record)
+            index.records.setdefault(record['hash'], []).append(record)
+        return {'reference': 'urn:' + comment_store.digest(content), 'hash': comment_store.digest(content)}
+
+    def resolve_selector(self, number, selector):
+        if not isinstance(selector, dict) or set(selector) - {'phase', 'slot', 'revision'} or not isinstance(selector.get('phase'), str) or selector.get('slot') not in {'output', 'review', 'verification'}:
+            raise ValueError('Logical artifact selector requires phase, slot and optional revision')
+        _, goal = self.read(number)
+        revision = selector.get('revision', goal['revision'])
+        if 'revision' in selector:
+            goal = self.api._goals.reconstruct_goal_history(self.adapter, number, revision)['goal']
+        evidence = goal.get('phase_evidence') or {}
+        phase, slot = selector['phase'], selector['slot']
+        if slot == 'review':
+            reference = (evidence.get('reviews', {}).get(phase) or {}).get('artifact')
+        else:
+            reference = (evidence.get('records', {}).get(phase) or {}).get(slot)
+        if not reference:
+            raise ValueError('Logical artifact has no committed value at the requested revision')
+        return reference, {'goal': number, 'phase': phase, 'slot': slot, 'revision': revision, **reference}
+
     def read_artifact(self, number, artifact):
+        if isinstance(artifact, dict) and 'phase' in artifact:
+            artifact, _ = self.resolve_selector(number, artifact)
         # Content-addressed successful reads may be reused within this invocation.
         # Live records/review bindings are still checked independently each time.
         key = (number, digest(artifact))
@@ -332,25 +367,9 @@ class Workflow:
             return content.decode('utf-8')
         if reference != 'urn:' + expected:
             raise ValueError('Artifact reference must identify its exact stored content hash')
-        marker = '<!-- zzzops-artifact ' + expected + ' -->'
-        for comment in self.adapter.get_issue_comments(number):
-            body = comment.get('body', '')
-            if body.startswith(marker):
-                match = re.search(r'```text\n([A-Za-z0-9+/=]+)\n```', body)
-                if not match:
-                    raise ValueError('Malformed stored artifact')
-                decoder = zlib.decompressobj()
-                try:
-                    raw = decoder.decompress(base64.b64decode(match[1], validate=True), 1_000_001)
-                except (ValueError, zlib.error) as exc:
-                    raise ValueError('Malformed stored artifact encoding') from exc
-                if not decoder.eof or decoder.unused_data or len(raw) > 1_000_000:
-                    raise ValueError('Stored artifact exceeds its bounded size')
-                value = json.loads(raw)
-                if value.get('hash') != expected or digest(value.get('content')) != expected:
-                    raise ValueError('Stored artifact content changed')
-                return value['content']
-        raise ValueError('Persist the phase artifact through operation=artifact before submitting its reference')
+        if hasattr(self, '_referenced_artifacts'):
+            self._referenced_artifacts.add((number, expected))
+        return self.artifact_index(number).resolve(expected)[0]
 
     def portfolio(self, *, allow_invalid=True):
         if self._portfolio_cache is None:
@@ -486,11 +505,38 @@ class Workflow:
                 raise ValueError('Provider did not confirm a live workflow storage reservation; no write is allowed')
             reservation['expires_at'] = expires_at
         desired['revision'] = goal['revision'] + 1
+        def before_publish():
+            if reservation is not None and (not reservation['valid'] or time.time() >= reservation['expires_at']):
+                raise ValueError('Storage reservation expired before publication')
+            token = getattr(self, '_mutation_payload', {}).get('lease')
+            previous = next((v for v in state(goal)['leases'].values() if v['token'] == token), None)
+            if previous is not None and time.time() >= previous['expires_at'] and getattr(self, '_mutation_payload', {}).get('operation') not in {'recover', 'release', 'renew'}:
+                raise ValueError('Phase lease expired before publication')
+            payload = getattr(self, '_mutation_payload', {})
+            operation, phase = payload.get('operation'), payload.get('phase')
+            if previous is not None and operation in {'record_result', 'record_review', 'approve'}:
+                # Run the same authorization, exact review and owned-file checks
+                # again; these mutate only discarded in-memory projections.
+                key = next(k for k, v in state(goal)['leases'].items() if v['token'] == token)
+                self.submit_evidence(goal, copy.deepcopy(self.api.parse_managed_goal(issue['body'], goal['key'])),
+                                     state(goal), key, copy.deepcopy(previous), payload)
+            elif previous is not None and operation == 'verify':
+                self.execution_preflight(goal, phase, previous, payload)
+                if desired['workflow']['artifacts'][phase]['workspace'] != self.workspace_digest():
+                    raise ValueError('Verification inputs changed before publication')
+            elif operation == 'start':
+                acquisition = desired['workflow']['leases'][phase + ':' + payload['kind']].get('acquisition')
+                if acquisition and acquisition['workspace_digest'] != self.workspace_digest():
+                    raise ValueError('Acquisition inputs changed before publication')
         result = self.api.apply_goal_transition(self.adapter, self.repository, goal['key'], {
             'schema_version': self.api.GOAL_TRANSITION_SCHEMA_VERSION,
             'expected_revision': goal['revision'], 'expected_digest': goal['digest'], 'goal': desired,
             **({'human_spec': human_spec} if human_spec is not None else {}),
-        })
+        }, artifact_records=getattr(self, '_pending_artifacts', []),
+           transaction_context=getattr(self, '_transaction_context', None), before_publish=before_publish,
+           observed_issue=issue, observed_comments=self.artifact_index(goal['key']).comments,
+           observed_index=self.artifact_index(goal['key']),
+           artifact_hashes={identity for number, identity in getattr(self, '_referenced_artifacts', set()) if number == goal['key']})
         self.invalidate()
         return result
 
@@ -854,7 +900,7 @@ class Workflow:
         if proof != state(goal)['artifacts'].get(phase) or proof.get('workspace') != baseline:
             raise ValueError('Correction baseline differs from exact recorded verification')
         previous = {'goal': goal['key'], 'phase': phase, 'record': record, 'review': review, 'scope': scope}
-        reference = self.artifact(goal['key'], previous)
+        reference = self.stage_artifact(goal['key'], previous)
         self.predecessor_edges(goal, phase, scope, {'workspace_digest': baseline, 'predecessor': reference})
         return reference
 
@@ -1348,6 +1394,27 @@ class Workflow:
         commands = payload.get('commands')
         if not isinstance(commands, list) or not commands or any(not isinstance(command, list) or not command or any(not isinstance(arg, str) or not arg for arg in command) for command in commands):
             raise ValueError('Verification commands must be nonempty argument arrays')
+        index = self.artifact_index(number)
+        pending = [e for e in index.envelopes if (e.get('context') or {}).get('request_id') == payload['request_id']]
+        if pending:
+            context = pending[0]['context']
+            if any(e.get('goal') != number or e['context'] != context or e.get('expected_digest') != goal['digest'] for e in pending):
+                raise ValueError('Pending verification predecessor or request identity changed')
+            if context.get('fingerprint') != digest(payload) or context.get('root_id') != lease['owner']:
+                raise ValueError('Pending verification request_id was already used with different inputs')
+            # Resolve the persisted proof even if later transaction parts were
+            # not appended. save() regenerates and verifies the complete manifest
+            # before publishing; verification commands must not run again.
+            proof, _, _ = index.resolve(context.get('verification'))
+            if (proof.get('workspace') != self.workspace_digest()
+                or [r.get('command') for r in proof.get('commands', [])] != commands
+                or (acquired and (proof.get('lease') != lease['token'] or proof.get('actor') != lease['worker']))):
+                raise ValueError('Pending verification inputs or ownership changed')
+            for result in proof['commands']:
+                log = Path(result['log'])
+                if not log.is_file() or hashlib.sha256(log.read_bytes()).hexdigest() != result['log_hash']:
+                    raise ValueError('Pending verification log is missing or changed')
+            return self.mutate(number, payload, _proof=proof)
         before = self.workspace_digest()
         logs = self.repo / '.zzzops' / 'diagnostics'
         logs.mkdir(parents=True, exist_ok=True)
@@ -1369,6 +1436,8 @@ class Workflow:
     def mutate(self, number, payload, *, _proof=None):
         if not isinstance(payload, dict) or not isinstance(payload.get('request_id'), str) or not payload['request_id']:
             raise ValueError('Every mutation requires a stable request_id for safe retries')
+        if 'artifacts' in payload and payload.get('operation') not in {'record_result', 'record_review'}:
+            raise ValueError('Inline artifacts are only supported at result/review checkpoints')
         if payload.get('operation') == 'verify' and _proof is None:
             return self.verify(number, payload)
         with self.locked():
@@ -1418,6 +1487,46 @@ class Workflow:
                 response = {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'This request was already applied. Re-read current goal evidence.'}]}
                 return self.stop_completed_heartbeat(number, payload, durable, response)
             operation = payload.get('operation')
+            self._mutation_payload = payload
+            self._pending_artifacts = []
+            self._referenced_artifacts = set()
+            self._transaction_context = {'request_id': payload['request_id'], 'fingerprint': fingerprint,
+                                         'root_id': (self.runtime or {}).get('root_id')}
+            pending = []
+            for envelope in self.artifact_index(number).envelopes:
+                context = envelope.get('context') or {}
+                if context.get('request_id') == payload['request_id']:
+                    if envelope.get('goal') != number or context.get('fingerprint') != fingerprint or context.get('root_id') != (self.runtime or {}).get('root_id'):
+                        raise ValueError('Pending request_id was already used with different inputs')
+                    if envelope.get('expected_digest') != goal['digest'] and operation != 'renew':
+                        raise ValueError('Pending transaction predecessor changed; no write is allowed')
+                    pending.append(envelope)
+            if pending:
+                self._transaction_context = copy.deepcopy(pending[0]['context'])
+                if any(e['context'] != self._transaction_context for e in pending):
+                    raise ValueError('Conflicting pending request identity')
+                for envelope in sorted(pending, key=lambda e: e['part']):
+                    self._pending_artifacts.extend(copy.deepcopy(envelope['artifacts']))
+                if operation == 'renew' and any(e.get('expected_digest') != goal['digest'] for e in pending):
+                    comment_store.verify_manifest(pending)
+                    # Renewals may also belong to review or approval leases.
+                    matches = [v for k, v in durable['leases'].items() if k.startswith(str(payload.get('phase')) + ':') and v['token'] == payload.get('lease')]
+                    lease = matches[0] if len(matches) == 1 else None
+                    expiry = (self._transaction_context.get('generated') or {}).get('expires_at')
+                    if (not lease or lease['owner'] != (self.runtime or {}).get('root_id')
+                        or lease['worker'] != payload.get('actor') or payload.get('worker_status') != 'active'
+                        or lease['expires_at'] != expiry
+                        or any(e.get('body_hash') != comment_store.text_hash(issue['body']) or e.get('expected_revision') != goal['revision'] - 1 for e in pending)):
+                        raise ValueError('Pending renewal predecessor or current ownership changed')
+                    expected_state = 'closed' if goal['status'] in {'done', 'cancelled'} else 'open'
+                    labels = {item['name'] for item in issue.get('labels', [])}
+                    if str(issue.get('state', '')).lower() != expected_state or not {
+                        self.api.current_goal_schema_label(), f"zzzops:status:{goal['status']}", f"zzzops:priority:{goal['priority']}"
+                    }.issubset(labels):
+                        raise ValueError('Pending renewal provider state was not confirmed')
+                    return {'next_steps': [{'kind': 'renewed', 'goal': number, 'phase': payload['phase'],
+                        'actor': lease['worker'], 'lease': lease['token'], 'expires_at': expiry,
+                        'action': 'Ownership renewal was already saved. Continue monitoring the bound worker.'}]}
             human_spec = None
             phase = payload.get('phase')
             runtime = self.runtime or {}
@@ -1445,6 +1554,13 @@ class Workflow:
                          'selection': step['selection'], 'kind': kind, 'input_hash': step['input_hash'], 'expires_at': time.time() + 900, 'group': step['assignment_group'],
                          'record_hash': digest(evidence['records'].get(phase)) if kind != 'execute' else None,
                          'review_hash': digest(evidence['reviews'].get(phase)) if kind == 'human_approval' else None}
+                generated = self._transaction_context.get('generated')
+                if generated is not None:
+                    lease.update(token=generated['token'], expires_at=generated['expires_at'])
+                    if lease['expires_at'] <= time.time():
+                        raise ValueError('Pending start lease expired; reconcile it before starting new work')
+                else:
+                    self._transaction_context['generated'] = {'token': lease['token'], 'expires_at': lease['expires_at']}
                 if kind == 'execute' and phase in {'test_design', 'implement'} and self.reviewed_scope(goal):
                     commit = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
                     baseline, actual = self.git_files(commit), self.workspace_files()
@@ -1635,12 +1751,13 @@ class Workflow:
                     if payload.get('actor') != lease['worker'] or lease['kind'] != 'execute':
                         raise ValueError('Only the bound executor can verify phase work')
                     proof = _proof
+                    self._transaction_context['verification'] = digest(proof)
                     self.execution_preflight(goal, phase, lease, payload)
                     if proof['workspace'] != self.workspace_digest():
                         raise ValueError('Verification inputs changed before persistence')
                     results = proof['commands']
                     durable['artifacts'][phase] = proof
-                    self.artifact(number, proof)
+                    self.stage_artifact(number, proof)
                     proof_hash = digest(proof)
                     expected = not proof['passed'] if phase == 'test_design' else proof['passed']
                     response = {'next_steps': [{'kind': 'record_result' if expected else 'correct', 'goal': number, 'phase': phase, 'action': 'Submit this evidence after confirming failures exercise the intended missing behavior.' if expected and phase == 'test_design' else 'Submit the verified result.' if expected else 'Correct the checks or implementation and rerun verification.', 'verification': {'reference': 'urn:sha256:' + proof_hash[7:], 'hash': proof_hash}, **({} if proof['passed'] else {'logs': [r['log'] for r in results if r['exit_code'] != 0]})}]}
@@ -1654,7 +1771,8 @@ class Workflow:
                     if operation == 'renew':
                         if payload.get('actor') != lease['worker'] or payload.get('worker_status') != 'active':
                             raise ValueError('Renewal requires observed activity of the bound worker')
-                        lease['expires_at'] = time.time() + 900
+                        generated = self._transaction_context.setdefault('generated', {'expires_at': time.time() + 900})
+                        lease['expires_at'] = generated['expires_at']
                     else:
                         del durable['leases'][key]
                         if operation == 'recover':
@@ -1709,6 +1827,24 @@ class Workflow:
         phase, operation = payload['phase'], payload['operation']
         if not lease['worker'] or payload.get('actor') != lease['worker']:
             raise ValueError('Only the bound executor may submit evidence')
+        if 'artifacts' in payload:
+            inline = payload['artifacts']
+            if operation not in {'record_result', 'record_review'} or not isinstance(inline, list) or len(inline) > comment_store.MAX_ARTIFACT_RECORDS:
+                raise ValueError('Inline artifacts require a bounded result/review checkpoint')
+            evidence = goal.get('phase_evidence') or {}
+            if operation == 'record_result':
+                old = (evidence.get('records', {}).get(phase) or {}).get('output')
+                output = (payload.get('record') or {}).get('output')
+            else:
+                old = (evidence.get('reviews', {}).get(phase) or {}).get('artifact')
+                output = payload.get('artifact')
+            seen = set()
+            for item in inline:
+                if not isinstance(item, dict) or set(item) != {'content', 'hash'} or item['hash'] != comment_store.digest(item['content']) or item['hash'] in seen:
+                    raise ValueError('Inline artifact must contain unique matching content and hash only')
+                seen.add(item['hash'])
+                base = old.get('hash') if old and output and output.get('hash') == item['hash'] else None
+                self.stage_artifact(goal['key'], item['content'], base)
         acquired, scope = None, None
         if lease['kind'] == 'execute' and operation == 'record_result':
             acquired, scope = self.execution_preflight(goal, phase, lease, {
@@ -2001,8 +2137,13 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
     if operation == 'read' and number is not None:
         _, goal = engine.read(number)
         evidence = goal.get('phase_evidence') or api.empty_phase_evidence()
-        content = engine.read_artifact(number, payload['artifact']) if payload.get('artifact') else {'specification': goal['human_spec'], 'acceptance_criteria': goal['acceptance_criteria'], 'phase_record': evidence['records'].get(payload.get('phase')), 'phase_review': evidence['reviews'].get(payload.get('phase'))}
-        return {'next_steps': [{'kind': 'inspect_evidence', 'goal': number, 'action': 'Use this current evidence for the assigned phase.', 'content': content}]}
+        resolved = None
+        artifact = payload.get('artifact')
+        if isinstance(artifact, dict) and 'phase' in artifact:
+            artifact, resolved = engine.resolve_selector(number, artifact)
+        content = engine.read_artifact(number, artifact) if artifact else {'specification': goal['human_spec'], 'acceptance_criteria': goal['acceptance_criteria'], 'phase_record': evidence['records'].get(payload.get('phase')), 'phase_review': evidence['reviews'].get(payload.get('phase'))}
+        return {'next_steps': [{'kind': 'inspect_evidence', 'goal': number, 'action': 'Use this current evidence for the assigned phase.', 'content': content,
+                               **({'resolved': resolved} if resolved else {})}]}
     if operation == 'artifact' and number is not None:
         with engine.locked():
             _, goal = engine.read(number)

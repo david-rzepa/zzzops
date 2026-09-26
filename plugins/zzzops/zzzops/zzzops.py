@@ -24,6 +24,12 @@ from urllib.parse import quote, urlparse
 
 RELEASE_EVIDENCE_CACHE_TTL_SECONDS = 60
 
+_COMMENT_STORE_SPEC = importlib.util.spec_from_file_location("zzzops_comment_store", Path(__file__).with_name("comment_store.py"))
+assert _COMMENT_STORE_SPEC and _COMMENT_STORE_SPEC.loader
+_comment_store = importlib.util.module_from_spec(_COMMENT_STORE_SPEC)
+sys.modules[_COMMENT_STORE_SPEC.name] = _comment_store
+_COMMENT_STORE_SPEC.loader.exec_module(_comment_store)
+
 _PACKAGE_MODULE_PATH = Path(__file__).with_name("package.py")
 _PACKAGE_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_package", _PACKAGE_MODULE_PATH)
 assert _PACKAGE_MODULE_SPEC and _PACKAGE_MODULE_SPEC.loader
@@ -840,6 +846,7 @@ class GitHubGoalTransitionAdapter:
             ) from exc
 
     def create_issue_comment(self, number: int, body: str) -> dict[str, Any]:
+        _comment_store.guard_comment(body)
         result = self._run(
             ["api", "--method", "POST", f"repos/{self.repository}/issues/{number}/comments", "--input", "-"],
             input_text=json.dumps({"body": body}, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
