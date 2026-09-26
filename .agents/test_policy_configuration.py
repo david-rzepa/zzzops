@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 import unittest
@@ -36,6 +37,31 @@ EXPECTED_CONFIGURATION_KEYS = {
 
 
 class PolicyConfigurationSchemaTests(unittest.TestCase):
+    def test_immutable_legacy_fixture_binds_reviewed_content_and_rendered_artifacts(self):
+        fixture = fixtures.LEGACY_POLICY_UPGRADE_FIXTURE
+        state = fixture['state']
+        reviewable = {key: value for key, value in state.items() if key != 'approval'}
+        canonical = json.dumps(reviewable, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+        digest = lambda text: 'sha256:' + hashlib.sha256(text.encode('utf-8')).hexdigest()
+        self.assertEqual(state['approval']['digest'], digest(canonical))
+        for name in ('project', 'audit'):
+            self.assertEqual(state['bindings'][name]['digest'], digest(fixture[name]))
+        self.assertEqual(1, state['policy']['schema_version'])
+        doc = next(s for s in state['policy']['sections'] if s['id'] == 'documentation_style')
+        self.assertEqual('historical-reviewer', doc['review']['reviewer'])
+        self.assertEqual('2026-08-30', doc['review']['date'])
+        self.assertEqual('a36cf3a31876385885738cf86d90d8d9f77bbd02',
+                         doc['default_provenance']['source']['revision'])
+        self.assertEqual({
+            'documentation': 'repository_conventions',
+            'style': 'repository_conventions',
+            'communication': {
+                'style': 'outcome_first',
+                'technical_detail': 'decision_risk_failure_or_request',
+                'user_action': 'one_clear_action_with_reason_and_next_step',
+            },
+        }, doc['settings'])
+
     def template_policy(self):
         path = fixtures.PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json"
         return json.loads(path.read_text(encoding="utf-8"))["policy"]
