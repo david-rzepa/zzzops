@@ -1384,7 +1384,7 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         renewed = next(lease for lease in self.payload()[1]["operational"]["leases"]
                        if lease["token"] == beta["lease"]["token"])
         self.assertEqual(pinned, renewed["acquisition"])
-        self.assertEqual(beta["input_hash"], renewed["input_hash"])
+        self.assertEqual(beta["input_hash"], renewed["fingerprint"])
         original = hashlib.sha256((self.fixture.repo / "source.py").read_bytes()).hexdigest()
         deleted_hash = "sha256:" + hashlib.sha256(obsolete.read_bytes()).hexdigest()
         obsolete.unlink()
