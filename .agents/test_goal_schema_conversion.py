@@ -380,6 +380,86 @@ class MigrationEntryPublicTests(dag.DagFixture):
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
         self.assertEqual(source, self.read_blob(_conversion["source"])["content"])
 
+    def mapped_preparation(self):
+        """Proposed equivalence evidence inside existing mapped_evidence refs.
+
+        V9 requires exact source/contract/subject equivalence but leaves this
+        record's encoding to implementation. It is data reviewed by the trusted
+        entry graph, never a caller-issued Result or independent authority.
+        """
+        source, _graph = self.entry()
+        historical_output = self.blob("Previously delivered value")
+        digest = dag.content_hash
+        old_inputs = {"schema_version": 2, "phase": "understand", "goal_spec": digest("old-spec"),
+            "policy": digest("old-policy"), "phase_dag": digest("old-graph"), "parents": [], "dependencies": [],
+            "repository": {"identity": "owner/repo", "snapshot": {}},
+            "provider": {"identity": "github", "snapshot": {}},
+            "capabilities": {"identity": "fixture", "snapshot": {}},
+            "invocation": {"intent": "execute", "inputs": {"goal": 100}},
+            "upstream_outputs": [], "acceptance_criteria": ["Produce the requested value"]}
+        record = {"status": "completed", "input_envelope": old_inputs, "input_hash": digest(old_inputs),
+            "output": {"reference": historical_output["uri"], "hash": historical_output["hash"]},
+            "verification": None, "routing": None, "selection": {"model": "worker-bounded", "effort": "medium"},
+            "actor": "historical-producer", "not_required": None, "test_design": None}
+        evidence = {"schema_version": 2, "records": {"understand": record}, "reviews": {},
+                    "human_approvals": {}, "withdrawals": []}
+        # Literal supported v1 source fixture, not execution through a legacy engine.
+        legacy = fixtures.PortfolioTests().goal(phase_evidence=evidence)
+        source["body"] = "Exact historical human text.\n<!-- zzzops-goal\n" + json.dumps(legacy) + "\nzzzops-goal -->"
+        self.provider.issues[100] = copy.deepcopy(source)
+        self.session.finish(self.session.acquire("analyze"), {"source": source})
+        source_ref = self.migration_result("analyze")[1]["source"]
+        mapping = {"source": source_ref, "source_phase": "understand",
+                   "source_record_hash": digest(record), "target": {"goal": 100, "node": "produce", "item": None, "generation": 1},
+                   "contract": {"node": self.graph["nodes"][0], "policy": digest(self.session.project["policy"])}, "inputs": [],
+                   "outputs": {"value": historical_output},
+                   "rationale": "Exact historical output satisfies this unchanged task; no review or approval is mapped"}
+        mapping_ref = self.blob(mapping)
+        conversion = {"source": source_ref, "target": self.target, "mapped_evidence": [mapping_ref],
+                      "missing_obligations": ["review_a", "review_b", "finish"]}
+        return source, record, mapping, conversion
+
+    def test_reviewed_nonempty_historical_mapping_preserves_source_and_missing_reviews(self):
+        source, record, mapping, conversion = self.mapped_preparation()
+        self.session.finish(self.session.acquire("convert"), {"conversion": conversion})
+        self.assertNotIn("produce", self.names(), "Preparation must not execute the normal graph")
+        self.session.finish(self.session.acquire("conversion_review", actor="independent-mapping-reviewer"),
+                            {"value": "Verified exact old record, current contract, input and output equivalence"})
+        self.session.finish(self.session.acquire("conversion_approval"), {"value": "Root approves this exact mapping"})
+        refs = {"conversion": self.migration_result("convert")[1]["conversion"],
+                "approval": self.migration_result("conversion_approval")[0]}
+        self.session.finish(self.session.acquire("activate"), {"activation": refs})
+        self.assertEqual(source, self.read_blob(conversion["source"])["content"])
+        self.assertEqual(mapping, self.read_blob(conversion["mapped_evidence"][0]))
+        self.assertEqual({"review_a", "review_b"}, self.names(),
+                         "Only equivalently mapped producer may be current; missing reviews remain work")
+        result_ref, result = self.result("produce")
+        self.assertRegex(result["contract"], r"^sha256:[0-9a-f]{64}$")
+        self.assertEqual(record["actor"], result["executor"], "Conversion must preserve historical producer identity")
+        self.assertNotIn(result_ref, conversion["mapped_evidence"], "Host must issue mapped Result after approved activation")
+        self.assertEqual("Previously delivered value", self.read_blob(result["outputs"]["value"])["content"])
+        self.session = dag.TaskSession(self.fixture.repo, self.session.project, self.session.runtime,
+                                       self.provider, self.session.control)
+        self.assertEqual({"review_a", "review_b"}, self.names())
+        self.assertEqual("open", self.provider.get_issue(100)["state"].lower())
+
+    def test_nonempty_mapping_cannot_change_historical_output_or_contract(self):
+        _source, _record, mapping, conversion = self.mapped_preparation()
+        work = self.session.acquire("convert")
+        for change in ({"source_record_hash": "sha256:" + "f" * 64},
+                       {"contract": {"node": task("different_task"), "policy": "sha256:" + "e" * 64}},
+                       {"outputs": {"value": self.blob("Fabricated replacement")}}):
+            with self.subTest(change=change):
+                altered = self.blob({**mapping, **change})
+                invalid = {**conversion, "mapped_evidence": [altered]}
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                response = self.session.call(100, self.session.submission(work, {"conversion": invalid},
+                                              "invalid-mapping-" + next(iter(change))), expected=2)
+                self.assertRegex(json.dumps(response), r"(?i)mapping|equivalen|source|contract|output|hash")
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.finish(work, {"conversion": conversion})
+        self.assertEqual({"conversion_review"}, self.names())
+
     def test_missing_conversion_target_ref_rejected_before_any_activation(self):
         source, _graph = self.entry()
         self.session.finish(self.session.acquire("analyze"), {"source": source})

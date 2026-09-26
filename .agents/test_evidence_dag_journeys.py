@@ -19,6 +19,7 @@ import zlib
 import re
 import time
 import statistics
+import hashlib
 from types import SimpleNamespace
 from unittest import mock
 
@@ -218,13 +219,11 @@ class DagFixture(unittest.TestCase):
 
     def read_blob(self, ref):
         expected = ref["hash"]
-        for comment in self.provider.comments[100]:
-            if comment["body"].startswith("<!-- zzzops-artifact " + expected + " -->"):
-                encoded = re.search(r"```text\n([A-Za-z0-9+/=]+)\n```", comment["body"])[1]
-                value = json.loads(zlib.decompress(base64.b64decode(encoded)))
-                self.assertEqual(expected, content_hash(value["content"]))
-                return value["content"]
-        self.fail("Missing referenced immutable artifact: " + expected)
+        # #539 deliberately permits legacy, bundled full and delta encodings.
+        # Resolve the immutable identity, never assume a particular comment body.
+        value = z._comment_store.ArtifactIndex(self.provider.comments[100]).resolve(expected)[0]
+        self.assertEqual(expected, content_hash(value))
+        return value
 
     def payload(self):
         body = self.provider.issues[100]["body"]
@@ -914,6 +913,12 @@ class EvidenceDagPublicTests(DagFixture):
         self.assertIn("finish", self.names())
 
     def test_supersession_carries_obligation_and_only_latest_revision_needs_resolution(self):
+        self.supersession("carried")
+
+    def test_authorized_narrowing_retires_omitted_requirements_without_erasing_history(self):
+        self.supersession("narrowed")
+
+    def supersession(self, coverage):
         graph = correction_graph()
         supersession_type = shape({"prior": REF, "replacement": REF, "coverage": "carried",
                                    "coverage_evidence": REF, "authority": REF})
@@ -927,15 +932,18 @@ class EvidenceDagPublicTests(DagFixture):
         revised = copy.deepcopy(findings)
         for slot, finding in revised.items():
             finding.update(revision=2, supersedes=old_admissions[slot]["finding"],
-                           subjects=[self.produced("produce")], request="Carry and refine " + slot)
+                           subjects=[self.produced("produce")], request=("Carry and refine " if coverage == "carried"
+                           else "Retain only the explicitly root-approved smaller requirement for ") + slot)
         self.session.finish(self.session.acquire("find"), revised)
-        self.session.finish(self.session.acquire("authorize"), {"value": "Both replacements carry all outstanding requirements"})
+        self.session.finish(self.session.acquire("authorize"), {"value":
+            "Both replacements carry all outstanding requirements" if coverage == "carried" else
+            "Root explicitly approves removal of the omitted requirements in both exact replacements"})
         admissions = {slot: {"finding": self.produced("find", slot), "target_inputs": self.result("produce")[1]["inputs"],
                              "authority": self.result("authorize")[0], "applicability": "applicable",
                              "rationale": "Refinement carries prior scope"} for slot in revised}
         bundle = {**admissions, **{slot + "_transfer": {
             "prior": old_admissions[slot]["finding"], "replacement": admissions[slot]["finding"],
-            "coverage": "carried", "coverage_evidence": self.result("authorize")[0],
+            "coverage": coverage, "coverage_evidence": self.result("authorize")[0],
             "authority": self.result("authorize")[0]} for slot in revised}}
         work = self.session.acquire("amend")
         invalid = copy.deepcopy(bundle)
@@ -947,6 +955,167 @@ class EvidenceDagPublicTests(DagFixture):
         self.assertIn("finish", self.names(), "Superseded revisions cannot leave duplicate permanent obligations")
         for slot in revised:
             self.assertEqual(1, self.read_blob(old_admissions[slot]["finding"])["content"]["revision"])
+
+    def test_authorized_finding_withdrawal_requires_exact_authority_and_retains_provenance(self):
+        graph = correction_graph()
+        # Withdrawal encoding extends the existing retirement fixture: the exact
+        # finding Ref is the expected revision, not an arbitrary finding ID.
+        retirement_type = shape({"finding": REF, "target": scope("produce"), "authority": REF,
+                                 "decision": "withdraw", "rationale": "Approved withdrawal"})
+        withdraw = task("withdraw_findings", ["authorize"], role="root")
+        withdraw["outputs"] = {slot: output("retirement", retirement_type) for slot in ("first", "second")}
+        withdraw["permits"] = [{"type": "retirement", "scope": scope("produce")}]
+        graph["nodes"].append(withdraw)
+        graph["nodes"][-2]["requires"] = [selector("produce")]
+        findings, admissions = self.findings(graph=graph)
+        self.assertNotIn("finish", self.names())
+        self.session.finish(self.session.acquire("produce"), {"value": "Current subject awaiting disposition"})
+        self.session.finish(self.session.acquire("authorize"), {"value": "Root authorizes withdrawal of these exact findings"})
+        bundle = {slot: {"finding": admissions[slot]["finding"], "target": scope("produce"),
+                        "authority": self.result("authorize")[0], "decision": "withdraw",
+                        "rationale": "Root retires this requirement; this is not reviewer resolution"}
+                  for slot in findings}
+        work = self.session.acquire("withdraw_findings")
+        invalid = copy.deepcopy(bundle)
+        invalid["second"]["authority"] = self.produced("ingest", "comment")
+        self.assert_rejected(work, bundle, {"outputs": invalid}, r"(?i)authority|withdraw|retir")
+        if "produce" in self.names():
+            self.session.finish(self.session.acquire("produce"), {"value": "Unchanged current subject"})
+        self.assertIn("finish", self.names(), "Authorized withdrawal must release the exact retired obligations")
+        for slot, original in findings.items():
+            self.assertEqual(original, self.read_blob(admissions[slot]["finding"])["content"])
+        self.session = TaskSession(self.fixture.repo, self.session.project, self.session.runtime,
+                                   self.provider, self.session.control)
+        self.assertIn("finish", self.names(), "Replay must retain the authorized retirement disposition")
+
+    def test_generic_task_rejects_policy_drift_without_partial_semantic_publication(self):
+        work = self.session.acquire("produce")
+        original = copy.deepcopy(self.session.project)
+        self.session.project["policy"]["reviewed"] = False
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, self.session.submission(work, {"value": "value"}, "unreviewed-policy"), expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)policy|review|changed|stale")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.project = original
+        self.session.finish(work, {"value": "value"})
+
+    def test_generic_task_read_dependency_and_undeclared_edit_reject_with_valid_control(self):
+        work = self.session.acquire("produce")
+        # Empty output authority cannot exempt either a consumed file or a new file.
+        for name in ("product.txt", "unexpected.py"):
+            path = self.fixture.repo / name
+            original = path.read_bytes() if path.exists() else None
+            try:
+                path.write_text("unapproved worktree change\n")
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                response = self.session.call(100, self.session.submission(work, {"value": "value"}, "edit-" + name), expected=2)
+                self.assertRegex(json.dumps(response), r"(?i)scope|workspace|file|input|changed")
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+            finally:
+                if original is None:
+                    path.unlink()
+                else:
+                    path.write_bytes(original)
+        self.session.finish(work, {"value": "value"})
+
+    def test_generic_completed_result_without_lease_detects_consumed_file_drift(self):
+        self.produce()
+        before = self.result("produce")[0]
+        self.assertFalse(self.payload()[1]["operational"]["leases"])
+        self.assertEqual({"review_a", "review_b"}, self.names())
+        path = self.fixture.repo / "product.txt"
+        original = path.read_bytes()
+        try:
+            path.write_text("changed read input after completed result\n")
+            steps = self.session.checkpoint(100)
+            self.assertFalse(any(s.get("kind") == "execute" and s.get("node", {}).get("node") in
+                                 {"review_a", "review_b", "finish"} for s in steps))
+            self.assertEqual(before, self.result("produce")[0], "Drift must not overwrite historical evidence")
+        finally:
+            path.write_bytes(original)
+        self.assertEqual({"review_a", "review_b"}, self.names())
+
+    def test_host_artifact_overhead_is_preflighted_before_inline_transport_writes(self):
+        work = self.session.acquire("produce")
+        # The raw value fits exactly, but host type/provenance/result overhead
+        # cannot silently exceed the decimal transport ceiling.
+        value = "x" * (1000000 - 2)
+        self.assertEqual(1000000, len(json.dumps(value).encode()))
+        self.assert_rejected(work, {"value": "within budget"}, {"outputs": {"value": value}},
+                             r"(?i)1000000|transport|reference|limit")
+
+    def test_semantic_one_mib_limit_rejects_oversized_output_without_partial_bundle(self):
+        work = self.session.acquire("produce")
+        value = "x" * (1048576 + 1)
+        self.assert_rejected(work, {"value": "within both budgets"}, {"outputs": {"value": value}},
+                             r"(?i)1048576|semantic|decoded|limit")
+
+    def published_spec(self, raw, *, claimed_hash=None):
+        """Fixture publishes exact bytes locally; product receives no Git-write authority."""
+        path = self.fixture.repo / "published-spec.json"
+        path.write_bytes(raw)
+        self.session.git("add", path.name)
+        self.session.git("commit", "--allow-empty", "-qm", "fixture immutable specification")
+        commit = self.session.git("rev-parse", "HEAD").strip()
+        ref = {"hash": claimed_hash or "sha256:" + hashlib.sha256(raw).hexdigest(),
+               "uri": f"git:{commit}:{path.name}"}
+        envelope, payload = self.payload()
+        payload["spec"] = ref
+        envelope["payload"] = self.blob(payload)
+        envelope["revision"] += 1
+        self.provider.issues[100]["body"] = "<!-- zzzops-goal\n" + json.dumps(envelope) + "\nzzzops-goal -->"
+        return ref
+
+    def typed_spec_bytes(self, size):
+        record = {"type": "specification", "content": "", "producer": None,
+                  "provenance": {"actor": "root-thread", "source": None,
+                                 "policy": content_hash(self.session.project["policy"])}}
+        encode = lambda value: json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        record["content"] = "x" * (size - len(encode(record)))
+        raw = encode(record)
+        self.assertEqual(size, len(raw))
+        return raw
+
+    def test_typed_published_inputs_support_semantic_ceiling_without_raising_transport_limit(self):
+        graph = review_graph()
+        graph["nodes"][0]["inputs"] = {"request": spec_input()}
+        for size in (999999, 1000000, 1000001, 1048576):
+            with self.subTest(size=size):
+                self.install(graph)
+                ref = self.published_spec(self.typed_spec_bytes(size))
+                work = self.session.acquire("produce")
+                self.session.finish(work, {"value": "Read exact typed published specification"})
+                result = self.result("produce")[1]
+                self.assertIn(ref, [binding["source"] for binding in result["inputs"]])
+                artifact = self.read_blob(self.produced("produce"))
+                self.assertEqual(work["bound_actor"], artifact["provenance"]["actor"])
+                self.assertEqual({"review_a", "review_b"}, self.names())
+        self.assertEqual(1000000, z._comment_store.MAX_ARTIFACT_BYTES)
+
+    def test_published_inputs_require_exact_bytes_typed_decode_and_semantic_bound(self):
+        graph = review_graph()
+        graph["nodes"][0]["inputs"] = {"request": spec_input()}
+        self.install(graph)
+        self.published_spec(self.typed_spec_bytes(1000001))
+        self.produce()  # valid published-ref control precedes every rejection
+        valid = self.typed_spec_bytes(1000001)
+        wrong_type = json.loads(valid)
+        wrong_type["content"] = 17
+        cases = [
+            (valid, "sha256:" + "f" * 64, r"(?i)hash|bytes|identity"),
+            (json.dumps(wrong_type).encode(), None, r"(?i)type|string|contract"),
+            (b'{"type":"specification","type":"forged"}', None, r"(?i)duplicate|key"),
+            (self.typed_spec_bytes(1048577), None, r"(?i)1048576|semantic|limit|size"),
+        ]
+        for raw, claimed, diagnostic in cases:
+            with self.subTest(diagnostic=diagnostic):
+                self.install(graph)
+                self.published_spec(raw, claimed_hash=claimed)
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                response = self.session.call(100, expected=None)
+                self.assertFalse(any(s.get("kind") == "execute" for s in response["next_steps"]))
+                self.assertRegex(json.dumps(response), diagnostic)
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
     def test_selection_removal_cannot_erase_unresolved_member_finding(self):
         self.member_retirement(False)
