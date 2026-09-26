@@ -48,6 +48,75 @@ class ReverseHistoryTests(unittest.TestCase):
         self.issue = self.fixture.issue()
         self.adapter = fixtures.FakeGoalTransitionAdapter(self.issue)
 
+    def budget_records(self, count, prefix='new'):
+        store = z._comment_store
+        return [store.ArtifactIndex([]).record(f'{prefix}-{i}:' + 'x' * 900000)
+                for i in range(count)]
+
+    def check_budget_rejection(self, count, existing=0):
+        store = z._comment_store
+        if existing:
+            records = self.budget_records(existing, 'existing')
+            for body in store.pack_envelopes({'goal': 42, 'transaction': 'existing'}, records):
+                self.adapter.create_issue_comment(42, body)
+            index = store.ArtifactIndex(self.adapter.comments)
+            for record in records:
+                self.assertEqual(record['text'], index.resolve(record['hash'])[0])
+        comments, issue = copy.deepcopy(self.adapter.comments), copy.deepcopy(self.adapter.issue)
+        transition = self.fixture.transition(self.issue)
+        with self.assertRaises(ValueError) as caught:
+            z._goals.apply_goal_transition(self.adapter, 'owner/repo', 42, transition,
+                                           artifact_records=self.budget_records(count))
+        # A bounded rejection must leave a usable predecessor, not poison its comments.
+        self.assertTrue(comments == self.adapter.comments, 'Rejected transaction appended comments')
+        self.assertEqual(issue, self.adapter.issue)
+        self.assertEqual([], self.adapter.updates)
+        diagnostic = str(caught.exception).lower()
+        self.assertIn('limit', diagnostic)
+        self.assertIn('reference', diagnostic)
+        result = z.apply_goal_transition(self.adapter, 'owner/repo', 42, transition)
+        self.assertEqual(2, result['revision'])
+        self.assertEqual(1, len(self.adapter.updates))
+
+    def test_transaction_aggregate_decode_overflow_is_rejected_before_writes(self):
+        self.check_budget_rejection(18)
+
+    def test_transaction_decode_plus_resolution_overflow_is_rejected_before_writes(self):
+        # 14.4MB envelope decoding fits; materializing a referenced 900KB record does not.
+        self.check_budget_rejection(16)
+
+    def test_transaction_budget_includes_readable_existing_comments(self):
+        self.check_budget_rejection(4, existing=14)
+
+    def test_transaction_within_budget_persists_readable_artifacts(self):
+        records = self.budget_records(14)
+        result = z._goals.apply_goal_transition(self.adapter, 'owner/repo', 42,
+            self.fixture.transition(self.issue), artifact_records=records)
+        self.assertEqual(2, result['revision'])
+        index = z._comment_store.ArtifactIndex(self.adapter.comments)
+        for record in records:
+            self.assertEqual(record['text'], index.resolve(record['hash'])[0])
+
+    def test_pending_transaction_budget_does_not_count_persisted_parts_twice(self):
+        records = self.budget_records(8)
+        transition = self.fixture.transition(self.issue)
+        self.adapter.failure = 'injected body failure'
+        with self.assertRaises(z.GoalTransitionProviderError):
+            z._goals.apply_goal_transition(self.adapter, 'owner/repo', 42, transition,
+                                           artifact_records=records)
+        comments = copy.deepcopy(self.adapter.comments)
+        self.assertTrue(comments)
+        attempted_updates = len(self.adapter.updates)
+        self.adapter.failure = None
+        result = z._goals.apply_goal_transition(self.adapter, 'owner/repo', 42, transition,
+                                               artifact_records=records)
+        self.assertEqual(2, result['revision'])
+        self.assertEqual(comments, self.adapter.comments)
+        self.assertEqual(attempted_updates + 1, len(self.adapter.updates))
+        index = z._comment_store.ArtifactIndex(self.adapter.comments)
+        for record in records:
+            self.assertEqual(record['text'], index.resolve(record['hash'])[0])
+
     def test_large_unchanged_state_small_transition_fits_without_snapshot_copy(self):
         # Synthetic regression only: the real #498 measurement remains an integration gate.
         text = ''.join(hashlib.sha256(str(i).encode()).hexdigest() for i in range(700))
