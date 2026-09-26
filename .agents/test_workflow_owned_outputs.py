@@ -413,6 +413,33 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.assertTrue(design['lease']['acquisition']['checkout_overrides'])
         s.implement()
 
+    def test_orphan_verification_proof_does_not_invalidate_new_acquisition(self):
+        s = self.session
+        s.prepare()
+        first = s.start(101, 'test_design')
+        old_ref = s.verify(first)['next_steps'][0]['verification']
+        old_proof = s.read(101, old_ref)
+        s.call(101, {'operation': 'recover', 'phase': 'test_design',
+                     'lease': first['lease']['token'], 'worker_status': 'stopped',
+                     'evidence': 'Fixture executor stopped before recording a result.'})
+        self.assertNotIn('test_design', s.goal(101)['phase_evidence']['records'])
+        # An independent committed change makes the abandoned proof historical.
+        (self.repo / 'independent.txt').write_text('new baseline\n')
+        s.git('add', 'independent.txt')
+        s.git('commit', '-qm', 'fixture: independent baseline change')
+        second = s.start(101, 'test_design')
+        current = next(x for x in s.checkpoint(101) if x.get('phase') == 'test_design')
+        self.assertEqual(second['input_hash'], current['input_hash'],
+                         'Acquiring ownership must not change substantive inputs')
+        self.assertEqual(old_proof, s.read(101, old_ref), 'Preserve historical proof')
+        (self.repo / s.test_path).write_text('from source import answer\nassert answer() == 2\n')
+        new_ref = s.verify(second)['next_steps'][0]['verification']
+        new_proof = s.read(101, new_ref)
+        self.assertFalse(new_proof['passed'])
+        self.assertEqual(second['input_hash'], new_proof['acquisition']['input_hash'])
+        s.result(101, second, {'behavior': 'Require two.'}, new_ref)
+        s.review(101, 'test_design')
+
     def test_existing_consumed_test_and_source_red_to_green(self):
         s = self.session
         s.prepare()

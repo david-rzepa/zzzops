@@ -618,7 +618,10 @@ class Workflow:
                 envelope['provider']['snapshot']['publication'] = self.publication_identity(goal)
             proof = state(goal)['artifacts'].get(phase)
             withdrawn = any(item['phase'] == phase for item in evidence['withdrawals'])
-            if not withdrawn and proof and proof.get('workspace') and proof['workspace'] != self.workspace_digest() and not (versions and self.historical_proof(goal, phase, proof)):
+            # An abandoned verification is history, not a produced result whose
+            # validity can drift. Otherwise acquiring a replacement lease makes
+            # historical_proof suppress this field and invalidates that lease.
+            if evidence['records'].get(phase) and not withdrawn and proof and proof.get('workspace') and proof['workspace'] != self.workspace_digest() and not (versions and self.historical_proof(goal, phase, proof)):
                 envelope['repository']['snapshot']['output_drift'] = self.workspace_digest()
         return live
 
