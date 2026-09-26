@@ -37,6 +37,26 @@ EXPECTED_CONFIGURATION_KEYS = {
 
 
 class PolicyConfigurationSchemaTests(unittest.TestCase):
+    def test_reviewed_custom_settings_fixture_deltas_preserve_authentic_bindings(self):
+        for name in ('changed_setting', 'extra_setting'):
+            with self.subTest(source=name):
+                fixture = fixtures.legacy_reviewed_settings_fixture(name)
+                state = fixture['state']
+                reviewable = {key: value for key, value in state.items() if key != 'approval'}
+                canonical = json.dumps(reviewable, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+                digest = lambda text: 'sha256:' + hashlib.sha256(text.encode('utf-8')).hexdigest()
+                self.assertEqual(state['approval']['digest'], digest(canonical))
+                for artifact in ('project', 'audit'):
+                    self.assertEqual(state['bindings'][artifact]['digest'], digest(fixture[artifact]))
+                self.assertTrue(all(s['review']['approved'] for s in state['policy']['sections']))
+                self.assertEqual(4, state['revision'])
+                self.assertEqual('historical-custom-settings-reviewer', state['approval']['reviewer'])
+        # Construction never changes the positive supported-adapter fixture.
+        original = next(s for s in fixtures.LEGACY_POLICY_UPGRADE_FIXTURE['state']['policy']['sections']
+                        if s['id'] == 'documentation_style')
+        self.assertEqual('decision_risk_failure_or_request', original['settings']['communication']['technical_detail'])
+        self.assertNotIn('custom_constraint', original['settings'])
+
     def test_immutable_legacy_fixture_binds_reviewed_content_and_rendered_artifacts(self):
         fixture = fixtures.LEGACY_POLICY_UPGRADE_FIXTURE
         state = fixture['state']

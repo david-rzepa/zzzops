@@ -162,8 +162,8 @@ class WorkflowPolicyApprovalTests(unittest.TestCase):
             for name in ('POLICY.json', 'PROJECT.md', 'PROJECT_AUDIT.md')
         }
 
-    def install_legacy_fixture(self):
-        fixture = copy.deepcopy(fixtures.LEGACY_POLICY_UPGRADE_FIXTURE)
+    def install_legacy_fixture(self, fixture=None):
+        fixture = copy.deepcopy(fixtures.LEGACY_POLICY_UPGRADE_FIXTURE if fixture is None else fixture)
         (self.repo / '.zzzops/POLICY.json').write_text(
             json.dumps(fixture['state'], ensure_ascii=False), encoding='utf-8',
         )
@@ -320,11 +320,8 @@ class WorkflowPolicyApprovalTests(unittest.TestCase):
             self.public({'operation': 'policy_propose', 'plan': plan})
         self.assertEqual(before, self.canonical_files())
 
-    def test_unsupported_and_changed_legacy_mappings_do_not_inherit_authority(self):
+    def test_unreviewed_legacy_source_mutations_do_not_transfer_authority(self):
         cases = {
-            'custom_prefix_changed': lambda old, target: target.update(instructions=target['instructions'].replace('British', 'American')),
-            'custom_prefix_trimmed': lambda old, target: target.update(instructions=target['instructions'].replace('\n\n', '\n', 1)),
-            'new_instruction': lambda old, target: target.update(instructions=target['instructions'] + ' Publish automatically.'),
             'changed_legacy_setting': lambda old, target: old['settings'].update(documentation='ignore_repository'),
             'extra_legacy_setting': lambda old, target: old['settings'].update(custom_constraint='Keep every example'),
             'unknown_metadata': lambda old, target: old.update(custom_constraint='Ask before publishing'),
@@ -353,6 +350,49 @@ class WorkflowPolicyApprovalTests(unittest.TestCase):
                     self.assertFalse(doc['review']['approved'])
                     self.assertFalse(state['initialized'])
 
+    def test_valid_reviewed_unsupported_source_settings_cannot_be_dropped(self):
+        # Digests pin complete persisted states accepted by the released v2.1.0
+        # validator after real apply_plan/confirm_project approval, not resealed
+        # mutations of an old approval or fixture-only pending snapshots.
+        expected = {
+            'changed_setting': 'sha256:8342e974b6ff8bd2f58da357a9bf760fd521d8203b65868df312c5c0fcdec7d4',
+            'extra_setting': 'sha256:f5a9d6fb72588214315432c109850bd7016aadfd23c89b2d0eb54d6f25c64758',
+        }
+        for name, approved_digest in expected.items():
+            with self.subTest(source=name):
+                source = self.install_legacy_fixture(fixtures.legacy_reviewed_settings_fixture(name))
+                self.assertTrue(source['initialized'])
+                self.assertEqual(1, source['policy']['schema_version'])
+                self.assertEqual(approved_digest, source['approval']['digest'])
+                self.assertEqual(approved_digest, z.policy_review_digest(source))
+                self.assertEqual([], z.validate_project_artifacts(self.repo, source))
+                old = next(s for s in source['policy']['sections'] if s['id'] == 'documentation_style')
+                self.assertTrue(old['review']['approved'])
+                self.assertEqual('historical-custom-settings-reviewer', old['review']['reviewer'])
+                if name == 'changed_setting':
+                    self.assertEqual('always_include_full_reasoning', old['settings']['communication']['technical_detail'])
+                else:
+                    self.assertEqual('Keep every CLI example verbatim.', old['settings']['custom_constraint'])
+                plan = self.mapped_legacy_plan(source)
+                # The standard suffix omits the reviewed custom setting. Every
+                # other document metadata field still matches the trusted source.
+                before = self.canonical_files()
+                proposed = self.public({'operation': 'policy_propose', 'plan': plan})
+                self.assertEqual('human_approval', proposed['next_steps'][0]['kind'])
+                self.assertEqual(before, self.canonical_files())
+                plan['confirmed'] = True
+                try:
+                    z.apply_plan(self.repo, plan)
+                except ValueError:
+                    self.assertEqual(before, self.canonical_files())
+                else:
+                    state = z.read_project_state(self.repo)[2]
+                    doc = next(s for s in state['policy']['sections'] if s['id'] == 'documentation_style')
+                    self.assertFalse(doc['review']['approved'], 'Unsupported reviewed settings cannot be silently discarded')
+                    self.assertFalse(state['initialized'])
+                    with self.assertRaises(ValueError):
+                        z.reviewed_project_state(self.repo)
+
     def test_changed_instructions_configuration_and_defaults_require_exact_approval(self):
         self.approve(self.public({'operation': 'policy_propose', 'plan': self.plan()}), 'original-reviewer')
         before = self.canonical_files()
@@ -377,6 +417,9 @@ class WorkflowPolicyApprovalTests(unittest.TestCase):
 
     def test_target_metadata_and_unsupported_configuration_cannot_inherit_source_authority(self):
         cases = {
+            'custom_prefix_changed': lambda target: target.update(instructions=target['instructions'].replace('British', 'American')),
+            'custom_prefix_trimmed': lambda target: target.update(instructions=target['instructions'].replace('\n\n', '\n', 1)),
+            'new_instruction': lambda target: target.update(instructions=target['instructions'] + ' Publish automatically.'),
             'title': lambda target: target.update(title='Changed reviewed meaning'),
             'rationale': lambda target: target.update(rationale='A different justification'),
             'source_ids': lambda target: target.update(source_ids=['E-001']),

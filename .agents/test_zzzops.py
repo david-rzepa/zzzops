@@ -1081,6 +1081,68 @@ LEGACY_POLICY_UPGRADE_FIXTURE = json.loads(r'''
 }
 ''')
 
+
+# T1 variants were produced by the immutable v2.1.0 validate_plan, apply_plan
+# and confirm_project functions, then accepted by its state/artifact validators.
+# Exact deltas avoid duplicating unrelated historical policy sections. Artifact
+# edits are against the immutable base above, never against current renderers.
+LEGACY_REVIEWED_SETTINGS_DELTAS = json.loads(r'''
+{
+  "changed_setting": {
+    "section_review": {"reviewer":"historical-custom-settings-reviewer","reviewed_digest":"sha256:53ab11bcfee8293b6a95c9ce32dc12dcee6385ee1383b3ef1833a025c2d2b8f6"},
+    "changes": [
+      {"path":["state","revision"],"value":4},
+      {"path":["state","policy","sections",7,"settings","communication","technical_detail"],"value":"always_include_full_reasoning"},
+      {"path":["state","history"],"value":[{"actor":"fixture","change":"Created pending revision 1","date":"2026-08-30","reason":"Historical fixture"},{"actor":"historical-reviewer","change":"Reviewed policy revision 2","date":"2026-08-30","reason":"Approved all sections; source digest sha256:c46458d6959c7b55a0f92ffac2e25ad7c4aeebdfc2d0324de33b388c78fc6f01."},{"actor":"ZzzOps initialization","change":"Created pending revision 3","date":"2026-08-30","reason":"Confirmed agent-generated draft; explicit policy review still required."},{"actor":"historical-custom-settings-reviewer","change":"Reviewed policy revision 4","date":"2026-08-30","reason":"Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:53ab11bcfee8293b6a95c9ce32dc12dcee6385ee1383b3ef1833a025c2d2b8f6."}]},
+      {"path":["state","bindings","project","digest"],"value":"sha256:ebd78fa05d7ba4dbb468a14d8b7d5ea8e714918808fb3b9ea73ac180d63fc5e7"},
+      {"path":["state","bindings","audit","digest"],"value":"sha256:6e64ae86e30aee5bac0a03dcf5ed2f7d60364f1b57435ec308be8e71389fe59a"},
+      {"path":["state","approval","reviewer"],"value":"historical-custom-settings-reviewer"},
+      {"path":["state","approval","digest"],"value":"sha256:8342e974b6ff8bd2f58da357a9bf760fd521d8203b65868df312c5c0fcdec7d4"},
+      {"path":["project"],"edits":[{"start":1429,"end":1464,"before":" (customized from a ZzzOps default)","after":""},{"start":1897,"end":1940,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":2159,"end":2202,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":2471,"end":2514,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":2658,"end":2701,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":2869,"end":2912,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":3088,"end":3131,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":3260,"end":3295,"before":" (customized from a ZzzOps default)","after":""},{"start":3486,"end":3529,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":3594,"end":3637,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":3708,"end":3751,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":3821,"end":3864,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":4178,"end":4221,"before":" (adopted from the recorded ZzzOps default)","after":""}]},
+      {"path":["audit"],"edits":[{"start":70,"end":70,"before":"","after":"custom-settings-"},{"start":90,"end":91,"before":"2","after":"4"},{"start":7404,"end":7404,"before":"","after":"always_inclu"},{"start":7406,"end":7417,"before":"cision_risk","after":""},{"start":7419,"end":7421,"before":"ai","after":"u"},{"start":7422,"end":7428,"before":"ure_or","after":"l"},{"start":7431,"end":7434,"before":"que","after":"a"},{"start":7435,"end":7436,"before":"t","after":"oning"},{"start":14179,"end":14179,"before":"","after":"| 2026-08-30 | ZzzOps initialization | Created pending revision 3 | Confirmed agent-generated draft; explicit policy review still required. |\n| 2026-08-30 | historical-custom-settings-reviewer | Reviewed policy revision 4 | Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:53ab11bcfee8293b6a95c9ce32dc12dcee6385ee1383b3ef1833a025c2d2b8f6. |\n"}]}
+    ]
+  },
+  "extra_setting": {
+    "section_review": {"reviewer":"historical-custom-settings-reviewer","reviewed_digest":"sha256:52038486547193e6a48ba12f799ce849316f68aa21dbcbc1f76006b7d1255329"},
+    "changes": [
+      {"path":["state","revision"],"value":4},
+      {"path":["state","policy","sections",7,"settings"],"value":{"communication":{"style":"outcome_first","technical_detail":"decision_risk_failure_or_request","user_action":"one_clear_action_with_reason_and_next_step"},"custom_constraint":"Keep every CLI example verbatim.","documentation":"repository_conventions","style":"repository_conventions"}},
+      {"path":["state","history"],"value":[{"actor":"fixture","change":"Created pending revision 1","date":"2026-08-30","reason":"Historical fixture"},{"actor":"historical-reviewer","change":"Reviewed policy revision 2","date":"2026-08-30","reason":"Approved all sections; source digest sha256:c46458d6959c7b55a0f92ffac2e25ad7c4aeebdfc2d0324de33b388c78fc6f01."},{"actor":"ZzzOps initialization","change":"Created pending revision 3","date":"2026-08-30","reason":"Confirmed agent-generated draft; explicit policy review still required."},{"actor":"historical-custom-settings-reviewer","change":"Reviewed policy revision 4","date":"2026-08-30","reason":"Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:52038486547193e6a48ba12f799ce849316f68aa21dbcbc1f76006b7d1255329."}]},
+      {"path":["state","bindings","project","digest"],"value":"sha256:ebd78fa05d7ba4dbb468a14d8b7d5ea8e714918808fb3b9ea73ac180d63fc5e7"},
+      {"path":["state","bindings","audit","digest"],"value":"sha256:2fd244e5be3bd5a024712113dba20ec1f475d0c56cc61b323afaf78e8a2cdb51"},
+      {"path":["state","approval","reviewer"],"value":"historical-custom-settings-reviewer"},
+      {"path":["state","approval","digest"],"value":"sha256:f5a9d6fb72588214315432c109850bd7016aadfd23c89b2d0eb54d6f25c64758"},
+      {"path":["project"],"edits":[{"start":1429,"end":1464,"before":" (customized from a ZzzOps default)","after":""},{"start":1897,"end":1940,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":2159,"end":2202,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":2471,"end":2514,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":2658,"end":2701,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":2869,"end":2912,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":3088,"end":3131,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":3260,"end":3295,"before":" (customized from a ZzzOps default)","after":""},{"start":3486,"end":3529,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":3594,"end":3637,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":3708,"end":3751,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":3821,"end":3864,"before":" (adopted from the recorded ZzzOps default)","after":""},{"start":4178,"end":4221,"before":" (adopted from the recorded ZzzOps default)","after":""}]},
+      {"path":["audit"],"edits":[{"start":70,"end":70,"before":"","after":"custom-settings-"},{"start":90,"end":91,"before":"2","after":"4"},{"start":7502,"end":7502,"before":"","after":"custom_constraint\": \"Keep every CLI example verbatim.\", \""},{"start":14179,"end":14179,"before":"","after":"| 2026-08-30 | ZzzOps initialization | Created pending revision 3 | Confirmed agent-generated draft; explicit policy review still required. |\n| 2026-08-30 | historical-custom-settings-reviewer | Reviewed policy revision 4 | Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:52038486547193e6a48ba12f799ce849316f68aa21dbcbc1f76006b7d1255329. |\n"}]}
+    ]
+  }
+}
+''')
+
+
+def legacy_reviewed_settings_fixture(name):
+    fixture = copy.deepcopy(LEGACY_POLICY_UPGRADE_FIXTURE)
+    variant = LEGACY_REVIEWED_SETTINGS_DELTAS[name]
+    for section in fixture['state']['policy']['sections']:
+        section['review'].update(variant['section_review'])
+    for change in variant['changes']:
+        owner = fixture
+        for key in change['path'][:-1]:
+            owner = owner[key]
+        key = change['path'][-1]
+        if 'edits' in change:
+            text = owner[key]
+            for edit in reversed(change['edits']):
+                if text[edit['start']:edit['end']] != edit['before']:
+                    raise AssertionError('Historical fixture artifact changed')
+                text = text[:edit['start']] + edit['after'] + text[edit['end']:]
+            owner[key] = text
+        else:
+            owner[key] = copy.deepcopy(change['value'])
+    return fixture
+
+
+
 TEST_AUTONOMY_CONFIGURATION = {
     "max_workers": 3,
     "execution_reports": {"enabled": True},
