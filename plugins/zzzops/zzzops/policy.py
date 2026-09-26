@@ -648,6 +648,11 @@ def retain_policy_authority(source: dict[str, Any] | None, target: dict[str, Any
     for section in target["sections"]:
         decision = decisions[section["id"]]
         if not decision["authority_retained"]:
+            if (section.get("default_provenance") or {}).get("status") == "derived":
+                # Derivation binds the complete section meaning, including its
+                # cited evidence. A fresh exact review must not inherit a proof
+                # that the classifier could not retain.
+                section["default_provenance"] = {"status": "unknown"}
             continue
         prior = old[section["id"]]
         if classification["source_schema"] == 2:
@@ -760,8 +765,6 @@ def prepare_policy_defaults(
         provenance = section.get("default_provenance")
         if prior is not None:
             provenance = json.loads(json.dumps(prior["default_provenance"])) if "default_provenance" in prior else None
-            if (provenance or {}).get("status") == "derived" and not _exact(policy_default_content(section), policy_default_content(prior)):
-                provenance = {"status": "unknown"}
         if provenance is not None and not isinstance(provenance, dict):
             raise ValueError(f"policy section {section_id} default provenance must be an object")
         if prior is None and default_id is None and not (isinstance(provenance, dict) and provenance.get("default_id")):
@@ -821,11 +824,6 @@ def prepare_policy_defaults(
             section.pop("default_provenance", None)
         else:
             section["default_provenance"] = provenance
-        if (prior is not None and (provenance or {}).get("status") == "derived"
-                and not _exact(_section_meaning(section, []), _section_meaning(prior, []))):
-            # A new exact human approval may authorize this choice, but the old
-            # conversion proof cannot establish its changed meaning or origin.
-            section["default_provenance"] = {"status": "unknown"}
     return prepared
 
 
