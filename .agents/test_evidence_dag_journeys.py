@@ -324,7 +324,7 @@ class DagFixture(unittest.TestCase):
         self.assertRegex(json.dumps(response), diagnostic)
         self.assertEqual(before, self.provider.issues)
         self.assertEqual(comments, self.provider.comments, "Rejected bundle leaked durable artifacts")
-        self.session.finish(acquired, outputs, "valid-after-negative")
+        self.session.finish(acquired, outputs, "valid-after-negative-" + acquired["lease"]["attempt"])
 
 class EvidenceDagPublicTests(DagFixture):
     def test_specialist_missing_regression_corrects_tests_then_code_and_rereviews(self):
@@ -1682,6 +1682,15 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         qualify(parent_nodes)
         parent_graph = {"nodes": parent_nodes, "task_sets": [],
                         "terminals": [{**selector("consent"), "goal": 99}]}
+        alpha = next(n for n in child_graph["nodes"] if n["id"] == "alpha")
+        for slot, original in (("parent_allocation", "allocation"), ("parent_authorization", "authorization"),
+                               ("parent_approval", "approval")):
+            alpha["inputs"][slot] = copy.deepcopy(alpha["inputs"][original])
+            alpha["inputs"][slot]["producer"]["node"]["goal"] = 99
+        # Establish final policy before issuing either goal's authorization.
+        # Installing it afterwards would correctly stale the parent's evidence.
+        self.install(child_graph)
+        self.permit["policy"] = content_hash(self.session.project["policy"])
         parent_spec = self.blob({"type": "specification", "content": "Delegate only the exact child allocation",
             "producer": None, "provenance": {"actor": "root-thread", "source": None,
             "policy": content_hash(self.session.project["policy"])}})
@@ -1709,12 +1718,6 @@ class WorkspaceAuthorityPublicTests(DagFixture):
             work = self.session.acquire(name, number=99,
                                         actor="parent-reviewer" if name == "inspect_charter" else "root-thread")
             self.session.call(99, self.session.submission(work, outputs, "parent-" + name))
-        alpha = next(n for n in child_graph["nodes"] if n["id"] == "alpha")
-        for slot, original in (("parent_allocation", "allocation"), ("parent_authorization", "authorization"),
-                               ("parent_approval", "approval")):
-            alpha["inputs"][slot] = copy.deepcopy(alpha["inputs"][original])
-            alpha["inputs"][slot]["producer"]["node"]["goal"] = 99
-        self.install(child_graph)
         envelope, payload = self.payload()
         metadata = self.blob({"type": "goal_metadata", "content": {"parent": 99}, "producer": None,
             "provenance": {"actor": "root-thread", "source": None,
