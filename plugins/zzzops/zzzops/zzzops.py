@@ -171,6 +171,7 @@ BACKENDS = _policy.BACKENDS
 POLICY_SECTION_IDS = _policy.POLICY_SECTION_IDS
 policy_default_catalog = _policy.policy_default_catalog
 policy_content_digest = _policy.policy_content_digest
+classify_policy_upgrade = _policy.classify_policy_upgrade
 compare_bootstrap_capabilities = _bootstrap.compare_bootstrap_capabilities
 prepare_policy_defaults = _policy.prepare_policy_defaults
 compare_policy_defaults = _policy.compare_policy_defaults
@@ -2700,23 +2701,19 @@ def apply_plan(repo: Path, plan: dict[str, Any]) -> dict[str, Any]:
     previous_policy = old_state.get("policy") if old_state else None
     policy = prepare_policy_defaults(repo, plan["policy"], previous_policy)
     policy["evidence"] = plan["evidence"]
-    if previous_policy and previous_policy.get("schema_version") == policy.get("schema_version"):
-        old_sections = {section["id"]: section for section in previous_policy["sections"]}
-        old_evidence = previous_policy.get("evidence", [])
-        for section in policy["sections"]:
-            prior = old_sections.get(section["id"])
-            if (
-                prior is not None
-                and _policy.policy_section_review_content(section, policy["evidence"])
-                == _policy.policy_section_review_content(prior, old_evidence)
-            ):
-                section["review"] = json.loads(json.dumps(prior["review"]))
+    artifacts = {"project": current, "audit": project_audit_path(repo).read_text(encoding="utf-8-sig")} if old_state else {}
+    classification = _policy.retain_policy_authority(old_state, policy, artifacts)
     history = json.loads(json.dumps(old_state["history"])) if old_state else []
     history.append({
         "date": date.today().isoformat(), "actor": "ZzzOps initialization",
         "change": f"Created pending revision {revision}",
         "reason": "Confirmed agent-generated draft; explicit policy review still required.",
     })
+    conversions = [item for item in classification["sections"] if item.get("adapter") and item["authority_retained"]]
+    if conversions:
+        history[-1]["reason"] += " Retained existing authority by validated conversion: " + ", ".join(
+            f"{item['section_id']} ({item['adapter']})" for item in conversions
+        ) + "."
     state = {
         "schema_version": PROJECT_SCHEMA_VERSION,
         "initialized": False,
@@ -2735,6 +2732,9 @@ def apply_plan(repo: Path, plan: dict[str, Any]) -> dict[str, Any]:
         "project": {"path": ".zzzops/PROJECT.md", "digest": project_digest(rendered)},
         "audit": {"path": PROJECT_AUDIT_RELATIVE, "digest": project_digest(audit)},
     }
+    state_errors = validate_project_state(state)
+    if state_errors:
+        raise ValueError("Invalid derived policy: " + "; ".join(state_errors))
     canonical = json.dumps(state, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
     changed = rendered != current or canonical != policy_text
     if changed:
@@ -2747,6 +2747,7 @@ def apply_plan(repo: Path, plan: dict[str, Any]) -> dict[str, Any]:
         "decision_blockers": policy_blockers(policy),
         "policy_digest": policy_review_digest(state),
         "review_required": "Review the summarized policy, then explicitly approve its current policy digest.",
+        "classification": classification,
     }
 
 
@@ -2776,6 +2777,8 @@ def confirm_project(repo: Path, digest: str, reviewer: str, section_ids: list[st
     today = date.today().isoformat()
     for section_id in selected:
         section = available[section_id]
+        if section["review"]["approved"] is True:
+            continue
         section["review"] = {
             "approved": True,
             "reviewer": reviewer,

@@ -8,6 +8,7 @@ entry point.
 from __future__ import annotations
 
 import hashlib
+import copy
 import json
 import re
 from pathlib import Path
@@ -106,6 +107,168 @@ POLICY_CONFIGURATION_KEYS = {
 }
 
 POLICY_DEFAULT_CONTENT_FIELDS = ("instructions", "configuration")
+DOCUMENTATION_ADAPTER = "documentation-v1-v2-1"
+LEGACY_POLICY_SOURCE = {"version": "2.1.0", "revision": "a36cf3a31876385885738cf86d90d8d9f77bbd02"}
+LEGACY_DOCUMENTATION_SETTINGS = {
+    "documentation": "repository_conventions", "style": "repository_conventions",
+    "communication": {"style": "outcome_first", "technical_detail": "decision_risk_failure_or_request",
+                      "user_action": "one_clear_action_with_reason_and_next_step"},
+}
+DOCUMENTATION_SUFFIX = (
+    "Follow repository documentation and style conventions. Communicate outcomes first. "
+    "Include technical detail for decisions, risks, failures, or when requested. "
+    "When user action is needed, give one clear action, its reason, and the next step."
+)
+# Frozen schema1 requirements from v2.1.0; these validate sources, never map them.
+LEGACY_REQUIRED_SETTING_PATHS = {
+    "backend": (
+        "authority repository_identity fallback capability_evidence tradeoffs tradeoffs.github_issues").split(),
+    "git_review_release": (
+        "execution_branch branch_base dependency_base review_pending_dependency  "
+        "read_only_dependency_investigation multiple_dependency_base parent_pseudo_trunk child_target  "
+        "pull_request_unit shared_pull_request commit_unit commit_style review_gate  "
+        "review_state_reads_per_checkpoint pr_approval conversational_approval merge_after_approval").split(),
+    "execution_continuation": (
+        "continue_while_actionable triage_new_first max_easy_wins execute_intent new_goal_checkpoint  "
+        "after_additive_capture exhausted_handoff_retains_intent human_unblock_watch  "
+        "human_unblock_watch.enabled human_unblock_watch.trigger human_unblock_watch.max_blockers  "
+        "human_unblock_watch.notify_once human_unblock_watch.poll_seconds human_unblock_watch.max_seconds  "
+        "stop_reasons_clear_intent cross_task").split(),
+    "verification_testing": (
+        "mode widen test_bug ci_deduplication ci_deduplication.local_probe  "
+        "ci_deduplication.skip_broad_local_when ci_deduplication.required_ci ci_deduplication.failure  "
+        "ci_deduplication.unavailable artifact_verification artifact_verification.product_runtime  "
+        "artifact_verification.documentation artifact_verification.test_cases  "
+        "artifact_verification.test_harness").split(),
+    "code_quality": (
+        "non_behavioral_only_without_feature_goal completion_self_review review_scope dead_code  "
+        "dynamic_generated_vendor record_clean_review reverify_after_changes").split(),
+    "dependencies_tooling": (
+        "tooling generated_files dependency_changes").split(),
+    "security_privacy_compliance": (
+        "secrets production_mutation project_constraints").split(),
+    "documentation_style": (
+        "documentation style communication communication.style communication.technical_detail  "
+        "communication.user_action").split(),
+    "deployment_resources": (
+        "deployment resource_mode delegate_wait_after_seconds").split(),
+    "engineering_rigor": (
+        "escalation escalation.enabled escalation.allow_automatic_escalation  "
+        "escalation.allow_automatic_deescalation minimums minimums.authentication minimums.authorization  "
+        "minimums.payments minimums.secrets minimums.destructive_data_migrations minimums.security_sensitive  "
+        "minimums.throwaway_prototypes overrides overrides.per_goal overrides.raising overrides.lowering  "
+        "overrides.may_undercut_risk_minimum requirements_interview requirements_interview.source  "
+        "requirements_interview.level_mapping requirements_interview.level_mapping.vibe  "
+        "requirements_interview.level_mapping.structured requirements_interview.level_mapping.agentic").split(),
+    "workflow_adherence": (
+        "levels levels.optional levels.tracked levels.managed exemptions scoped_exception agents_projection").split(),
+    "automated_design": (
+        "scope commitment commitment.low commitment.high commitment.structural_cost_signals selection_basis  "
+        "decision_record privacy_security hard_stops insufficient_evidence").split(),
+    "autonomy_approval_parallelism": (
+        "blocker_interview blocker_order requirements_interview requirements_interview.capture_depth  "
+        "requirements_interview.mode requirements_interview.stakeholder_model  "
+        "requirements_interview.execution_questions project_parallel_ceiling max_workers claim_ttl_hours  "
+        "parallelization parallelization.measurement parallelization.threshold_bytes  "
+        "parallelization.below_threshold_mode parallelization.at_or_above_threshold_mode  "
+        "dependency_implementation_gate read_only_dependency_investigation execution_reports  "
+        "execution_reports.enabled resource_reservations resource_reservations.mode  "
+        "resource_reservations.exclusive_prefixes resource_reservations.exclusive_resources  "
+        "worktree_lifecycle worktree_lifecycle.after_task worktree_lifecycle.abandoned_or_dirty  "
+        "worktree_lifecycle.reuse_requires refill refill.enabled refill.allowed_categories  "
+        "refill.max_per_run capture_defaults capture_defaults.priority capture_defaults.difficulty  "
+        "capture_defaults.confidence planning planning.decompose_at planning.max_depth").split(),
+}
+LEGACY_TYPED_SETTINGS = json.loads(r'''
+{
+  "engineering_rigor": {
+    "escalation": {
+      "enabled": true,
+      "allow_automatic_escalation": true,
+      "allow_automatic_deescalation": false
+    },
+    "minimums": {
+      "authentication": "agentic",
+      "authorization": "agentic",
+      "payments": "agentic",
+      "secrets": "agentic",
+      "destructive_data_migrations": "agentic",
+      "security_sensitive": "agentic",
+      "throwaway_prototypes": "vibe"
+    },
+    "overrides": {
+      "per_goal": true,
+      "raising": "allowed",
+      "lowering": "explicit_user_authority",
+      "may_undercut_risk_minimum": false
+    },
+    "requirements_interview": {
+      "source": "effective_engineering_rigor",
+      "level_mapping": {
+        "vibe": "light",
+        "structured": "standard",
+        "agentic": "thorough"
+      }
+    }
+  },
+  "workflow_adherence": {
+    "levels": {
+      "optional": "direct_agent_work_allowed",
+      "tracked": "durable_goal_required_for_substantial_agent_work",
+      "managed": "zzzops_workflow_required_for_repository_changes"
+    },
+    "exemptions": [
+      "read_only_investigation",
+      "zzzops_administration"
+    ],
+    "scoped_exception": "explicit_scoped_user_authority",
+    "agents_projection": "review_workflow_reconciliation"
+  },
+  "automated_design": {
+    "scope": "bounded_commitment_in_scope_implementation",
+    "commitment": {
+      "low": "replace_verify_and_clean_within_one_goal_before_fanout",
+      "high": "compare_evidence_cost_signal_or_explicit_current_design_review",
+      "structural_cost_signals": [
+        "affected_goal_units",
+        "started_descendant_branches",
+        "started_descendant_prs",
+        "durable_data",
+        "public_or_integration_contracts",
+        "external_state",
+        "compatibility_paths",
+        "verification_breadth",
+        "clean_removal_path"
+      ]
+    },
+    "selection_basis": [
+      "project_objectives",
+      "kpi_evidence",
+      "constraints",
+      "precedence"
+    ],
+    "decision_record": [
+      "alternatives",
+      "rationale",
+      "assumptions",
+      "falsifiable_validation_signal"
+    ],
+    "privacy_security": "unambiguously_risk_reducing_without_material_behavior_change",
+    "hard_stops": [
+      "product_scope",
+      "incompatible_public_contract",
+      "destructive_migration",
+      "external_spending",
+      "deployment",
+      "external_write",
+      "human_review",
+      "safety_authority",
+      "higher_authority"
+    ],
+    "insufficient_evidence": "durable_design_blocker"
+  }
+}
+''')
 _package_provenance: Callable[[Path | None], dict[str, str]] | None = None
 
 
@@ -124,6 +287,420 @@ def policy_default_content(section: dict[str, Any]) -> dict[str, Any]:
 def policy_content_digest(content: Any) -> str:
     canonical = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _exact(left: Any, right: Any) -> bool:
+    """JSON equality without Python's True == 1 coercion."""
+    return policy_content_digest(left) == policy_content_digest(right)
+
+
+def _field_differences(left: Any, right: Any, path: str = "") -> list[str]:
+    if _exact(left, right):
+        return []
+    if isinstance(left, dict) and isinstance(right, dict):
+        result = []
+        for key in sorted(set(left) | set(right)):
+            child = f"{path}.{key}" if path else key
+            result.extend(_field_differences(left[key], right[key], child)
+                          if key in left and key in right else [child])
+        return result
+    return [path or "$"]
+
+
+def _section_meaning(section: dict[str, Any], evidence: list[dict[str, Any]]) -> dict[str, Any]:
+    return policy_section_review_content(
+        {key: value for key, value in section.items() if key != "migration_lineage"}, evidence,
+    )
+
+
+def _legacy_documentation_projection(section: dict[str, Any]) -> dict[str, Any] | None:
+    """The sole reviewed cross-schema adapter. It never drops unknown fields."""
+    fields = {"id", "title", "required", "applicable", "decision", "rationale", "source_ids",
+              "confidence", "default_origin", "default_disposition", "settings", "exceptions",
+              "unresolved", "review"}
+    if (not isinstance(section, dict) or section.get("id") != "documentation_style"
+            or set(section) - fields - {"default_provenance"}
+            or fields - set(section) or not text_present(section.get("decision"))
+            or not _exact(section.get("settings"), LEGACY_DOCUMENTATION_SETTINGS)):
+        return None
+    target = copy.deepcopy(section)
+    target["instructions"] = target.pop("decision") + "\n\n" + DOCUMENTATION_SUFFIX
+    target.pop("settings")
+    target["configuration"] = {}
+    target.pop("default_provenance", None)
+    target.pop("review", None)
+    return target
+
+
+def _legacy_origin_errors(section: dict[str, Any]) -> list[str]:
+    """Validate the immutable v2.1.0 documentation catalog, never today's default."""
+    origin = section.get("default_provenance")
+    if origin is None or origin == {"status": "unknown"}:
+        return []
+    if not isinstance(origin, dict):
+        return ["invalid historical default provenance"]
+    status = origin.get("status")
+    fields = {"status", "default_id", "schema_version", "source"}
+    fields |= {"digest", "snapshot"} if status == "adopted" else {"catalog_digest"}
+    if status == "adopted" and "declined_digest" in origin:
+        fields.add("declined_digest")
+    catalog = {"decision": "Follow evidenced repository documentation, style, and user-communication conventions.",
+               "settings": LEGACY_DOCUMENTATION_SETTINGS}
+    if (status not in {"adopted", "customized"} or set(origin) != fields
+            or origin.get("default_id") != "zzzops.policy.documentation_style"
+            or type(origin.get("schema_version")) is not int or origin["schema_version"] != 1
+            or not _exact(origin.get("source"), LEGACY_POLICY_SOURCE)
+            or origin.get("digest" if status == "adopted" else "catalog_digest") != policy_content_digest(catalog)):
+        return ["unrecognized historical documentation default provenance"]
+    if status == "adopted" and (not _exact(origin.get("snapshot"), catalog)
+            or not _exact({k: section.get(k) for k in ("decision", "settings")}, catalog)):
+        return ["historical adopted default differs from its effective content"]
+    if "declined_digest" in origin and not _digest_text(origin["declined_digest"]):
+        return ["invalid historical declined default digest"]
+    return []
+
+
+def _legacy_schema_errors(source: dict[str, Any]) -> list[str]:
+    """Frozen v2.1.0 typed contracts; unsupported sections receive no adapter."""
+    errors = []
+    sections = {s["id"]: s for s in source["policy"]["sections"]}
+    for section_id, section in sections.items():
+        settings = section["settings"]
+        for path in LEGACY_REQUIRED_SETTING_PATHS[section_id]:
+            value = settings
+            for component in path.split("."):
+                if not isinstance(value, dict) or component not in value:
+                    errors.append(f"historical {section_id}.settings.{path} is missing")
+                    break
+                value = value[component]
+        errors.extend(validate_default_provenance(section, f"historical {section_id}", _legacy=True))
+    if errors:
+        return errors
+    git = sections["git_review_release"]["settings"]
+    allowed = {
+        "review_pending_dependency": {"wait_for_completed_dependencies", "stack_from_reviewed_checkpoint"},
+        "review_gate": {"human_after_checks", "human_at_exhaustion"},
+        "conversational_approval": {"allowed_otherwise", "never_for_goal_progress"},
+    }
+    if any(git[key] not in values for key, values in allowed.items()) or (
+            git["review_gate"] == "human_at_exhaustion" and (
+                git["review_pending_dependency"] != "stack_from_reviewed_checkpoint"
+                or git["conversational_approval"] != "never_for_goal_progress")):
+        errors.append("invalid historical git review contract")
+    rigor = sections["engineering_rigor"]
+    settings = rigor["settings"]
+    expected = LEGACY_TYPED_SETTINGS["engineering_rigor"]
+    if rigor["decision"] not in {"vibe", "structured", "agentic"} or set(settings) != set(expected):
+        errors.append("invalid historical engineering rigor contract")
+    escalation = settings["escalation"]
+    if (set(escalation) != set(expected["escalation"])
+            or any(type(escalation[key]) is not bool for key in expected["escalation"])
+            or escalation["allow_automatic_deescalation"] is not False
+            or (escalation["allow_automatic_escalation"] is True and escalation["enabled"] is not True)):
+        errors.append("invalid historical rigor escalation")
+    minimums = settings["minimums"]
+    if any(not isinstance(key, str) or not text_present(key) or key.casefold() != key
+           or not key.replace("_", "").isalnum() or value not in {"vibe", "structured", "agentic"}
+           for key, value in minimums.items()):
+        errors.append("invalid historical rigor minimums")
+    overrides = settings["overrides"]
+    if (set(overrides) != set(expected["overrides"]) or type(overrides["per_goal"]) is not bool
+            or not _exact({k: v for k, v in overrides.items() if k != "per_goal"},
+                          {k: v for k, v in expected["overrides"].items() if k != "per_goal"})):
+        errors.append("invalid historical rigor overrides")
+    if not _exact(settings["requirements_interview"], expected["requirements_interview"]):
+        errors.append("invalid historical rigor interview mapping")
+    workflow = sections["workflow_adherence"]
+    if (workflow["decision"] not in {"optional", "tracked", "managed"}
+            or not _exact(workflow["settings"], LEGACY_TYPED_SETTINGS["workflow_adherence"])):
+        errors.append("invalid historical workflow contract")
+    design = sections["automated_design"]
+    if design["decision"] not in {"enabled", "disabled"} or any(
+            not _exact(design["settings"].get(key), value)
+            for key, value in LEGACY_TYPED_SETTINGS["automated_design"].items()):
+        errors.append("invalid historical automated design contract")
+    autonomy = sections["autonomy_approval_parallelism"]["settings"]
+    if autonomy["dependency_implementation_gate"] not in {"dependencies_done", "stack_from_reviewed_checkpoint"}:
+        errors.append("invalid historical dependency implementation gate")
+    if type(autonomy["execution_reports"]["enabled"]) is not bool:
+        errors.append("invalid historical execution reporting")
+    interview = autonomy["requirements_interview"]
+    for key, values in {"capture_depth": {"light", "standard", "thorough"}, "mode": {"adaptive"},
+                        "stakeholder_model": {"requesting_user_only"}, "execution_questions": {"durable_blockers_only"}}.items():
+        if interview[key] not in values:
+            errors.append(f"invalid historical interview {key}")
+    if interview["capture_depth"] != expected["requirements_interview"]["level_mapping"].get(rigor["decision"]):
+        errors.append("historical rigor and interview depth conflict")
+    try:
+        normalize_resource_policy(autonomy["resource_reservations"])
+    except ValueError as exc:
+        errors.append(f"invalid historical resources: {exc}")
+    repository = source["repository"]
+    backend = sections["backend"]
+    if (not nonempty(repository.get("identity")) or backend["decision"] != source["backend"]
+            or backend["settings"]["authority"] != source["backend"]
+            or backend["settings"]["repository_identity"] != repository["identity"]
+            or not text_present(backend["settings"]["capability_evidence"])):
+        errors.append("historical backend does not match repository authority")
+    charter = source["charter"]
+    if any(not nonempty(charter.get(key)) for key in ("outcome", "why_it_matters", "time_horizon", "precedence")):
+        errors.append("invalid historical charter text")
+    if any(not nonempty_list(charter.get(key)) for key in ("beneficiaries", "acceptance_criteria", "constraints", "non_goals", "unacceptable_tradeoffs")):
+        errors.append("invalid historical charter lists")
+    kpis = charter.get("kpis")
+    if not isinstance(kpis, list) or not kpis or any(
+            not isinstance(kpi, dict) or any(not text_present(kpi.get(key))
+            for key in ("name", "why", "baseline", "target", "evidence", "cadence")) for kpi in kpis):
+        errors.append("invalid historical charter metrics")
+    if not source["history"] or any(not isinstance(entry, dict) or any(
+            not text_present(entry.get(key)) for key in ("date", "actor", "change", "reason"))
+            for entry in source["history"]):
+        errors.append("invalid historical review history")
+    return errors
+
+
+def _legacy_authority_errors(source: dict[str, Any], artifacts: dict[str, str], *, review: bool) -> list[str]:
+    """Verify persisted schema1 authority and the bounded all-pending review transition.
+
+    Historical reviewed_digest is a *whole pending state* digest. Reconstructing
+    that state is valid only when its exact digest matches; no missing snapshot
+    is treated as evidence. Other confirmation histories remain unsupported.
+    """
+    try:
+        policy = source["policy"]
+        sections = policy["sections"]
+        approval = source["approval"]
+        expected_ids = (set(POLICY_SECTION_IDS) - {"model_routing"}) | {"execution_continuation"}
+        if (type(policy["schema_version"]) is not int or policy["schema_version"] != 1
+                or set(policy) != {"schema_version", "sections", "evidence"}
+                or source["initialized"] is not True
+                or source["backend"] not in BACKENDS
+                or type(source["revision"]) is not int or source["revision"] < 2
+                or len(sections) != len(expected_ids) or {s["id"] for s in sections} != expected_ids
+                or not isinstance(approval, dict) or set(approval) != {"reviewer", "date", "digest"}
+                or not text_present(approval["reviewer"]) or not text_present(approval["date"])
+                or approval["digest"] != policy_review_digest(source)):
+            return ["invalid historical approved state"]
+        if set(source) != {"schema_version", "initialized", "backend", "repository", "revision", "charter", "policy", "history", "bindings", "approval"} or type(source["schema_version"]) is not int or source["schema_version"] != 1:
+            return ["unsupported historical state fields"]
+        evidence = policy["evidence"]
+        ids = [item["id"] for item in evidence]
+        if not evidence or len(ids) != len(set(ids)) or any(
+                not text_present(item.get(k)) for item in evidence for k in ("id", "source", "finding")):
+            return ["invalid historical evidence"]
+        common = {"id", "title", "required", "applicable", "decision", "rationale", "source_ids",
+                  "confidence", "default_origin", "default_disposition", "settings", "exceptions", "unresolved", "review"}
+        for section in sections:
+            if (set(section) - common - {"default_provenance"} or common - set(section)
+                    or any(not text_present(section[k]) for k in ("title", "decision", "rationale", "default_origin"))
+                    or any(type(section[k]) is not bool for k in ("required", "applicable"))
+                    or section["confidence"] not in {"low", "medium", "high"}
+                    or section["default_disposition"] not in {"accepted", "changed", "rejected", "unknown"}
+                    or not isinstance(section["settings"], dict)
+                    or any(not isinstance(section[k], list) for k in ("source_ids", "exceptions", "unresolved"))
+                    or set(section["source_ids"]) - set(ids) or section["unresolved"]
+                    or set(section["review"]) != {"approved", "reviewer", "date", "reviewed_digest"}
+                    or section["review"]["approved"] is not True
+                    or any(not text_present(section["review"][k]) for k in ("reviewer", "date"))
+                    or not _digest_text(section["review"]["reviewed_digest"])):
+                return ["unsupported historical section or review metadata"]
+        schema_errors = _legacy_schema_errors(source)
+        if schema_errors:
+            return schema_errors
+        for name, path in (("project", ".zzzops/PROJECT.md"), ("audit", PROJECT_AUDIT_RELATIVE)):
+            if source["bindings"][name] != {"path": path, "digest": project_digest(artifacts[name])}:
+                return ["historical rendered artifact binding changed"]
+        # Both renderers shipped in v2.1.0 (policy module and CLI entrypoint).
+        modes = [mode for mode in (True, False)
+                 if render_project(source, _legacy=True, _legacy_provenance=mode) == artifacts["project"]]
+        if not modes or render_project_audit(source, _legacy=True) != artifacts["audit"]:
+            return ["historical artifacts do not render their bound state"]
+        if not review:
+            return []
+        pending = copy.deepcopy(source)
+        pending.update(initialized=False, approval=None, revision=source["revision"] - 1)
+        pending["history"] = pending["history"][:-1]
+        if not pending["history"]:
+            return ["historical pending review history unavailable"]
+        for section in pending["policy"]["sections"]:
+            section["review"] = {"approved": False}
+        for mode in modes:
+            pending["bindings"] = {
+                "project": {"path": ".zzzops/PROJECT.md", "digest": project_digest(render_project(pending, _legacy=True, _legacy_provenance=mode))},
+                "audit": {"path": PROJECT_AUDIT_RELATIVE, "digest": project_digest(render_project_audit(pending, _legacy=True))},
+            }
+            reviewed_digest = policy_review_digest(pending)
+            if all(s["review"] == {"approved": True, "reviewer": approval["reviewer"],
+                    "date": approval["date"], "reviewed_digest": reviewed_digest} for s in sections):
+                return []
+        return ["historical reviewed_digest has no supported exact pending-state reconstruction"]
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return ["malformed historical authority"]
+
+
+def classify_policy_upgrade(source: dict[str, Any] | None, target: dict[str, Any],
+                           artifacts: dict[str, str] | None = None) -> dict[str, Any]:
+    """Compare a source state and a prepared pending policy without mutating either."""
+    source_policy = source.get("policy", {}) if isinstance(source, dict) else {}
+    def section_list_valid(policy: Any) -> bool:
+        return (isinstance(policy, dict) and isinstance(policy.get("sections", []), list)
+                and all(isinstance(section, dict) and text_present(section.get("id"))
+                        for section in policy.get("sections", [])))
+    if not section_list_valid(source_policy) or not section_list_valid(target):
+        return {"source_schema": None, "target_schema": None, "classification": "unknown",
+                "sections": [], "differences": [], "source_errors": ["malformed policy section structure"],
+                "target_errors": []}
+    version = source_policy.get("schema_version")
+    old = {s["id"]: s for s in source_policy.get("sections", [])}
+    new = {s["id"]: s for s in target.get("sections", [])}
+    source_errors = (validate_project_state(source) if version == 2 else
+                     _legacy_authority_errors(source, artifacts or {}, review=False) if version == 1 else
+                     ["unsupported or absent source policy schema"])
+    if version == 2 and artifacts is not None:
+        for name in ("project", "audit"):
+            if project_digest(artifacts.get(name, "")) != (source or {}).get("bindings", {}).get(name, {}).get("digest"):
+                source_errors.append(f"{name} policy artifact digest changed")
+    target_errors = validate_policy(target, require_pending=True)
+    evidence = target.get("evidence")
+    evidence_ids = set()
+    if not isinstance(evidence, list) or not evidence:
+        target_errors.append("evidence must be a non-empty list")
+    else:
+        for index, item in enumerate(evidence):
+            if not isinstance(item, dict) or any(not text_present(item.get(key)) for key in ("id", "source", "finding")):
+                target_errors.append(f"evidence[{index}] requires id, source, and finding")
+            elif item["id"] in evidence_ids:
+                target_errors.append(f"evidence[{index}].id must be unique")
+            else:
+                evidence_ids.add(item["id"])
+    for index, section in enumerate(target.get("sections", [])):
+        citations = section.get("source_ids")
+        if isinstance(citations, list):
+            if any(not isinstance(citation, str) for citation in citations):
+                target_errors.append(f"sections[{index}].source_ids must contain evidence identifiers")
+            elif set(citations) - evidence_ids:
+                target_errors.append(f"sections[{index}].source_ids contain missing citations")
+    if set(target) != {"schema_version", "sections", "evidence"} or type(target.get("schema_version")) is not int:
+        target_errors.append("unsupported target policy metadata")
+    if version == 2 and (set(source_policy) != {"schema_version", "sections", "evidence"}
+                         or type(version) is not int):
+        source_errors.append("unsupported source policy metadata")
+    results = []
+    for section_id in sorted(set(old) | set(new)):
+        prior, candidate = old.get(section_id), new.get(section_id)
+        item = {"section_id": section_id, "classification": "unknown", "differences": [],
+                "source_provenance": copy.deepcopy((prior or {}).get("default_provenance")),
+                "authority_retained": False, "reasons": []}
+        if prior is not None and candidate is not None:
+            item["differences"] = _field_differences(
+                {k: v for k, v in prior.items() if k not in {"review", "migration_lineage"}},
+                {k: v for k, v in candidate.items() if k not in {"review", "migration_lineage"}},
+            )
+        if prior is None or candidate is None:
+            item.update(classification="substantive", differences=["section_added" if prior is None else "section_removed"])
+        elif source_errors or target_errors:
+            item["reasons"] = source_errors + target_errors
+        elif version == 2:
+            before = _section_meaning(prior, source_policy["evidence"])
+            after = _section_meaning(candidate, target["evidence"])
+            item["differences"] = _field_differences(before, after)
+            item["classification"] = "substantive" if item["differences"] else "representation_only"
+            item["authority_retained"] = not item["differences"] and prior["review"]["approved"] is True
+        elif version == 1 and section_id == "documentation_style":
+            mapped = _legacy_documentation_projection(prior)
+            if mapped is None:
+                item["reasons"] = ["documentation settings or metadata have no finite adapter"]
+            else:
+                before = policy_section_review_content(mapped, source_policy["evidence"])
+                after = policy_section_review_content({k: v for k, v in candidate.items()
+                    if k not in {"default_provenance", "migration_lineage"}}, target["evidence"])
+                item["differences"] = _field_differences(before, after)
+                errors = _legacy_origin_errors(prior) + _legacy_authority_errors(source, artifacts or {}, review=True)
+                item["reasons"] = errors
+                item["classification"] = "substantive" if item["differences"] else "unknown" if errors else "representation_only"
+                item["authority_retained"] = item["classification"] == "representation_only"
+                item["adapter"] = DOCUMENTATION_ADAPTER
+        else:
+            item["reasons"] = ["no reviewed section adapter for this schema transition"]
+        results.append(item)
+    differences = []
+    if not _exact(source_policy.get("evidence"), target.get("evidence")):
+        differences.append("evidence")
+    if version == target.get("schema_version") and not _exact(
+            [s["id"] for s in source_policy.get("sections", [])], [s["id"] for s in target.get("sections", [])]):
+        differences.append("sections.order")
+    kinds = {item["classification"] for item in results}
+    if differences:
+        kinds.add("substantive")
+    if source_errors or target_errors:
+        kinds.add("unknown")
+    return {"source_schema": version, "target_schema": target.get("schema_version"),
+            "classification": "unknown" if "unknown" in kinds else "substantive" if "substantive" in kinds else "representation_only",
+            "sections": results, "differences": differences,
+            "source_errors": source_errors, "target_errors": target_errors}
+
+
+def retain_policy_authority(source: dict[str, Any] | None, target: dict[str, Any],
+                            artifacts: dict[str, str]) -> dict[str, Any]:
+    classification = classify_policy_upgrade(source, target, artifacts)
+    old = {s["id"]: s for s in (source or {}).get("policy", {}).get("sections", [])}
+    decisions = {item["section_id"]: item for item in classification["sections"]}
+    for section in target["sections"]:
+        decision = decisions[section["id"]]
+        if not decision["authority_retained"]:
+            if (section.get("default_provenance") or {}).get("status") == "derived":
+                # Derivation binds the complete section meaning, including its
+                # cited evidence. A fresh exact review must not inherit a proof
+                # that the classifier could not retain.
+                section["default_provenance"] = {"status": "unknown"}
+            continue
+        prior = old[section["id"]]
+        if classification["source_schema"] == 2:
+            section["review"] = copy.deepcopy(prior["review"])
+            if "migration_lineage" in prior:
+                section["migration_lineage"] = copy.deepcopy(prior["migration_lineage"])
+            continue
+        section["default_provenance"] = {
+            "status": "derived", "default_id": "zzzops.policy.documentation_style",
+            "adapter": DOCUMENTATION_ADAPTER, "source": copy.deepcopy(prior.get("default_provenance")),
+        }
+        target_digest = policy_content_digest(_section_meaning(section, target["evidence"]))
+        section["migration_lineage"] = {
+            "adapter": DOCUMENTATION_ADAPTER, "source_identity": copy.deepcopy(LEGACY_POLICY_SOURCE),
+            "source_state": copy.deepcopy(source), "source_artifacts": copy.deepcopy(artifacts),
+            "target_digest": target_digest,
+        }
+        section["review"] = {**copy.deepcopy(prior["review"]), "reviewed_digest": target_digest}
+    return classification
+
+
+def _lineage_errors(section: dict[str, Any], evidence: list[dict[str, Any]]) -> list[str]:
+    proof = section.get("migration_lineage")
+    if proof is None:
+        return ["derived provenance lacks migration lineage"] if (section.get("default_provenance") or {}).get("status") == "derived" else []
+    try:
+        if (set(proof) != {"adapter", "source_identity", "source_state", "source_artifacts", "target_digest"}
+                or proof["adapter"] != DOCUMENTATION_ADAPTER
+                or not _exact(proof["source_identity"], LEGACY_POLICY_SOURCE)):
+            return ["unsupported migration lineage"]
+        source = proof["source_state"]
+        errors = _legacy_authority_errors(source, proof["source_artifacts"], review=True)
+        prior = next(s for s in source["policy"]["sections"] if s["id"] == section["id"])
+        errors.extend(_legacy_origin_errors(prior))
+        projected = _legacy_documentation_projection(prior)
+        if projected is None:
+            return errors + ["migration source has no finite adapter"]
+        projected["default_provenance"] = {"status": "derived", "default_id": "zzzops.policy.documentation_style",
+                                             "adapter": DOCUMENTATION_ADAPTER, "source": copy.deepcopy(prior.get("default_provenance"))}
+        expected = _section_meaning(projected, source["policy"]["evidence"])
+        actual = _section_meaning(section, evidence)
+        if not _exact(expected, actual) or proof["target_digest"] != policy_content_digest(actual):
+            errors.append("migration target or source content changed")
+        if section["review"] != {**prior["review"], "reviewed_digest": proof["target_digest"]}:
+            errors.append("derived review does not retain original approval identity")
+        return errors
+    except (KeyError, TypeError, ValueError, AttributeError, StopIteration):
+        return ["malformed migration lineage"]
 
 
 def policy_section_review_content(section: dict[str, Any], evidence: list[dict[str, Any]]) -> dict[str, Any]:
@@ -261,7 +838,12 @@ def compare_policy_defaults(
         section_id = section.get("id")
         provenance = section.get("default_provenance")
         item: dict[str, Any] = {"section_id": section_id}
-        if not isinstance(provenance, dict) or provenance.get("status") == "unknown":
+        if isinstance(provenance, dict) and provenance.get("status") == "derived":
+            original = provenance.get("source") or {}
+            item.update({"status": "unknown_origin" if original.get("status", "unknown") == "unknown" else "customized",
+                         "default_id": provenance.get("default_id"), "derivation": provenance.get("adapter"),
+                         "source_provenance": copy.deepcopy(original)})
+        elif not isinstance(provenance, dict) or provenance.get("status") == "unknown":
             item["status"] = "unknown_origin"
         elif provenance.get("status") == "customized" or policy_default_content(section) != provenance.get("snapshot"):
             item.update({"status": "customized", "default_id": provenance.get("default_id")})
@@ -288,13 +870,19 @@ def _digest_text(value: Any) -> bool:
     )
 
 
-def validate_default_provenance(section: dict[str, Any], prefix: str) -> list[str]:
+def validate_default_provenance(section: dict[str, Any], prefix: str, *, _legacy: bool = False) -> list[str]:
     provenance = section.get("default_provenance")
     if provenance is None:
         return []  # Legacy reviewed policy: never infer provenance from value equality.
     if not isinstance(provenance, dict):
         return [f"{prefix}.default_provenance must be an object"]
     status = provenance.get("status")
+    if status == "derived" and not _legacy:
+        if (set(provenance) != {"status", "default_id", "adapter", "source"}
+                or provenance.get("default_id") != "zzzops.policy.documentation_style"
+                or section.get("id") != "documentation_style" or provenance.get("adapter") != DOCUMENTATION_ADAPTER):
+            return [f"{prefix}.default_provenance has invalid derivation"]
+        return []  # The full derivation is checked with its cited evidence below.
     if status == "unknown":
         return [] if set(provenance) == {"status"} else [f"{prefix}.default_provenance unknown origin must contain only status"]
     if status not in {"adopted", "customized"}:
@@ -311,8 +899,9 @@ def validate_default_provenance(section: dict[str, Any], prefix: str) -> list[st
     default_id = provenance.get("default_id")
     if default_id != f"zzzops.policy.{section.get('id')}":
         errors.append(f"{prefix}.default_provenance.default_id is inconsistent")
-    if provenance.get("schema_version") != POLICY_DEFAULT_SCHEMA_VERSION:
-        errors.append(f"{prefix}.default_provenance.schema_version must be {POLICY_DEFAULT_SCHEMA_VERSION}")
+    schema_version = 1 if _legacy else POLICY_DEFAULT_SCHEMA_VERSION
+    if type(provenance.get("schema_version")) is not int or provenance.get("schema_version") != schema_version:
+        errors.append(f"{prefix}.default_provenance.schema_version must be {schema_version}")
     source = provenance.get("source")
     revision = source.get("revision") if isinstance(source, dict) else None
     if (
@@ -327,11 +916,12 @@ def validate_default_provenance(section: dict[str, Any], prefix: str) -> list[st
         errors.append(f"{prefix}.default_provenance.{digest_field} is invalid")
     if status == "adopted":
         snapshot = provenance.get("snapshot")
-        if not isinstance(snapshot, dict) or set(snapshot) != set(POLICY_DEFAULT_CONTENT_FIELDS):
+        fields = ("decision", "settings") if _legacy else POLICY_DEFAULT_CONTENT_FIELDS
+        if not isinstance(snapshot, dict) or set(snapshot) != set(fields):
             errors.append(f"{prefix}.default_provenance.snapshot must contain the complete canonical default")
         elif policy_content_digest(snapshot) != provenance.get("digest"):
             errors.append(f"{prefix}.default_provenance.digest does not match snapshot")
-        elif policy_default_content(section) != snapshot:
+        elif not _exact({field: section.get(field) for field in fields}, snapshot):
             errors.append(f"{prefix}.default_provenance snapshot differs from effective policy")
         if "declined_digest" in provenance and not _digest_text(provenance["declined_digest"]):
             errors.append(f"{prefix}.default_provenance.declined_digest is invalid")
@@ -339,7 +929,12 @@ def validate_default_provenance(section: dict[str, Any], prefix: str) -> list[st
 
 
 def default_provenance_label(section: dict[str, Any]) -> str:
-    status = (section.get("default_provenance") or {}).get("status")
+    origin = section.get("default_provenance") or {}
+    status = origin.get("status")
+    if status == "derived":
+        return {"adopted": "derived from the recorded historical ZzzOps default",
+                "customized": "derived from a historical project customization"}.get(
+                    (origin.get("source") or {}).get("status"), "default origin unknown")
     return {
         "adopted": "adopted from the recorded ZzzOps default",
         "customized": "customized from a ZzzOps default",
@@ -1124,7 +1719,7 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
         "confidence", "default_origin", "default_disposition", "configuration", "exceptions",
         "unresolved", "review",
     }
-    optional_fields = {"default_id", "default_resolution", "default_provenance"}
+    optional_fields = {"default_id", "default_resolution", "default_provenance", "migration_lineage"}
     seen = set()
     for index, section in enumerate(sections):
         prefix = f"sections[{index}]"
@@ -1263,6 +1858,10 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
         ):
             errors.append(f"{prefix}.security_privacy_compliance must be required and applicable")
         errors.extend(validate_default_provenance(section, prefix))
+        if not require_pending:
+            errors.extend(f"{prefix}.{error}" for error in _lineage_errors(section, policy.get("evidence", [])))
+        elif "migration_lineage" in section:
+            errors.append(f"{prefix}.migration_lineage cannot be supplied by an agent-generated plan")
     missing = sorted(set(POLICY_SECTION_IDS) - seen)
     if missing:
         errors.append("missing sections: " + ", ".join(missing))
@@ -1438,7 +2037,7 @@ def render_policy_review_table(
     return header + "\n" + body
 
 
-def render_project(state: dict[str, Any]) -> str:
+def render_project(state: dict[str, Any], *, _legacy: bool = False, _legacy_provenance: bool = True) -> str:
     charter = state["charter"]
     status = "complete" if state["initialized"] else "incomplete — policy review required"
     reviewed = (state.get("approval") or {}).get("date", "not yet")
@@ -1449,6 +2048,10 @@ def render_project(state: dict[str, Any]) -> str:
         f"- `[policy:{section['id']}]` **{section['title']}** — Agent instructions: "
         f"{section['instructions']} CLI configuration: {_plain_policy_configuration(section, limit=100)} "
         f"({default_provenance_label(section)})"
+        for section in state["policy"]["sections"]
+    ) if not _legacy else "\n".join(
+        f"- `[policy:{section['id']}]` **{section['title']}**: {section['decision']}"
+        + (f" ({default_provenance_label(section)})" if _legacy_provenance else "")
         for section in state["policy"]["sections"]
     )
     return f"""# Project success charter
@@ -1499,32 +2102,35 @@ Detailed rationale and review history: [PROJECT_AUDIT.md](PROJECT_AUDIT.md). Can
 """
 
 
-def render_policy_sections(policy: dict[str, Any]) -> str:
+def render_policy_sections(policy: dict[str, Any], *, _legacy: bool = False) -> str:
     rendered = []
     evidence = {item["id"]: f"{item['source']} — {item['finding']}" for item in policy.get("evidence", []) if isinstance(item, dict) and text_present(item.get("id"))}
     for section in policy["sections"]:
         approved = section["review"]["approved"] is True
         applicable = "applicable" if section["applicable"] else "not applicable"
-        settings = json.dumps(section["configuration"], ensure_ascii=False, sort_keys=True)
+        settings = json.dumps(section["settings" if _legacy else "configuration"], ensure_ascii=False, sort_keys=True)
+        instruction_label = "Decision" if _legacy else "Instructions"
+        configuration_label = "Settings" if _legacy else "Configuration"
+        instructions = section["decision" if _legacy else "instructions"]
         sources = "; ".join(
             "{}: {}".format(source_id, evidence.get(source_id, "missing citation"))
             for source_id in section["source_ids"]
         )
         rendered.append(
             f"- [{'x' if approved else ' '}] `[policy:{section['id']}]` **{section['title']}** ({applicable})\n"
-            f"  - Instructions: {section['instructions']}\n"
+            f"  - {instruction_label}: {instructions}\n"
             f"  - Rationale: {section['rationale']}\n"
             f"  - Sources: {sources}\n"
             f"  - Confidence/default: {section['confidence']}; {section['default_origin']} → {section['default_disposition']}\n"
             f"  - Provenance: {default_provenance_label(section)}\n"
-            f"  - Configuration: `{settings}`\n"
+            f"  - {configuration_label}: `{settings}`\n"
             f"  - Exceptions: {', '.join(section['exceptions']) or 'none'}\n"
             f"  - Unresolved: {', '.join(section['unresolved']) or 'none'}"
         )
     return "\n".join(rendered)
 
 
-def render_project_audit(state: dict[str, Any]) -> str:
+def render_project_audit(state: dict[str, Any], *, _legacy: bool = False) -> str:
     status = "complete" if state["initialized"] else "pending explicit review"
     reviewer = (state.get("approval") or {}).get("reviewer", "not yet approved")
     history = "\n".join(f"| {cell(entry['date'])} | {cell(entry['actor'])} | {cell(entry['change'])} | {cell(entry['reason'])} |" for entry in state["history"])
@@ -1532,7 +2138,7 @@ def render_project_audit(state: dict[str, Any]) -> str:
         "# ZzzOps project policy audit\n\n"
         f"Status: {status}. Reviewer: {reviewer}. Revision: {state['revision']}.\n\n"
         "## Evidence and decisions\n\n"
-        f"{render_policy_sections(state['policy'])}\n\n"
+        f"{render_policy_sections(state['policy'], _legacy=_legacy)}\n\n"
         "## Review record\n\n"
         "| Date | Actor/run | Change | Reason/evidence |\n"
         "| --- | --- | --- | --- |\n"

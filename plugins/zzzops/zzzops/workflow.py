@@ -1840,12 +1840,28 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         directory = repo / '.zzzops' / 'proposals'
         if operation == 'policy_propose':
             proposal = payload['plan']
-            preflight_policy_proposal(api, repo, proposal)
+            prospective = preflight_policy_proposal(api, repo, proposal)
+            old_state = api.read_project_state(repo)[2]
+            target = api.prepare_policy_defaults(repo, prospective['policy'], (old_state or {}).get('policy'))
+            target['evidence'] = prospective['evidence']
+            artifacts = {}
+            for name, path in (('project', api.project_path(repo)), ('audit', api.project_audit_path(repo))):
+                try:
+                    artifacts[name] = path.read_text(encoding='utf-8-sig')
+                except FileNotFoundError:
+                    artifacts[name] = ''
+            classification = api._policy.classify_policy_upgrade(old_state, target, artifacts)
+            if (old_state and old_state.get('initialized') is True
+                    and classification['classification'] == 'representation_only'
+                    and all(item['authority_retained'] for item in classification['sections'])
+                    and all(api._policy._exact(old_state.get(key), prospective.get(key)) for key in ('backend', 'repository', 'charter'))):
+                return {'next_steps': [{'kind': 'checkpoint', 'action': 'The exact policy is already reviewed.',
+                                        'classification': classification}]}
             proposal_hash = digest(proposal)
             directory.mkdir(parents=True, exist_ok=True)
             path = directory / (proposal_hash.split(':')[1] + '.json')
             api.atomic_text(path, json.dumps(proposal, ensure_ascii=False, sort_keys=True))
-            return {'next_steps': [{'kind': 'human_approval', 'assignment': 'root', 'action': 'Review this exact project/policy proposal with the user before approving.', 'proposal': str(path), 'hash': proposal_hash, 'submission': {'operation': 'policy_approve', 'proposal_hash': proposal_hash, 'approved_by': '<user>'}}]}
+            return {'next_steps': [{'kind': 'human_approval', 'assignment': 'root', 'action': 'Review this exact project/policy proposal with the user before approving.', 'proposal': str(path), 'hash': proposal_hash, 'classification': classification, 'submission': {'operation': 'policy_approve', 'proposal_hash': proposal_hash, 'approved_by': '<user>'}}]}
         proposal_hash = payload['proposal_hash']
         if not explicit_approval(payload.get('approved_by')) or not isinstance(proposal_hash, str) or not __import__('re').fullmatch(r'sha256:[0-9a-f]{64}', proposal_hash):
             raise ValueError('Explicit human approval of the exact proposal hash is required')
@@ -1854,7 +1870,8 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             raise ValueError('Policy proposal changed after review')
         prospective = preflight_policy_proposal(api, repo, proposal)
         applied = api.apply_plan(repo, prospective)
-        api.confirm_project(repo, applied['policy_digest'], payload['approved_by'], [], True)
+        if not applied.get('initialized'):
+            api.confirm_project(repo, applied['policy_digest'], payload['approved_by'], [], True)
         return {'next_steps': [{'kind': 'checkpoint', 'action': 'Reinvoke the original intent against the newly reviewed policy.'}]}
     if gate and gate.get('id') in {'bootstrap', 'policy-review'}:
         inspection = api.inspect_initialization(repo)
