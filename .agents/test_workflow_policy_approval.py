@@ -257,10 +257,59 @@ class WorkflowPolicyApprovalTests(unittest.TestCase):
         plan = self.mapped_legacy_plan(source)
         self.approve(self.public({'operation': 'policy_propose', 'plan': plan}), 'mixed-reviewer')
         before = self.canonical_files()
+        prior = z.read_project_state(self.repo)[2]
+        prior_doc = next(s for s in prior['policy']['sections'] if s['id'] == 'documentation_style')
+        self.assertEqual('historical-reviewer', prior_doc['review']['reviewer'])
+        self.assertIn('migration_lineage', prior_doc)
         plan['base_digest'] = z.initialization_base_digest(self.repo)
         result = self.public({'operation': 'policy_propose', 'plan': plan})
         self.assertFalse(any(step['kind'] == 'human_approval' for step in result['next_steps']))
         self.assertEqual(before, self.canonical_files())
+        state = z.read_project_state(self.repo)[2]
+        doc = next(s for s in state['policy']['sections'] if s['id'] == 'documentation_style')
+        for field in ('review', 'migration_lineage', 'default_provenance'):
+            self.assertEqual(prior_doc[field], doc[field], field)
+        self.assertEqual([], z.validate_project_state(state))
+        self.assertEqual([], z.validate_project_artifacts(self.repo, state))
+
+    def test_cited_evidence_change_after_legacy_upgrade_accepts_fresh_exact_review(self):
+        source = self.install_legacy_fixture()
+        plan = self.mapped_legacy_plan(source)
+        self.approve(self.public({'operation': 'policy_propose', 'plan': plan}), 'mixed-reviewer')
+        prior = z.read_project_state(self.repo)[2]
+        prior_doc = next(s for s in prior['policy']['sections'] if s['id'] == 'documentation_style')
+        self.assertEqual('historical-reviewer', prior_doc['review']['reviewer'])
+        self.assertIn('migration_lineage', prior_doc)
+        plan['base_digest'] = z.initialization_base_digest(self.repo)
+        evidence = next(item for item in plan['evidence'] if item['id'] == 'E-002')
+        self.assertIn(evidence['id'], prior_doc['source_ids'])
+        evidence['finding'] = 'New reviewed evidence about documentation conventions.'
+        before = self.canonical_files()
+
+        proposed = self.public({'operation': 'policy_propose', 'plan': plan})
+        step = proposed['next_steps'][0]
+        self.assertEqual('human_approval', step['kind'])
+        decision = next(item for item in step['classification']['sections']
+                        if item['section_id'] == 'documentation_style')
+        self.assertFalse(decision['authority_retained'])
+        self.assertNotEqual('representation_only', decision['classification'])
+        self.assertEqual(before, self.canonical_files(), 'Changed evidence needs explicit exact approval')
+
+        result = self.approve(proposed, 'fresh-evidence-reviewer')
+
+        self.assertEqual('checkpoint', result['next_steps'][0]['kind'])
+        state = z.read_project_state(self.repo)[2]
+        doc = next(s for s in state['policy']['sections'] if s['id'] == 'documentation_style')
+        self.assertTrue(state['initialized'])
+        self.assertTrue(doc['review']['approved'])
+        self.assertEqual('fresh-evidence-reviewer', doc['review']['reviewer'])
+        self.assertNotEqual(prior_doc['review']['reviewed_digest'], doc['review']['reviewed_digest'])
+        self.assertEqual(plan['evidence'], state['policy']['evidence'])
+        self.assertEqual(prior_doc['instructions'], doc['instructions'])
+        self.assertEqual(prior_doc['configuration'], doc['configuration'])
+        self.assertEqual([], z.validate_project_state(state))
+        self.assertEqual([], z.validate_project_artifacts(self.repo, state))
+        self.assertEqual(state, z.reviewed_project_state(self.repo))
 
     def test_changed_target_or_retained_source_invalidates_derived_authority(self):
         for changed in ('target', 'source'):
