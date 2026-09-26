@@ -20,6 +20,7 @@ import re
 import time
 import statistics
 import hashlib
+import sys
 from types import SimpleNamespace
 from unittest import mock
 
@@ -1231,6 +1232,373 @@ class EvidenceDagPublicTests(DagFixture):
         self.assertLess(max(medians), 1.0, "Approved synthetic 100x100 local evaluator budget exceeded")
         self.assertLessEqual(medians[1] / max(medians[0], .000001), 2.0,
                              "Investigate expanded/fixed equal-work overhead above approved threshold")
+
+
+class WorkspaceAuthorityPublicTests(DagFixture):
+    """U1 public workspace adapter; no phase-name or alternate evaluator seam.
+
+    Proposed host wire for independent review: ordinary submit accepts optional
+    workspace_checks argument arrays. The adapter observes these commands and
+    attaches its immutable proof through the output Artifact.provenance.source.
+    The proof exposes acquisition_hash, input_hash, outputs, consumed and commands.
+    Separate ordinary verification/review tasks consume that exact candidate.
+    Authorization content below is ordinary typed evidence affirming the exact
+    manifest, task identities and policy; caller content never issues a Result.
+    Parent wire proposal: root-authored goal_metadata evidence identifies parent;
+    normal cross-goal identity inputs consume its grant and authorization outputs.
+    Goal 99 publishes those outputs through the same public submit path as 100.
+    """
+
+    def workspace_graph(self):
+        identity = {"goal": 100, "node": "alpha", "item": None, "generation": 1}
+        entry_type = {"kind": "object", "fields": {"task": shape(identity),
+            "owned": {"kind": "array", "items": {"kind": "string"}},
+            "consumed": {"kind": "array", "items": {"kind": "string"}}}}
+        manifest_type = {"kind": "object", "fields": {
+            "allocations": {"kind": "map", "values": entry_type}}}
+        authorization_type = {"kind": "object", "fields": {
+            "manifest": REF_TYPE, "tasks": {"kind": "array", "items": shape(identity)},
+            "policy": {"kind": "string"}, "decision": {"kind": "enum", "values": ["approved"]}}}
+        allocate = task("charter", role="root")
+        allocate["inputs"] = {"request": spec_input()}
+        allocate["outputs"] = {"grant": output("workspace_allocation", manifest_type)}
+        def binding(node, slot, schema, path=()):
+            return {"producer": {"node": selector(node)}, "output": slot, "path": list(path),
+                    "mode": "identity", "type": schema}
+        authorize = task("inspect_charter", ["charter"])
+        authorize["independent_of"] = [selector("charter")]
+        authorize["inputs"] = {"subject": binding("charter", "grant", manifest_type)}
+        authorize["outputs"] = {"permit": output("workspace_authorization", authorization_type)}
+        approve = task("consent", ["inspect_charter"], role="root")
+        approve["inputs"] = {"subject": binding("charter", "grant", manifest_type),
+                             "review": binding("inspect_charter", "permit", authorization_type)}
+        approve["outputs"] = {"permit": output("workspace_authorization", authorization_type)}
+        nodes = [allocate, authorize, approve]
+        self.allocations = {"allocations": {}}
+        for name, owned, after in (("alpha", ["behavior_test.py"], "consent"),
+                                  ("beta", ["source.py"], "accept_alpha"),
+                                  ("gamma", [], "accept_beta")):
+            work = task(name, [after, "consent"] if after != "consent" else [after])
+            work["executor"].update(resources=["repository_workspace"], authority=scope("charter", "grant"))
+            work["inputs"] = {
+                "allocation": binding("charter", "grant", entry_type, ["allocations", name]),
+                "authorization": binding("inspect_charter", "permit", authorization_type),
+                "approval": binding("consent", "permit", authorization_type)}
+            self.allocations["allocations"][name] = {"task": {**identity, "node": name},
+                "owned": owned, "consumed": ["source.py", "behavior_test.py", "read_dependency.txt"]}
+            nodes.append(work)
+            if name != "gamma":
+                observe = task("observe_" + name, [name])
+                observe["inputs"] = {"subject": subject_input(name)}
+                observe["independent_of"] = [selector(name)]
+                accept = task("accept_" + name, ["observe_" + name])
+                accept["inputs"] = {"subject": subject_input(name), "checks": subject_input("observe_" + name)}
+                accept["independent_of"] = [selector(name), selector("observe_" + name)]
+                nodes.extend([observe, accept])
+        return {"nodes": nodes, "task_sets": [], "terminals": [selector("gamma")]}
+
+    def setup_workspace(self, mutate=None):
+        (self.fixture.repo / "source.py").write_text("def value():\n    return 1\n")
+        (self.fixture.repo / "read_dependency.txt").write_text("stable dependency\n")
+        self.session.git("add", "source.py", "read_dependency.txt")
+        self.session.git("commit", "-qm", "workspace fixture baseline")
+        graph = self.workspace_graph()
+        if mutate:
+            mutate(graph, self.allocations)
+        self.install(graph)
+        self.session.finish(self.session.acquire("charter"), {"grant": self.allocations})
+        self.permit = {"manifest": self.produced("charter", "grant"),
+                       "tasks": [entry["task"] for entry in self.allocations["allocations"].values()],
+                       "policy": content_hash(self.session.project["policy"]), "decision": "approved"}
+        review = self.session.acquire("inspect_charter", actor="allocation-reviewer")
+        self.session.finish(review, {"permit": self.permit})
+        self.session.finish(self.session.acquire("consent"), {"permit": self.permit})
+
+    def acquire_workspace(self, name):
+        step = next(s for s in self.session.ready() if s["node"]["node"] == name)
+        work = self.session.acquire(name, actor="writer-" + name)
+        self.assertEqual(step["input_hash"], work["input_hash"], "Acquisition changed semantic inputs")
+        self.assertEqual(self.allocations["allocations"][name]["task"], work["node"])
+        pinned = copy.deepcopy(work["lease"]["acquisition"])
+        self.assertIn(self.produced("charter", "grant")["hash"], json.dumps(pinned))
+        self.assertIn(self.produced("inspect_charter", "permit")["hash"], json.dumps(pinned))
+        self.assertIn(self.produced("consent", "permit")["hash"], json.dumps(pinned))
+        self.assertEqual(step["input_hash"], work["input_hash"])
+        return work
+
+    def candidate(self, work, expected_exit):
+        command = [sys.executable, "-B", "behavior_test.py"]
+        request = self.session.submission(work, {"value": "Exact workspace candidate " + work["node"]["node"]},
+                                          "candidate-" + work["node"]["node"])
+        request["workspace_checks"] = [command]
+        self.session.call(100, request)
+        artifact = self.read_blob(self.produced(work["node"]["node"]))
+        proof_ref = artifact["provenance"]["source"]
+        self.assertIsInstance(proof_ref, dict, "Host must publish its authenticated workspace proof")
+        proof = self.read_blob(proof_ref)
+        self.assertEqual(content_hash(work["lease"]["acquisition"]), proof["acquisition_hash"])
+        self.assertEqual(work["input_hash"], proof["input_hash"])
+        self.assertEqual(command, proof["commands"][0]["command"])
+        self.assertEqual(expected_exit, proof["commands"][0]["exit_code"])
+        for name in self.allocations["allocations"][work["node"]["node"]]["owned"]:
+            self.assertEqual("sha256:" + hashlib.sha256((self.fixture.repo / name).read_bytes()).hexdigest(),
+                             proof["outputs"][name])
+        self.assertFalse(any(lease["token"] == work["lease"]["token"]
+                             for lease in self.payload()[1]["operational"]["leases"]))
+        return proof_ref, proof
+
+    def review_candidate(self, name, expected_exit):
+        proof_ref = self.read_blob(self.produced(name))["provenance"]["source"]
+        self.assertEqual(expected_exit, self.read_blob(proof_ref)["commands"][0]["exit_code"])
+        self.session.finish(self.session.acquire("observe_" + name, actor="checker-" + name),
+                            {"value": "Observed exact candidate proof exit " + str(expected_exit)})
+        self.session.finish(self.session.acquire("accept_" + name, actor="reviewer-" + name),
+                            {"value": "Independently reviewed exact candidate and check evidence"})
+
+    def red_candidate(self):
+        alpha = self.acquire_workspace("alpha")
+        (self.fixture.repo / "behavior_test.py").write_text("from source import value\nassert value() == 2\n")
+        proof = self.candidate(alpha, 1)
+        self.assertNotIn("beta", self.names(), "Unreviewed candidate must not authorize downstream work")
+        self.review_candidate("alpha", 1)
+        return alpha, proof
+
+    def test_permitted_red_to_green_edits_keep_fingerprints_and_downstream_proof_reuse(self):
+        self.setup_workspace()
+        alpha, (red_ref, red) = self.red_candidate()
+        self.assertEqual("missing", red["consumed"]["behavior_test.py"], "Pin pre-edit absence despite owned test creation")
+        beta = self.acquire_workspace("beta")
+        original = hashlib.sha256((self.fixture.repo / "source.py").read_bytes()).hexdigest()
+        (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
+        _green_ref, green = self.candidate(beta, 0)
+        self.assertEqual("sha256:" + original, green["consumed"]["source.py"])
+        self.assertNotIn("gamma", self.names())
+        self.review_candidate("beta", 0)
+        before = self.result("alpha")[0], self.result("beta")[0]
+        self.session = TaskSession(self.fixture.repo, self.session.project, self.session.runtime,
+                                   self.provider, self.session.control)
+        gamma = self.acquire_workspace("gamma")
+        self.assertEqual(before, (self.result("alpha")[0], self.result("beta")[0]))
+        self.assertEqual(red, self.read_blob(red_ref), "Later green work cannot rewrite red baseline proof")
+        self.session.finish(gamma, {"value": "Consumed accepted test and implementation output identities"})
+
+    def test_unowned_and_consumed_drift_reject_without_partial_candidate_then_allow_owned_edit(self):
+        self.setup_workspace()
+        work = self.acquire_workspace("alpha")
+        for name in ("unexpected.py", "read_dependency.txt"):
+            path = self.fixture.repo / name
+            original = path.read_bytes() if path.exists() else None
+            try:
+                path.write_text("unauthorized change\n")
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                response = self.session.call(100, self.session.submission(work, {"value": "candidate"}, "bad-" + name), expected=2)
+                self.assertRegex(json.dumps(response), r"(?i)scope|consumed|workspace|file|drift")
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+            finally:
+                if original is None:
+                    path.unlink()
+                else:
+                    path.write_bytes(original)
+        (self.fixture.repo / "behavior_test.py").write_text("from source import value\nassert value() == 2\n")
+        self.candidate(work, 1)
+
+    def test_missing_ambiguous_and_wrong_generation_allocations_never_grant_a_lease(self):
+        self.setup_workspace()
+        valid = next(s for s in self.session.ready() if s["node"]["node"] == "alpha")
+        self.assertTrue(valid["start"])
+        original_graph = copy.deepcopy(self.graph)
+        # Each independent fixture first has a valid graph/allocation control.
+        for change in ("missing", "ambiguous", "generation"):
+            with self.subTest(change=change):
+                graph = copy.deepcopy(original_graph)
+                manifest = copy.deepcopy(self.allocations)
+                alpha = next(n for n in graph["nodes"] if n["id"] == "alpha")
+                if change == "missing":
+                    del alpha["inputs"]["allocation"]
+                elif change == "ambiguous":
+                    alpha["inputs"]["second_allocation"] = copy.deepcopy(alpha["inputs"]["allocation"])
+                else:
+                    manifest["allocations"]["alpha"]["task"]["generation"] = 2
+                # Graph validation or acquisition may reject invalid selection;
+                # neither may dispatch a writer or persist a lease for it.
+                self.install(graph)
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                response = self.session.call(100, expected=None)
+                if any(s.get("kind") == "execute" and s.get("node", {}).get("node") == "charter" for s in response["next_steps"]):
+                    self.session.finish(self.session.acquire("charter"), {"grant": manifest})
+                    permit = {**self.permit, "manifest": self.produced("charter", "grant"),
+                              "tasks": [entry["task"] for entry in manifest["allocations"].values()]}
+                    self.session.finish(self.session.acquire("inspect_charter", actor="allocation-reviewer"), {"permit": permit})
+                    self.session.finish(self.session.acquire("consent"), {"permit": permit})
+                    before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                    response = self.session.call(100, expected=None)
+                self.assertFalse(any(s.get("kind") == "execute" and s.get("node", {}).get("node") == "alpha"
+                                     for s in response["next_steps"]))
+                self.assertRegex(json.dumps(response), r"(?i)allocation|generation|authority|binding|input")
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_replacing_allocation_cannot_reauthorize_an_inflight_out_of_scope_edit(self):
+        self.setup_workspace()
+        work = self.acquire_workspace("alpha")
+        self.replace_spec("Root proposes a different finite allocation")
+        changed = copy.deepcopy(self.allocations)
+        changed["allocations"]["alpha"]["owned"].append("unexpected.py")
+        self.session.finish(self.session.acquire("charter"), {"grant": changed})
+        (self.fixture.repo / "unexpected.py").write_text("not authorized by the acquired manifest\n")
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, self.session.submission(work, {"value": "candidate"}, "stale-allocation"), expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)allocation|review|stale|authority|input|scope")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_tampered_completed_workspace_proof_blocks_downstream_after_lease_removal(self):
+        self.setup_workspace()
+        _work, (proof_ref, proof) = self.red_candidate()
+        self.assertIn("beta", self.names())
+        original = copy.deepcopy(self.provider.comments[100])
+        mutations = 0
+        for comment in self.provider.comments[100]:
+            envelope = z._comment_store.decode_envelope(comment["body"])
+            if envelope is None:
+                continue
+            for record in envelope["artifacts"]:
+                if record["hash"] == proof_ref["hash"]:
+                    record["kind"] = "full"
+                    record.pop("base", None)
+                    record.pop("patch", None)
+                    record["type"] = "json"
+                    record["text"] = json.dumps({**proof, "outputs": {"behavior_test.py": "sha256:" + "f" * 64}},
+                                                sort_keys=True, separators=(",", ":"))
+                    mutations += 1
+            comment["body"] = z._comment_store.encode_envelope(envelope)
+        self.assertGreater(mutations, 0, "Tamper probe must alter the stored proof, not a nonexistent fixture")
+        response = self.session.call(100, expected=None)
+        self.assertFalse(any(s.get("kind") == "execute" and s.get("node", {}).get("node") == "beta"
+                             for s in response["next_steps"]))
+        self.assertRegex(json.dumps(response), r"(?i)hash|proof|artifact|identity|corrupt")
+        self.provider.comments[100] = original
+        self.assertIn("beta", self.names())
+
+    def test_completed_output_and_consumed_drift_block_reuse_after_lease_removal(self):
+        self.setup_workspace()
+        _work, _proof = self.red_candidate()
+        self.assertIn("beta", self.names())
+        for name in ("behavior_test.py", "read_dependency.txt"):
+            with self.subTest(path=name):
+                path = self.fixture.repo / name
+                original = path.read_bytes()
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                try:
+                    path.write_text("unreviewed post-result change\n")
+                    response = self.session.call(100, expected=None)
+                    self.assertFalse(any(s.get("kind") == "execute" and s.get("node", {}).get("node") == "beta"
+                                         for s in response["next_steps"]))
+                    self.assertRegex(json.dumps(response), r"(?i)workspace|proof|drift|consumed|output")
+                    self.assertEqual(before, (self.provider.issues, self.provider.comments))
+                finally:
+                    path.write_bytes(original)
+                self.assertIn("beta", self.names(), "Exact restored proof must remain reusable")
+
+    def test_parent_grant_omission_and_mismatch_cannot_expand_child_authority(self):
+        self.setup_workspace()
+        child_graph = copy.deepcopy(self.graph)
+        parent_nodes = copy.deepcopy(child_graph["nodes"][:3])
+        # Parent's own qualified prerequisite selectors are local to goal 99;
+        # its allocation deliberately grants the exact child task in goal 100.
+        def qualify(value):
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    if key == "goal" and item == 100:
+                        value[key] = 99
+                    else:
+                        qualify(item)
+            elif isinstance(value, list):
+                for item in value:
+                    qualify(item)
+        qualify(parent_nodes)
+        parent_graph = {"nodes": parent_nodes, "task_sets": [],
+                        "terminals": [{**selector("consent"), "goal": 99}]}
+        parent_spec = self.blob({"type": "specification", "content": "Delegate only the exact child allocation",
+            "producer": None, "provenance": {"actor": "root-thread", "source": None,
+            "policy": content_hash(self.session.project["policy"])}})
+        parent_payload = self.blob({"spec": parent_spec, "graph": self.blob(parent_graph), "evidence": [],
+                                   "operational": {"leases": [], "receipts": []}})
+        parent_envelope = {**self.envelope, "issue": 99, "payload": parent_payload}
+        self.provider.issues[99] = {**copy.deepcopy(self.provider.issues[100]), "number": 99,
+            "body": "<!-- zzzops-goal\n" + json.dumps(parent_envelope) + "\nzzzops-goal -->"}
+        self.provider.comments[99] = copy.deepcopy(self.provider.comments[100])
+
+        def parent_output(name, slot):
+            body = self.provider.issues[99]["body"]
+            envelope = json.loads(re.search(r"<!-- zzzops-goal\s*\n(.*?)\nzzzops-goal -->", body, re.S)[1])
+            index = z._comment_store.ArtifactIndex(self.provider.comments[99])
+            payload = index.resolve(envelope["payload"]["hash"])[0]
+            for ref in reversed(payload["evidence"]):
+                artifact = index.resolve(ref["hash"])[0]
+                if artifact["type"] == "result" and artifact["content"]["node"]["node"] == name:
+                    return artifact["content"]["outputs"][slot]
+            self.fail("Parent must have a host-issued result")
+
+        for name, outputs in (("charter", {"grant": self.allocations}), ("inspect_charter", None), ("consent", None)):
+            if outputs is None:
+                outputs = {"permit": {**self.permit, "manifest": parent_output("charter", "grant")}}
+            work = self.session.acquire(name, number=99,
+                                        actor="parent-reviewer" if name == "inspect_charter" else "root-thread")
+            self.session.call(99, self.session.submission(work, outputs, "parent-" + name))
+        alpha = next(n for n in child_graph["nodes"] if n["id"] == "alpha")
+        for slot, original in (("parent_allocation", "allocation"), ("parent_authorization", "authorization"),
+                               ("parent_approval", "approval")):
+            alpha["inputs"][slot] = copy.deepcopy(alpha["inputs"][original])
+            alpha["inputs"][slot]["producer"]["node"]["goal"] = 99
+        self.install(child_graph)
+        envelope, payload = self.payload()
+        metadata = self.blob({"type": "goal_metadata", "content": {"parent": 99}, "producer": None,
+            "provenance": {"actor": "root-thread", "source": None,
+                           "policy": content_hash(self.session.project["policy"])}})
+        payload["evidence"].append(metadata)
+        envelope["payload"] = self.blob(payload)
+        self.provider.issues[100]["body"] = "<!-- zzzops-goal\n" + json.dumps(envelope) + "\nzzzops-goal -->"
+        self.session.finish(self.session.acquire("charter"), {"grant": self.allocations})
+        permit = {**self.permit, "manifest": self.produced("charter", "grant")}
+        self.session.finish(self.session.acquire("inspect_charter", actor="allocation-reviewer"), {"permit": permit})
+        self.session.finish(self.session.acquire("consent"), {"permit": permit})
+        self.assertIn("alpha", self.names(), "Current exact parent grant is the positive control")
+        original = copy.deepcopy((self.provider.issues, self.provider.comments, self.session.project))
+        for change in ("omitted", "mismatched"):
+            with self.subTest(change=change):
+                self.provider.issues, self.provider.comments, self.session.project = copy.deepcopy(original)
+                changed = copy.deepcopy(child_graph)
+                node = next(n for n in changed["nodes"] if n["id"] == "alpha")
+                if change == "omitted":
+                    for key in ("parent_allocation", "parent_authorization", "parent_approval"):
+                        del node["inputs"][key]
+                else:
+                    node["inputs"]["parent_allocation"]["path"] = ["allocations", "beta"]
+                envelope, payload = self.payload()
+                payload["graph"] = self.blob(changed)
+                envelope["payload"] = self.blob(payload)
+                self.provider.issues[100]["body"] = "<!-- zzzops-goal\n" + json.dumps(envelope) + "\nzzzops-goal -->"
+                z._workflow_section(self.session.project, "workflow_adherence")["configuration"]["phase_dag"] = changed
+                # Renew any ordinary producers invalidated by the graph/policy
+                # edit, so generic stale authorization is not the negative oracle.
+                for number in (99, 100):
+                    for name in ("charter", "inspect_charter", "consent"):
+                        if not any(s["node"]["node"] == name for s in self.session.ready(number)):
+                            continue
+                        manifest_ref = (parent_output("charter", "grant") if number == 99
+                                        else self.produced("charter", "grant")) if name != "charter" else None
+                        outputs = {"grant": self.allocations} if name == "charter" else {"permit": {
+                            **self.permit, "manifest": manifest_ref,
+                            "policy": content_hash(self.session.project["policy"])}}
+                        work = self.session.acquire(name, number=number,
+                            actor=("parent-reviewer" if number == 99 else "allocation-reviewer")
+                            if name == "inspect_charter" else "root-thread")
+                        self.session.call(number, self.session.submission(work, outputs, change + str(number) + name))
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                response = self.session.call(100, expected=None)
+                self.assertFalse(any(s.get("kind") == "execute" and s.get("node", {}).get("node") == "alpha"
+                                     for s in response["next_steps"]))
+                self.assertRegex(json.dumps(response), r"(?i)parent|ancestor|allocation|authority")
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
 
 class GatewayTransport:

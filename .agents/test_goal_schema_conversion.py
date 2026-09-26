@@ -405,7 +405,7 @@ class MigrationEntryPublicTests(dag.DagFixture):
                     "human_approvals": {}, "withdrawals": []}
         # Literal supported v1 source fixture, not execution through a legacy engine.
         legacy = fixtures.PortfolioTests().goal(phase_evidence=evidence)
-        source["body"] = "Exact historical human text.\n<!-- zzzops-goal\n" + json.dumps(legacy) + "\nzzzops-goal -->"
+        source["body"] = "## Outcome\nExact historical human text.\n<!-- zzzops-goal\n" + json.dumps(legacy) + "\nzzzops-goal -->"
         self.provider.issues[100] = copy.deepcopy(source)
         self.session.finish(self.session.acquire("analyze"), {"source": source})
         source_ref = self.migration_result("analyze")[1]["source"]
