@@ -1,8 +1,8 @@
 """#539 text-only storage contract.
 
-The comment_store codec API below is a proposed internal interface, not an
-existing implementation. Public/provider failures live alongside these focused
-contract tests so missing-module assertions are not the behavioral baseline.
+The comment_store codec is the implemented bounded text-patch interface.
+Public/provider tests exercise its behavioral boundaries alongside these
+focused storage contract tests.
 """
 import copy
 import hashlib

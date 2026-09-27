@@ -1463,7 +1463,7 @@ def legacy_prepare(config_path):
 class CommentCheckpointPublicTests(unittest.TestCase):
     """#539 uses the existing public dispatcher and provider fixtures.
 
-    Proposed additive request shapes for review: artifacts=[{content, hash}]
+    The implemented request shapes use artifacts=[{content, hash}]
     on result/review; artifact={phase, slot, revision?} on read. Inline values
     carry data only; the ordinary record and lease still confer all authority.
     """
@@ -1571,12 +1571,11 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         self.assertNotEqual(0, s.calls[-1]['code'], 'A missing delta base must not return stale or partial content')
 
     def test_new_envelope_cycles_duplicate_records_and_patch_tampering_fail_closed(self):
-        """Proposed codec test seam: decoded envelopes expose artifacts records.
+        """Decoded envelopes expose artifact records for semantic validation.
 
         Records expose hash/kind/base and a decoded patch. encode_envelope performs
         transport encoding/checksumming, allowing deliberate semantically invalid
-        fixtures; the production reader must enforce semantic integrity. These
-        names are reviewable technical proposals, not additional product scope.
+        fixtures; the production reader enforces semantic integrity.
         """
         s = self.session
         step = s.start(101, 'understand')
@@ -1617,7 +1616,7 @@ class CommentCheckpointPublicTests(unittest.TestCase):
                 self.assertEqual(changed, s.read(101, self.reference(changed)))
 
     def test_reconstruction_work_limit_is_enforced_even_for_compressible_content(self):
-        """Resource constant is a proposed internal test seam; no public setting."""
+        """The reconstruction-work constant is internal, with no public setting."""
         s = self.session
         step = s.start(101, 'understand')
         content = {'text': 'compressible ' * 40000}
@@ -1630,7 +1629,7 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         self.assertTrue(modules, 'The bounded store must own decoded/reconstruction accounting')
         with contextlib.ExitStack() as stack:
             for module in modules:
-                self.assertTrue(hasattr(module, 'MAX_RECONSTRUCTION_WORK_BYTES'), 'Proposed resource test seam is missing')
+                self.assertTrue(hasattr(module, 'MAX_RECONSTRUCTION_WORK_BYTES'), 'Reconstruction-work limit is missing')
                 stack.enter_context(mock.patch.object(module, 'MAX_RECONSTRUCTION_WORK_BYTES', 100))
             s.call(101, {'operation': 'read', 'artifact': reference}, expected=None)
             self.assertNotEqual(0, s.calls[-1]['code'], 'A tiny compressed body must not bypass decoded work accounting')

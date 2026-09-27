@@ -1,6 +1,6 @@
 """#539 durable transition behavior; provider writes are in-memory only.
 
-Proposed additive reconstruction API: goals.reconstruct_goal_history(adapter,
+The reconstruction API goals.reconstruct_goal_history(adapter,
 number, revision) returns {goal, human_spec, submitted_goal}. The historical goal
 is a semantic projection, never a source of live workflow ownership.
 """
