@@ -616,7 +616,7 @@ class OwnedOutputPublicTests(unittest.TestCase):
         graph, _ = z._workflow_phase_configuration(s.project, goal)
         engine = z.workflow_engine(s.repo, s.project, s.runtime)
         engine.adapter = s.provider
-        engine.owned_versions = lambda *_args: {}
+        engine.owned_versions = lambda *_args: {'source.py': {'sha256:' + '0' * 64}}
         engine.workspace_digest = lambda: 'sha256:' + 'a' * 64
 
         acquired = engine.inputs(goal, graph)['test_design']
@@ -627,6 +627,15 @@ class OwnedOutputPublicTests(unittest.TestCase):
         current = engine.inputs(goal, graph)['test_design']
 
         self.assertEqual(content_hash(acquired), content_hash(current))
+
+        goal['phase_evidence']['records']['test_design']['input_envelope'] = copy.deepcopy(acquired)
+        goal['phase_evidence']['records']['test_design']['input_hash'] = content_hash(acquired)
+        goal['phase_evidence']['reviews'].pop('test_design', None)
+        goal['workflow']['artifacts']['test_design'] = {'workspace': engine.workspace_digest()}
+        del goal['workflow']['leases']['test_design:execute']
+        completed = engine.inputs(goal, graph)['test_design']
+
+        self.assertEqual(content_hash(acquired), content_hash(completed))
 
     def test_durable_proof_rejects_tampered_acquisition_and_outputs(self):
         s = self.session
