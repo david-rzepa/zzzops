@@ -605,6 +605,14 @@ class Workflow:
                 if path in actual and value in versions.get(path, set()):
                     actual[path] = value
             envelope['repository']['snapshot'] = {'files': actual}
+            if acquisition:
+                # Lease acquisition can change how an older verification is
+                # classified as history. Preserve the exact drift marker that
+                # was part of the acquired input so ownership bookkeeping does
+                # not change the phase fingerprint after start.
+                frozen_snapshot = frozen.get('repository', {}).get('snapshot', {})
+                if 'output_drift' in frozen_snapshot:
+                    envelope['repository']['snapshot']['output_drift'] = frozen_snapshot['output_drift']
             if assessment:
                 envelope['capabilities']['snapshot'] = {'assessment': assessment}
             if phase == 'publish':

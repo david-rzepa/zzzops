@@ -607,6 +607,27 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.assertNotEqual(baseline, changed)
         self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] in {'assess', 'execute'} for x in changed))
 
+    def test_reacquiring_phase_keeps_stale_proof_drift_in_its_frozen_input(self):
+        s = self.session
+        s.prepare()
+        s.design()
+        goal = s.goal(101)
+        goal.update(parent=None, depends_on=[], implementation={})
+        graph, _ = z._workflow_phase_configuration(s.project, goal)
+        engine = z.workflow_engine(s.repo, s.project, s.runtime)
+        engine.adapter = s.provider
+        engine.owned_versions = lambda *_args: {}
+        engine.workspace_digest = lambda: 'sha256:' + 'a' * 64
+
+        acquired = engine.inputs(goal, graph)['test_design']
+        self.assertIn('output_drift', acquired['repository']['snapshot'])
+        goal['workflow']['leases']['test_design:execute'] = {
+            'acquisition': {'input_envelope': copy.deepcopy(acquired)},
+        }
+        current = engine.inputs(goal, graph)['test_design']
+
+        self.assertEqual(content_hash(acquired), content_hash(current))
+
     def test_durable_proof_rejects_tampered_acquisition_and_outputs(self):
         s = self.session
         s.prepare()
