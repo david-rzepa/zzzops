@@ -1622,17 +1622,18 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         content = {'text': 'compressible ' * 40000}
         reference = s.artifact(101, step, content)
         self.assertEqual(content, s.read(101, reference))
-        # Import the implementation's actual module so the read uses the patched
-        # budget, rather than a second copy used only by the test.
-        modules = [module for module in sys.modules.values() if module is not None
-                   and str(getattr(module, '__file__', '')).endswith('/zzzops/comment_store.py')]
-        self.assertTrue(modules, 'The bounded store must own decoded/reconstruction accounting')
-        with contextlib.ExitStack() as stack:
-            for module in modules:
-                self.assertTrue(hasattr(module, 'MAX_RECONSTRUCTION_WORK_BYTES'), 'Reconstruction-work limit is missing')
-                stack.enter_context(mock.patch.object(module, 'MAX_RECONSTRUCTION_WORK_BYTES', 100))
-            s.call(101, {'operation': 'read', 'artifact': reference}, expected=None)
-            self.assertNotEqual(0, s.calls[-1]['code'], 'A tiny compressed body must not bypass decoded work accounting')
+        # A pristine CLI import can replace sys.modules aliases. Patch the
+        # module retained by this session's actual workflow implementation.
+        store = s.api._workflow.comment_store
+        self.assertTrue(hasattr(store, 'MAX_RECONSTRUCTION_WORK_BYTES'), 'Reconstruction-work limit is missing')
+        with mock.patch.dict(sys.modules):
+            spec = importlib.util.spec_from_file_location('budget_pristine_zzzops', s.api.__file__)
+            pristine = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(pristine)
+            self.assertIsNot(store, pristine._workflow.comment_store)
+            with mock.patch.object(store, 'MAX_RECONSTRUCTION_WORK_BYTES', 100):
+                s.call(101, {'operation': 'read', 'artifact': reference}, expected=None)
+                self.assertNotEqual(0, s.calls[-1]['code'], 'A tiny compressed body must not bypass decoded work accounting')
         self.assertEqual(content, s.read(101, reference))
 
     def test_unfavorable_delta_uses_independent_full_checkpoint(self):

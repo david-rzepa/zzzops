@@ -60,6 +60,7 @@ class WorkerLimitEnforcementTests(unittest.TestCase):
         engine.project = project(max_workers=1)
         engine.runtime = {"root_id": "root-thread"}
         engine.locked = lambda: contextlib.nullcontext()
+        engine.adapter = SimpleNamespace(get_issue_comments=lambda number: [])
         active = {
             "key": 1, "status": "ready",
             "workflow": durable({"expires_at": 0, "worker": "synthetic-worker"}),
@@ -153,6 +154,7 @@ class PublishCiPolicyTests(unittest.TestCase):
         engine.repository = "synthetic/project"
         engine.runtime = {"root_id": "root-thread"}
         engine.locked = lambda: contextlib.nullcontext()
+        engine.adapter = SimpleNamespace(get_issue_comments=lambda number: [])
         engine.publication_gate = mock.Mock(return_value=None)
         current = {
             "head_oid": "a" * 40, "checks_verified": False,
