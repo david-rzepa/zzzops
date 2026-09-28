@@ -1917,10 +1917,6 @@ class Workflow:
                 evidence, phase, record, live[phase], phase_policy=nodes,
             )
         elif operation == 'record_review' and lease['kind'] == 'review':
-            if phase == 'publish' and (goal.get('implementation') or {}).get('pr'):
-                current = self.pull_request(goal)
-                if self.ci_checks_required(current) and current.get('checks_verified') is not True:
-                    raise ValueError('Publication review requires any CI checks required by reviewed policy')
             outcomes = payload.get('outcomes')
             if not isinstance(outcomes, dict) or set(outcomes) != {'acceptance', 'entropy'}:
                 raise ValueError('Review requires separate acceptance and entropy outcomes')
@@ -1939,6 +1935,10 @@ class Workflow:
                         raise ValueError('Entropy follow-up must be an open goal linked to this reviewed goal')
             if outcomes['acceptance'] not in {'approved', 'changes_requested'}:
                 raise ValueError('Acceptance review decision is invalid')
+            if outcomes['acceptance'] == 'approved' and phase == 'publish' and (goal.get('implementation') or {}).get('pr'):
+                current = self.pull_request(goal)
+                if self.ci_checks_required(current) and current.get('checks_verified') is not True:
+                    raise ValueError('Publication review requires any CI checks required by reviewed policy')
             self.read_artifact(goal['key'], payload['artifact'])
             desired['phase_evidence'] = api.record_phase_review(evidence, phase, payload['artifact'], lease['worker'], decision=outcomes['acceptance'], require_independent=nodes[phase]['review'].get('independent', True), outcomes=outcomes)
         elif operation == 'approve' and lease['kind'] == 'human_approval':
