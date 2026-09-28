@@ -13,8 +13,6 @@ import os
 import subprocess
 import time
 import uuid
-import base64
-import zlib
 import re
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
