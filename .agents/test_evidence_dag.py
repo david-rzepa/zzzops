@@ -227,7 +227,11 @@ class EvidenceGraphGrammarTests(unittest.TestCase):
                     elif position == "permits":
                         node[position] = [{"type": "finding", "scope": scoped}]
                     elif position == "inputs":
-                        node[position] = {"children": {**subject_input("remote"), "producer": {"node": selected}}}
+                        value_type = {"kind": "string"}
+                        if kind == "join":
+                            value_type = {"kind": "map", "values": value_type}
+                        node[position] = {"children": {**subject_input("remote"), "producer": {"node": selected},
+                                                      "type": {"kind": "map", "values": value_type}}}
                     elif position == "authority":
                         node["executor"]["authority"] = scoped
                     else:

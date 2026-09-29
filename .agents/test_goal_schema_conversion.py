@@ -617,5 +617,34 @@ class MigrationEntryPublicTests(dag.DagFixture):
         self.assertEqual(source, self.read_blob(conversion["source"])["content"])
         self.assertIn("produce", self.names(), "Preserving relationship metadata never fabricates delivery")
 
+
+    def test_v1_cutover_rejects_phase_operations_and_uses_only_generic_submission(self):
+        source, graph = self.entry()
+        steps = self.session.checkpoint(100)
+        self.assertEqual({"analyze"}, {step["node"]["node"] for step in steps if step.get("kind") == "execute"})
+        self.assertFalse(any(step.get("phase") in {"understand", "decompose", "plan", "test_design", "implement"} for step in steps))
+        for operation in ("record_result", "record_review", "approve"):
+            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+            response = self.session.call(100, {"operation": operation, "phase": "understand", "actor": "root-thread"}, expected=2)
+            self.assertRegex(json.dumps(response), r"(?i)legacy|operation|generic|unsupported|migration")
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        analyze = self.session.acquire("analyze")
+        self.assertEqual("submit", analyze["submission"]["operation"])
+        self.session.finish(analyze, {"source": source})
+        conversion = {"source": self.migration_result("analyze")[1]["source"], "target": self.target,
+                      "mapped_evidence": [], "missing_obligations": ["Current delivery and reviews"]}
+        self.session.finish(self.session.acquire("convert"), {"conversion": conversion})
+        self.session.finish(self.session.acquire("conversion_review", actor="independent-reviewer"), {"value": "Exact conversion inspected"})
+        self.session.finish(self.session.acquire("conversion_approval"), {"value": "Root approves exact conversion"})
+        self.session.finish(self.session.acquire("activate"), {"activation": {
+            "conversion": self.migration_result("convert")[1]["conversion"],
+            "approval": self.migration_result("conversion_approval")[0]}})
+        self.assertEqual(2, self.payload()[0]["schema_version"])
+        produce = self.session.acquire("produce")
+        self.assertEqual("submit", produce["submission"]["operation"])
+        self.session.finish(produce, {"value": "Generic normal execution"})
+        self.assertEqual({"review_a", "review_b"}, self.names())
+        self.assertEqual(source, self.read_blob(conversion["source"])["content"])
+
 if __name__ == "__main__":
     unittest.main()

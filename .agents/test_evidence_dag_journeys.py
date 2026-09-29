@@ -20,6 +20,7 @@ import re
 import time
 import statistics
 import hashlib
+import importlib
 import sys
 from types import SimpleNamespace
 from unittest import mock
@@ -31,6 +32,25 @@ from test_evidence_dag import review_graph, selector, scope, subject_input, task
 
 z = old.z
 REAL_PR_STATES = z._github_pull_request_states
+
+
+def run_generic_regressions(owner, *test_ids):
+    """Run explicitly mapped replacement assertions, never a legacy scheduler.
+
+    Old regression IDs remain executable entrypoints. Each names exact current
+    tests preserving its invariant; this helper only manages unittest fixtures.
+    It does not translate operations, synthesize results, or choose readiness.
+    """
+    for test_id in test_ids:
+        module, class_name, method = test_id.rsplit(".", 2)
+        case = getattr(importlib.import_module(module), class_name)(method)
+        with owner.subTest(generic_regression=test_id):
+            try:
+                case.setUp()
+                getattr(case, method)()
+                case.tearDown()
+            finally:
+                case.doCleanups()
 
 
 def shape(value):
@@ -1766,6 +1786,82 @@ class WorkspaceAuthorityPublicTests(DagFixture):
                 self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
 
+
+    def test_clean_crlf_checkout_pins_raw_consumed_bytes_and_allows_owned_red_edit(self):
+        self.setup_workspace()
+        self.session.git("config", "core.autocrlf", "true")
+        source = self.fixture.repo / "source.py"
+        source.write_bytes(source.read_bytes().replace(b"\n", b"\r\n"))
+        self.assertEqual("", self.session.git("status", "--porcelain", "--", "source.py"))
+        before = "sha256:" + hashlib.sha256(source.read_bytes()).hexdigest()
+        work = self.acquire_workspace("alpha")
+        (self.fixture.repo / "behavior_test.py").write_bytes(b"from source import value\r\nassert value() == 2\r\n")
+        _ref, proof = self.candidate(work, 1)
+        self.assertEqual(before, proof["consumed"]["source.py"])
+        self.review_candidate("alpha", 1)
+        self.assertIn("beta", self.names())
+
+    def test_dirty_unreviewed_source_cannot_be_adopted_as_acquisition_baseline(self):
+        self.setup_workspace()
+        self.assertIn("alpha", self.names(), "Clean reviewed positive control")
+        source = self.fixture.repo / "source.py"
+        original = source.read_bytes()
+        source.write_text("def value():\n    return 9\n")
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        with self.assertRaisesRegex(AssertionError, r"(?i)dirty|drift|workspace|input|baseline"):
+            self.acquire_workspace("alpha")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        source.write_bytes(original)
+        self.acquire_workspace("alpha")
+
+    def test_unreferenced_proof_artifact_does_not_change_acquisition_inputs(self):
+        self.setup_workspace()
+        before = next(v["input_hash"] for v in self.session.ready() if v["node"]["node"] == "alpha")
+        self.blob({"type": "workspace_proof", "content": {"outputs": {"source.py": "unaccepted"}},
+                   "producer": None, "provenance": {"actor": "untrusted", "source": None, "policy": content_hash(self.session.project["policy"])}})
+        work = self.acquire_workspace("alpha")
+        self.assertEqual(before, work["input_hash"], "Unreferenced bytes cannot become accepted proof authority")
+
+    def test_commit_of_exact_accepted_owned_outputs_preserves_downstream_proof(self):
+        self.setup_workspace()
+        self.red_candidate()
+        beta = self.acquire_workspace("beta")
+        (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
+        reference, proof = self.candidate(beta, 0)
+        self.review_candidate("beta", 0)
+        self.session.git("add", "source.py", "behavior_test.py")
+        self.session.git("commit", "-qm", "verified owned outputs")
+        work = self.acquire_workspace("gamma")
+        self.assertEqual(proof, self.read_blob(reference))
+        self.session.finish(work, {"value": "unchanged accepted bytes after commit"})
+
+    def test_readonly_allocation_accepts_unchanged_workspace_but_rejects_new_file(self):
+        def readonly(_graph, allocations):
+            allocations["allocations"]["alpha"]["owned"] = []
+        self.setup_workspace(readonly)
+        work = self.acquire_workspace("alpha")
+        extra = self.fixture.repo / "not-granted.py"
+        extra.write_text("undeclared = True\n")
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        request = self.session.submission(work, {"value": "read only"}, "readonly-extra")
+        response = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)owned|scope|undeclared|workspace")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        extra.unlink()
+        self.session.finish(work, {"value": "read only"})
+
+    def test_unreviewed_candidate_remains_correction_evidence_without_downstream_authority(self):
+        self.setup_workspace()
+        alpha = self.acquire_workspace("alpha")
+        (self.fixture.repo / "behavior_test.py").write_text("from source import value\nassert value() == 2\n")
+        ref, proof = self.candidate(alpha, 1)
+        self.assertEqual(1, proof["commands"][0]["exit_code"])
+        self.assertNotIn("beta", self.names())
+        self.assertIn("observe_alpha", self.names())
+        self.assertEqual(proof, self.read_blob(ref))
+        self.review_candidate("alpha", 1)
+        self.assertIn("beta", self.names())
+
 class GatewayTransport:
     """Real cache code sees provider responses; only subprocess is simulated."""
     def __init__(self, issues):
@@ -2012,8 +2108,13 @@ class RelationshipPublicTests(DagFixture):
                   {"kind": "join", "goal": goal, "expansion": "buckets"} if kind == "join" else
                   {"kind": "member", "goal": goal, "expansion": "buckets", "item": "a", "generation": "current"})
         consumer["requires"] = [target]
+        selected_type = {"kind": "string"}
+        if kind == "join":
+            selected_type = {"kind": "map", "values": selected_type}
+        if goal == "#children":
+            selected_type = {"kind": "map", "values": selected_type}
         consumer["inputs"] = {"values": {"producer": {"node": target}, "output": "value", "path": [],
-                                         "mode": mode, "type": {"kind": "string"}}}
+                                         "mode": mode, "type": selected_type}}
         consumer["executor"]["authority"]["subject"]["goal"] = "#this"
         return {"nodes": [producer, consumer], "task_sets": [],
                 "terminals": [{"kind": "node", "goal": "#this", "node": "collect"}]}
@@ -2226,6 +2327,46 @@ class RelationshipPublicTests(DagFixture):
                     self.assertTrue(all(t["item"] == "a" and t["generation"] == 1 for t in resolution["targets"]))
                 self.session.finish(work, {"value": "joined members"})
 
+    def test_child_requires_current_parent_review_and_blocks_again_after_parent_drift(self):
+        parent_graph = self.symbolic_graph("#this")
+        review = parent_graph["nodes"][1]
+        review["id"] = "review_parent"
+        review["executor"]["authority"]["subject"]["node"] = "review_parent"
+        review["inputs"]["values"]["mode"] = "identity"
+        review["independent_of"] = [{"kind": "node", "goal": "#this", "node": "produce"}]
+        parent_graph["terminals"][0]["node"] = "review_parent"
+        child_graph = self.symbolic_graph("#parent")
+        child_graph["nodes"][1]["requires"][0]["node"] = "review_parent"
+        child_graph["nodes"][1]["inputs"]["values"]["producer"]["node"]["node"] = "review_parent"
+        child_graph["nodes"][1]["inputs"]["values"]["mode"] = "identity"
+        self.install(child_graph)
+        self.add_goal(99, parent_graph)
+        envelope = self.envelope_for(100)
+        envelope["parent"] = 99
+        envelope["revision"] += 1
+        self.put_envelope(100, envelope)
+        self.complete(99)
+        self.assertNotIn("collect", self.names(), "Parent production alone cannot replace independent review")
+        self.complete(99, "review_parent", "approved", actor="parent-reviewer")
+        self.assertIn("collect", self.names())
+        parent = self.envelope_for(99)
+        payload = self.read_at(99, parent["payload"])
+        spec = self.read_at(99, payload["spec"])
+        spec["content"] = "Changed parent contract requires current review"
+        first_new = len(self.provider.comments[100])
+        payload["spec"] = self.blob(spec)
+        parent["payload"] = self.blob(payload)
+        for comment in copy.deepcopy(self.provider.comments[100][first_new:]):
+            self.provider.create_issue_comment(99, comment["body"])
+        parent["revision"] += 1
+        self.put_envelope(99, parent)
+        self.assertNotIn("collect", self.names())
+        self.complete(99, value="updated parent")
+        self.assertNotIn("collect", self.names(), "Old parent review cannot authorize the revised parent")
+        self.complete(99, "review_parent", "approved", actor="parent-reviewer")
+        self.assertIn("collect", self.names())
+        self.complete(100, "collect", "current reviewed parent")
+
     def test_relevant_parent_change_rejects_acquired_child_result(self):
         graph = self.symbolic_graph("#parent")
         self.install(graph)
@@ -2281,6 +2422,21 @@ class RelationshipPublicTests(DagFixture):
         self.assertEqual({"101": "101", "102": "102"}, content["inputs"]["values"])
         self.assertEqual(["101", "102"], list(content["inputs"]["values"]))
         self.session.finish(work, {"value": "per-child projection"})
+
+    def test_plural_input_rejects_scalar_contract_after_valid_aggregate_control(self):
+        for kind in ("node", "member", "join"):
+            with self.subTest(kind=kind):
+                graph = self.symbolic_graph(kind=kind)
+                expected = {"kind": "map", "values": {"kind": "string"}}
+                if kind == "join":
+                    expected = {"kind": "map", "values": expected}
+                self.assertEqual(expected, graph["nodes"][1]["inputs"]["values"]["type"])
+                self.assertEqual([], z._policy._workflow_phase_dag_errors(graph),
+                                 "Valid aggregate declaration must precede rejection")
+                invalid = copy.deepcopy(graph)
+                invalid["nodes"][1]["inputs"]["values"]["type"] = {"kind": "string"}
+                self.assertRegex("; ".join(z._policy._workflow_phase_dag_errors(invalid)),
+                                 r"(?i)input|aggregate|map|type")
 
     def test_archived_state_alone_does_not_satisfy_required_child_evidence(self):
         graph = self.child_fixture()

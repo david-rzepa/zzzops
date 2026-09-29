@@ -4172,254 +4172,78 @@ class PhaseEvidenceTests(unittest.TestCase):
         self.assertEqual([], result["eligible"])
 
     def test_not_required_phase_still_requires_policy_review_and_human_approval(self):
-        envelope = self.envelope("decompose")
-        record = self.record("decompose", envelope)
-        record.update({
-            "status": "not_required", "output": None,
-            "not_required": {"reason": "Goal is atomic.", "policy_rule": "atomic_goal"},
-        })
-        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "decompose", record, envelope)
-        graph = self.graph({"id": "decompose"}, {"id": "plan", "depends_on": ["decompose"]})
-        inputs = {"decompose": envelope, "plan": self.envelope("plan")}
-        policy = {"decompose": {
-            "not_required": "atomic_goal",
-            "review": {"independent": True, "human_approval": True},
-        }}
-
-        awaiting_review = zzzops.derive_phase_steps(self.goal(evidence), graph, inputs, review_policy=policy)
-        self.assertEqual(["decompose"], [item["phase"] for item in awaiting_review["review"]])
-        self.assertEqual(["plan"], [item["phase"] for item in awaiting_review["blocked"]])
-
-        artifact = {"reference": "urn:sha256:" + "8" * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": "skip"})}
-        evidence = zzzops.record_phase_review(evidence, "decompose", artifact, "reviewer-2")
-        awaiting_human = zzzops.derive_phase_steps(self.goal(evidence), graph, inputs, review_policy=policy)
-        self.assertEqual([{"phase": "decompose", "reason": "missing_human_approval"}], awaiting_human["review"])
-        self.assertEqual(["plan"], [item["phase"] for item in awaiting_human["blocked"]])
-
-        evidence = zzzops.record_phase_approval(evidence, "decompose", "root", "approval-atomic")
-        approved = zzzops.derive_phase_steps(self.goal(evidence), graph, inputs, review_policy=policy)
-        self.assertEqual(["plan"], [item["phase"] for item in approved["execute"]])
+        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_phase_review_contract.GenericReviewGateTests.test_empty_selection_still_requires_configured_independent_review_and_root_consent',
+        )
 
     def test_parallel_frontier_and_restart_are_evidence_derived(self):
-        graph = self.graph({"id": "plan"}, {"id": "verify"})
-        inputs = {"plan": self.envelope("plan"), "verify": self.envelope("verify")}
-        first = zzzops.derive_phase_eligibility(self.goal(), graph, inputs)
-        second = zzzops.derive_phase_eligibility(self.goal(), graph, inputs)
-        self.assertEqual(first, second)
-        self.assertEqual(["plan", "verify"], [item["phase"] for item in first["eligible"]])
+        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_parallel_reviews_independent_leases_and_join',
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_existing_lease_resumes_without_duplicate_dispatch',
+        )
 
     def test_phase_steps_require_approved_review_before_downstream_execution(self):
-        graph = self.graph(
-            {"id": "plan"}, {"id": "test_design", "depends_on": ["plan"]},
-            {"id": "implement", "depends_on": ["test_design"]},
+        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_parallel_reviews_independent_leases_and_join',
         )
-        plan_input, test_input = self.envelope("plan"), self.envelope("test_design")
-        initial = zzzops.derive_phase_steps(self.goal(), graph, {"plan": plan_input, "test_design": test_input, "implement": self.envelope("implement")})
-        self.assertEqual(["plan"], [step["phase"] for step in initial["execute"]])
-        self.assertEqual(["test_design", "implement"], [item["phase"] for item in initial["blocked"]])
-
-        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "plan", self.record("plan", plan_input), plan_input)
-        awaiting_review = zzzops.derive_phase_steps(self.goal(evidence), graph, {"plan": plan_input, "test_design": test_input, "implement": self.envelope("implement")})
-        self.assertEqual(["plan"], [step["phase"] for step in awaiting_review["review"]])
-        self.assertEqual(["test_design", "implement"], [item["phase"] for item in awaiting_review["blocked"]])
-
-        artifact = {"reference": "urn:sha256:" + "6" * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": "plan"})}
-        evidence = zzzops.record_phase_review(evidence, "plan", artifact, "reviewer-2")
-        next_step = zzzops.derive_phase_steps(self.goal(evidence), graph, {"plan": plan_input, "test_design": test_input, "implement": self.envelope("implement")})
-        self.assertEqual(["test_design"], [step["phase"] for step in next_step["execute"]])
 
     def test_phase_steps_require_current_approved_parent_gate(self):
-        parent_input = self.envelope("plan")
-        parent_evidence = zzzops.record_phase_result(
-            zzzops.empty_phase_evidence(), "plan", self.record("plan", parent_input), parent_input,
+        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_parent_grant_omission_and_mismatch_cannot_expand_child_authority',
+            'test_evidence_dag_journeys.RelationshipPublicTests.test_child_requires_current_parent_review_and_blocks_again_after_parent_drift',
         )
-        child = self.goal(parent=9)
-        child_input = self.envelope("test_design")
-        graph = self.graph({"id": "test_design", "parent_gates": ["plan"]})
-        blocked = zzzops.derive_phase_steps(child, graph, {"test_design": child_input}, {9: {"goal": self.goal(parent_evidence), "live_inputs": {"plan": parent_input}}})
-        self.assertEqual(["plan"], blocked["blocked"][0]["parent_gates"])
-        artifact = {"reference": "urn:sha256:" + "7" * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": "parent"})}
-        parent_evidence = zzzops.record_phase_review(parent_evidence, "plan", artifact, "reviewer-2")
-        allowed = zzzops.derive_phase_steps(child, graph, {"test_design": child_input}, {9: {"goal": self.goal(parent_evidence), "live_inputs": {"plan": parent_input}}})
-        self.assertEqual(["test_design"], [step["phase"] for step in allowed["execute"]])
 
     def test_phase_steps_require_approved_review_before_downstream_execution(self):
-        graph = self.graph(
-            {"id": "plan"}, {"id": "test_design", "depends_on": ["plan"]},
-            {"id": "implement", "depends_on": ["test_design"]},
+        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_parallel_reviews_independent_leases_and_join',
         )
-        plan_input, test_input = self.envelope("plan"), self.envelope("test_design")
-        initial = zzzops.derive_phase_steps(self.goal(), graph, {"plan": plan_input, "test_design": test_input, "implement": self.envelope("implement")})
-        self.assertEqual(["plan"], [step["phase"] for step in initial["execute"]])
-        self.assertEqual(["test_design", "implement"], [item["phase"] for item in initial["blocked"]])
-
-        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "plan", self.record("plan", plan_input), plan_input)
-        awaiting_review = zzzops.derive_phase_steps(self.goal(evidence), graph, {"plan": plan_input, "test_design": test_input, "implement": self.envelope("implement")})
-        self.assertEqual(["plan"], [step["phase"] for step in awaiting_review["review"]])
-        self.assertEqual(["test_design", "implement"], [item["phase"] for item in awaiting_review["blocked"]])
-
-        artifact = {"reference": "urn:sha256:" + "6" * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": "plan"})}
-        evidence = zzzops.record_phase_review(evidence, "plan", artifact, "reviewer-2")
-        next_step = zzzops.derive_phase_steps(self.goal(evidence), graph, {"plan": plan_input, "test_design": test_input, "implement": self.envelope("implement")})
-        self.assertEqual(["test_design"], [step["phase"] for step in next_step["execute"]])
 
     def test_complete_workflow_lifecycle_emits_execution_and_review_steps(self):
-        plan = json.loads((PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
-        routing = json.loads(json.dumps(next(item for item in plan["policy"]["sections"] if item["id"] == "model_routing")["configuration"]))
-        routing["model_inventory"]["reviewed_pairs"] = [
-            {"model": "root", "effort": "high", "tier": "architectural", "cost": 10},
-            {"model": "economy", "effort": "low", "tier": "routine", "cost": 1},
-            {"model": "builder", "effort": "medium", "tier": "bounded", "cost": 3},
-            {"model": "architect", "effort": "high", "tier": "architectural", "cost": 8},
-        ]
-        runtime = {
-            "root_pair": {"model": "root", "effort": "high"},
-            "available_pairs": [
-                {"model": "root", "effort": "high"}, {"model": "economy", "effort": "low"},
-                {"model": "builder", "effort": "medium"}, {"model": "architect", "effort": "high"},
-            ],
-        }
-        phases = ["understand", "decompose", "plan", "test_design", "implement", "publish"]
-        graph = self.graph(*[
-            {"id": phase, "depends_on": [] if index == 0 else [phases[index - 1]]}
-            for index, phase in enumerate(phases)
-        ])
-        phase_nodes = {
-            phase: {"assignment_group": "root" if phase == "understand" else "planning" if phase in {"decompose", "plan", "test_design"} else "implementation"}
-            for phase in phases
-        }
-        goal = {"status": "ready", "difficulty": "S", "engineering_rigor": {"risk_categories": [], "effective": "structured"}}
-        evidence = zzzops.empty_phase_evidence()
-
-        def inputs():
-            result = {}
-            for index, phase in enumerate(phases):
-                upstream = []
-                if index:
-                    prior = evidence["records"].get(phases[index - 1], {}).get("output")
-                    if prior:
-                        upstream = [{"phase": phases[index - 1], "hash": prior["hash"]}]
-                result[phase] = self.envelope(phase, upstream_outputs=upstream)
-            return result
-
-        for phase in phases:
-            goal["phase_evidence"] = evidence
-            step = zzzops.workflow_step_plan(goal, graph, inputs(), phase_nodes, routing, runtime)
-            self.assertEqual(phase, step["next_steps"][0]["phase"])
-            self.assertEqual("execute", step["next_steps"][0]["kind"])
-            phase_input = inputs()[phase]
-            record = self.record(phase, phase_input, phase + " output")
-            evidence = zzzops.record_phase_result(evidence, phase, record, phase_input)
-            goal["phase_evidence"] = evidence
-            review = zzzops.workflow_step_plan(goal, graph, inputs(), phase_nodes, routing, runtime)
-            self.assertEqual([{
-                "phase": phase, "reason": "missing_or_unapproved_review",
-            }], review["frontier"]["review"])
-            self.assertEqual("review", review["next_steps"][0]["kind"])
-            artifact = {"reference": "urn:sha256:" + str(phases.index(phase) + 1) * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": phase})}
-            evidence = zzzops.record_phase_review(evidence, phase, artifact, "reviewer-2")
-
-        goal["phase_evidence"] = evidence
-        finished = zzzops.workflow_step_plan(goal, graph, inputs(), phase_nodes, routing, runtime)
-        self.assertEqual([], finished["next_steps"])
+        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_parallel_reviews_independent_leases_and_join',
+        )
 
     def test_stale_rejection_and_identical_output_preserves_descendant(self):
-        graph = self.graph({"id": "plan"}, {"id": "implement", "depends_on": ["plan"]})
-        plan_input = self.envelope("plan")
-        plan_record = self.record("plan", plan_input, "plan-v1")
-        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "plan", plan_record, plan_input)
-        evidence, test_design = self.approved_test_design(evidence)
-        output = plan_record["output"]
-        implement_input = self.envelope("implement", upstream_outputs=[
-            {"phase": "plan", "hash": output["hash"]}, {"phase": "test_design", "hash": test_design["output"]["hash"]},
-        ])
-        evidence = zzzops.record_phase_result(evidence, "implement", self.record("implement", implement_input), implement_input)
-        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "stale"):
-            zzzops.record_phase_result(evidence, "plan", plan_record, self.envelope("plan", policy="policy-2"))
-
-        refreshed_input = self.envelope("plan", policy="policy-2")
-        evidence = zzzops.record_phase_result(evidence, "plan", self.record("plan", refreshed_input, "plan-v1"), refreshed_input)
-        result = zzzops.derive_phase_eligibility(
-            self.goal(evidence), graph,
-            {"plan": refreshed_input, "implement": implement_input},
+        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_phase_review_contract.GenericReviewGateTests.test_identical_output_cannot_bypass_current_ancestor_review_and_reapproval',
         )
-        self.assertEqual([], result["eligible"])
-        self.assertEqual([], result["stale"])
 
     def test_changed_output_and_withdrawal_stale_declared_descendants(self):
-        graph = self.graph({"id": "plan"}, {"id": "implement", "depends_on": ["plan"]})
-        plan_input = self.envelope("plan")
-        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "plan", self.record("plan", plan_input, "first"), plan_input)
-        evidence, test_design = self.approved_test_design(evidence)
-        old_implement = self.envelope("implement", upstream_outputs=[
-            {"phase": "plan", "hash": zzzops.sha256_phase_evidence_digest({"output": "first"})},
-            {"phase": "test_design", "hash": test_design["output"]["hash"]},
-        ])
-        evidence = zzzops.record_phase_result(evidence, "implement", self.record("implement", old_implement), old_implement)
-        evidence = zzzops.record_phase_result(evidence, "plan", self.record("plan", plan_input, "second"), plan_input)
-        changed_implement = self.envelope("implement", upstream_outputs=[
-            {"phase": "plan", "hash": zzzops.sha256_phase_evidence_digest({"output": "second"})},
-            {"phase": "test_design", "hash": test_design["output"]["hash"]},
-        ])
-        stale = zzzops.derive_phase_eligibility(self.goal(evidence), graph, {"plan": plan_input, "implement": changed_implement})
-        self.assertEqual(["implement"], stale["stale"])
-        self.assertEqual(["implement"], [item["phase"] for item in stale["eligible"]])
-
-        withdrawn = zzzops.withdraw_phase_evidence(evidence, "plan", reason="Plan scope changed.", actor="root")
-        result = zzzops.derive_phase_eligibility(self.goal(withdrawn), graph, {"plan": plan_input, "implement": changed_implement})
-        self.assertEqual(["plan"], [item["phase"] for item in result["eligible"]])
-        self.assertEqual(["plan", "implement"], result["stale"])
+        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_changed_bucket_reruns_only_affected_investigation',
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_authorized_finding_withdrawal_requires_exact_authority_and_retains_provenance',
+        )
 
     def test_phase_frontier_reports_stale_ancestor_gate_and_blocked_descendant(self):
-        graph = self.graph({"id": "decompose"}, {"id": "plan", "depends_on": ["decompose"]})
-        decompose_input, plan_input = self.envelope("decompose"), self.envelope("plan")
-        evidence = zzzops.record_phase_result(
-            zzzops.empty_phase_evidence(), "decompose", self.record("decompose", decompose_input), decompose_input,
+        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_phase_review_contract.GenericReviewGateTests.test_identical_output_cannot_bypass_current_ancestor_review_and_reapproval',
         )
-        evidence = zzzops.record_phase_result(evidence, "plan", self.record("plan", plan_input), plan_input)
-        for phase in ("decompose", "plan"):
-            review_hash = zzzops.sha256_phase_evidence_digest({"review": phase})
-            artifact = {
-                "reference": "urn:" + review_hash,
-                "hash": review_hash,
-            }
-            evidence = zzzops.record_phase_review(evidence, phase, artifact, "reviewer-2")
-
-        result = zzzops.derive_phase_steps(
-            self.goal(evidence), graph,
-            {"decompose": self.envelope("decompose", policy="policy-2"), "plan": plan_input},
-        )
-
-        self.assertEqual(["decompose"], result["stale"])
-        self.assertEqual([{"phase": "plan", "dependencies": ["decompose"], "parent_gates": []}], result["blocked"])
-        self.assertEqual([{
-            "phase": "decompose", "reason": "stale_input", "affected_descendants": [{
-                "phase": "plan", "blocked_phase": "plan", "dependencies": ["decompose"], "parent_gates": [],
-            }],
-        }], result["invalidated_ancestor_gates"])
 
     def test_parent_gates_unrelated_revisions_and_closed_goals(self):
-        parent_input = self.envelope("architecture")
-        parent_evidence = zzzops.record_phase_result(
-            zzzops.empty_phase_evidence(), "architecture", self.record("architecture", parent_input), parent_input,
+        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.RelationshipPublicTests.test_unrelated_and_bookkeeping_changes_preserve_relevant_consumer',
+            'test_evidence_dag_journeys.RelationshipPublicTests.test_every_child_required_including_archived_exact_completion',
         )
-        graph = self.graph({"id": "implement", "parent_gates": ["architecture"]})
-        child_input = self.envelope("implement")
-        child_evidence, test_design = self.approved_test_design(zzzops.empty_phase_evidence())
-        child_input = self.envelope("implement", upstream_outputs=[{"phase": "test_design", "hash": test_design["output"]["hash"]}])
-        child = self.goal(child_evidence, parent=9, revision=1)
-        blocked = zzzops.derive_phase_eligibility(child, graph, {"implement": child_input})
-        self.assertEqual(["architecture"], blocked["blocked"][0]["parent_gates"])
-        parent = {"goal": self.goal(parent_evidence), "live_inputs": {"architecture": parent_input}}
-        allowed = zzzops.derive_phase_eligibility(child, graph, {"implement": child_input}, {9: parent})
-        self.assertEqual(["implement"], [item["phase"] for item in allowed["eligible"]])
-        stale_parent = {"goal": self.goal(parent_evidence), "live_inputs": {"architecture": self.envelope("architecture", policy="policy-2")}}
-        stale = zzzops.derive_phase_eligibility(child, graph, {"implement": child_input}, {9: stale_parent})
-        self.assertEqual(["architecture"], stale["blocked"][0]["parent_gates"])
-        child["revision"] = 999
-        self.assertEqual(allowed, zzzops.derive_phase_eligibility(child, graph, {"implement": child_input}, {9: parent}))
-        terminal = zzzops.derive_phase_eligibility(self.goal(status="done"), graph, {"implement": child_input})
-        self.assertEqual(["terminal_goal"], terminal["diagnostics"])
 
     def test_managed_goal_retains_typed_phase_evidence(self):
         goal = GoalTransitionTests().goal()
@@ -6968,32 +6792,11 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual({"model": "root-model", "effort": "medium"}, result["next_steps"][0]["selection"])
 
     def test_workflow_step_plan_routes_required_human_approval_to_root(self):
-        plan = json.loads((PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
-        settings = json.loads(json.dumps(next(item for item in plan["policy"]["sections"] if item["id"] == "model_routing")["configuration"]))
-        settings["model_inventory"]["reviewed_pairs"] = [{"model": "root-model", "effort": "medium", "tier": "architectural", "cost": 1}]
-        evidence_test = PhaseEvidenceTests()
-        input_envelope = evidence_test.envelope("understand")
-        record = evidence_test.record("understand", input_envelope)
-        evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "understand", record, input_envelope)
-        goal = {"status": "ready", "difficulty": "S", "engineering_rigor": {"risk_categories": [], "effective": "structured"}, "phase_evidence": evidence}
-        result = zzzops.workflow_step_plan(
-            goal, {"phases": [{"id": "understand"}]}, {"understand": input_envelope},
-            {"understand": {"assignment_group": "root", "review": {"human_approval": True}}}, settings,
-            {"root_pair": {"model": "root-model", "effort": "medium"}, "available_pairs": [{"model": "root-model", "effort": "medium"}]},
+        # Root authority is configured on an ordinary exact-subject task, not an extra phase mode.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_phase_review_contract.GenericReviewGateTests.test_review_is_not_human_approval_and_root_binds_current_subject_and_review',
         )
-        self.assertEqual("review", result["next_steps"][0]["kind"])
-        self.assertEqual("delegate", result["next_steps"][0]["assignment"])
-        artifact = {"reference": "urn:sha256:" + "9" * 64, "hash": zzzops.sha256_phase_evidence_digest({"review": "understand"})}
-        evidence = zzzops.record_phase_review(evidence, "understand", artifact, "reviewer-2")
-        goal["phase_evidence"] = evidence
-        result = zzzops.workflow_step_plan(
-            goal, {"phases": [{"id": "understand"}]}, {"understand": input_envelope},
-            {"understand": {"assignment_group": "root", "review": {"independent": True, "human_approval": True}}}, settings,
-            {"root_pair": {"model": "root-model", "effort": "medium"}, "available_pairs": [{"model": "root-model", "effort": "medium"}]},
-        )
-        self.assertEqual("human_approval", result["next_steps"][0]["kind"])
-        self.assertEqual("root", result["next_steps"][0]["assignment"])
-        self.assertEqual({"model": "root-model", "effort": "medium"}, result["next_steps"][0]["selection"])
 
     def test_workflow_step_plan_reports_each_capability_blocker(self):
         plan = json.loads((PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
