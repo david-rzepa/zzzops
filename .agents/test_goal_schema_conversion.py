@@ -13,6 +13,7 @@ import base64
 import re
 import zlib
 from types import SimpleNamespace
+from pathlib import Path
 from unittest import mock
 
 import test_zzzops as fixtures
@@ -356,6 +357,84 @@ class MigrationEntryPublicTests(dag.DagFixture):
                       "missing_obligations": ["Current verification", "Current independent review"]}
         self.session.finish(self.session.acquire("convert"), {"conversion": conversion})
         return source, conversion
+
+    def test_selected_open_entry_is_bounded_and_retry_preserves_other_sources(self):
+        source, _graph = self.entry()
+        self.provider.issues[101] = fixtures.PortfolioTests().issue(101)
+        self.provider.issues[102] = fixtures.PortfolioTests().issue(102)
+        self.provider.issues[102]["state"] = "closed"
+        for number in (101, 102):
+            self.provider.comments[number] = []
+        others = copy.deepcopy({number: (self.provider.issues[number], self.provider.comments[number])
+                                for number in (101, 102)})
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.assertEqual({"analyze"}, self.names())
+        self.assertEqual(before, (self.provider.issues, self.provider.comments),
+                         "Discovery cannot automatically migrate any source")
+        step = next(step for step in self.session.ready() if step["node"]["node"] == "analyze")
+        receipt = json.loads(Path(step["policy"]["path"]).read_text())["policy_receipt"]
+        request = {**step["start"], "policy_receipt": receipt, "request_id": "bounded-entry-start"}
+        first = self.session.call(100, request)["next_steps"][0]
+        prepared = copy.deepcopy((self.provider.issues, self.provider.comments))
+        again = self.session.call(100, request)["next_steps"][0]
+        self.assertEqual(first["lease"]["token"], again["lease"]["token"])
+        self.assertEqual(prepared, (self.provider.issues, self.provider.comments))
+        self.assertEqual(source, self.read_blob(self.payload()[1]["spec"])["content"])
+        self.assertEqual(others, {number: (self.provider.issues[number], self.provider.comments[number])
+                                  for number in (101, 102)})
+        self.assertFalse(any(step.get("node", {}).get("node") == "produce"
+                             for step in self.session.checkpoint(100)))
+
+    def test_schema_label_cannot_authorize_noncompact_source_or_erase_history(self):
+        source, _graph = self.entry()
+        legacy = z.parse_managed_goal(source["body"], 100)
+        legacy["evidence"] = ["Historical evidence must survive exactly."]
+        human = ("## Outcome\nKeep this.\n\n```md\n## Evidence\nKeep fenced example.\n```\n\n"
+                 "## Evidence\nArchive this without erasure.\n\n## Scope\nKeep scope.\n")
+        source["body"] = z.render_managed_goal(legacy, human, 100)
+        source["labels"].append({"name": "zzzops:schema:v1"})
+        self.provider.issues[100] = copy.deepcopy(source)
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.assertEqual({"analyze"}, self.names())
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        work = self.session.acquire("analyze")
+        self.assertEqual(source, self.read_blob(self.payload()[1]["spec"])["content"])
+        self.session.finish(work, {"source": source})
+        self.assertEqual(source, self.read_blob(self.migration_result("analyze")[1]["source"])["content"])
+        self.assertEqual({"convert"}, self.names(), "A label/source backup cannot activate normal delivery")
+
+    def test_entry_backup_confirmation_precedes_body_replacement_and_retries_exactly(self):
+        source, _graph = self.entry()
+        self.assertEqual({"analyze"}, self.names())
+        step = next(step for step in self.session.ready() if step["node"]["node"] == "analyze")
+        receipt = json.loads(Path(step["policy"]["path"]).read_text())["policy_receipt"]
+        request = {**step["start"], "policy_receipt": receipt, "request_id": "source-confirmation"}
+        create, read = self.provider.create_issue_comment, self.provider.get_issue_comments
+        initial_comments = copy.deepcopy(self.provider.comments[100])
+        def unconfirmed_create(number, body):
+            result = create(number, body)
+            return {**result, "body": "Unconfirmed provider response"}
+        def unconfirmed_read(number):
+            known = {row["id"] for row in initial_comments}
+            return [row if row["id"] in known else {**row, "body": "Unconfirmed provider readback"}
+                    for row in read(number)]
+        self.provider.create_issue_comment = unconfirmed_create
+        self.provider.get_issue_comments = unconfirmed_read
+        response = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)confirm|backup|source|artifact|content|readback")
+        self.assertEqual(source, self.provider.issues[100],
+                         "No source replacement before exact immutable backup is confirmed")
+        self.assertGreater(len(self.provider.comments[100]), len(initial_comments))
+        retained = copy.deepcopy(self.provider.comments[100])
+        self.provider.create_issue_comment, self.provider.get_issue_comments = create, read
+        acquired = self.session.call(100, request)["next_steps"][0]
+        self.assertEqual(source, self.read_blob(self.payload()[1]["spec"])["content"])
+        for comment in retained:
+            self.assertEqual(1, sum(row["body"] == comment["body"] for row in self.provider.comments[100]))
+        after = copy.deepcopy((self.provider.issues, self.provider.comments))
+        retry = self.session.call(100, request)["next_steps"][0]
+        self.assertEqual(acquired["lease"]["token"], retry["lease"]["token"])
+        self.assertEqual(after, (self.provider.issues, self.provider.comments))
 
     def test_trusted_entry_review_root_approval_then_activation_without_fabricated_evidence(self):
         source, conversion = self.prepared()

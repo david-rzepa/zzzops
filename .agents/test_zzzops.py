@@ -4444,27 +4444,6 @@ class GoalTransitionTests(unittest.TestCase):
         transition["goal"]["blockers"].append({
             "id": "B-old", "status": "resolved", "category": "human-action", "resolution": "Done",
         })
-        adapter = FakeGoalTransitionAdapter(issue)
-        adapter.comment_response_mutation = lambda comment: comment.update({"body": "unconfirmed"})
-        self.assertIn("transition evidence", zzzops.validate_compact_goal_body(issue["body"], 42)[0])
-
-        with self.assertRaisesRegex(zzzops.GoalTransitionProviderError, "exact transition history"):
-            zzzops.apply_goal_transition(adapter, "owner/repo", 42, transition)
-        self.assertEqual([], adapter.updates)
-        self.assertEqual(1, len(adapter.comments))
-
-        adapter.comment_response_mutation = None
-        zzzops.apply_goal_transition(adapter, "owner/repo", 42, transition)
-        self.assertEqual(1, len(adapter.comments))
-        self.assertNotIn("Archive this.", adapter.issue["body"])
-        self.assertIn("Keep fenced example.", adapter.issue["body"])
-        self.assertIn("## Outcome / Why", adapter.issue["body"])
-        self.assertIn("## Scope", adapter.issue["body"])
-        compact = zzzops.parse_managed_goal(adapter.issue["body"], 42)
-        self.assertEqual([], compact["evidence"])
-        self.assertEqual(["B-001"], [blocker["id"] for blocker in compact["blockers"]])
-        self.assertEqual([], zzzops.validate_compact_goal_body(adapter.issue["body"], 42))
-
         # Legacy parsing is tested against an explicit schema-1 fixture, never
         # against a newly emitted reverse-diff envelope.
         legacy = {
@@ -4493,8 +4472,16 @@ class GoalTransitionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Invalid goal history payload"):
             zzzops.parse_goal_history(tampered_body)
 
+        # Literal committed predecessor fixture: no apply_goal_transition or
+        # compaction is exercised as an active version-2 contract.
+        adapter = FakeGoalTransitionAdapter(issue)
+        adapter.issue["body"] = zzzops.render_managed_goal(
+            transition["goal"], "## Outcome / Why\nHistorical committed successor.\n", 42)
+        adapter.comments.append({"id": 1, "body": legacy_body,
+                                 "html_url": "https://example.test/comment/1"})
+        before = copy.deepcopy((adapter.issue, adapter.comments))
         reconstruct = getattr(zzzops._goals, "reconstruct_goal_history", None)
-        self.assertTrue(callable(reconstruct), "New history must preserve compacted evidence and human text")
+        self.assertTrue(callable(reconstruct), "Supported historical source reconstruction must retain complete human text")
         history = reconstruct(adapter, 42, 1)
         self.assertEqual(self.goal(), history["goal"])
         self.assertEqual(
@@ -4503,6 +4490,11 @@ class GoalTransitionTests(unittest.TestCase):
             history["human_spec"],
         )
         self.assertEqual(transition["goal"], history["submitted_goal"])
+        self.assertEqual(before, (adapter.issue, adapter.comments))
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_goal_schema_conversion.MigrationEntryPublicTests.test_entry_backup_confirmation_precedes_body_replacement_and_retries_exactly',
+        )
 
     def test_transition_file_is_bom_tolerant(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -4610,51 +4602,31 @@ class GoalSchemaMigrationTests(unittest.TestCase):
         return {key: issue[key] for key in ("number", "title", "state", "labels", "html_url")} | {"schema_version": schema}
 
     def test_open_migration_is_bounded_open_only_and_idempotent(self):
-        legacy_open = self.issue(1)
-        current_open = self.issue(2, schema=1)
-        legacy_closed = self.issue(3, status="done")
-        second_legacy_open = self.issue(4)
-        adapter = FakeGoalSchemaAdapter([legacy_open, current_open, legacy_closed, second_legacy_open])
-        indexes = [self.index(issue) for issue in (legacy_open, current_open, legacy_closed, second_legacy_open)]
-
-        first = zzzops.migrate_open_goal_schemas(adapter, "owner/repo", indexes, limit=1)
-        refreshed = [self.index(adapter.issues[number]) for number in sorted(adapter.issues)]
-        second = zzzops.migrate_open_goal_schemas(adapter, "owner/repo", refreshed, limit=1)
-        final = zzzops.migrate_open_goal_schemas(
-            adapter, "owner/repo", [self.index(adapter.issues[number]) for number in sorted(adapter.issues)], limit=1,
+        # Retire automatic bulk compaction; retain bounded selected conversion and reviewed activation.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_goal_schema_conversion.MigrationEntryPublicTests.test_selected_open_entry_is_bounded_and_retry_preserves_other_sources',
+            'test_goal_schema_conversion.MigrationEntryPublicTests.test_trusted_entry_review_root_approval_then_activation_without_fabricated_evidence',
         )
 
-        self.assertEqual([1], first["migrated"])
-        self.assertEqual(1, first["remaining"])
-        self.assertEqual([4], second["migrated"])
-        self.assertTrue(second["complete"])
-        self.assertEqual([], final["migrated"])
-        self.assertEqual([1, 4], adapter.updates)
-        self.assertEqual([], adapter.comments[3])
-        self.assertNotIn(3, adapter.updates)
-
     def test_selected_current_label_repairs_noncompact_body(self):
-        issue = self.issue(6, schema=1)
-        adapter = FakeGoalSchemaAdapter([issue])
-
-        result = zzzops.ensure_current_goal_schema(adapter, "owner/repo", 6)
-
-        self.assertTrue(result["migrated"])
-        self.assertEqual([], zzzops.parse_managed_goal(adapter.issues[6]["body"], 6)["evidence"])
+        # A schema label never grants compaction or execution authority.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_goal_schema_conversion.MigrationEntryPublicTests.test_schema_label_cannot_authorize_noncompact_source_or_erase_history',
+        )
 
     def test_selected_closed_legacy_goal_is_compacted_lazily(self):
-        issue = self.issue(7, status="done")
-        adapter = FakeGoalSchemaAdapter([issue])
-
-        result = zzzops.ensure_current_goal_schema(adapter, "owner/repo", 7)
-
-        self.assertTrue(result["migrated"])
-        self.assertEqual("closed", adapter.issues[7]["state"])
-        self.assertIn({"name": "zzzops:schema:v1"}, adapter.issues[7]["labels"])
-        self.assertEqual([], zzzops.parse_managed_goal(adapter.issues[7]["body"], 7)["evidence"])
-        self.assertEqual(1, len(adapter.comments[7]))
+        # Retire lazy closed compaction; selected archived reads must preserve provider state.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_goal_schema_conversion.MigrationEntryPublicTests.test_closed_record_is_not_reopened_or_migrated_by_active_entry',
+            'test_goal_schema_conversion.ConversionDurabilityTests.test_closed_goal_is_archived_without_activation',
+        )
 
     def test_workflow_adoption_preserves_closed_and_never_invents_phase_evidence(self):
+        # Historical decoder diagnostic only: no provider writes, scheduling or
+        # adoption authority follows from these predecessor assessment strings.
         open_goal = zzzops.parse_managed_goal(self.issue(8)["body"], 8)
         self.assertEqual("missing", zzzops.workflow_adoption_assessment(open_goal)["phase_evidence"])
         closed_goal = zzzops.parse_managed_goal(self.issue(9, status="done")["body"], 9)
@@ -6815,27 +6787,11 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("unavailable", zzzops.discover_delegation_capability([])["state"])
 
     def test_eligible_worker_assignment_blocks_without_delegation_harness(self):
-        inventory = [{"model": "economy", "effort": "low", "capability": 1, "cost": 1}]
-        root = {"model": "root", "effort": "high", "capability": 3, "cost": 3}
-        blocked = zzzops.prepare_phase_assignment(
-            phase="implement", required_capability=1, inventory=inventory,
-            root_pair=root, tool_catalog=[],
+        # Preserve delegation availability through generic public dispatch, not a phase whitelist.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_integration.GenericIntegrationFreshnessTests.test_missing_delegation_and_expired_unknown_worker_block_until_exact_stopped_recovery',
         )
-        self.assertEqual("blocked", blocked["status"])
-        self.assertEqual("delegated", blocked["assignment"]["mode"])
-        self.assertEqual("delegation_harness_unavailable", blocked["blocker"]["reason"])
-        self.assertEqual("unavailable", blocked["delegation"]["state"])
-        self.assertEqual("resolve_blocker", blocked["next_step"]["action"])
-
-        ready = zzzops.prepare_phase_assignment(
-            phase="implement", required_capability=1, inventory=inventory,
-            root_pair=root, tool_catalog=[{"name": "spawn_agent", "description": "delegate work"}],
-        )
-        self.assertEqual("ready", ready["status"])
-        self.assertEqual({"model": "economy", "effort": "low"}, ready["assignment"]["selected"])
-        self.assertEqual("delegate", ready["next_step"]["action"])
-        self.assertIn("economy", ready["next_step"]["instruction"])
-        self.assertIn("low", ready["next_step"]["instruction"])
 
     def test_active_stack_guard_blocks_second_stack_and_allows_clean_queue(self):
         policy = {"active_stack": "one_active_stack"}
