@@ -1343,56 +1343,12 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         )
 
     def test_historical_semantic_projection_never_restores_live_coordination(self):
-        s = self.session
-        snapshots = {}
-        def remember():
-            body = s.provider.issues[101]['body']
-            expected = semantic_predecessor(body, 101)
-            snapshots[expected['goal']['revision']] = expected
-            return expected
-
-        # Seed an actual legacy pending record and complete it unchanged. All
-        # subsequent transitions use the production writer's current format.
-        initial = copy.deepcopy(s.provider.issues[101])
-        remember()
-        requested = copy.deepcopy(z.parse_managed_goal(initial['body'], 101))
-        requested.update(revision=requested['revision'] + 1, next_action='Continue after legacy checkpoint.')
-        transition = {'schema_version': 1, 'expected_revision': requested['revision'] - 1,
-                      'expected_digest': s.goal(101)['digest'], 'goal': requested}
-        legacy = legacy_history_body(initial, transition)
-        s.provider.create_issue_comment(101, legacy)
-        z.apply_goal_transition(s.provider, 'owner/repo', 101, transition)
-        remember()
-
-        step = s.start(101, 'understand')
-        prior = s.goal(101)
-        self.assertTrue(prior['workflow']['leases'])
-        self.assertTrue(prior['workflow']['receipts'])
-        remember()
-        s.result(101, step, {'requirements': 'Do not reactivate historical ownership.'})
-        result_state = remember()
-        self.assertIn('understand', result_state['goal']['phase_evidence']['records'])
-        s.review(101, 'understand')
-        review_state = remember()
-        self.assertIn('understand', review_state['goal']['phase_evidence']['reviews'])
-        approval = s.start(101, 'understand', 'human_approval')
-        remember()
-        s.call(101, {'operation': 'approve', 'phase': 'understand', 'lease': approval['lease']['token'],
-                     'actor': approval['bound_actor'], 'approval': {
-                         'actor': approval['bound_actor'], 'approval_token': 'user: exact fixture approval'}})
-        approved = remember()
-        self.assertIn('understand', approved['goal']['phase_evidence']['human_approvals'])
-        # Advance once more so approval-bearing state is historical too.
-        current = s.goal(101)
-        s.call(101, {'operation': 'revise', 'expected_digest': current['digest'],
-                     'changes': {'priority': 'P1', 'confidence': 'medium', 'next_action': 'Observe complete prior semantics.'}})
-        reconstruct = getattr(z._goals, 'reconstruct_goal_history', None)
-        self.assertTrue(callable(reconstruct), 'Historical semantic reconstruction API is not implemented')
-        for revision, expected in snapshots.items():
-            with self.subTest(revision=revision):
-                historical = reconstruct(s.provider, 101, revision)
-                self.assertEqual(expected, {key: historical[key] for key in ('goal', 'human_spec')})
-        self.assertEqual(legacy, s.provider.comments[101][0]['body'], 'Mixed history must not rewrite the legacy boundary')
+        # Historical predecessor transport is decoded before trusted conversion;
+        # exact immutable refs never restore current leases or receipts.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_goal_schema_conversion.MigrationEntryPublicTests.test_mixed_history_exact_refs_preserve_predecessor_snapshots_and_live_coordination',
+        )
 
     def test_pending_start_retry_preserves_generated_lease_and_completed_retry_does_not_resurrect(self):
         # Exact storage/ownership guard through public generic host output transactions.

@@ -618,6 +618,72 @@ class MigrationEntryPublicTests(dag.DagFixture):
         self.assertIn("produce", self.names(), "Preserving relationship metadata never fabricates delivery")
 
 
+    def test_mixed_history_exact_refs_preserve_predecessor_snapshots_and_live_coordination(self):
+        from test_goal_history_delta import legacy_history_body, semantic_predecessor
+        initial, graph = self.entry()
+        initial["html_url"] = "https://github.com/owner/repo/issues/100"
+        self.provider.issues[100] = copy.deepcopy(initial)
+        first_snapshot = semantic_predecessor(initial["body"], 100)
+        predecessor = z.parse_managed_goal(initial["body"], 100)
+        predecessor.update(revision=predecessor["revision"] + 1, next_action="Continue after historical transition")
+        transition = {"schema_version": 1, "expected_revision": predecessor["revision"] - 1,
+                      "expected_digest": z.github_goal_record(initial)["digest"], "goal": predecessor}
+        legacy = legacy_history_body(initial, transition)
+        self.provider.create_issue_comment(100, legacy)
+        # Historical transport fixture, not dispatch through a retired engine.
+        z.apply_goal_transition(self.provider, "owner/repo", 100, transition)
+        source = copy.deepcopy(self.provider.issues[100])
+        second_snapshot = semantic_predecessor(source["body"], 100)
+        reconstructed = z._goals.reconstruct_goal_history(self.provider, 100, first_snapshot["goal"]["revision"])
+        self.assertEqual(first_snapshot, {key: reconstructed[key] for key in ("goal", "human_spec")})
+        comments = copy.deepcopy(self.provider.comments[100])
+        # Exact JSON strings preserve arbitrary historical structures, including
+        # empty collections, without introducing a second active schema grammar.
+        history = {"first_snapshot": json.dumps(first_snapshot, sort_keys=True),
+                   "second_snapshot": json.dumps(second_snapshot, sort_keys=True),
+                   "comments": json.dumps(comments, sort_keys=True)}
+        self.assertEqual(first_snapshot, json.loads(history["first_snapshot"]))
+        self.assertEqual(second_snapshot, json.loads(history["second_snapshot"]))
+        self.assertEqual(comments, json.loads(history["comments"]))
+        schema = dag.shape(history)
+        graph["nodes"][0]["outputs"]["history"] = dag.output("historical_sources", schema)
+        graph["nodes"][1]["inputs"] = {"history": {"producer": {"node": selector("analyze")},
+            "output": "history", "path": [], "mode": "identity", "type": schema}}
+        z._workflow_section(self.session.project, "workflow_adherence")["configuration"]["migration_entries"][0]["graph"] = graph
+        analyze = self.session.acquire("analyze")
+        self.session.finish(analyze, {"source": source, "history": history})
+        source_ref = self.migration_result("analyze")[1]["source"]
+        history_ref = self.migration_result("analyze")[1]["history"]
+        conversion = {"source": source_ref, "target": self.target, "mapped_evidence": [],
+                      "missing_obligations": ["Current normal delivery and independent reviews"]}
+        self.session.finish(self.session.acquire("convert"), {"conversion": conversion})
+        self.session.finish(self.session.acquire("conversion_review", actor="history-conversion-reviewer"),
+                            {"value": "Exact source and mixed historical evidence independently inspected"})
+        self.session.finish(self.session.acquire("conversion_approval"), {"value": "Root approves exact reviewed conversion"})
+        entry_result = self.migration_result("conversion_approval")[0]
+        self.session.finish(self.session.acquire("activate"), {"activation": {
+            "conversion": self.migration_result("convert")[1]["conversion"], "approval": entry_result}})
+        producer = self.session.acquire("produce")
+        self.session.finish(producer, {"value": "New generic normal evidence"})
+        normal_ref = self.produced("produce")
+        reviewer = self.session.acquire("review_a", actor="current-normal-reviewer")
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        expected = [(source_ref, source), (history_ref, history), (normal_ref, "New generic normal evidence")]
+        for reference, content in expected:
+            artifact = self.session.read(100, reference)
+            self.assertEqual(content, artifact["content"])
+        self.assertEqual(self.read_blob(entry_result), self.session.read(100, entry_result))
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        current = self.payload()[1]["operational"]
+        self.assertTrue(any(item["token"] == reviewer["lease"]["token"] for item in current["leases"]))
+        for comment in comments:
+            self.assertIn(comment, self.provider.comments[100], "Mixed predecessor transaction bytes are immutable history")
+        self.assertEqual(legacy, next(comment["body"] for comment in self.provider.comments[100]
+                                     if comment["id"] == comments[0]["id"]))
+        self.session.finish(reviewer, {"value": "Current reviewer remains owner after all historical reads"})
+        # Cross-version revision numbers are not a global history identity. This
+        # control uses exact host Refs and makes no renumbering/API assumption.
+
     def test_predecessor_owner_must_be_observed_stopped_before_fresh_generic_entry_lease(self):
         from test_workflow_state import WorkflowStateValidationTests
         source, _graph = self.entry()
