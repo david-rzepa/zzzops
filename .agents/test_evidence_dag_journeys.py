@@ -1641,7 +1641,10 @@ class WorkspaceAuthorityPublicTests(DagFixture):
             # entries keep future resolver nodes inert; omission never retires
             # the separately retained admission obligations.
             pair_type = shape({"first": REF, "second": REF})
-            registry = task("register_findings", ["review", "admit"], role="root")
+            # Accepted admissions remain effective when their producing task
+            # stales. This factual list needs the current subject/review only;
+            # it cannot grant, withdraw, or refresh admission authority.
+            registry = task("register_findings", ["review"], role="root")
             registry["inputs"] = {"subject": subject_input(target), "review": subject_input("review")}
             registry["outputs"] = {"pairs": output("finding_registry", {"kind": "map", "values": pair_type})}
             correction["nodes"].append(registry)
@@ -1707,6 +1710,11 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         target = self.correction_target
         self.session.finish(self.session.acquire("review", actor="independent-correction-reviewer"),
                             {"value": "Inspected the exact corrected candidate"})
+        steps = self.session.checkpoint(100)
+        self.assertTrue(any(step.get("node", {}).get("node") == "admit" and
+                            step.get("kind") in ("dependency", "blocked") for step in steps),
+                        "The old admitting task is stale even though its accepted findings remain effective")
+        self.assertIn("register_findings", self.names(), "Durable admitted facts do not require a current admitting task")
         self.assertEqual(admissions, self.retained_correction_admissions[-1])
         pairs = {"round_" + str(index + 1): {slot: admission["finding"] for slot, admission in pair.items()}
                  for index, pair in enumerate(self.retained_correction_admissions)}
