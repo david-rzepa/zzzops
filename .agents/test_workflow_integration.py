@@ -10,6 +10,76 @@ import test_zzzops as fixtures
 z = fixtures.zzzops
 
 
+from test_evidence_dag_journeys import DagFixture
+
+
+class GenericIntegrationFreshnessTests(DagFixture):
+    def test_start_bind_receipt_and_actual_pair_are_guarded_before_writes(self):
+        steps = self.session.ready()
+        self.assertEqual(1, len(steps))
+        step = steps[0]
+        receipt = json.loads(Path(step["policy"]["path"]).read_text())["policy_receipt"]
+        self.assertNotIn(receipt, json.dumps(step))
+        self.assertNotEqual(receipt, step["policy"]["sha256"])
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        for value in (None, "stale-receipt", step["policy"]["sha256"]):
+            request = {**step["start"], "policy_receipt": value}
+            response = self.session.call(100, request, expected=2)
+            self.assertRegex(json.dumps(response), r"(?i)policy.receipt|policy.*read")
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        acquired = self.session.call(100, {**step["start"], "policy_receipt": receipt})["next_steps"][0]
+        self.assertIsNone(acquired["lease"]["worker"])
+        bind = {**acquired["bind"], "actor": "receipt-worker", "selection": acquired["lease"]["selection"]}
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        for changes, diagnostic in (({"policy_receipt": None}, r"(?i)policy.receipt|policy.*read"),
+                                    ({"policy_receipt": receipt, "selection": {"model": "unselected", "effort": "low"}}, r"(?i)model|effort|selection|pair")):
+            response = self.session.call(100, {**bind, **changes}, expected=2)
+            self.assertRegex(json.dumps(response), diagnostic)
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.call(100, {**bind, "policy_receipt": receipt})
+        acquired["bound_actor"] = "receipt-worker"
+        self.assertNotIn(receipt, self.provider.issues[100]["body"])
+        self.assertNotIn(receipt, json.dumps(acquired))
+        self.session.finish(acquired, {"value": "bound actual executor"})
+
+    def test_preview_and_operational_revision_preserve_exact_generic_inputs(self):
+        execute = self.session.call(100)["next_steps"]
+        ready_steps = [step for step in execute if step.get("node", {}).get("node") == "produce" and step.get("start")]
+        self.assertTrue(ready_steps, "Generic producer must expose public acquisition")
+        ready = ready_steps[0]
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        preview = self.session.call(100, intent="preview")["next_steps"]
+        preview_steps = [step for step in preview if step.get("node", {}).get("node") == "produce"]
+        self.assertTrue(preview_steps, "Preview must expose the same generic producer")
+        preview_ready = preview_steps[0]
+        self.assertEqual(ready["input_hash"], preview_ready["input_hash"])
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.provider.create_issue_comment(100, "Bookkeeping acknowledgement")
+        work = self.session.acquire("produce")
+        self.assertEqual(ready["input_hash"], work["input_hash"], "Own lease/body revision cannot stale semantic inputs")
+        self.session.finish(work, {"value": "same approved input"})
+        self.assertNotIn("produce", self.names())
+
+    def test_configuration_and_instruction_drift_each_reject_current_assignment(self):
+        work = self.session.acquire("produce")
+        original = copy.deepcopy(self.session.project)
+        for field in ("configuration", "instructions"):
+            with self.subTest(field=field):
+                self.session.project = copy.deepcopy(original)
+                section = z._workflow_section(self.session.project, "verification_testing")
+                if field == "configuration":
+                    configuration = section["configuration"]
+                    configuration["required_ci"] = ("disabled" if configuration.get("required_ci") != "disabled" else "inspect_exact_pr_head")
+                else:
+                    section["instructions"] = section.get("instructions", "") + " Preserve failing evidence."
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                response = self.session.call(100, self.session.submission(work, {"value": "stale policy"}, "changed-" + field), expected=2)
+                self.assertRegex(json.dumps(response), r"(?i)policy|input|stale|changed")
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.project = original
+        self.session.finish(work, {"value": "unchanged approved policy"})
+
+
 class WorkflowIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.fixture = fixtures.GoalTransitionTests()
@@ -20,54 +90,31 @@ class WorkflowIntegrationTests(unittest.TestCase):
                         'policy': {'sections': [{'id': 'workflow_adherence', 'configuration': {'phase_dag': self.graph}}]}}
 
     def test_rendered_goal_produces_live_inputs_without_phase_evidence(self):
-        goal = z.github_goal_record(self.adapter.issue)
-        self.assertIn('plan', z.workflow_live_inputs(Path('.'), self.project, goal, 'execute', self.graph))
+        # The regression now observes persisted public generic task evidence.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_parallel_reviews_independent_leases_and_join',
+        )
 
     def test_operational_revision_and_preview_do_not_change_inputs(self):
-        goal = z.github_goal_record(self.adapter.issue)
-        first = z.workflow_live_inputs(Path('.'), self.project, goal, 'execute', self.graph)
-        goal['revision'] += 1
-        self.assertEqual(first, z.workflow_live_inputs(Path('.'), self.project, goal, 'preview', self.graph))
+        # The regression now observes persisted public generic task evidence.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_integration.GenericIntegrationFreshnessTests.test_preview_and_operational_revision_preserve_exact_generic_inputs',
+        )
 
     def test_configuration_and_instruction_changes_each_invalidate_open_evidence(self):
-        self.project['policy']['sections'].append({
-            'id': 'verification_testing', 'configuration': {'required_ci': 'inspect_exact_pr_head'},
-            'instructions': 'Inspect failures before retrying.',
-        })
-        goal = z.github_goal_record(self.adapter.issue)
-        live = z.workflow_live_inputs(Path('.'), self.project, goal, 'execute', self.graph)
-        goal['phase_evidence'] = z.record_phase_result(
-            z.empty_phase_evidence(), 'plan', fixtures.PhaseEvidenceTests().record('plan', live['plan']), live['plan'],
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            "test_workflow_integration.GenericIntegrationFreshnessTests.test_configuration_and_instruction_drift_each_reject_current_assignment",
         )
-        for field in ('configuration', 'instructions'):
-            project = copy.deepcopy(self.project)
-            section = project['policy']['sections'][-1]
-            if field == 'configuration':
-                section[field]['required_ci'] = 'disabled'
-            else:
-                section[field] += ' Preserve the failing evidence.'
-            changed = z.workflow_live_inputs(Path('.'), project, goal, 'execute', self.graph)
-            with self.subTest(field=field):
-                self.assertNotEqual(live['plan']['policy'], changed['plan']['policy'])
-                frontier = z.derive_phase_steps(goal, self.graph, changed)
-                self.assertEqual(['plan'], [item['phase'] for item in frontier['execute']])
-                closed = {**goal, 'status': 'done'}
-                self.assertEqual([], z.derive_phase_steps(closed, self.graph, changed)['execute'])
 
     def test_submission_then_backend_reread_requires_review_not_reexecution(self):
-        goal = z.github_goal_record(self.adapter.issue)
-        live = z.workflow_live_inputs(Path('.'), self.project, goal, 'execute', self.graph)
-        record = fixtures.PhaseEvidenceTests().record('plan', live['plan'])
-        with mock.patch.object(z, 'reviewed_project_state', return_value=self.project), \
-             mock.patch.object(z, 'portfolio_snapshot', return_value={'complete': True, 'valid': True, 'goals': [goal]}), \
-             mock.patch.object(z, 'GitHubGoalTransitionAdapter', return_value=self.adapter), \
-             mock.patch.object(z, '_workflow_phase_configuration', return_value=(self.graph, self.nodes)):
-            z.workflow_submit(Path('.'), 42, 'execute', {'operation': 'record_result', 'phase': 'plan', 'record': record})
-        updated = z.github_goal_record(self.adapter.issue)
-        next_live = z.workflow_live_inputs(Path('.'), self.project, updated, 'execute', self.graph)
-        frontier = z.derive_phase_steps(updated, self.graph, next_live)
-        self.assertEqual([], frontier['execute'])
-        self.assertEqual(['plan'], [item['phase'] for item in frontier['review']])
+        # The regression now observes persisted public generic task evidence.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_parallel_reviews_independent_leases_and_join',
+        )
 
     def test_every_acceptance_bullet_is_required(self):
         body = '## Acceptance\n- [ ] Must work\n- Preserve data\n- [x] Already done\n\n## Constraints\n- Out of scope\n'
@@ -78,17 +125,16 @@ class WorkflowIntegrationTests(unittest.TestCase):
                          z.normalize_workflow_entrypoint(['zzzops.py', '--intent', 'execute']))
 
     def test_rejected_review_returns_phase_for_correction(self):
-        fixture = fixtures.PhaseEvidenceTests()
-        envelope = fixture.envelope('plan')
-        evidence = z.record_phase_result(z.empty_phase_evidence(), 'plan', fixture.record('plan', envelope), envelope)
-        artifact = {'reference': 'urn:sha256:' + 'a' * 64, 'hash': 'sha256:' + 'a' * 64}
-        evidence = z.record_phase_review(evidence, 'plan', artifact, 'reviewer', decision='changes_requested')
-        frontier = z.derive_phase_steps({'status': 'ready', 'phase_evidence': evidence}, self.graph, {'plan': envelope})
-        self.assertEqual(['plan'], [item['phase'] for item in frontier['execute']])
-        self.assertEqual([], frontier['review'])
+        # The regression now observes persisted public generic task evidence.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_specialist_missing_regression_corrects_tests_then_code_and_rereviews',
+        )
 
 class PublicWorkflowJourneyTests(unittest.TestCase):
     def setUp(self):
+        if self._testMethodName in ('test_start_and_worker_bind_require_current_policy_read_without_writes_on_rejection', 'test_persisted_execute_review_human_approval_journey', 'test_actor_selection_and_duplicate_submission_are_guarded'):
+            return  # Replacement owns an isolated public generic fixture; no legacy configuration patch.
         import json
         import contextlib
         self.temp = tempfile.TemporaryDirectory()
@@ -157,66 +203,25 @@ class PublicWorkflowJourneyTests(unittest.TestCase):
         self.assertEqual({'model': 'worker', 'effort': 'medium'}, assignment['selection'])
 
     def test_start_and_worker_bind_require_current_policy_read_without_writes_on_rejection(self):
-        import json
-        assessment = self.engine.step(42)[0]
-        self.mutate(operation='assess', phase='plan', input_hash=assessment['input_hash'], files=[], dimensions={'consequence': 'bounded', 'boundedness': 'atomic', 'engineering_rigor': 'structured'})
-        step = self.engine.step(42)[0]
-        request = {**step['start'], 'request_id': 'policy-start'}
-        before = self.adapter.issue['body']
-        for receipt in (None, 'stale-receipt'):
-            with self.assertRaisesRegex(ValueError, 'policy_receipt'):
-                self.engine.mutate(42, {**request, 'policy_receipt': receipt})
-            self.assertEqual(before, self.adapter.issue['body'])
-        z._policy_context.attach({'next_steps': [step]}, self.repo, self.project, source='$execute-zzzops')
-        document = json.loads(Path(step['policy']['path']).read_text())
-        receipt = document['policy_receipt']
-        self.assertNotIn(receipt, json.dumps(step))
-        self.assertNotEqual(receipt, step['policy']['sha256'])
-        with self.assertRaisesRegex(ValueError, 'policy_receipt'):
-            self.engine.mutate(42, {**request, 'policy_receipt': step['policy']['sha256']})
-        result = self.engine.mutate(42, {**request, 'policy_receipt': receipt})
-        perform = result['next_steps'][0]
-        before = self.adapter.issue['body']
-        bind = {**perform['bind'], 'actor': 'builder', 'request_id': 'policy-bind'}
-        with self.assertRaisesRegex(ValueError, 'policy_receipt'):
-            self.engine.mutate(42, bind)
-        self.assertEqual(before, self.adapter.issue['body'])
-        self.engine.mutate(42, {**bind, 'policy_receipt': receipt})
-        # The acknowledgment is not copied into goal state or returned lease data.
-        self.assertNotIn(receipt, self.adapter.issue['body'])
-        self.assertNotIn(receipt, json.dumps(result))
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_integration.GenericIntegrationFreshnessTests.test_start_bind_receipt_and_actual_pair_are_guarded_before_writes',
+        )
 
     def test_persisted_execute_review_human_approval_journey(self):
-        lease, record = self.prepare()
-        result = self.mutate(operation='record_result', phase='plan', lease=lease['token'], actor='builder', record=record)
-        self.assertEqual('checkpoint', result['next_steps'][0]['kind'])
-        step = self.start('review')
-        reviewer = step['lease']
-        self.mutate(operation='bind', phase='plan', lease=reviewer['token'], actor='reviewer', selection=reviewer['selection'])
-        self.mutate(operation='record_review', phase='plan', lease=reviewer['token'], actor='reviewer', artifact=record['output'], outcomes={'acceptance': 'approved', 'entropy': {'outcome': 'no_findings', 'evidence': 'Reviewed implementation and adjacent tests.'}})
-        step = self.start('human_approval')
-        self.mutate(operation='approve', phase='plan', lease=step['lease']['token'], actor='root-thread', approval={'actor': 'root-thread', 'approval_token': 'user:explicit-approval'})
-        goal = z.github_goal_record(self.adapter.issue)
-        frontier = z.derive_phase_steps(goal, self.graph, self.engine.inputs(goal, self.graph), review_policy=self.nodes)
-        self.assertEqual([], frontier['execute'])
-        self.assertEqual([], frontier['review'])
-        self.assertIn('plan', goal['phase_evidence']['human_approvals'])
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_phase_review_contract.GenericReviewGateTests.test_review_is_not_human_approval_and_root_binds_current_subject_and_review',
+        )
 
     def test_actor_selection_and_duplicate_submission_are_guarded(self):
-        lease, record = self.prepare()
-        with self.assertRaisesRegex(ValueError, 'bound executor'):
-            self.mutate(operation='record_result', phase='plan', lease=lease['token'], actor='someone-else', record=record)
-        altered = copy.deepcopy(record); altered['selection']['effort'] = 'high'
-        with self.assertRaisesRegex(ValueError, 'model/effort'):
-            self.mutate(operation='record_result', phase='plan', lease=lease['token'], actor='builder', record=altered)
-        altered = copy.deepcopy(record); altered['routing'] = None
-        with self.assertRaisesRegex(ValueError, 'capability assessment'):
-            self.mutate(operation='record_result', phase='plan', lease=lease['token'], actor='builder', record=altered)
-        payload = {'operation': 'record_result', 'phase': 'plan', 'lease': lease['token'], 'actor': 'builder', 'record': record, 'request_id': 'retry-safe'}
-        first = self.engine.mutate(42, payload)
-        revision = z.github_goal_record(self.adapter.issue)['revision']
-        self.assertEqual('checkpoint', self.engine.mutate(42, payload)['next_steps'][0]['kind'])
-        self.assertEqual(revision, z.github_goal_record(self.adapter.issue)['revision'])
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_integration.GenericIntegrationFreshnessTests.test_start_bind_receipt_and_actual_pair_are_guarded_before_writes',
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_wrong_actor_cannot_submit_and_valid_owner_still_can',
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_exact_retry_is_idempotent_and_changed_payload_rejected',
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_ordinary_artifact_shaped_content_cannot_issue_a_result',
+        )
 
     def test_expiry_requires_recovery_and_missing_delegation_blocks(self):
         self.runtime['delegation']['available'] = False

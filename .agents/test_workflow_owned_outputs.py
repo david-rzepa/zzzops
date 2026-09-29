@@ -74,11 +74,11 @@ class PublicSession:
                 goal['pull_request'] = states.get(goal['key'])
         return {'complete': True, 'valid': True, 'goals': goals}
 
-    def call(self, number, payload=None, *, expected=0):
+    def call(self, number, payload=None, *, expected=0, intent="execute"):
         self.sequence += 1
         runtime = self.control / 'runtime.json'
         runtime.write_text(json.dumps(self.runtime))
-        argv = ['zzzops', '--repo', str(self.repo), 'workflow', '--intent', 'execute',
+        argv = ['zzzops', '--repo', str(self.repo), 'workflow', '--intent', intent,
                 '--goal', str(number), '--runtime', str(runtime)]
         if payload is not None:
             payload = copy.deepcopy(payload)
