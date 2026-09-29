@@ -590,6 +590,8 @@ class GenericMigrationDiscoveryTests(dag_fixtures.DagFixture):
         value = {'preparation': {'hash': digest, 'uri': Path(link['path']).as_uri()},
                  'release_status': 'unavailable', 'assessment_status': 'missing',
                  'reason': 'Independent migration evidence is required before this workspace task.'}
+        reservation = fixtures.FakeReservationAdapter(repository='owner/repo')
+        self.session.reservation_adapter = reservation
         work = self.session.acquire('report_boundary')
         self.assertIn(self.payload()[1]['spec']['hash'], json.dumps(work['lease']['acquisition']))
         request = self.session.submission(work, {'value': value}, 'exact-migration-boundary-report')
@@ -611,6 +613,8 @@ class GenericMigrationDiscoveryTests(dag_fixtures.DagFixture):
         self.assertIn('alpha', self.current())
         self.assertEqual(reference, self.produced('report_boundary'))
         self.assertEqual(value, self.read_blob(reference)['content'])
+        self.assertGreater(reservation.next_id, 1, 'Production reservation acquisition must use the synthetic provider')
+        self.assertEqual({}, reservation.labels, 'Each actual public attempt releases its exact storage reservation')
 
     def step(self):
         response = self.session.call(100, expected=None)

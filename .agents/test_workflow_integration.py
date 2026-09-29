@@ -280,16 +280,7 @@ class MigrationEvidenceFreshnessTests(unittest.TestCase):
     def setUp(self):
         pass  # Each retained ID invokes its concrete isolated generic public fixture.
 
-    def live(self, goal=None):
-        self.engine.invalidate()
-        return self.engine.inputs(self.goal if goal is None else goal, self.fixture.graph)
 
-    def approved(self, live):
-        record = fixtures.PhaseEvidenceTests().record('plan', live['plan'])
-        evidence = z.record_phase_result(z.empty_phase_evidence(), 'plan', record, live['plan'])
-        artifact = {'reference': 'urn:sha256:' + 'a' * 64, 'hash': 'sha256:' + 'a' * 64}
-        evidence = z.record_phase_review(evidence, 'plan', artifact, 'independent-reviewer', decision='approved')
-        return evidence
 
     def test_external_release_change_stales_review_without_file_or_policy_change(self):
         from test_evidence_dag_journeys import run_generic_regressions
@@ -330,63 +321,9 @@ class MigrationDiscoveryJourneyTests(unittest.TestCase):
     def setUp(self):
         pass  # Each retained ID invokes its concrete isolated generic public fixture.
 
-    def step(self):
-        code, result, error = self.harness.run_main('--intent', 'execute', '--goal', '42', '--runtime', str(self.runtime))
-        self.assertEqual(0, code, result); self.assertEqual('', error)
-        return next(s for s in result['next_steps'] if s.get('phase') == 'plan')
 
-    def submit(self, step, payload):
-        self.sequence += 1
-        payload = dict(payload, request_id=f'discovery-{self.sequence}')
-        self.payload.write_text(json.dumps(payload))
-        args = [str(self.runtime) if a == '<runtime.json>' else str(self.payload) if a == '<submission.json>' else a
-                for a in step['command']]
-        code, result, error = self.harness.run_main(*args)
-        self.assertEqual(0, code, result); self.assertEqual('', error)
-        return result
 
-    def missing(self):
-        step = self.step()
-        self.assertEqual('assess', step['kind'])
-        self.assertIn('migration_evidence', step, 'Ordinary assess must disclose the conditional evidence dependency')
-        guidance = step['migration_evidence']
-        self.assertTrue(guidance.get('when'), 'Applicability remains reasoned root judgment')
-        relative = guidance['path']
-        self.assertEqual('.zzzops/migration/42.json', relative)
-        request = copy.deepcopy(step['submission'])
-        self.assertEqual('assess', request['operation'])
-        request['files'].append(relative)
-        self.submit(step, request)
-        blocker = self.step()
-        self.assertEqual('blocker', blocker['kind'])
-        self.assertEqual(relative, blocker['path'])
-        return self.repo / relative, blocker, self.resource(blocker)
 
-    def resource(self, blocker):
-        import hashlib
-        self.assertIn('preparation', blocker, 'Missing evidence must link complete preparation guidance')
-        link = blocker['preparation']
-        raw = Path(link['path']).read_bytes()
-        self.assertEqual(hashlib.sha256(raw).hexdigest(), link['sha256'].removeprefix('sha256:'))
-        data = json.loads(raw)
-        self.assertTrue(data.get('instructions'))
-        template = data['template']
-        for field in ('schema_version', 'repository', 'goal', 'goal_spec', 'action', 'release_snapshot', 'contracts'):
-            self.assertIn(field, template)
-        self.assertEqual('owner/repo', template['repository'])
-        self.assertEqual(42, template['goal'])
-        self.assertEqual(blocker['input_envelope']['goal_spec'], template['goal_spec'])
-        self.assertEqual(blocker['evidence']['release_snapshot'], template['release_snapshot'])
-        self.assertEqual('unknown', template['contracts'][0]['status'])
-        self.assertFalse(template['contracts'][0]['evidence'])
-        examples = data['evidence_templates']
-        self.assertIn('contract_investigation', examples); self.assertIn('owner_attestation', examples)
-        for example in examples.values():
-            self.assertFalse(example.get('author'), 'Never manufacture an agent or owner statement')
-        self.assertFalse(examples['owner_attestation'].get('statement'))
-        self.assertFalse(examples['contract_investigation'].get('rationale'))
-        self.observation_shapes(data)
-        return data
 
     def observation_shapes(self, resource):
         observations = resource['evidence_templates']['contract_investigation'].get('observations')
