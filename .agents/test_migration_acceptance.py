@@ -356,8 +356,6 @@ class ReleaseObservationTransportTests(unittest.TestCase):
         self.assert_complete(self.observe())
 
 
-if __name__ == '__main__':
-    unittest.main()
 
 
 # Module-qualified fixture reuse avoids unittest discovering imported TestCases.
@@ -384,6 +382,9 @@ class GenericMigrationInputTests(dag_fixtures.DagFixture):
 
     def setUp(self):
         super().setUp()
+        self.setup_migration()
+
+    def setup_migration(self, mutate=None):
         self.observation = releases()
         release_patch = mock.patch.object(zzzops, 'github_release_evidence',
             side_effect=lambda *a, **k: copy.deepcopy(self.observation))
@@ -407,6 +408,8 @@ class GenericMigrationInputTests(dag_fixtures.DagFixture):
             graph['nodes'].append(mirror)
             allocation['allocations']['mirror'] = copy.deepcopy(allocation['allocations']['alpha'])
             allocation['allocations']['mirror']['task']['node'] = 'mirror'
+            if mutate:
+                mutate(graph, allocation)
         self.setup_workspace(consumed)
         self.document = assessment(100, self.payload()[1]['spec']['hash'])
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -546,3 +549,161 @@ class GenericMigrationInputTests(dag_fixtures.DagFixture):
         self.observation['releases'][0]['commit'] = 'e' * 40
         self.blocked_with_unrelated_control(first)
         self.assertEqual(2, self.release_probe.call_count, 'Next public projection must refresh provider facts')
+
+
+class GenericMigrationDiscoveryTests(dag_fixtures.DagFixture):
+    workspace_graph = GenericMigrationInputTests.workspace_graph
+    setup_workspace = GenericMigrationInputTests.setup_workspace
+    setup_migration = GenericMigrationInputTests.setup_migration
+    write_document = GenericMigrationInputTests.write_document
+    current = GenericMigrationInputTests.current
+
+    def setUp(self):
+        super().setUp()
+        self.setup_migration(self.add_report_node)
+        self.assertIn('alpha', self.current(), 'Valid exact assessment is the positive discovery control')
+        self.path.unlink()
+        self.session.git('add', '-u', self.relative)
+        self.session.git('commit', '-qm', 'missing consumed migration evidence')
+
+    def add_report_node(self, graph, _allocation):
+        # Factual root report, not a reserved provider slot or eligibility grant.
+        # Its actual root provenance and exact spec input are authenticated; the
+        # reported preparation/status remain observed factual content. Freshness
+        # is enforced independently by the real workspace/preparation adapter.
+        report = dag_fixtures.task('report_boundary', role='root')
+        report['inputs'] = {'request': dag_fixtures.spec_input()}
+        schema = {'kind': 'object', 'fields': {
+            'preparation': dag_fixtures.REF_TYPE,
+            'release_status': {'kind': 'enum', 'values': ['complete', 'unavailable']},
+            'assessment_status': {'kind': 'enum', 'values': ['missing', 'invalid', 'valid']},
+            'reason': {'kind': 'string'}}}
+        report['outputs'] = {'value': dag_fixtures.output('migration_boundary_report', schema)}
+        graph['nodes'].append(report)
+
+    def test_factual_root_report_replays_exactly_without_granting_missing_evidence_authority(self):
+        self.observation = {"status": "unavailable", "releases": None}
+        step = self.step()
+        self.resource(step)
+        link = step['preparation']
+        digest = link['sha256'] if link['sha256'].startswith('sha256:') else 'sha256:' + link['sha256']
+        value = {'preparation': {'hash': digest, 'uri': Path(link['path']).as_uri()},
+                 'release_status': 'unavailable', 'assessment_status': 'missing',
+                 'reason': 'Independent migration evidence is required before this workspace task.'}
+        work = self.session.acquire('report_boundary')
+        self.assertIn(self.payload()[1]['spec']['hash'], json.dumps(work['lease']['acquisition']))
+        request = self.session.submission(work, {'value': value}, 'exact-migration-boundary-report')
+        self.session.call(100, request)
+        reference = self.produced('report_boundary')
+        artifact = self.read_blob(reference)
+        self.assertEqual(value, artifact['content'])
+        self.assertEqual('root-thread', artifact['provenance']['actor'])
+        self.step()  # A persisted report cannot turn unknown assessment into approval.
+        stable = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, request)
+        self.assertEqual(stable, (self.provider.issues, self.provider.comments))
+        changed = copy.deepcopy(request)
+        changed['outputs']['value']['reason'] = 'Changed content under old receipt'
+        self.session.call(100, changed, expected=2)
+        self.assertEqual(stable, (self.provider.issues, self.provider.comments))
+        self.observation = releases()
+        self.write_document(self.document)
+        self.assertIn('alpha', self.current())
+        self.assertEqual(reference, self.produced('report_boundary'))
+        self.assertEqual(value, self.read_blob(reference)['content'])
+
+    def step(self):
+        response = self.session.call(100, expected=None)
+        self.assertFalse(any(step.get('kind') == 'execute' and step.get('node', {}).get('node') == 'alpha'
+                             for step in response['next_steps']))
+        candidates = [step for step in response['next_steps'] if step.get('path') == self.relative and 'preparation' in step]
+        self.assertTrue(candidates, 'Exact missing consumed evidence must expose complete preparation guidance')
+        self.assertEqual('alpha', candidates[0]['node']['node'])
+        return candidates[0]
+
+    def observation_shapes(self, resource):
+        from test_workflow_integration import MigrationDiscoveryJourneyTests
+        return MigrationDiscoveryJourneyTests.observation_shapes(self, resource)
+
+    def filled(self, resource, kind='contract_investigation'):
+        from test_workflow_integration import MigrationDiscoveryJourneyTests
+        return MigrationDiscoveryJourneyTests.filled(self, resource, kind)
+
+    def resource(self, step):
+        import hashlib
+        link = step['preparation']
+        raw = Path(link['path']).read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), link['sha256'].removeprefix('sha256:'))
+        value = json.loads(raw)
+        self.assertTrue(value.get('instructions'))
+        template = value['template']
+        self.assertEqual({'schema_version', 'repository', 'goal', 'goal_spec', 'action', 'release_snapshot', 'contracts'}, set(template))
+        self.assertEqual('owner/repo', template['repository'])
+        self.assertEqual(100, template['goal'])
+        self.assertEqual(self.payload()[1]['spec']['hash'], template['goal_spec'])
+        self.assertEqual(self.observation, template['release_snapshot'])
+        self.assertEqual('unknown', template['contracts'][0]['status'])
+        self.assertEqual([], template['contracts'][0]['evidence'])
+        examples = value['evidence_templates']
+        self.assertTrue({'contract_investigation', 'owner_attestation'} <= set(examples))
+        for example in examples.values():
+            self.assertFalse(example.get('author'))
+        self.assertFalse(examples['owner_attestation'].get('statement'))
+        self.assertFalse(examples['contract_investigation'].get('rationale'))
+        self.observation_shapes(value)
+        return value
+
+    def test_disclosed_preparation_keeps_unknown_facts_and_both_evidence_alternatives_resume(self):
+        step = self.step()
+        resource = self.resource(step)
+        self.write_document(resource['template'])
+        self.step()  # An unfilled template cannot manufacture eligibility.
+        for kind in ('contract_investigation', 'owner_attestation'):
+            with self.subTest(kind=kind):
+                self.write_document(self.filled(resource, kind))
+                self.assertIn('alpha', self.current())
+                self.assertIn('mirror', self.current())
+
+    def test_preparation_identity_stable_then_changes_with_provider_and_exact_spec(self):
+        first = self.step()
+        resource = self.resource(first)
+        same = self.step()
+        self.assertEqual(first['preparation'], same['preparation'])
+        self.observation['releases'][0]['commit'] = 'e' * 40
+        changed = self.step()
+        refreshed = self.resource(changed)
+        self.assertNotEqual(first['preparation'], changed['preparation'])
+        self.assertNotEqual(resource['template']['release_snapshot'], refreshed['template']['release_snapshot'])
+        previous_spec = self.payload()[1]['spec']
+        self.replace_spec('Additional exact migration compatibility obligation')
+        self.session.finish(self.session.acquire('charter'), {'grant': self.allocations})
+        self.permit['manifest'] = self.produced('charter', 'grant')
+        self.session.finish(self.session.acquire('inspect_charter', actor='fresh-allocation-reviewer'), {'permit': self.permit})
+        self.session.finish(self.session.acquire('consent'), {'permit': self.permit})
+        rebound = self.step()
+        current = self.resource(rebound)
+        self.assertNotEqual(changed['preparation'], rebound['preparation'])
+        self.assertNotEqual(previous_spec['hash'], current['template']['goal_spec'])
+
+    def test_foreign_stale_ambiguous_and_unknown_provider_block_after_valid_prepared_control(self):
+        resource = self.resource(self.step())
+        valid = self.filled(resource)
+        self.write_document(valid)
+        self.assertIn('alpha', self.current())
+        for mutate in (lambda d: d.update(goal=101), lambda d: d.update(goal_spec='sha256:' + 'f' * 64),
+                       lambda d: d['contracts'][0].update(status='unknown')):
+            document = copy.deepcopy(valid)
+            mutate(document)
+            self.write_document(document)
+            self.step()
+        self.write_document(valid)
+        self.assertIn('alpha', self.current())
+        self.observation = {'status': 'unavailable', 'releases': None}
+        unknown = self.resource(self.step())
+        self.assertEqual({'status': 'unavailable', 'releases': None}, unknown['template']['release_snapshot'])
+        self.observation = releases()
+        self.assertIn('alpha', self.current())
+
+
+if __name__ == '__main__':
+    unittest.main()

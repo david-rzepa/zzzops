@@ -278,29 +278,7 @@ class PublicWorkflowJourneyTests(unittest.TestCase):
 class MigrationEvidenceFreshnessTests(unittest.TestCase):
     """Actual input/review projection with synthetic provider observations."""
     def setUp(self):
-        if self._testMethodName in ('test_external_release_change_stales_review_without_file_or_policy_change', 'test_unavailable_provider_is_not_cached_as_fresh_and_restores', 'test_attestation_revocation_and_deletion_stale_only_affected_goal', 'test_two_goal_assessments_cannot_substitute_on_resume', 'test_current_reassessment_reuses_substantive_output_with_new_review', 'test_public_dispatch_exposes_changed_release_input_identity', 'test_affected_phases_share_one_observation_and_next_projection_refreshes'):
-            return  # Generic replacement supplies its own actual public fixture.
-        import json
-        from test_migration_acceptance import assessment, releases
-        self.fixture = PublicWorkflowJourneyTests()
-        self.fixture.setUp()
-        self.addCleanup(self.fixture.doCleanups)
-        self.repo, self.engine = self.fixture.repo, self.fixture.engine
-        self.goal = z.github_goal_record(self.fixture.adapter.issue)
-        self.spec = z.goal_spec_digest(self.goal, title=self.goal['title'], human_spec=self.goal['human_spec'])
-        self.path = self.repo / '.zzzops/migration/42.json'
-        self.path.parent.mkdir(parents=True)
-        self.document = assessment(42, self.spec)
-        self.path.write_text(json.dumps(self.document))
-        self.observation = releases()
-        self.observer = mock.patch.object(z, 'github_release_evidence', side_effect=lambda *a, **k: copy.deepcopy(self.observation))
-        self.observer.start(); self.addCleanup(self.observer.stop)
-        self.repository = mock.patch.object(z, 'github_repository_probe', return_value={'identity': 'owner/repo', 'visibility': 'PUBLIC'})
-        self.repository.start(); self.addCleanup(self.repository.stop)
-        self.goal['workflow'] = {'artifacts': {}, 'leases': {}, 'receipts': {}, 'workers': {},
-            'assessments': {'plan': {'dimensions': {'consequence': 'bounded', 'boundedness': 'atomic', 'engineering_rigor': 'structured'},
-                                    'goal_spec': self.spec, 'policy': z.sha256_phase_evidence_digest(self.fixture.project['policy']),
-                                    'files': ['.zzzops/migration/42.json']}}}
+        pass  # Each retained ID invokes its concrete isolated generic public fixture.
 
     def live(self, goal=None):
         self.engine.invalidate()
@@ -343,95 +321,14 @@ class MigrationEvidenceFreshnessTests(unittest.TestCase):
         run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationInputTests.test_two_declared_consumers_share_one_observation_per_projection_then_refresh')
 
     def test_public_migration_blocker_contract_persists_and_replays_receipt(self):
-        import json
-        from test_workflow_public_contract import PublicWorkflowContractTests
-        managed = z.parse_managed_goal(self.fixture.adapter.issue['body'], 42)
-        managed['workflow'] = copy.deepcopy(self.goal['workflow'])
-        self.fixture.adapter.issue['body'] = z.render_managed_goal(managed, self.goal['human_spec'], 42)
-        self.observation['releases'][0]['commit'] = 'e' * 40
-        harness = PublicWorkflowContractTests(); harness.repo = self.repo
-        reservation = fixtures.FakeReservationAdapter(repository='owner/repo')
-        real_run = z.subprocess.run
-
-        def reject_provider_escape(command, *args, **kwargs):
-            if Path(command[0]).name.lower() in {'gh', 'gh.exe'}:
-                raise AssertionError('Unexpected live provider call escaped the synthetic reservation boundary')
-            return real_run(command, *args, **kwargs)
-
-        with tempfile.TemporaryDirectory() as control:
-            runtime = Path(control) / 'runtime.json'; runtime.write_text(json.dumps(self.fixture.runtime))
-            submission = Path(control) / 'submission.json'
-            with mock.patch.object(z, 'GitHubReservationAdapter', return_value=reservation), \
-                 mock.patch.object(z.subprocess, 'run', side_effect=reject_provider_escape), \
-                 mock.patch.object(z, 'reviewed_project_state', return_value=self.fixture.project), \
-                 mock.patch.object(z, 'workflow_context_step', return_value=None), \
-                 mock.patch.object(z._package, 'package_status', return_value={'ok': True, 'version': 'test', 'revision': 'synthetic'}), \
-                 mock.patch.object(z._installation, 'validation_status', return_value={'required': False}):
-                code, result, stderr = harness.run_main('--intent', 'execute', '--goal', '42', '--runtime', str(runtime))
-                self.assertEqual(0, code, result)
-                blocker = next(s for s in result['next_steps'] if s.get('phase') == 'plan')
-                self.assertEqual('blocker', blocker['kind'])
-                self.assertEqual(42, blocker['goal'])
-                self.assertNotIn('start', blocker)
-                self.assertIn('submission', blocker, 'Blocked work needs a supported copy-ready persistence contract')
-                self.assertIn('command', blocker)
-                payload = copy.deepcopy(blocker['submission'])
-                self.assertEqual('block', payload['operation'])
-                payload['request_id'] = 'migration-evidence-unresolved'
-                submission.write_text(json.dumps(payload))
-                args = [str(runtime) if a == '<runtime.json>' else str(submission) if a == '<submission.json>' else a
-                        for a in blocker['command']]
-                self.assertEqual('42', args[args.index('--goal') + 1])
-                code, response, stderr = harness.run_main(*args)
-                self.assertEqual(0, code, response)
-                persisted = z.github_goal_record(self.fixture.adapter.issue)
-                self.assertEqual('blocked', persisted['status'])
-                self.assertEqual(1, len(persisted['blockers']))
-                self.assertEqual(payload['reason'], persisted['blockers'][0]['reason'])
-                self.assertTrue(any('independent' in s.get('action', '').lower() for s in response['next_steps']))
-                body = self.fixture.adapter.issue['body']
-                code, replay, stderr = harness.run_main(*args)
-                self.assertEqual(0, code, replay)
-                self.assertEqual(body, self.fixture.adapter.issue['body'])
-                self.assertTrue(any('already applied' in s.get('action', '').lower() for s in replay['next_steps']))
-                self.assertGreater(reservation.next_id, 1, 'Real storage-lock logic must use the fake provider')
-                self.assertEqual({}, reservation.labels, 'Both public mutations must release their exact reservation')
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationDiscoveryTests.test_factual_root_report_replays_exactly_without_granting_missing_evidence_authority')
 
 
 class MigrationDiscoveryJourneyTests(unittest.TestCase):
     """Use only public output contracts to discover and prepare local evidence."""
     def setUp(self):
-        self.fixture = MigrationEvidenceFreshnessTests()
-        self.fixture.setUp(); self.addCleanup(self.fixture.doCleanups)
-        self.repo = self.fixture.repo
-        self.adapter = self.fixture.fixture.adapter
-        self.project = self.fixture.fixture.project
-        self.fixture.path.unlink()
-        managed = z.parse_managed_goal(self.adapter.issue['body'], 42)
-        managed['workflow'] = {'artifacts': {}, 'leases': {}, 'receipts': {}, 'workers': {}, 'assessments': {}}
-        self.adapter.issue['body'] = z.render_managed_goal(managed, self.fixture.goal['human_spec'], 42)
-        from test_workflow_public_contract import PublicWorkflowContractTests
-        self.harness = PublicWorkflowContractTests(); self.harness.repo = self.repo
-        self.control = tempfile.TemporaryDirectory(); self.addCleanup(self.control.cleanup)
-        self.runtime = Path(self.control.name) / 'runtime.json'
-        self.runtime.write_text(json.dumps(self.fixture.fixture.runtime))
-        self.payload = Path(self.control.name) / 'input.json'
-        self.sequence = 0
-        real_run = z.subprocess.run
-        def guarded_run(command, *args, **kwargs):
-            if Path(command[0]).name.lower() in {'gh', 'gh.exe'}:
-                raise AssertionError('Unexpected provider escape in discovery journey')
-            return real_run(command, *args, **kwargs)
-        patches = [
-            mock.patch.object(z, 'reviewed_project_state', return_value=self.project),
-            mock.patch.object(z, 'workflow_context_step', return_value=None),
-            mock.patch.object(z._package, 'package_status', return_value={'ok': True, 'version': 'test', 'revision': 'synthetic'}),
-            mock.patch.object(z._installation, 'validation_status', return_value={'required': False}),
-            mock.patch.object(z, 'GitHubReservationAdapter', return_value=fixtures.FakeReservationAdapter(repository='owner/repo')),
-            mock.patch.object(z.subprocess, 'run', side_effect=guarded_run),
-        ]
-        for patch in patches:
-            patch.start(); self.addCleanup(patch.stop)
+        pass  # Each retained ID invokes its concrete isolated generic public fixture.
 
     def step(self):
         code, result, error = self.harness.run_main('--intent', 'execute', '--goal', '42', '--runtime', str(self.runtime))
@@ -554,41 +451,13 @@ class MigrationDiscoveryJourneyTests(unittest.TestCase):
         return document
 
     def test_public_discovery_preparation_and_both_evidence_alternatives_resume(self):
-        path, blocker, resource = self.missing()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(resource['template']))
-        self.assertEqual('blocker', self.step()['kind'], 'Unfilled instructions must not manufacture eligibility')
-        for kind in ('contract_investigation', 'owner_attestation'):
-            with self.subTest(kind=kind):
-                path.write_text(json.dumps(self.filled(resource, kind)))
-                resumed = self.step()
-                self.assertNotEqual('blocker', resumed['kind'])
-                self.assertEqual('replace_reset', resumed['input_envelope']['provider']['snapshot']['migration']['decision']['action'])
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationDiscoveryTests.test_disclosed_preparation_keeps_unknown_facts_and_both_evidence_alternatives_resume')
 
     def test_preparation_resource_is_stable_and_refreshes_with_facts_and_spec(self):
-        path, first, resource = self.missing()
-        same = self.step(); self.resource(same)
-        self.assertEqual(first['preparation'], same['preparation'])
-        self.fixture.observation['releases'][0]['commit'] = 'e' * 40
-        changed = self.step(); new_resource = self.resource(changed)
-        self.assertNotEqual(first['preparation'], changed['preparation'])
-        self.assertNotEqual(resource['template']['release_snapshot'], new_resource['template']['release_snapshot'])
-        managed = z.parse_managed_goal(self.adapter.issue['body'], 42)
-        self.adapter.issue['body'] = z.render_managed_goal(managed, self.fixture.goal['human_spec'] + '\nAdditional synthetic contract constraint.\n', 42)
-        rebound = self.step(); self.resource(rebound)
-        self.assertNotEqual(changed['preparation'], rebound['preparation'])
-        self.assertNotEqual(changed['input_envelope']['goal_spec'], rebound['input_envelope']['goal_spec'])
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationDiscoveryTests.test_preparation_identity_stable_then_changes_with_provider_and_exact_spec')
 
     def test_discovered_route_blocks_foreign_stale_ambiguous_and_unavailable_evidence(self):
-        path, blocker, resource = self.missing()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        valid = self.filled(resource)
-        for mutate in (lambda d: d.update(goal=43), lambda d: d.update(goal_spec='sha256:' + 'f' * 64),
-                       lambda d: d['contracts'][0].update(status='unknown')):
-            document = copy.deepcopy(valid); mutate(document); path.write_text(json.dumps(document))
-            self.assertEqual('blocker', self.step()['kind'])
-        path.write_text(json.dumps(valid)); self.assertNotEqual('blocker', self.step()['kind'])
-        self.fixture.observation = {'status': 'unavailable', 'releases': None}
-        unavailable = self.step(); self.assertEqual('blocker', unavailable['kind']); self.resource(unavailable)
-        self.assertIn('submission', unavailable)
-        self.assertEqual('block', unavailable['submission']['operation'])
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationDiscoveryTests.test_foreign_stale_ambiguous_and_unknown_provider_block_after_valid_prepared_control')
