@@ -98,7 +98,8 @@ class WorkerLimitEnforcementTests(unittest.TestCase):
         ]
         engine = mock.Mock()
         engine.portfolio.return_value = goals
-        engine.step.side_effect = lambda number: [{"kind": "assess", "goal": number}]
+        engine.step.side_effect = lambda number: [{"kind": "execute", "goal": number,
+            "node": {"goal": number, "node": "work", "item": None, "generation": 1}}]
 
         result = z._workflow.checkpoint(z, Path("."), project(max_workers=2), {}, engine=engine)
 
@@ -110,9 +111,13 @@ class WorkerLimitEnforcementTests(unittest.TestCase):
         run_generic_regressions(self, 'test_workflow_policy_enforcement.GenericWorkerCapacityTests.test_other_goal_unresolved_owner_consumes_reviewed_capacity_until_observed_stop')
 
     def test_checkpoint_replaces_unstartable_phase_with_capacity_step(self):
+        # Supported predecessor ownership still consumes capacity until actual
+        # stop/conversion; it is not a runnable second phase engine.
         active = {"key": 1, "priority": "P0", "status": "ready", "depends_on": [], "workflow": durable({"expires_at": 0, "worker": "synthetic-worker"})}
         target = {"key": 2, "priority": "P1", "status": "ready", "depends_on": []}
-        proposed = {"kind": "execute", "goal": 2, "start": {"operation": "start"}}
+        proposed = {"kind": "execute", "goal": 2,
+                    "node": {"goal": 2, "node": "work", "item": None, "generation": 1},
+                    "start": {"operation": "start"}}
         engine = mock.Mock()
         engine.portfolio.return_value = [active, target]
         engine.step.side_effect = {1: [{"kind": "await_worker", "goal": 1}], 2: [proposed]}.__getitem__
