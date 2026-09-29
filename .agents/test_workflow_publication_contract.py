@@ -279,6 +279,86 @@ class GenericPublicationPublicTests(DagFixture):
             "decision": "approved"})
         return self.produced(self.ids["approve"])
 
+    def with_merge_observation(self, graph):
+        """Finite post-effect wire; no archive flag or submitted boolean authority.
+
+        merge_observation has exactly authorization:Ref, repository:string,
+        pr:string, head_oid:string, base_oid:string, base_ref:string,
+        merge_commit:string, merged_at:string. Its identity inputs pin the
+        authenticated repository context, publication subject and current root
+        authorization. The repository_publication adapter compares every field
+        with provider facts. Integrate consumes current authorization before
+        this post-effect Result exists; configured terminals still require it.
+        """
+        n = self.ids
+        by_id = {node["id"]: node for node in graph["nodes"]}
+        observe = task("observed_merge", [n["approve"]])
+        def exact(role):
+            return {"producer": {"node": selector(n[role])}, "output": "value",
+                    "path": [], "mode": "identity",
+                    "type": copy.deepcopy(by_id[n[role]]["outputs"]["value"]["schema"])}
+        observe["inputs"] = {"context": exact("context"), "subject": exact("observe"),
+                             "authorization": exact("approve")}
+        observe["executor"].update(resources=["repository_publication"], authority=scope(n["context"]))
+        schema = {"kind": "object", "fields": {"authorization": REF_TYPE,
+            **{key: {"kind": "string"} for key in
+               ("repository", "pr", "head_oid", "base_oid", "base_ref", "merge_commit", "merged_at")}}}
+        observe["outputs"] = {"value": output("merge_observation", schema)}
+        graph["nodes"].append(observe)
+        finish = by_id[n["finish"]]
+        finish["requires"].append(selector("observed_merge"))
+        finish["inputs"]["merge"] = {"producer": {"node": selector("observed_merge")},
+            "output": "value", "path": [], "mode": "identity", "type": schema}
+        return graph
+
+    def merge_value(self):
+        return {"authorization": self.produced(self.ids["approve"]),
+                **{key: (self.context["pr"] if key == "pr" else self.observation[key])
+                   for key in ("repository", "pr", "head_oid", "base_oid", "base_ref", "merge_commit", "merged_at")}}
+
+    def test_integrate_precedes_post_effect_terminal_and_observation_is_exact(self):
+        self.install(self.with_merge_observation(copy.deepcopy(self.graph)))
+        self.authorize_context()
+        authority = self.approve_publication()
+        self.assertNotIn(self.ids["finish"], self.names())
+        request = self.integration_request(authority)
+        request["request_id"] = "before-post-effect-terminal"
+        self.session.call(100, request)
+        self.assertEqual(1, len(self.merge_calls))
+        self.assertEqual("open", self.provider.issues[100]["state"], "Merge cannot mint the pending observation Result or complete goal")
+        self.assertNotIn(self.ids["finish"], self.names())
+        work = self.session.acquire("observed_merge")
+        acquisition = json.dumps(work["lease"]["acquisition"])
+        for role in ("context", "observe", "approve"):
+            self.assertIn(self.produced(self.ids[role])["hash"], acquisition)
+        value = self.merge_value()
+        for key, wrong in (("head_oid", "a" * 40), ("base_oid", "b" * 40),
+                           ("merge_commit", "c" * 40), ("merged_at", "2020-01-01T00:00:00Z"),
+                           ("authorization", self.produced(self.ids["context"]))):
+            with self.subTest(field=key):
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                self.session.call(100, self.session.submission(work, {"value": {**value, key: wrong}}, "wrong-merge-" + key), expected=2)
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.finish(work, {"value": value})
+        self.assertIn(self.ids["finish"], self.names())
+        self.submit_role("finish", "Exact post-effect evidence consumed")
+        self.assertEqual(set(), self.names())
+
+    def test_unmerged_provider_cannot_issue_merge_observation_then_external_merge_is_readable(self):
+        self.install(self.with_merge_observation(copy.deepcopy(self.graph)))
+        self.authorize_context()
+        self.approve_publication()
+        work = self.session.acquire("observed_merge")
+        forged = {**self.merge_value(), "merge_commit": "f" * 40, "merged_at": "2026-09-29T15:00:00Z"}
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, self.session.submission(work, {"value": forged}, "forged-merge"), expected=2)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.assertNotIn(self.ids["finish"], self.names())
+        self.mark_merged()  # External provider event; no lease takeover or semantic Result fabrication.
+        self.session.finish(work, {"value": self.merge_value()})
+        self.assertEqual(0, len(self.merge_calls))
+        self.submit_role("finish", "Observed external merge has exact evidence")
+
     def test_declared_base_is_not_replaced_by_unrelated_checkout_head(self):
         self.authorize_context()
         self.session.git("checkout", "-qb", "unrelated")
@@ -431,7 +511,7 @@ class GenericPublicationPublicTests(DagFixture):
     def integration_request(self, authorization):
         steps = self.session.checkpoint(100)
         candidates = [step for step in steps if step.get("submission", {}).get("operation") == "integrate"]
-        self.assertTrue(candidates, "Current terminal evidence must expose exact operational integration contract")
+        self.assertTrue(candidates, "Current exact publication authorization must expose operational integration contract")
         request = copy.deepcopy(candidates[0]["submission"])
         self.assertEqual(authorization, request["authorization"])
         self.assertEqual(self.observation["head_oid"], request["expected_head"])
@@ -621,6 +701,8 @@ class GenericDeliveryPublicTests(DagFixture):
     submit_role = GenericPublicationPublicTests.submit_role
     observed_value = GenericPublicationPublicTests.observed_value
     integration_request = GenericPublicationPublicTests.integration_request
+    with_merge_observation = GenericPublicationPublicTests.with_merge_observation
+    merge_value = GenericPublicationPublicTests.merge_value
     workspace_graph = WorkspaceAuthorityPublicTests.workspace_graph
     setup_workspace = WorkspaceAuthorityPublicTests.setup_workspace
     acquire_workspace = WorkspaceAuthorityPublicTests.acquire_workspace
@@ -630,7 +712,7 @@ class GenericDeliveryPublicTests(DagFixture):
 
     def test_reviewed_red_green_proofs_commit_and_exact_publication_form_one_delivery_graph(self):
         self.configure(renamed=True)
-        publication = copy.deepcopy(self.graph)
+        publication = self.with_merge_observation(copy.deepcopy(self.graph))
         self.session.git("checkout", "-q", "goal-child")
         def composed(graph, _allocations):
             observer = next(node for node in publication["nodes"] if node["id"] == self.ids["observe"])
@@ -663,12 +745,15 @@ class GenericDeliveryPublicTests(DagFixture):
         self.submit_role("review", "Reviewed exact head and connected passing proof", actor="publication-reviewer")
         self.assertNotIn(self.ids["finish"], self.names())
         self.submit_role("approve", {"subject": self.produced(self.ids["observe"]), "review": self.produced(self.ids["review"]), "policy": content_hash(self.session.project["policy"]), "decision": "approved"})
-        self.submit_role("finish", "Current connected delivery evidence")
+        self.assertNotIn(self.ids["finish"], self.names())
         request = self.integration_request(self.produced(self.ids["approve"]))
         request["request_id"] = "connected-delivery-integration"
         self.session.call(100, request)
         self.assertEqual(1, len(self.merge_calls))
         self.assertTrue(self.observation["merged"])
+        post_effect = self.session.acquire("observed_merge")
+        self.session.finish(post_effect, {"value": self.merge_value()})
+        self.submit_role("finish", "Current connected delivery and observed merge evidence")
         self.assertEqual(red, self.read_blob(red_reference))
         self.assertEqual(green, self.read_blob(green_reference))
         self.assertEqual(0, green["commands"][0]["exit_code"])
