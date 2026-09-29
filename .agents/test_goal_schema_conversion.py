@@ -84,7 +84,7 @@ class GoalEnvelopeTests(unittest.TestCase):
     def envelope(self):
         digest = "sha256:" + "1" * 64
         return {"schema_version": 2, "repository": "owner/repo", "issue": 100,
-                "revision": 1, "state": "open",
+                "revision": 1, "state": "open", "parent": None,
                 "payload": {"hash": digest, "uri": "urn:" + digest}}
 
     def body(self, value):
@@ -95,7 +95,11 @@ class GoalEnvelopeTests(unittest.TestCase):
 
     def valid_control(self):
         envelope = self.envelope()
-        self.assertEqual(envelope, self.parse(self.body(envelope)))
+        try:
+            parsed = self.parse(self.body(envelope))
+        except ValueError as exc:
+            self.fail("Production rejected the valid revision16 envelope: " + str(exc))
+        self.assertEqual(envelope, parsed)
         return envelope
 
     def test_v2_identity_envelope_is_readable_without_decoding_payload(self):
@@ -105,6 +109,19 @@ class GoalEnvelopeTests(unittest.TestCase):
         envelope = self.valid_control()
         envelope["schema_version"] = True
         with self.assertRaisesRegex(ValueError, r"(?i)version|integer|schema"):
+            self.parse(self.body(envelope))
+
+    def test_parent_is_required_nullable_positive_integer_not_historical_guess(self):
+        envelope = self.valid_control()
+        envelope["parent"] = 99
+        self.assertEqual(envelope, self.parse(self.body(envelope)))
+        for parent in (True, 0, -1, 1.5, "99", "#parent"):
+            with self.subTest(parent=parent):
+                invalid = {**envelope, "parent": parent}
+                with self.assertRaisesRegex(ValueError, r"(?i)parent|integer|identity"):
+                    self.parse(self.body(invalid))
+        del envelope["parent"]
+        with self.assertRaisesRegex(ValueError, r"(?i)parent|missing|field"):
             self.parse(self.body(envelope))
 
 
@@ -121,7 +138,7 @@ class ConversionDurabilityTests(unittest.TestCase):
         source = copy.deepcopy(issue)
         digest = "sha256:" + "3" * 64
         envelope = {"schema_version": 2, "repository": "owner/repo", "issue": 100,
-                    "revision": 1, "state": "open", "payload": {"hash": digest, "uri": "urn:" + digest}}
+                    "revision": 1, "state": "open", "parent": None, "payload": {"hash": digest, "uri": "urn:" + digest}}
         target = "<!-- zzzops-goal\n" + json.dumps(envelope) + "\nzzzops-goal -->"
         prepared = {"repository": "owner/repo", "issue": 100, "source": source,
                     "target_body": target, "target_labels": ["zzzops", "zzzops:schema:v2"],
@@ -564,6 +581,41 @@ class MigrationEntryPublicTests(dag.DagFixture):
         self.assertEqual(graph, self.read_blob(self.payload()[1]["graph"]))
         self.assertNotIn("produce", self.names(), "Preparation is not normal-goal activation")
 
+
+
+    def test_trusted_entry_uses_symbolic_self_and_preserves_predecessor_parent(self):
+        source, graph = self.entry()
+        def symbolic(value):
+            if isinstance(value, list):
+                return [symbolic(item) for item in value]
+            if isinstance(value, dict):
+                return {key: "#this" if key == "goal" and item == 100 else symbolic(item)
+                        for key, item in value.items()}
+            return value
+        graph = symbolic(graph)
+        config = z._workflow_section(self.session.project, "workflow_adherence")["configuration"]
+        config["migration_entries"] = [{"from": 1, "to": 2, "graph": graph}]
+        legacy = fixtures.PortfolioTests().goal(parent=99)
+        source["body"] = "## Outcome\nMigrate the exact historical goal and preserve its parent.\n\n<!-- zzzops-goal\n" + json.dumps(legacy) + "\nzzzops-goal -->"
+        self.provider.issues[100] = copy.deepcopy(source)
+        self.provider.issues[99] = fixtures.PortfolioTests().issue(99)
+        self.provider.comments[99] = []
+        target = {**self.target_envelope, "parent": 99}
+        self.target = self.blob(target)
+        self.session.finish(self.session.acquire("analyze"), {"source": source})
+        self.assertEqual(99, self.payload()[0]["parent"], "Trusted predecessor decoding must preserve canonical parent")
+        self.assertEqual(graph, self.read_blob(self.payload()[1]["graph"]))
+        conversion = {"source": self.migration_result("analyze")[1]["source"], "target": self.target,
+                      "mapped_evidence": [], "missing_obligations": ["Current independent review"]}
+        self.session.finish(self.session.acquire("convert"), {"conversion": conversion})
+        self.session.finish(self.session.acquire("conversion_review", actor="independent-reviewer"), {"value": "Exact parent and source verified"})
+        self.session.finish(self.session.acquire("conversion_approval"), {"value": "Root approves exact conversion"})
+        work = self.session.acquire("activate")
+        self.session.finish(work, {"activation": {"conversion": self.migration_result("convert")[1]["conversion"],
+                                                  "approval": self.migration_result("conversion_approval")[0]}})
+        self.assertEqual(99, self.payload()[0]["parent"])
+        self.assertEqual(source, self.read_blob(conversion["source"])["content"])
+        self.assertIn("produce", self.names(), "Preserving relationship metadata never fabricates delivery")
 
 if __name__ == "__main__":
     unittest.main()

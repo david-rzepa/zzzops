@@ -205,7 +205,7 @@ class DagFixture(unittest.TestCase):
         payload = self.blob({"spec": spec, "graph": self.blob(self.graph), "evidence": [],
                              "operational": {"leases": [], "receipts": []}})
         self.envelope = {"schema_version": 2, "repository": "owner/repo", "issue": 100,
-                         "revision": 1, "state": "open", "payload": payload}
+                         "revision": 1, "state": "open", "parent": None, "payload": payload}
         self.provider.issues[100]["body"] = (
             "## Outcome\nProduce and independently review a value.\n\n<!-- zzzops-goal\n"
             + json.dumps(self.envelope) + "\nzzzops-goal -->")
@@ -1244,7 +1244,7 @@ class WorkspaceAuthorityPublicTests(DagFixture):
     Separate ordinary verification/review tasks consume that exact candidate.
     Authorization content below is ordinary typed evidence affirming the exact
     manifest, task identities and policy; caller content never issues a Result.
-    Parent wire proposal: root-authored goal_metadata evidence identifies parent;
+    The canonical GoalEnvelope.parent identifies the live immediate parent;
     normal cross-goal identity inputs consume its grant and authorization outputs.
     Goal 99 publishes those outputs through the same public submit path as 100.
     """
@@ -1719,11 +1719,8 @@ class WorkspaceAuthorityPublicTests(DagFixture):
                                         actor="parent-reviewer" if name == "inspect_charter" else "root-thread")
             self.session.call(99, self.session.submission(work, outputs, "parent-" + name))
         envelope, payload = self.payload()
-        metadata = self.blob({"type": "goal_metadata", "content": {"parent": 99}, "producer": None,
-            "provenance": {"actor": "root-thread", "source": None,
-                           "policy": content_hash(self.session.project["policy"])}})
-        payload["evidence"].append(metadata)
-        envelope["payload"] = self.blob(payload)
+        envelope["parent"] = 99
+        envelope["revision"] += 1
         self.provider.issues[100]["body"] = "<!-- zzzops-goal\n" + json.dumps(envelope) + "\nzzzops-goal -->"
         self.session.finish(self.session.acquire("charter"), {"grant": self.allocations})
         permit = {**self.permit, "manifest": self.produced("charter", "grant")}
@@ -1915,6 +1912,528 @@ class GatewayIsolationTests(DagFixture):
         self.assertNotIn(888, transport.body_numbers())
         self.assertEqual(before, self.provider.issues)
 
+
+
+class RelationshipPublicTests(DagFixture):
+    """Revision16 relationship journeys; raw provider facts, no fake resolver.
+
+    Finite transport proposal: an adapter lists repository issue metadata pages
+    with ordinary provider page cursors, then reads exact candidate records. A
+    targeted relationship request may inspect historical candidates to establish
+    canonical-parent coverage. The fixture supplies raw pages, never a trusted
+    relationship_context, fabricated Result, or authority decision. Production
+    must establish coverage before issuing its reserved context. Native sub-issue
+    metadata alone is insufficient when canonical parent facts can disagree.
+
+    Returned acquired steps expose host-issued Result.resolutions as
+    acquisition.resolutions (or lease.acquisition.resolutions). This is a wire
+    assertion, not a second evaluator. Each resolution includes the closed
+    normative context Ref and exact qualified targets.
+    """
+    def setUp(self):
+        super().setUp()
+        self.discovery_failure = False
+        self.discovery_incomplete = False
+        self.relationship_reads = []
+        original_get = self.provider.get_issue
+
+        def read(number):
+            self.relationship_reads.append(number)
+            return original_get(number)
+
+        def metadata_page(cursor=None):
+            if self.discovery_failure:
+                raise RuntimeError("relationship discovery unavailable")
+            numbers = sorted(self.provider.issues)
+            start = int(cursor or 0)
+            selected = numbers[start:start + 2]
+            more = start + 2 < len(numbers) or self.discovery_incomplete
+            return {"repository": "owner/repo", "issues": [
+                {"number": n, "state": self.provider.issues[n]["state"],
+                 "updated_at": self.provider.issues[n]["updated_at"]} for n in selected],
+                "page_info": {"has_next_page": more,
+                              "end_cursor": str(start + 2) if more and selected else None}}
+
+        self.provider.get_issue = read
+        self.provider.list_issue_metadata = metadata_page
+        self.provider.get_sub_issues = lambda number: [
+            {"number": n} for n in sorted(self.provider.issues)
+            if self.envelope_for(n).get("parent") == number]
+        self.provider.get_parent_issue = lambda number: self.envelope_for(number).get("parent")
+        # Broad execution mirrors the real archived projection. Closed bodies
+        # are only fetched by a targeted consumer, never this broadphase fixture.
+        def portfolio(*_args, **_kwargs):
+            goals = []
+            for n, issue in sorted(self.provider.issues.items()):
+                if issue["state"] == "closed":
+                    metadata = {k: copy.deepcopy(v) for k, v in issue.items() if k != "body"}
+                    goals.append(z.github_archived_goal_record(metadata))
+                else:
+                    goals.append(z.github_goal_record(self.provider.get_issue(n)))
+            return {"complete": True, "valid": True, "goals": goals}
+        self.session.portfolio_snapshot = portfolio
+
+    def envelope_for(self, number):
+        return json.loads(re.search(r"<!-- zzzops-goal\s*\n(.*?)\nzzzops-goal -->",
+                                   self.provider.issues[number]["body"], re.S)[1])
+
+    def put_envelope(self, number, envelope):
+        self.provider.issues[number]["body"] = "<!-- zzzops-goal\n" + json.dumps(envelope) + "\nzzzops-goal -->"
+        self.provider.issues[number]["updated_at"] = "2026-09-29T12:%02d:00Z" % envelope["revision"]
+
+    def add_goal(self, number, graph, parent=None):
+        payload = self.blob({"spec": self.blob({"type": "specification", "content": "Required output",
+            "producer": None, "provenance": {"actor": "root-thread", "source": None,
+            "policy": content_hash(self.session.project["policy"])}}), "graph": self.blob(graph),
+            "evidence": [], "operational": {"leases": [], "receipts": []}})
+        envelope = {"schema_version": 2, "repository": "owner/repo", "issue": number,
+                    "revision": 1, "state": "open", "parent": parent, "payload": payload}
+        self.provider.issues[number] = {**copy.deepcopy(self.provider.issues[100]), "number": number}
+        self.provider.comments[number] = copy.deepcopy(self.provider.comments[100])
+        self.put_envelope(number, envelope)
+
+    def read_at(self, number, ref):
+        return z._comment_store.ArtifactIndex(self.provider.comments[number]).resolve(ref["hash"])[0]
+
+    def result_at(self, number, name):
+        payload = self.read_at(number, self.envelope_for(number)["payload"])
+        for ref in reversed(payload["evidence"]):
+            artifact = self.read_at(number, ref)
+            if artifact["type"] == "result" and artifact["content"]["node"]["node"] == name:
+                return ref, artifact["content"]
+        self.fail("Missing host Result for %s/%s" % (number, name))
+
+    def symbolic_graph(self, goal="#children", *, kind="node", mode="content"):
+        producer = task("produce")
+        producer["inputs"] = {"request": spec_input()}
+        producer["executor"]["authority"]["subject"]["goal"] = "#this"
+        consumer = task("collect")
+        target = ({"kind": "node", "goal": goal, "node": "produce"} if kind == "node" else
+                  {"kind": "join", "goal": goal, "expansion": "buckets"} if kind == "join" else
+                  {"kind": "member", "goal": goal, "expansion": "buckets", "item": "a", "generation": "current"})
+        consumer["requires"] = [target]
+        consumer["inputs"] = {"values": {"producer": {"node": target}, "output": "value", "path": [],
+                                         "mode": mode, "type": {"kind": "string"}}}
+        consumer["executor"]["authority"]["subject"]["goal"] = "#this"
+        return {"nodes": [producer, consumer], "task_sets": [],
+                "terminals": [{"kind": "node", "goal": "#this", "node": "collect"}]}
+
+    def complete(self, number, name="produce", value="accepted", actor=None):
+        work = self.session.acquire(name, number=number, actor=actor)
+        self.session.finish(work, {"value": value}, number=number)
+        return work
+
+    def child_fixture(self, *, graph=None):
+        graph = graph or self.symbolic_graph()
+        self.install(graph)
+        self.add_goal(101, graph, 100)
+        self.add_goal(102, graph, 100)
+        self.complete(101, value="child one")
+        self.complete(102, value="child two")
+        self.assertIn("collect", self.names(), "Positive required-child join must become runnable")
+        return graph
+
+    def resolutions(self, acquired):
+        acquisition = acquired.get("acquisition", acquired["lease"].get("acquisition", {}))
+        self.assertIn("resolutions", acquisition, "Host must pin selector resolutions at acquisition")
+        return acquisition["resolutions"]
+
+    def test_same_symbolic_graph_runs_for_multiple_goals_and_keeps_exact_targets(self):
+        graph = self.child_fixture()
+        self.add_goal(200, graph)
+        self.add_goal(201, graph, 200)
+        self.complete(201, value="other child")
+        before = content_hash(graph)
+        for number, expected in ((100, [101, 102]), (200, [201])):
+            work = self.session.acquire("collect", number=number)
+            resolutions = self.resolutions(work)
+            selected = [r for r in resolutions if r["selector"]["goal"] == "#children"]
+            self.assertTrue(selected)
+            for resolution in selected:
+                self.assertEqual(expected, [target["goal"] for target in resolution["targets"]])
+                self.assertEqual({"location", "selector", "context", "targets"}, set(resolution))
+                context = self.read_at(number, resolution["context"])
+                self.assertEqual("relationship_context", context["type"])
+                value = context["content"]
+                self.assertEqual({"repository", "subject", "subject_envelope", "parent", "children"}, set(value))
+                self.assertEqual(number, value["subject"])
+                self.assertEqual({"known": True, "value": None}, value["parent"])
+                self.assertEqual(expected, sorted(map(int, value["children"]["envelopes"])))
+                self.assertTrue(value["children"]["known"])
+            self.session.finish(work, {"value": "joined"}, number=number)
+            result = self.result_at(number, "collect")[1]
+            self.assertEqual(resolutions, result["resolutions"])
+            self.assertEqual(sorted(resolutions, key=lambda r: json.dumps(r["location"])), resolutions)
+            payload = self.read_at(number, self.envelope_for(number)["payload"])
+            self.assertEqual(before, content_hash(self.read_at(number, payload["graph"])))
+
+    def test_every_child_required_including_archived_exact_completion(self):
+        self.child_fixture()
+        closed = self.envelope_for(102)
+        closed["state"] = "archived"
+        closed["revision"] += 1
+        self.put_envelope(102, closed)
+        self.provider.issues[102]["state"] = "closed"
+        before = copy.deepcopy(self.provider.issues[102])
+        self.relationship_reads.clear()
+        work = self.session.acquire("collect")
+        targets = {t["goal"] for r in self.resolutions(work) if r["selector"]["goal"] == "#children" for t in r["targets"]}
+        self.assertEqual({101, 102}, targets)
+        self.assertIn(102, self.relationship_reads, "Exact archived evidence needs targeted historical reading")
+        self.session.finish(work, {"value": "all required children"})
+        self.assertEqual(before, self.provider.issues[102], "Historical reading cannot reopen or convert")
+
+    def test_new_missing_child_stales_worker_and_does_not_omit_required_work(self):
+        graph = self.child_fixture()
+        work = self.session.acquire("collect")
+        self.add_goal(103, graph, 100)
+        response = self.session.call(100, self.session.submission(work, {"value": "stale subset"}, "stale-membership"), expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)stale|relationship|membership|input")
+        self.assertNotIn("collect", self.names())
+        self.assertRegex(json.dumps(self.session.checkpoint(100)), r"103")
+
+    def test_unrelated_and_bookkeeping_changes_preserve_relevant_consumer(self):
+        graph = self.child_fixture()
+        work = self.session.acquire("collect")
+        self.add_goal(777, graph)
+        self.provider.issues[101]["title"] = "Bookkeeping title"
+        self.provider.issues[101]["updated_at"] = "2026-09-29T15:00:00Z"
+        self.provider.create_issue_comment(101, "Acknowledged; progress only")
+        child_before = self.envelope_for(101)
+        other = self.session.acquire("collect", number=101)
+        self.assertNotEqual(child_before, self.envelope_for(101), "Real child acquisition must update operational envelope provenance")
+        self.session.finish(other, {"value": "unconsumed child result"}, number=101)
+        self.session.finish(work, {"value": "unchanged semantic child inputs"})
+        self.assertEqual("collect", self.result("collect")[1]["node"]["node"])
+        self.assertNotIn("collect", self.names(), "Unchanged selector inputs must reuse the completed result")
+
+    def test_missing_parent_blocks_only_parent_consumer_and_literal_goal_is_preserved(self):
+        graph = self.symbolic_graph("#parent")
+        self.install(graph)
+        self.assertIn("produce", self.names())
+        self.assertNotIn("collect", self.names())
+        self.assertRegex(json.dumps(self.session.checkpoint(100)), r"(?i)parent|missing")
+        literal = self.symbolic_graph(101)
+        self.install(literal)
+        self.add_goal(101, literal)
+        self.complete(101)
+        work = self.session.acquire("collect")
+        selected = [r for r in self.resolutions(work) if r["selector"]["goal"] == 101]
+        self.assertTrue(selected)
+        self.assertEqual([101], [t["goal"] for t in selected[0]["targets"]])
+        self.session.finish(work, {"value": "literal preserved"})
+
+    def test_known_empty_is_aggregate_not_unknown_and_does_not_manufacture_artifact(self):
+        self.install(self.symbolic_graph())
+        work = self.session.acquire("collect")
+        selected = [r for r in self.resolutions(work) if r["selector"]["goal"] == "#children"]
+        self.assertTrue(selected)
+        self.assertTrue(all(r["targets"] == [] for r in selected))
+        self.session.finish(work, {"value": "known empty aggregate"})
+        self.install(self.symbolic_graph("#parent"))
+        self.assertNotIn("collect", self.names(), "Null parent cannot create one singular artifact")
+
+    def test_partial_failed_or_conflicting_discovery_blocks_only_affected_consumers(self):
+        self.child_fixture()
+        self.discovery_incomplete = True
+        self.assertNotIn("collect", self.names())
+        self.assertIn("produce", self.names())
+        self.discovery_incomplete = False
+        self.discovery_failure = True
+        self.assertNotIn("collect", self.names())
+        self.assertRegex(json.dumps(self.session.checkpoint(100)), r"(?i)relationship|unknown|unavailable|incomplete")
+        self.discovery_failure = False
+        self.assertIn("collect", self.names())
+        self.provider.get_parent_issue = lambda _number: 777
+        self.assertNotIn("collect", self.names(), "Conflicting provider/canonical relationship cannot issue known context")
+
+    def test_native_subissue_omission_cannot_silently_drop_canonical_child(self):
+        self.child_fixture()
+        self.provider.get_sub_issues = lambda _number: [{"number": 101}]
+        steps = self.session.checkpoint(100)
+        runnable = [s for s in steps if s.get("kind") == "execute" and s["node"]["node"] == "collect"]
+        if runnable:
+            work = self.session.acquire("collect")
+            targets = {t["goal"] for r in self.resolutions(work) if r["selector"]["goal"] == "#children" for t in r["targets"]}
+            self.assertEqual({101, 102}, targets, "Alternative proven coverage must still include omitted canonical child")
+        else:
+            self.assertRegex(json.dumps(steps), r"(?i)coverage|complete|relationship|mismatch|unknown")
+
+    def test_projected_cross_goal_cycle_blocks_acquisition_not_unrelated_work(self):
+        self.child_fixture()
+        graph = self.symbolic_graph("#parent")
+        graph["nodes"][0]["requires"] = [{"kind": "node", "goal": "#parent", "node": "collect"}]
+        envelope = self.envelope_for(101)
+        payload = self.read_at(101, envelope["payload"])
+        payload["graph"] = self.blob(graph)
+        envelope["payload"] = self.blob(payload)
+        self.provider.comments[101] = copy.deepcopy(self.provider.comments[100])
+        envelope["revision"] += 1
+        self.put_envelope(101, envelope)
+        steps = self.session.checkpoint(100)
+        self.assertNotIn("collect", self.names())
+        self.assertIn("produce", self.names())
+        text = json.dumps(steps)
+        self.assertRegex(text, r"(?i)cycle|acyclic")
+        self.assertIn("101", text)
+        self.assertIn("100", text)
+
+    def test_caller_resolutions_cannot_override_host_acquisition(self):
+        self.child_fixture()
+        work = self.session.acquire("collect")
+        self.assert_rejected(work, {"value": "full join"}, {"resolutions": []}, r"(?i)host|field|resolution|binding")
+
+    def test_plural_finding_target_rejected_even_for_one_child_then_literal_succeeds(self):
+        self.findings(admit=False)
+        self.replace_spec("A source revision permits the next exact producer and finding")
+        self.produce()
+        work = self.session.acquire("find")
+        subject = self.produced("produce")
+        source = self.produced("ingest", "comment")
+        valid = {slot: {"id": slot + "_new", "revision": 1, "source": source, "subjects": [subject],
+                       "target": scope("produce"), "request": "Exact local correction", "rationale": "Observed defect", "supersedes": None}
+                 for slot in ("first", "second")}
+        self.add_goal(101, self.graph, 100)
+        invalid = copy.deepcopy(valid)
+        invalid["first"]["target"]["subject"]["goal"] = "#children"
+        self.assert_rejected(work, valid, {"outputs": invalid}, r"(?i)plural|literal|target|goal|scope")
+
+
+    def test_symbolic_member_and_join_project_each_required_child(self):
+        for kind in ("member", "join"):
+            with self.subTest(kind=kind):
+                graph = self.symbolic_graph(kind=kind)
+                self.install(graph)
+                children = selected_graph()
+                def local(value):
+                    if isinstance(value, list):
+                        return [local(v) for v in value]
+                    if isinstance(value, dict):
+                        return {k: "#this" if k == "goal" and v == 100 else local(v) for k, v in value.items()}
+                    return value
+                children = local(children)
+                for number in (101, 102):
+                    self.add_goal(number, children, 100)
+                    selected = self.session.acquire("select", number=number)
+                    self.session.finish(selected, {"chosen": {"items": {"a": "Required investigation"}, "rationale": "One current item"}}, number=number)
+                    member = self.session.acquire("investigate", number=number, item="a")
+                    self.session.finish(member, {"value": "evidence %d" % number}, number=number)
+                work = self.session.acquire("collect")
+                selected = [r for r in self.resolutions(work) if r["selector"]["goal"] == "#children"]
+                self.assertTrue(selected)
+                for resolution in selected:
+                    self.assertEqual({101, 102}, {t["goal"] for t in resolution["targets"]})
+                    self.assertTrue(all(t["item"] == "a" and t["generation"] == 1 for t in resolution["targets"]))
+                self.session.finish(work, {"value": "joined members"})
+
+    def test_relevant_parent_change_rejects_acquired_child_result(self):
+        graph = self.symbolic_graph("#parent")
+        self.install(graph)
+        self.add_goal(99, graph)
+        self.add_goal(98, graph)
+        self.complete(99, value="old parent")
+        self.complete(98, value="new parent")
+        envelope = self.envelope_for(100)
+        envelope["parent"] = 99
+        envelope["revision"] += 1
+        self.put_envelope(100, envelope)
+        work = self.session.acquire("collect")
+        # External authenticated source transition is data drift, not a forged
+        # CLI authority result. Separate tests exercise guarded public mutation.
+        envelope = self.envelope_for(100)
+        envelope["parent"] = 98
+        envelope["revision"] += 1
+        self.put_envelope(100, envelope)
+        response = self.session.call(100, self.session.submission(work, {"value": "old context"}, "stale-parent"), expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)stale|parent|relationship|input")
+
+    def test_consumed_child_evidence_drift_rejects_acquired_worker(self):
+        self.child_fixture()
+        work = self.session.acquire("collect")
+        envelope = self.envelope_for(101)
+        payload = self.read_at(101, envelope["payload"])
+        spec = self.read_at(101, payload["spec"])
+        spec["content"] = "Substantively changed child request"
+        first_new = len(self.provider.comments[100])
+        payload["spec"] = self.blob(spec)
+        envelope["payload"] = self.blob(payload)
+        for comment in copy.deepcopy(self.provider.comments[100][first_new:]):
+            self.provider.create_issue_comment(101, comment["body"])
+        envelope["revision"] += 1
+        self.put_envelope(101, envelope)
+        self.complete(101, value="corrected child")
+        response = self.session.call(100, self.session.submission(work, {"value": "old child"}, "stale-child"), expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)stale|input|evidence|relationship")
+
+    def test_path_is_selected_for_each_child_before_canonical_aggregation(self):
+        graph = self.symbolic_graph()
+        graph["nodes"][0]["outputs"]["value"] = output("detail", shape({"selected": "yes", "irrelevant": "old"}))
+        graph["nodes"][1]["inputs"]["values"]["path"] = ["selected"]
+        self.install(graph)
+        for number in (102, 101):
+            self.add_goal(number, graph, 100)
+            self.complete(number, value={"selected": str(number), "irrelevant": "unconsumed"})
+        work = self.session.acquire("collect")
+        # Public read must expose the actual selected input value. This proposed
+        # read projection contains data, not a fixture-computed fingerprint.
+        response = self.session.call(100, {"operation": "read", "node": work["node"]})
+        content = response["next_steps"][0]["content"]
+        self.assertEqual({"101": "101", "102": "102"}, content["inputs"]["values"])
+        self.assertEqual(["101", "102"], list(content["inputs"]["values"]))
+        self.session.finish(work, {"value": "per-child projection"})
+
+    def test_archived_state_alone_does_not_satisfy_required_child_evidence(self):
+        graph = self.child_fixture()
+        self.add_goal(103, graph, 100)
+        envelope = self.envelope_for(103)
+        envelope["state"] = "archived"
+        self.put_envelope(103, envelope)
+        self.provider.issues[103]["state"] = "closed"
+        before = copy.deepcopy(self.provider.issues[103])
+        self.assertNotIn("collect", self.names())
+        self.assertRegex(json.dumps(self.session.checkpoint(100)), r"103")
+        self.assertEqual(before, self.provider.issues[103])
+
+    def parent_change_fixture(self):
+        """Finite ordinary output wire proposal, subject to independent review.
+
+        parent_change={repository,subject,expected,parent}; expected is the exact
+        subject GoalEnvelope Ref observed after acquisition, checked by the host.
+        Root role plus configured permits authorizes only this guarded relation
+        change, not scope removal or obligation retirement. No new operation.
+        """
+        move = task("move", role="root")
+        change_type = {"kind": "object", "fields": {
+            "repository": {"kind": "string"}, "subject": {"kind": "integer"},
+            "expected": REF_TYPE,
+            "parent": {"kind": "union", "variants": [{"kind": "integer"}, {"kind": "null"}]}}}
+        move["outputs"] = {"change": output("parent_change", change_type)}
+        move["executor"]["authority"] = scope("move", "change")
+        move["permits"] = [{"type": "parent_change", "scope": scope("move", "change")}]
+        graph = {"nodes": [move], "task_sets": [], "terminals": [selector("move")]}
+        self.install(graph)
+        self.add_goal(99, graph)
+        # Creating an immutable fixture Ref is not a parent change. The host
+        # must compare the actual canonical record under ownership at submit.
+        work = self.session.acquire("move", actor="root-thread")
+        expected = self.blob(self.envelope_for(100))
+        request = {"repository": "owner/repo", "subject": 100, "expected": expected, "parent": 99}
+        return work, request
+
+    def test_guarded_parent_change_positive_retry_and_retained_before_after(self):
+        work, change = self.parent_change_fixture()
+        payload = self.session.submission(work, {"change": change}, "parent-change-once")
+        result = self.session.call(100, payload)
+        self.assertEqual(99, self.envelope_for(100)["parent"])
+        after = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.assertEqual(result, self.session.call(100, payload))
+        self.assertEqual(after, (self.provider.issues, self.provider.comments))
+        self.assertEqual(None, self.read_blob(change["expected"])["parent"])
+        self.assertEqual(change, self.read_blob(self.produced("move", "change"))["content"])
+        self.assertNotIn("schema_activation", json.dumps(result))
+
+    def test_parent_change_rejects_self_unknown_ancestry_crossrepo_and_stale_predecessor(self):
+        work, change = self.parent_change_fixture()
+        for mutation, diagnostic in (({"parent": 100}, r"(?i)self|cycle|parent"),
+                                     ({"parent": 999}, r"(?i)unknown|ancestor|missing|parent"),
+                                     ({"repository": "foreign/repo"}, r"(?i)repository|identity|authority"),
+                                     ({"expected": REF}, r"(?i)stale|predecessor|source|reference|missing")):
+            with self.subTest(mutation=mutation):
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                request = self.session.submission(work, {"change": {**change, **mutation}}, "bad-parent-" + str(len(self.session.calls)))
+                response = self.session.call(100, request, expected=2)
+                self.assertRegex(json.dumps(response), diagnostic)
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        # Same acquired subject must still accept its exact valid correction.
+        self.session.finish(work, {"change": change})
+        self.assertEqual(99, self.envelope_for(100)["parent"])
+
+    def test_parent_change_requires_actual_root_not_claimed_content_actor(self):
+        work, change = self.parent_change_fixture()
+        self.assert_rejected(work, {"change": change}, {"actor": "untrusted-worker"}, r"(?i)root|actor|owner|authority")
+        self.assertEqual(99, self.envelope_for(100)["parent"])
+
+    def test_parent_cycle_and_concurrent_predecessor_drift_do_not_overwrite(self):
+        work, change = self.parent_change_fixture()
+        parent = self.envelope_for(99)
+        parent["parent"] = 100
+        parent["revision"] += 1
+        self.put_envelope(99, parent)
+        request = self.session.submission(work, {"change": change}, "parent-cycle")
+        response = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)cycle|ancestor")
+        self.assertIsNone(self.envelope_for(100)["parent"])
+        parent["parent"] = None
+        parent["revision"] += 1
+        self.put_envelope(99, parent)
+        current = self.envelope_for(100)
+        current["revision"] += 1
+        self.put_envelope(100, current)
+        before = copy.deepcopy(self.provider.issues)
+        response = self.session.call(100, self.session.submission(work, {"change": change}, "concurrent-parent"), expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)stale|predecessor|revision|input")
+        self.assertEqual(before, self.provider.issues)
+
+
+    def test_reparenting_preserves_admitted_findings_and_does_not_release_join(self):
+        self.parent_change_fixture()
+        move = copy.deepcopy(self.graph["nodes"][0])
+        graph = correction_graph()
+        graph["nodes"].append(move)
+        _findings, admissions = self.findings(graph=graph)
+        self.add_goal(99, graph)
+        retained = {slot: self.produced("find", slot) for slot in admissions}
+        work = self.session.acquire("move", actor="root-thread")
+        change = {"repository": "owner/repo", "subject": 100,
+                  "expected": self.blob(self.envelope_for(100)), "parent": 99}
+        self.session.finish(work, {"change": change})
+        self.assertEqual(99, self.envelope_for(100)["parent"])
+        self.assertIn("produce", self.names(), "Admitted correction remains substantive input after reparenting")
+        self.assertNotIn("finish", self.names(), "Parent move cannot resolve an outstanding finding")
+        self.assertEqual(retained, {slot: self.produced("find", slot) for slot in admissions})
+
+    def test_parent_change_lost_write_response_is_read_back_before_exact_retry(self):
+        work, change = self.parent_change_fixture()
+        request = self.session.submission(work, {"change": change}, "lost-parent-write")
+        original = self.provider.update_issue
+        lost = []
+        def uncertain(number, payload):
+            result = original(number, payload)
+            if number == 100 and not lost and self.envelope_for(100)["parent"] == 99:
+                lost.append(True)
+                raise RuntimeError("provider applied parent body but response was lost")
+            return result
+        self.provider.update_issue = uncertain
+        self.session.call(100, request, expected=None)
+        self.assertTrue(lost, "Fault must reach the actual provider write boundary")
+        self.provider.update_issue = original
+        result = self.session.call(100, request)
+        self.assertEqual(99, self.envelope_for(100)["parent"])
+        stable = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.assertEqual(result, self.session.call(100, request))
+        self.assertEqual(stable, (self.provider.issues, self.provider.comments))
+
+
+    def test_archived_predecessor_read_preserves_source_and_requires_exact_equivalence(self):
+        self.child_fixture()
+        # Current archived exact evidence already passes the separate positive
+        # control. Historical closure and an old approval cannot impersonate a
+        # current result; targeted predecessor decoding is still permitted.
+        source = old.fixtures.PortfolioTests().issue(103)
+        legacy = old.fixtures.PortfolioTests().goal(parent=100, status="done")
+        source["body"] = "## Outcome\nHistorical child delivery.\n\n<!-- zzzops-goal\n" + json.dumps(legacy) + "\nzzzops-goal -->"
+        source["state"] = "closed"
+        self.provider.issues[103] = source
+        self.provider.comments[103] = []
+        before = copy.deepcopy(source)
+        self.relationship_reads.clear()
+        self.assertNotIn("collect", self.names())
+        diagnostic = json.dumps(self.session.checkpoint(100))
+        self.assertRegex(diagnostic, r"(?i)103")
+        self.assertRegex(diagnostic, r"(?i)equivalence|evidence|historical|mapping|missing")
+        self.assertIn(103, self.relationship_reads)
+        self.assertEqual(before, self.provider.issues[103])
+        self.assertEqual([], self.provider.comments[103], "Read cannot convert or fabricate archived approval")
 
 if __name__ == "__main__":
     unittest.main()

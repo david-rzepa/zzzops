@@ -196,6 +196,55 @@ class EvidenceGraphGrammarTests(unittest.TestCase):
         graph["nodes"].append(task("investigate"))
         self.assertRegex("; ".join(self.errors(graph)), r"(?i)duplicate|identity|unique|template")
 
+    def test_symbolic_selectors_are_first_class_and_case_sensitive(self):
+        for goal in ("#this", "#parent", "#children", 987):
+            with self.subTest(goal=goal):
+                graph = review_graph()
+                graph["nodes"][1]["requires"] = [{**selector("produce"), "goal": goal}]
+                self.accepted(graph)
+                for invalid in ("#This", "#PARENT", "#child", "100", 0, -1, True, 1.5):
+                    broken = copy.deepcopy(graph)
+                    broken["nodes"][1]["requires"][0]["goal"] = invalid
+                    self.assertRegex("; ".join(self.errors(broken)), r"(?i)selector|goal|identity|reference")
+
+    def test_symbolic_static_member_and_join_in_all_reference_positions(self):
+        # External declarations resolve at runtime; static validation checks the
+        # selector grammar without guessing unknown relationship membership.
+        for kind in ("node", "member", "join"):
+            selected = ({"kind": "node", "node": "remote"} if kind == "node" else
+                        {"kind": "member", "expansion": "remote_set", "item": "a", "generation": "current"}
+                        if kind == "member" else {"kind": "join", "expansion": "remote_set"})
+            selected["goal"] = "#children"
+            for position in ("requires", "independent_of", "gates", "resolves", "permits", "inputs", "authority", "terminals"):
+                with self.subTest(kind=kind, position=position):
+                    node = task("local")
+                    graph = {"nodes": [node], "task_sets": [], "terminals": [selector("local")]}
+                    scoped = {"subject": selected, "output": "value"}
+                    if position in ("requires", "independent_of"):
+                        node[position] = [selected]
+                    elif position in ("gates", "resolves"):
+                        node[position] = [scoped]
+                    elif position == "permits":
+                        node[position] = [{"type": "finding", "scope": scoped}]
+                    elif position == "inputs":
+                        node[position] = {"children": {**subject_input("remote"), "producer": {"node": selected}}}
+                    elif position == "authority":
+                        node["executor"]["authority"] = scoped
+                    else:
+                        graph[position] = [selected]
+                    self.accepted(graph)
+                    before = copy.deepcopy(graph)
+                    self.errors(graph)
+                    self.assertEqual(before, graph, "Validation must retain symbolic selectors")
+
+    def test_child_selection_cannot_filter_required_decomposition_membership(self):
+        self.rejected_mutation(lambda graph: graph.update(child_selection=subject_input("produce")),
+                               r"(?i)field|unknown|child_selection")
+
+    def test_relationship_context_is_reserved_for_host_issuance(self):
+        self.rejected_mutation(lambda graph: graph["nodes"][0]["outputs"]["value"].update(type="relationship_context"),
+                               r"(?i)reserved|host|relationship")
+
 
 if __name__ == "__main__":
     unittest.main()
