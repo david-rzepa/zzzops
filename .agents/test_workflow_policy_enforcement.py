@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -40,6 +41,54 @@ def durable(*leases):
     }
 
 
+from test_evidence_dag_journeys import DagFixture, RelationshipPublicTests
+
+
+class GenericWorkerCapacityTests(DagFixture):
+    add_goal = RelationshipPublicTests.add_goal
+    put_envelope = RelationshipPublicTests.put_envelope
+
+    def test_other_goal_unresolved_owner_consumes_reviewed_capacity_until_observed_stop(self):
+        config = z._workflow_section(self.session.project, "autonomy_approval_parallelism")["configuration"]
+        config["max_workers"] = 1
+        graph = copy.deepcopy(self.graph)
+        def symbolic(value):
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    if key == "goal" and child == 100:
+                        value[key] = "#this"
+                    else:
+                        symbolic(child)
+            elif isinstance(value, list):
+                for child in value:
+                    symbolic(child)
+        symbolic(graph)
+        self.install(graph)
+        self.add_goal(101, graph)
+        target = next(step for step in self.session.checkpoint(101) if step.get("kind") == "execute")
+        start = {**target["start"], "policy_receipt": json.loads(Path(target["policy"]["path"]).read_text())["policy_receipt"]}
+        first = self.session.acquire("produce", number=100, actor="first-writer")
+        for now in (first["lease"]["expires_at"] - 1, first["lease"]["expires_at"] + 1):
+            with self.subTest(now=now), mock.patch.object(z._workflow.time, "time", return_value=now):
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                steps = self.session.checkpoint(101)
+                self.assertFalse(any(step.get("kind") == "execute" for step in steps))
+                self.assertRegex(str(steps), r"(?i)max_workers|capacity|await_worker")
+                rejected = self.session.call(101, start, expected=2)
+                self.assertRegex(str(rejected), r"(?i)max_workers|capacity|unresolved|active.*lease")
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        with mock.patch.object(z._workflow.time, "time", return_value=first["lease"]["expires_at"] + 1):
+            steps = self.session.checkpoint(100)
+            recovery = next(step for step in steps if "recovery_contract" in step or step.get("kind") == "recover")
+            request = copy.deepcopy(recovery.get("submission", recovery.get("recovery_contract")))
+            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+            self.session.call(100, {**request, "worker_status": "unknown", "evidence": "Timeout alone"}, expected=2)
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+            self.session.call(100, {**request, "worker_status": "stopped", "evidence": "Actual first-writer terminal state observed"})
+        second = self.session.acquire("produce", number=101, actor="second-writer")
+        self.session.finish(second, {"value": "Capacity released only after observed ownership termination"}, number=101)
+
+
 class WorkerLimitEnforcementTests(unittest.TestCase):
     def test_checkpoint_uses_reviewed_max_workers_instead_of_fixed_three(self):
         goals = [
@@ -56,34 +105,8 @@ class WorkerLimitEnforcementTests(unittest.TestCase):
         self.assertEqual([mock.call(1), mock.call(2)], engine.step.call_args_list)
 
     def test_start_rejects_capacity_consumed_by_another_unresolved_lease(self):
-        engine = z._workflow.Workflow.__new__(z._workflow.Workflow)
-        engine.project = project(max_workers=1)
-        engine.runtime = {"root_id": "root-thread"}
-        engine.locked = lambda: contextlib.nullcontext()
-        engine.adapter = SimpleNamespace(get_issue_comments=lambda number: [])
-        active = {
-            "key": 1, "status": "ready",
-            "workflow": durable({"expires_at": 0, "worker": "synthetic-worker"}),
-        }
-        goal = {
-            "key": 2, "revision": 1, "digest": "current", "status": "ready",
-            "workflow": durable(),
-        }
-        issue = {"body": "synthetic"}
-        engine.portfolio = mock.Mock(return_value=[active, goal])
-        engine.read = mock.Mock(return_value=(issue, goal))
-        engine.step = mock.Mock(return_value=[{
-            "kind": "execute", "phase": "understand", "input_hash": "sha256:input",
-        }])
-        engine.save = mock.Mock()
-        engine.api = SimpleNamespace(parse_managed_goal=lambda body, number: copy.deepcopy(goal))
-
-        with self.assertRaisesRegex(ValueError, "max_workers"):
-            engine.mutate(2, {
-                "operation": "start", "phase": "understand", "kind": "execute",
-                "input_hash": "sha256:input", "request_id": "start-2",
-            })
-        engine.save.assert_not_called()
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_workflow_policy_enforcement.GenericWorkerCapacityTests.test_other_goal_unresolved_owner_consumes_reviewed_capacity_until_observed_stop')
 
     def test_checkpoint_replaces_unstartable_phase_with_capacity_step(self):
         active = {"key": 1, "priority": "P0", "status": "ready", "depends_on": [], "workflow": durable({"expires_at": 0, "worker": "synthetic-worker"})}
