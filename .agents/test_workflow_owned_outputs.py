@@ -823,31 +823,9 @@ class OwnedOutputPublicTests(unittest.TestCase):
                             x.get('phase') in {'understand', 'plan'} for x in stale), stale)
 
     def test_declared_deletion_has_same_proof_identity_after_commit(self):
-        s = self.session
-        s.prepare()
-        design = s.start(101, 'test_design')
-        (s.repo / s.test_path).write_text('from pathlib import Path\nassert not Path("source.py").exists(), "remove obsolete source"\n')
-        failed = s.verify(design)['next_steps'][0]['verification']
-        self.assertFalse(s.read(101, failed)['passed'])
-        s.result(101, design, {'files': {s.test_path: file_hash(s.repo / s.test_path)}}, failed)
-        s.review(101, 'test_design')
-        s.git('add', s.test_path)
-        s.git('commit', '-qm', 'test: require obsolete source deletion')
-        step = s.start(101, 'implement')
-        (s.repo / 'source.py').unlink()
-        reference = s.verify(step)['next_steps'][0]['verification']
-        proof = s.read(101, reference)
-        self.assertTrue(proof['passed'])
-        self.assertEqual('missing', proof['outputs']['source.py'])
-        s.result(101, step, {'files': {'source.py': 'missing'}}, reference)
-        s.review(101, 'implement')
-        before = s.goal(101)['phase_evidence']['records']['implement']
-        s.git('add', '-u')
-        s.git('commit', '-qm', 'fix: delete obsolete source')
-        after = s.checkpoint(101)
-        self.assertFalse(any(x.get('phase') in {'understand', 'plan', 'test_design', 'implement'}
-                             and x['kind'] in {'execute', 'review', 'assess'} for x in after), after)
-        self.assertEqual(before, s.goal(101)['phase_evidence']['records']['implement'])
+        # Preserve the exact workspace guard through the generic public engine.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_permitted_red_to_green_edits_keep_fingerprints_and_downstream_proof_reuse')
 
     def test_recorded_output_exposes_own_review_and_correction_without_consumer_authority(self):
         s = self.session
@@ -1205,18 +1183,9 @@ class OwnedOutputPublicTests(unittest.TestCase):
 
     @unittest.skipUnless(hasattr(os, 'symlink'), 'Platform cannot create symlinks')
     def test_owned_output_symlink_cannot_escape_the_worktree(self):
-        s = self.session
-        s.prepare()
-        step = s.start(101, 'test_design')
-        outside = s.control / 'outside.py'
-        outside.write_text('raise SystemExit(0)\n')
-        original = outside.read_bytes()
-        owned = self.repo / s.test_path
-        owned.unlink()
-        owned.symlink_to(outside)
-        response = s.verify(step, expected=2)
-        self.assertRegex(response['next_steps'][0]['reason'], r'(?i)(outside|inside|escape|repository|worktree|symlink)')
-        self.assertEqual(original, outside.read_bytes())
+        # Preserve the exact workspace guard through the generic public engine.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_acquired_owned_path_cannot_be_replaced_by_escaping_symlink')
 
     def test_read_only_checkpoint_preserves_closed_goal_and_has_no_cursor(self):
         s = self.session

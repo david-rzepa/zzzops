@@ -1409,13 +1409,17 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         deleted_hash = "sha256:" + hashlib.sha256(obsolete.read_bytes()).hexdigest()
         obsolete.unlink()
         (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
-        _green_ref, green = self.candidate(beta, 0)
+        green_ref, green = self.candidate(beta, 0)
         self.assertEqual("sha256:" + original, green["consumed"]["source.py"])
         self.assertEqual(deleted_hash, green["consumed"]["obsolete.txt"])
         self.assertEqual("missing", green["outputs"]["obsolete.txt"])
         self.assertNotIn("gamma", self.names())
         self.review_candidate("beta", 0)
         before = self.result("alpha")[0], self.result("beta")[0]
+        self.session.git("add", "source.py", "behavior_test.py", "obsolete.txt")
+        self.session.git("commit", "-qm", "accepted source change and declared deletion")
+        self.assertEqual(green, self.read_blob(green_ref))
+        self.assertEqual("missing", green["outputs"]["obsolete.txt"])
         self.session = TaskSession(self.fixture.repo, self.session.project, self.session.runtime,
                                    self.provider, self.session.control)
         gamma = self.acquire_workspace("gamma")
@@ -1423,6 +1427,29 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.assertEqual(before, (self.result("alpha")[0], self.result("beta")[0]))
         self.assertEqual(red, self.read_blob(red_ref), "Later green work cannot rewrite red baseline proof")
         self.session.finish(gamma, {"value": "Consumed accepted test and implementation output identities"})
+
+    def test_acquired_owned_path_cannot_be_replaced_by_escaping_symlink(self):
+        self.setup_workspace()
+        work = self.acquire_workspace("alpha")
+        with tempfile.TemporaryDirectory() as directory:
+            outside = Path(directory) / "outside.py"
+            outside.write_text("raise SystemExit(0)\n")
+            original = outside.read_bytes()
+            owned = self.fixture.repo / "behavior_test.py"
+            self.assertFalse(owned.exists())
+            owned.symlink_to(outside)
+            request = self.session.submission(work, {"value": "candidate"}, "escaping-owned-output")
+            request["workspace_checks"] = [[sys.executable, "-B", "behavior_test.py"]]
+            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+            response = self.session.call(100, request, expected=2)
+            self.assertRegex(json.dumps(response), r"(?i)outside|escape|repository|worktree|symlink|scope")
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+            self.assertEqual(original, outside.read_bytes())
+            owned.unlink()
+            owned.write_text("from source import value\nassert value() == 2\n")
+            self.candidate(work, 1)
+            self.review_candidate("alpha", 1)
+            self.assertIn("beta", self.names())
 
     def test_current_authorization_must_match_manifest_task_generation_and_policy(self):
         self.setup_workspace(defer_authorization=True)
