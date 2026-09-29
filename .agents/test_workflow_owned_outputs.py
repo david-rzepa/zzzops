@@ -1513,15 +1513,8 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         return '<!-- zzzops-artifact ' + identity + ' -->\n<details><summary>Immutable phase artifact</summary>\n\n```text\n' + encoded + '\n```\n</details>'
 
     def test_legacy_alternate_compression_reuses_complete_content_identity(self):
-        s = self.session
-        step = s.start(101, 'understand')
-        for content in ('Raw Markdown 😀\r\nno final newline', {'text': 'long paragraph ' * 100}, [1, False, None]):
-            with self.subTest(type=type(content).__name__):
-                s.provider.create_issue_comment(101, self.legacy_body(content))
-                before = copy.deepcopy(s.provider.comments[101])
-                self.assertEqual(content, s.read(101, self.reference(content)))
-                self.assertEqual(self.reference(content), s.artifact(101, step, content))
-                self.assertEqual(before, s.provider.comments[101])
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_alternate_legacy_compression_preserves_typed_output_identity_and_retry')
 
     def test_public_artifact_reads_reject_duplicate_keys_trailing_and_expansion(self):
         s = self.session
@@ -1579,132 +1572,29 @@ class CommentCheckpointPublicTests(unittest.TestCase):
                 self.assertEqual(content, s.read(101, self.reference(content)))
 
     def test_sparse_changed_artifact_is_smaller_and_missing_base_fails_closed(self):
-        s = self.session
-        step = s.start(101, 'understand')
-        text = ''.join(hashlib.sha256(str(i).encode()).hexdigest() for i in range(500))
-        first = {'text': text}
-        base_start = len(s.provider.comments[101])
-        first_ref = s.artifact(101, step, first)
-        base_comments = copy.deepcopy(s.provider.comments[101][base_start:])
-        s.result(101, step, first)
-        s.review(101, 'understand', acceptance='changes_requested')
-        step = s.start(101, 'understand')
-        changed = {'text': text[:16000] + '!' + text[16001:]}
-        before = len(s.provider.comments[101])
-        s.call(101, self.inline_result(step, [changed]))
-        newly_stored = s.provider.comments[101][before:]
-        self.assertLess(sum(len(c['body']) for c in newly_stored), sum(len(c['body']) for c in base_comments))
-        self.assertEqual(changed, s.read(101, self.reference(changed)))
-        self.assertEqual(first, s.read(101, first_ref))
-        # Remove the verified base storage only, retaining current committed state.
-        base_ids = {c['id'] for c in base_comments}
-        s.provider.comments[101] = [c for c in s.provider.comments[101] if c['id'] not in base_ids]
-        s.call(101, {'operation': 'read', 'artifact': self.reference(changed)}, expected=None)
-        self.assertNotEqual(0, s.calls[-1]['code'], 'A missing delta base must not return stale or partial content')
+        # Same storage guard, now using host-issued generic output artifact identities.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_sparse_output_delta_is_smaller_and_missing_base_fails_closed')
 
     def test_new_envelope_cycles_duplicate_records_and_patch_tampering_fail_closed(self):
-        """Decoded envelopes expose artifact records for semantic validation.
-
-        Records expose hash/kind/base and a decoded patch. encode_envelope performs
-        transport encoding/checksumming, allowing deliberate semantically invalid
-        fixtures; the production reader enforces semantic integrity.
-        """
-        s = self.session
-        step = s.start(101, 'understand')
-        text = ''.join(hashlib.sha256(str(i).encode()).hexdigest() for i in range(200))
-        first, changed = {'text': text}, {'text': '!' + text[1:]}
-        s.result(101, step, first)
-        s.review(101, 'understand', acceptance='changes_requested')
-        step = s.start(101, 'understand')
-        before = len(s.provider.comments[101])
-        s.call(101, self.inline_result(step, [changed]))
-        self.assertEqual(changed, s.read(101, self.reference(changed)))  # Positive control.
-        path = Path(z.__file__).parent / 'comment_store.py'
-        spec = importlib.util.spec_from_file_location('goal539_envelope_test', path)
-        codec = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(codec)
-        stored = s.provider.comments[101][before]
-        original = stored['body']
-        envelope = codec.decode_envelope(original)
-        self.assertTrue(any(r['hash'] == content_hash(changed) and r['kind'] == 'delta' for r in envelope['artifacts']))
-        for corruption in ('cycle', 'missing_base', 'duplicate_record', 'tampered_patch', 'unknown_version'):
-            with self.subTest(corruption=corruption):
-                mutated = copy.deepcopy(envelope)
-                record = next(r for r in mutated['artifacts'] if r['hash'] == content_hash(changed))
-                if corruption == 'cycle':
-                    record['base'] = record['hash']
-                elif corruption == 'missing_base':
-                    record['base'] = 'sha256:' + '0' * 64
-                elif corruption == 'duplicate_record':
-                    mutated['artifacts'].append(copy.deepcopy(record))
-                elif corruption == 'tampered_patch':
-                    record['patch']['edits'][0][2] += 'tampered'
-                else:
-                    mutated['schema_version'] = 999
-                stored['body'] = codec.encode_envelope(mutated)
-                s.call(101, {'operation': 'read', 'artifact': self.reference(changed)}, expected=None)
-                self.assertNotEqual(0, s.calls[-1]['code'], 'Must reject ' + corruption + ' without stale fallback')
-                stored['body'] = original
-                self.assertEqual(changed, s.read(101, self.reference(changed)))
+        # Same storage guard, now using host-issued generic output artifact identities.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_output_delta_cycle_missing_base_duplicate_patch_and_version_reject')
 
     def test_reconstruction_work_limit_is_enforced_even_for_compressible_content(self):
-        """The reconstruction-work constant is internal, with no public setting."""
-        s = self.session
-        step = s.start(101, 'understand')
-        content = {'text': 'compressible ' * 40000}
-        reference = s.artifact(101, step, content)
-        self.assertEqual(content, s.read(101, reference))
-        # A pristine CLI import can replace sys.modules aliases. Patch the
-        # module retained by this session's actual workflow implementation.
-        store = s.api._workflow.comment_store
-        self.assertTrue(hasattr(store, 'MAX_RECONSTRUCTION_WORK_BYTES'), 'Reconstruction-work limit is missing')
-        with mock.patch.dict(sys.modules):
-            spec = importlib.util.spec_from_file_location('budget_pristine_zzzops', s.api.__file__)
-            pristine = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(pristine)
-            self.assertIsNot(store, pristine._workflow.comment_store)
-            with mock.patch.object(store, 'MAX_RECONSTRUCTION_WORK_BYTES', 100):
-                s.call(101, {'operation': 'read', 'artifact': reference}, expected=None)
-                self.assertNotEqual(0, s.calls[-1]['code'], 'A tiny compressed body must not bypass decoded work accounting')
-        self.assertEqual(content, s.read(101, reference))
+        # Same storage guard, now using host-issued generic output artifact identities.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_decoded_reconstruction_work_bound_applies_to_compressible_output')
 
     def test_unfavorable_delta_uses_independent_full_checkpoint(self):
-        s = self.session
-        step = s.start(101, 'understand')
-        first = {'text': 'a' * 20000}
-        before = len(s.provider.comments[101])
-        s.artifact(101, step, first)
-        base_ids = {c['id'] for c in s.provider.comments[101][before:]}
-        s.result(101, step, first)
-        s.review(101, 'understand', acceptance='changes_requested')
-        step = s.start(101, 'understand')
-        changed = {'text': 'z' * 20000}
-        s.call(101, self.inline_result(step, [changed]))
-        s.provider.comments[101] = [c for c in s.provider.comments[101] if c['id'] not in base_ids]
-        self.assertEqual(changed, s.read(101, self.reference(changed)), 'Cheaper full checkpoints must not depend on the prior artifact')
+        # Same storage guard, now using host-issued generic output artifact identities.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_unfavorable_output_delta_is_independent_full_record')
 
     def test_checkpoint_rollover_breaks_dependency_before_ninth_delta_edge(self):
-        s = self.session
-        step = s.start(101, 'understand')
-        text = ''.join(hashlib.sha256(str(i).encode()).hexdigest() for i in range(200))
-        initial = {'text': text}
-        before = len(s.provider.comments[101])
-        s.artifact(101, step, initial)
-        base_ids = {c['id'] for c in s.provider.comments[101][before:]}
-        s.result(101, step, initial)
-        for index in range(9):
-            s.review(101, 'understand', acceptance='changes_requested')
-            step = s.start(101, 'understand')
-            text = text[:100 + index] + '!' + text[101 + index:]
-            content = {'text': text}
-            s.call(101, self.inline_result(step, [content], 'rollover-' + str(index)))
-            self.assertEqual(content, s.read(101, self.reference(content)))
-        s.provider.comments[101] = [c for c in s.provider.comments[101] if c['id'] not in base_ids]
-        self.assertEqual(content, s.read(101, self.reference(content)), 'Writer must checkpoint before exceeding eight edges')
-        review = s.start(101, 'understand', 'review')
-        before = copy.deepcopy(s.provider.comments[101])
-        self.assertEqual(self.reference(content), s.artifact(101, review, content))
-        self.assertEqual(before, s.provider.comments[101], 'Reuse works even for bundled delta/checkpoint representations')
+        # Same storage guard, now using host-issued generic output artifact identities.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_output_chain_rollover_preserves_latest_without_initial_base')
 
     def test_cached_immutable_read_does_not_pin_logical_head(self):
         s = self.session

@@ -2591,5 +2591,138 @@ class RelationshipPublicTests(DagFixture):
         self.assertEqual(before, self.provider.issues[103])
         self.assertEqual([], self.provider.comments[103], "Read cannot convert or fabricate archived approval")
 
+
+
+class GenericStoragePublicTests(DagFixture):
+    """Storage invariants on exact host output Refs from generic submissions."""
+
+    def setUp(self):
+        super().setUp()
+        graph = review_graph()
+        graph["nodes"][0]["inputs"] = {"request": spec_input()}
+        self.install(graph)
+        self.version = 0
+
+    def versioned_output(self, value):
+        if self.version:
+            self.replace_spec("Explicit substantive request version %d" % self.version)
+        self.version += 1
+        acquired = self.session.acquire("produce")
+        before = len(self.provider.comments[100])
+        self.last_submission = self.session.submission(acquired, {"value": value}, "storage-output-%d" % self.version)
+        self.session.call(100, self.last_submission)
+        ref = self.produced("produce", "value")
+        artifact = self.session.read(100, ref)
+        self.assertEqual(value, artifact["content"])
+        self.assertEqual(ref["hash"], content_hash(artifact))
+        return ref, artifact, before
+
+    def records(self, reference):
+        found = []
+        for comment in self.provider.comments[100]:
+            envelope = z._comment_store.decode_envelope(comment["body"])
+            if envelope is not None:
+                for record in envelope["artifacts"]:
+                    if record["hash"] == reference["hash"]:
+                        found.append((comment, envelope, record))
+        self.assertTrue(found, "Host submission must store the exact returned output identity")
+        return found
+
+    def remove_output_record(self, reference):
+        for comment, envelope, record in self.records(reference):
+            envelope["artifacts"].remove(record)
+            comment["body"] = z._comment_store.encode_envelope(envelope)
+
+    def test_alternate_legacy_compression_preserves_typed_output_identity_and_retry(self):
+        graph = copy.deepcopy(self.graph)
+        graph["nodes"][0]["outputs"]["value"]["schema"] = {"kind": "union", "variants": [
+            {"kind": "string"}, {"kind": "object", "fields": {"text": {"kind": "string"}}},
+            {"kind": "array", "items": {"kind": "union", "variants": [
+                {"kind": "integer"}, {"kind": "boolean"}, {"kind": "null"}]}}]}
+        self.install(graph)
+        for value in ("Raw Markdown 😀\r\nno final newline", {"text": "long paragraph " * 100}, [1, False, None]):
+            with self.subTest(value_type=type(value).__name__):
+                reference, artifact, _before = self.versioned_output(value)
+                raw = json.dumps({"hash": reference["hash"], "content": artifact}, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+                encoded = base64.b64encode(zlib.compress(raw, level=0)).decode()
+                body = "<!-- zzzops-artifact " + reference["hash"] + " -->\n<details><summary>Immutable phase artifact</summary>\n\n```text\n" + encoded + "\n```\n</details>"
+                self.provider.create_issue_comment(100, body)
+                self.assertEqual(artifact, self.session.read(100, reference))
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                self.session.call(100, self.last_submission)
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+                self.assertEqual(reference, self.produced("produce", "value"))
+
+    def test_sparse_output_delta_is_smaller_and_missing_base_fails_closed(self):
+        text = "".join(hashlib.sha256(str(i).encode()).hexdigest() for i in range(500))
+        first, _artifact, _before = self.versioned_output(text)
+        changed, artifact, _before = self.versioned_output(text[:16000] + "!" + text[16001:])
+        first_record = self.records(first)[0][2]
+        record = self.records(changed)[0][2]
+        self.assertEqual("delta", record["kind"])
+        self.assertLess(len(json.dumps(record)), len(json.dumps(first_record)))
+        self.assertEqual(artifact, self.session.read(100, changed))
+        self.remove_output_record(first)
+        self.session.call(100, {"operation": "read", "artifact": changed}, expected=2)
+
+    def test_output_delta_cycle_missing_base_duplicate_patch_and_version_reject(self):
+        text = "".join(hashlib.sha256(str(i).encode()).hexdigest() for i in range(200))
+        self.versioned_output(text)
+        reference, artifact, _before = self.versioned_output("!" + text[1:])
+        comment, envelope, record = self.records(reference)[0]
+        self.assertEqual("delta", record["kind"])
+        original = comment["body"]
+        for corruption in ("cycle", "missing_base", "duplicate", "patch", "version"):
+            with self.subTest(corruption=corruption):
+                mutated = copy.deepcopy(envelope)
+                selected = next(r for r in mutated["artifacts"] if r["hash"] == reference["hash"])
+                if corruption == "cycle":
+                    selected["base"] = selected["hash"]
+                elif corruption == "missing_base":
+                    selected["base"] = "sha256:" + "0" * 64
+                elif corruption == "duplicate":
+                    mutated["artifacts"].append(copy.deepcopy(selected))
+                elif corruption == "patch":
+                    selected["patch"]["edits"][0][2] += "tampered"
+                else:
+                    mutated["schema_version"] = 999
+                comment["body"] = z._comment_store.encode_envelope(mutated)
+                self.session.call(100, {"operation": "read", "artifact": reference}, expected=2)
+                comment["body"] = original
+                self.assertEqual(artifact, self.session.read(100, reference))
+
+    def test_unfavorable_output_delta_is_independent_full_record(self):
+        first, _artifact, _before = self.versioned_output("a" * 20000)
+        changed, artifact, _before = self.versioned_output("z" * 20000)
+        self.assertEqual("full", self.records(changed)[0][2]["kind"])
+        self.remove_output_record(first)
+        self.assertEqual(artifact, self.session.read(100, changed))
+
+    def test_output_chain_rollover_preserves_latest_without_initial_base(self):
+        text = "".join(hashlib.sha256(str(i).encode()).hexdigest() for i in range(200))
+        first, _artifact, _before = self.versioned_output(text)
+        for index in range(9):
+            text = text[:100 + index] + "!" + text[101 + index:]
+            reference, artifact, _before = self.versioned_output(text)
+        self.remove_output_record(first)
+        self.assertEqual(artifact, self.session.read(100, reference))
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, self.last_submission)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments), "Retry reuses bundled immutable output without another checkpoint")
+
+    def test_decoded_reconstruction_work_bound_applies_to_compressible_output(self):
+        reference, artifact, _before = self.versioned_output("compressible " * 40000)
+        store = self.session.api._workflow.comment_store
+        self.assertTrue(hasattr(store, "MAX_RECONSTRUCTION_WORK_BYTES"))
+        with mock.patch.dict(sys.modules):
+            spec = importlib.util.spec_from_file_location("generic_budget_pristine_zzzops", self.session.api.__file__)
+            pristine = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(pristine)
+            self.assertIsNot(store, pristine._workflow.comment_store)
+            with mock.patch.object(store, "MAX_RECONSTRUCTION_WORK_BYTES", 100000):
+                self.session.call(100, {"operation": "read", "artifact": reference}, expected=2)
+        self.assertEqual(artifact, self.session.read(100, reference))
+
+
 if __name__ == "__main__":
     unittest.main()
