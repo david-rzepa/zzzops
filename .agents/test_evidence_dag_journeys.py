@@ -517,6 +517,11 @@ class EvidenceDagPublicTests(DagFixture):
             proposal = initializer.plan()
         proposal["repository"]["identity"] = "owner/repo"
         proposal["policy"] = copy.deepcopy(self.session.project["policy"])
+        # The fixture substitutes its available model pairs for the shipped
+        # inventory. Describe that customization; the public policy gate builds
+        # its provenance and still requires approval of the exact proposal.
+        routing = next(s for s in proposal["policy"]["sections"] if s["id"] == "model_routing")
+        routing["default_disposition"] = "changed"
         backend = next(s for s in proposal["policy"]["sections"] if s["id"] == "backend")
         backend["configuration"].update(repository_identity="owner/repo", authority="github_issues")
         backend["default_disposition"] = "changed"
