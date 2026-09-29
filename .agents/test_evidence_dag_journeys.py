@@ -240,9 +240,9 @@ class DagFixture(unittest.TestCase):
 
     def read_blob(self, ref):
         expected = ref["hash"]
-        # #539 deliberately permits legacy, bundled full and delta encodings.
-        # Resolve the immutable identity, never assume a particular comment body.
-        value = z._comment_store.ArtifactIndex(self.provider.comments[100]).resolve(expected)[0]
+        # Exercise the public targeted read, including legacy/full/delta codecs.
+        # Unrelated retained history must not become this Ref's working set.
+        value = self.session.read(100, ref)
         self.assertEqual(expected, content_hash(value))
         return value
 
@@ -1174,7 +1174,9 @@ class EvidenceDagPublicTests(DagFixture):
         # Proposed retirement content encoding: exact finding Ref carries its
         # expected revision; root authority permits member removal, NOT implicit
         # resolution or transfer of that finding to a new generation.
-        retirement = task("retire_member", ["member_admit"], role="root")
+        # Accepted admission persists while its producing task becomes stale.
+        # The submitted finding/authority Refs still require live accepted debt.
+        retirement = task("retire_member", role="root")
         retirement["outputs"] = {"retirement": output("retirement", shape({
             "finding": REF, "target": {"subject": exact_member, "output": "value"},
             "authority": REF, "decision": "retire_member", "rationale": "Retain outstanding debt"}))}
@@ -1192,10 +1194,22 @@ class EvidenceDagPublicTests(DagFixture):
                      "target_inputs": self.result("investigate", "a")[1]["inputs"],
                      "authority": self.result("select")[0], "applicability": "applicable",
                      "rationale": "Current configured member scope"}
+        retirement_work = None
+        if authorized:
+            retirement_work = self.session.acquire("retire_member")
+            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+            request = self.session.submission(retirement_work, {"retirement": {
+                "finding": admission["finding"], "target": finding["target"],
+                "authority": self.result("select")[0], "decision": "retire_member",
+                "rationale": "A finding alone grants no retirement authority"}}, "unadmitted-retirement")
+            response = self.session.call(100, request, expected=2)
+            self.assertRegex(json.dumps(response), r"(?i)admi|obligation|authority|finding")
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
         self.session.finish(self.session.acquire("member_admit"), {"admission": admission})
         self.assertNotIn("synthesize", self.names())
         if authorized:
-            work = self.session.acquire("retire_member")
+            # The failed attempt retains its exact owner; no duplicate acquire.
+            work = retirement_work
             self.assertEqual("root-thread", work["bound_actor"])
             self.session.finish(work, {"retirement": {"finding": admission["finding"],
                 "target": finding["target"], "authority": self.result("select")[0],
@@ -3363,19 +3377,31 @@ class GenericStoragePublicTests(DagFixture):
         store = z._comment_store
         contents = [{"type": "historical_attachment", "content": "existing-%d:" % i + "x" * 900000,
             "producer": None, "provenance": {"actor": "imported-history", "source": None,
-            "policy": content_hash(self.session.project["policy"])}} for i in range(15)]
-        records = [store.ArtifactIndex([]).record(content) for content in contents]
-        for body in store.pack_envelopes({"goal": 100, "transaction": "existing-budget"}, records):
-            self.provider.create_issue_comment(100, body)
+            "policy": content_hash(self.session.project["policy"])}} for i in range(20)]
+        self.assertGreater(sum(len(store.canonical(content).encode()) for content in contents),
+                           store.MAX_RECONSTRUCTION_WORK_BYTES)
+        # Each imported envelope is individually bounded; only the unrelated
+        # retained total exceeds the active selected reconstruction budget.
+        for index, content in enumerate(contents):
+            record = store.ArtifactIndex([]).record(content)
+            for body in store.pack_envelopes({"goal": 100, "transaction": "existing-budget-" + str(index)}, [record]):
+                self.provider.create_issue_comment(100, body)
+        historical = copy.deepcopy(self.provider.comments[100])
         reference = {"hash": content_hash(contents[0]), "uri": "urn:" + content_hash(contents[0])}
         self.assertEqual(contents[0], self.session.read(100, reference), "Unreferenced imported attachments are data, never result authority")
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
-        response = self.session.call(100, self.session.submission(work, {"value": "new:" + "x" * 900000}, "history-budget"), expected=2)
-        self.assertRegex(json.dumps(response), r"(?i)limit")
-        self.assertRegex(json.dumps(response), r"(?i)reference")
+        response = self.session.call(100, self.session.submission(work,
+            {"value": "x" * (store.MAX_ARTIFACT_BYTES + 1)}, "active-output-budget"), expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)limit|bound|size")
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
-        self.session.finish(work, {"value": "Small result remains possible"})
         self.assertEqual(contents[0], self.session.read(100, reference))
+        # The same lease can still publish a bounded output despite old history.
+        value = "new:" + "x" * 900000
+        self.session.finish(work, {"value": value})
+        self.assertEqual(value, self.read_blob(self.produced("produce"))["content"])
+        self.assertEqual(contents[0], self.session.read(100, reference))
+        for comment in historical:
+            self.assertIn(comment, self.provider.comments[100], "Targeted work cannot prune historical bytes")
 
     def test_aggregate_output_budget_rejects_all_slots_without_mutation_then_accepts_small_bundle(self):
         graph = copy.deepcopy(self.graph)

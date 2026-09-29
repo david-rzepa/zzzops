@@ -826,6 +826,9 @@ class GenericDeliveryPublicTests(DagFixture):
         (self.fixture.repo / "second_source.py").write_text("value = 1\n")
         self.session.git("add", "second_source.py")
         self.session.git("commit", "-qm", "second sibling baseline")
+        # Setup changed dev before any delivery work; bind the actual new base.
+        self.fixture.base_oid = self.session.git("rev-parse", "dev")
+        self.observation["base_oid"] = self.fixture.base_oid
         prepared = {}
         def qualify(value):
             if isinstance(value, dict):
