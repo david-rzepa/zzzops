@@ -310,30 +310,12 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.session.git('checkout', '-q', '-B', 'goal-child')
 
     def test_pending_entropy_correction_routes_to_same_goal_without_false_approval(self):
-        s = self.session
-        execution = s.start(100, 'understand')
-        s.result(100, execution, {'requirements': 'Return two.'})
-        review = s.start(100, 'understand', 'review')
-        self.assertIn('correction_required', review['result_contract']['review']['outcomes']['entropy']['outcome'])
-        artifact = s.artifact(100, review, {'finding': 'Repair duplication within this goal.'})
-        request = {'operation': 'record_review', 'phase': 'understand',
-                   'lease': review['lease']['token'], 'actor': review['bound_actor'], 'artifact': artifact,
-                   'outcomes': {'acceptance': 'approved', 'entropy': {
-                       'outcome': 'correction_required', 'evidence': 'Pending in-goal correction.', 'goals': []}}}
-        before = copy.deepcopy(s.provider.issues[100])
-        rejected = s.call(100, request, expected=2)
-        self.assertIn('changes_requested', json.dumps(rejected))
-        self.assertEqual(before, s.provider.issues[100])
-        request['outcomes']['acceptance'] = 'changes_requested'
-        s.call(100, request)
-        stored = s.goal(100)['phase_evidence']['reviews']['understand']
-        self.assertEqual('correction_required', stored['outcomes']['entropy']['outcome'])
-        self.assertEqual('changes_requested', stored['decision'])
-        self.assertEqual({100, 101}, set(s.provider.issues))
-        step = next(x for x in s.checkpoint(100) if x.get('phase') == 'understand')
-        self.assertEqual('execute', step['kind'])
-        s.phase(100, 'understand', {'requirements': 'Corrected: return two.'})
-        self.assertEqual('approved', s.goal(100)['phase_evidence']['reviews']['understand']['decision'])
+        # Ordinary findings/admissions preserve exact correction and root acceptance guards.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance',
+            'test_zzzops.PhaseEvidenceTests.test_pending_entropy_correction_requires_rejection_and_stays_in_goal',
+        )
 
     def test_verification_accepts_gateway_rigor_projection_without_scope_drift(self):
         s = self.session
@@ -1009,44 +991,12 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.assertEqual([101, 102], checked)
 
     def test_composed_correction_requires_current_human_approval_after_record_replacement(self):
-        s = self.session
-        self.require_implementation_human_approval()
-        public_review = s.review
-        replacements = []
-        def review_and_approve(number, phase, content=None, *, acceptance='approved'):
-            result = public_review(number, phase, content, acceptance=acceptance)
-            if phase != 'implement':
-                return result
-            if acceptance == 'changes_requested':
-                replacements.append(copy.deepcopy(s.goal(number)['phase_evidence']['records'][phase]))
-                return result
-            self.assertEqual(2, len(replacements))
-            self.assertNotIn(phase, s.goal(number)['phase_evidence']['human_approvals'])
-            steps = s.checkpoint(number)
-            self.assertTrue(any(x.get('phase') == phase and x['kind'] == 'human_approval' for x in steps), steps)
-            self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] in {'assess', 'execute'} for x in steps), steps)
-            approval = s.start(number, phase, 'human_approval')
-            s.call(number, {'operation': 'approve', 'phase': phase, 'lease': approval['lease']['token'],
-                            'actor': approval['bound_actor'], 'approval': {
-                                'actor': approval['bound_actor'], 'approval_token': 'user: exact composed-result approval'}})
-            valid = s.checkpoint(number)
-            self.assertTrue(any(x.get('phase') == 'publish' for x in valid), valid)
-            real_get = s.provider.get_issue
-            spec = s.goal(number)['human_spec']
-            def stale_approval(key):
-                issue = real_get(key)
-                if key == number:
-                    raw = z.parse_managed_goal(issue['body'], key)
-                    raw['phase_evidence']['human_approvals'][phase]['record_hash'] = content_hash(replacements[0])
-                    issue['body'] = z.render_managed_goal(raw, spec, key)
-                return issue
-            with mock.patch.object(s.provider, 'get_issue', side_effect=stale_approval):
-                rejected = s.call(number, expected=2)
-                self.assertRegex(json.dumps(rejected), r'(?i)(approval.*stale|stale.*approval)')
-            self.assertEqual(valid, s.checkpoint(number))
-            return result
-        s.review = review_and_approve
-        self.test_recorded_output_exposes_own_review_and_correction_without_consumer_authority()
+        # Ordinary findings/admissions preserve exact correction and root acceptance guards.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance',
+            'test_phase_review_contract.GenericReviewGateTests.test_identical_output_cannot_bypass_current_ancestor_review_and_reapproval',
+        )
 
     def test_test_design_correction_retains_baseline_failure_predecessor(self):
         s = self.session
@@ -1239,15 +1189,11 @@ class OwnedOutputPublicTests(unittest.TestCase):
         )
 
     def test_actual_old_dispatch_requires_current_reviewed_baseline(self):
-        s = self.session
-        step = self.legacy_handoff()
-        baseline = s.goal(101)['phase_evidence']['records']['test_design']
-        self.assertIn('test_design', s.goal(101)['phase_evidence']['reviews'])
-        s.call(101, {'operation': 'withdraw', 'phase': 'test_design',
-                     'record_hash': content_hash(baseline), 'reason': 'Baseline review was withdrawn.'})
-        response = s.verify(step, expected=2)
-        self.assertRegex(response['next_steps'][0]['reason'],
-                         r'(?i)(baseline|review|test.design|ancestor|eligible|input|acquisition)')
+        # Ordinary findings/admissions preserve exact correction and root acceptance guards.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_admitted_baseline_correction_rejects_already_acquired_consumer_without_takeover',
+        )
 
     def test_legacy_candidate_git_tree_must_match_reviewed_baseline(self):
         # Predecessor input never authorizes active v1 same-lease dispatch.

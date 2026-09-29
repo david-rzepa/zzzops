@@ -1351,7 +1351,7 @@ class WorkspaceAuthorityPublicTests(DagFixture):
     def candidate(self, work, expected_exit):
         command = [sys.executable, "-B", "behavior_test.py"]
         request = self.session.submission(work, {"value": "Exact workspace candidate " + work["node"]["node"]},
-                                          "candidate-" + work["node"]["node"])
+                                          "candidate-" + work["node"]["node"] + "-" + work["lease"]["token"])
         request["workspace_checks"] = [command]
         self.session.call(100, request)
         artifact = self.read_blob(self.produced(work["node"]["node"]))
@@ -1554,6 +1554,120 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.candidate(work, 1)
         self.review_candidate("alpha", 1)
         self.assertIn("beta", self.names())
+
+    def setup_workspace_corrections(self, target="beta", root_gate=False):
+        self.correction_target = target
+        self.correction_consumer = "gamma" if target == "beta" else "beta"
+        def graph_changes(graph, _allocations):
+            correction = correction_graph()
+            def rewrite(value):
+                if isinstance(value, dict):
+                    for key, child in value.items():
+                        if key == "node" and child == "produce":
+                            value[key] = target
+                        else:
+                            rewrite(child)
+                elif isinstance(value, list):
+                    for child in value:
+                        rewrite(child)
+            rewrite(correction)
+            graph["nodes"].extend(node for node in correction["nodes"] if node["id"] != "produce")
+            ingest = next(node for node in graph["nodes"] if node["id"] == "ingest")
+            ingest["inputs"] = {"subject": subject_input(target)}
+            consumer = next(node for node in graph["nodes"] if node["id"] == self.correction_consumer)
+            consumer["gates"] = [scope(target)]
+            if root_gate:
+                approval = task("accept_root_" + target, ["accept_" + target], role="root")
+                approval["inputs"] = {"subject": subject_input(target), "review": subject_input("accept_" + target)}
+                graph["nodes"].append(approval)
+                consumer["requires"].append(selector(approval["id"]))
+                consumer["inputs"]["root_acceptance"] = subject_input(approval["id"])
+        self.setup_workspace(graph_changes)
+
+    def admit_workspace_correction(self, target=None):
+        target = target or self.correction_target
+        subject = self.produced(target)
+        actual = self.provider.create_issue_comment(100, "Repair this exact workspace candidate")
+        comment = {**SOURCE_SAMPLE, "id": "issue_comment_" + str(actual["id"]),
+                   "body": actual["body"], "subject": subject, "surface": "issue"}
+        self.session.finish(self.session.acquire("ingest"), {"comment": comment})
+        findings = {slot: {"id": slot + "_" + str(actual["id"]), "revision": 1,
+            "source": self.produced("ingest", "comment"), "subjects": [subject], "target": scope(target),
+            "request": "Repair " + slot, "rationale": "Observed exact candidate deficiency", "supersedes": None}
+            for slot in ("first", "second")}
+        self.session.finish(self.session.acquire("find"), findings)
+        self.session.finish(self.session.acquire("authorize"), {"value": "Root authorizes these exact in-scope repairs"})
+        admissions = {slot: {"finding": self.produced("find", slot), "target_inputs": self.result(target)[1]["inputs"],
+            "authority": self.result("authorize")[0], "applicability": "applicable", "rationale": "Exact current target"}
+            for slot in findings}
+        self.session.finish(self.session.acquire("admit"), admissions)
+        return admissions
+
+    def resolve_workspace_correction(self, admissions):
+        target = self.correction_target
+        self.session.finish(self.session.acquire("review", actor="independent-correction-reviewer"),
+                            {"value": "Inspected the exact corrected candidate"})
+        values = {slot: {"finding": admission["finding"], "subjects": [self.produced(target)],
+            "reviewer_result": self.result("review")[0], "decision": "resolved", "rationale": "Verified exact repair"}
+            for slot, admission in admissions.items()}
+        self.session.finish(self.session.acquire("resolve", actor="independent-resolution-reviewer"), values)
+
+    def test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance(self):
+        self.setup_workspace_corrections(root_gate=True)
+        _alpha, (red_ref, red) = self.red_candidate()
+        beta = self.acquire_workspace("beta")
+        (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
+        first_ref, first_proof = self.candidate(beta, 0)
+        self.review_candidate("beta", 0)
+        self.assertNotIn("gamma", self.names(), "Independent review is not configured root acceptance")
+        self.session.finish(self.session.acquire("accept_root_beta"), {"value": "Root accepts exact reviewed first candidate"})
+        self.assertIn("gamma", self.names())
+        retained = [(red_ref, red), (first_ref, first_proof)]
+        for iteration in (1, 2):
+            previous_output = self.produced("beta")
+            prior_root = self.result("accept_root_beta")[0]
+            admissions = self.admit_workspace_correction()
+            self.assertNotIn("gamma", self.names())
+            correction = self.acquire_workspace("beta")
+            self.assertIn(previous_output["hash"], json.dumps(correction["lease"]["acquisition"]),
+                          "Correction must bind its exact prior candidate, not arbitrary current bytes")
+            for reference, proof in retained:
+                self.assertEqual(proof, self.read_blob(reference))
+            (self.fixture.repo / "source.py").write_text("def value():\n    # Exact correction %s.\n    return 2\n" % iteration)
+            reference, proof = self.candidate(correction, 0)
+            retained.append((reference, proof))
+            self.assertNotIn("gamma", self.names())
+            self.review_candidate("beta", 0)
+            self.resolve_workspace_correction(admissions)
+            self.assertNotIn("gamma", self.names(), "Old root acceptance cannot approve the new subject")
+            self.assertEqual(prior_root, self.result("accept_root_beta")[0], "Historical acceptance remains immutable")
+            self.session.finish(self.session.acquire("accept_root_beta"), {"value": "Root accepts exact reviewed correction " + str(iteration)})
+            self.assertIn("gamma", self.names())
+            self.assertNotEqual(prior_root, self.result("accept_root_beta")[0])
+            self.session.git("add", "source.py", "behavior_test.py")
+            self.session.git("commit", "-qm", "exact accepted correction " + str(iteration))
+            self.assertIn("gamma", self.names(), "Commit of accepted bytes preserves connected proof reuse")
+        for reference, proof in retained:
+            self.assertEqual(proof, self.read_blob(reference))
+        self.assertEqual({100}, set(self.provider.issues), "In-scope correction cannot create follow-up goals")
+
+    def test_admitted_baseline_correction_rejects_already_acquired_consumer_without_takeover(self):
+        self.setup_workspace_corrections(target="alpha")
+        _alpha, (reference, proof) = self.red_candidate()
+        beta = self.acquire_workspace("beta")
+        admissions = self.admit_workspace_correction("alpha")
+        self.assertNotIn("beta", self.names())
+        (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
+        request = self.session.submission(beta, {"value": "Stale reviewed baseline cannot authorize this edit"}, "stale-baseline")
+        request["workspace_checks"] = [[sys.executable, "-B", "behavior_test.py"]]
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        rejected = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)baseline|review|finding|admission|input|stale|prerequisite")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.assertTrue(any(lease["token"] == beta["lease"]["token"] for lease in self.payload()[1]["operational"]["leases"]))
+        self.assertEqual(proof, self.read_blob(reference))
+        for admission in admissions.values():
+            self.assertEqual("finding", self.read_blob(admission["finding"])["type"])
 
     def test_current_authorization_must_match_manifest_task_generation_and_policy(self):
         self.setup_workspace(defer_authorization=True)
