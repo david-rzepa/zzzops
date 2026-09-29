@@ -1451,6 +1451,68 @@ class WorkspaceAuthorityPublicTests(DagFixture):
             self.review_candidate("alpha", 1)
             self.assertIn("beta", self.names())
 
+    def test_pending_workspace_submission_reuses_exact_observed_proof_and_log(self):
+        self.setup_workspace()
+        work = self.acquire_workspace("alpha")
+        (self.fixture.repo / "behavior_test.py").write_text("assert False, 'required missing behavior'\n")
+        command = [sys.executable, "-c", "import time; print(time.time_ns()); raise SystemExit(1)"]
+        request = self.session.submission(work, {"value": "Observed variable failing baseline"}, "variable-proof-retry")
+        request["workspace_checks"] = [command]
+        attempted = []
+        def unavailable(number, payload):
+            attempted.append(copy.deepcopy(payload))
+            raise z.GoalTransitionProviderError("lost before workspace body publication")
+        with mock.patch.object(self.provider, "update_issue", side_effect=unavailable):
+            self.session.call(100, request, expected=None)
+        self.assertEqual(1, len(attempted), "Fault must reach the actual candidate publication")
+        envelope = json.loads(re.search(r"<!-- zzzops-goal\s*\n(.*?)\nzzzops-goal -->", attempted[0]["body"], re.S)[1])
+        pending = self.read_blob(envelope["payload"])
+        results = [self.read_blob(ref) for ref in pending["evidence"]]
+        result = next(value["content"] for value in reversed(results)
+                      if value["type"] == "result" and value["content"]["node"]["node"] == "alpha")
+        artifact = self.read_blob(result["outputs"]["value"])
+        reference = artifact["provenance"]["source"]
+        proof = self.read_blob(reference)
+        self.assertEqual(1, proof["commands"][0]["exit_code"])
+        log = Path(proof["commands"][0]["log"])
+        original_log = log.read_bytes()
+        original_comments = copy.deepcopy(self.provider.comments[100])
+        import subprocess
+        original_run = subprocess.run
+        reruns = []
+        def observe(argv, *args, **kwargs):
+            if argv == command:
+                reruns.append(argv)
+            return original_run(argv, *args, **kwargs)
+        with mock.patch.object(subprocess, "run", side_effect=observe):
+            self.session.call(100, request)
+        self.assertEqual([], reruns, "Pending host proof must be recovered before executing commands again")
+        self.assertEqual(original_log, log.read_bytes())
+        self.assertEqual(original_comments, self.provider.comments[100])
+        self.assertEqual(reference, self.read_blob(self.produced("alpha"))["provenance"]["source"])
+        self.assertEqual(proof, self.read_blob(reference))
+        self.review_candidate("alpha", 1)
+        self.assertIn("beta", self.names())
+
+    def test_workspace_proof_output_result_and_transition_share_one_checkpoint(self):
+        self.setup_workspace()
+        work = self.acquire_workspace("alpha")
+        (self.fixture.repo / "behavior_test.py").write_text("assert False, 'required missing behavior'\n")
+        initial_comments = len(self.provider.comments[100])
+        initial_updates = len(self.provider.updates)
+        proof_ref, proof = self.candidate(work, 1)
+        self.assertEqual(initial_comments + 1, len(self.provider.comments[100]))
+        self.assertEqual(initial_updates + 1, len(self.provider.updates))
+        comment = self.provider.comments[100][-1]
+        stored = z._comment_store.decode_envelope(comment["body"])
+        self.assertIsNotNone(stored)
+        hashes = {record["hash"] for record in stored["artifacts"]}
+        for ref in (proof_ref, self.produced("alpha"), self.result("alpha")[0], self.payload()[0]["payload"]):
+            self.assertIn(ref["hash"], hashes)
+        self.assertIn("required missing behavior", Path(proof["commands"][0]["log"]).read_text())
+        self.assertFalse(any(lease["token"] == work["lease"]["token"] for lease in self.payload()[1]["operational"]["leases"]))
+        self.review_candidate("alpha", 1)
+
     def test_current_authorization_must_match_manifest_task_generation_and_policy(self):
         self.setup_workspace(defer_authorization=True)
         work = self.session.acquire("inspect_charter", actor="allocation-reviewer")

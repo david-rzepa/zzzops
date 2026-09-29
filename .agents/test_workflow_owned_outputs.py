@@ -1539,38 +1539,8 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         )
 
     def test_pending_variable_verification_reuses_exact_proof_and_log(self):
-        s = self.session
-        s.prepare()
-        step = s.start(101, 'test_design')
-        request = {'operation': 'verify', 'phase': step['phase'], 'lease': step['lease']['token'],
-                   'actor': step['bound_actor'], 'request_id': 'variable-verification-retry',
-                   'input_envelope': copy.deepcopy(step['input_envelope']),
-                   'commands': [[sys.executable, '-c', 'import time; print(time.time_ns()); raise SystemExit(1)']]}
-        attempted = []
-        def unavailable(number, payload):
-            attempted.append(copy.deepcopy(payload))
-            raise z.GoalTransitionProviderError('lost before body publication')
-        with mock.patch.object(s.provider, 'update_issue', side_effect=unavailable):
-            s.call(101, request, expected=None)
-        self.assertEqual(1, len(attempted))
-        proof = z.parse_managed_goal(attempted[0]['body'], 101)['workflow']['artifacts']['test_design']
-        log = Path(proof['commands'][0]['log'])
-        original_log = log.read_bytes()
-        before = copy.deepcopy(s.provider.comments[101])
-        original_run = subprocess.run
-        reruns = []
-        def observe(command, *args, **kwargs):
-            if command == request['commands'][0]:
-                reruns.append(command)
-            return original_run(command, *args, **kwargs)
-        with mock.patch.object(subprocess, 'run', side_effect=observe):
-            response = s.call(101, request, expected=None)
-        self.assertEqual([], reruns, 'Pending verification must recover its proof before executing commands')
-        self.assertEqual(original_log, log.read_bytes())
-        self.assertEqual(0, s.calls[-1]['code'], response)
-        self.assertEqual(self.reference(proof), response['next_steps'][0]['verification'])
-        self.assertEqual(proof, s.read(101, self.reference(proof)))
-        self.assertEqual(before, s.provider.comments[101])
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_pending_workspace_submission_reuses_exact_observed_proof_and_log')
 
     def test_renew_retry_preserves_expiry_before_body_publication(self):
         from test_evidence_dag_journeys import run_generic_regressions
@@ -1607,17 +1577,8 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         self.assertEqual(before_updates + 1, len(s.provider.updates))
 
     def test_verification_proof_and_transition_share_one_comment(self):
-        s = self.session
-        s.prepare()
-        step = s.start(101, 'test_design')
-        (s.repo / s.test_path).write_text('assert False, "required missing behavior"\n')
-        before_comments, before_updates = len(s.provider.comments[101]), len(s.provider.updates)
-        result = s.verify(step)
-        proof = s.read(101, result['next_steps'][0]['verification'])
-        self.assertFalse(proof['passed'])
-        self.assertEqual(1, len(s.provider.comments[101]) - before_comments)
-        self.assertEqual(1, len(s.provider.updates) - before_updates)
-        self.assertIn('required missing behavior', Path(proof['commands'][0]['log']).read_text())
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_workspace_proof_output_result_and_transition_share_one_checkpoint')
 
     def test_partial_envelope_and_lost_body_responses_reuse_inline_transaction(self):
         for boundary in ('append', 'body'):
