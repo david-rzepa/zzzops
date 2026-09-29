@@ -6466,39 +6466,10 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("durable tracked goals", section["instructions"])
         self.assertIn("explicit scoped user authority", section["instructions"])
         dag = section["configuration"]["phase_dag"]
-        self.assertEqual(1, dag["schema_version"])
-        self.assertEqual(
-            ["understand", "decompose", "test_design", "implement", "publish"],
-            [phase["id"] for phase in dag["phases"]],
-        )
-        self.assertEqual("root", next(phase for phase in dag["phases"] if phase["id"] == "understand")["assignment_group"])
-        self.assertEqual(["decompose"], next(phase for phase in dag["phases"] if phase["id"] == "implement")["parent_gates"])
-        self.assertEqual(
-            {"independent": True, "human_approval": True, "assignment_group": "review", "types": ["requirements", "architecture"]},
-            next(phase for phase in dag["phases"] if phase["id"] == "understand")["review"],
-        )
-        self.assertTrue(all(phase["review"]["independent"] for phase in dag["phases"]))
-        child_graph = zzzops.phase_evidence_graph(dag, has_parent=True)
-        self.assertEqual(
-            ["understand", "decompose", "test_design", "implement", "publish"],
-            [node["id"] for node in child_graph["phases"]],
-        )
-        self.assertEqual(
-            {"id": "test_design", "depends_on": ["decompose"], "parent_gates": ["decompose"]},
-            next(node for node in child_graph["phases"] if node["id"] == "test_design"),
-        )
-        self.assertEqual(
-            {"id", "depends_on", "parent_gates"},
-            set(next(node for node in child_graph["phases"] if node["id"] == "implement")),
-        )
-        parent_graph = zzzops.phase_evidence_graph(dag, has_parent=False, has_children=True)
-        parent_phases = {node["id"] for node in parent_graph["phases"]}
-        self.assertIn("publish", parent_phases)
-        self.assertEqual(
-            ["decompose"],
-            next(node for node in parent_graph["phases"] if node["id"] == "publish")["depends_on"],
-            "parent publication is present while orchestration supplies the aggregate child-completion gate",
-        )
+        self.assertEqual({"nodes", "task_sets", "terminals"}, set(dag))
+        self.assertTrue(dag["nodes"])
+        self.assertTrue(dag["terminals"])
+        self.assertEqual([], zzzops._policy._workflow_phase_dag_errors(dag))
         self.assertEqual([], zzzops.validate_policy(plan["policy"], True))
 
         rendered = zzzops.render_project({
@@ -6521,37 +6492,32 @@ class WorkflowContractTests(unittest.TestCase):
         del next(item for item in missing_dag["sections"] if item["id"] == "workflow_adherence")["configuration"]["phase_dag"]
         self.assertTrue(any("missing operational policy configuration" in error for error in zzzops.validate_policy(missing_dag, False)))
 
-        executable = json.loads(json.dumps(plan["policy"]))
-        next(item for item in executable["sections"] if item["id"] == "workflow_adherence")["configuration"]["phase_dag"]["phases"][0]["handler"] = "python arbitrary.py"
-        self.assertTrue(any("unsupported declarative fields" in error for error in zzzops.validate_policy(executable, True)))
-
-        cyclic = json.loads(json.dumps(plan["policy"]))
-        next(item for item in cyclic["sections"] if item["id"] == "workflow_adherence")["configuration"]["phase_dag"]["phases"][0]["depends_on"] = ["publish"]
-        self.assertTrue(any("acyclic" in error for error in zzzops.validate_policy(cyclic, True)))
-
-        root_escape = json.loads(json.dumps(plan["policy"]))
-        next(phase for phase in next(item for item in root_escape["sections"] if item["id"] == "workflow_adherence")["configuration"]["phase_dag"]["phases"] if phase["id"] == "understand")["assignment_group"] = "planning"
-        self.assertTrue(any("keep understand on root" in error for error in zzzops.validate_policy(root_escape, True)))
-
-        type_escape = json.loads(json.dumps(plan["policy"]))
-        next(phase for phase in next(item for item in type_escape["sections"] if item["id"] == "workflow_adherence")["configuration"]["phase_dag"]["phases"] if phase["id"] == "publish")["type"] = "understand"
-        self.assertTrue(any("must match its known phase id" in error for error in zzzops.validate_policy(type_escape, True)))
-
-        invalid_gate = json.loads(json.dumps(plan["policy"]))
-        next(phase for phase in next(item for item in invalid_gate["sections"] if item["id"] == "workflow_adherence")["configuration"]["phase_dag"]["phases"] if phase["id"] == "implement")["parent_gates"] = ["unknown"]
-        self.assertTrue(any("parent_gates" in error for error in zzzops.validate_policy(invalid_gate, True)))
-
-        invalid_review = json.loads(json.dumps(plan["policy"]))
-        next(phase for phase in next(item for item in invalid_review["sections"] if item["id"] == "workflow_adherence")["configuration"]["phase_dag"]["phases"] if phase["id"] == "test_design")["review"]["independent"] = "yes"
-        self.assertTrue(any("review is invalid" in error for error in zzzops.validate_policy(invalid_review, True)))
-
-        customized_review = json.loads(json.dumps(plan["policy"]))
-        next(phase for phase in next(item for item in customized_review["sections"] if item["id"] == "workflow_adherence")["configuration"]["phase_dag"]["phases"] if phase["id"] == "publish")["review"]["human_approval"] = True
-        self.assertEqual([], zzzops.validate_policy(customized_review, True))
-
-        customized = json.loads(json.dumps(plan["policy"]))
-        custom_dag = next(item for item in customized["sections"] if item["id"] == "workflow_adherence")["configuration"]["phase_dag"]
-        next(phase for phase in custom_dag["phases"] if phase["id"] == "test_design")["inputs"].append("parents")
+        from test_evidence_dag import review_graph, selector, task
+        generic = json.loads(json.dumps(plan["policy"]))
+        next(item for item in generic["sections"] if item["id"] == "workflow_adherence")["configuration"]["phase_dag"] = review_graph()
+        self.assertEqual([], zzzops.validate_policy(generic, True))
+        for mutation, diagnostic in (
+            (lambda graph: graph["nodes"][0].update(handler="python arbitrary.py"), r"(?i)unsupported|field"),
+            (lambda graph: graph["nodes"][0]["requires"].append(selector("finish")), r"(?i)cycle|acyclic"),
+            (lambda graph: graph["nodes"][0]["executor"].update(role="administrator"), r"(?i)role|executor|root|worker"),
+            (lambda graph: graph["nodes"][0].update(type="domain_phase"), r"(?i)unsupported|field"),
+            (lambda graph: graph["nodes"][0]["requires"].append(selector("missing")), r"(?i)missing|unknown|reference"),
+            (lambda graph: graph["nodes"][1].update(independent_of="yes"), r"(?i)independent|list|array"),
+        ):
+            candidate = json.loads(json.dumps(generic))
+            graph = next(item for item in candidate["sections"] if item["id"] == "workflow_adherence")["configuration"]["phase_dag"]
+            mutation(graph)
+            self.assertRegex("; ".join(zzzops.validate_policy(candidate, True)), diagnostic)
+        customized = json.loads(json.dumps(generic))
+        graph = next(item for item in customized["sections"] if item["id"] == "workflow_adherence")["configuration"]["phase_dag"]
+        graph["nodes"].append(task("explicit_human_gate", ["finish"], role="root"))
+        graph["terminals"] = [selector("explicit_human_gate")]
+        self.assertEqual([], zzzops.validate_policy(customized, True))
+        # Parent evidence is an ordinary declared cross-goal input, never a
+        # hidden parent_gates mode or a per-goal graph rewrite.
+        graph["nodes"][0]["inputs"]["parent"] = {
+            "producer": {"node": {"kind": "node", "goal": "#parent", "node": "produce"}},
+            "output": "value", "path": [], "mode": "identity", "type": {"kind": "string"}}
         self.assertEqual([], zzzops.validate_policy(customized, True))
 
         review = (root / "zzzops" / "references" / "next_steps" / "policy-review.md").read_text(encoding="utf-8")
