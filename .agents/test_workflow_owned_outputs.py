@@ -619,129 +619,11 @@ class OwnedOutputPublicTests(unittest.TestCase):
         )
 
     def test_sibling_scopes_connect_completed_first_child_without_rewriting_history(self):
-        s = self.session
-        # Start-only provider construction: all later transitions are public main.
-        sibling = self.fixture.issue(102, parent=100, title='Implement second source behavior')
-        s.provider.issues[102] = sibling
-        s.provider.comments[102] = []
-        (s.repo / 'second_source.py').write_text('value = 1\n')
-        (s.repo / 'second_test.py').write_text('from second_source import value\nassert value == 1\n')
-        s.consumed += ['second_source.py', 'second_test.py']
-        s.git('add', 'second_source.py', 'second_test.py')
-        s.git('commit', '-qm', 'fixture: second existing source and test')
-        second = copy.deepcopy(s.plan)
-        second['output_scope'].update(child=102, test_design=['second_test.py'], implement=['second_source.py'])
-        parent = {'behavior': 'Both child behaviors',
-                  'output_scopes': [s.plan['output_scope'], second['output_scope']]}
-        s.phase(100, 'understand', {'requirements': 'Both behaviors.'})
-        for number in [101, 102]:
-            s.phase(number, 'understand', {'requirements': 'Return two.'})
-        s.phase(100, 'decompose', {'children': [101, 102]})
-        s.phase(100, 'plan', parent)
-        s.phase(101, 'plan', s.plan)
-        s.phase(102, 'plan', second)
-        s.git('branch', 'goal-second')
-        for number in [101, 102]:
-            goal = s.goal(number)
-            metadata = copy.deepcopy(goal['implementation'])
-            metadata.update(branch='goal-child' if number == 101 else 'goal-second', base='dev', target='dev')
-            s.call(number, {'operation': 'revise', 'expected_digest': goal['digest'],
-                            'changes': {'implementation': metadata}})
-        parent_before = copy.deepcopy(s.goal(100)['phase_evidence'])
-        s.assess(102, 'test_design')
-        sibling_contract = next(x for x in s.checkpoint(102) if x.get('phase') == 'test_design')
-        self.assertEqual('execute', sibling_contract['kind'])
-        s.design()
-        first = s.start(101, 'implement')
-        (s.repo / 'source.py').write_text('def answer():\n    return 2\n')
-        first_proof = s.verify(first)['next_steps'][0]['verification']
-        s.result(101, first, {'files': {'source.py': file_hash(s.repo / 'source.py')}}, first_proof)
-        self.assertNotIn('implement:execute', s.goal(101)['workflow']['leases'])
-        blocked = s.checkpoint(102)
-        self.assertFalse(any(x.get('phase') == 'test_design' and x['kind'] == 'execute' for x in blocked), blocked)
-        direct = copy.deepcopy(sibling_contract['start'])
-        direct['policy_receipt'] = json.loads(Path(sibling_contract['policy']['path']).read_text())['policy_receipt']
-        direct.pop('request_id', None)
-        rejected = s.call(102, direct, expected=2)
-        self.assertRegex(json.dumps(rejected), r'(?i)(review|input|scope|ancestor|eligible|output)')
-        s.review(101, 'implement')
-        self.assertTrue(any(x.get('phase') == 'test_design' and x['kind'] == 'execute'
-                            for x in s.checkpoint(102)))
-        s.git('add', 'source.py')
-        s.git('commit', '-qm', 'fix: first child behavior')
-        # Real public publication and completion. Existing fixture supplies provider PR observations.
-        self.fixture.head_oid = s.git('rev-parse', 'HEAD')
-        self.fixture.base_oid = s.git('rev-parse', 'dev')
-        child = s.goal(101)
-        metadata = copy.deepcopy(child['implementation'])
-        metadata['pr'] = 'https://github.com/owner/repo/pull/101'
-        s.call(101, {'operation': 'revise', 'expected_digest': child['digest'],
-                     'changes': {'implementation': metadata}})
-        publication = s.start(101, 'publish')
-        reference = s.verify(publication)['next_steps'][0]['verification']
-        s.result(101, publication, {'publication': 'first exact produced head'}, reference)
-        s.review(101, 'publish')
-        # An actual remote merge is an external provider observation, not a goal-state mutation.
-        self.fixture.pr_merged = True
-        completion = next(x for x in s.checkpoint(101) if x['kind'] == 'reconciliation')
-        s.call(101, completion['submission'])
-        self.assertEqual('done', s.goal(101)['status'])
-        first_closed = copy.deepcopy(s.provider.issues[101])
-        s.git('branch', '-f', 'goal-second', 'HEAD')
-        s.git('checkout', '-q', 'goal-second')
-        s.test_path = 'second_test.py'
-        design = s.start(102, 'test_design')
-        (s.repo / s.test_path).write_text('from second_source import value\nassert value == 2, "second required behavior"\n')
-        failed = s.verify(design)['next_steps'][0]['verification']
-        self.assertFalse(s.read(102, failed)['passed'])
-        s.result(102, design, {'files': {s.test_path: file_hash(s.repo / s.test_path)}}, failed)
-        s.review(102, 'test_design')
-        s.git('add', s.test_path)
-        s.git('commit', '-qm', 'test: second child behavior')
-        implement = s.start(102, 'implement')
-        (s.repo / 'second_source.py').write_text('value = 2\n')
-        passed = s.verify(implement)['next_steps'][0]['verification']
-        self.assertTrue(s.read(102, passed)['passed'])
-        s.result(102, implement, {'files': {'second_source.py': file_hash(s.repo / 'second_source.py')}}, passed)
-        s.review(102, 'implement')
-        s.git('add', 'second_source.py')
-        s.git('commit', '-qm', 'fix: second child behavior')
-        self.assertEqual(first_closed, s.provider.issues[101])
-        self.assertEqual(parent_before, s.goal(100)['phase_evidence'])
-        baseline = s.checkpoint(102)
-        self.assertFalse(any(x.get('phase') in {'understand', 'plan', 'test_design', 'implement'}
-                             and x['kind'] in {'assess', 'execute', 'review'} for x in baseline), baseline)
-        real_get = s.provider.get_issue
-        first_spec = s.goal(101)['human_spec']
-        def tampered_sibling_proof(number):
-            issue = real_get(number)
-            if number == 101:
-                raw = z.parse_managed_goal(issue['body'], number)
-                raw['workflow']['artifacts']['implement']['acquisition']['workspace_digest'] = 'sha256:' + '0' * 64
-                issue['body'] = z.render_managed_goal(raw, first_spec, number)
-            return issue
-        with mock.patch.object(s.provider, 'get_issue', side_effect=tampered_sibling_proof):
-            damaged = s.call(102, expected=None)
-            self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] in {'assess', 'execute'}
-                                 for x in damaged['next_steps']), damaged)
-            self.assertNotEqual(baseline, damaged['next_steps'])
-        self.assertEqual(baseline, s.checkpoint(102))
-        # Each value existed in authenticated history, but this mixed terminal
-        # workspace is not connected by an authorized transformation.
-        accepted_source = (s.repo / 'source.py').read_bytes()
-        (s.repo / 'source.py').write_text('def answer():\n    return 1\n')
-        disconnected = s.checkpoint(102)
-        self.assertNotEqual(baseline, disconnected)
-        self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] in {'assess', 'execute'}
-                             for x in disconnected), disconnected)
-        (s.repo / 'source.py').write_bytes(accepted_source)
-        restored = s.checkpoint(102)
-        self.assertEqual(baseline, restored)
-        (s.repo / 'read_dependency.txt').write_text('real unrelated drift\n')
-        stale = s.checkpoint(102)
-        self.assertNotEqual(baseline, stale)
-        self.assertTrue(any(x['kind'] in {'dependency', 'repair', 'blocker'} or
-                            x.get('phase') in {'understand', 'plan'} for x in stale), stale)
+        # Independently reviewed sibling allocations consume exact connected first-child proof.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_publication_contract.GenericDeliveryPublicTests.test_second_sibling_consumes_reviewed_committed_first_proof_without_rewriting_history',
+        )
 
     def test_declared_deletion_has_same_proof_identity_after_commit(self):
         # Preserve the exact workspace guard through the generic public engine.
@@ -908,33 +790,11 @@ class OwnedOutputPublicTests(unittest.TestCase):
         implementation['review']['human_approval'] = True
 
     def test_required_human_approval_blocks_sibling_consumption_until_current_approval(self):
-        s = self.session
-        self.require_implementation_human_approval()
-        public_review = s.review
-        checked = []
-        def review_and_approve(number, phase, content=None, *, acceptance='approved'):
-            result = public_review(number, phase, content, acceptance=acceptance)
-            if phase != 'implement' or acceptance != 'approved':
-                return result
-            producer = s.checkpoint(number)
-            self.assertTrue(any(x.get('phase') == phase and x['kind'] == 'human_approval' for x in producer), producer)
-            self.assertNotIn(phase, s.goal(number)['phase_evidence']['human_approvals'])
-            if number == 101:
-                blocked = s.checkpoint(102)
-                self.assertFalse(any(x.get('phase') == 'test_design' and x['kind'] in {'assess', 'execute'}
-                                     for x in blocked), blocked)
-            approval = s.start(number, phase, 'human_approval')
-            s.call(number, {'operation': 'approve', 'phase': phase, 'lease': approval['lease']['token'],
-                            'actor': approval['bound_actor'], 'approval': {
-                                'actor': approval['bound_actor'], 'approval_token': 'user: exact synthetic result approval'}})
-            if number == 101:
-                self.assertTrue(any(x.get('phase') == 'test_design' and x['kind'] == 'execute'
-                                    for x in s.checkpoint(102)))
-            checked.append(number)
-            return result
-        s.review = review_and_approve
-        self.test_sibling_scopes_connect_completed_first_child_without_rewriting_history()
-        self.assertEqual([101, 102], checked)
+        # Independently reviewed sibling allocations consume exact connected first-child proof.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_publication_contract.GenericDeliveryPublicTests.test_second_sibling_consumes_reviewed_committed_first_proof_without_rewriting_history',
+        )
 
     def test_composed_correction_requires_current_human_approval_after_record_replacement(self):
         # Ordinary findings/admissions preserve exact correction and root acceptance guards.
