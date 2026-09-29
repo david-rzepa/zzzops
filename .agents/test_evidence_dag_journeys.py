@@ -1588,7 +1588,15 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         target = target or self.correction_target
         subject = self.produced(target)
         actual = self.provider.create_issue_comment(100, "Repair this exact workspace candidate")
+        # This is ordinary root-authenticated factual intake, not a reserved
+        # host attestation. Supply real synthetic provider author metadata and
+        # the actual fixture commit instead of claiming an invented identity.
+        actual["user"] = {"login": "external-reviewer"}
+        for stored in self.provider.comments[100]:
+            if stored["id"] == actual["id"]:
+                stored["user"] = copy.deepcopy(actual["user"])
         comment = {**SOURCE_SAMPLE, "id": "issue_comment_" + str(actual["id"]),
+                   "author": actual["user"]["login"], "commit": self.session.git("rev-parse", "HEAD"),
                    "body": actual["body"], "subject": subject, "surface": "issue"}
         self.session.finish(self.session.acquire("ingest"), {"comment": comment})
         findings = {slot: {"id": slot + "_" + str(actual["id"]), "revision": 1,
@@ -1611,6 +1619,45 @@ class WorkspaceAuthorityPublicTests(DagFixture):
             "reviewer_result": self.result("review")[0], "decision": "resolved", "rationale": "Verified exact repair"}
             for slot, admission in admissions.items()}
         self.session.finish(self.session.acquire("resolve", actor="independent-resolution-reviewer"), values)
+
+    def red_design_correction(self, crlf=False):
+        self.setup_workspace_corrections(target="alpha")
+        if crlf:
+            self.session.git("config", "core.autocrlf", "true")
+            for name in ("source.py", "read_dependency.txt"):
+                path = self.fixture.repo / name
+                path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+            self.assertEqual("", self.session.git("status", "--porcelain", "--", "source.py", "read_dependency.txt"))
+        first, (prior_ref, prior_proof) = self.red_candidate()
+        prior_candidate = self.produced("alpha")
+        prior_test = (self.fixture.repo / "behavior_test.py").read_bytes()
+        admissions = self.admit_workspace_correction("alpha")
+        self.assertNotIn("beta", self.names())
+        correction = self.acquire_workspace("alpha")
+        acquired = correction["lease"]["acquisition"]
+        self.assertIn(prior_candidate["hash"], json.dumps(acquired))
+        self.assertIn(prior_ref["hash"], json.dumps(acquired), "Correction binds exact observed red predecessor")
+        self.assertIn("sha256:" + hashlib.sha256(prior_test).hexdigest(), json.dumps(acquired),
+                      "Current produced test bytes are the authorized correction baseline")
+        if crlf:
+            self.assertEqual(first["lease"]["acquisition"]["checkout_overrides"], acquired["checkout_overrides"])
+        (self.fixture.repo / "behavior_test.py").write_text(
+            "from source import value\nassert value() == 2, 'clarified exact required behavior'\n")
+        new_ref, new_proof = self.candidate(correction, 1)
+        self.assertNotEqual(prior_ref, new_ref)
+        self.assertEqual(1, new_proof["commands"][0]["exit_code"], "Design correction must retain the observed red baseline")
+        self.assertEqual(prior_proof, self.read_blob(prior_ref))
+        self.review_candidate("alpha", 1)
+        self.assertNotIn("beta", self.names(), "Review alone does not resolve admitted findings")
+        self.resolve_workspace_correction(admissions)
+        self.assertIn("beta", self.names())
+        self.assertEqual(prior_proof, self.read_blob(prior_ref))
+
+    def test_design_correction_retains_exact_observed_red_predecessor(self):
+        self.red_design_correction()
+
+    def test_crlf_design_correction_retains_frozen_raw_checkout_overrides(self):
+        self.red_design_correction(crlf=True)
 
     def test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance(self):
         self.setup_workspace_corrections(root_gate=True)
@@ -2052,6 +2099,37 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.review_candidate("alpha", 1)
         self.assertIn("beta", self.names())
 
+    def test_mixed_clean_checkout_rejects_raw_consumed_drift_and_restores_exact_acquisition(self):
+        self.setup_workspace()
+        self.session.git("config", "core.autocrlf", "true")
+        dependency = self.fixture.repo / "read_dependency.txt"
+        original = dependency.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+        dependency.write_bytes(original)
+        source = self.fixture.repo / "source.py"
+        source.write_bytes(source.read_bytes().replace(b"\r\n", b"\n"))
+        self.session.git("add", "source.py", "read_dependency.txt")
+        self.assertEqual("", self.session.git("diff", "--cached", "--name-only"))
+        self.assertEqual("", self.session.git("status", "--porcelain", "--", "source.py", "read_dependency.txt"))
+        work = self.acquire_workspace("alpha")
+        acquisition = copy.deepcopy(work["lease"]["acquisition"])
+        self.assertIn("read_dependency.txt", acquisition["checkout_overrides"])
+        self.assertNotIn("source.py", acquisition["checkout_overrides"])
+        (self.fixture.repo / "behavior_test.py").write_text("from source import value\nassert value() == 2\n")
+        request = self.session.submission(work, {"value": "Mixed checkout candidate"}, "mixed-checkout")
+        request["workspace_checks"] = [[sys.executable, "-B", "behavior_test.py"]]
+        dependency.write_bytes(original.replace(b"\r\n", b"\n"))
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        rejected = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)drift|changed|consumed|acquisition")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        dependency.write_bytes(original)
+        self.session.git("config", "core.autocrlf", "false")
+        _reference, proof = self.candidate(work, 1)
+        self.assertEqual(content_hash(acquisition), proof["acquisition_hash"])
+        self.assertEqual("sha256:" + hashlib.sha256(original).hexdigest(), proof["consumed"]["read_dependency.txt"])
+        self.review_candidate("alpha", 1)
+        self.assertIn("beta", self.names())
+
     def test_dirty_unreviewed_source_cannot_be_adopted_as_acquisition_baseline(self):
         self.setup_workspace()
         self.assertIn("alpha", self.names(), "Clean reviewed positive control")
@@ -2064,6 +2142,42 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
         source.write_bytes(original)
         self.acquire_workspace("alpha")
+
+    def test_workspace_owner_requires_observed_stop_then_fresh_committed_acquisition(self):
+        self.setup_workspace()
+        ready = next(step for step in self.session.ready() if step["node"]["node"] == "alpha")
+        start = {**ready["start"], "policy_receipt": json.loads(Path(ready["policy"]["path"]).read_text())["policy_receipt"]}
+        start.pop("request_id", None)
+        first = self.acquire_workspace("alpha")
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, start, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)lease|owner|active|worker")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        with mock.patch.object(z._workflow.time, "time", return_value=first["lease"]["expires_at"] + 1):
+            steps = self.session.checkpoint(100)
+            self.assertFalse(any(step.get("kind") == "execute" and step.get("node", {}).get("node") == "alpha" for step in steps))
+            recovery = next(step for step in steps if "recovery_contract" in step or step.get("kind") == "recover")
+            request = copy.deepcopy(recovery.get("submission", recovery.get("recovery_contract")))
+            self.assertEqual(first["lease"]["token"], request["lease"])
+            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+            self.session.call(100, {**request, "worker_status": "unknown", "evidence": "Expiry alone"}, expected=2)
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+            self.session.call(100, {**request, "worker_status": "stopped", "evidence": "Actual original workspace worker observed terminal"})
+        (self.fixture.repo / "independent.txt").write_text("Independent committed baseline addition\n")
+        self.session.git("add", "independent.txt")
+        self.session.git("commit", "-qm", "independent baseline after stopped worker")
+        second = self.acquire_workspace("alpha")
+        self.assertNotEqual(first["lease"]["token"], second["lease"]["token"])
+        self.assertIn(self.session.git("rev-parse", "HEAD"), json.dumps(second["lease"]["acquisition"]))
+        stale = self.session.submission(first, {"value": "Old stopped owner cannot return"}, "stopped-owner-submit")
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, stale, expected=2)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        (self.fixture.repo / "behavior_test.py").write_text("from source import value\nassert value() == 2\n")
+        _ref, proof = self.candidate(second, 1)
+        self.assertEqual(second["input_hash"], proof["input_hash"])
+        self.review_candidate("alpha", 1)
+        self.assertIn("beta", self.names())
 
     def test_unreferenced_proof_artifact_does_not_change_acquisition_inputs(self):
         self.setup_workspace()

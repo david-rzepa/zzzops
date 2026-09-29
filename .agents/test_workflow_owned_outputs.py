@@ -335,36 +335,11 @@ class OwnedOutputPublicTests(unittest.TestCase):
         s.design()
 
     def test_mixed_checkout_raw_drift_and_dirty_acquisition(self):
-        s = self.session
-        s.git('config', 'core.autocrlf', 'true')
-        # Existing Windows fixture blobs may themselves contain CRLF.
-        # Normalize the committed baseline before constructing mixed raw bytes.
-        s.git('add', '--renormalize', '.')
-        s.git('commit', '--allow-empty', '-qm', 'fixture: normalized mixed-checkout baseline')
-        (self.repo / 'read_dependency.txt').unlink()
-        s.git('checkout', '--', 'read_dependency.txt')
-        self.assertIn(b'\r\n', (self.repo / 'read_dependency.txt').read_bytes())
-        source = self.repo / 'source.py'
-        source.write_bytes(source.read_bytes().replace(b'\r\n', b'\n'))
-        self.assertNotIn(b'\r\n', source.read_bytes())
-        # Refresh Git's index stat cache after changing raw checkout EOLs.
-        s.git('add', 'source.py')
-        self.assertEqual('', s.git('diff', '--cached', '--name-only'))
-        self.assertEqual('', s.git('status', '--porcelain'))
-        s.prepare()
-        step = s.start(101, 'test_design')
-        self.assertIn('acquisition', step['lease'], 'Owned execution must freeze exact checkout acquisition')
-        acquired = step['lease']['acquisition']
-        self.assertIn('checkout_overrides', acquired, 'Mixed Git-clean checkout requires frozen raw overrides')
-        self.assertIn('read_dependency.txt', acquired['checkout_overrides'])
-        self.assertNotIn('source.py', acquired['checkout_overrides'])
-        original = (self.repo / 'read_dependency.txt').read_bytes()
-        (self.repo / 'read_dependency.txt').write_bytes(original.replace(b'\r\n', b'\n'))
-        response = s.verify(step, expected=2)
-        self.assertRegex(response['next_steps'][0]['reason'], '(?i)(drift|changed)')
-        (self.repo / 'read_dependency.txt').write_bytes(original)
-        s.git('config', 'core.autocrlf', 'false')
-        s.verify(step)
+        # Exact generic workspace guards; standalone legacy verification grants no authority.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_mixed_clean_checkout_rejects_raw_consumed_drift_and_restores_exact_acquisition',
+        )
 
     def test_non_equivalent_dirty_checkout_rejects_acquisition(self):
         # Preserve this concrete guard through the single generic public engine.
@@ -374,12 +349,11 @@ class OwnedOutputPublicTests(unittest.TestCase):
         )
 
     def test_crlf_correction_preserves_frozen_checkout_overrides(self):
-        s = self.session
-        s.git('config', 'core.autocrlf', 'true')
-        for path in ['source.py', 'behavior_test.py', 'read_dependency.txt']:
-            (self.repo / path).unlink()
-        s.git('checkout', '--', 'source.py', 'behavior_test.py', 'read_dependency.txt')
-        self.test_test_design_correction_retains_baseline_failure_predecessor()
+        # Exact generic workspace guards; standalone legacy verification grants no authority.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_crlf_design_correction_retains_frozen_raw_checkout_overrides',
+        )
 
     def test_crlf_clean_checkout_public_acquisition(self):
         # Preserve this concrete guard through the single generic public engine.
@@ -389,31 +363,14 @@ class OwnedOutputPublicTests(unittest.TestCase):
         )
 
     def test_orphan_verification_proof_does_not_invalidate_new_acquisition(self):
-        s = self.session
-        s.prepare()
-        first = s.start(101, 'test_design')
-        old_ref = s.verify(first)['next_steps'][0]['verification']
-        old_proof = s.read(101, old_ref)
-        s.call(101, {'operation': 'recover', 'phase': 'test_design',
-                     'lease': first['lease']['token'], 'worker_status': 'stopped',
-                     'evidence': 'Fixture executor stopped before recording a result.'})
-        self.assertNotIn('test_design', s.goal(101)['phase_evidence']['records'])
-        # An independent committed change makes the abandoned proof historical.
-        (self.repo / 'independent.txt').write_text('new baseline\n')
-        s.git('add', 'independent.txt')
-        s.git('commit', '-qm', 'fixture: independent baseline change')
-        second = s.start(101, 'test_design')
-        current = next(x for x in s.checkpoint(101) if x.get('phase') == 'test_design')
-        self.assertEqual(second['input_hash'], current['input_hash'],
-                         'Acquiring ownership must not change substantive inputs')
-        self.assertEqual(old_proof, s.read(101, old_ref), 'Preserve historical proof')
-        (self.repo / s.test_path).write_text('from source import answer\nassert answer() == 2\n')
-        new_ref = s.verify(second)['next_steps'][0]['verification']
-        new_proof = s.read(101, new_ref)
-        self.assertFalse(new_proof['passed'])
-        self.assertEqual(second['input_hash'], new_proof['acquisition']['input_hash'])
-        s.result(101, second, {'behavior': 'Require two.'}, new_ref)
-        s.review(101, 'test_design')
+        # Exact generic workspace guards; standalone legacy verification grants no authority.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_unreferenced_proof_artifact_does_not_change_acquisition_inputs',
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_pending_workspace_submission_reuses_exact_observed_proof_and_log',
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_workspace_owner_requires_observed_stop_then_fresh_committed_acquisition',
+            'test_evidence_dag_journeys.GenericStoragePublicTests.test_pending_start_retry_retains_generated_identity_and_completed_replay_never_resurrects',
+        )
 
     def test_existing_consumed_test_and_source_red_to_green(self):
         # Preserve this concrete guard through the single generic public engine.
@@ -606,22 +563,11 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.assertIn('understand', s.goal(100)['phase_evidence']['human_approvals'])
 
     def test_duplicate_writer_and_uncertain_recovery_are_rejected(self):
-        s = self.session
-        s.prepare()
-        step = s.start(101, 'test_design')
-        request = copy.deepcopy(step['start'])
-        request.pop('request_id', None)
-        request['policy_receipt'] = json.loads(Path(step['policy']['path']).read_text())['policy_receipt']
-        response = s.call(101, request, expected=2)
-        self.assertRegex(response['next_steps'][0]['reason'], r'(?i)(eligible|lease|worker|owned|capacity)')
-        response = s.call(101, {'operation': 'recover', 'phase': 'test_design', 'lease': step['lease']['token'],
-                               'worker_status': 'unknown', 'evidence': 'Cannot observe writer.'}, expected=2)
-        self.assertRegex(response['next_steps'][0]['reason'], r'(?i)(stopped|recovery|worker|evidence)')
-        self.assertIn('test_design:execute', s.goal(101)['workflow']['leases'])
-        s.call(101, {'operation': 'release', 'phase': 'test_design', 'lease': step['lease']['token'],
-                    'actor': step['bound_actor'], 'worker_status': 'stopped', 'evidence': 'Fixture worker stopped before edits.'})
-        replacement = s.start(101, 'test_design')
-        self.assertNotEqual(step['lease']['token'], replacement['lease']['token'])
+        # Exact generic workspace guards; standalone legacy verification grants no authority.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_workspace_owner_requires_observed_stop_then_fresh_committed_acquisition',
+        )
 
     def test_missing_output_scope_cannot_exempt_an_existing_input(self):
         s = self.session
@@ -999,39 +945,11 @@ class OwnedOutputPublicTests(unittest.TestCase):
         )
 
     def test_test_design_correction_retains_baseline_failure_predecessor(self):
-        s = self.session
-        s.prepare()
-        first = s.start(101, 'test_design')
-        (s.repo / s.test_path).write_text('from source import answer\nassert answer() == 2, "required value"\n')
-        failed = s.verify(first)['next_steps'][0]['verification']
-        self.assertFalse(s.read(101, failed)['passed'])
-        s.result(101, first, {'files': {s.test_path: file_hash(s.repo / s.test_path)}}, failed)
-        s.review(101, 'test_design', {'finding': 'Explain the regression assertion.'}, acceptance='changes_requested')
-        rejected = copy.deepcopy(s.goal(101)['phase_evidence']['records']['test_design'])
-        s.git('add', s.test_path)
-        s.git('commit', '-qm', 'checkpoint: exact rejected test output')
-        correction = s.start(101, 'test_design')
-        self.assertNotEqual(first['input_hash'], correction['input_hash'])
-        predecessor_ref = correction['lease']['acquisition']['predecessor']
-        predecessor = s.read(101, predecessor_ref)
-        self.assertEqual('test_design', predecessor['phase'])
-        self.assertEqual(rejected, predecessor['record'])
-        self.assertIsNone(predecessor['record']['verification'])
-        self.assertEqual(failed, predecessor['record']['test_design']['baseline_failure'])
-        (s.repo / s.test_path).write_text('from source import answer\n# The requested behavior returns two.\nassert answer() == 2, "required value"\n')
-        corrected = s.verify(correction)['next_steps'][0]['verification']
-        self.assertFalse(s.read(101, corrected)['passed'])
-        self.assertEqual(predecessor_ref, s.read(101, corrected)['acquisition']['predecessor'])
-        s.result(101, correction, {'files': {s.test_path: file_hash(s.repo / s.test_path)}}, corrected)
-        steps = s.checkpoint(101)
-        self.assertTrue(any(x.get('phase') == 'test_design' and x['kind'] == 'review' for x in steps), steps)
-        self.assertFalse(any(x.get('phase') == 'implement' and x['kind'] in {'assess', 'execute'} for x in steps))
-        # Public read exposes the exact failing proof reference for reviewer use.
-        observed = s.call(101, {'operation': 'read', 'phase': 'test_design'})['next_steps'][0]['content']
-        self.assertEqual(corrected, observed['phase_record']['test_design']['baseline_failure'])
-        s.review(101, 'test_design')
-        self.assertTrue(any(x.get('phase') == 'implement' and x['kind'] in {'assess', 'execute'}
-                            for x in s.checkpoint(101)))
+        # Exact generic workspace guards; standalone legacy verification grants no authority.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_design_correction_retains_exact_observed_red_predecessor',
+        )
 
     def predecessor_fault_controls(self, s, correction, reference, predecessor):
         """Corrupt provider reads, never workflow decisions or positive state."""
