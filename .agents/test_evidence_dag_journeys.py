@@ -1513,6 +1513,48 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.assertFalse(any(lease["token"] == work["lease"]["token"] for lease in self.payload()[1]["operational"]["leases"]))
         self.review_candidate("alpha", 1)
 
+    def test_unrelated_committed_candidate_cannot_replace_acquired_git_baseline(self):
+        self.setup_workspace()
+        work = self.acquire_workspace("alpha")
+        baseline = self.session.git("rev-parse", "HEAD")
+        dependency = self.fixture.repo / "read_dependency.txt"
+        original = dependency.read_bytes()
+        dependency.write_text("Not the acquired Git tree\n")
+        self.session.git("add", "read_dependency.txt")
+        self.session.git("commit", "-qm", "unreviewed candidate tree")
+        self.assertNotEqual(baseline, self.session.git("rev-parse", "HEAD"))
+        dependency.write_bytes(original)
+        (self.fixture.repo / "behavior_test.py").write_text("from source import value\nassert value() == 2\n")
+        request = self.session.submission(work, {"value": "Allowed output cannot authorize unrelated Git baseline"}, "wrong-git-baseline")
+        request["workspace_checks"] = [[sys.executable, "-B", "behavior_test.py"]]
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)candidate|baseline|snapshot|acquisition|workspace|drift")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.git("reset", "--mixed", baseline)  # Synthetic fixture checkout only.
+        self.assertEqual(original, dependency.read_bytes())
+        reference, proof = self.candidate(work, 1)
+        self.assertEqual(work["input_hash"], proof["input_hash"])
+        self.assertEqual(content_hash(work["lease"]["acquisition"]), proof["acquisition_hash"])
+        self.review_candidate("alpha", 1)
+        self.assertEqual(proof, self.read_blob(reference))
+
+    def test_caller_cannot_replace_authenticated_acquisition_with_supplied_envelope(self):
+        self.setup_workspace()
+        work = self.acquire_workspace("alpha")
+        (self.fixture.repo / "behavior_test.py").write_text("from source import value\nassert value() == 2\n")
+        request = self.session.submission(work, {"value": "candidate"}, "forged-acquisition")
+        request["workspace_checks"] = [[sys.executable, "-B", "behavior_test.py"]]
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        for field in ("input_envelope", "acquisition"):
+            rejected = self.session.call(100, {**request, field: {"input_hash": "sha256:" + "0" * 64,
+                "consumed": {"source.py": "sha256:" + "0" * 64}}}, expected=2)
+            self.assertRegex(json.dumps(rejected), r"(?i)field|envelope|acquisition|input|host")
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.candidate(work, 1)
+        self.review_candidate("alpha", 1)
+        self.assertIn("beta", self.names())
+
     def test_current_authorization_must_match_manifest_task_generation_and_policy(self):
         self.setup_workspace(defer_authorization=True)
         work = self.session.acquire("inspect_charter", actor="allocation-reviewer")

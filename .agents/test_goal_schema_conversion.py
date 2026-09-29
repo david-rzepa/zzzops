@@ -618,6 +618,44 @@ class MigrationEntryPublicTests(dag.DagFixture):
         self.assertIn("produce", self.names(), "Preserving relationship metadata never fabricates delivery")
 
 
+    def test_predecessor_owner_must_be_observed_stopped_before_fresh_generic_entry_lease(self):
+        from test_workflow_state import WorkflowStateValidationTests
+        source, _graph = self.entry()
+        self.assertEqual({"analyze"}, self.names(), "Owner-free predecessor is the valid entry control")
+        predecessor = z.parse_managed_goal(source["body"], 100)
+        predecessor["workflow"] = WorkflowStateValidationTests().valid()
+        lease = predecessor["workflow"]["leases"]["plan:review"]
+        source["body"] = z.render_managed_goal(predecessor, "## Outcome\nPreserve unresolved predecessor ownership.\n", 100)
+        self.provider.issues[100] = copy.deepcopy(source)
+        for timestamp in (lease["expires_at"] - 1, lease["expires_at"] + 1):
+            with self.subTest(timestamp=timestamp), mock.patch.object(z._workflow.time, "time", return_value=timestamp):
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                response = self.session.call(100, expected=None)
+                self.assertFalse(any(step.get("kind") == "execute" for step in response["next_steps"]))
+                self.assertRegex(json.dumps(response), r"(?i)owner|worker|lease|recover|migration")
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        with mock.patch.object(z._workflow.time, "time", return_value=lease["expires_at"] + 1):
+            response = self.session.call(100, expected=None)
+            recovery = next(step for step in response["next_steps"]
+                            if "recovery_contract" in step or step.get("kind") == "recover")
+            request = copy.deepcopy(recovery.get("submission", recovery.get("recovery_contract")))
+            self.assertEqual(lease["token"], request["lease"])
+            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+            self.session.call(100, {**request, "worker_status": "unknown", "evidence": "Expiry is not termination"}, expected=2)
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+            self.session.call(100, {**request, "lease": "another-owner", "worker_status": "stopped",
+                                   "evidence": "Different worker stopped"}, expected=2)
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+            self.session.call(100, {**request, "worker_status": "stopped",
+                                   "evidence": "Exact predecessor reviewer terminal state observed"})
+        recovered_source = copy.deepcopy(self.provider.issues[100])
+        analyze = self.session.acquire("analyze")
+        self.assertNotEqual(lease["token"], analyze["lease"]["token"])
+        self.assertEqual("submit", analyze["submission"]["operation"])
+        self.assertEqual(recovered_source, self.read_blob(self.payload()[1]["spec"])["content"])
+        self.session.finish(analyze, {"source": recovered_source})
+        self.assertNotIn("produce", self.names(), "Source analysis does not invent conversion review or activation")
+
     def test_v1_cutover_rejects_phase_operations_and_uses_only_generic_submission(self):
         source, graph = self.entry()
         steps = self.session.checkpoint(100)

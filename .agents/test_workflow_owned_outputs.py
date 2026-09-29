@@ -1221,32 +1221,20 @@ class OwnedOutputPublicTests(unittest.TestCase):
         return data['start']
 
     def test_actual_old_dispatch_start_to_repaired_dispatch_same_lease(self):
-        s = self.session
-        step = self.legacy_handoff()
-        original = copy.deepcopy(step['input_envelope'])
-        (self.repo / 'source.py').write_text('def answer():\n    return 2\n')
-        reference = s.verify(step, envelope=original)['next_steps'][0]['verification']
-        s.result(101, step, {'files': {'source.py': file_hash(self.repo / 'source.py')}}, reference)
-        s.review(101, 'implement')
-        record = s.goal(101)['phase_evidence']['records']['implement']
-        self.assertEqual(original, record['input_envelope'])
-        self.assertEqual(step['input_hash'], record['input_hash'])
-        proof = s.read(101, reference)
-        self.assertEqual(step['lease']['token'], proof['lease'])
-        self.assertEqual(step['input_hash'], proof['acquisition']['input_hash'])
-        self.assertNotIn('predecessor', proof['acquisition'])
-        self.assertFalse(s.goal(101)['workflow']['leases'])
+        # Predecessor input never authorizes active v1 same-lease dispatch.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_goal_schema_conversion.MigrationEntryPublicTests.test_predecessor_owner_must_be_observed_stopped_before_fresh_generic_entry_lease',
+            'test_goal_schema_conversion.MigrationEntryPublicTests.test_v1_cutover_rejects_phase_operations_and_uses_only_generic_submission',
+        )
 
     def test_actual_old_dispatch_rejects_wrong_envelope_and_unrelated_output(self):
-        s = self.session
-        step = self.legacy_handoff()
-        wrong = copy.deepcopy(step['input_envelope'])
-        wrong['repository']['snapshot']['files']['source.py'] = 'sha256:' + '0' * 64
-        response = s.verify(step, envelope=wrong, expected=2)
-        self.assertRegex(response['next_steps'][0]['reason'], r'(?i)(envelope|input|acquisition|hash)')
-        (self.repo / 'unexpected.py').write_text('unrelated\n')
-        response = s.verify(step, expected=2)
-        self.assertRegex(response['next_steps'][0]['reason'], r'(?i)(scope|unexpected|output|workspace|drift)')
+        # Predecessor input never authorizes active v1 same-lease dispatch.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_caller_cannot_replace_authenticated_acquisition_with_supplied_envelope',
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_unowned_and_consumed_drift_reject_without_partial_candidate_then_allow_owned_edit',
+        )
 
     def test_actual_old_dispatch_requires_current_reviewed_baseline(self):
         s = self.session
@@ -1260,35 +1248,11 @@ class OwnedOutputPublicTests(unittest.TestCase):
                          r'(?i)(baseline|review|test.design|ancestor|eligible|input|acquisition)')
 
     def test_legacy_candidate_git_tree_must_match_reviewed_baseline(self):
-        s = self.session
-        step = self.legacy_handoff()
-        reviewed_head = s.git('rev-parse', 'HEAD')
-        original = (self.repo / 'read_dependency.txt').read_bytes()
-        expected_inputs = copy.deepcopy(step['input_envelope'])
-        artifacts_before = copy.deepcopy(s.goal(101)['workflow']['artifacts'])
-        # Change the Git candidate, then restore all unrelated WORKING bytes.
-        # The supplied original envelope and independently reviewed tests stay valid.
-        (self.repo / 'read_dependency.txt').write_text('not the reviewed Git tree\n')
-        s.git('add', 'read_dependency.txt')
-        s.git('commit', '-qm', 'fixture: corrupt candidate baseline')
-        self.assertNotEqual(reviewed_head, s.git('rev-parse', 'HEAD'))
-        (self.repo / 'read_dependency.txt').write_bytes(original)
-        self.assertEqual(expected_inputs['repository']['snapshot']['files']['read_dependency.txt'],
-                         file_hash(self.repo / 'read_dependency.txt'))
-        (self.repo / 'source.py').write_text('def answer():\n    return 2\n')
-        response = s.verify(step, envelope=expected_inputs, expected=2)
-        self.assertRegex(response['next_steps'][0]['reason'],
-                         r'(?i)(candidate|baseline|snapshot|acquisition)')
-        self.assertEqual(artifacts_before, s.goal(101)['workflow']['artifacts'],
-                         'An invalid acquisition must not persist a verification proof')
-        # Restore only the candidate/index. Keep identical produced source bytes.
-        s.git('reset', '--mixed', reviewed_head)
-        self.assertEqual(reviewed_head, s.git('rev-parse', 'HEAD'))
-        reference = s.verify(step, envelope=expected_inputs)['next_steps'][0]['verification']
-        proof = s.read(101, reference)
-        self.assertTrue(proof['passed'])
-        self.assertEqual(step['input_hash'], proof['acquisition']['input_hash'])
-        self.assertEqual(step['lease']['token'], proof['lease'])
+        # Predecessor input never authorizes active v1 same-lease dispatch.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_unrelated_committed_candidate_cannot_replace_acquired_git_baseline',
+        )
 
 
 
