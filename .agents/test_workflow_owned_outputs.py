@@ -107,7 +107,8 @@ class PublicSession:
                 mock.patch.object(api, 'acquire_storage_lock', side_effect=lambda *_a, **_k: {'acquired': True, 'expires_at': time.time() + 300}),
                 mock.patch.object(api, 'renew_storage_lock', side_effect=lambda *_a, **_k: {'acquired': True, 'expires_at': time.time() + 300}),
                 mock.patch.object(api, 'release_storage_lock', return_value={'released': True}),
-                mock.patch.object(api._heartbeat, 'stop_heartbeat'),
+                mock.patch.object(api._heartbeat, 'stop_heartbeat',
+                                  side_effect=getattr(self, 'heartbeat_stop', None)),
                 mock.patch.object(sys, 'argv', argv),
                 mock.patch.object(sys, 'stdout', io.StringIO()),
             ]
