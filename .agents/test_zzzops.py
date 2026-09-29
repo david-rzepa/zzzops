@@ -6745,45 +6745,11 @@ class WorkflowContractTests(unittest.TestCase):
         )
 
     def test_workflow_step_plan_reports_each_capability_blocker(self):
-        plan = json.loads((PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
-        settings = json.loads(json.dumps(next(item for item in plan["policy"]["sections"] if item["id"] == "model_routing")["configuration"]))
-        evidence_test = PhaseEvidenceTests()
-        input_envelope = evidence_test.envelope("understand")
-        root = {"model": "root-model", "effort": "medium"}
-        runtime = {"root_pair": root, "available_pairs": [root]}
-        goal = {"status": "ready", "difficulty": "S", "engineering_rigor": {"risk_categories": [], "effective": "structured"}}
-        graph = {"phases": [{"id": "understand"}]}
-        nodes = {"understand": {"assignment_group": "root"}}
-
-        settings["model_inventory"]["reviewed_pairs"] = [{"model": "other", "effort": "medium", "tier": "routine", "cost": 1}]
-        unreviewed = zzzops.workflow_step_plan(goal, graph, {"understand": input_envelope}, nodes, settings, runtime)
-        self.assertEqual("root model-plus-effort pair is not reviewed", unreviewed["next_steps"][0]["reason"])
-
-        settings["model_inventory"]["reviewed_pairs"] = [{"model": "root-model", "effort": "medium", "tier": "routine", "cost": 1}]
-        unavailable = zzzops.workflow_step_plan(
-            {"status": "ready", "difficulty": "S", "engineering_rigor": {"risk_categories": [], "effective": "structured"}},
-            {"phases": [{"id": "plan"}]}, {"plan": evidence_test.envelope("plan")}, {"plan": {"assignment_group": "planning"}}, settings, runtime,
+        # Preserve each capability boundary through declared generic public tasks.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_integration.GenericIntegrationFreshnessTests.test_generic_capability_blockers_preserve_reviewed_inventory_and_root_choice',
         )
-        self.assertIn("no permitted reviewed available", unavailable["next_steps"][0]["reason"])
-
-        high = {"model": "high-model", "effort": "high"}
-        settings["assessment_tree"] = [{"when": {}, "tier": "architectural"}]
-        settings["model_inventory"]["reviewed_pairs"] = [
-            {"model": "root-model", "effort": "medium", "tier": "routine", "cost": 1},
-            {"model": "high-model", "effort": "high", "tier": "architectural", "cost": 2},
-        ]
-        elevated_runtime = {"root_pair": root, "available_pairs": [root, high]}
-        architectural_goal = {"status": "ready", "difficulty": "S", "engineering_rigor": {"risk_categories": ["architecture"], "effective": "structured"}}
-        human = zzzops.workflow_step_plan(architectural_goal, graph, {"understand": input_envelope}, nodes, settings, elevated_runtime)
-        self.assertEqual("capability_choice", human["next_steps"][0]["kind"])
-        self.assertEqual({"model": "root-model", "effort": "medium"}, human["next_steps"][0]["root_pair"])
-        self.assertEqual({"model": "high-model", "effort": "high"}, human["next_steps"][0]["requested_pair"])
-        self.assertEqual(["use_requested_pair", "downgrade_to_root"], human["next_steps"][0]["choices"])
-        delegated = zzzops.workflow_step_plan(
-            architectural_goal, {"phases": [{"id": "plan"}]}, {"plan": evidence_test.envelope("plan")}, {"plan": {"assignment_group": "planning"}}, settings, elevated_runtime,
-        )
-        self.assertEqual("capability_choice", delegated["next_steps"][0]["kind"])
-        self.assertEqual(["use_requested_pair", "delegate_at_root"], delegated["next_steps"][0]["choices"])
 
     def test_workflow_checkpoint_rejects_an_invalid_portfolio_before_goal_execution(self):
         with (

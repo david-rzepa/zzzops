@@ -26,6 +26,43 @@ class GenericIntegrationFreshnessTests(DagFixture):
         work = self.session.acquire("produce")
         self.session.finish(work, {"value": "Configured generic task needs no hidden legacy assessment state"})
 
+    def test_generic_capability_blockers_preserve_reviewed_inventory_and_root_choice(self):
+        self.assertEqual({"produce"}, self.names(), "Reviewed available capability is the positive control")
+        config = z._workflow_section(self.session.project, "model_routing")["configuration"]
+        original_inventory = copy.deepcopy(config["model_inventory"]["reviewed_pairs"])
+        original_runtime = copy.deepcopy(self.session.runtime)
+        root = original_runtime["root_pair"]
+        config["model_inventory"]["reviewed_pairs"] = [item for item in original_inventory
+            if {key: item[key] for key in ("model", "effort")} != root]
+        response = self.session.call(100, expected=None)
+        self.assertFalse(any(step.get("kind") == "execute" for step in response["next_steps"]))
+        self.assertRegex(json.dumps(response), r"(?i)root.*review|review.*root")
+        config["model_inventory"]["reviewed_pairs"] = original_inventory
+        self.session.runtime["available_pairs"] = []
+        response = self.session.call(100, expected=None)
+        self.assertFalse(any(step.get("kind") == "execute" for step in response["next_steps"]))
+        self.assertRegex(json.dumps(response), r"(?i)available|capability|model")
+        self.session.runtime.update(copy.deepcopy(original_runtime))
+        for role, alternative in (("worker", "delegate_at_root"), ("root", "downgrade_to_root")):
+            with self.subTest(role=role):
+                graph = copy.deepcopy(self.graph)
+                graph["nodes"][0]["executor"].update(role=role, capability="bounded")
+                self.install(graph)
+                self.session.runtime["root_pair"] = {"model": "worker-routine", "effort": "low"}
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                steps = self.session.checkpoint(100)
+                self.assertFalse(any(step.get("kind") == "execute" for step in steps))
+                choice = next(step for step in steps if step.get("kind") == "capability_choice")
+                self.assertEqual(self.session.runtime["root_pair"], choice["root_pair"])
+                self.assertEqual({"model": "worker-bounded", "effort": "medium"}, choice["requested_pair"])
+                self.assertEqual(["use_requested_pair", alternative], choice["choices"])
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.runtime.update(original_runtime)
+        graph = copy.deepcopy(self.graph)
+        graph["nodes"][0]["executor"]["role"] = "worker"
+        self.install(graph)
+        self.session.finish(self.session.acquire("produce"), {"value": "Exact reviewed available pair restored"})
+
     def test_worker_role_remains_delegated_with_same_actual_pair_as_root(self):
         pair = {"model": "same-capable-model", "effort": "medium"}
         routing = z._workflow_section(self.session.project, "model_routing")["configuration"]
