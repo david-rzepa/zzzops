@@ -435,6 +435,8 @@ class OwnedOutputPublicTests(unittest.TestCase):
         # Generic host alone issues proof; caller acquisition substitution, corrupted stored output proof, disconnected exact predecessor, and wrong actual actor/lease reject with valid controls. Retired submitted verification Ref cannot grant authority.
         from test_evidence_dag_journeys import run_generic_regressions
         run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_host_acquisition_raw_pins_reject_provider_corruption_before_matched_submit',
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_pending_workspace_submission_reuses_exact_observed_proof_and_log',
             'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_caller_cannot_replace_authenticated_acquisition_with_supplied_envelope',
             'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_tampered_completed_workspace_proof_blocks_downstream_after_lease_removal',
             'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_host_correction_predecessor_rejects_wrong_identity_disconnected_and_unbounded_chain',

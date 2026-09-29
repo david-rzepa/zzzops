@@ -1547,6 +1547,54 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.review_candidate("alpha", 1)
         self.assertEqual(proof, self.read_blob(reference))
 
+    def test_host_acquisition_raw_pins_reject_provider_corruption_before_matched_submit(self):
+        self.setup_workspace()
+        self.session.git("config", "core.autocrlf", "true")
+        source = self.fixture.repo / "source.py"
+        source.write_bytes(source.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+        self.assertEqual("", self.session.git("status", "--porcelain", "--", "source.py"))
+        work = self.acquire_workspace("alpha")
+        acquisition = copy.deepcopy(work["lease"]["acquisition"])
+        for field in ("git_commit", "workspace_digest", "input_hash", "checkout_overrides"):
+            self.assertIn(field, acquisition, "Retained host-owned workspace pin must be observable")
+        self.assertIn("source.py", acquisition["checkout_overrides"])
+        mutations = [("null_acquisition", None), ("partial_acquisition", {"git_commit": acquisition["git_commit"]})]
+        for field, value in (("checkout_overrides", None),
+                             ("checkout_overrides", {"../escape": "sha256:" + "0" * 64}),
+                             ("checkout_overrides", {"source.py": "sha256:" + "0" * 64}),
+                             ("git_commit", "0" * 40),
+                             ("workspace_digest", "sha256:" + "0" * 64),
+                             ("input_hash", "sha256:" + "0" * 64)):
+            changed = copy.deepcopy(acquisition)
+            changed[field] = value
+            mutations.append((field + "_" + str(len(mutations)), changed))
+        missing_commit = copy.deepcopy(acquisition)
+        del missing_commit["git_commit"]
+        mutations.append(("missing_git_commit", missing_commit))
+        (self.fixture.repo / "behavior_test.py").write_text("from source import value\nassert value() == 2\n")
+        request = self.session.submission(work, {"value": "Exact raw pin controls"}, "host-pin-corruption")
+        request["workspace_checks"] = [[sys.executable, "-B", "behavior_test.py"]]
+        original = copy.deepcopy(self.provider.issues[100])
+        envelope, payload = self.payload()
+        for label, value in mutations:
+            with self.subTest(host_pin=label):
+                changed = copy.deepcopy(payload)
+                lease = next(item for item in changed["operational"]["leases"] if item["token"] == work["lease"]["token"])
+                lease["acquisition"] = value
+                fault = {**envelope, "payload": self.blob(changed), "revision": envelope["revision"] + 1}
+                self.provider.issues[100]["body"] = "<!-- zzzops-goal\n" + json.dumps(fault) + "\nzzzops-goal -->"
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                response = self.session.call(100, request, expected=2)
+                self.assertRegex(json.dumps(response), r"(?i)acquisition|workspace|input|pin|checkout|commit|hash|path|scope")
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+                self.provider.issues[100] = copy.deepcopy(original)
+        reference, proof = self.candidate(work, 1)
+        self.assertEqual(content_hash(acquisition), proof["acquisition_hash"])
+        self.assertEqual("sha256:" + hashlib.sha256(source.read_bytes()).hexdigest(), proof["consumed"]["source.py"])
+        self.assertEqual(proof, self.session.read(100, reference))
+        self.review_candidate("alpha", 1)
+        self.assertIn("beta", self.names())
+
     def test_caller_cannot_replace_authenticated_acquisition_with_supplied_envelope(self):
         self.setup_workspace()
         work = self.acquire_workspace("alpha")
