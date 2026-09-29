@@ -1710,8 +1710,8 @@ class WorkspaceAuthorityPublicTests(DagFixture):
                     path.write_bytes(original)
                 self.assertIn("beta", self.names(), "Exact restored proof must remain reusable")
 
-    def test_parent_grant_omission_and_mismatch_cannot_expand_child_authority(self):
-        self.setup_workspace()
+    def setup_parent_workspace(self, mutate=None, parent_mutate=None):
+        self.setup_workspace(mutate)
         child_graph = copy.deepcopy(self.graph)
         parent_nodes = copy.deepcopy(child_graph["nodes"][:3])
         # Parent's own qualified prerequisite selectors are local to goal 99;
@@ -1729,11 +1729,13 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         qualify(parent_nodes)
         parent_graph = {"nodes": parent_nodes, "task_sets": [],
                         "terminals": [{**selector("consent"), "goal": 99}]}
-        alpha = next(n for n in child_graph["nodes"] if n["id"] == "alpha")
-        for slot, original in (("parent_allocation", "allocation"), ("parent_authorization", "authorization"),
-                               ("parent_approval", "approval")):
-            alpha["inputs"][slot] = copy.deepcopy(alpha["inputs"][original])
-            alpha["inputs"][slot]["producer"]["node"]["goal"] = 99
+        if parent_mutate:
+            parent_mutate(parent_graph)
+        for child in (n for n in child_graph["nodes"] if n["id"] in ("alpha", "beta", "gamma")):
+            for slot, original in (("parent_allocation", "allocation"), ("parent_authorization", "authorization"),
+                                   ("parent_approval", "approval")):
+                child["inputs"][slot] = copy.deepcopy(child["inputs"][original])
+                child["inputs"][slot]["producer"]["node"]["goal"] = 99
         # Establish final policy before issuing either goal's authorization.
         # Installing it afterwards would correctly stale the parent's evidence.
         self.install(child_graph)
@@ -1774,6 +1776,10 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.session.finish(self.session.acquire("inspect_charter", actor="allocation-reviewer"), {"permit": permit})
         self.session.finish(self.session.acquire("consent"), {"permit": permit})
         self.assertIn("alpha", self.names(), "Current exact parent grant is the positive control")
+        return child_graph, parent_output
+
+    def test_parent_grant_omission_and_mismatch_cannot_expand_child_authority(self):
+        child_graph, parent_output = self.setup_parent_workspace()
         original = copy.deepcopy((self.provider.issues, self.provider.comments, self.session.project))
         for change in ("omitted", "mismatched"):
             with self.subTest(change=change):
@@ -2055,6 +2061,9 @@ class RelationshipPublicTests(DagFixture):
     """
     def setUp(self):
         super().setUp()
+        self.setup_relationship_transport()
+
+    def setup_relationship_transport(self):
         self.discovery_failure = False
         self.discovery_incomplete = False
         self.relationship_reads = []

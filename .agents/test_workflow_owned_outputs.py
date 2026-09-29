@@ -284,20 +284,11 @@ class OwnedOutputPublicTests(unittest.TestCase):
         )
 
     def test_five_phase_parent_allocates_scope_in_decomposition(self):
-        self.use_shipped_dag()
-        s = self.session
-        s.phase(100, 'understand', {'requirements': 'Integrate the child behavior.'})
-        s.phase(101, 'understand', s.plan)
-        s.phase(100, 'decompose', {'output_scopes': [s.plan['output_scope']]})
-        s.phase(101, 'decompose', {'decision': 'One atomic implementation; no further children.'})
-        child = s.goal(101)
-        metadata = copy.deepcopy(child['implementation'])
-        metadata.update(branch='goal-child', base='dev', target='dev')
-        s.call(101, {'operation': 'revise', 'expected_digest': child['digest'], 'changes': {'implementation': metadata}})
-        s.design()
-        s.implement()
-        parent_steps = s.checkpoint(100)
-        self.assertFalse(any(x.get('phase') in {'plan', 'test_design', 'implement'} for x in parent_steps))
+        # Current parent grants and all-child completion use the same generic evidence graph.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_publication_contract.GenericDeliveryPublicTests.test_parent_requires_both_children_current_terminals_and_archived_merge_evidence',
+        )
 
     def setUp(self):
         self.fixture = fixtures.FullWorkflowJourneyTests()
