@@ -42,7 +42,7 @@ class WorkflowDispatchTests(unittest.TestCase):
             1: [{"kind": "blocker", "goal": 1, "action": "Await human input."}],
             2: [{"kind": "dependency", "goal": 2, "action": "Await an ancestor."}],
             3: [{"kind": "await_worker", "goal": 3, "action": "Await the leased worker."}],
-            4: [{"kind": "assess", "goal": 4, "action": "Assess this runnable phase."}],
+            4: [{"kind": "execute", "goal": 4, "node": {"goal": 4, "node": "work", "item": None, "generation": 1}, "action": "Execute the declared task."}],
         }
 
         result, engine = self.checkpoint(goals, steps)
@@ -79,7 +79,7 @@ class WorkflowDispatchTests(unittest.TestCase):
             {**self.goal(3, "P1"), "depends_on": []},
             {**self.goal(4, "P1"), "depends_on": [1]},
         ]
-        steps = {number: [{"kind": "assess", "goal": number, "action": "Assess."}] for number in (1, 3, 4)}
+        steps = {number: [{"kind": "execute", "goal": number, "node": {"goal": number, "node": "work", "item": None, "generation": 1}, "action": "Execute the declared task."}] for number in (1, 3, 4)}
         decision = {"ordered_goal_keys": [4, 3], "rationale": "Remove portfolio friction before unrelated P1 work."}
 
         result, engine = self.checkpoint(goals, steps, decision)
