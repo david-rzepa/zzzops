@@ -1342,7 +1342,8 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.session.finish(self.session.acquire("consent"), {"permit": self.permit})
 
     def acquire_workspace(self, name):
-        step = next(s for s in self.session.ready() if s["node"]["node"] == name)
+        step = next((s for s in self.session.ready() if s["node"]["node"] == name), None)
+        self.assertIsNotNone(step, "Workspace input/baseline is not ready for " + name)
         work = self.session.acquire(name, actor="writer-" + name)
         self.assertEqual(step["input_hash"], work["input_hash"], "Acquisition changed semantic inputs")
         self.assertEqual(self.allocations["allocations"][name]["task"], work["node"])
@@ -1557,6 +1558,8 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.session.git("config", "core.autocrlf", "true")
         source = self.fixture.repo / "source.py"
         source.write_bytes(source.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+        self.session.git("add", "source.py")
+        self.assertEqual("", self.session.git("diff", "--cached", "--name-only"))
         self.assertEqual("", self.session.git("status", "--porcelain", "--", "source.py"))
         work = self.acquire_workspace("alpha")
         acquisition = copy.deepcopy(work["lease"]["acquisition"])
@@ -1616,8 +1619,10 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.review_candidate("alpha", 1)
         self.assertIn("beta", self.names())
 
-    def setup_workspace_corrections(self, target="beta", root_gate=False):
+    def setup_workspace_corrections(self, target="beta", root_gate=False, correction_rounds=1):
         self.correction_target = target
+        self.retained_correction_admissions = []
+        self.correction_rounds = correction_rounds
         self.correction_consumer = "gamma" if target == "beta" else "beta"
         def graph_changes(graph, _allocations):
             correction = correction_graph()
@@ -1632,6 +1637,24 @@ class WorkspaceAuthorityPublicTests(DagFixture):
                     for child in value:
                         rewrite(child)
             rewrite(correction)
+            # A finite registry names only actually admitted pairs. Missing map
+            # entries keep future resolver nodes inert; omission never retires
+            # the separately retained admission obligations.
+            pair_type = shape({"first": REF, "second": REF})
+            registry = task("register_findings", ["review", "admit"], role="root")
+            registry["inputs"] = {"subject": subject_input(target), "review": subject_input("review")}
+            registry["outputs"] = {"pairs": output("finding_registry", {"kind": "map", "values": pair_type})}
+            correction["nodes"].append(registry)
+            original = next(node for node in correction["nodes"] if node["id"] == "resolve")
+            template = copy.deepcopy(original)
+            for index in range(correction_rounds):
+                resolver = original if index == 0 else copy.deepcopy(template)
+                resolver["id"] = "resolve" if index == 0 else "resolve_" + str(index + 1)
+                resolver["executor"]["authority"] = scope(resolver["id"])
+                resolver["requires"].append(selector("register_findings"))
+                resolver["inputs"]["findings"] = {"producer": {"node": selector("register_findings")},
+                    "output": "pairs", "path": ["round_" + str(index + 1)], "mode": "content", "type": pair_type}
+                if index: correction["nodes"].append(resolver)
             graph["nodes"].extend(node for node in correction["nodes"] if node["id"] != "produce")
             ingest = next(node for node in graph["nodes"] if node["id"] == "ingest")
             ingest["inputs"] = {"subject": subject_input(target)}
@@ -1670,16 +1693,29 @@ class WorkspaceAuthorityPublicTests(DagFixture):
             "authority": self.result("authorize")[0], "applicability": "applicable", "rationale": "Exact current target"}
             for slot in findings}
         self.session.finish(self.session.acquire("admit"), admissions)
+        self.retained_correction_admissions.append(copy.deepcopy(admissions))
         return admissions
 
-    def resolve_workspace_correction(self, admissions):
+    def resolve_workspace_pair(self, index, admissions):
+        values = {slot: {"finding": admission["finding"], "subjects": [self.produced(self.correction_target)],
+            "reviewer_result": self.result("review")[0], "decision": "resolved", "rationale": "Verified exact repair"}
+            for slot, admission in admissions.items()}
+        name = "resolve" if index == 0 else "resolve_" + str(index + 1)
+        self.session.finish(self.session.acquire(name, actor="independent-resolution-reviewer"), values)
+
+    def resolve_workspace_correction(self, admissions, omit_retained=False):
         target = self.correction_target
         self.session.finish(self.session.acquire("review", actor="independent-correction-reviewer"),
                             {"value": "Inspected the exact corrected candidate"})
-        values = {slot: {"finding": admission["finding"], "subjects": [self.produced(target)],
-            "reviewer_result": self.result("review")[0], "decision": "resolved", "rationale": "Verified exact repair"}
-            for slot, admission in admissions.items()}
-        self.session.finish(self.session.acquire("resolve", actor="independent-resolution-reviewer"), values)
+        self.assertEqual(admissions, self.retained_correction_admissions[-1])
+        pairs = {"round_" + str(index + 1): {slot: admission["finding"] for slot, admission in pair.items()}
+                 for index, pair in enumerate(self.retained_correction_admissions)}
+        self.session.finish(self.session.acquire("register_findings"), {"pairs": pairs})
+        for index in range(len(pairs), self.correction_rounds):
+            self.assertNotIn("resolve_" + str(index + 1), self.names(), "Unadmitted future pair cannot dispatch a resolver")
+        for index, pair in enumerate(self.retained_correction_admissions):
+            if omit_retained and index < len(pairs) - 1: continue
+            self.resolve_workspace_pair(index, pair)
 
     def red_design_correction(self, crlf=False):
         self.setup_workspace_corrections(target="alpha")
@@ -1688,6 +1724,8 @@ class WorkspaceAuthorityPublicTests(DagFixture):
             for name in ("source.py", "read_dependency.txt"):
                 path = self.fixture.repo / name
                 path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+            self.session.git("add", "source.py", "read_dependency.txt")
+            self.assertEqual("", self.session.git("diff", "--cached", "--name-only"))
             self.assertEqual("", self.session.git("status", "--porcelain", "--", "source.py", "read_dependency.txt"))
         first, (prior_ref, prior_proof) = self.red_candidate()
         prior_candidate = self.produced("alpha")
@@ -1806,7 +1844,7 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.assertEqual(predecessor, self.session.read(100, reference))
 
     def test_real_accepted_correction_chain_reaches_bound_before_refusing_next_transition(self):
-        self.setup_workspace_corrections()
+        self.setup_workspace_corrections(correction_rounds=32)
         self.red_candidate()
         first = self.acquire_workspace("beta")
         (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
@@ -1847,7 +1885,7 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.assertNotIn("gamma", self.names())
 
     def test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance(self):
-        self.setup_workspace_corrections(root_gate=True)
+        self.setup_workspace_corrections(root_gate=True, correction_rounds=2)
         _alpha, (red_ref, red) = self.red_candidate()
         beta = self.acquire_workspace("beta")
         (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
@@ -1872,10 +1910,13 @@ class WorkspaceAuthorityPublicTests(DagFixture):
             retained.append((reference, proof))
             self.assertNotIn("gamma", self.names())
             self.review_candidate("beta", 0)
-            self.resolve_workspace_correction(admissions)
+            self.resolve_workspace_correction(admissions, omit_retained=iteration == 2)
             self.assertNotIn("gamma", self.names(), "Old root acceptance cannot approve the new subject")
             self.assertEqual(prior_root, self.result("accept_root_beta")[0], "Historical acceptance remains immutable")
             self.session.finish(self.session.acquire("accept_root_beta"), {"value": "Root accepts exact reviewed correction " + str(iteration)})
+            if iteration == 2:
+                self.assertNotIn("gamma", self.names(), "Earlier distinct finding pair still requires current resolution")
+                self.resolve_workspace_pair(0, self.retained_correction_admissions[0])
             self.assertIn("gamma", self.names())
             self.assertNotEqual(prior_root, self.result("accept_root_beta")[0])
             self.session.git("add", "source.py", "behavior_test.py")
@@ -2366,6 +2407,8 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.session.git("config", "core.autocrlf", "true")
         source = self.fixture.repo / "source.py"
         source.write_bytes(source.read_bytes().replace(b"\n", b"\r\n"))
+        self.session.git("add", "source.py")
+        self.assertEqual("", self.session.git("diff", "--cached", "--name-only"))
         self.assertEqual("", self.session.git("status", "--porcelain", "--", "source.py"))
         before = "sha256:" + hashlib.sha256(source.read_bytes()).hexdigest()
         work = self.acquire_workspace("alpha")
@@ -3509,7 +3552,10 @@ class GenericStoragePublicTests(DagFixture):
         revision = self.payload()[0]["revision"]
         self.replace_spec("Substantively revised request awaiting candidate publication")
         _work, newer, pending = self.multipart_request(reset=False, request_id="pending-new-bundle")
-        newer["value"] = "new " + newer["value"]
+        # Independent changed bytes force a real multipart transaction even
+        # when production preserves efficient sparse output deltas.
+        newer = {name: "".join(hashlib.sha256(("new-bundle-" + name + str(i)).encode()).hexdigest()
+                              for i in range(650)) for name in newer}
         pending["outputs"] = newer
         self.leave_partial_upload(pending)
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
