@@ -41,12 +41,13 @@ def durable(*leases):
     }
 
 
-from test_evidence_dag_journeys import DagFixture, RelationshipPublicTests
+from test_evidence_dag_journeys import DagFixture
+import test_evidence_dag_journeys as dag_fixtures
 
 
 class GenericWorkerCapacityTests(DagFixture):
-    add_goal = RelationshipPublicTests.add_goal
-    put_envelope = RelationshipPublicTests.put_envelope
+    add_goal = dag_fixtures.RelationshipPublicTests.add_goal
+    put_envelope = dag_fixtures.RelationshipPublicTests.put_envelope
 
     def test_other_goal_unresolved_owner_consumes_reviewed_capacity_until_observed_stop(self):
         config = z._workflow_section(self.session.project, "autonomy_approval_parallelism")["configuration"]

@@ -95,7 +95,8 @@ class RenewalTests(unittest.TestCase):
 
 
 
-from test_evidence_dag_journeys import DagFixture, GenericStoragePublicTests
+from test_evidence_dag_journeys import DagFixture
+import test_evidence_dag_journeys as dag_fixtures
 
 
 class GenericRenewalTests(DagFixture):
@@ -103,7 +104,7 @@ class GenericRenewalTests(DagFixture):
         return {"operation": "renew", "node": work["node"], "lease": work["lease"]["token"],
                 "actor": work["bound_actor"], "worker_status": "active", **changes}
 
-    payload_from_body = GenericStoragePublicTests.payload_from_body
+    payload_from_body = dag_fixtures.GenericStoragePublicTests.payload_from_body
 
     def test_renewal_retry_before_body_preserves_generated_expiry(self):
         self.renewal_lost_response("before")

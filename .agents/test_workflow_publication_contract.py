@@ -145,7 +145,8 @@ class WorkflowPublicationContractTests(unittest.TestCase):
 
 
 
-from test_evidence_dag_journeys import DagFixture, WorkspaceAuthorityPublicTests, RelationshipPublicTests, REF_TYPE, FINDING_TYPE, ADMISSION_TYPE, content_hash, output, shape, spec_input, z
+from test_evidence_dag_journeys import DagFixture, REF_TYPE, FINDING_TYPE, ADMISSION_TYPE, content_hash, output, shape, spec_input, z
+import test_evidence_dag_journeys as dag_fixtures
 from test_evidence_dag import task, selector, scope
 
 
@@ -704,21 +705,21 @@ class GenericDeliveryPublicTests(DagFixture):
     integration_request = GenericPublicationPublicTests.integration_request
     with_merge_observation = GenericPublicationPublicTests.with_merge_observation
     merge_value = GenericPublicationPublicTests.merge_value
-    workspace_graph = WorkspaceAuthorityPublicTests.workspace_graph
-    setup_workspace = WorkspaceAuthorityPublicTests.setup_workspace
-    acquire_workspace = WorkspaceAuthorityPublicTests.acquire_workspace
-    candidate = WorkspaceAuthorityPublicTests.candidate
-    review_candidate = WorkspaceAuthorityPublicTests.review_candidate
-    red_candidate = WorkspaceAuthorityPublicTests.red_candidate
+    workspace_graph = dag_fixtures.WorkspaceAuthorityPublicTests.workspace_graph
+    setup_workspace = dag_fixtures.WorkspaceAuthorityPublicTests.setup_workspace
+    acquire_workspace = dag_fixtures.WorkspaceAuthorityPublicTests.acquire_workspace
+    candidate = dag_fixtures.WorkspaceAuthorityPublicTests.candidate
+    review_candidate = dag_fixtures.WorkspaceAuthorityPublicTests.review_candidate
+    red_candidate = dag_fixtures.WorkspaceAuthorityPublicTests.red_candidate
 
-    setup_parent_workspace = WorkspaceAuthorityPublicTests.setup_parent_workspace
-    setup_relationship_transport = RelationshipPublicTests.setup_relationship_transport
-    envelope_for = RelationshipPublicTests.envelope_for
-    put_envelope = RelationshipPublicTests.put_envelope
-    add_goal = RelationshipPublicTests.add_goal
-    read_at = RelationshipPublicTests.read_at
-    result_at = RelationshipPublicTests.result_at
-    resolutions = RelationshipPublicTests.resolutions
+    setup_parent_workspace = dag_fixtures.WorkspaceAuthorityPublicTests.setup_parent_workspace
+    setup_relationship_transport = dag_fixtures.RelationshipPublicTests.setup_relationship_transport
+    envelope_for = dag_fixtures.RelationshipPublicTests.envelope_for
+    put_envelope = dag_fixtures.RelationshipPublicTests.put_envelope
+    add_goal = dag_fixtures.RelationshipPublicTests.add_goal
+    read_at = dag_fixtures.RelationshipPublicTests.read_at
+    result_at = dag_fixtures.RelationshipPublicTests.result_at
+    resolutions = dag_fixtures.RelationshipPublicTests.resolutions
 
     def test_reviewed_red_green_proofs_commit_and_exact_publication_form_one_delivery_graph(self):
         self.connected_delivery()
