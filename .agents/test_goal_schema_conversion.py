@@ -731,7 +731,7 @@ class MigrationEntryPublicTests(dag.DagFixture):
         transition = {"schema_version": 1, "expected_revision": predecessor["revision"] - 1,
                       "expected_digest": z.github_goal_record(initial)["digest"], "goal": predecessor}
         legacy = legacy_history_body(initial, transition)
-        self.provider.create_issue_comment(100, legacy)
+        legacy_comment = self.provider.create_issue_comment(100, legacy)
         # Historical transport fixture, not dispatch through a retired engine.
         z.apply_goal_transition(self.provider, "owner/repo", 100, transition)
         source = copy.deepcopy(self.provider.issues[100])
@@ -786,7 +786,7 @@ class MigrationEntryPublicTests(dag.DagFixture):
         for comment in comments:
             self.assertIn(comment, self.provider.comments[100], "Mixed predecessor transaction bytes are immutable history")
         self.assertEqual(legacy, next(comment["body"] for comment in self.provider.comments[100]
-                                     if comment["id"] == comments[0]["id"]))
+                                     if comment["id"] == legacy_comment["id"]))
         self.session.finish(reviewer, {"value": "Current reviewer remains owner after all historical reads"})
         # Cross-version revision numbers are not a global history identity. This
         # control uses exact host Refs and makes no renumbering/API assumption.
