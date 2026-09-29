@@ -1,6 +1,7 @@
 """Contracts for deterministic work bases and provider-bound publication."""
 
 import importlib.util
+import copy
 import json
 import subprocess
 import tempfile
@@ -8,6 +9,9 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+
+# Bootstrap the production module aliases before loading the isolated adapter.
+import test_zzzops as fixtures
 
 
 MODULE_PATH = Path(__file__).parents[1] / "plugins" / "zzzops" / "zzzops" / "workflow.py"
@@ -67,80 +71,11 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         ).stdout.strip()
 
     def test_step_base_commit_uses_declared_base_not_unrelated_checkout_head(self):
-        with tempfile.TemporaryDirectory() as directory:
-            repo = Path(directory)
-            self.git(repo, "init", "-q")
-            self.git(repo, "config", "user.email", "test@example.com")
-            self.git(repo, "config", "user.name", "Test")
-            (repo / "base.txt").write_text("base\n")
-            self.git(repo, "add", "base.txt")
-            self.git(repo, "commit", "-qm", "base")
-            self.git(repo, "branch", "dev")
-            declared_base = self.git(repo, "rev-parse", "dev")
-            self.git(repo, "checkout", "-qb", "unrelated")
-            (repo / "unrelated.txt").write_text("unrelated\n")
-            self.git(repo, "add", "unrelated.txt")
-            self.git(repo, "commit", "-qm", "unrelated")
-            unrelated_head = self.git(repo, "rev-parse", "HEAD")
-            self.assertNotEqual(declared_base, unrelated_head)
-
-            live = {
-                "implement": {
-                    "goal_spec": "sha256:" + "1" * 64,
-                    "policy": "sha256:" + "2" * 64,
-                    "repository": {"snapshot": {"files": {}}},
-                    "upstream_outputs": [],
-                },
-            }
-            goal = {
-                "key": 7, "url": "https://example.test/goals/7", "status": "ready",
-                "acceptance_criteria": ["Work is complete."], "claim": None,
-                "implementation": {"branch": "goal-7", "base": "dev", "target": "dev", "pr": None},
-                "phase_evidence": None,
-                "workflow": {
-                    "leases": {}, "receipts": {}, "workers": {}, "artifacts": {},
-                    "assessments": {"implement": {
-                        "goal_spec": live["implement"]["goal_spec"],
-                        "policy": live["implement"]["policy"], "files": [],
-                        "dimensions": {"consequence": "bounded", "boundedness": "atomic", "engineering_rigor": "structured"},
-                    }},
-                },
-            }
-            engine = workflow.Workflow.__new__(workflow.Workflow)
-            engine.api, engine.repo, engine.project, engine.runtime = StepAPI(), repo, self.legacy_project(), {
-                "delegation": {"available": True, "discovery_complete": True, "tool": "spawn_agent"},
-            }
-            # This isolated base-selection test supplies explicit artifact-only
-            # scope evidence; it does not mock the scope eligibility decision.
-            goal["parent"] = 1
-            parent = {"key": 1, "parent": None}
-            scope = {"parent": 1, "child": 7, "test_design": [], "implement": []}
-            artifacts = {}
-            for owner, content in [(parent, {"output_scopes": [scope]}),
-                                   (goal, {"output_scope": scope})]:
-                identity = workflow.digest(content)
-                output = {"reference": "urn:" + identity, "hash": identity}
-                artifacts[identity] = content
-                envelope = StepAPI.workflow_live_inputs(repo, {}, owner, "execute", {})["plan"]
-                record = {"actor": "plan-author", "input_envelope": envelope,
-                          "input_hash": workflow.digest(envelope), "output": output}
-                review = {"decision": "approved", "reviewer": "independent-reviewer",
-                          "record_hash": workflow.digest(record), "input_hash": record["input_hash"],
-                          "output_hash": identity}
-                owner["phase_evidence"] = {"records": {"plan": record},
-                                           "reviews": {"plan": review}, "withdrawals": []}
-            engine.read = lambda number: ({}, parent if number == 1 else goal)
-            engine.read_artifact = lambda _number, reference: artifacts[reference["hash"]]
-            engine.context = lambda _goal: (
-                {"phases": [{"id": "implement"}]},
-                {"implement": {"assignment_group": "implementation", "review": {}, "not_required": "never"}},
-                live, {},
-            )
-
-            step = engine.step(7)[0]
-            self.assertEqual("dev", step["base_branch"])
-            self.assertEqual(declared_base, step["base_commit"])
-            self.assertNotEqual(unrelated_head, step["base_commit"])
+        # Exact publication safeguards now consume ordinary current generic evidence.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_publication_contract.GenericPublicationPublicTests.test_declared_base_is_not_replaced_by_unrelated_checkout_head',
+        )
 
     def publication_engine(self, *, local_head, local_base, provider_head, provider_base):
         api = PublicationAPI()
@@ -206,6 +141,468 @@ class WorkflowPublicationContractTests(unittest.TestCase):
             "branch": "goal-7", "base": "dev",
             "base_head": provider_base, "head": provider_head,
         }, candidate)
+
+
+
+
+from test_evidence_dag_journeys import DagFixture, REF_TYPE, FINDING_TYPE, ADMISSION_TYPE, content_hash, output, shape, spec_input, z
+from test_evidence_dag import task, selector, scope
+
+
+class GenericPublicationPublicTests(DagFixture):
+    """Finite adapter wire proposal; no domain phase or envelope metadata.
+
+    repository_context is {branch,base,target,pr:null|string}. Its authenticated
+    root output needs configured independent review and current root authorization.
+    repository_authorization is {context:Ref,policy:Hash,decision:'approved'}.
+    publication_evidence is {repository,pr,head_oid,base_oid,base_ref,ci}, where ci is
+    verified|unverified|absent|unknown. Negative observations remain recordable;
+    authorization/effects/completion enforce CI. Absent requires known complete
+    provider evidence; unknown/incomplete is never absent. The adapter
+    obtains provider facts, exact CI and policy itself. Caller booleans confer none.
+    publication_authorization is {subject:Ref,review:Ref,policy,decision:'approved'}.
+    Operational integrate accepts authorization:Ref and expected_head, and cannot
+    issue missing semantic Results. All such calls target a synthetic provider.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.observation = {"repository": "owner/repo", "head_oid": self.fixture.head_oid,
+            "base_oid": self.fixture.base_oid, "base_ref": "dev", "merged": False,
+            "merged_at": None, "merge_commit": None, "checks_present": True,
+            "checks_verified": True, "review_verified": False}
+        def provider_facts(_repo, executable, selected, bodies):
+            self.assertEqual("gh", executable)
+            self.assertEqual([100], [entry["number"] for entry in selected])
+            self.assertIn(100, bodies)
+            return {100: copy.deepcopy(self.observation)}, 512, 1
+        patch = mock.patch.object(z, "_github_pull_request_states", side_effect=provider_facts)
+        patch.start()
+        self.addCleanup(patch.stop)
+        z._workflow_section(self.session.project, "verification_testing")["configuration"]["required_ci"] = "inspect_exact_pr_head"
+        self.merge_calls = []
+        self.session.provider_command = self.provider_command
+        self.context = {"branch": "goal-child", "base": "dev", "target": "dev",
+                        "pr": "https://github.com/owner/repo/pull/9"}
+        self.configure()
+
+    def provider_command(self, command, *args, **kwargs):
+        if list(command[:1]) != ["gh"]:
+            return None
+        if list(command[:3]) == ["gh", "pr", "list"]:
+            values = [] if self.observation["merged"] else [{"headRefName": "goal-child", "baseRefName": "dev", "headRefOid": self.observation["head_oid"]}]
+            return subprocess.CompletedProcess(command, 0, stdout=json.dumps(values), stderr="")
+        if list(command[:3]) == ["gh", "pr", "merge"]:
+            self.assertIn("--match-head-commit", command)
+            self.assertEqual(self.observation["head_oid"], command[command.index("--match-head-commit") + 1])
+            self.merge_calls.append(list(command))
+            self.mark_merged()
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        raise AssertionError("Unexpected provider command in synthetic publication fixture: %r" % command)
+
+    def mark_merged(self):
+        self.observation.update(merged=True, merged_at="2026-09-29T15:00:00Z", merge_commit="f" * 40, review_verified=True)
+
+    def configure(self, renamed=False):
+        self.provider.issues[100]["state"] = "open"  # Independent fixture scenario, never a CLI reopen.
+        roles = ("context", "inspect", "consent", "observe", "review", "approve", "finish")
+        self.ids = {name: ("n%d" % i if renamed else name) for i, name in enumerate(roles)}
+        n = self.ids
+        context_type = {"kind": "object", "fields": {
+            **{key: {"kind": "string"} for key in ("branch", "base", "target")},
+            "pr": {"kind": "union", "variants": [{"kind": "null"}, {"kind": "string"}]}}}
+        permit_type = {"kind": "object", "fields": {"context": REF_TYPE,
+            "policy": {"kind": "string"}, "decision": {"kind": "enum", "values": ["approved"]}}}
+        published_type = shape({"repository": "owner/repo", "pr": self.context["pr"],
+            "head_oid": "head", "base_oid": "base", "base_ref": "dev", "ci": "verified"})
+        published_type["fields"]["ci"] = {"kind": "enum", "values": ["verified", "unverified", "absent", "unknown"]}
+        approval_type = {"kind": "object", "fields": {"subject": REF_TYPE, "review": REF_TYPE,
+            "policy": {"kind": "string"}, "decision": {"kind": "enum", "values": ["approved"]}}}
+        def binding(role, schema):
+            return {"producer": {"node": selector(n[role])}, "output": "value", "path": [],
+                    "mode": "identity", "type": schema}
+        context = task(n["context"], role="root")
+        context["inputs"] = {"request": spec_input()}
+        context["outputs"] = {"value": output("repository_context", context_type)}
+        inspect = task(n["inspect"], [n["context"]])
+        inspect["inputs"] = {"subject": binding("context", context_type)}
+        inspect["independent_of"] = [selector(n["context"])]
+        consent = task(n["consent"], [n["inspect"]], role="root")
+        consent["inputs"] = {"subject": binding("context", context_type), "review": binding("inspect", {"kind": "string"})}
+        consent["outputs"] = {"value": output("repository_authorization", permit_type)}
+        observe = task(n["observe"], [n["consent"]])
+        observe["inputs"] = {"context": binding("context", context_type), "authority": binding("consent", permit_type)}
+        observe["executor"].update(resources=["repository_publication"], authority=scope(n["context"]))
+        observe["outputs"] = {"value": output("publication_evidence", published_type)}
+        review = task(n["review"], [n["observe"]])
+        review["inputs"] = {"subject": binding("observe", published_type)}
+        review["independent_of"] = [selector(n["observe"])]
+        approve = task(n["approve"], [n["review"]], role="root")
+        approve["inputs"] = {"subject": binding("observe", published_type), "review": binding("review", {"kind": "string"})}
+        approve["outputs"] = {"value": output("publication_authorization", approval_type)}
+        finish = task(n["finish"], [n["approve"]])
+        finish["inputs"] = {"authorization": binding("approve", approval_type)}
+        self.install({"nodes": [context, inspect, consent, observe, review, approve, finish],
+                      "task_sets": [], "terminals": [selector(n["finish"])]})
+
+    def submit_role(self, role, value, actor=None):
+        work = self.session.acquire(self.ids[role], actor=actor)
+        self.session.finish(work, {"value": value})
+        return work
+
+    def authorize_context(self):
+        self.submit_role("context", self.context)
+        self.assertNotIn(self.ids["observe"], self.names())
+        self.submit_role("inspect", "Exact repository context reviewed", actor="context-reviewer")
+        self.assertNotIn(self.ids["observe"], self.names())
+        self.submit_role("consent", {"context": self.produced(self.ids["context"]),
+            "policy": content_hash(self.session.project["policy"]), "decision": "approved"})
+        self.assertIn(self.ids["observe"], self.names())
+
+    def observed_value(self):
+        ci = ("verified" if self.observation["checks_verified"] else
+              "absent" if self.observation["checks_present"] is False else
+              "unverified" if self.observation["checks_present"] is True else "unknown")
+        return {**{key: (self.context["pr"] if key == "pr" else self.observation[key])
+                for key in ("repository", "pr", "head_oid", "base_oid", "base_ref")}, "ci": ci}
+
+    def approve_publication(self):
+        self.submit_role("observe", self.observed_value())
+        self.assertNotIn(self.ids["finish"], self.names())
+        self.submit_role("review", "Exact observed publication reviewed", actor="publication-reviewer")
+        self.assertNotIn(self.ids["finish"], self.names())
+        self.submit_role("approve", {"subject": self.produced(self.ids["observe"]),
+            "review": self.produced(self.ids["review"]), "policy": content_hash(self.session.project["policy"]),
+            "decision": "approved"})
+        return self.produced(self.ids["approve"])
+
+    def test_declared_base_is_not_replaced_by_unrelated_checkout_head(self):
+        self.authorize_context()
+        self.session.git("checkout", "-qb", "unrelated")
+        (self.fixture.repo / "unrelated.txt").write_text("Unrelated committed checkout\n")
+        self.session.git("add", "unrelated.txt")
+        self.session.git("commit", "-qm", "unrelated checkout")
+        head = self.session.git("rev-parse", "HEAD")
+        self.assertNotEqual(self.fixture.base_oid, head)
+        work = self.session.acquire(self.ids["observe"])
+        self.assertEqual("dev", work["base_branch"])
+        self.assertEqual(self.fixture.base_oid, work["base_commit"])
+        self.assertNotEqual(head, work["base_commit"])
+        self.session.finish(work, {"value": self.observed_value()})
+
+    def test_renamed_graph_requires_current_review_and_root_before_completion(self):
+        for renamed in (False, True):
+            with self.subTest(renamed=renamed):
+                self.configure(renamed)
+                self.authorize_context()
+                self.approve_publication()
+                self.submit_role("finish", "All configured exact evidence accepted")
+                self.assertEqual(set(), self.names())
+                self.assertEqual(self.ids["finish"], self.result(self.ids["finish"])[1]["node"]["node"])
+                self.assertEqual("open", self.provider.issues[100]["state"], "Semantic completion alone cannot claim a provider merge")
+
+    def test_live_head_base_ci_and_caller_approval_flags_reject_before_valid_control(self):
+        self.authorize_context()
+        work = self.session.acquire(self.ids["observe"])
+        original = copy.deepcopy(self.observation)
+        declared = self.observed_value()
+        for field, value in (("head_oid", "a" * 40), ("base_oid", "b" * 40), ("checks_verified", False)):
+            with self.subTest(field=field):
+                self.observation = {**original, field: value}
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                response = self.session.call(100, self.session.submission(work, {"value": declared}, "changed-" + field), expected=2)
+                self.assertRegex(json.dumps(response), r"(?i)head|base|checks|CI|stale|provider|input")
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.observation = original
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        forged = {**self.observed_value(), "approved": True, "checks_verified": True}
+        self.session.call(100, self.session.submission(work, {"value": forged}, "forged-approval"), expected=2)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.finish(work, {"value": self.observed_value()})
+
+    def test_negative_ci_observation_is_recordable_and_review_can_admit_correction_without_approval(self):
+        graph = copy.deepcopy(self.graph)
+        observed = self.ids["observe"]
+        source_input = copy.deepcopy(next(node for node in graph["nodes"] if node["id"] == self.ids["review"])["inputs"])
+        finder = task("describe_defect", [self.ids["review"]])
+        finder["inputs"] = copy.deepcopy(source_input)
+        finder["independent_of"] = [selector(observed)]
+        finder["outputs"] = {"value": output("finding", FINDING_TYPE)}
+        finder["permits"] = [{"type": "finding", "scope": scope(observed)}]
+        authorize = task("authorize_correction", ["describe_defect"], role="root")
+        authorize["inputs"] = copy.deepcopy(source_input)
+        admit = task("admit_correction", ["describe_defect", "authorize_correction"], role="root")
+        admit["inputs"] = copy.deepcopy(source_input)
+        admit["outputs"] = {"value": output("admission", ADMISSION_TYPE)}
+        admit["permits"] = [{"type": "admission", "scope": scope(observed)}]
+        graph["nodes"].extend([finder, authorize, admit])
+        self.install(graph)
+        self.authorize_context()
+        self.observation["checks_verified"] = False
+        self.submit_role("observe", self.observed_value())
+        subject = self.produced(observed)
+        self.assertEqual("unverified", self.read_blob(subject)["content"]["ci"])
+        self.submit_role("review", "Observed failed checks require correction", actor="publication-reviewer")
+        finding = {"id": "failed-ci", "revision": 1, "source": subject, "subjects": [subject],
+            "target": scope(observed), "request": "Correct the failing checks and publish current provider evidence",
+            "rationale": "Exact authenticated publication observation reports unverified CI", "supersedes": None}
+        self.session.finish(self.session.acquire("describe_defect", actor="defect-reviewer"), {"value": finding})
+        self.session.finish(self.session.acquire("authorize_correction"), {"value": "Authorize in-scope correction"})
+        admission = {"finding": self.produced("describe_defect"), "target_inputs": self.result(observed)[1]["inputs"],
+            "authority": self.result("authorize_correction")[0], "applicability": "applicable", "rationale": "Current failing subject needs correction"}
+        self.session.finish(self.session.acquire("admit_correction"), {"value": admission})
+        self.assertIn(observed, self.names())
+        self.assertNotIn(self.ids["finish"], self.names())
+        self.assertFalse(any(step.get("kind") == "complete" for step in self.session.checkpoint(100)))
+        self.assertEqual([], self.merge_calls)
+
+    def test_ci_absent_unknown_unverified_and_disabled_authorization_are_distinct(self):
+        cases = [("inspect_exact_pr_head", True, True, True),
+                 ("inspect_exact_pr_head", False, False, False),
+                 ("existing_only", False, False, True),
+                 ("existing_only", None, False, False),
+                 ("existing_only", True, False, False),
+                 ("disabled", None, False, True)]
+        for mode, present, verified, allowed in cases:
+            with self.subTest(mode=mode, present=present, verified=verified):
+                z._workflow_section(self.session.project, "verification_testing")["configuration"]["required_ci"] = mode
+                self.observation.update(checks_present=present, checks_verified=verified, merged=False)
+                self.configure()
+                self.authorize_context()
+                self.submit_role("observe", self.observed_value())
+                self.assertEqual(self.observed_value(), self.read_blob(self.produced(self.ids["observe"]))["content"])
+                self.submit_role("review", "Reviewed current observation, including negative CI", actor="publication-reviewer")
+                value = {"subject": self.produced(self.ids["observe"]), "review": self.produced(self.ids["review"]),
+                    "policy": content_hash(self.session.project["policy"]), "decision": "approved"}
+                if allowed:
+                    self.submit_role("approve", value)
+                    self.assertIn(self.ids["finish"], self.names())
+                else:
+                    ready = self.names()
+                    if self.ids["approve"] in ready:
+                        work = self.session.acquire(self.ids["approve"])
+                        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                        response = self.session.call(100, self.session.submission(work, {"value": value}, "ci-block-" + str(len(self.session.calls))), expected=2)
+                        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+                    else:
+                        response = self.session.call(100)
+                    self.assertRegex(json.dumps(response), r"(?i)CI|checks|unknown|unverified|incomplete")
+                    self.assertNotIn(self.ids["finish"], self.names())
+                    before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                    self.session.call(100, {"operation": "complete", "request_id": "premature-ci-complete-" + str(len(self.session.calls))}, expected=2)
+                    self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_changed_root_context_stales_acquired_publication(self):
+        self.authorize_context()
+        work = self.session.acquire(self.ids["observe"])
+        self.replace_spec("Changed required repository target; current context must be reconsidered")
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, self.session.submission(work, {"value": self.observed_value()}, "stale-context"), expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)stale|context|input|ancestor|authority")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.assertNotIn(self.ids["finish"], self.names())
+
+    def test_publication_submit_lost_body_response_reuses_exact_result(self):
+        self.authorize_context()
+        work = self.session.acquire(self.ids["observe"])
+        request = self.session.submission(work, {"value": self.observed_value()}, "publication-lost-response")
+        update = self.provider.update_issue
+        lost = []
+        def uncertain(number, payload):
+            result = update(number, payload)
+            if number == 100 and not lost:
+                lost.append(True)
+                raise RuntimeError("Publication body committed; response lost")
+            return result
+        with mock.patch.object(self.provider, "update_issue", side_effect=uncertain):
+            self.session.call(100, request, expected=None)
+        self.assertTrue(lost, "Fault must reach the actual durable provider boundary")
+        self.session.call(100, request)
+        reference = self.produced(self.ids["observe"])
+        stable = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, request)
+        self.assertEqual(stable, (self.provider.issues, self.provider.comments))
+        self.assertEqual(reference, self.produced(self.ids["observe"]))
+        self.assertNotIn(self.ids["finish"], self.names())
+
+    def integration_request(self, authorization):
+        steps = self.session.checkpoint(100)
+        candidates = [step for step in steps if step.get("submission", {}).get("operation") == "integrate"]
+        self.assertTrue(candidates, "Current terminal evidence must expose exact operational integration contract")
+        request = copy.deepcopy(candidates[0]["submission"])
+        self.assertEqual(authorization, request["authorization"])
+        self.assertEqual(self.observation["head_oid"], request["expected_head"])
+        return request
+
+    def test_exact_root_authorization_rejects_wrong_subject_review_policy_and_forged_integration(self):
+        self.authorize_context()
+        self.submit_role("observe", self.observed_value())
+        self.submit_role("review", "Reviewed exact subject", actor="publication-reviewer")
+        root = self.session.acquire(self.ids["approve"])
+        value = {"subject": self.produced(self.ids["observe"]), "review": self.produced(self.ids["review"]),
+                 "policy": content_hash(self.session.project["policy"]), "decision": "approved"}
+        wrong = self.produced(self.ids["context"])
+        for changes in ({"subject": wrong}, {"review": wrong}, {"policy": "sha256:" + "0" * 64}):
+            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+            response = self.session.call(100, self.session.submission(root, {"value": {**value, **changes}}, "wrong-approval-" + next(iter(changes))), expected=2)
+            self.assertRegex(json.dumps(response), r"(?i)subject|review|policy|current|authority|stale")
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        request = self.session.submission(root, {"value": value}, "nonroot-approval")
+        request["actor"] = "publication-reviewer"
+        self.session.call(100, request, expected=2)
+        self.session.finish(root, {"value": value})
+        authority = self.produced(self.ids["approve"])
+        self.submit_role("finish", "Exact configured graph complete")
+        request = self.integration_request(authority)
+        forged = self.blob({"type": "publication_authorization", "content": value, "producer": None,
+            "provenance": {"actor": "root-thread", "source": None, "policy": value["policy"]}})
+        for bad in (None, wrong, forged):
+            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+            rejected = {**request, "request_id": "bad-integration-" + str(len(self.session.calls)), "authorization": bad}
+            response = self.session.call(100, rejected, expected=2)
+            self.assertRegex(json.dumps(response), r"(?i)authoriz|approval|root|subject|reference|current")
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+            self.assertEqual([], self.merge_calls)
+        request["request_id"] = "exact-integration"
+        self.session.call(100, request)
+        self.assertEqual(1, len(self.merge_calls))
+        stable = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, request)
+        self.assertEqual(1, len(self.merge_calls))
+        self.assertEqual(stable, (self.provider.issues, self.provider.comments))
+
+    def test_stale_root_authorization_cannot_integrate_after_context_drift(self):
+        self.authorize_context()
+        authority = self.approve_publication()
+        self.submit_role("finish", "Current terminal evidence")
+        request = self.integration_request(authority)
+        old_body = self.provider.issues[100]["body"]
+        self.replace_spec("Different repository target requiring new current authorization")
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, {**request, "request_id": "stale-root-context"}, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)stale|current|context|authority|evidence|input")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.assertEqual([], self.merge_calls)
+        # Fixture restores the exact external substantive input; added immutable
+        # source bytes remain unreferenced history, not an authority bypass.
+        self.provider.issues[100]["body"] = old_body
+        self.session.call(100, {**request, "request_id": "restored-current-context"})
+        self.assertEqual(1, len(self.merge_calls))
+
+    def test_strict_ci_blocks_integration_and_only_reviewed_disabled_configuration_permits_it(self):
+        for mode in ("inspect_exact_pr_head", "disabled"):
+            with self.subTest(mode=mode):
+                self.observation.update(checks_verified=True, merged=False, merged_at=None, merge_commit=None, review_verified=False)
+                z._workflow_section(self.session.project, "verification_testing")["configuration"]["required_ci"] = mode
+                self.configure()
+                self.authorize_context()
+                authority = self.approve_publication()
+                self.submit_role("finish", "Complete exact evidence")
+                request = self.integration_request(authority)
+                self.observation["checks_verified"] = False
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                previous_merges = len(self.merge_calls)
+                if mode == "inspect_exact_pr_head":
+                    response = self.session.call(100, request, expected=2)
+                    self.assertRegex(json.dumps(response), r"(?i)CI|checks|stale|current|evidence")
+                    self.assertEqual(before, (self.provider.issues, self.provider.comments))
+                    self.assertEqual(previous_merges, len(self.merge_calls))
+                    self.observation["checks_verified"] = True
+                self.session.call(100, request)
+                self.assertEqual(previous_merges + 1, len(self.merge_calls))
+
+    def test_strict_ci_blocks_complete_and_reviewed_disabled_ci_preserves_current_terminal_requirement(self):
+        for mode in ("inspect_exact_pr_head", "disabled"):
+            with self.subTest(mode=mode):
+                self.observation.update(checks_verified=True, merged=False, merged_at=None, merge_commit=None, review_verified=False)
+                z._workflow_section(self.session.project, "verification_testing")["configuration"]["required_ci"] = mode
+                self.configure()
+                self.authorize_context()
+                authority = self.approve_publication()
+                self.mark_merged()
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                request = {"operation": "complete", "authorization": authority, "request_id": "complete-" + mode}
+                self.session.call(100, request, expected=2)
+                self.assertEqual(before, (self.provider.issues, self.provider.comments), "Even disabled CI cannot replace missing terminal Result")
+                self.submit_role("finish", "Current complete graph")
+                self.observation["checks_verified"] = False
+                if mode == "inspect_exact_pr_head":
+                    before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                    response = self.session.call(100, request, expected=2)
+                    self.assertRegex(json.dumps(response), r"(?i)CI|checks|stale|current|evidence")
+                    self.assertEqual(before, (self.provider.issues, self.provider.comments))
+                    self.observation["checks_verified"] = True
+                self.session.call(100, request)
+                self.assertEqual("closed", self.provider.issues[100]["state"])
+
+    def reconciliation_request(self):
+        steps = self.session.checkpoint(100)
+        candidates = [step for step in steps if step.get("submission", {}).get("operation") == "reconcile"]
+        self.assertTrue(candidates, "External merge must expose exact readback reconciliation")
+        return copy.deepcopy(candidates[0]["submission"])
+
+    def test_external_merge_cannot_mint_missing_results_and_exact_replay_preserves_history(self):
+        self.authorize_context()
+        self.mark_merged()
+        request = self.reconciliation_request()
+        prior = copy.deepcopy(self.payload()[1]["evidence"])
+        for change in ({"expected_digest": "0" * 64}, {"expected_merge": "sha256:" + "0" * 64}):
+            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+            self.session.call(100, {**request, **change}, expected=2)
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        request["request_id"] = "incomplete-external-merge"
+        self.session.call(100, request)
+        self.assertEqual("open", self.provider.issues[100]["state"])
+        self.assertEqual(prior, self.payload()[1]["evidence"], "Reconciliation cannot issue semantic Results")
+        stable = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, request)
+        self.assertEqual(stable, (self.provider.issues, self.provider.comments))
+        self.assertFalse(any(step.get("kind") == "complete" for step in self.session.checkpoint(100)))
+
+    def test_external_merge_preserves_owned_worker_until_exact_observed_stop(self):
+        self.authorize_context()
+        work = self.session.acquire(self.ids["observe"])
+        self.mark_merged()
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        steps = self.session.checkpoint(100)
+        reconcile = [step for step in steps if step.get("submission", {}).get("operation") == "reconcile"]
+        if reconcile:
+            response = self.session.call(100, reconcile[0]["submission"], expected=2)
+            self.assertRegex(json.dumps(response), r"(?i)worker|lease|stopped|owner")
+        else:
+            self.assertRegex(json.dumps(steps), r"(?i)worker|lease|stopped|owner")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.assertTrue(any(lease["token"] == work["lease"]["token"] for lease in self.payload()[1]["operational"]["leases"]))
+        with mock.patch.object(z._workflow.time, "time", return_value=work["lease"]["expires_at"] + 1):
+            steps = self.session.checkpoint(100)
+            recovery = [step for step in steps if "recovery_contract" in step or step.get("kind") == "recover"]
+            self.assertTrue(recovery)
+            request = copy.deepcopy(recovery[0].get("submission", recovery[0].get("recovery_contract")))
+            request.update(worker_status="stopped", evidence="Observed publication worker terminal state")
+            self.session.call(100, request)
+        request = self.reconciliation_request()
+        self.session.call(100, request)
+        self.assertEqual("open", self.provider.issues[100]["state"], "Stopped work still supplies no missing Result")
+
+    def test_external_merge_closes_only_current_terminal_and_partial_close_replay_repairs(self):
+        self.authorize_context()
+        self.approve_publication()
+        self.submit_role("finish", "Current complete graph")
+        self.mark_merged()
+        request = self.reconciliation_request()
+        request["request_id"] = "complete-external-merge"
+        prior = copy.deepcopy(self.payload()[1]["evidence"])
+        self.session.call(100, request)
+        self.assertEqual("closed", self.provider.issues[100]["state"])
+        self.assertEqual(prior, self.payload()[1]["evidence"])
+        stable = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, request)
+        self.assertEqual(stable, (self.provider.issues, self.provider.comments))
+        self.provider.issues[100]["state"] = "open"
+        body = self.provider.issues[100]["body"]
+        response = self.session.call(100, request, expected=None)
+        self.assertTrue(any(step.get("kind") == "repair" for step in response["next_steps"]))
+        self.assertEqual(body, self.provider.issues[100]["body"], "Stored receipt cannot silently claim closure after provider partial state")
 
 
 if __name__ == "__main__":

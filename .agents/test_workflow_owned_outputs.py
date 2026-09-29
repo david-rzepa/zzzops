@@ -90,6 +90,11 @@ class PublicSession:
         real_run = subprocess.run
 
         def provider_command(command, *args, **kwargs):
+            custom = getattr(self, 'provider_command', None)
+            if custom is not None:
+                observed = custom(command, *args, **kwargs)
+                if observed is not None:
+                    return observed
             if list(command[:3]) == ['gh', 'pr', 'list']:
                 return subprocess.CompletedProcess(command, 0, stdout='[]', stderr='')
             return real_run(command, *args, **kwargs)
@@ -258,122 +263,11 @@ class PublicSession:
 
 class OwnedOutputPublicTests(unittest.TestCase):
     def test_publication_changes_requested_with_unfinished_ci_reaches_correction(self):
-        s = self.session
-        z._workflow_section(s.project, 'verification_testing')['configuration']['required_ci'] = 'inspect_exact_pr_head'
-        s.prepare()
-        s.design()
-        s.implement()
-        s.git('add', 'source.py')
-        s.git('commit', '-qm', 'feat: required behavior')
-        self.fixture.head_oid = s.git('rev-parse', 'HEAD')
-        self.fixture.base_oid = s.git('rev-parse', 'dev')
-        child = s.goal(101)
-        metadata = copy.deepcopy(child['implementation'])
-        metadata['pr'] = 'https://github.com/owner/repo/pull/101'
-        s.call(101, {'operation': 'revise', 'expected_digest': child['digest'],
-                     'changes': {'implementation': metadata}})
-
-        ci = {'state': 'failed'}
-        observed_states = s.pull_request_states
-
-        def states(*args, **kwargs):
-            records, size, processes = observed_states(*args, **kwargs)
-            records[101].update(checks_verified=ci['state'] == 'success', checks_present=True,
-                                observed_ci_state=ci['state'])
-            return records, size, processes
-
-        s.pull_request_states = states
-        publication = s.start(101, 'publish')
-        proof = s.verify(publication)['next_steps'][0]['verification']
-        s.result(101, publication, {'publication': 'exact produced head'}, proof)
-
-        for status in ('failed', 'pending', 'cancelled', 'incomplete'):
-            with self.subTest(ci=status):
-                ci['state'] = status
-                target = next(x for x in s.checkpoint(101) if x.get('phase') == 'publish')
-                receipt = json.loads(Path(target['policy']['path']).read_text())['policy_receipt']
-                review = s.call(101, {**target['start'], 'request_id': 'review-start-' + status,
-                                      'policy_receipt': receipt})['next_steps'][0]
-                bind = {'operation': 'bind', 'phase': 'publish', 'lease': review['lease']['token'],
-                        'actor': publication['bound_actor'], 'selection': review['lease']['selection'],
-                        'policy_receipt': receipt}
-                before_bind = copy.deepcopy(s.provider.issues[101])
-                self.assertIn('independent', json.dumps(s.call(101, bind, expected=2)))
-                self.assertEqual(before_bind, s.provider.issues[101])
-                bind['actor'] = 'independent-publication-reviewer-' + status
-                s.call(101, bind)
-                review['bound_actor'] = bind['actor']
-                artifact = s.artifact(101, review, {'finding': 'Repair failed verification',
-                                                  'head': self.fixture.head_oid, 'ci': status})
-                request = {'operation': 'record_review', 'phase': 'publish',
-                           'lease': review['lease']['token'], 'actor': review['bound_actor'],
-                           'artifact': artifact, 'request_id': 'negative-publication-' + status,
-                           'outcomes': {'acceptance': 'approved', 'entropy': {
-                               'outcome': 'no_findings', 'evidence': 'Inspected exact head.', 'goals': []}}}
-                before = copy.deepcopy(s.provider.issues[101])
-                denied = s.call(101, request, expected=2)
-                self.assertIn('CI checks', json.dumps(denied))
-                self.assertEqual(before, s.provider.issues[101])
-
-                request['outcomes'] = {'acceptance': 'changes_requested', 'entropy': {
-                    'outcome': 'correction_required', 'evidence': 'Required CI remains ' + status, 'goals': []}}
-                wrong_actor = {**request, 'actor': 'unbound-worker'}
-                self.assertIn('bound executor', json.dumps(s.call(101, wrong_actor, expected=2)))
-                self.assertEqual(before, s.provider.issues[101])
-                wrong_lease = {**request, 'lease': 'not-the-current-lease'}
-                self.assertIn('exact current phase lease', json.dumps(s.call(101, wrong_lease, expected=2)))
-                self.assertEqual(before, s.provider.issues[101])
-                old_head = self.fixture.head_oid
-                self.fixture.head_oid = 'f' * 40
-                try:
-                    stale = s.call(101, request, expected=2)
-                    self.assertRegex(json.dumps(stale), r'(?i)(changed|stale|eligible)')
-                    self.assertEqual(before, s.provider.issues[101])
-                finally:
-                    self.fixture.head_oid = old_head
-                malformed = {**request, 'outcomes': {'acceptance': 'changes_requested'}}
-                self.assertIn('separate acceptance and entropy', json.dumps(s.call(101, malformed, expected=2)))
-                self.assertEqual(before, s.provider.issues[101])
-                s.call(101, request)
-                stored = s.goal(101)['phase_evidence']['reviews']['publish']
-                self.assertEqual('changes_requested', stored['decision'])
-                self.assertEqual('correction_required', stored['outcomes']['entropy']['outcome'])
-                self.assertEqual(artifact, stored['artifact'])
-                rejected_record = s.goal(101)['phase_evidence']['records']['publish']
-                self.assertEqual(content_hash(rejected_record), stored['record_hash'])
-                self.assertEqual(rejected_record['input_hash'], stored['input_hash'])
-                finding = s.read(101, artifact)
-                self.assertEqual(status, finding['ci'])
-                self.assertEqual(self.fixture.head_oid, finding['head'])
-                self.assertEqual(self.fixture.head_oid,
-                                 rejected_record['input_envelope']['provider']['snapshot']['publication']['head_oid'])
-                after = copy.deepcopy(s.provider.issues[101])
-                comments = copy.deepcopy(s.provider.comments[101])
-                s.call(101, request)
-                self.assertEqual(after, s.provider.issues[101])
-                self.assertEqual(comments, s.provider.comments[101])
-                correction = next(x for x in s.checkpoint(101) if x.get('phase') == 'publish')
-                self.assertEqual('execute', correction['kind'])
-                self.assertEqual(['--intent', 'execute'], correction['command'][:2])
-                self.assertEqual('start', correction['start']['operation'])
-                self.assertEqual('delegate', correction['assignment'])
-                self.assertEqual('record_result', correction['submission']['operation'])
-                self.assertEqual('publish', correction['submission']['phase'])
-                self.assertEqual(correction['input_hash'], correction['result_contract']['record']['input_hash'])
-                self.assertEqual(stored['record_hash'], correction['correction']['prior_record_hash'])
-                self.assertEqual(stored['outcomes'], correction['correction']['prior_findings'])
-                self.assertEqual(stored['reviewer'], correction['correction']['prior_reviewer'])
-                self.assertIn('only the recorded findings', correction['correction']['scope'])
-                publication = s.start(101, 'publish')
-                proof = s.verify(publication)['next_steps'][0]['verification']
-                s.result(101, publication, {'publication': 'corrected after ' + status}, proof)
-
-        ci['state'] = 'success'
-        s.review(101, 'publish')
-        self.assertEqual('approved', s.goal(101)['phase_evidence']['reviews']['publish']['decision'])
-        integration = next(x for x in s.checkpoint(101) if x['kind'] == 'integration')
-        self.assertEqual(self.fixture.head_oid, integration['head'])
-        self.assertFalse(self.fixture.pr_merged)
+        # Exact publication safeguards now consume ordinary current generic evidence.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_publication_contract.GenericPublicationPublicTests.test_negative_ci_observation_is_recordable_and_review_can_admit_correction_without_approval',
+        )
 
     def use_shipped_dag(self):
         template = json.loads((fixtures.fixtures.PLUGIN_ROOT / 'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
