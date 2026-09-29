@@ -1659,6 +1659,132 @@ class WorkspaceAuthorityPublicTests(DagFixture):
     def test_crlf_design_correction_retains_frozen_raw_checkout_overrides(self):
         self.red_design_correction(crlf=True)
 
+    def test_host_correction_predecessor_rejects_wrong_identity_disconnected_and_unbounded_chain(self):
+        """Finite proposed host wire reusing the owned-output predecessor bound.
+
+        acquisition.predecessor is a host-issued Ref, never a caller argument.
+        Its generic snapshot binds node, allocation, authorization, approval,
+        result, proof, reviews and prior (Ref|null). The prior chain has the
+        existing 32-hop reconstruction bound; it confers no scheduling authority.
+        """
+        self.setup_workspace_corrections()
+        self.red_candidate()
+        first = self.acquire_workspace("beta")
+        (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
+        proof_ref, proof = self.candidate(first, 0)
+        self.review_candidate("beta", 0)
+        result_ref = self.result("beta")[0]
+        self.admit_workspace_correction()
+        correction = self.acquire_workspace("beta")
+        reference = correction["lease"]["acquisition"]["predecessor"]
+        predecessor = self.session.read(100, reference)
+        self.assertEqual({"node", "allocation", "authorization", "approval", "result", "proof", "reviews", "prior"}, set(predecessor))
+        self.assertEqual(first["node"], predecessor["node"])
+        self.assertEqual(self.produced("charter", "grant"), predecessor["allocation"])
+        self.assertEqual(self.produced("inspect_charter", "permit"), predecessor["authorization"])
+        self.assertEqual(self.produced("consent", "permit"), predecessor["approval"])
+        self.assertEqual(result_ref, predecessor["result"])
+        self.assertEqual(proof_ref, predecessor["proof"])
+        self.assertIn(self.result("accept_beta")[0], predecessor["reviews"])
+        original_issue = copy.deepcopy(self.provider.issues[100])
+        envelope, payload = self.payload()
+        mutations = []
+        for field, replacement in (("goal", 102), ("node", "alpha")):
+            changed = copy.deepcopy(predecessor)
+            changed["node"][field] = replacement
+            mutations.append(("wrong_" + field, self.blob(changed)))
+        for field, replacement in (("allocation", self.produced("alpha")),
+                                   ("authorization", self.produced("consent", "permit")),
+                                   ("result", self.result("alpha")[0]),
+                                   ("proof", self.read_blob(self.produced("alpha"))["provenance"]["source"]),
+                                   ("reviews", [self.result("accept_alpha")[0]])):
+            changed = copy.deepcopy(predecessor)
+            changed[field] = replacement
+            mutations.append(("disconnected_" + field, self.blob(changed)))
+        changed = copy.deepcopy(predecessor)
+        altered = copy.deepcopy(self.read_blob(predecessor["allocation"]))
+        altered["content"]["allocations"]["beta"]["owned"].append("read_dependency.txt")
+        changed["allocation"] = self.blob(altered)
+        mutations.append(("broadened_scope", self.blob(changed)))
+        deep = reference
+        for _ in range(33):
+            snapshot = copy.deepcopy(predecessor)
+            snapshot["prior"] = deep
+            deep = self.blob(snapshot)
+        mutations.extend([("over_limit_chain", deep), ("null", None),
+                          ("partial", {"hash": reference["hash"]}),
+                          ("unknown", {"hash": "sha256:" + "8" * 64, "uri": "urn:sha256:" + "8" * 64})])
+        claimed = content_hash({"unpublished_original_predecessor": predecessor})
+        corrupt = json.dumps({"hash": claimed, "content": predecessor}, sort_keys=True, separators=(",", ":"))
+        encoded = base64.b64encode(zlib.compress(corrupt.encode())).decode()
+        self.provider.create_issue_comment(100, "<!-- zzzops-artifact " + claimed + " -->\n<details><summary>Corrupt predecessor transport</summary>\n\n```text\n" + encoded + "\n```\n</details>")
+        mutations.append(("tampered_bytes", {"hash": claimed, "uri": "urn:" + claimed}))
+        request = self.session.submission(correction, {"value": "Corrected exact candidate"}, "predecessor-controls")
+        request["workspace_checks"] = [[sys.executable, "-B", "behavior_test.py"]]
+        for label, replacement in mutations:
+            with self.subTest(predecessor=label):
+                current = copy.deepcopy(payload)
+                lease = next(item for item in current["operational"]["leases"] if item["token"] == correction["lease"]["token"])
+                lease["acquisition"]["predecessor"] = replacement
+                changed_envelope = {**envelope, "payload": self.blob(current), "revision": envelope["revision"] + 1}
+                self.provider.issues[100]["body"] = "<!-- zzzops-goal\n" + json.dumps(changed_envelope) + "\nzzzops-goal -->"
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                response = self.session.call(100, request, expected=2)
+                self.assertRegex(json.dumps(response), r"(?i)predecessor|acquisition|allocation|scope|identity|proof|chain|reference|review")
+                # This corrupted outer acquisition may reject before decoding;
+                # the separate real-correction journey tests traversal capacity.
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+                self.provider.issues[100] = copy.deepcopy(original_issue)
+        # Caller cannot replace even a valid host snapshot through submit data.
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, {**request, "predecessor": reference}, expected=2)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        (self.fixture.repo / "source.py").write_text("def value():\n    # Independently requested clarification.\n    return 2\n")
+        self.candidate(correction, 0)
+        self.assertEqual(proof, self.read_blob(proof_ref))
+        self.assertEqual(predecessor, self.session.read(100, reference))
+
+    def test_real_accepted_correction_chain_reaches_bound_before_refusing_next_transition(self):
+        self.setup_workspace_corrections()
+        self.red_candidate()
+        first = self.acquire_workspace("beta")
+        (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
+        initial_ref, initial_proof = self.candidate(first, 0)
+        retained_proofs = [(initial_ref, initial_proof)]
+        self.review_candidate("beta", 0)
+        # Every predecessor is produced through real acquire/submit/review,
+        # rather than repeating forged snapshots behind an invalid outer pin.
+        for iteration in range(1, 33):
+            admissions = self.admit_workspace_correction()
+            work = self.acquire_workspace("beta")
+            (self.fixture.repo / "source.py").write_text(
+                "def value():\n    # Accepted correction %d.\n    return 2\n" % iteration)
+            retained_proofs.append(self.candidate(work, 0))
+            self.review_candidate("beta", 0)
+            self.resolve_workspace_correction(admissions)
+        historical_comments = copy.deepcopy(self.provider.comments[100])
+        last_accepted_result = self.result("beta")[0]
+        last_accepted_output = self.produced("beta")
+        self.admit_workspace_correction()
+        response = self.session.call(100, expected=None)
+        ready = [step for step in response["next_steps"] if step.get("kind") == "execute" and step.get("node", {}).get("node") == "beta"]
+        if ready:
+            work = self.session.acquire("beta")
+            request = self.session.submission(work, {"value": "Beyond reconstruction bound"}, "over-real-chain-bound")
+            request["workspace_checks"] = [[sys.executable, "-B", "behavior_test.py"]]
+            response = self.session.call(100, request, expected=2)
+        diagnostics = [{"reason": step.get("reason"), "diagnostic": step.get("diagnostic")}
+                       for step in response["next_steps"]]
+        self.assertRegex(json.dumps(diagnostics), r"(?i)depth|limit")
+        self.assertEqual(last_accepted_result, self.result("beta")[0], "Bound refusal cannot publish a new semantic Result")
+        self.assertEqual(last_accepted_output, self.produced("beta"), "Bound refusal cannot publish a candidate output")
+        for reference, proof in retained_proofs:
+            self.assertEqual(proof, self.session.read(100, reference),
+                             "Authority traversal bound cannot prohibit targeted historical Ref reads")
+        for comment in historical_comments:
+            self.assertIn(comment, self.provider.comments[100])
+        self.assertNotIn("gamma", self.names())
+
     def test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance(self):
         self.setup_workspace_corrections(root_gate=True)
         _alpha, (red_ref, red) = self.red_candidate()
