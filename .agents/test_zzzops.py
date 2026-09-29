@@ -3834,8 +3834,20 @@ class GoalCreateTests(unittest.TestCase):
         zzzops.apply_goal_create(adapter, "owner/repo", self.request(), allow_deferred=True)
 
         persisted = zzzops.parse_managed_goal(adapter.updates[0]["body"], 42)
-        self.assertEqual(zzzops.empty_phase_evidence(), persisted["phase_evidence"])
-        self.assertEqual([], zzzops.validate_phase_evidence(persisted["phase_evidence"]))
+        # Capture cannot manufacture completed work or approvals. A retained
+        # predecessor transport is an entry input, never current execution.
+        if persisted["schema_version"] == 1:
+            historical = zzzops._phase_evidence.normalize_phase_evidence(persisted.get("phase_evidence"))
+            for slot in ("records", "reviews", "human_approvals"):
+                self.assertEqual({}, historical[slot])
+        else:
+            self.assertEqual(2, persisted["schema_version"])
+            payload = zzzops._comment_store.ArtifactIndex(adapter.comments).resolve(persisted["payload"]["hash"])[0]
+            self.assertEqual([], payload["evidence"])
+            self.assertEqual([], payload["operational"]["leases"])
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_goal_schema_conversion.MigrationEntryPublicTests.test_v1_cutover_rejects_phase_operations_and_uses_only_generic_submission')
 
     def test_child_create_requires_an_independent_implementation_contract(self):
         request = self.request()
@@ -4083,10 +4095,11 @@ class PhaseEvidenceTests(unittest.TestCase):
             zzzops.record_phase_review(evidence, "plan", artifact, "worker-1")
         changed = zzzops.record_phase_result(reviewed, "plan", self.record("plan", envelope, "changed"), envelope)
         self.assertNotIn("plan", changed["reviews"])
-        with self.assertRaisesRegex(zzzops.PhaseEvidenceError, "acyclic"):
-            zzzops.derive_phase_eligibility(
-                self.goal(), self.graph({"id": "a", "depends_on": ["b"]}, {"id": "b", "depends_on": ["a"]}), {},
-            )
+        # These v1 records are historical conversion inputs. Graph execution
+        # uses only the generic grammar, including its cycle validation.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag.EvidenceGraphGrammarTests.test_cycle_is_rejected_after_valid_control')
         envelope = self.envelope("plan")
         mutable = self.record("plan", envelope)
         mutable["output"]["reference"] = "https://example.test/mutable"
@@ -4171,8 +4184,11 @@ class PhaseEvidenceTests(unittest.TestCase):
             "not_required": {"reason": "Goal is atomic.", "policy_rule": "atomic_goal"},
         })
         evidence = zzzops.record_phase_result(zzzops.empty_phase_evidence(), "decompose", record, envelope)
-        result = zzzops.derive_phase_eligibility(self.goal(evidence), self.graph({"id": "decompose"}), {"decompose": envelope})
-        self.assertEqual([], result["eligible"])
+        # Preserve predecessor disposition and routing for trusted conversion;
+        # do not ask a retired phase scheduler to execute the old contract.
+        historical = zzzops._phase_evidence.normalize_phase_evidence(evidence)
+        self.assertEqual(record, historical["records"]["decompose"])
+        self.assertEqual("atomic_goal", historical["records"]["decompose"]["not_required"]["policy_rule"])
 
     def test_not_required_phase_still_requires_policy_review_and_human_approval(self):
         # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
