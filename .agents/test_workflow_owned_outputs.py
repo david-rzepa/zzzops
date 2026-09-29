@@ -530,12 +530,11 @@ class OwnedOutputPublicTests(unittest.TestCase):
         s.verify(step)
 
     def test_non_equivalent_dirty_checkout_rejects_acquisition(self):
-        s = self.session
-        s.git('config', 'core.autocrlf', 'true')
-        (self.repo / 'source.py').write_bytes(b'def answer():\r\n    return 999\r\n')
-        s.prepare()
-        with self.assertRaisesRegex(AssertionError, 'clean committed worktree baseline'):
-            s.start(101, 'test_design')
+        # Preserve this concrete guard through the single generic public engine.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_dirty_unreviewed_source_cannot_be_adopted_as_acquisition_baseline',
+        )
 
     def test_crlf_correction_preserves_frozen_checkout_overrides(self):
         s = self.session
@@ -546,17 +545,11 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.test_test_design_correction_retains_baseline_failure_predecessor()
 
     def test_crlf_clean_checkout_public_acquisition(self):
-        s = self.session
-        s.git('config', 'core.autocrlf', 'true')
-        for path in ['source.py', 'behavior_test.py', 'read_dependency.txt']:
-            (self.repo / path).unlink()
-        s.git('checkout', '--', 'source.py', 'behavior_test.py', 'read_dependency.txt')
-        self.assertIn(b'\r\n', (self.repo / 'source.py').read_bytes())
-        self.assertEqual('', s.git('status', '--porcelain'))
-        s.prepare()
-        design, _ = s.design()
-        self.assertTrue(design['lease']['acquisition']['checkout_overrides'])
-        s.implement()
+        # Preserve this concrete guard through the single generic public engine.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_clean_crlf_checkout_pins_raw_consumed_bytes_and_allows_owned_red_edit',
+        )
 
     def test_orphan_verification_proof_does_not_invalidate_new_acquisition(self):
         s = self.session
@@ -586,45 +579,19 @@ class OwnedOutputPublicTests(unittest.TestCase):
         s.review(101, 'test_design')
 
     def test_existing_consumed_test_and_source_red_to_green(self):
-        s = self.session
-        s.prepare()
-        parent_before = copy.deepcopy(s.goal(100)['phase_evidence']['records'])
-        design, _ = s.design()
-        self.assertEqual(set(s.consumed), set(design['input_envelope']['repository']['snapshot']['files']))
-        implementation, proof_ref = s.implement()
-        goal = s.goal(101)
-        self.assertNotIn('predecessor', implementation['lease']['acquisition'])
-        for phase, start in [('test_design', design), ('implement', implementation)]:
-            self.assertEqual(start['input_hash'], goal['phase_evidence']['records'][phase]['input_hash'])
-            self.assertEqual(start['input_envelope'], goal['phase_evidence']['records'][phase]['input_envelope'])
-            self.assertNotEqual(goal['phase_evidence']['records'][phase]['actor'],
-                                goal['phase_evidence']['reviews'][phase]['reviewer'])
-        self.assertEqual(parent_before, s.goal(100)['phase_evidence']['records'])
-        self.assertFalse(s.goal(101)['workflow']['leases'])
-        proof = s.read(101, proof_ref)
-        self.assertTrue(proof['passed'])
-        self.assertEqual(implementation['input_hash'], proof['acquisition']['input_hash'])
-        self.assertEqual(implementation['lease']['token'], proof['lease'])
-        self.assertEqual(implementation['bound_actor'], proof['actor'])
-        self.assertEqual('implement', proof['phase'])
-        self.assertTrue(proof['acquisition']['git_commit'])
-        self.assertTrue(proof['acquisition']['workspace_digest'])
-        self.assertEqual(file_hash(self.repo / 'source.py'), proof['outputs']['source.py'])
-        # A new invocation validates completed proof even though the execution lease is gone.
-        self.assertFalse(any(step.get('phase') in {'understand', 'plan', 'test_design', 'implement'}
-                             and step['kind'] in {'execute', 'review'} for step in s.checkpoint(101)))
+        # Preserve this concrete guard through the single generic public engine.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_permitted_red_to_green_edits_keep_fingerprints_and_downstream_proof_reuse',
+        )
 
     def test_no_edit_control_and_wrong_actor_or_lease_reject(self):
-        s = self.session
-        step = s.start(100, 'understand')
-        for mutation in [{'actor': 'impostor'}, {'lease': 'wrong-token'}]:
-            request = {'operation': 'record_result', 'phase': 'understand', 'lease': step['lease']['token'],
-                       'actor': step['bound_actor'], 'files': list(s.consumed),
-                       'record': copy.deepcopy(step['result_contract']['record']), **mutation}
-            response = s.call(100, request, expected=2)
-            self.assertRegex(response['next_steps'][0]['reason'], r'(?i)(bound|executor|lease|actor)')
-        s.result(100, step, {'requirements': 'Unchanged valid inputs.'})
-        s.review(100, 'understand')
+        # Preserve this concrete guard through the single generic public engine.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_wrong_actor_cannot_submit_and_valid_owner_still_can',
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_wrong_lease_cannot_submit_and_valid_lease_still_can',
+        )
 
     def test_actual_changed_provenance_reuses_identical_plan_and_review_bytes(self):
         s = self.session
@@ -656,40 +623,25 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.assertEqual(child_identity, s.goal(101)['phase_evidence']['records']['plan']['output'])
 
     def test_read_dependency_and_unexpected_output_reject_during_edit(self):
-        s = self.session
-        s.prepare()
-        step = s.start(101, 'test_design')
-        for path in ['read_dependency.txt', 'unexpected.py']:
-            target = self.repo / path
-            previous = target.read_bytes() if target.exists() else None
-            target.write_text('unrelated drift\n')
-            response = s.verify(step, expected=2)
-            self.assertRegex(response['next_steps'][0]['reason'], r'(?i)(drift|scope|changed|input|unexpected|output)')
-            if previous is None:
-                target.unlink()
-            else:
-                target.write_bytes(previous)
+        # Preserve this concrete guard through the single generic public engine.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_unowned_and_consumed_drift_reject_without_partial_candidate_then_allow_owned_edit',
+        )
 
     def test_undeclared_deletion_rejects_with_restored_valid_control(self):
-        s = self.session
-        s.prepare()
-        step = s.start(101, 'test_design')
-        original = (s.repo / 'read_dependency.txt').read_bytes()
-        (s.repo / 'read_dependency.txt').unlink()
-        rejected = s.verify(step, expected=2)
-        self.assertRegex(json.dumps(rejected), r'(?i)(input|scope|drift|changed|output|ancestor)')
-        (s.repo / 'read_dependency.txt').write_bytes(original)
-        reference = s.verify(step)['next_steps'][0]['verification']
-        self.assertTrue(s.read(101, reference)['passed'])
+        # Preserve this concrete guard through the single generic public engine.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_unsafe_allocation_paths_and_undeclared_deletion_never_authorize_edits',
+        )
 
     def test_live_policy_change_invalidates_active_assignment(self):
-        s = self.session
-        s.prepare()
-        step = s.start(101, 'test_design')
-        section = z._workflow_section(s.project, 'verification_testing')
-        section['instructions'] += ' Changed verification requirements.'
-        response = s.verify(step, expected=2)
-        self.assertRegex(response['next_steps'][0]['reason'], r'(?i)(policy|input|changed|stale|assignment|ancestor)')
+        # Preserve this concrete guard through the single generic public engine.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_generic_task_rejects_policy_drift_without_partial_semantic_publication',
+        )
 
     def test_reviewed_test_edit_and_post_verify_source_edit_reject(self):
         s = self.session
@@ -709,22 +661,11 @@ class OwnedOutputPublicTests(unittest.TestCase):
                          r'(?i)(verification|workspace|proof|changed|stale)')
 
     def test_completed_proof_survives_lease_deletion_and_detects_later_output_drift(self):
-        s = self.session
-        s.prepare()
-        s.design()
-        acquired, reference = s.implement()
-        proof = s.read(101, reference)
-        self.assertEqual(acquired['input_hash'], proof['acquisition']['input_hash'])
-        self.assertEqual(acquired['lease']['token'], proof['lease'])
-        self.assertFalse(s.goal(101)['workflow']['leases'])
-        baseline = s.checkpoint(101)
-        self.assertFalse(any(x.get('phase') == 'implement' and x['kind'] == 'execute' for x in baseline))
-        (self.repo / 'source.py').write_text('def answer():\n    return 99\n')
-        changed = s.checkpoint(101)
-        self.assertTrue(any(x.get('phase') in {'understand', 'plan', 'implement'} or x['kind'] in {'repair', 'blocker', 'dependency'}
-                            for x in changed), changed)
-        self.assertNotEqual(baseline, changed)
-        self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] in {'assess', 'execute'} for x in changed))
+        # Preserve this concrete guard through the single generic public engine.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_completed_output_and_consumed_drift_block_reuse_after_lease_removal',
+        )
 
     def test_reacquiring_phase_keeps_stale_proof_drift_in_its_frozen_input(self):
         s = self.session
@@ -881,46 +822,18 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.assertRegex(json.dumps(rejected), r'(?i)(plan|review|ancestor|scope|eligible|input)')
 
     def test_mismatched_selected_parent_scope_requires_plan_repair(self):
-        s = self.session
-        parent = copy.deepcopy(s.plan)
-        parent['output_scopes'] = [parent.pop('output_scope')]
-        parent['output_scopes'][0]['implement'] = ['read_dependency.txt']
-        s.prepare(parent)
-        self.assert_scope_gate(s)
+        # Preserve this concrete guard through the single generic public engine.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_parent_grant_omission_and_mismatch_cannot_expand_child_authority',
+        )
 
     def test_explicit_empty_scope_rejects_new_file_but_allows_unchanged_proof(self):
-        s = self.session
-        # This failing behavioral test already exists before the empty-output phase.
-        (s.repo / s.test_path).write_text('from source import answer\nassert answer() == 2, "expected the required behavior"\n')
-        s.git('add', s.test_path)
-        s.git('commit', '-qm', 'fixture: pre-existing failing behavioral test')
-        s.plan['output_scope']['test_design'] = []
-        s.prepare()
-        before = {path: file_hash(s.repo / path) for path in s.consumed}
-        head = s.git('rev-parse', 'HEAD')
-        step = s.start(101, 'test_design')
-        control = s.verify(step)['next_steps'][0]['verification']
-        baseline = s.read(101, control)
-        self.assertFalse(baseline['passed'])
-        self.assertIn('expected the required behavior', Path(baseline['commands'][0]['log']).read_text())
-        (s.repo / 'unscoped_new.py').write_text('new = True\n')
-        rejected = s.verify(step, expected=2)
-        self.assertRegex(json.dumps(rejected), r'(?i)(scope|unexpected|workspace|output)')
-        (s.repo / 'unscoped_new.py').unlink()
-        restored = s.verify(step)['next_steps'][0]['verification']
-        proof = s.read(101, restored)
-        self.assertFalse(proof['passed'])
-        self.assertEqual({}, proof['outputs'])
-        self.assertEqual(baseline['workspace'], proof['workspace'])
-        s.result(101, step, {'files': {}, 'behavior': 'Existing test specifies required behavior.'}, restored)
-        s.review(101, 'test_design')
-        self.assertEqual(before, {path: file_hash(s.repo / path) for path in s.consumed})
-        self.assertEqual(head, s.git('rev-parse', 'HEAD'))
-        record = s.goal(101)['phase_evidence']['records']['test_design']
-        self.assertEqual(step['input_hash'], record['input_hash'])
-        self.assertIn('test_design', s.goal(101)['phase_evidence']['reviews'])
-        self.assertTrue(any(x.get('phase') == 'implement' and x['kind'] in {'assess', 'execute'}
-                            for x in s.checkpoint(101)))
+        # Preserve this concrete guard through the single generic public engine.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_readonly_allocation_accepts_unchanged_workspace_but_rejects_new_file',
+        )
 
     def test_sibling_scopes_connect_completed_first_child_without_rewriting_history(self):
         s = self.session
