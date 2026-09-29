@@ -14,6 +14,33 @@ from test_evidence_dag_journeys import DagFixture
 
 
 class GenericIntegrationFreshnessTests(DagFixture):
+    def test_missing_delegation_and_expired_unknown_worker_block_until_exact_stopped_recovery(self):
+        self.assertEqual({"produce"}, self.names())
+        self.session.runtime["delegation"]["available"] = False
+        steps = self.session.checkpoint(100)
+        self.assertFalse(any(step.get("kind") == "execute" for step in steps))
+        self.assertRegex(json.dumps(steps), r"(?i)delegat|capability|discovery")
+        self.session.runtime["delegation"]["available"] = True
+        work = self.session.acquire("produce")
+        with mock.patch.object(z._workflow.time, "time", return_value=work["lease"]["expires_at"] + 1):
+            steps = self.session.checkpoint(100)
+            self.assertFalse(any(step.get("kind") == "execute" for step in steps))
+            recovery_steps = [step for step in steps if "recovery_contract" in step or step.get("kind") == "recover"]
+            self.assertTrue(recovery_steps)
+            recovery = recovery_steps[0]
+            request = copy.deepcopy(recovery.get("submission", recovery.get("recovery_contract")))
+            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+            response = self.session.call(100, {**request, "worker_status": "unknown", "evidence": "Timeout alone"}, expected=2)
+            self.assertRegex(json.dumps(response), r"(?i)stopped|liveness|unknown|recovery")
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+            response = self.session.call(100, {**request, "lease": "different-token", "worker_status": "stopped", "evidence": "Observed terminal worker"}, expected=2)
+            self.assertRegex(json.dumps(response), r"(?i)lease|token|owner|exact")
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+            self.session.call(100, {**request, "worker_status": "stopped", "evidence": "Fixture worker terminal state observed"})
+        replacement = self.session.acquire("produce")
+        self.assertNotEqual(work["lease"]["token"], replacement["lease"]["token"])
+        self.session.finish(replacement, {"value": "fresh exact owner"})
+
     def test_start_bind_receipt_and_actual_pair_are_guarded_before_writes(self):
         steps = self.session.ready()
         self.assertEqual(1, len(steps))
@@ -133,7 +160,7 @@ class WorkflowIntegrationTests(unittest.TestCase):
 
 class PublicWorkflowJourneyTests(unittest.TestCase):
     def setUp(self):
-        if self._testMethodName in ('test_start_and_worker_bind_require_current_policy_read_without_writes_on_rejection', 'test_persisted_execute_review_human_approval_journey', 'test_actor_selection_and_duplicate_submission_are_guarded'):
+        if self._testMethodName in ('test_expiry_requires_recovery_and_missing_delegation_blocks', 'test_start_and_worker_bind_require_current_policy_read_without_writes_on_rejection', 'test_persisted_execute_review_human_approval_journey', 'test_actor_selection_and_duplicate_submission_are_guarded'):
             return  # Replacement owns an isolated public generic fixture; no legacy configuration patch.
         import json
         import contextlib
@@ -224,14 +251,8 @@ class PublicWorkflowJourneyTests(unittest.TestCase):
         )
 
     def test_expiry_requires_recovery_and_missing_delegation_blocks(self):
-        self.runtime['delegation']['available'] = False
-        self.assertEqual('capability_discovery', self.engine.step(42)[0]['kind'])
-        self.runtime['delegation']['available'] = True
-        lease, record = self.prepare()
-        with self.assertRaisesRegex(ValueError, 'stopped'):
-            self.mutate(operation='recover', phase='plan', lease=lease['token'], worker_status='unknown', evidence='timeout')
-        self.mutate(operation='recover', phase='plan', lease=lease['token'], worker_status='stopped', evidence='thread terminal')
-        self.assertEqual('execute', self.engine.step(42)[0]['kind'])
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_workflow_integration.GenericIntegrationFreshnessTests.test_missing_delegation_and_expired_unknown_worker_block_until_exact_stopped_recovery')
 
     def test_blocker_step_supplies_exact_resolution_request(self):
         self.mutate(operation='block', category='access-approval', reason='User must approve access')
