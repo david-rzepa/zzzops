@@ -891,7 +891,7 @@ class GenericDeliveryPublicTests(DagFixture):
                 self.assertTrue(any(step["node"]["node"] == "alpha" for step in self.session.ready(102)))
         self.connected_delivery(parent=True, allocation_mutator=allocation, observer=observe)
         first_envelope = self.envelope_for(100)
-        first_envelope["state"] = "closed"
+        first_envelope["state"] = "archived"
         first_envelope["revision"] += 1
         self.put_envelope(100, first_envelope)
         self.provider.issues[100]["state"] = "closed"

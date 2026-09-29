@@ -1,8 +1,8 @@
 """Owned source/test outputs, exercised through the real public CLI dispatcher.
 
 Only provider, reviewed configuration, package and heartbeat boundaries are faked.
-ZZZOPS_OLD_CLI_ARCHIVE optionally supplies a pristine checkout archive for the
-actual-version handoff test. The archive stays outside the repository.
+Supported predecessor parsing remains fixture data for trusted conversion;
+current execution assertions use the single generic public engine.
 """
 from __future__ import annotations
 
@@ -318,21 +318,12 @@ class OwnedOutputPublicTests(unittest.TestCase):
         )
 
     def test_verification_accepts_gateway_rigor_projection_without_scope_drift(self):
-        s = self.session
-        original = s.portfolio_snapshot
-        def projected(*args, **kwargs):
-            snapshot = original(*args, **kwargs)
-            for goal in snapshot['goals']:
-                goal['engineering_rigor_inputs'] = copy.deepcopy(goal.get('engineering_rigor'))
-                goal['engineering_rigor'] = {**(goal.get('engineering_rigor') or {}),
-                    'effective': 'agentic', 'valid': True, 'errors': [],
-                    'provenance': {'status': 'derived'}}
-            return snapshot
-        s.portfolio_snapshot = projected
-        s.prepare()
-        # This follows public start/bind/verify/result/review, rather than
-        # treating a matching hash alone as proof of accepted verification.
-        s.design()
+        # Retire active phase-rigor projection requirement; unchanged finite workspace proof and declared generic routing preserve the actual guard without adding retired assessment authority.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_readonly_allocation_accepts_unchanged_workspace_but_rejects_new_file',
+            'test_workflow_integration.GenericIntegrationFreshnessTests.test_generic_goal_routes_declared_task_without_hidden_phase_rigor_assessment',
+        )
 
     def test_mixed_checkout_raw_drift_and_dirty_acquisition(self):
         # Exact generic workspace guards; standalone legacy verification grants no authority.
@@ -388,33 +379,12 @@ class OwnedOutputPublicTests(unittest.TestCase):
         )
 
     def test_actual_changed_provenance_reuses_identical_plan_and_review_bytes(self):
-        s = self.session
-        s.prepare()
-        parent = s.goal(100)['phase_evidence']
-        before_record = copy.deepcopy(parent['records']['plan'])
-        before_review = copy.deepcopy(parent['reviews']['plan'])
-        child_identity = s.goal(101)['phase_evidence']['records']['plan']['output']
-        (self.repo / 'read_dependency.txt').write_text('changed evidence; same requested behavior\n')
-        # Reassessment is explicit, including the earlier parent evidence now stale.
-        for number, phase, content in [(100, 'understand', {'requirements': 'Return two.'}),
-                                        (101, 'understand', {'requirements': 'Return two.'}),
-                                        (100, 'decompose', {'child': 101})]:
-            s.phase(number, phase, content)
-        step = s.start(100, 'plan')
-        s.result(100, step, s.plan)
-        middle = s.goal(100)['phase_evidence']
-        self.assertNotEqual(before_record['input_hash'], middle['records']['plan']['input_hash'])
-        self.assertNotEqual(content_hash(before_record), content_hash(middle['records']['plan']))
-        self.assertEqual(before_record['output'], middle['records']['plan']['output'])
-        self.assertNotIn('plan', middle['reviews'])
-        self.assertNotIn('plan', middle['human_approvals'])
-        s.review(100, 'plan', s.plan_review)
-        after_review = s.goal(100)['phase_evidence']['reviews']['plan']
-        self.assertEqual(before_review['artifact'], after_review['artifact'])
-        self.assertNotEqual(before_review['record_hash'], after_review['record_hash'])
-        self.assertNotEqual(before_review['input_hash'], after_review['input_hash'])
-        s.phase(101, 'plan', s.plan)
-        self.assertEqual(child_identity, s.goal(101)['phase_evidence']['records']['plan']['output'])
+        # Identical allocation content gets new provenance after source change and must receive current independent review/root consent; old exact review/root evidence remains historical.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_new_reviewed_allocation_can_restart_clean_prior_worktree_without_reviving_old_proof',
+            'test_phase_review_contract.GenericReviewGateTests.test_identical_output_cannot_bypass_current_ancestor_review_and_reapproval',
+        )
 
     def test_read_dependency_and_unexpected_output_reject_during_edit(self):
         # Preserve this concrete guard through the single generic public engine.
@@ -438,21 +408,13 @@ class OwnedOutputPublicTests(unittest.TestCase):
         )
 
     def test_reviewed_test_edit_and_post_verify_source_edit_reject(self):
-        s = self.session
-        s.prepare()
-        s.design()
-        step = s.start(101, 'implement')
-        original = (self.repo / s.test_path).read_bytes()
-        (self.repo / 'source.py').write_text('def answer():\n    return 2\n')
-        (self.repo / s.test_path).write_text('raise SystemExit(0)\n')
-        self.assertRegex(s.verify(step, expected=2)['next_steps'][0]['reason'],
-                         r'(?i)(review|test|scope|output|changed)')
-        (self.repo / s.test_path).write_bytes(original)
-        proof = s.verify(step)['next_steps'][0]['verification']
-        (self.repo / 'source.py').write_text('def answer():\n    return 3\n')
-        self.assertRegex(s.result(101, step, {'files': {'source.py': file_hash(self.repo / 'source.py')}},
-                                  proof, expected=2)['next_steps'][0]['reason'],
-                         r'(?i)(verification|workspace|proof|changed|stale)')
+        # Unowned accepted test drift rejects; post-observation owned drift cannot publish pending proof until exact restore; completed owned/consumed drift blocks reuse. Standalone verify/record split is retired.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_unowned_and_consumed_drift_reject_without_partial_candidate_then_allow_owned_edit',
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_pending_workspace_submission_reuses_exact_observed_proof_and_log',
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_completed_output_and_consumed_drift_block_reuse_after_lease_removal',
+        )
 
     def test_completed_proof_survives_lease_deletion_and_detects_later_output_drift(self):
         # Preserve this concrete guard through the single generic public engine.
@@ -462,105 +424,39 @@ class OwnedOutputPublicTests(unittest.TestCase):
         )
 
     def test_reacquiring_phase_keeps_stale_proof_drift_in_its_frozen_input(self):
-        s = self.session
-        s.prepare()
-        s.design()
-        goal = s.goal(101)
-        goal.update(parent=None, depends_on=[], implementation={})
-        graph, _ = z._workflow_phase_configuration(s.project, goal)
-        engine = z.workflow_engine(s.repo, s.project, s.runtime)
-        engine.adapter = s.provider
-        engine.owned_versions = lambda *_args: {'source.py': {'sha256:' + '0' * 64}}
-        engine.workspace_digest = lambda: 'sha256:' + 'a' * 64
-
-        acquired = engine.inputs(goal, graph)['test_design']
-        self.assertIn('output_drift', acquired['repository']['snapshot'])
-        goal['workflow']['leases']['test_design:execute'] = {
-            'acquisition': {'input_envelope': copy.deepcopy(acquired)},
-        }
-        current = engine.inputs(goal, graph)['test_design']
-
-        self.assertEqual(content_hash(acquired), content_hash(current))
-
-        goal['phase_evidence']['records']['test_design']['input_envelope'] = copy.deepcopy(acquired)
-        goal['phase_evidence']['records']['test_design']['input_hash'] = content_hash(acquired)
-        goal['phase_evidence']['reviews'].pop('test_design', None)
-        goal['workflow']['artifacts']['test_design'] = {'workspace': engine.workspace_digest()}
-        del goal['workflow']['leases']['test_design:execute']
-        completed = engine.inputs(goal, graph)['test_design']
-
-        self.assertEqual(content_hash(acquired), content_hash(completed))
+        # Replace mocked legacy input derivation with actual accepted proof drift and immutable host acquisition; no acquired/persisted caller envelope normalizes stale bytes.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_completed_output_and_consumed_drift_block_reuse_after_lease_removal',
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_caller_cannot_replace_authenticated_acquisition_with_supplied_envelope',
+        )
 
     def test_durable_proof_rejects_tampered_acquisition_and_outputs(self):
-        s = self.session
-        s.prepare()
-        s.design()
-        step = s.start(101, 'implement')
-        (self.repo / 'source.py').write_text('def answer():\n    return 2\n')
-        reference = s.verify(step)['next_steps'][0]['verification']
-        proof = s.read(101, reference)
-        mutations = [
-            lambda value: value.update(acquisition=None),
-            lambda value: value['acquisition'].update(checkout_overrides=None),
-            lambda value: value['acquisition'].update(checkout_overrides={'../escape': 'sha256:' + '0' * 64}),
-            lambda value: value['acquisition'].update(checkout_overrides={'source.py': 'sha256:' + '0' * 64}),
-            lambda value: value.update(acquisition={'git_commit': '0' * 40}),
-            lambda value: value['acquisition'].update(git_commit='0' * 40),
-            lambda value: value['acquisition'].update(workspace_digest='sha256:' + '0' * 64),
-            lambda value: value['acquisition'].update(input_hash='sha256:' + '0' * 64),
-            lambda value: value['outputs'].update({'source.py': 'sha256:' + '0' * 64}),
-            lambda value: value.update(actor='unbound-worker'),
-            lambda value: value.update(lease='different-lease'),
-        ]
-        for mutate in mutations:
-            with self.subTest(mutation=mutate):
-                changed = copy.deepcopy(proof)
-                mutate(changed)
-                forged_reference = s.artifact(101, step, changed)
-                response = s.result(101, step, {'files': {'source.py': file_hash(self.repo / 'source.py')}},
-                                    forged_reference, expected=2)
-                self.assertRegex(response['next_steps'][0]['reason'],
-                                 r'(?i)(proof|verification|acquisition|input|lease|actor)')
-        # A valid matched submission succeeds after each forged-proof rejection.
-        s.result(101, step, {'files': {'source.py': file_hash(self.repo / 'source.py')}}, reference)
-        self.assertNotIn('implement:execute', s.goal(101)['workflow']['leases'])
+        # Generic host alone issues proof; caller acquisition substitution, corrupted stored output proof, disconnected exact predecessor, and wrong actual actor/lease reject with valid controls. Retired submitted verification Ref cannot grant authority.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_caller_cannot_replace_authenticated_acquisition_with_supplied_envelope',
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_tampered_completed_workspace_proof_blocks_downstream_after_lease_removal',
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_host_correction_predecessor_rejects_wrong_identity_disconnected_and_unbounded_chain',
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_wrong_actor_cannot_submit_and_valid_owner_still_can',
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_wrong_lease_cannot_submit_and_valid_lease_still_can',
+        )
 
     def test_spec_change_and_unapproved_plan_cannot_authorize_source_edits(self):
-        s = self.session
-        s.prepare()
-        before = s.checkpoint(101)
-        self.assertTrue(any(x.get('phase') == 'test_design' and x['kind'] in {'assess', 'execute'}
-                            for x in before), before)
-        record = s.goal(100)['phase_evidence']['records']['plan']
-        s.call(100, {'operation': 'withdraw', 'phase': 'plan', 'record_hash': content_hash(record),
-                     'reason': 'Independent review must be current.'})
-        steps = s.checkpoint(101)
-        self.assertFalse(any(x.get('phase') == 'test_design' and x['kind'] in {'assess', 'execute'}
-                             for x in steps), steps)
-        blocked = [item for step in steps for item in step.get('blocked', [])]
-        self.assertTrue(any(item['phase'] == 'test_design' and 'plan' in item['parent_gates']
-                            for item in blocked), blocked)
-        # A real public specification revision makes the source approval stale.
-        parent = s.goal(100)
-        s.call(100, {'operation': 'specify', 'expected_digest': parent['digest'],
-                     'human_spec': '## Acceptance criteria\n- Return three instead of two.\n'})
-        changed = s.checkpoint(100)
-        self.assertTrue(any(x.get('phase') == 'understand' and x['kind'] in {'assess', 'execute'}
-                            for x in changed), changed)
+        # Current parent source/allocation review and pinned scope remain necessary; root replacement cannot retroactively authorize old attempt edits.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_parent_authority_revision_rejects_acquired_readonly_work_and_needs_current_review',
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_replacing_allocation_cannot_reauthorize_an_inflight_out_of_scope_edit',
+        )
 
     def test_unauthorized_approval_is_rejected_before_valid_matched_control(self):
-        s = self.session
-        step = s.start(100, 'understand')
-        s.result(100, step, {'requirements': 'Return two.'})
-        s.review(100, 'understand')
-        approval = s.start(100, 'understand', 'human_approval')
-        request = {'operation': 'approve', 'phase': 'understand', 'lease': approval['lease']['token'],
-                   'actor': 'root-thread', 'approval': {'actor': 'root-thread', 'approval_token': '<user>'}}
-        response = s.call(100, request, expected=2)
-        self.assertRegex(response['next_steps'][0]['reason'], r'(?i)(approval|placeholder|explicit)')
-        request['approval']['approval_token'] = 'user: explicit fixture approval'
-        s.call(100, request)
-        self.assertIn('understand', s.goal(100)['phase_evidence']['human_approvals'])
+        # Actual root-bound task and exact current reviewed subject govern consent; a content actor/placeholder approval token from retired approve operation confers no authority.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_root_approval_rejects_worker_then_accepts_root',
+            'test_phase_review_contract.GenericReviewGateTests.test_review_is_not_human_approval_and_root_binds_current_subject_and_review',
+        )
 
     def test_duplicate_writer_and_uncertain_recovery_are_rejected(self):
         # Exact generic workspace guards; standalone legacy verification grants no authority.
@@ -570,10 +466,11 @@ class OwnedOutputPublicTests(unittest.TestCase):
         )
 
     def test_missing_output_scope_cannot_exempt_an_existing_input(self):
-        s = self.session
-        s.plan.pop('output_scope')
-        s.prepare()
-        self.assert_scope_gate(s)
+        # Missing/ambiguous selected finite allocation blocks a writer with an allocation diagnostic; legacy plan/output_scope repair field names retire with the engine.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_missing_ambiguous_and_wrong_generation_allocations_never_grant_a_lease',
+        )
 
     def assert_scope_gate(self, s):
         steps = s.checkpoint(101)
@@ -592,17 +489,11 @@ class OwnedOutputPublicTests(unittest.TestCase):
         # with an acquired valid contract when the reviewed plan is withdrawn.
 
     def test_valid_acquired_contract_cannot_verify_after_scope_plan_withdrawal(self):
-        s = self.session
-        s.prepare()
-        step = s.start(101, 'test_design')
-        # Valid unchanged-workspace control with the exact bound actor/token/hash.
-        reference = s.verify(step)['next_steps'][0]['verification']
-        self.assertTrue(s.read(101, reference)['passed'])
-        record = s.goal(100)['phase_evidence']['records']['plan']
-        s.call(100, {'operation': 'withdraw', 'phase': 'plan', 'record_hash': content_hash(record),
-                     'reason': 'Withdraw scope authority before any test edit.'})
-        rejected = s.verify(step, expected=2)
-        self.assertRegex(json.dumps(rejected), r'(?i)(plan|review|ancestor|scope|eligible|input)')
+        # An unchanged-workspace acquired writer still rejects after parent authority revision; new review cannot update frozen pins and exact authority restoration gives a valid matched control.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_parent_authority_revision_rejects_acquired_readonly_work_and_needs_current_review',
+        )
 
     def test_mismatched_selected_parent_scope_requires_plan_repair(self):
         # Preserve this concrete guard through the single generic public engine.
@@ -631,158 +522,22 @@ class OwnedOutputPublicTests(unittest.TestCase):
         run_generic_regressions(self, 'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_permitted_red_to_green_edits_keep_fingerprints_and_downstream_proof_reuse')
 
     def test_recorded_output_exposes_own_review_and_correction_without_consumer_authority(self):
-        s = self.session
-        s.prepare()
-        s.design()
-        step = s.start(101, 'implement')
-        (s.repo / 'source.py').write_text('def answer():\n    return 2\n')
-        reference = s.verify(step)['next_steps'][0]['verification']
-        s.result(101, step, {'files': {'source.py': file_hash(s.repo / 'source.py')}}, reference)
-        self.assertNotIn('implement:execute', s.goal(101)['workflow']['leases'])
-        ancestors = copy.deepcopy(s.goal(100)['phase_evidence'])
-        steps = s.checkpoint(101)
-        self.assertTrue(any(x.get('phase') == 'implement' and x['kind'] == 'review' for x in steps), steps)
-        self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] == 'execute' for x in steps), steps)
-        s.review(101, 'implement', {'finding': 'Add explanation before acceptance.'}, acceptance='changes_requested')
-        rejected_record = copy.deepcopy(s.goal(101)['phase_evidence']['records']['implement'])
-        rejected_review = copy.deepcopy(s.goal(101)['phase_evidence']['reviews']['implement'])
-        self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] == 'execute' for x in s.checkpoint(101)))
-        s.git('add', 'source.py')
-        s.git('commit', '-qm', 'checkpoint: exact rejected output for correction')
-        original_dependency = (s.repo / 'read_dependency.txt').read_bytes()
-        (s.repo / 'read_dependency.txt').write_text('not the exact correction baseline\n')
-        invalid = s.checkpoint(101)
-        self.assertFalse(any(x.get('phase') == 'implement' and x['kind'] == 'execute' for x in invalid), invalid)
-        (s.repo / 'read_dependency.txt').write_bytes(original_dependency)
-        # Corrupt only the external provider read: no private workflow mutation.
-        real_get = s.provider.get_issue
-        def missing_recorded_proof(number):
-            issue = real_get(number)
-            if number == 101:
-                raw = z.parse_managed_goal(issue['body'], number)
-                raw['phase_evidence']['records']['implement']['verification'] = None
-                issue['body'] = z.render_managed_goal(raw, s.goal_spec_for_fault, number)
-            return issue
-        s.goal_spec_for_fault = s.goal(101)['human_spec']
-        with mock.patch.object(s.provider, 'get_issue', side_effect=missing_recorded_proof):
-            missing = s.call(101, expected=None)
-            self.assertFalse(any(x.get('phase') == 'implement' and x['kind'] == 'execute'
-                                 for x in missing['next_steps']), missing)
-            self.assertRegex(json.dumps(missing), r'(?i)(proof|verification|invalid|missing|evidence)')
-        correction = s.start(101, 'implement')
-        self.assertEqual(rejected_review['reviewer'], correction['correction']['prior_reviewer'])
-        self.assertEqual(rejected_review['outcomes'], correction['correction']['prior_findings'])
-        self.assertEqual(rejected_review['record_hash'], correction['correction']['prior_record_hash'])
-        self.assertIn('Reuse the current assessment', correction['correction']['routing'])
-        self.assertNotEqual(step['lease']['token'], correction['lease']['token'])
-        self.assertNotEqual(step['input_hash'], correction['input_hash'])
-        self.assertEqual(rejected_record, s.goal(101)['phase_evidence']['records']['implement'])
-        predecessor_ref = correction['lease']['acquisition']['predecessor']
-        predecessor = s.read(101, predecessor_ref)
-        self.assertEqual({'goal', 'phase', 'record', 'review', 'scope'}, set(predecessor))
-        self.assertEqual(101, predecessor['goal'])
-        self.assertEqual('implement', predecessor['phase'])
-        self.assertEqual(rejected_record, predecessor['record'])
-        self.assertEqual(rejected_review, predecessor['review'])
-        self.assertEqual('changes_requested', predecessor['review']['decision'])
-        self.assertEqual(s.plan['output_scope'], predecessor['scope'])
-        self.assertEqual(file_hash(s.repo / 'source.py'),
-                         correction['input_envelope']['repository']['snapshot']['files']['source.py'])
-        self.predecessor_fault_controls(s, correction, predecessor_ref, predecessor)
-        (s.repo / 'source.py').write_text('def answer():\n    # Required observable value.\n    return 2\n')
-        corrected_proof = s.verify(correction)['next_steps'][0]['verification']
-        s.result(101, correction, {'files': {'source.py': file_hash(s.repo / 'source.py')}}, corrected_proof)
-        self.assertNotIn('implement:execute', s.goal(101)['workflow']['leases'])
-        corrected = s.read(101, corrected_proof)
-        self.assertEqual(predecessor_ref, corrected['acquisition']['predecessor'])
-        self.assertEqual(rejected_record, s.read(101, corrected['acquisition']['predecessor'])['record'])
-        self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] in {'assess', 'execute'}
-                             for x in s.checkpoint(101)))
-        # A second actual public correction traverses history after both overwrites.
-        s.review(101, 'implement', {'finding': 'Clarify the explanation further.'}, acceptance='changes_requested')
-        second_rejected = copy.deepcopy(s.goal(101)['phase_evidence']['records']['implement'])
-        s.git('add', 'source.py')
-        s.git('commit', '-qm', 'checkpoint: second exact rejected output')
-        second = s.start(101, 'implement')
-        second_predecessor = s.read(101, second['lease']['acquisition']['predecessor'])
-        self.assertEqual(second_rejected, second_predecessor['record'])
-        nested_proof = s.read(101, second_predecessor['record']['verification'])
-        self.assertEqual(predecessor_ref, nested_proof['acquisition']['predecessor'])
-        (s.repo / 'source.py').write_text('def answer():\n    # Return exactly the requested value.\n    return 2\n')
-        second_proof = s.verify(second)['next_steps'][0]['verification']
-        s.result(101, second, {'files': {'source.py': file_hash(s.repo / 'source.py')}}, second_proof)
-        self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] in {'assess', 'execute'}
-                             for x in s.checkpoint(101)))
-        s.review(101, 'implement')
-        self.assertEqual('changes_requested', s.read(101, predecessor_ref)['review']['decision'])
-        self.assertEqual(ancestors, s.goal(100)['phase_evidence'])
-        self.assertTrue(any(x.get('phase') == 'publish' for x in s.checkpoint(101)))
-        record = s.goal(101)['phase_evidence']['records']['implement']
-        s.call(101, {'operation': 'withdraw', 'phase': 'implement', 'record_hash': content_hash(record),
-                     'reason': 'Withdraw reviewed result; consumers must block.'})
-        self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] in {'assess', 'execute'}
-                             for x in s.checkpoint(101)))
+        # Current own review/correction remains available while downstream waits; two accepted correction proofs/root decisions retain history, exact predecessor integrity and chain bound are checked separately, drift and withdrawn authority cannot grant reuse.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance',
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_host_correction_predecessor_rejects_wrong_identity_disconnected_and_unbounded_chain',
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_real_accepted_correction_chain_reaches_bound_before_refusing_next_transition',
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_completed_output_and_consumed_drift_block_reuse_after_lease_removal',
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_parent_authority_revision_rejects_acquired_readonly_work_and_needs_current_review',
+        )
 
     def test_explicit_withdrawal_restarts_from_clean_prior_checkout_without_stale_proof(self):
-        s = self.session
-        s.prepare()
-        design, _ = s.design()
-        before_commit = design['lease']['acquisition']['git_commit']
-        step = s.start(101, 'implement')
-        (s.repo / 'source.py').write_text('def answer():\n    return 2\n')
-        proof = s.verify(step)['next_steps'][0]['verification']
-        s.result(101, step, {'files': {'source.py': file_hash(s.repo / 'source.py')}}, proof)
-        s.review(101, 'implement', {'finding': 'Permanent regression required.'}, acceptance='changes_requested')
-        rejected = copy.deepcopy(s.goal(101)['phase_evidence']['records']['implement'])
-        previous_design = copy.deepcopy(s.goal(101)['phase_evidence']['records']['test_design'])
-        # Stage a separate clean owned checkout. Existing reviewed checkout bytes
-        # and rejected source output are preserved; no test edit occurs before lease.
-        previous_checkout = s.repo
-        previous_bytes = {p: (previous_checkout / p).read_bytes() for p in s.consumed}
-        checkout = tempfile.TemporaryDirectory()
-        self.addCleanup(checkout.cleanup)
-        s.git('worktree', 'add', '--detach', checkout.name, before_commit)
-        s.repo = Path(checkout.name)
-        s.git('checkout', '-q', '-b', 'goal-restart')
-        goal = s.goal(101)
-        metadata = copy.deepcopy(goal['implementation'])
-        metadata['branch'] = 'goal-restart'
-        s.call(101, {'operation': 'revise', 'expected_digest': goal['digest'], 'changes': {'implementation': metadata}})
-        for phase, record in [('implement', rejected), ('test_design', previous_design)]:
-            s.call(101, {'operation': 'withdraw', 'phase': phase, 'record_hash': content_hash(record),
-                         'reason': 'Explicitly restart from authenticated clean prior test baseline.'})
-        withdrawn = copy.deepcopy(s.goal(101)['phase_evidence'])
-        self.assertEqual(rejected, withdrawn['records']['implement'])
-        self.assertEqual(previous_design, withdrawn['records']['test_design'])
-        self.assertTrue({'implement', 'test_design'} <= {x['phase'] for x in withdrawn['withdrawals']})
-        self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] in {'assess', 'execute'}
-                             for x in s.checkpoint(101)))
-        reopened = s.start(101, 'test_design')
-        self.assertNotIn('output_drift', reopened['input_envelope']['repository']['snapshot'])
-        self.assertNotIn('predecessor', reopened['lease']['acquisition'])
-        self.assertEqual(set(s.consumed), set(reopened['input_envelope']['repository']['snapshot']['files']))
-        (s.repo / s.test_path).write_text('from source import answer\n# Permanent amended regression.\nassert answer() == 2\n')
-        failed = s.verify(reopened)['next_steps'][0]['verification']
-        self.assertFalse(s.read(101, failed)['passed'])
-        s.result(101, reopened, {'files': {s.test_path: file_hash(s.repo / s.test_path)}}, failed)
-        s.review(101, 'test_design')
-        actual = s.goal(101)['phase_evidence']['records']['test_design']
-        self.assertEqual(reopened['input_envelope'], actual['input_envelope'])
-        self.assertEqual(reopened['input_hash'], actual['input_hash'])
-        s.git('add', s.test_path)
-        s.git('commit', '-qm', 'test: reviewed amended regression')
-        fresh = s.start(101, 'implement')
-        self.assertNotIn('predecessor', fresh['lease']['acquisition'])
-        self.assertNotEqual(step['lease']['token'], fresh['lease']['token'])
-        (s.repo / 'source.py').write_text('def answer():\n    # Corrected required behavior.\n    return 2\n')
-        passed = s.verify(fresh)['next_steps'][0]['verification']
-        self.assertTrue(s.read(101, passed)['passed'])
-        s.result(101, fresh, {'files': {'source.py': file_hash(s.repo / 'source.py')}}, passed)
-        s.review(101, 'implement')
-        actual = s.goal(101)['phase_evidence']['records']['implement']
-        self.assertEqual(fresh['input_envelope'], actual['input_envelope'])
-        self.assertEqual(fresh['input_hash'], actual['input_hash'])
-        self.assertEqual(previous_bytes, {p: (previous_checkout / p).read_bytes() for p in s.consumed})
+        # Explicit root intent replacement plus new independent allocation review/root consent permits clean prior detached worktree; old rejected checkout/proofs remain unchanged and cannot normalize new baseline.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_new_reviewed_allocation_can_restart_clean_prior_worktree_without_reviving_old_proof',
+        )
 
     def require_implementation_human_approval(self):
         configuration = z._workflow_section(self.session.project, 'workflow_adherence')['configuration']
@@ -811,96 +566,6 @@ class OwnedOutputPublicTests(unittest.TestCase):
             'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_design_correction_retains_exact_observed_red_predecessor',
         )
 
-    def predecessor_fault_controls(self, s, correction, reference, predecessor):
-        """Corrupt provider reads, never workflow decisions or positive state."""
-        real_get = s.provider.get_issue
-        human_spec = s.goal(101)['human_spec']
-        mutations = []
-        for field, value in [('goal', 102), ('phase', 'test_design')]:
-            changed = copy.deepcopy(predecessor)
-            changed[field] = value
-            mutations.append((field, s.artifact(101, correction, changed)))
-        changed = copy.deepcopy(predecessor)
-        changed['scope']['implement'] = ['read_dependency.txt']
-        mutations.append(('scope', s.artifact(101, correction, changed)))
-        # Fully content-addressed but disconnected prior proof/record/review.
-        changed = copy.deepcopy(predecessor)
-        proof = s.read(101, changed['record']['verification'])
-        proof['workspace'] = 'sha256:' + '0' * 64
-        changed['record']['verification'] = s.artifact(101, correction, proof)
-        changed['review']['record_hash'] = content_hash(changed['record'])
-        mutations.append(('disconnected', s.artifact(101, correction, changed)))
-        # Provider-fault history is content-addressed and acyclic. It repeats a
-        # no-op snapshot to exceed the reviewed 32-hop bound; no invented SHA cycle.
-        deep_reference = reference
-        for _ in range(33):
-            item = copy.deepcopy(predecessor)
-            prior_proof = s.read(101, predecessor['record']['verification'])
-            prior_proof['acquisition'] = {
-                'git_commit': correction['lease']['acquisition']['git_commit'],
-                'workspace_digest': correction['lease']['acquisition']['workspace_digest'],
-                'input_hash': correction['input_hash'], 'predecessor': deep_reference,
-            }
-            if 'checkout_overrides' in correction['lease']['acquisition']:
-                prior_proof['acquisition']['checkout_overrides'] = copy.deepcopy(
-                    correction['lease']['acquisition']['checkout_overrides'])
-            prior_proof['workspace'] = correction['lease']['acquisition']['workspace_digest']
-            prior_proof['outputs'] = {'source.py': file_hash(s.repo / 'source.py')}
-            item['record']['input_envelope'] = copy.deepcopy(correction['input_envelope'])
-            item['record']['input_hash'] = correction['input_hash']
-            item['record']['verification'] = s.artifact(101, correction, prior_proof)
-            item['review']['input_hash'] = correction['input_hash']
-            item['review']['record_hash'] = content_hash(item['record'])
-            deep_reference = s.artifact(101, correction, item)
-        mutations.append(('depth', deep_reference))
-        mutations += [('null', None), ('partial', {'hash': reference['hash']}),
-                      ('missing', {'hash': 'sha256:' + '0' * 64, 'reference': 'urn:sha256:' + '0' * 64})]
-        for label, replacement in mutations:
-            with self.subTest(predecessor=label):
-                def damaged_issue(number):
-                    issue = real_get(number)
-                    if number == 101:
-                        raw = z.parse_managed_goal(issue['body'], number)
-                        raw['workflow']['leases']['implement:execute']['acquisition']['predecessor'] = replacement
-                        issue['body'] = z.render_managed_goal(raw, human_spec, number)
-                    return issue
-                with mock.patch.object(s.provider, 'get_issue', side_effect=damaged_issue):
-                    rejected = s.verify(correction, expected=2)
-                    self.assertRegex(json.dumps(rejected), r'(?i)(predecessor|acquisition|snapshot|artifact|scope|record|proof|phase|depth)')
-                    if label == 'depth':
-                        self.assertRegex(json.dumps(rejected), r'(?i)(depth|limit|chain)')
-        # Broken stored contents under an unchanged claimed hash reject; this is
-        # NOT a claim that a valid cryptographic self-referential artifact exists.
-        real_comments = s.provider.get_issue_comments
-        damaged_records = 0
-        def damaged_comments(number):
-            nonlocal damaged_records
-            comments = real_comments(number)
-            for comment in comments:
-                if comment['body'].startswith('<!-- zzzops-artifact ' + reference['hash'] + ' -->'):
-                    comment['body'] = '<!-- zzzops-artifact ' + reference['hash'] + ' -->\ninvalid cyclic/tampered bytes'
-                    damaged_records += 1
-                elif comment['body'].startswith('<!-- zzzops-envelope\n'):
-                    path = Path(z.__file__).parent / 'comment_store.py'
-                    spec = importlib.util.spec_from_file_location('predecessor_envelope_test', path)
-                    codec = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(codec)
-                    envelope = codec.decode_envelope(comment['body'])
-                    for record in envelope['artifacts']:
-                        if record['hash'] == reference['hash']:
-                            # Keep the claimed artifact identity but give it
-                            # different content under a valid transport checksum.
-                            record.clear()
-                            record.update(hash=reference['hash'], kind='full', type='json', text='null')
-                            comment['body'] = codec.encode_envelope(envelope)
-                            damaged_records += 1
-            return comments
-        with mock.patch.object(s.provider, 'get_issue_comments', side_effect=damaged_comments):
-            rejected = s.verify(correction, expected=2)
-            self.assertGreater(damaged_records, 0, 'The referenced predecessor must actually be corrupted')
-            self.assertRegex(json.dumps(rejected), r'(?i)(artifact|predecessor|malformed|hash)')
-        restored = s.verify(correction)['next_steps'][0]['verification']
-        self.assertTrue(s.read(101, restored)['passed'])
 
     @unittest.skipUnless(hasattr(os, 'symlink'), 'Platform cannot create symlinks')
     def test_owned_output_symlink_cannot_escape_the_worktree(self):
@@ -909,46 +574,12 @@ class OwnedOutputPublicTests(unittest.TestCase):
         run_generic_regressions(self, 'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_acquired_owned_path_cannot_be_replaced_by_escaping_symlink')
 
     def test_read_only_checkpoint_preserves_closed_goal_and_has_no_cursor(self):
-        s = self.session
-        closed = copy.deepcopy(s.provider.issues[100])
-        closed['number'] = 102
-        closed['state'] = 'closed'
-        # Provider-side fixture construction only; no simulated workflow completion.
-        raw = z.parse_managed_goal(closed['body'], 102)
-        raw['status'] = 'done'
-        closed['body'] = z.render_managed_goal(raw, '## Acceptance\n- Historical completion.\n', 102)
-        s.provider.issues[102] = closed
-        s.provider.comments[102] = []
-        original = copy.deepcopy(closed)
-        s.prepare()
-        self.assertEqual(original, s.provider.issues[102])
-        self.assertEqual({'leases', 'receipts', 'workers', 'assessments', 'artifacts', 'routing_choices'},
-                         set(s.goal(101)['workflow']))
+        # Archived v2 source/provider closure and exact targeted read remain unchanged; operational payload has leases/receipts and no phase cursor.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.GenericStoragePublicTests.test_archived_checkpoint_and_exact_read_preserve_source_and_have_no_cursor',
+        )
 
-    def legacy_handoff(self):
-        archive = os.environ.get('ZZZOPS_OLD_CLI_ARCHIVE')
-        if not archive:
-            self.skipTest('Set ZZZOPS_OLD_CLI_ARCHIVE to the external pristine archive for actual-version proof')
-        s = self.session
-        config = s.control / 'legacy-request.json'
-        result = s.control / 'legacy-result.json'
-        config.write_text(json.dumps({'archive': archive, 'repo': str(s.repo), 'control': str(s.control),
-                                      'project': s.project, 'runtime': s.runtime,
-                                      'issues': list(s.provider.issues.values()), 'result': str(result)}))
-        run = subprocess.run([sys.executable, '-B', str(Path(__file__).resolve()), '--legacy-prepare', str(config)],
-                             capture_output=True, text=True, env={**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'})
-        self.assertEqual(0, run.returncode, run.stdout + run.stderr)
-        data = json.loads(result.read_text())
-        s.provider.issues = {int(k): v for k, v in data['issues'].items()}
-        s.provider.comments = {int(k): v for k, v in data['comments'].items()}
-        s.test_path = 'new_behavior_test.py'
-        s.consumed = data['consumed']
-        s.plan['output_scope']['test_design'] = [s.test_path]
-        self.assertNotIn('acquisition', data['start']['lease'], 'The old code must really acquire the lease')
-        self.assertTrue(data['old_code_hash'])
-        self.assertEqual('implement', data['start']['phase'])
-        self.assertIn('test_design', s.goal(101)['phase_evidence']['reviews'])
-        return data['start']
 
     def test_actual_old_dispatch_start_to_repaired_dispatch_same_lease(self):
         # Predecessor input never authorizes active v1 same-lease dispatch.
@@ -982,34 +613,14 @@ class OwnedOutputPublicTests(unittest.TestCase):
 
 
 
-def legacy_prepare(config_path):
-    """Run unmodified old main in its own process, sharing only provider data."""
-    data = json.loads(Path(config_path).read_text())
-    with tempfile.TemporaryDirectory() as extracted:
-        with tarfile.open(data['archive']) as archive:
-            archive.extractall(extracted, filter='data')
-        source = Path(extracted) / 'plugins/zzzops/zzzops/zzzops.py'
-        spec = importlib.util.spec_from_file_location('pristine_zzzops', source)
-        api = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(api)
-        provider = fixtures.MemoryGoalProvider(data['issues'])
-        s = PublicSession(data['repo'], data['project'], data['runtime'], provider, data['control'], api)
-        s.test_path = 'new_behavior_test.py'
-        s.plan['output_scope']['test_design'] = [s.test_path]
-        s.prepare()
-        s.design()
-        acquired = s.start(101, 'implement')
-        Path(data['result']).write_text(json.dumps({'issues': provider.issues, 'comments': provider.comments,
-                                                    'start': acquired, 'consumed': s.consumed,
-                                                    'old_code_hash': file_hash(source)}))
 
 
 class CommentCheckpointPublicTests(unittest.TestCase):
     """#539 uses the existing public dispatcher and provider fixtures.
 
-    The implemented request shapes use artifacts=[{content, hash}]
-    on result/review; artifact={phase, slot, revision?} on read. Inline values
-    carry data only; the ordinary record and lease still confer all authority.
+    Generic host-issued output transactions preserve immutable comment storage.
+    Pure historical malformed-byte controls retain the shared read boundary;
+    they confer no current phase execution or result authority.
     """
 
     setUp = OwnedOutputPublicTests.setUp
@@ -1136,13 +747,6 @@ class CommentCheckpointPublicTests(unittest.TestCase):
             'test_evidence_dag_journeys.GenericStoragePublicTests.test_pending_start_retry_retains_generated_identity_and_completed_replay_never_resurrects',
         )
 
-    def inline_result(self, step, contents, request_id='inline-result'):
-        record = copy.deepcopy(step['result_contract']['record'])
-        record.update(actor=step['bound_actor'], output=self.reference(contents[0]))
-        return {'operation': 'record_result', 'phase': step['phase'], 'lease': step['lease']['token'],
-                'actor': step['bound_actor'], 'files': list(self.session.consumed), 'record': record,
-                'request_id': request_id,
-                'artifacts': [{'content': content, 'hash': content_hash(content)} for content in contents]}
 
     def test_inline_multiple_artifacts_result_release_share_one_durable_checkpoint(self):
         # Exact storage/ownership guard through public generic host output transactions.
@@ -1228,39 +832,12 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         run_generic_regressions(self, 'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_workspace_proof_output_result_and_transition_share_one_checkpoint')
 
     def test_partial_envelope_and_lost_body_responses_reuse_inline_transaction(self):
-        for boundary in ('append', 'body'):
-            with self.subTest(boundary=boundary):
-                # Each scenario has independent authority and durable provider state.
-                case = CommentCheckpointPublicTests()
-                case.setUp()
-                try:
-                    s = case.session
-                    step = s.start(101, 'understand')
-                    contents = [{'requirements': 'Crash-safe result.'}, {'proof': 'Additional evidence.'}]
-                    request = case.inline_result(step, contents)
-                    before_comments, before_updates = len(s.provider.comments[101]), len(s.provider.updates)
-                    method = 'create_issue_comment' if boundary == 'append' else 'update_issue'
-                    original = getattr(s.provider, method)
-                    failed = False
-                    def lost(*args):
-                        nonlocal failed
-                        result = original(*args)
-                        if not failed:
-                            failed = True
-                            raise z.GoalTransitionProviderError('injected lost response')
-                        return result
-                    with mock.patch.object(s.provider, method, side_effect=lost):
-                        s.call(101, request, expected=None)
-                    s.call(101, request)
-                    self.assertEqual(1, len(s.provider.comments[101]) - before_comments)
-                    self.assertEqual(1, len(s.provider.updates) - before_updates)
-                    self.assertEqual(contents[0], s.read(101, case.reference(contents[0])))
-                finally:
-                    case.doCleanups()
+        # Actual inline output bundle append/body lost response retries publish one exact transaction, read each host Ref and preserve completed idempotency.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.GenericStoragePublicTests.test_inline_output_append_and_body_lost_responses_reuse_one_transaction',
+        )
 
 
 if __name__ == '__main__':
-    if len(sys.argv) == 3 and sys.argv[1] == '--legacy-prepare':
-        legacy_prepare(sys.argv[2])
-    else:
-        unittest.main()
+    unittest.main()

@@ -1477,6 +1477,14 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         log = Path(proof["commands"][0]["log"])
         original_log = log.read_bytes()
         original_comments = copy.deepcopy(self.provider.comments[100])
+        observed_file = self.fixture.repo / "behavior_test.py"
+        observed_bytes = observed_file.read_bytes()
+        observed_file.write_text("assert True, 'changed after observed pending proof'\n")
+        before_retry = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)output|proof|workspace|drift|changed")
+        self.assertEqual(before_retry, (self.provider.issues, self.provider.comments))
+        observed_file.write_bytes(observed_bytes)
         import subprocess
         original_run = subprocess.run
         reruns = []
@@ -2039,6 +2047,95 @@ class WorkspaceAuthorityPublicTests(DagFixture):
                                      for s in response["next_steps"]))
                 self.assertRegex(json.dumps(response), r"(?i)allocation|generation|authority|binding|input")
                 self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_parent_authority_revision_rejects_acquired_readonly_work_and_needs_current_review(self):
+        def readonly(graph, manifest):
+            manifest["allocations"]["alpha"]["owned"] = []
+        _graph, parent_output = self.setup_parent_workspace(readonly)
+        work = self.acquire_workspace("alpha")
+        request = self.session.submission(work, {"value": "Unchanged workspace observation"}, "withdrawn-readonly")
+        request["workspace_checks"] = [[sys.executable, "-c", "pass"]]
+        original_parent = copy.deepcopy(self.provider.issues[99])
+        parent = json.loads(re.search(r"<!-- zzzops-goal\s*\n(.*?)\nzzzops-goal -->", original_parent["body"], re.S)[1])
+        index = z._comment_store.ArtifactIndex(self.provider.comments[99])
+        payload = index.resolve(parent["payload"]["hash"])[0]
+        spec = index.resolve(payload["spec"]["hash"])[0]
+        spec["content"] = "Root withdraws prior scope authorization pending current independent review"
+        offset = len(self.provider.comments[100])
+        payload["spec"] = self.blob(spec)
+        parent["payload"] = self.blob(payload)
+        for comment in copy.deepcopy(self.provider.comments[100][offset:]):
+            self.provider.create_issue_comment(99, comment["body"])
+        parent["revision"] += 1
+        self.provider.issues[99]["body"] = "<!-- zzzops-goal\n" + json.dumps(parent) + "\nzzzops-goal -->"
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        rejected = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)parent|allocation|authority|review|stale|input")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.assertTrue(any(item["token"] == work["lease"]["token"] for item in self.payload()[1]["operational"]["leases"]))
+        self.session.finish(self.session.acquire("charter", number=99), {"grant": self.allocations}, number=99)
+        self.assertNotIn("alpha", self.names())
+        self.session.call(100, request, expected=2)
+        permit = {**self.permit, "manifest": parent_output("charter", "grant")}
+        self.session.finish(self.session.acquire("inspect_charter", number=99, actor="new-parent-reviewer"), {"permit": permit}, number=99)
+        self.session.finish(self.session.acquire("consent", number=99), {"permit": permit}, number=99)
+        self.session.call(100, request, expected=2)
+        # Restoring the exact external predecessor is the matched valid control;
+        # new parent review cannot retroactively update an acquired child pin.
+        self.provider.issues[99] = original_parent
+        self.session.call(100, request)
+        proof = self.read_blob(self.read_blob(self.produced("alpha"))["provenance"]["source"])
+        self.assertEqual(0, proof["commands"][0]["exit_code"])
+        self.assertEqual(content_hash(work["lease"]["acquisition"]), proof["acquisition_hash"])
+
+    def test_new_reviewed_allocation_can_restart_clean_prior_worktree_without_reviving_old_proof(self):
+        self.setup_workspace_corrections()
+        prior_commit = self.session.git("rev-parse", "HEAD")
+        old_grant = self.produced("charter", "grant")
+        old_review = self.produced("inspect_charter", "permit")
+        old_approval = self.produced("consent", "permit")
+        _alpha, (red_ref, red) = self.red_candidate()
+        beta = self.acquire_workspace("beta")
+        (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
+        rejected_ref, rejected = self.candidate(beta, 0)
+        self.admit_workspace_correction()
+        original_repo = self.fixture.repo
+        original_source = (original_repo / "source.py").read_bytes()
+        original_test = (original_repo / "behavior_test.py").read_bytes()
+        with tempfile.TemporaryDirectory() as directory:
+            clean = Path(directory) / "clean-prior"
+            self.session.git("worktree", "add", "--detach", str(clean), prior_commit)
+            try:
+                self.session.repo = clean
+                self.fixture.repo = clean
+                self.assertEqual("", self.session.git("status", "--porcelain"))
+                self.replace_spec("Root withdraws prior delivery allocation and authorizes fresh investigation from exact clean commit " + prior_commit)
+                self.session.finish(self.session.acquire("charter"), {"grant": self.allocations})
+                new_grant = self.produced("charter", "grant")
+                self.assertEqual(self.read_blob(old_grant)["content"], self.read_blob(new_grant)["content"])
+                self.assertNotEqual(old_grant, new_grant)
+                self.assertEqual(old_review, self.produced("inspect_charter", "permit"))
+                self.assertEqual(old_approval, self.produced("consent", "permit"))
+                self.assertNotIn("alpha", self.names(), "Identical manifest bytes need new provenance-bound authorization")
+                permit = {**self.permit, "manifest": new_grant}
+                self.session.finish(self.session.acquire("inspect_charter", actor="fresh-allocation-reviewer"), {"permit": permit})
+                self.assertNotIn("alpha", self.names(), "Fresh independent review still requires configured root consent")
+                self.session.finish(self.session.acquire("consent"), {"permit": permit})
+                fresh = self.acquire_workspace("alpha")
+                self.assertIn(prior_commit, json.dumps(fresh["lease"]["acquisition"]))
+                self.assertNotIn(rejected_ref["hash"], json.dumps(fresh["lease"]["acquisition"]),
+                                 "Withdrawn source proof cannot normalize the newly authorized clean baseline")
+                (clean / "behavior_test.py").write_text("from source import value\nassert value() == 2\n")
+                _new_ref, new_proof = self.candidate(fresh, 1)
+                self.assertEqual("missing", new_proof["consumed"]["behavior_test.py"])
+                self.assertEqual(red, self.session.read(100, red_ref))
+                self.assertEqual(rejected, self.session.read(100, rejected_ref))
+                self.assertEqual(original_source, (original_repo / "source.py").read_bytes())
+                self.assertEqual(original_test, (original_repo / "behavior_test.py").read_bytes())
+            finally:
+                self.session.repo = original_repo
+                self.fixture.repo = original_repo
+                self.session.git("worktree", "remove", "--force", str(clean))
 
     def test_replacing_allocation_cannot_reauthorize_an_inflight_out_of_scope_edit(self):
         self.setup_workspace()
@@ -3371,6 +3468,50 @@ class GenericStoragePublicTests(DagFixture):
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
         self.session.call(100, pending)
         self.assertEqual(newer["value"], self.session.read(100, self.produced("produce"))["content"])
+
+    def test_inline_output_append_and_body_lost_responses_reuse_one_transaction(self):
+        for boundary in ("create_issue_comment", "update_issue"):
+            with self.subTest(boundary=boundary):
+                graph = review_graph()
+                graph["nodes"][0]["outputs"]["extra"] = output("additional_evidence", {"kind": "string"})
+                self.install(graph)
+                work = self.session.acquire("produce")
+                values = {"value": "Exact crash-safe candidate", "extra": "Additional exact evidence"}
+                request = self.session.submission(work, values, "inline-lost-" + boundary)
+                before_comments, before_updates = len(self.provider.comments[100]), len(self.provider.updates)
+                original = getattr(self.provider, boundary)
+                failed = []
+                def lost(*args, **kwargs):
+                    result = original(*args, **kwargs)
+                    if not failed:
+                        failed.append(True)
+                        raise z.GoalTransitionProviderError("Actual provider write committed, response lost")
+                    return result
+                with mock.patch.object(self.provider, boundary, side_effect=lost):
+                    self.session.call(100, request, expected=None)
+                self.assertTrue(failed, "Fault must reach the actual provider write")
+                self.session.call(100, request)
+                self.assertEqual(before_comments + 1, len(self.provider.comments[100]))
+                self.assertEqual(before_updates + 1, len(self.provider.updates))
+                for slot, value in values.items():
+                    self.assertEqual(value, self.session.read(100, self.produced("produce", slot))["content"])
+                self.assertFalse(self.payload()[1]["operational"]["leases"])
+                stable = copy.deepcopy((self.provider.issues, self.provider.comments))
+                self.session.call(100, request)
+                self.assertEqual(stable, (self.provider.issues, self.provider.comments))
+
+    def test_archived_checkpoint_and_exact_read_preserve_source_and_have_no_cursor(self):
+        envelope, payload = self.payload()
+        envelope["state"] = "archived"
+        envelope["revision"] += 1
+        self.provider.issues[100]["state"] = "closed"
+        self.provider.issues[100]["body"] = "<!-- zzzops-goal\n" + json.dumps(envelope) + "\nzzzops-goal -->"
+        original = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, expected=None)
+        self.assertFalse(any(step.get("kind") == "execute" for step in response["next_steps"]))
+        self.assertEqual(self.read_blob(payload["spec"]), self.session.read(100, payload["spec"]))
+        self.assertEqual(original, (self.provider.issues, self.provider.comments))
+        self.assertEqual({"leases", "receipts"}, set(payload["operational"]))
 
     def test_inline_outputs_result_receipt_and_lease_release_share_one_checkpoint(self):
         graph = copy.deepcopy(self.graph)
