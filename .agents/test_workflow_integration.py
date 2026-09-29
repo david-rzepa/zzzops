@@ -14,6 +14,20 @@ from test_evidence_dag_journeys import DagFixture
 
 
 class GenericIntegrationFreshnessTests(DagFixture):
+    def test_worker_role_remains_delegated_with_same_actual_pair_as_root(self):
+        pair = {"model": "same-capable-model", "effort": "medium"}
+        routing = z._workflow_section(self.session.project, "model_routing")["configuration"]
+        routing["model_inventory"]["reviewed_pairs"] = [{**pair, "tier": "bounded", "cost": 1}]
+        self.session.runtime.update(root_pair=pair, available_pairs=[pair])
+        self.install(self.graph)
+        steps = self.session.ready()
+        self.assertEqual(1, len(steps))
+        self.assertEqual("delegate", steps[0]["assignment"])
+        self.assertEqual(pair, steps[0]["selection"])
+        work = self.session.acquire("produce", actor="distinct-worker")
+        self.assertEqual(pair, work["lease"]["selection"])
+        self.session.finish(work, {"value": "Same model pair is a distinct actual executor"})
+
     def test_missing_delegation_and_expired_unknown_worker_block_until_exact_stopped_recovery(self):
         self.assertEqual({"produce"}, self.names())
         self.session.runtime["delegation"]["available"] = False

@@ -2196,7 +2196,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
 
     def test_public_workflow_cli_preserves_operation_diagnostic_context(self):
         payload_path = self.repo / "submission.json"
-        payload_path.write_text(json.dumps({"operation": "record_result", "phase": "implement"}), encoding="utf-8")
+        payload_path.write_text(json.dumps({"operation": "submit", "node": {"goal": 42, "node": "produce", "item": None, "generation": 1}}), encoding="utf-8")
         with (
             mock.patch.object(zzzops, "configure_cli_stdout"),
             mock.patch.object(zzzops._workflow, "public_run", side_effect=ValueError("missing passing verification")),
@@ -2206,7 +2206,8 @@ class DiagnosticsModuleTests(unittest.TestCase):
             self.assertEqual(2, zzzops.main())
         step = json.loads(stream.getvalue())["next_steps"][0]
         self.assertEqual("resolve_blocker", step["directive"])
-        self.assertEqual({"failed_invariant": "missing_passing_verification", "goal": 42, "phase": "implement", "operation": "record_result"}, step["diagnostic"])
+        self.assertEqual({"failed_invariant": "missing_passing_verification", "goal": 42, "node": {"goal": 42, "node": "produce", "item": None, "generation": 1}, "operation": "submit"}, step["diagnostic"])
+
 
     def test_public_workflow_cli_rejects_supplied_non_objects_and_unknown_operations_before_context(self):
         """Public input errors are structured and cannot reach provider-facing gates."""
@@ -2346,7 +2347,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
     def test_workflow_cli_submits_phase_evidence_through_the_same_command(self):
         runtime, payload_path = self.repo / "runtime.json", self.repo / "result.json"
         runtime.write_text(json.dumps({"root_pair": {"model": "root", "effort": "medium"}, "available_pairs": [{"model": "root", "effort": "medium"}]}), encoding="utf-8")
-        payload = {"operation": "record_review", "phase": "plan", "artifact": {"reference": "urn:sha256:" + "1" * 64, "hash": "sha256:" + "2" * 64}, "reviewer": "reviewer", "decision": "approved"}
+        payload = {"operation": "submit", "node": {"goal": 42, "node": "inspect", "item": None, "generation": 1}, "lease": "exact-token", "actor": "reviewer", "outputs": {"value": "Current subject reviewed"}}
         payload_path.write_text(json.dumps(payload), encoding="utf-8")
         expected = {"next_steps": []}
         with (
@@ -2357,9 +2358,11 @@ class DiagnosticsModuleTests(unittest.TestCase):
             mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--goal", "42", "--intent", "execute", "--runtime", str(runtime), "--input", str(payload_path)]),
             mock.patch.object(sys, "stdout", io.StringIO()) as stream,
         ):
-            self.assertEqual(0, zzzops._private_main())
+            exit_code = zzzops.main()
+            self.assertEqual(0, exit_code, stream.getvalue())
         self.assertEqual(expected, json.loads(stream.getvalue()))
         submit.assert_called_once_with(self.repo.resolve(), 42, "execute", payload)
+
 
     def test_workflow_diagnostics_are_local_and_not_stdout_payloads(self):
         zzzops.record_workflow_diagnostic(self.repo, {"goal": 42, "detail": "internal"})
@@ -4335,31 +4338,13 @@ class GoalTransitionTests(unittest.TestCase):
         self.assertEqual(goal["phase_evidence"], record["phase_evidence"])
 
     def test_workflow_submission_records_evidence_with_a_guarded_goal_transition(self):
-        adapter = FakeGoalTransitionAdapter(self.issue())
-        evidence_test = PhaseEvidenceTests()
-        envelope = evidence_test.envelope("plan")
-        record = evidence_test.record("plan", envelope)
-        project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}}
-        graph = {"phases": [{"id": "plan"}]}
-        nodes = {"plan": {"review": {"independent": True}}}
-        with (
-            mock.patch.object(zzzops, "reviewed_project_state", return_value=project),
-            mock.patch.object(zzzops, "GitHubGoalTransitionAdapter", return_value=adapter),
-            mock.patch.object(zzzops, "portfolio_snapshot", return_value={"complete": True, "valid": True, "goals": []}),
-            mock.patch.object(zzzops, "_workflow_phase_configuration", return_value=(graph, nodes)),
-            mock.patch.object(zzzops, "workflow_live_inputs", return_value={"plan": envelope}),
-        ):
-            with self.assertRaisesRegex(ValueError, "current required"):
-                zzzops.workflow_submit(Path("."), 42, "execute", {
-                    "operation": "record_review", "phase": "plan",
-                    "artifact": {"reference": "urn:sha256:" + "1" * 64, "hash": "sha256:" + "2" * 64},
-                    "reviewer": "reviewer", "decision": "approved",
-                })
-            result = zzzops.workflow_submit(Path("."), 42, "execute", {"operation": "record_result", "phase": "plan", "record": record})
-        self.assertEqual({"next_steps": []}, result)
-        persisted = zzzops.parse_managed_goal(adapter.issue["body"], 42)
-        self.assertIn("plan", persisted["phase_evidence"]["records"])
-        self.assertEqual(2, persisted["revision"])
+        # Preserve routing/ownership/provenance through actual generic public submissions.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_parallel_reviews_independent_leases_and_join',
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_wrong_lease_cannot_submit_and_valid_lease_still_can',
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_ordinary_artifact_shaped_content_cannot_issue_a_result',
+        )
 
     def test_transition_replaces_stale_schema_labels_with_current_schema(self):
         issue = self.issue()
@@ -6755,41 +6740,20 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertTrue(any("missing sections: model_routing" in error for error in zzzops.validate_policy(missing, True)))
 
     def test_workflow_step_plan_emits_skill_and_exact_routing_or_discovery_blocker(self):
-        plan = json.loads((PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
-        settings = next(item for item in plan["policy"]["sections"] if item["id"] == "model_routing")["configuration"]
-        settings = json.loads(json.dumps(settings))
-        settings["model_inventory"]["reviewed_pairs"] = [
-            {"model": "root-model", "effort": "medium", "tier": "routine", "cost": 1},
-        ]
-        evidence_test = PhaseEvidenceTests()
-        input_envelope = evidence_test.envelope("understand")
-        goal = {"status": "ready", "difficulty": "S", "engineering_rigor": {"risk_categories": [], "effective": "structured"}}
-        phase_nodes = {"understand": {"assignment_group": "root"}}
-        result = zzzops.workflow_step_plan(
-            goal, {"phases": [{"id": "understand"}]}, {"understand": input_envelope}, phase_nodes, settings,
-            {"root_pair": {"model": "root-model", "effort": "medium"}, "available_pairs": [{"model": "root-model", "effort": "medium"}]},
+        # Preserve routing/ownership/provenance through actual generic public submissions.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_integration.GenericIntegrationFreshnessTests.test_worker_role_remains_delegated_with_same_actual_pair_as_root',
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_unavailable_routing_does_not_downgrade_or_complete',
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_root_approval_rejects_worker_then_accepts_root',
         )
-        self.assertEqual([{
-            "kind": "execute", "phase": "understand", "reason": "missing_evidence",
-            "skill": "execute-zzzops/references/phases/understand-execute.md", "assignment": "root",
-            "selection": {"model": "root-model", "effort": "medium"},
-        }], result["next_steps"])
-        missing = zzzops.workflow_step_plan(goal, {"phases": [{"id": "understand"}]}, {"understand": input_envelope}, phase_nodes, settings, None)
-        self.assertEqual("capability_discovery", missing["next_steps"][0]["kind"])
 
     def test_workflow_step_plan_delegates_a_non_human_root_equivalent_worker(self):
-        plan = json.loads((PLUGIN_ROOT / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
-        settings = json.loads(json.dumps(next(item for item in plan["policy"]["sections"] if item["id"] == "model_routing")["configuration"]))
-        settings["model_inventory"]["reviewed_pairs"] = [{"model": "root-model", "effort": "medium", "tier": "bounded", "cost": 1}]
-        evidence_test = PhaseEvidenceTests()
-        input_envelope = evidence_test.envelope("plan")
-        result = zzzops.workflow_step_plan(
-            {"status": "ready", "difficulty": "S", "engineering_rigor": {"risk_categories": [], "effective": "structured"}},
-            {"phases": [{"id": "plan"}]}, {"plan": input_envelope}, {"plan": {"assignment_group": "planning"}}, settings,
-            {"root_pair": {"model": "root-model", "effort": "medium"}, "available_pairs": [{"model": "root-model", "effort": "medium"}]},
+        # Preserve routing/ownership/provenance through actual generic public submissions.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_integration.GenericIntegrationFreshnessTests.test_worker_role_remains_delegated_with_same_actual_pair_as_root',
         )
-        self.assertEqual("delegate", result["next_steps"][0]["assignment"])
-        self.assertEqual({"model": "root-model", "effort": "medium"}, result["next_steps"][0]["selection"])
 
     def test_workflow_step_plan_routes_required_human_approval_to_root(self):
         # Root authority is configured on an ordinary exact-subject task, not an extra phase mode.
