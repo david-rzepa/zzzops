@@ -2633,6 +2633,205 @@ class GenericStoragePublicTests(DagFixture):
             envelope["artifacts"].remove(record)
             comment["body"] = z._comment_store.encode_envelope(envelope)
 
+    def payload_from_body(self, body):
+        match = re.search(r"<!-- zzzops-goal\s*\n(.*?)\nzzzops-goal -->", body, re.S)
+        self.assertIsNotNone(match)
+        envelope = json.loads(match[1])
+        self.assertEqual(2, envelope["schema_version"])
+        return self.read_blob(envelope["payload"])
+
+    def test_start_and_bind_persist_distinct_unbound_then_actual_worker_checkpoints(self):
+        work = self.session.acquire("produce", actor="actual-storage-worker")
+        observed = []
+        for number, payload in self.provider.updates:
+            if number == 100 and "body" in payload:
+                state = self.payload_from_body(payload["body"])
+                observed.extend(lease for lease in state["operational"]["leases"] if lease["token"] == work["lease"]["token"])
+        self.assertGreaterEqual(len(observed), 2)
+        self.assertIsNone(observed[-2]["worker"])
+        self.assertEqual("actual-storage-worker", observed[-1]["worker"])
+        self.assertEqual(observed[-2]["token"], observed[-1]["token"])
+        self.session.finish(work, {"value": "Bound exact durable worker"})
+
+    def test_pending_start_retry_retains_generated_identity_and_completed_replay_never_resurrects(self):
+        ready = self.session.ready()
+        self.assertEqual(1, len(ready))
+        step = ready[0]
+        receipt = json.loads(Path(step["policy"]["path"]).read_text())["policy_receipt"]
+        request = {**step["start"], "policy_receipt": receipt, "request_id": "stable-start-retry"}
+        before_comments = len(self.provider.comments[100])
+        attempted = []
+        def unavailable(number, payload):
+            attempted.append(copy.deepcopy(payload))
+            raise RuntimeError("Provider unavailable before start body publication")
+        with mock.patch.object(self.provider, "update_issue", side_effect=unavailable):
+            self.session.call(100, request, expected=None)
+        self.assertEqual(1, len(attempted), "Pending append must precede attempted body publication")
+        prior = self.payload_from_body(attempted[0]["body"])["operational"]["leases"]
+        self.assertEqual(1, len(prior))
+        acquired = self.session.call(100, request)["next_steps"][0]
+        self.assertEqual(prior[0]["token"], acquired["lease"]["token"])
+        self.assertEqual(prior[0]["expires_at"], acquired["lease"]["expires_at"])
+        self.assertEqual(before_comments + 1, len(self.provider.comments[100]))
+        self.session.call(100, {**acquired["bind"], "actor": "retry-worker", "selection": acquired["lease"]["selection"], "policy_receipt": receipt})
+        acquired["bound_actor"] = "retry-worker"
+        self.session.finish(acquired, {"value": "Current completed result"})
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, request, expected=None)
+        self.assertFalse(self.payload()[1]["operational"]["leases"])
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def logical_selector(self, revision=None):
+        selector_value = {"node": {"goal": 100, "node": "produce", "item": None, "generation": 1}, "output": "value"}
+        if revision is not None:
+            selector_value["revision"] = revision
+        return selector_value
+
+    def test_logical_latest_and_exact_historical_revisions_preserve_host_refs(self):
+        versions = []
+        for value in ("first", "second", "second"):
+            reference, artifact, _before = self.versioned_output(value)
+            versions.append((self.payload()[0]["revision"], reference, artifact))
+        latest = self.session.call(100, {"operation": "read", "artifact": self.logical_selector()})["next_steps"][0]
+        self.assertEqual(versions[-1][2], latest["content"])
+        self.assertEqual(versions[-1][1]["hash"], latest["resolved"]["hash"])
+        self.assertEqual(versions[-1][0], latest["resolved"]["revision"])
+        for revision, reference, artifact in versions:
+            with self.subTest(revision=revision):
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                read = self.session.call(100, {"operation": "read", "artifact": self.logical_selector(revision)})["next_steps"][0]
+                self.assertEqual(artifact, read["content"])
+                self.assertEqual(reference["hash"], read["resolved"]["hash"])
+                self.assertEqual(revision, read["resolved"]["revision"])
+                self.assertEqual(artifact, self.session.read(100, reference))
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_immutable_cache_does_not_freeze_logical_latest_output(self):
+        first, first_artifact, _before = self.versioned_output("old")
+        engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
+        self.assertEqual(first_artifact, engine.read_artifact(100, first))
+        second, second_artifact, _before = self.versioned_output("new")
+        engine.invalidate()
+        self.assertEqual(second_artifact, engine.read_artifact(100, self.logical_selector()))
+        self.assertEqual(first_artifact, engine.read_artifact(100, first))
+        self.assertNotEqual(first, second)
+
+    def test_historical_reads_do_not_resurrect_old_coordination_or_rewrite_current_lease(self):
+        old, artifact, _before = self.versioned_output("accepted old output")
+        revision = self.payload()[0]["revision"]
+        self.replace_spec("New substantive request still being executed")
+        work = self.session.acquire("produce")
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        read = self.session.call(100, {"operation": "read", "artifact": self.logical_selector(revision)})["next_steps"][0]
+        self.assertEqual(artifact, read["content"])
+        self.assertEqual(old["hash"], read["resolved"]["hash"])
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        leases = self.payload()[1]["operational"]["leases"]
+        self.assertEqual([work["lease"]["token"]], [lease["token"] for lease in leases])
+        self.session.finish(work, {"value": "current output"})
+
+    def multipart_request(self, *, reset=True, request_id="multipart-exact"):
+        graph = copy.deepcopy(self.graph)
+        graph["nodes"][0]["outputs"].update({name: output("text", {"kind": "string"}) for name in ("extra_a", "extra_b")})
+        if reset:
+            self.install(graph)
+        acquired = self.session.acquire("produce")
+        values = {name: "".join(hashlib.sha256((name + str(i)).encode()).hexdigest() for i in range(650))
+                  for name in ("value", "extra_a", "extra_b")}
+        return acquired, values, self.session.submission(acquired, values, request_id)
+
+    def leave_partial_upload(self, request):
+        original = self.provider.create_issue_comment
+        calls = []
+        before = copy.deepcopy(self.provider.issues[100])
+        comments = len(self.provider.comments[100])
+        def stop_after_one(number, body):
+            calls.append(body)
+            if len(calls) > 1:
+                raise RuntimeError("Injected second multipart write failure")
+            return original(number, body)
+        with mock.patch.object(self.provider, "create_issue_comment", side_effect=stop_after_one):
+            self.session.call(100, request, expected=None)
+        self.assertGreater(len(calls), 1, "Fault must reach a genuinely multipart transaction")
+        self.assertEqual(comments + 1, len(self.provider.comments[100]))
+        self.assertEqual(before, self.provider.issues[100], "Partial upload cannot publish its semantic envelope")
+        return copy.deepcopy(self.provider.comments[100][-1]), comments
+
+    def test_multipart_retry_reuses_partial_bytes_and_publishes_one_atomic_output_bundle(self):
+        _work, values, request = self.multipart_request()
+        updates = len(self.provider.updates)
+        partial, before_comments = self.leave_partial_upload(request)
+        self.session.call(100, request)
+        appended = self.provider.comments[100][before_comments:]
+        self.assertGreater(len(appended), 1)
+        self.assertEqual(1, sum(comment["body"] == partial["body"] for comment in appended))
+        self.assertTrue(all(len(comment["body"]) <= 65536 for comment in appended))
+        self.assertEqual(updates + 1, len(self.provider.updates))
+        for slot, value in values.items():
+            self.assertEqual(value, self.session.read(100, self.produced("produce", slot))["content"])
+        self.assertFalse(self.payload()[1]["operational"]["leases"])
+        stable = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, request)
+        self.assertEqual(stable, (self.provider.issues, self.provider.comments))
+
+    def test_partial_upload_still_requires_actual_actor_and_current_input(self):
+        _work, values, request = self.multipart_request()
+        self.leave_partial_upload(request)
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, {**request, "actor": "intruder"}, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)actor|executor|owner|payload|receipt")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        body = self.provider.issues[100]["body"]
+        self.replace_spec("Changed substantive specification during partial upload")
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)stale|input|source|current")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.provider.issues[100]["body"] = body  # Restore exact external input; pending bytes remain non-authoritative.
+        self.session.call(100, request)
+        for slot, value in values.items():
+            self.assertEqual(value, self.session.read(100, self.produced("produce", slot))["content"])
+
+    def test_pending_multipart_outputs_cannot_replace_latest_historical_or_pinned_reads(self):
+        _work, values, request = self.multipart_request(request_id="committed-first-bundle")
+        self.session.call(100, request)
+        reference = self.produced("produce")
+        artifact = self.session.read(100, reference)
+        revision = self.payload()[0]["revision"]
+        self.replace_spec("Substantively revised request awaiting candidate publication")
+        _work, newer, pending = self.multipart_request(reset=False, request_id="pending-new-bundle")
+        newer["value"] = "new " + newer["value"]
+        pending["outputs"] = newer
+        self.leave_partial_upload(pending)
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.assertEqual(artifact, self.session.read(100, reference))
+        for selected in (self.logical_selector(), self.logical_selector(revision)):
+            read = self.session.call(100, {"operation": "read", "artifact": selected})["next_steps"][0]
+            self.assertEqual(artifact, read["content"])
+            self.assertEqual(reference["hash"], read["resolved"]["hash"])
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.call(100, pending)
+        self.assertEqual(newer["value"], self.session.read(100, self.produced("produce"))["content"])
+
+    def test_inline_outputs_result_receipt_and_lease_release_share_one_checkpoint(self):
+        graph = copy.deepcopy(self.graph)
+        graph["nodes"][0]["outputs"]["other"] = output("text", {"kind": "string"})
+        self.install(graph)
+        work = self.session.acquire("produce")
+        before_comments, before_updates = len(self.provider.comments[100]), len(self.provider.updates)
+        request = self.session.submission(work, {"value": "first", "other": "second"}, "single-checkpoint-bundle")
+        self.session.call(100, request)
+        self.assertEqual(before_comments + 1, len(self.provider.comments[100]))
+        self.assertEqual(before_updates + 1, len(self.provider.updates))
+        envelope = z._comment_store.decode_envelope(self.provider.comments[100][-1]["body"])
+        self.assertIsInstance(envelope, dict)
+        hashes = {record["hash"] for record in envelope["artifacts"]}
+        for reference in (self.produced("produce"), self.produced("produce", "other"), self.result("produce")[0]):
+            self.assertIn(reference["hash"], hashes)
+        _goal, payload = self.payload()
+        self.assertFalse(payload["operational"]["leases"])
+        self.assertTrue(any(receipt["request"] == "single-checkpoint-bundle" for receipt in payload["operational"]["receipts"]))
+
     def test_alternate_legacy_compression_preserves_typed_output_identity_and_retry(self):
         graph = copy.deepcopy(self.graph)
         graph["nodes"][0]["outputs"]["value"]["schema"] = {"kind": "union", "variants": [

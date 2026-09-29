@@ -1443,27 +1443,11 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         self.assertNotEqual(0, s.calls[-1]['code'], 'All definitions of an immutable identity must be checked')
 
     def test_latest_advances_and_unchanged_revisions_remain_pinnable(self):
-        s = self.session
-        step = s.start(101, 'understand')
-        revisions = []
-        contents = [{'text': 'first'}, {'text': 'second'}, {'text': 'second'}]
-        for index, content in enumerate(contents):
-            s.result(101, step, content)
-            revisions.append(s.goal(101)['revision'])
-            if index != len(contents) - 1:
-                s.review(101, 'understand', acceptance='changes_requested')
-                step = s.start(101, 'understand')
-        selector = {'phase': 'understand', 'slot': 'output'}
-        latest = s.call(101, {'operation': 'read', 'artifact': selector})['next_steps'][0]
-        self.assertEqual(contents[-1], latest['content'])
-        self.assertEqual(revisions[-1], latest['resolved']['revision'])
-        for revision, content in zip(revisions, contents):
-            with self.subTest(revision=revision):
-                result = s.call(101, {'operation': 'read', 'artifact': {**selector, 'revision': revision}})['next_steps'][0]
-                self.assertEqual(content, result['content'])
-                self.assertEqual(content_hash(content), result['resolved']['hash'])
-                self.assertEqual(revision, result['resolved']['revision'])
-                self.assertEqual(content, s.read(101, self.reference(content)))
+        # Exact storage/ownership guard through public generic host output transactions.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.GenericStoragePublicTests.test_logical_latest_and_exact_historical_revisions_preserve_host_refs',
+        )
 
     def test_sparse_changed_artifact_is_smaller_and_missing_base_fails_closed(self):
         # Same storage guard, now using host-issued generic output artifact identities.
@@ -1491,89 +1475,32 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_output_chain_rollover_preserves_latest_without_initial_base')
 
     def test_cached_immutable_read_does_not_pin_logical_head(self):
-        s = self.session
-        step = s.start(101, 'understand')
-        first, second = {'text': 'old'}, {'text': 'new'}
-        s.result(101, step, first)
-        with mock.patch.object(z, 'GitHubGoalTransitionAdapter', return_value=s.provider), mock.patch.object(
-            z, 'portfolio_snapshot', side_effect=s.portfolio_snapshot):
-            engine = z.workflow_engine(s.repo, s.project, s.runtime)
-            self.assertEqual(first, engine.read_artifact(101, self.reference(first)))
-            s.review(101, 'understand', acceptance='changes_requested')
-            step = s.start(101, 'understand')
-            s.result(101, step, second)
-            engine.invalidate()  # Existing gateway freshness boundary, retaining immutable cache.
-            self.assertEqual(second, engine.read_artifact(101, {'phase': 'understand', 'slot': 'output'}))
-            self.assertEqual(first, engine.read_artifact(101, self.reference(first)))
+        # Exact storage/ownership guard through public generic host output transactions.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.GenericStoragePublicTests.test_immutable_cache_does_not_freeze_logical_latest_output',
+        )
 
     def test_partial_multipart_envelope_retry_preserves_one_logical_operation(self):
-        s = self.session
-        step = s.start(101, 'understand')
-        # Each record fits alone; the combined encoded body must require multiple parts.
-        contents = [{'text': ''.join(hashlib.sha256((str(part) + ':' + str(i)).encode()).hexdigest()
-                                    for i in range(650))} for part in range(3)]
-        request = self.inline_result(step, contents, 'multipart-retry')
-        before_comments, before_updates = len(s.provider.comments[101]), len(s.provider.updates)
-        original = s.provider.create_issue_comment
-        attempts = 0
-        def stop_after_one(number, body):
-            nonlocal attempts
-            attempts += 1
-            if attempts > 1:
-                raise z.GoalTransitionProviderError('injected second-part failure')
-            return original(number, body)
-        with mock.patch.object(s.provider, 'create_issue_comment', side_effect=stop_after_one):
-            s.call(101, request, expected=None)
-        self.assertEqual(before_comments + 1, len(s.provider.comments[101]))
-        self.assertEqual(before_updates, len(s.provider.updates), 'Do not publish state before all envelope parts exist')
-        partial = copy.deepcopy(s.provider.comments[101][-1])
-        s.call(101, request)
-        appended = s.provider.comments[101][before_comments:]
-        self.assertGreater(len(appended), 1)
-        self.assertEqual(1, sum(c['body'] == partial['body'] for c in appended))
-        self.assertTrue(all(len(c['body']) <= 65536 for c in appended))
-        self.assertEqual(before_updates + 1, len(s.provider.updates))
-        for content in contents:
-            self.assertEqual(content, s.read(101, self.reference(content)))
+        # Exact storage/ownership guard through public generic host output transactions.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.GenericStoragePublicTests.test_multipart_retry_reuses_partial_bytes_and_publishes_one_atomic_output_bundle',
+        )
 
     def test_partial_upload_cannot_bypass_live_actor_or_stale_input_checks(self):
-        s = self.session
-        step = s.start(101, 'understand')
-        request = self.inline_result(step, [{'requirements': 'Retry must retain authority.'}])
-        before_comments = len(s.provider.comments[101])
-        with mock.patch.object(s.provider, 'update_issue', side_effect=z.GoalTransitionProviderError('before body write')):
-            s.call(101, request, expected=None)
-        self.assertEqual(before_comments + 1, len(s.provider.comments[101]), 'Exercise an actually persisted pending envelope')
-        comments, updates = copy.deepcopy(s.provider.comments), copy.deepcopy(s.provider.updates)
-        for field in ('actor', 'lease'):
-            with self.subTest(field=field):
-                changed = copy.deepcopy(request)
-                changed[field] = 'different-worker-or-lease'
-                s.call(101, changed, expected=None)
-                self.assertNotEqual(0, s.calls[-1]['code'])
-                self.assertEqual(comments, s.provider.comments)
-                self.assertEqual(updates, s.provider.updates)
-        s.provider.issues[101]['body'] = 'Concurrent human change.\n' + s.provider.issues[101]['body']
-        s.call(101, request, expected=None)
-        self.assertNotEqual(0, s.calls[-1]['code'])
-        self.assertEqual(comments, s.provider.comments)
-        self.assertEqual(updates, s.provider.updates)
+        # Exact storage/ownership guard through public generic host output transactions.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.GenericStoragePublicTests.test_partial_upload_still_requires_actual_actor_and_current_input',
+        )
 
     def test_start_and_bind_remain_separate_durable_checkpoints(self):
-        s = self.session
-        s.prepare()
-        step = s.start(101, 'test_design')
-        observed = []
-        for number, payload in s.provider.updates:
-            if number == 101:
-                goal = z.parse_managed_goal(payload['body'], number)
-                lease = goal.get('workflow', {}).get('leases', {}).get('test_design:execute')
-                if lease:
-                    observed.append(lease)
-        self.assertGreaterEqual(len(observed), 2)
-        self.assertIsNone(observed[-2]['worker'], 'Start must be durable before dispatch/bind')
-        self.assertEqual(step['bound_actor'], observed[-1]['worker'])
-        self.assertEqual(observed[-2]['token'], observed[-1]['token'])
+        # Exact storage/ownership guard through public generic host output transactions.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.GenericStoragePublicTests.test_start_and_bind_persist_distinct_unbound_then_actual_worker_checkpoints',
+        )
 
     def test_historical_semantic_projection_never_restores_live_coordination(self):
         s = self.session
@@ -1628,34 +1555,11 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         self.assertEqual(legacy, s.provider.comments[101][0]['body'], 'Mixed history must not rewrite the legacy boundary')
 
     def test_pending_start_retry_preserves_generated_lease_and_completed_retry_does_not_resurrect(self):
-        s = self.session
-        s.assess(101, 'understand')
-        ready = next(x for x in s.checkpoint(101) if x.get('phase') == 'understand')
-        receipt = json.loads(Path(ready['policy']['path']).read_text())['policy_receipt']
-        request = {**ready['start'], 'policy_receipt': receipt, 'request_id': 'stable-start-retry'}
-        before_comments = len(s.provider.comments[101])
-        attempted = []
-        def unavailable(number, payload):
-            attempted.append(copy.deepcopy(payload))
-            raise z.GoalTransitionProviderError('lost before body publication')
-        with mock.patch.object(s.provider, 'update_issue', side_effect=unavailable):
-            s.call(101, request, expected=None)
-        self.assertEqual(1, len(attempted), 'The durable append must precede body publication')
-        prior_lease = z.parse_managed_goal(attempted[0]['body'], 101)['workflow']['leases']['understand:execute']
-        perform = s.call(101, request)['next_steps'][0]
-        self.assertEqual(prior_lease['token'], perform['lease']['token'])
-        self.assertEqual(prior_lease['expires_at'], perform['lease']['expires_at'])
-        self.assertEqual(before_comments + 1, len(s.provider.comments[101]))
-        actor = 'root-thread' if ready['assignment'] == 'root' else 'retry-worker'
-        if perform['lease']['worker'] is None:
-            s.call(101, {'operation': 'bind', 'phase': 'understand', 'lease': perform['lease']['token'],
-                         'actor': actor, 'selection': perform['lease']['selection'], 'policy_receipt': receipt})
-        perform['bound_actor'] = actor
-        s.result(101, perform, {'requirements': 'Completed after recovered start.'})
-        before = copy.deepcopy(s.provider.comments[101])
-        s.call(101, request, expected=None)
-        self.assertFalse(s.goal(101)['workflow']['leases'], 'An old start receipt must never restore expired/released ownership')
-        self.assertEqual(before, s.provider.comments[101])
+        # Exact storage/ownership guard through public generic host output transactions.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.GenericStoragePublicTests.test_pending_start_retry_retains_generated_identity_and_completed_replay_never_resurrects',
+        )
 
     def inline_result(self, step, contents, request_id='inline-result'):
         record = copy.deepcopy(step['result_contract']['record'])
@@ -1666,25 +1570,11 @@ class CommentCheckpointPublicTests(unittest.TestCase):
                 'artifacts': [{'content': content, 'hash': content_hash(content)} for content in contents]}
 
     def test_inline_multiple_artifacts_result_release_share_one_durable_checkpoint(self):
-        s = self.session
-        step = s.start(101, 'understand')
-        contents = [{'requirements': 'Deliver exact text.'}, {'supporting': 'Second independent evidence.'}]
-        before_comments, before_updates = len(s.provider.comments[101]), len(s.provider.updates)
-        request = self.inline_result(step, contents)
-        s.call(101, request)
-        self.assertEqual(1, len(s.provider.comments[101]) - before_comments,
-                         'Two artifacts plus result/release must use one envelope, not three comments')
-        self.assertEqual(1, len(s.provider.updates) - before_updates)
-        for content in contents:
-            self.assertEqual(content, s.read(101, self.reference(content)))
-        self.assertEqual(self.reference(contents[0]), s.goal(101)['phase_evidence']['records']['understand']['output'])
-        self.assertFalse(s.goal(101).get('workflow', {}).get('leases'))
-        comments = copy.deepcopy(s.provider.comments[101])
-        updates = len(s.provider.updates)
-        s.call(101, request)
-        self.assertEqual(comments, s.provider.comments[101])
-        self.assertEqual(updates, len(s.provider.updates))
-        self.assertTrue(any(x.get('kind') == 'review' for x in s.checkpoint(101)), 'Result does not imply independent review')
+        # Exact storage/ownership guard through public generic host output transactions.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.GenericStoragePublicTests.test_inline_outputs_result_receipt_and_lease_release_share_one_checkpoint',
+        )
 
     def test_inline_request_conflicting_hash_and_actor_fail_before_writes(self):
         s = self.session
@@ -1760,40 +1650,18 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         self.assertEqual(small, s.read(101, self.reference(small)))
 
     def test_latest_historical_and_pinned_reads_exclude_pending_uploads(self):
-        s = self.session
-        step = s.start(101, 'understand')
-        first = {'requirements': 'Original immutable requirements.'}
-        output = s.artifact(101, step, first)
-        s.result(101, step, first)
-        committed_revision = s.goal(101)['revision']
-        selector = {'phase': 'understand', 'slot': 'output'}
-        latest = s.call(101, {'operation': 'read', 'artifact': selector})['next_steps'][0]
-        self.assertEqual(first, latest['content'])
-        self.assertEqual(output['hash'], latest['resolved']['hash'])
-        self.assertEqual(committed_revision, latest['resolved']['revision'])
-        review = s.start(101, 'understand', 'review')
-        pending = s.artifact(101, review, {'requirements': 'Uncommitted newer upload.'})
-        self.assertNotEqual(output, pending)
-        self.assertEqual(first, s.read(101, output))
-        self.assertEqual(first, s.call(101, {'operation': 'read', 'artifact': selector})['next_steps'][0]['content'])
-        historical = s.call(101, {'operation': 'read', 'artifact': {**selector, 'revision': committed_revision}})['next_steps'][0]
-        self.assertEqual(first, historical['content'])
-        self.assertEqual(output['hash'], historical['resolved']['hash'])
+        # Exact storage/ownership guard through public generic host output transactions.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.GenericStoragePublicTests.test_pending_multipart_outputs_cannot_replace_latest_historical_or_pinned_reads',
+        )
 
     def test_inline_review_does_not_imply_human_approval(self):
-        s = self.session
-        step = s.start(101, 'understand')
-        s.result(101, step, {'requirements': 'A result needing review.'})
-        review = s.start(101, 'understand', 'review')
-        content = {'finding': 'Independent exact review.'}
-        before = len(s.provider.comments[101])
-        s.call(101, {'operation': 'record_review', 'phase': 'understand', 'lease': review['lease']['token'],
-                     'actor': review['bound_actor'], 'artifact': self.reference(content),
-                     'artifacts': [{'content': content, 'hash': content_hash(content)}],
-                     'outcomes': {'acceptance': 'approved', 'entropy': {'outcome': 'no_findings', 'evidence': 'Examined exact result.', 'goals': []}}})
-        self.assertEqual(1, len(s.provider.comments[101]) - before)
-        self.assertEqual(content, s.read(101, self.reference(content)))
-        self.assertTrue(any(x['kind'] == 'human_approval' for x in s.checkpoint(101)))
+        # Exact storage/ownership guard through public generic host output transactions.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_phase_review_contract.GenericReviewGateTests.test_review_is_not_human_approval_and_root_binds_current_subject_and_review',
+        )
 
     def test_pending_variable_verification_reuses_exact_proof_and_log(self):
         s = self.session
