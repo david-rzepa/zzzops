@@ -278,6 +278,8 @@ class PublicWorkflowJourneyTests(unittest.TestCase):
 class MigrationEvidenceFreshnessTests(unittest.TestCase):
     """Actual input/review projection with synthetic provider observations."""
     def setUp(self):
+        if self._testMethodName in ('test_external_release_change_stales_review_without_file_or_policy_change', 'test_unavailable_provider_is_not_cached_as_fresh_and_restores', 'test_attestation_revocation_and_deletion_stale_only_affected_goal', 'test_two_goal_assessments_cannot_substitute_on_resume', 'test_current_reassessment_reuses_substantive_output_with_new_review', 'test_public_dispatch_exposes_changed_release_input_identity', 'test_affected_phases_share_one_observation_and_next_projection_refreshes'):
+            return  # Generic replacement supplies its own actual public fixture.
         import json
         from test_migration_acceptance import assessment, releases
         self.fixture = PublicWorkflowJourneyTests()
@@ -312,129 +314,33 @@ class MigrationEvidenceFreshnessTests(unittest.TestCase):
         return evidence
 
     def test_external_release_change_stales_review_without_file_or_policy_change(self):
-        before = self.live(); raw = self.path.read_bytes()
-        self.goal['phase_evidence'] = self.approved(before)
-        unrelated = copy.deepcopy(self.goal)
-        unrelated['workflow']['assessments']['plan']['files'] = []
-        other_before = self.live(unrelated)
-        self.observation['releases'][0]['commit'] = 'e' * 40
-        after = self.live()
-        self.assertNotEqual(before['plan'], after['plan'], 'Provider drift must invalidate consumed evidence even with unchanged file')
-        self.assertEqual(raw, self.path.read_bytes())
-        self.assertEqual(before['plan']['policy'], after['plan']['policy'])
-        self.assertEqual(other_before, self.live(unrelated))
-        frontier = z.derive_phase_steps(self.goal, self.fixture.graph, after)
-        self.assertEqual(['plan'], [x['phase'] for x in frontier['execute']])
-        closed = dict(self.goal, status='done')
-        self.assertEqual([], z.derive_phase_steps(closed, self.fixture.graph, after)['execute'])
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationInputTests.test_release_commit_drift_blocks_exact_consumers_with_unchanged_document_and_policy')
 
     def test_unavailable_provider_is_not_cached_as_fresh_and_restores(self):
-        before = self.live()
-        original = copy.deepcopy(self.observation)
-        self.observation.clear(); self.observation.update(status='unavailable', releases=[])
-        self.assertNotEqual(before, self.live())
-        self.observation.clear(); self.observation.update(original)
-        self.assertEqual(before, self.live())
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationInputTests.test_unavailable_provider_is_unknown_and_restoration_reuses_exact_input')
 
     def test_attestation_revocation_and_deletion_stale_only_affected_goal(self):
-        import json
-        before = self.live(); original = self.path.read_bytes()
-        unrelated = copy.deepcopy(self.goal)
-        unrelated['workflow']['assessments']['plan']['files'] = []
-        other = self.live(unrelated)
-        changed = copy.deepcopy(self.document)
-        changed['contracts'][0]['status'] = 'unknown'
-        changed['contracts'][0]['evidence'][0]['statement'] = 'Owner explicitly revoked the claim.'
-        self.path.write_text(json.dumps(changed))
-        self.assertNotEqual(before, self.live())
-        self.assertEqual(other, self.live(unrelated))
-        self.path.unlink()
-        self.assertNotEqual(before, self.live())
-        self.path.write_bytes(original)
-        self.assertEqual(before, self.live())
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationInputTests.test_revoked_or_deleted_attestation_blocks_only_its_consumers_then_exact_restore')
 
     def test_two_goal_assessments_cannot_substitute_on_resume(self):
-        import json
-        from test_migration_acceptance import assessment
-        before = self.live(); original = self.path.read_bytes()
-        other = self.path.with_name('43.json')
-        other.write_text(json.dumps(assessment(43, self.spec)))
-        self.assertEqual(before, self.live(), 'Independent assessment B must not alter A')
-        self.path.write_bytes(other.read_bytes())
-        changed = self.live()
-        self.assertNotEqual(before, changed)
-        # A mismatch must be an explicit provider decision, not only raw file drift.
-        self.assertNotEqual(before['plan']['provider'], changed['plan']['provider'])
-        self.path.write_bytes(original)
-        self.assertEqual(before, self.live())
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationInputTests.test_foreign_goal_assessment_never_substitutes_for_exact_goal_spec')
 
     def test_current_reassessment_reuses_substantive_output_with_new_review(self):
-        import json
-        before = self.live(); old = self.approved(before)
-        original_output = old['records']['plan']['output']
-        self.observation['releases'][0]['commit'] = 'e' * 40
-        changed = self.live()
-        self.assertNotEqual(before, changed)
-        document = copy.deepcopy(self.document)
-        document['release_snapshot'] = copy.deepcopy(self.observation)
-        document['contracts'][0]['evidence'][0]['release_snapshot'] = copy.deepcopy(self.observation)
-        self.path.write_text(json.dumps(document))
-        current = self.live()
-        record = fixtures.PhaseEvidenceTests().record('plan', current['plan'])
-        record['output'] = original_output
-        replaced = z.record_phase_result(old, 'plan', record, current['plan'])
-        self.assertNotIn('plan', replaced['reviews'])
-        fresh = z.record_phase_review(replaced, 'plan', old['reviews']['plan']['artifact'],
-                                      'independent-reviewer', decision='approved')
-        self.assertEqual(original_output, fresh['records']['plan']['output'])
-        self.assertNotEqual(old['reviews']['plan']['record_hash'], fresh['reviews']['plan']['record_hash'])
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationInputTests.test_current_reassessment_requires_new_review_even_for_identical_conclusion')
 
     def test_public_dispatch_exposes_changed_release_input_identity(self):
-        import json
-        from test_workflow_public_contract import PublicWorkflowContractTests
-        managed = z.parse_managed_goal(self.fixture.adapter.issue['body'], 42)
-        managed['workflow'] = copy.deepcopy(self.goal['workflow'])
-        self.fixture.adapter.issue['body'] = z.render_managed_goal(
-            managed, self.goal['human_spec'], 42)
-        harness = PublicWorkflowContractTests()
-        harness.repo = self.repo
-        with tempfile.TemporaryDirectory() as control:
-            runtime = Path(control) / 'runtime.json'
-            runtime.write_text(json.dumps(self.fixture.runtime))
-            with mock.patch.object(z, 'reviewed_project_state', return_value=self.fixture.project), \
-                 mock.patch.object(z, 'workflow_context_step', return_value=None), \
-                 mock.patch.object(z._package, 'package_status', return_value={'ok': True, 'version': 'test', 'revision': 'synthetic'}), \
-                 mock.patch.object(z._installation, 'validation_status', return_value={'required': False}):
-                args = ('--intent', 'execute', '--goal', '42', '--runtime', str(runtime))
-                code, before, stderr = harness.run_main(*args)
-                self.assertEqual(0, code, before)
-                self.assertEqual('', stderr)
-                first = next(s for s in before['next_steps'] if s.get('phase') == 'plan')
-                self.observation['releases'][0]['commit'] = 'e' * 40
-                code, after, stderr = harness.run_main(*args)
-                self.assertEqual(0, code, after)
-                second = next(s for s in after['next_steps'] if s.get('phase') == 'plan')
-                self.assertNotEqual(first['input_hash'], second['input_hash'])
-                self.assertEqual(first['input_envelope']['policy'], second['input_envelope']['policy'])
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationInputTests.test_public_dispatch_exposes_new_current_release_binding_after_reassessment')
 
 
     def test_affected_phases_share_one_observation_and_next_projection_refreshes(self):
-        phase = copy.deepcopy(self.fixture.graph['phases'][0])
-        phase.update(id='implement', depends_on=['plan'])
-        self.fixture.graph['phases'].append(phase)
-        self.goal['workflow']['assessments']['implement'] = copy.deepcopy(
-            self.goal['workflow']['assessments']['plan'])
-        with mock.patch.object(z, 'github_release_evidence', side_effect=lambda *a, **k: copy.deepcopy(self.observation)) as observer:
-            first = self.live()
-            self.assertEqual(1, observer.call_count, 'One goal projection must share one external release observation')
-            self.assertEqual(first['plan']['provider']['snapshot']['migration'],
-                             first['implement']['provider']['snapshot']['migration'])
-            self.observation['releases'][0]['commit'] = 'e' * 40
-            second = self.live()
-            self.assertEqual(2, observer.call_count, 'Next projection must refresh rather than retain a persistent cache')
-            self.assertEqual(second['plan']['provider']['snapshot']['migration'],
-                             second['implement']['provider']['snapshot']['migration'])
-            self.assertNotEqual(first['plan']['provider'], second['plan']['provider'])
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationInputTests.test_two_declared_consumers_share_one_observation_per_projection_then_refresh')
 
     def test_public_migration_blocker_contract_persists_and_replays_receipt(self):
         import json
