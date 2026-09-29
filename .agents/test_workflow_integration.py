@@ -14,6 +14,18 @@ from test_evidence_dag_journeys import DagFixture
 
 
 class GenericIntegrationFreshnessTests(DagFixture):
+    def test_generic_goal_routes_declared_task_without_hidden_phase_rigor_assessment(self):
+        envelope, _payload = self.payload()
+        self.assertNotIn("engineering_rigor", envelope)
+        steps = self.session.checkpoint(100)
+        self.assertFalse(any(step.get("kind") == "assess" for step in steps))
+        executable = [step for step in steps if step.get("kind") == "execute"]
+        self.assertEqual(["produce"], [step["node"]["node"] for step in executable])
+        self.assertEqual("delegate", executable[0]["assignment"])
+        self.assertIn(executable[0]["selection"], self.session.runtime["available_pairs"])
+        work = self.session.acquire("produce")
+        self.session.finish(work, {"value": "Configured generic task needs no hidden legacy assessment state"})
+
     def test_worker_role_remains_delegated_with_same_actual_pair_as_root(self):
         pair = {"model": "same-capable-model", "effort": "medium"}
         routing = z._workflow_section(self.session.project, "model_routing")["configuration"]
@@ -174,7 +186,7 @@ class WorkflowIntegrationTests(unittest.TestCase):
 
 class PublicWorkflowJourneyTests(unittest.TestCase):
     def setUp(self):
-        if self._testMethodName in ('test_expiry_requires_recovery_and_missing_delegation_blocks', 'test_start_and_worker_bind_require_current_policy_read_without_writes_on_rejection', 'test_persisted_execute_review_human_approval_journey', 'test_actor_selection_and_duplicate_submission_are_guarded'):
+        if self._testMethodName in ('test_new_goal_with_null_rigor_reaches_assessment_and_assignment', 'test_blocker_step_supplies_exact_resolution_request', 'test_expiry_requires_recovery_and_missing_delegation_blocks', 'test_start_and_worker_bind_require_current_policy_read_without_writes_on_rejection', 'test_persisted_execute_review_human_approval_journey', 'test_actor_selection_and_duplicate_submission_are_guarded'):
             return  # Replacement owns an isolated public generic fixture; no legacy configuration patch.
         import json
         import contextlib
@@ -230,18 +242,8 @@ class PublicWorkflowJourneyTests(unittest.TestCase):
         return lease, record
 
     def test_new_goal_with_null_rigor_reaches_assessment_and_assignment(self):
-        goal = z.parse_managed_goal(self.adapter.issue['body'], 42)
-        goal['engineering_rigor'] = None
-        self.adapter.issue['body'] = z.render_managed_goal(goal, '## Acceptance\n- Preserve the expected behavior.\n', 42)
-        self.engine.invalidate()
-        step = self.engine.step(42)[0]
-        self.assertEqual('assess', step['kind'])
-        self.mutate(operation='assess', phase='plan', input_hash=step['input_hash'], files=[],
-                    dimensions={'consequence': 'bounded', 'boundedness': 'atomic', 'engineering_rigor': 'structured'})
-        assignment = self.engine.step(42)[0]
-        self.assertEqual('execute', assignment['kind'])
-        self.assertEqual('delegate', assignment['assignment'])
-        self.assertEqual({'model': 'worker', 'effort': 'medium'}, assignment['selection'])
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_workflow_integration.GenericIntegrationFreshnessTests.test_generic_goal_routes_declared_task_without_hidden_phase_rigor_assessment')
 
     def test_start_and_worker_bind_require_current_policy_read_without_writes_on_rejection(self):
         from test_evidence_dag_journeys import run_generic_regressions
@@ -269,14 +271,8 @@ class PublicWorkflowJourneyTests(unittest.TestCase):
         run_generic_regressions(self, 'test_workflow_integration.GenericIntegrationFreshnessTests.test_missing_delegation_and_expired_unknown_worker_block_until_exact_stopped_recovery')
 
     def test_blocker_step_supplies_exact_resolution_request(self):
-        self.mutate(operation='block', category='access-approval', reason='User must approve access')
-        step = self.engine.step(42)[0]
-        self.assertEqual('blocker', step['kind'])
-        request = step['submission']
-        self.assertEqual('User must approve access', request['changes']['blockers'][0]['reason'])
-        request['changes'] = {'blockers': [], 'next_action': 'User explicitly approved access'}
-        self.mutate(**request)
-        self.assertNotEqual('blocker', self.engine.step(42)[0]['kind'])
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_evidence_dag_journeys.EvidenceDagPublicTests.test_human_answers_drive_affected_reinvestigation_through_generic_admission')
 
 
 class MigrationEvidenceFreshnessTests(unittest.TestCase):
