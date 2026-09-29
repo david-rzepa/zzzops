@@ -619,13 +619,36 @@ class MigrationEntryPublicTests(dag.DagFixture):
 
 
     def test_mixed_history_exact_refs_preserve_predecessor_snapshots_and_live_coordination(self):
+        self.mixed_history()
+
+    def test_approval_bearing_historical_snapshots_remain_data_after_conversion(self):
+        self.mixed_history(approved=True)
+
+    def mixed_history(self, approved=False):
         from test_goal_history_delta import legacy_history_body, semantic_predecessor
         initial, graph = self.entry()
+        if approved:
+            # Pure supported predecessor codecs build historical fixture data;
+            # no legacy scheduler, lease acquisition or active result routing.
+            from test_phase_review_contract import PhaseReviewContractTests
+            historical = PhaseReviewContractTests()
+            old_input = historical.envelope("plan")
+            old_record = historical.record("plan", old_input)
+            evidence = z._phase_evidence.record_phase_result(None, "plan", old_record, old_input)
+            raw = z.parse_managed_goal(initial["body"], 100)
+            raw["phase_evidence"] = evidence
+            initial["body"] = z.render_managed_goal(raw, "## Outcome\nPreserve exact historical approvals as evidence.\n", 100)
         initial["html_url"] = "https://github.com/owner/repo/issues/100"
         self.provider.issues[100] = copy.deepcopy(initial)
         first_snapshot = semantic_predecessor(initial["body"], 100)
         predecessor = z.parse_managed_goal(initial["body"], 100)
         predecessor.update(revision=predecessor["revision"] + 1, next_action="Continue after historical transition")
+        if approved:
+            evidence = z._phase_evidence.record_phase_review(evidence, "plan", historical.artifact("exact old review"),
+                "historical-independent-reviewer", outcomes={"acceptance": "approved",
+                "entropy": {"outcome": "no_findings", "evidence": "No additional historical findings", "goals": []}})
+            evidence = z._phase_evidence.record_phase_approval(evidence, "plan", "root", "user: exact historical approval")
+            predecessor["phase_evidence"] = evidence
         transition = {"schema_version": 1, "expected_revision": predecessor["revision"] - 1,
                       "expected_digest": z.github_goal_record(initial)["digest"], "goal": predecessor}
         legacy = legacy_history_body(initial, transition)
@@ -634,6 +657,11 @@ class MigrationEntryPublicTests(dag.DagFixture):
         z.apply_goal_transition(self.provider, "owner/repo", 100, transition)
         source = copy.deepcopy(self.provider.issues[100])
         second_snapshot = semantic_predecessor(source["body"], 100)
+        if approved:
+            self.assertEqual(old_record, first_snapshot["goal"]["phase_evidence"]["records"]["plan"])
+            self.assertEqual(evidence, second_snapshot["goal"]["phase_evidence"])
+            self.assertTrue(evidence["reviews"]["plan"])
+            self.assertTrue(evidence["human_approvals"]["plan"])
         reconstructed = z._goals.reconstruct_goal_history(self.provider, 100, first_snapshot["goal"]["revision"])
         self.assertEqual(first_snapshot, {key: reconstructed[key] for key in ("goal", "human_spec")})
         comments = copy.deepcopy(self.provider.comments[100])

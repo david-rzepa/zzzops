@@ -1266,6 +1266,7 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         from test_evidence_dag_journeys import run_generic_regressions
         run_generic_regressions(self,
             'test_goal_schema_conversion.MigrationEntryPublicTests.test_mixed_history_exact_refs_preserve_predecessor_snapshots_and_live_coordination',
+            'test_goal_schema_conversion.MigrationEntryPublicTests.test_approval_bearing_historical_snapshots_remain_data_after_conversion',
         )
 
     def test_pending_start_retry_preserves_generated_lease_and_completed_retry_does_not_resurrect(self):

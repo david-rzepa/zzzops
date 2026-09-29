@@ -2145,6 +2145,10 @@ class WorkspaceAuthorityPublicTests(DagFixture):
 
     def test_workspace_owner_requires_observed_stop_then_fresh_committed_acquisition(self):
         self.setup_workspace()
+        orphan = {"type": "workspace_proof", "content": {"outputs": {"source.py": "unaccepted"}},
+                  "producer": None, "provenance": {"actor": "untrusted", "source": None,
+                  "policy": content_hash(self.session.project["policy"])}}
+        orphan_ref = self.blob(orphan)
         ready = next(step for step in self.session.ready() if step["node"]["node"] == "alpha")
         start = {**ready["start"], "policy_receipt": json.loads(Path(ready["policy"]["path"]).read_text())["policy_receipt"]}
         start.pop("request_id", None)
@@ -2167,6 +2171,7 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.session.git("add", "independent.txt")
         self.session.git("commit", "-qm", "independent baseline after stopped worker")
         second = self.acquire_workspace("alpha")
+        self.assertEqual(orphan, self.session.read(100, orphan_ref), "Unreferenced historical bytes survive independent commit and fresh acquisition")
         self.assertNotEqual(first["lease"]["token"], second["lease"]["token"])
         self.assertIn(self.session.git("rev-parse", "HEAD"), json.dumps(second["lease"]["acquisition"]))
         stale = self.session.submission(first, {"value": "Old stopped owner cannot return"}, "stopped-owner-submit")
