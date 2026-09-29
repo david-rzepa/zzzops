@@ -1,5 +1,6 @@
 """Renewal regressions using real workflow mutations and subprocess deadlines."""
 import subprocess
+import copy
 import contextlib
 import io
 import json
@@ -94,13 +95,51 @@ class RenewalTests(unittest.TestCase):
 
 
 
-from test_evidence_dag_journeys import DagFixture
+from test_evidence_dag_journeys import DagFixture, GenericStoragePublicTests
 
 
 class GenericRenewalTests(DagFixture):
     def request(self, work, **changes):
         return {"operation": "renew", "node": work["node"], "lease": work["lease"]["token"],
                 "actor": work["bound_actor"], "worker_status": "active", **changes}
+
+    payload_from_body = GenericStoragePublicTests.payload_from_body
+
+    def test_renewal_retry_before_body_preserves_generated_expiry(self):
+        self.renewal_lost_response("before")
+
+    def test_renewal_retry_after_body_preserves_generated_expiry(self):
+        self.renewal_lost_response("after")
+
+    def renewal_lost_response(self, boundary):
+        work = self.session.acquire("produce")
+        request = self.request(work, request_id="exact-renewal-" + boundary)
+        attempted = []
+        original = self.provider.update_issue
+        initial_comments = len(self.provider.comments[100])
+        initial_updates = len(self.provider.updates)
+        def uncertain(number, payload):
+            attempted.append(copy.deepcopy(payload))
+            if boundary == "after":
+                original(number, payload)
+            raise z.GoalTransitionProviderError("lost " + boundary + " renewal body response")
+        with mock.patch.object(self.provider, "update_issue", side_effect=uncertain):
+            self.session.call(100, request, expected=None)
+        self.assertEqual(1, len(attempted), "Fault must reach exactly one actual durable body write")
+        proposed = self.payload_from_body(attempted[0]["body"])
+        lease = next(item for item in proposed["operational"]["leases"] if item["token"] == work["lease"]["token"])
+        with mock.patch.object(z._workflow.time, "time", return_value=lease["expires_at"] - 1):
+            response = self.session.call(100, request)
+        ack = response["next_steps"][0]
+        self.assertEqual("renewed", ack["kind"])
+        self.assertEqual(lease["expires_at"], ack["expires_at"], "Retry cannot mint a fresh later expiry")
+        saved = next(item for item in self.payload()[1]["operational"]["leases"] if item["token"] == work["lease"]["token"])
+        self.assertEqual(lease, saved)
+        self.assertEqual(initial_comments + 1, len(self.provider.comments[100]))
+        self.assertEqual(initial_updates + 1, len(self.provider.updates))
+        stable = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, request)
+        self.assertEqual(stable, (self.provider.issues, self.provider.comments))
 
     def test_exact_renewal_acknowledges_saved_node_lease_without_portfolio_fetch(self):
         work = self.session.acquire("produce")

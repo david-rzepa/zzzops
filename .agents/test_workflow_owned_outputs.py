@@ -1573,10 +1573,12 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         self.assertEqual(before, s.provider.comments[101])
 
     def test_renew_retry_preserves_expiry_before_body_publication(self):
-        self.check_renew_retry('before')
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_workflow_renewal.GenericRenewalTests.test_renewal_retry_before_body_preserves_generated_expiry')
 
     def test_renew_retry_preserves_expiry_after_body_publication(self):
-        self.check_renew_retry('after')
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_workflow_renewal.GenericRenewalTests.test_renewal_retry_after_body_preserves_generated_expiry')
 
     def check_renew_retry(self, boundary):
         s = self.session
