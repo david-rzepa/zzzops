@@ -327,30 +327,12 @@ class FullWorkflowJourneyTests(unittest.TestCase):
             self.approve(number, phase)
 
     def test_top_level_leaf_reaches_test_design_before_publication(self):
-        del self.provider.issues[101]
-        self.engine.invalidate()
-        self.phase(100, 'understand')
-        self.phase(100, 'decompose')
-        self.phase(100, 'plan')
-        goal = self.goal(100)
-        implementation = copy.deepcopy(goal['implementation'])
-        implementation.update(branch='goal-child', base='dev', target='dev')
-        self.mutate(100, operation='revise', expected_digest=goal['digest'],
-                    changes={'implementation': implementation})
-        subprocess.run(['git', 'checkout', '-q', 'goal-child'], cwd=self.repo, check=True)
-        self.phase(100, 'test_design', verifier='fail')
-        self.phase(100, 'implement', verifier='pass')
-        real_run = subprocess.run
-        def provider_command(command, *args, **kwargs):
-            if command[:3] == ['gh', 'pr', 'list']:
-                return subprocess.CompletedProcess(command, 0, stdout='[]', stderr='')
-            return real_run(command, *args, **kwargs)
-        with mock.patch.object(subprocess, 'run', side_effect=provider_command):
-            step = self.engine.step(100)[0]
-        self.assertEqual('publish', step['phase'])
-        self.assertEqual('assess', step['kind'])
-        self.assertEqual({'parent': 100, 'child': 100, 'test_design': [], 'implement': []},
-                         self.engine.reviewed_scope(self.goal(100)))
+        # One connected generic delivery graph retains red/green, review and publication guards.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag.EvidenceGraphGrammarTests.test_shipped_default_is_one_valid_generic_graph',
+            'test_workflow_publication_contract.GenericDeliveryPublicTests.test_reviewed_red_green_proofs_commit_and_exact_publication_form_one_delivery_graph',
+        )
 
     def test_parent_does_not_become_leaf_when_planned_child_leaves_open_index(self):
         self.phase(100, 'understand')

@@ -8,6 +8,7 @@ so an unsupported-schema error cannot count as evidence for a specific guard.
 from __future__ import annotations
 
 import copy
+import json
 import unittest
 
 import test_zzzops as fixtures
@@ -75,6 +76,14 @@ class EvidenceGraphGrammarTests(unittest.TestCase):
         self.assertTrue(errors, "Invalid graph was accepted")
         self.assertRegex("; ".join(errors), diagnostic)
         self.assertEqual(graph, review_graph(), "Validation mutated its input")
+
+    def test_shipped_default_is_one_valid_generic_graph(self):
+        plan = json.loads((fixtures.PLUGIN_ROOT / "zzzops/templates/project-goals/INIT_PLAN.json").read_text())
+        graph = next(section for section in plan["policy"]["sections"] if section["id"] == "workflow_adherence")["configuration"]["phase_dag"]
+        self.assertEqual({"nodes", "task_sets", "terminals"}, set(graph), "Shipped active default must use the same generic Graph")
+        self.accepted(graph)
+        self.assertTrue(graph["nodes"])
+        self.assertTrue(graph["terminals"])
 
     def test_two_review_tasks_share_behavior_without_sharing_identity(self):
         graph = review_graph()

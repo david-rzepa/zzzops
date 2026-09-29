@@ -145,7 +145,7 @@ class WorkflowPublicationContractTests(unittest.TestCase):
 
 
 
-from test_evidence_dag_journeys import DagFixture, REF_TYPE, FINDING_TYPE, ADMISSION_TYPE, content_hash, output, shape, spec_input, z
+from test_evidence_dag_journeys import DagFixture, WorkspaceAuthorityPublicTests, REF_TYPE, FINDING_TYPE, ADMISSION_TYPE, content_hash, output, shape, spec_input, z
 from test_evidence_dag import task, selector, scope
 
 
@@ -167,6 +167,9 @@ class GenericPublicationPublicTests(DagFixture):
 
     def setUp(self):
         super().setUp()
+        self.setup_publication()
+
+    def setup_publication(self):
         self.observation = {"repository": "owner/repo", "head_oid": self.fixture.head_oid,
             "base_oid": self.fixture.base_oid, "base_ref": "dev", "merged": False,
             "merged_at": None, "merge_commit": None, "checks_present": True,
@@ -603,6 +606,72 @@ class GenericPublicationPublicTests(DagFixture):
         response = self.session.call(100, request, expected=None)
         self.assertTrue(any(step.get("kind") == "repair" for step in response["next_steps"]))
         self.assertEqual(body, self.provider.issues[100]["body"], "Stored receipt cannot silently claim closure after provider partial state")
+
+
+class GenericDeliveryPublicTests(DagFixture):
+    # Reuse fixture helpers, not test-case inheritance or semantic engine answers.
+    def setUp(self):
+        super().setUp()
+        self.setup_publication()
+
+    setup_publication = GenericPublicationPublicTests.setup_publication
+    configure = GenericPublicationPublicTests.configure
+    provider_command = GenericPublicationPublicTests.provider_command
+    mark_merged = GenericPublicationPublicTests.mark_merged
+    submit_role = GenericPublicationPublicTests.submit_role
+    observed_value = GenericPublicationPublicTests.observed_value
+    integration_request = GenericPublicationPublicTests.integration_request
+    workspace_graph = WorkspaceAuthorityPublicTests.workspace_graph
+    setup_workspace = WorkspaceAuthorityPublicTests.setup_workspace
+    acquire_workspace = WorkspaceAuthorityPublicTests.acquire_workspace
+    candidate = WorkspaceAuthorityPublicTests.candidate
+    review_candidate = WorkspaceAuthorityPublicTests.review_candidate
+    red_candidate = WorkspaceAuthorityPublicTests.red_candidate
+
+    def test_reviewed_red_green_proofs_commit_and_exact_publication_form_one_delivery_graph(self):
+        self.configure(renamed=True)
+        publication = copy.deepcopy(self.graph)
+        self.session.git("checkout", "-q", "goal-child")
+        def composed(graph, _allocations):
+            observer = next(node for node in publication["nodes"] if node["id"] == self.ids["observe"])
+            observer["requires"].append(selector("accept_beta"))
+            observer["inputs"]["candidate"] = {"producer": {"node": selector("beta")}, "output": "value", "path": [], "mode": "identity", "type": {"kind": "string"}}
+            graph["nodes"].extend(copy.deepcopy(publication["nodes"]))
+            graph["terminals"] = copy.deepcopy(publication["terminals"])
+        self.setup_workspace(composed)
+        self.submit_role("context", self.context)
+        self.submit_role("inspect", "Independent exact repository context", actor="context-reviewer")
+        self.submit_role("consent", {"context": self.produced(self.ids["context"]), "policy": content_hash(self.session.project["policy"]), "decision": "approved"})
+        self.assertNotIn(self.ids["observe"], self.names(), "Repository authority cannot substitute for implementation evidence")
+        _alpha, (red_reference, red) = self.red_candidate()
+        self.assertEqual(1, red["commands"][0]["exit_code"])
+        beta = self.acquire_workspace("beta")
+        self.assertIn(red_reference["hash"], json.dumps(beta["lease"]["acquisition"]))
+        (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
+        green_reference, green = self.candidate(beta, 0)
+        self.assertNotIn(self.ids["observe"], self.names(), "Candidate must receive its separate verification and review")
+        self.review_candidate("beta", 0)
+        self.session.git("add", "source.py", "behavior_test.py")
+        self.session.git("commit", "-qm", "verified generic delivery")
+        self.observation["head_oid"] = self.session.git("rev-parse", "HEAD")
+        self.assertEqual(self.fixture.base_oid, self.session.git("rev-parse", "dev"))
+        observer = self.session.acquire(self.ids["observe"])
+        self.assertIn(self.produced("beta")["hash"], json.dumps(observer["lease"]["acquisition"]))
+        self.session.finish(observer, {"value": self.observed_value()})
+        self.assertEqual(red, self.read_blob(red_reference))
+        self.assertEqual(green, self.read_blob(green_reference))
+        self.submit_role("review", "Reviewed exact head and connected passing proof", actor="publication-reviewer")
+        self.assertNotIn(self.ids["finish"], self.names())
+        self.submit_role("approve", {"subject": self.produced(self.ids["observe"]), "review": self.produced(self.ids["review"]), "policy": content_hash(self.session.project["policy"]), "decision": "approved"})
+        self.submit_role("finish", "Current connected delivery evidence")
+        request = self.integration_request(self.produced(self.ids["approve"]))
+        request["request_id"] = "connected-delivery-integration"
+        self.session.call(100, request)
+        self.assertEqual(1, len(self.merge_calls))
+        self.assertTrue(self.observation["merged"])
+        self.assertEqual(red, self.read_blob(red_reference))
+        self.assertEqual(green, self.read_blob(green_reference))
+        self.assertEqual(0, green["commands"][0]["exit_code"])
 
 
 if __name__ == "__main__":

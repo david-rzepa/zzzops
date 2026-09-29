@@ -276,44 +276,12 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.assertEqual(['understand', 'decompose', 'test_design', 'implement', 'publish'], [n['id'] for n in dag['phases']])
 
     def test_five_phase_default_leaf_red_to_green_and_publication(self):
-        self.use_shipped_dag()
-        s = self.session
-        del s.provider.issues[100]
-        child = s.goal(101)
-        s.call(101, {'operation': 'revise', 'expected_digest': child['digest'], 'changes': {'parent': None}})
-        s.plan['output_scope']['parent'] = 101
-        s.phase(101, 'understand', s.plan)
-        # Ordinary ordered implementation needs no holding child or plan node.
-        step = s.start(101, 'decompose')
-        record = copy.deepcopy(step['result_contract']['record'])
-        record.update(status='not_required', output=None, actor=step['bound_actor'],
-                      not_required={'policy_rule': 'atomic_goal', 'reason': 'One independently deliverable behavior.'})
-        s.call(101, {'operation': 'record_result', 'phase': 'decompose', 'lease': step['lease']['token'],
-                     'actor': step['bound_actor'], 'record': record, 'files': list(s.consumed)})
-        s.review(101, 'decompose')
-        child = s.goal(101)
-        metadata = copy.deepcopy(child['implementation'])
-        metadata.update(branch='goal-child', base='dev', target='dev')
-        s.call(101, {'operation': 'revise', 'expected_digest': child['digest'], 'changes': {'implementation': metadata}})
-        s.design()
-        s.implement()
-        s.git('add', 'source.py')
-        s.git('commit', '-qm', 'feat: required behavior')
-        self.fixture.head_oid = s.git('rev-parse', 'HEAD')
-        self.fixture.base_oid = s.git('rev-parse', 'dev')
-        child = s.goal(101)
-        metadata = copy.deepcopy(child['implementation'])
-        metadata['pr'] = 'https://github.com/owner/repo/pull/101'
-        s.call(101, {'operation': 'revise', 'expected_digest': child['digest'], 'changes': {'implementation': metadata}})
-        publication = s.start(101, 'publish')
-        proof = s.verify(publication)['next_steps'][0]['verification']
-        s.result(101, publication, {'publication': 'exact produced head'}, proof)
-        s.review(101, 'publish')
-        self.fixture.pr_merged = True
-        step = next(x for x in s.checkpoint(101) if x['kind'] == 'reconciliation')
-        s.call(101, step['submission'])
-        self.assertEqual('done', s.goal(101)['status'])
-        self.assertNotIn('plan', s.goal(101)['phase_evidence']['records'])
+        # One connected generic delivery graph retains red/green, review and publication guards.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag.EvidenceGraphGrammarTests.test_shipped_default_is_one_valid_generic_graph',
+            'test_workflow_publication_contract.GenericDeliveryPublicTests.test_reviewed_red_green_proofs_commit_and_exact_publication_form_one_delivery_graph',
+        )
 
     def test_five_phase_parent_allocates_scope_in_decomposition(self):
         self.use_shipped_dag()
