@@ -2633,6 +2633,66 @@ class GenericStoragePublicTests(DagFixture):
             envelope["artifacts"].remove(record)
             comment["body"] = z._comment_store.encode_envelope(envelope)
 
+    def test_caller_hash_or_extra_operation_cannot_authorize_inline_outputs(self):
+        work = self.session.acquire("produce")
+        for changes in ({"artifacts": [{"content": "candidate", "hash": "sha256:" + "0" * 64}]},
+                        {"artifacts": [{"content": "candidate", "operation": "approve"}]},
+                        {"actor": "intruder"}):
+            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+            request = self.session.submission(work, {"value": "candidate"}, "forged-inline-" + str(len(self.session.calls)))
+            response = self.session.call(100, {**request, **changes}, expected=2)
+            self.assertRegex(json.dumps(response), r"(?i)field|artifact|hash|operation|actor|executor|contract|unsupported")
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.finish(work, {"value": "host derives all authoritative metadata"})
+
+    def test_oversized_single_record_preflight_precedes_every_bundle_write(self):
+        graph = copy.deepcopy(self.graph)
+        graph["nodes"][0]["outputs"]["large"] = output("text", {"kind": "string"})
+        self.install(graph)
+        work = self.session.acquire("produce")
+        noise = "".join(hashlib.sha256(str(i).encode()).hexdigest() for i in range(2500))
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, self.session.submission(work, {"value": "small valid slot", "large": noise}, "record-too-large"), expected=2)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.assertRegex(json.dumps(response), r"65536")
+        self.assertRegex(json.dumps(response), r"(?i)reference")
+        self.session.finish(work, {"value": "small valid slot", "large": "bounded valid control"})
+
+    def test_existing_storage_budget_rejection_preserves_readable_history_and_usable_lease(self):
+        work = self.session.acquire("produce")
+        store = z._comment_store
+        contents = [{"type": "historical_attachment", "content": "existing-%d:" % i + "x" * 900000,
+            "producer": None, "provenance": {"actor": "imported-history", "source": None,
+            "policy": content_hash(self.session.project["policy"])}} for i in range(15)]
+        records = [store.ArtifactIndex([]).record(content) for content in contents]
+        for body in store.pack_envelopes({"goal": 100, "transaction": "existing-budget"}, records):
+            self.provider.create_issue_comment(100, body)
+        reference = {"hash": content_hash(contents[0]), "uri": "urn:" + content_hash(contents[0])}
+        self.assertEqual(contents[0], self.session.read(100, reference), "Unreferenced imported attachments are data, never result authority")
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, self.session.submission(work, {"value": "new:" + "x" * 900000}, "history-budget"), expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)limit")
+        self.assertRegex(json.dumps(response), r"(?i)reference")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.finish(work, {"value": "Small result remains possible"})
+        self.assertEqual(contents[0], self.session.read(100, reference))
+
+    def test_aggregate_output_budget_rejects_all_slots_without_mutation_then_accepts_small_bundle(self):
+        graph = copy.deepcopy(self.graph)
+        names = ["value", *["extra_%d" % i for i in range(17)]]
+        graph["nodes"][0]["outputs"] = {name: output("text", {"kind": "string"}) for name in names}
+        self.install(graph)
+        work = self.session.acquire("produce")
+        large = {name: name + ":" + "x" * 900000 for name in names}
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, self.session.submission(work, large, "aggregate-budget"), expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)limit|budget|large|size|bytes")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        small = {name: "bounded " + name for name in names}
+        self.session.finish(work, small)
+        for slot, value in small.items():
+            self.assertEqual(value, self.session.read(100, self.produced("produce", slot))["content"])
+
     def payload_from_body(self, body):
         match = re.search(r"<!-- zzzops-goal\s*\n(.*?)\nzzzops-goal -->", body, re.S)
         self.assertIsNotNone(match)

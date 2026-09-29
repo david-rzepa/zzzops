@@ -1577,77 +1577,24 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         )
 
     def test_inline_request_conflicting_hash_and_actor_fail_before_writes(self):
-        s = self.session
-        step = s.start(101, 'understand')
-        for change in ('hash', 'actor', 'extra_operation'):
-            with self.subTest(change=change):
-                request = self.inline_result(step, [{'requirements': 'Scoped result.'}], 'invalid-' + change)
-                if change == 'hash':
-                    request['artifacts'][0]['hash'] = 'sha256:' + '0' * 64
-                elif change == 'actor':
-                    request['actor'] = 'unbound-worker'
-                else:
-                    request['artifacts'][0]['operation'] = 'approve'
-                comments, updates = copy.deepcopy(s.provider.comments), copy.deepcopy(s.provider.updates)
-                response = s.call(101, request, expected=None)
-                self.assertNotEqual(0, s.calls[-1]['code'], response)
-                self.assertEqual(comments, s.provider.comments)
-                self.assertEqual(updates, s.provider.updates)
+        # Generic host issuance preserves transport/reconstruction budgets and atomic preflight.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_caller_hash_or_extra_operation_cannot_authorize_inline_outputs')
 
     def test_full_transaction_oversize_preflight_precedes_first_artifact_write(self):
-        s = self.session
-        step = s.start(101, 'understand')
-        noise = ''.join(hashlib.sha256(str(i).encode()).hexdigest() for i in range(2500))
-        request = self.inline_result(step, [{'small': 'fits'}, {'large': noise}])
-        comments, updates = copy.deepcopy(s.provider.comments), copy.deepcopy(s.provider.updates)
-        response = s.call(101, request, expected=None)
-        self.assertNotEqual(0, s.calls[-1]['code'], response)
-        self.assertEqual(comments, s.provider.comments)
-        self.assertEqual(updates, s.provider.updates)
-        diagnostic = json.dumps(response).lower()
-        self.assertIn('65536', diagnostic)
-        self.assertIn('reference', diagnostic)
+        # Generic host issuance preserves transport/reconstruction budgets and atomic preflight.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_oversized_single_record_preflight_precedes_every_bundle_write')
 
     def test_standalone_artifact_budget_preflight_preserves_usable_existing_comments(self):
-        s = self.session
-        step = s.start(101, 'understand')
-        store = z._comment_store
-        contents = [f'existing-{i}:' + 'x' * 900000 for i in range(15)]
-        records = [store.ArtifactIndex([]).record(content) for content in contents]
-        for body in store.pack_envelopes({'goal': 101, 'transaction': 'existing-budget'}, records):
-            s.provider.create_issue_comment(101, body)
-        # Existing history is valid and its large records remain publicly readable.
-        self.assertEqual(contents[0], s.read(101, self.reference(contents[0])))
-        comments, updates = copy.deepcopy(s.provider.comments), copy.deepcopy(s.provider.updates)
-        issue = copy.deepcopy(s.provider.issues[101])
-        response = s.call(101, {'operation': 'artifact', 'lease': step['lease']['token'],
-            'actor': step['bound_actor'], 'content': 'new:' + 'x' * 900000}, expected=None)
-        self.assertNotEqual(0, s.calls[-1]['code'], response)
-        self.assertEqual(comments, s.provider.comments)
-        self.assertEqual(updates, s.provider.updates)
-        self.assertEqual(issue, s.provider.issues[101])
-        diagnostic = json.dumps(response).lower()
-        self.assertIn('limit', diagnostic)
-        self.assertIn('reference', diagnostic)
-        small = {'requirements': 'Ordinary work remains possible after rejection.'}
-        reference = s.artifact(101, step, small)
-        self.assertEqual(small, s.read(101, reference))
-        self.assertEqual(contents[0], s.read(101, self.reference(contents[0])))
+        # Generic host issuance preserves transport/reconstruction budgets and atomic preflight.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_existing_storage_budget_rejection_preserves_readable_history_and_usable_lease')
 
     def test_inline_aggregate_budget_rejection_has_no_provider_mutations(self):
-        s = self.session
-        step = s.start(101, 'understand')
-        contents = [{'requirements': f'{i}:' + 'x' * 900000} for i in range(18)]
-        comments, updates = copy.deepcopy(s.provider.comments), copy.deepcopy(s.provider.updates)
-        issue = copy.deepcopy(s.provider.issues[101])
-        response = s.call(101, self.inline_result(step, contents, 'over-budget'), expected=None)
-        self.assertNotEqual(0, s.calls[-1]['code'], response)
-        self.assertEqual(comments, s.provider.comments)
-        self.assertEqual(updates, s.provider.updates)
-        self.assertEqual(issue, s.provider.issues[101])
-        small = {'requirements': 'Ordinary result after bounded rejection.'}
-        s.call(101, self.inline_result(step, [small], 'within-budget'))
-        self.assertEqual(small, s.read(101, self.reference(small)))
+        # Generic host issuance preserves transport/reconstruction budgets and atomic preflight.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_aggregate_output_budget_rejects_all_slots_without_mutation_then_accepts_small_bundle')
 
     def test_latest_historical_and_pinned_reads_exclude_pending_uploads(self):
         # Exact storage/ownership guard through public generic host output transactions.
