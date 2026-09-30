@@ -396,150 +396,2449 @@
         "instructions": "Require durable tracked goals for substantial repository work. Read-only investigation and ZzzOps administration are exempt; only explicit scoped user authority grants an exception. Execute the reviewed phase graph with its independent reviews and human approvals.",
         "configuration": {
           "phase_dag": {
-            "schema_version": 1,
-            "phases": [
+            "nodes": [
               {
                 "id": "understand",
-                "type": "understand",
-                "depends_on": [],
-                "parent_gates": [],
-                "applicability": "always",
-                "assignment_group": "root",
-                "inputs": [
-                  "goal_spec",
-                  "policy",
-                  "phase_dag",
-                  "repository",
-                  "provider",
-                  "capabilities",
-                  "invocation"
+                "prompt": "Establish the exact goal outcome, acceptance criteria and finite implementation/test allocation with the user. Emit the reviewed design and a workspace allocation keyed by test_design and implement, with exact qualified task identities and finite owned/consumed paths. An allocation does not authorize edits. For child goals use an explicitly reviewed graph binding matching immediate-parent grants; never infer authority from ancestry.",
+                "inputs": {
+                  "request": {
+                    "producer": {
+                      "slot": "spec"
+                    },
+                    "output": "content",
+                    "path": [],
+                    "mode": "content",
+                    "type": {
+                      "kind": "string"
+                    }
+                  }
+                },
+                "outputs": {
+                  "design": {
+                    "type": "text",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  },
+                  "allocation": {
+                    "type": "workspace_allocation",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "allocations": {
+                          "kind": "map",
+                          "values": {
+                            "kind": "object",
+                            "fields": {
+                              "task": {
+                                "kind": "object",
+                                "fields": {
+                                  "goal": {
+                                    "kind": "integer"
+                                  },
+                                  "node": {
+                                    "kind": "string"
+                                  },
+                                  "item": {
+                                    "kind": "union",
+                                    "variants": [
+                                      {
+                                        "kind": "string"
+                                      },
+                                      {
+                                        "kind": "null"
+                                      }
+                                    ]
+                                  },
+                                  "generation": {
+                                    "kind": "integer"
+                                  }
+                                }
+                              },
+                              "owned": {
+                                "kind": "array",
+                                "items": {
+                                  "kind": "string"
+                                }
+                              },
+                              "consumed": {
+                                "kind": "array",
+                                "items": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [],
+                "executor": {
+                  "role": "root",
+                  "capability": "architectural",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "understand"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": []
+              },
+              {
+                "id": "review_understanding",
+                "prompt": "Independently review the exact design, acceptance criteria and finite allocation. Submit authorization only when all required findings are resolved; bind the exact manifest Ref, task identities and current policy hash. Emit an explicit approved or changes_requested decision and the review report. A rejected review is evidence, never downstream approval.",
+                "inputs": {
+                  "design": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      }
+                    },
+                    "output": "design",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  },
+                  "allocation": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      }
+                    },
+                    "output": "allocation",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "allocations": {
+                          "kind": "map",
+                          "values": {
+                            "kind": "object",
+                            "fields": {
+                              "task": {
+                                "kind": "object",
+                                "fields": {
+                                  "goal": {
+                                    "kind": "integer"
+                                  },
+                                  "node": {
+                                    "kind": "string"
+                                  },
+                                  "item": {
+                                    "kind": "union",
+                                    "variants": [
+                                      {
+                                        "kind": "string"
+                                      },
+                                      {
+                                        "kind": "null"
+                                      }
+                                    ]
+                                  },
+                                  "generation": {
+                                    "kind": "integer"
+                                  }
+                                }
+                              },
+                              "owned": {
+                                "kind": "array",
+                                "items": {
+                                  "kind": "string"
+                                }
+                              },
+                              "consumed": {
+                                "kind": "array",
+                                "items": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "outputs": {
+                  "review": {
+                    "type": "review_decision",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "authorization": {
+                    "type": "workspace_authorization",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "manifest": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "tasks": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "goal": {
+                                "kind": "integer"
+                              },
+                              "node": {
+                                "kind": "string"
+                              },
+                              "item": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ]
+                              },
+                              "generation": {
+                                "kind": "integer"
+                              }
+                            }
+                          }
+                        },
+                        "policy": {
+                          "kind": "string"
+                        },
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "understand"
+                  }
                 ],
-                "not_required": "never",
-                "review": {
-                  "independent": true,
-                  "human_approval": true,
-                  "assignment_group": "review",
-                  "types": [
-                    "requirements",
-                    "architecture"
-                  ]
-                }
+                "executor": {
+                  "role": "worker",
+                  "capability": "architectural",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "review_understanding"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "understand"
+                  }
+                ],
+                "gates": [],
+                "resolves": [],
+                "permits": []
+              },
+              {
+                "id": "approve_understanding",
+                "prompt": "Present the exact current design, allocation and independent review to the user. Submit only after explicit approval of that exact subject; preserve unresolved obligations. Bind authorization to the exact manifest, task identities and current policy.",
+                "inputs": {
+                  "design": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      }
+                    },
+                    "output": "design",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  },
+                  "allocation": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      }
+                    },
+                    "output": "allocation",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "allocations": {
+                          "kind": "map",
+                          "values": {
+                            "kind": "object",
+                            "fields": {
+                              "task": {
+                                "kind": "object",
+                                "fields": {
+                                  "goal": {
+                                    "kind": "integer"
+                                  },
+                                  "node": {
+                                    "kind": "string"
+                                  },
+                                  "item": {
+                                    "kind": "union",
+                                    "variants": [
+                                      {
+                                        "kind": "string"
+                                      },
+                                      {
+                                        "kind": "null"
+                                      }
+                                    ]
+                                  },
+                                  "generation": {
+                                    "kind": "integer"
+                                  }
+                                }
+                              },
+                              "owned": {
+                                "kind": "array",
+                                "items": {
+                                  "kind": "string"
+                                }
+                              },
+                              "consumed": {
+                                "kind": "array",
+                                "items": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_understanding"
+                      }
+                    },
+                    "output": "review",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "authorization": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_understanding"
+                      }
+                    },
+                    "output": "authorization",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "manifest": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "tasks": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "goal": {
+                                "kind": "integer"
+                              },
+                              "node": {
+                                "kind": "string"
+                              },
+                              "item": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ]
+                              },
+                              "generation": {
+                                "kind": "integer"
+                              }
+                            }
+                          }
+                        },
+                        "policy": {
+                          "kind": "string"
+                        },
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "approved_review_understanding": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_understanding"
+                      }
+                    },
+                    "output": "review",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "approved"
+                      ]
+                    }
+                  }
+                },
+                "outputs": {
+                  "authorization": {
+                    "type": "workspace_authorization",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "manifest": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "tasks": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "goal": {
+                                "kind": "integer"
+                              },
+                              "node": {
+                                "kind": "string"
+                              },
+                              "item": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ]
+                              },
+                              "generation": {
+                                "kind": "integer"
+                              }
+                            }
+                          }
+                        },
+                        "policy": {
+                          "kind": "string"
+                        },
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_understanding"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "approve_understanding"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": []
               },
               {
                 "id": "decompose",
-                "type": "decompose",
-                "depends_on": [
-                  "understand"
+                "prompt": "Determine independent outcome boundaries from the approved design. Retain an atomic disposition when checkpoints do not independently satisfy the outcome. Do not invent optional work or change approved scope.",
+                "inputs": {
+                  "design": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      }
+                    },
+                    "output": "design",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "text",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "approve_understanding"
+                  }
                 ],
-                "parent_gates": [],
-                "applicability": "always",
-                "assignment_group": "planning",
-                "inputs": [
-                  "goal_spec",
-                  "policy",
-                  "parents",
-                  "dependencies",
-                  "upstream_outputs"
+                "executor": {
+                  "role": "worker",
+                  "capability": "reasoning",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "decompose"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": []
+              },
+              {
+                "id": "review_decomposition",
+                "prompt": "Independently review the exact declared subject and its observed evidence against the approved design. Reject incomplete or disconnected evidence; do not resolve findings without the required current subject and review. Emit an explicit approved or changes_requested decision and the review report. A rejected review is evidence, never downstream approval.",
+                "inputs": {
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "decompose"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  },
+                  "design": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      }
+                    },
+                    "output": "design",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "review_decision",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "decompose"
+                  }
                 ],
-                "not_required": "atomic_goal",
-                "review": {
-                  "independent": true,
-                  "human_approval": false,
-                  "assignment_group": "review",
-                  "types": [
-                    "delivery_boundaries"
-                  ]
-                }
+                "executor": {
+                  "role": "worker",
+                  "capability": "reasoning",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "review_decomposition"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "decompose"
+                  }
+                ],
+                "gates": [],
+                "resolves": [],
+                "permits": []
               },
               {
                 "id": "test_design",
-                "type": "test_design",
-                "depends_on": [
-                  "decompose"
+                "prompt": "Implement falsifiable production behavioral tests for every approved criterion within the exact reviewed test allocation. Observe and report the pre-implementation baseline. Preserve valid controls and distinguish fixture errors from missing behavior.",
+                "inputs": {
+                  "design": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      }
+                    },
+                    "output": "design",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  },
+                  "allocation": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      }
+                    },
+                    "output": "allocation",
+                    "path": [
+                      "allocations",
+                      "test_design"
+                    ],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "task": {
+                          "kind": "object",
+                          "fields": {
+                            "goal": {
+                              "kind": "integer"
+                            },
+                            "node": {
+                              "kind": "string"
+                            },
+                            "item": {
+                              "kind": "union",
+                              "variants": [
+                                {
+                                  "kind": "string"
+                                },
+                                {
+                                  "kind": "null"
+                                }
+                              ]
+                            },
+                            "generation": {
+                              "kind": "integer"
+                            }
+                          }
+                        },
+                        "owned": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "string"
+                          }
+                        },
+                        "consumed": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "authorization": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_understanding"
+                      }
+                    },
+                    "output": "authorization",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "manifest": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "tasks": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "goal": {
+                                "kind": "integer"
+                              },
+                              "node": {
+                                "kind": "string"
+                              },
+                              "item": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ]
+                              },
+                              "generation": {
+                                "kind": "integer"
+                              }
+                            }
+                          }
+                        },
+                        "policy": {
+                          "kind": "string"
+                        },
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "approval": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "approve_understanding"
+                      }
+                    },
+                    "output": "authorization",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "manifest": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "tasks": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "goal": {
+                                "kind": "integer"
+                              },
+                              "node": {
+                                "kind": "string"
+                              },
+                              "item": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ]
+                              },
+                              "generation": {
+                                "kind": "integer"
+                              }
+                            }
+                          }
+                        },
+                        "policy": {
+                          "kind": "string"
+                        },
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "preceding_review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_decomposition"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "approved_review_decomposition": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_decomposition"
+                      }
+                    },
+                    "output": "value",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "approved"
+                      ]
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "text",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_decomposition"
+                  }
                 ],
-                "parent_gates": [
-                  "decompose"
+                "executor": {
+                  "role": "worker",
+                  "capability": "reasoning",
+                  "resources": [
+                    "repository_workspace"
+                  ],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "understand"
+                    },
+                    "output": "allocation"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": []
+              },
+              {
+                "id": "review_test_design",
+                "prompt": "Independently review the exact declared subject and its observed evidence against the approved design. Reject incomplete or disconnected evidence; do not resolve findings without the required current subject and review. Emit an explicit approved or changes_requested decision and the review report. A rejected review is evidence, never downstream approval.",
+                "inputs": {
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "test_design"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  },
+                  "design": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      }
+                    },
+                    "output": "design",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "review_decision",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "test_design"
+                  }
                 ],
-                "applicability": "leaf_only",
-                "assignment_group": "planning",
-                "inputs": [
-                  "goal_spec",
-                  "policy",
-                  "phase_dag",
-                  "repository",
-                  "provider",
-                  "capabilities",
-                  "upstream_outputs"
+                "executor": {
+                  "role": "worker",
+                  "capability": "reasoning",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "review_test_design"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "test_design"
+                  }
                 ],
-                "not_required": "never",
-                "review": {
-                  "independent": true,
-                  "human_approval": false,
-                  "assignment_group": "review",
-                  "types": [
-                    "acceptance_coverage",
-                    "baseline_failure"
-                  ]
-                }
+                "gates": [],
+                "resolves": [],
+                "permits": []
               },
               {
                 "id": "implement",
-                "type": "implement",
-                "depends_on": [
-                  "test_design"
+                "prompt": "Implement all approved criteria within the exact reviewed source allocation. Keep accepted tests unchanged, retain history and authority guards, run the declared checks, and report observed evidence and remaining limitations.",
+                "inputs": {
+                  "design": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      }
+                    },
+                    "output": "design",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  },
+                  "allocation": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      }
+                    },
+                    "output": "allocation",
+                    "path": [
+                      "allocations",
+                      "implement"
+                    ],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "task": {
+                          "kind": "object",
+                          "fields": {
+                            "goal": {
+                              "kind": "integer"
+                            },
+                            "node": {
+                              "kind": "string"
+                            },
+                            "item": {
+                              "kind": "union",
+                              "variants": [
+                                {
+                                  "kind": "string"
+                                },
+                                {
+                                  "kind": "null"
+                                }
+                              ]
+                            },
+                            "generation": {
+                              "kind": "integer"
+                            }
+                          }
+                        },
+                        "owned": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "string"
+                          }
+                        },
+                        "consumed": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "authorization": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_understanding"
+                      }
+                    },
+                    "output": "authorization",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "manifest": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "tasks": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "goal": {
+                                "kind": "integer"
+                              },
+                              "node": {
+                                "kind": "string"
+                              },
+                              "item": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ]
+                              },
+                              "generation": {
+                                "kind": "integer"
+                              }
+                            }
+                          }
+                        },
+                        "policy": {
+                          "kind": "string"
+                        },
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "approval": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "approve_understanding"
+                      }
+                    },
+                    "output": "authorization",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "manifest": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "tasks": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "goal": {
+                                "kind": "integer"
+                              },
+                              "node": {
+                                "kind": "string"
+                              },
+                              "item": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "kind": "null"
+                                  }
+                                ]
+                              },
+                              "generation": {
+                                "kind": "integer"
+                              }
+                            }
+                          }
+                        },
+                        "policy": {
+                          "kind": "string"
+                        },
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "preceding_review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_test_design"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "approved_review_test_design": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_test_design"
+                      }
+                    },
+                    "output": "value",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "approved"
+                      ]
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "text",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_test_design"
+                  }
                 ],
-                "parent_gates": [
-                  "decompose"
-                ],
-                "applicability": "leaf_only",
-                "assignment_group": "implementation",
-                "inputs": [
-                  "goal_spec",
-                  "policy",
-                  "phase_dag",
-                  "parents",
-                  "dependencies",
-                  "repository",
-                  "provider",
-                  "capabilities",
-                  "upstream_outputs"
-                ],
-                "not_required": "never",
-                "review": {
-                  "independent": true,
-                  "human_approval": false,
-                  "assignment_group": "review",
-                  "types": [
-                    "acceptance",
-                    "entropy"
-                  ]
-                }
+                "executor": {
+                  "role": "worker",
+                  "capability": "reasoning",
+                  "resources": [
+                    "repository_workspace"
+                  ],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "understand"
+                    },
+                    "output": "allocation"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": []
               },
               {
-                "id": "publish",
-                "type": "publish",
-                "depends_on": [
-                  "implement"
+                "id": "review_implement",
+                "prompt": "Independently review the exact declared subject and its observed evidence against the approved design. Reject incomplete or disconnected evidence; do not resolve findings without the required current subject and review. Emit an explicit approved or changes_requested decision and the review report. A rejected review is evidence, never downstream approval.",
+                "inputs": {
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "implement"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  },
+                  "design": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      }
+                    },
+                    "output": "design",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "review_decision",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "implement"
+                  }
                 ],
-                "parent_gates": [],
-                "applicability": "always",
-                "assignment_group": "coordinator",
-                "inputs": [
-                  "goal_spec",
-                  "policy",
-                  "repository",
-                  "provider",
-                  "upstream_outputs"
+                "executor": {
+                  "role": "worker",
+                  "capability": "reasoning",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "review_implement"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "implement"
+                  }
                 ],
-                "not_required": "never",
-                "review": {
-                  "independent": true,
-                  "human_approval": false,
-                  "assignment_group": "review",
-                  "types": [
-                    "integration"
-                  ]
-                }
+                "gates": [],
+                "resolves": [],
+                "permits": []
+              },
+              {
+                "id": "publication_context",
+                "prompt": "After implementation and review, record the actual repository branch, base, target and exact same-repository PR. Creating or publishing a PR still follows current project policy; this output alone grants no integration authority.",
+                "inputs": {
+                  "implementation": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "implement"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  },
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_implement"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "approved_review_implement": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_implement"
+                      }
+                    },
+                    "output": "value",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "approved"
+                      ]
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "repository_context",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "branch": {
+                          "kind": "string"
+                        },
+                        "base": {
+                          "kind": "string"
+                        },
+                        "target": {
+                          "kind": "string"
+                        },
+                        "pr": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_implement"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "publication_context"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": []
+              },
+              {
+                "id": "review_publication_context",
+                "prompt": "Independently check the exact repository/PR context and delivery evidence against the reviewed project topology and publication policy. Emit an explicit approved or changes_requested decision and the review report. A rejected review is evidence, never downstream approval.",
+                "inputs": {
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "publication_context"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "branch": {
+                          "kind": "string"
+                        },
+                        "base": {
+                          "kind": "string"
+                        },
+                        "target": {
+                          "kind": "string"
+                        },
+                        "pr": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "implementation": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "implement"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  },
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_implement"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "review_decision",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "publication_context"
+                  }
+                ],
+                "executor": {
+                  "role": "worker",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "review_publication_context"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "publication_context"
+                  }
+                ],
+                "gates": [],
+                "resolves": [],
+                "permits": []
+              },
+              {
+                "id": "authorize_repository",
+                "prompt": "Authorize the exact independently reviewed repository context under current root/project authority. Bind its Ref and current policy hash; do not infer permission from task names.",
+                "inputs": {
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "publication_context"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "branch": {
+                          "kind": "string"
+                        },
+                        "base": {
+                          "kind": "string"
+                        },
+                        "target": {
+                          "kind": "string"
+                        },
+                        "pr": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_publication_context"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "approved_review_publication_context": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_publication_context"
+                      }
+                    },
+                    "output": "value",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "approved"
+                      ]
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "repository_authorization",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "context": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "policy": {
+                          "kind": "string"
+                        },
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_publication_context"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "authorize_repository"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": []
+              },
+              {
+                "id": "observe_publication",
+                "prompt": "Record the exact host-observed PR head/base and complete CI status. Unknown or failed observations are factual evidence, not authorization. Never fabricate provider facts.",
+                "inputs": {
+                  "context": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "publication_context"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "branch": {
+                          "kind": "string"
+                        },
+                        "base": {
+                          "kind": "string"
+                        },
+                        "target": {
+                          "kind": "string"
+                        },
+                        "pr": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "authority": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "authorize_repository"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "context": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "policy": {
+                          "kind": "string"
+                        },
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "publication_evidence",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "repository": {
+                          "kind": "string"
+                        },
+                        "pr": {
+                          "kind": "string"
+                        },
+                        "head_oid": {
+                          "kind": "string"
+                        },
+                        "base_oid": {
+                          "kind": "string"
+                        },
+                        "base_ref": {
+                          "kind": "string"
+                        },
+                        "ci": {
+                          "kind": "enum",
+                          "values": [
+                            "verified",
+                            "unverified",
+                            "absent",
+                            "unknown"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "authorize_repository"
+                  }
+                ],
+                "executor": {
+                  "role": "worker",
+                  "capability": "bounded",
+                  "resources": [
+                    "repository_publication"
+                  ],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "publication_context"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": []
+              },
+              {
+                "id": "review_publication",
+                "prompt": "Independently review the exact current publication observation and implementation review. Require the configured current-head CI policy before recommending integration. Emit an explicit approved or changes_requested decision and the review report. A rejected review is evidence, never downstream approval.",
+                "inputs": {
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "observe_publication"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "repository": {
+                          "kind": "string"
+                        },
+                        "pr": {
+                          "kind": "string"
+                        },
+                        "head_oid": {
+                          "kind": "string"
+                        },
+                        "base_oid": {
+                          "kind": "string"
+                        },
+                        "base_ref": {
+                          "kind": "string"
+                        },
+                        "ci": {
+                          "kind": "enum",
+                          "values": [
+                            "verified",
+                            "unverified",
+                            "absent",
+                            "unknown"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "implementation_review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_implement"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "review_decision",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "observe_publication"
+                  }
+                ],
+                "executor": {
+                  "role": "worker",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "review_publication"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "observe_publication"
+                  }
+                ],
+                "gates": [],
+                "resolves": [],
+                "permits": []
+              },
+              {
+                "id": "authorize_publication",
+                "prompt": "Authorize integration only under current root/project authority for the exact publication subject, independent review and policy. Follow the returned operational integrate contract; do not mint merge evidence.",
+                "inputs": {
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "observe_publication"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "repository": {
+                          "kind": "string"
+                        },
+                        "pr": {
+                          "kind": "string"
+                        },
+                        "head_oid": {
+                          "kind": "string"
+                        },
+                        "base_oid": {
+                          "kind": "string"
+                        },
+                        "base_ref": {
+                          "kind": "string"
+                        },
+                        "ci": {
+                          "kind": "enum",
+                          "values": [
+                            "verified",
+                            "unverified",
+                            "absent",
+                            "unknown"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_publication"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "approved_review_publication": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_publication"
+                      }
+                    },
+                    "output": "value",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "approved"
+                      ]
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "publication_authorization",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "subject": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "review": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "policy": {
+                          "kind": "string"
+                        },
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_publication"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "authorize_publication"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": []
+              },
+              {
+                "id": "observe_merge",
+                "prompt": "After the authorized effect, record the exact host/provider-observed merge, its authorization, head/base and merge commit. Follow returned reconciliation/completion only after all graph obligations are satisfied.",
+                "inputs": {
+                  "context": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "publication_context"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "branch": {
+                          "kind": "string"
+                        },
+                        "base": {
+                          "kind": "string"
+                        },
+                        "target": {
+                          "kind": "string"
+                        },
+                        "pr": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "observe_publication"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "repository": {
+                          "kind": "string"
+                        },
+                        "pr": {
+                          "kind": "string"
+                        },
+                        "head_oid": {
+                          "kind": "string"
+                        },
+                        "base_oid": {
+                          "kind": "string"
+                        },
+                        "base_ref": {
+                          "kind": "string"
+                        },
+                        "ci": {
+                          "kind": "enum",
+                          "values": [
+                            "verified",
+                            "unverified",
+                            "absent",
+                            "unknown"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "authorization": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "authorize_publication"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "subject": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "review": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "policy": {
+                          "kind": "string"
+                        },
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "merge_observation",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "authorization": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "repository": {
+                          "kind": "string"
+                        },
+                        "pr": {
+                          "kind": "string"
+                        },
+                        "head_oid": {
+                          "kind": "string"
+                        },
+                        "base_oid": {
+                          "kind": "string"
+                        },
+                        "base_ref": {
+                          "kind": "string"
+                        },
+                        "merge_commit": {
+                          "kind": "string"
+                        },
+                        "merged_at": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "authorize_publication"
+                  }
+                ],
+                "executor": {
+                  "role": "worker",
+                  "capability": "bounded",
+                  "resources": [
+                    "repository_publication"
+                  ],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "publication_context"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": []
+              }
+            ],
+            "task_sets": [],
+            "terminals": [
+              {
+                "kind": "node",
+                "goal": "#this",
+                "node": "observe_merge"
               }
             ]
           }

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import contextvars
 import importlib.util
 import hashlib
 import hmac
@@ -23,6 +24,37 @@ from typing import Any
 from urllib.parse import quote, urlparse
 
 RELEASE_EVIDENCE_CACHE_TTL_SECONDS = 60
+
+_PR_CORRECTION_CACHE: dict[tuple, list[dict[str, Any]]] = {}
+
+
+def read_pull_request_correction_sources(repo: Path, repository: str, number: int, *, marker: dict) -> list[dict[str, Any]]:
+    """Observe raw review comments, keyed by the provider's current PR marker.
+
+    These facts confer no workflow authority; ordinary declared review tasks
+    interpret them against exact current subjects.
+    """
+    if type(number) is not int or number <= 0 or not re.fullmatch(r"[^/\s]+/[^/\s]+", repository):
+        raise ValueError("Invalid pull request source identity")
+    key = (str(Path(repo).resolve()), repository, number, json.dumps(marker, sort_keys=True))
+    if key in _PR_CORRECTION_CACHE:
+        return copy.deepcopy(_PR_CORRECTION_CACHE[key])
+    if not shutil.which('gh'):
+        raise ValueError('Provider source reader unavailable')
+    result = subprocess.run(['gh', 'api', '--paginate', '--slurp', f'repos/{repository}/pulls/{number}/comments'],
+                            cwd=repo, capture_output=True, text=True, check=False)
+    if result.returncode:
+        raise ValueError('Provider correction source read failed: ' + result.stderr.strip())
+    try:
+        rows = json.loads(result.stdout)
+        if isinstance(rows, list) and rows and isinstance(rows[0], list):
+            rows = [row for page in rows for row in page]
+        if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+            raise ValueError('Provider correction source response is not a complete comment array')
+    except (ValueError, TypeError) as exc:
+        raise ValueError('Provider correction source read failed') from exc
+    _PR_CORRECTION_CACHE[key] = copy.deepcopy(rows)
+    return copy.deepcopy(rows)
 
 _COMMENT_STORE_SPEC = importlib.util.spec_from_file_location("zzzops_comment_store", Path(__file__).with_name("comment_store.py"))
 assert _COMMENT_STORE_SPEC and _COMMENT_STORE_SPEC.loader
@@ -349,7 +381,7 @@ def workflow_envelope(intent: str, steps: Any) -> dict[str, Any]:
         diagnostic = step.get("diagnostic")
         if diagnostic is not None and (
             not isinstance(diagnostic, dict) or "failed_invariant" not in diagnostic
-            or set(diagnostic) - {"failed_invariant", "goal", "phase", "operation"}
+            or set(diagnostic) - {"failed_invariant", "goal", "phase", "operation", "node"}
             or not isinstance(diagnostic["failed_invariant"], str) or not diagnostic["failed_invariant"]
             or ("goal" in diagnostic and (not isinstance(diagnostic["goal"], int) or isinstance(diagnostic["goal"], bool) or diagnostic["goal"] < 1))
             or any(not isinstance(diagnostic[field], str) or not diagnostic[field] for field in ("phase", "operation") if field in diagnostic)
@@ -382,7 +414,7 @@ def workflow_failure_invariant(reason: str) -> str:
 
 def workflow_repair_step(
     intent: str, reason: str, action: str, *, source_skill: str | None = None,
-    goal: int | None = None, phase: str | None = None, operation: str | None = None,
+    goal: int | None = None, phase: str | None = None, operation: str | None = None, node: dict | None = None,
 ) -> dict[str, Any]:
     """Return the one actionable repair step for a failed public invocation."""
     skill = source_skill if source_skill in WORKFLOW_SKILL_INTENTS and intent in WORKFLOW_SKILL_INTENTS[source_skill] else WORKFLOW_DEFAULT_SKILLS[intent]
@@ -398,6 +430,9 @@ def workflow_repair_step(
         context["phase"] = phase
     if operation is not None:
         context["operation"] = operation
+    if node is not None:
+        _phase_evidence.task_key(node)
+        context["node"] = node
     result["diagnostic"] = context
     return result
 
@@ -786,6 +821,44 @@ class GitHubGoalTransitionAdapter:
             raise GoalTransitionProviderError("GitHub returned incomplete goal data; no goal update was made.")
         return issue
 
+    def list_issue_metadata(self, cursor: str | None = None) -> dict[str, Any]:
+        """Complete paginated goal identities, without broad body hydration.
+
+        Native sub-issue links are not canonical GoalEnvelope.parent coverage.
+        The requesting relationship adapter reads candidate envelopes explicitly.
+        """
+        self.ensure_identity()
+        owner, name = self.repository.split("/", 1)
+        arguments = ["api", "graphql", "-f", "query=" + GITHUB_PORTFOLIO_QUERY,
+                     "-F", "owner=" + owner, "-F", "name=" + name,
+                     "-F", "labels[]=zzzops", "-F", "states[]=OPEN", "-F", "states[]=CLOSED"]
+        if cursor is not None:
+            if not isinstance(cursor, str) or not cursor:
+                raise GoalTransitionProviderError("Invalid relationship pagination cursor")
+            arguments.extend(["-F", "endCursor=" + cursor])
+        result = self._run(arguments)
+        if result.returncode:
+            raise self._provider_error(result)
+        try:
+            response = json.loads(result.stdout)
+            if not isinstance(response, dict) or response.get("errors"):
+                raise ValueError("GraphQL relationship discovery errors")
+            repository = response["data"]["repository"]
+            if repository["nameWithOwner"] != self.repository:
+                raise ValueError("Relationship repository identity mismatch")
+            connection = repository["issues"]
+            info = connection["pageInfo"]
+            if type(info["hasNextPage"]) is not bool or (info["hasNextPage"] and not isinstance(info["endCursor"], str)):
+                raise ValueError("Incomplete relationship pagination")
+            rows = connection["nodes"]
+            if not isinstance(rows, list) or any(not isinstance(row, dict) or type(row.get("number")) is not int or row["number"] <= 0 or row.get("state") not in {"OPEN", "CLOSED"} or not isinstance(row.get("updatedAt"), str) for row in rows):
+                raise ValueError("Invalid relationship metadata")
+            return {"repository": self.repository,
+                    "issues": [{"number": row["number"], "state": row["state"].lower(), "updated_at": row["updatedAt"]} for row in rows],
+                    "page_info": {"has_next_page": info["hasNextPage"], "end_cursor": info["endCursor"]}}
+        except (KeyError, TypeError, ValueError) as exc:
+            raise GoalTransitionProviderError("GitHub relationship coverage is unknown: " + str(exc)) from exc
+
     def update_issue(self, number: int, payload: dict[str, Any]) -> dict[str, Any]:
         result = self._run(
             ["api", "--method", "PATCH", f"repos/{self.repository}/issues/{number}", "--input", "-"],
@@ -1025,11 +1098,13 @@ def _pull_request_targets(selected: list[dict[str, Any]], bodies: dict[int, dict
     targets: dict[tuple[str, str, int], list[int]] = {}
     fresh: set[tuple[str, str, int]] = set()
     for issue in selected:
-        body = bodies.get(issue["number"], {}).get("body")
-        if not isinstance(body, str):
-            continue
-        goal = _goals.parse_managed_goal(body, issue["number"])
-        implementation = goal.get("implementation") if isinstance(goal, dict) else None
+        supplied = bodies.get(issue["number"], {})
+        context = supplied.get("repository_context")
+        body = supplied.get("body")
+        # Native generic context is supplied only by the authenticated adapter;
+        # historical source parsing remains a separate provider lookup input.
+        goal = _goals.parse_managed_goal(body, issue["number"]) if isinstance(body, str) else None
+        implementation = context if isinstance(context, dict) else goal.get("implementation") if isinstance(goal, dict) else None
         pr_url = implementation.get("pr") if isinstance(implementation, dict) else None
         if not isinstance(pr_url, str) or not pr_url.startswith("https://github.com/"):
             continue
@@ -1044,7 +1119,7 @@ def _pull_request_targets(selected: list[dict[str, Any]], bodies: dict[int, dict
         # Scheduling may reuse a verified snapshot.  An executing, publishing,
         # integrating, or recovering goal must always observe fresh PR evidence.
         if (
-            goal.get("status") == "in_progress"
+            isinstance(context, dict) or (isinstance(goal, dict) and goal.get("status") == "in_progress")
             or (isinstance(workflow, dict) and bool(workflow.get("leases")))
             or (isinstance(review, dict) and review.get("status") not in (None, "not_started", "merged"))
         ):
@@ -1512,7 +1587,7 @@ def _portfolio_cache_path(repo: Path) -> Path:
     return repo / ".zzzops" / "portfolio-open-cache.json"
 
 
-def _cached_open_bodies(repo: Path, identity: str, include_feedback: bool, selected: list[dict[str, Any]]) -> dict[int, dict[str, Any]] | None:
+def _cached_open_bodies(repo: Path, identity: str, include_feedback: bool, selected: list[dict[str, Any]], *, partial: bool = False) -> dict[int, dict[str, Any]] | None:
     """Return cached bodies only when the provider's complete open index agrees."""
     marker = [{"number": item["number"], "updated_at": item.get("updated_at")} for item in selected if item["state"] == "open"]
     if any(not isinstance(item["updated_at"], str) or not item["updated_at"] for item in marker):
@@ -1521,13 +1596,15 @@ def _cached_open_bodies(repo: Path, identity: str, include_feedback: bool, selec
         cache = json.loads(_portfolio_cache_path(repo).read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
         return None
-    if not isinstance(cache, dict) or cache.get("schema_version") != 1 or cache.get("identity") != identity or cache.get("include_feedback") is not include_feedback or cache.get("marker") != marker:
+    if not isinstance(cache, dict) or cache.get("schema_version") != 1 or cache.get("identity") != identity or cache.get("include_feedback") is not include_feedback or (not partial and cache.get("marker") != marker):
         return None
     bodies = cache.get("bodies")
     if not isinstance(bodies, dict):
         return None
+    old_markers = {item.get("number"): item.get("updated_at") for item in cache.get("marker", []) if isinstance(item, dict)}
     normalized = {}
     for item in marker:
+        if partial and old_markers.get(item["number"]) != item["updated_at"]: continue
         body = bodies.get(str(item["number"]))
         if not isinstance(body, str):
             return None
@@ -1566,13 +1643,15 @@ def github_repository_portfolio_snapshot(
         ),
     )
     open_selected = [issue for issue in selected if issue["state"] == "open"]
-    bodies = _cached_open_bodies(repo, identity, include_feedback, selected)
-    if bodies is None:
-        bodies, hydration_bytes, hydration_processes = _timed_call(
+    bodies = _cached_open_bodies(repo, identity, include_feedback, selected, partial=True) or {}
+    missing_bodies = [issue["number"] for issue in open_selected if issue["number"] not in bodies]
+    if missing_bodies:
+        hydrated, hydration_bytes, hydration_processes = _timed_call(
             timing, "goal_hydration", lambda: _github_goal_bodies(
-                repo, executable, owner, name, [issue["number"] for issue in open_selected],
+                repo, executable, owner, name, missing_bodies,
             ),
         )
+        bodies.update(hydrated)
     else:
         hydration_bytes, hydration_processes = 0, 0
     cached_records = None
@@ -1580,7 +1659,7 @@ def github_repository_portfolio_snapshot(
         cache = json.loads(_portfolio_cache_path(repo).read_text(encoding="utf-8")) if hydration_processes == 0 else {}
         values = cache.get("records") if isinstance(cache, dict) else None
         if isinstance(values, dict) and set(values) == {str(issue["number"]) for issue in open_selected} and all(
-            isinstance(value, dict) and {"human_spec", "acceptance_criteria", "phase_evidence"} <= set(value)
+            isinstance(value, dict) and {"human_spec", "acceptance_criteria"} <= set(value) and ("phase_evidence" in value or value.get("schema_version") == 2)
             for value in values.values()
         ):
             cached_records = {int(number): copy.deepcopy(value) for number, value in values.items()}
@@ -1649,14 +1728,14 @@ def github_repository_portfolio_snapshot(
     hydrated_by_key = {
         item["number"]: github_goal_record(item)
         for item in valid_open
-        if item["number"] not in by_key or not {"human_spec", "acceptance_criteria", "phase_evidence"} <= set(by_key[item["number"]])
+        if item["number"] not in by_key or not {"human_spec", "acceptance_criteria"} <= set(by_key[item["number"]])
     }
     for record in snapshot.get("goals", []):
         source = by_key.get(record.get("key")) if isinstance(record, dict) else None
-        if source is not None and not {"human_spec", "acceptance_criteria", "phase_evidence"} <= set(source):
+        if source is not None and not {"human_spec", "acceptance_criteria"} <= set(source):
             source = hydrated_by_key.get(record.get("key"))
         if source is not None:
-            record.update({field: copy.deepcopy(source[field]) for field in ("human_spec", "acceptance_criteria", "phase_evidence")})
+            record.update({field: copy.deepcopy(source[field]) for field in ("human_spec", "acceptance_criteria", "phase_evidence", "schema_version", "envelope") if field in source})
             # Scheduling keeps the derived assessment; workflow identity must
             # retain the exact persisted inputs, including null/absent defaults.
             record["engineering_rigor_inputs"] = copy.deepcopy(source.get("engineering_rigor"))
@@ -1904,84 +1983,22 @@ def workflow_checkpoint(repo: Path, goal_number: int, intent: str, runtime: Any)
         raise ValueError("Goal portfolio is not valid")
     if goal_number not in {item.get("key") for item in portfolio.get("goals", [])}:
         raise ValueError(f"Goal #{goal_number} is not present in the current portfolio")
-    repository = _project_repository_identity(project)
-    adapter = GitHubGoalTransitionAdapter(repo, repository)
-    issue = adapter.get_issue(goal_number)
-    goal = github_goal_record(issue)
-    goal['children'] = [row['key'] for row in portfolio.get('goals', [])
-                        if row.get('parent') == goal_number and row.get('status') != 'cancelled']
-    graph, phase_nodes = _workflow_phase_configuration(project, goal)
-    live_inputs = workflow_live_inputs(repo, project, goal, intent, graph)
-    related: dict[Any, dict[str, Any]] = {}
-    if goal.get("parent") is not None:
-        parent_issue = adapter.get_issue(goal["parent"])
-        parent = github_goal_record(parent_issue)
-        parent['children'] = [goal_number]
-        parent_graph, _parent_nodes = _workflow_phase_configuration(project, parent)
-        related[goal["parent"]] = {"goal": parent, "live_inputs": workflow_live_inputs(repo, project, parent, intent, parent_graph)}
-    routing = _workflow_section(project, "model_routing")["configuration"]
-    result = workflow_step_plan(goal, graph, live_inputs, phase_nodes, routing, runtime, related_goals=related)
-    record_workflow_diagnostic(repo, {"goal": goal_number, "intent": intent, "frontier": result["frontier"]})
-    return {"next_steps": result["next_steps"]}
+    engine = _workflow.Workflow(SimpleNamespace(**globals()), repo, project, runtime)
+    engine._portfolio_cache = portfolio
+    return _workflow.checkpoint(engine.api, repo, project, runtime, goal_number, engine=engine)
+
+
+_WORKFLOW_INVOCATION = contextvars.ContextVar('zzzops_workflow_invocation', default=None)
 
 
 def workflow_submit(repo: Path, goal_number: int, intent: str, payload: Any) -> dict[str, Any]:
-    """Record one checkpoint-authorized phase result or review as a guarded goal transition."""
-    if not isinstance(payload, dict) or set(payload) - {"operation", "phase", "record", "artifact", "reviewer", "decision"}:
-        raise ValueError("workflow submission is invalid")
-    operation, phase = payload.get("operation"), payload.get("phase")
-    if operation not in {"record_result", "record_review"} or not isinstance(phase, str):
-        raise ValueError("workflow submission operation is invalid")
-    project = reviewed_project_state(repo)
-    repository = _project_repository_identity(project)
-    adapter = GitHubGoalTransitionAdapter(repo, repository)
-    issue = adapter.get_issue(goal_number)
-    goal = github_goal_record(issue)
-    portfolio = portfolio_snapshot(repo)
-    if portfolio.get('complete') is not True or portfolio.get('valid') is not True:
-        raise ValueError('Goal portfolio is not valid')
-    goal['children'] = [row['key'] for row in portfolio.get('goals', [])
-                        if row.get('parent') == goal_number and row.get('status') != 'cancelled']
-    graph, phase_nodes = _workflow_phase_configuration(project, goal)
-    if phase not in phase_nodes:
-        raise ValueError("workflow submission phase is not applicable to this goal")
-    live_inputs = workflow_live_inputs(repo, project, goal, intent, graph)
-    evidence = goal.get("phase_evidence") or empty_phase_evidence()
-    goal["phase_evidence"] = evidence
-    related: dict[Any, dict[str, Any]] = {}
-    if goal.get("parent") is not None:
-        parent_issue = adapter.get_issue(goal["parent"])
-        parent = github_goal_record(parent_issue)
-        parent['children'] = [goal_number]
-        parent_graph, _parent_nodes = _workflow_phase_configuration(project, parent)
-        related[goal["parent"]] = {"goal": parent, "live_inputs": workflow_live_inputs(repo, project, parent, intent, parent_graph)}
-    frontier = derive_phase_steps(goal, graph, live_inputs, related)
-    allowed = frontier["execute"] if operation == "record_result" else frontier["review"]
-    if phase not in {item["phase"] for item in allowed}:
-        raise ValueError("workflow submission is not the current required phase step")
-    if operation == "record_result":
-        if set(payload) != {"operation", "phase", "record"}:
-            raise ValueError("workflow result submission is invalid")
-        updated_evidence = record_phase_result(evidence, phase, payload["record"], live_inputs[phase])
-    else:
-        if set(payload) != {"operation", "phase", "artifact", "reviewer", "decision"}:
-            raise ValueError("workflow review submission is invalid")
-        review = phase_nodes[phase].get("review", {})
-        updated_evidence = record_phase_review(
-            evidence, phase, payload["artifact"], payload["reviewer"], decision=payload["decision"],
-            require_independent=review.get("independent") is True,
-        )
-    desired = parse_managed_goal(issue["body"], goal_number)
-    if desired is None:  # pragma: no cover - github_goal_record already establishes this
-        raise ValueError("goal is not managed")
-    desired["phase_evidence"] = updated_evidence
-    desired["revision"] += 1
-    transition = {
-        "schema_version": GOAL_TRANSITION_SCHEMA_VERSION,
-        "expected_revision": goal["revision"], "expected_digest": goal["digest"], "goal": desired,
-    }
-    apply_goal_transition(adapter, repository, goal_number, transition)
-    return {"next_steps": []}
+    """Forward a public submission to the same generic entrypoint and gates."""
+    invocation = _WORKFLOW_INVOCATION.get()
+    if invocation is None:
+        invocation = (SimpleNamespace(**globals()), WORKFLOW_DEFAULT_SKILLS[intent], codex_thread_runtime(), False)
+    services, source, runtime, skip_validation = invocation
+    return _workflow.public_run(services, repo, intent, source, runtime, payload, goal_number,
+                                skip_installation_validation=skip_validation, payload_supplied=True)
 
 
 def migrate_open_repository_goals(
@@ -2245,7 +2262,7 @@ def migration_assessment(repo: Path, project: dict[str, Any], goal: dict[str, An
     observed = github_release_evidence(repo, {"identity": repository})
     snapshot = {"status": observed.get("status", "unavailable"), "releases": observed.get("releases")}
     context = {"repository": repository, "goal": goal["key"],
-               "goal_spec": goal_spec_digest(goal, title=goal['title'], human_spec=goal['human_spec']),
+               "goal_spec": goal["spec_ref"]["hash"] if goal.get("schema_version") == 2 else goal_spec_digest(goal, title=goal['title'], human_spec=goal['human_spec']),
                "release_snapshot": snapshot, "assessment": document}
     return {"release_snapshot": snapshot, "decision": migration_boundary(project.get("policy", {}), context)}
 
@@ -3404,11 +3421,16 @@ def main() -> int:
                 float(os.environ.get('ZZZOPS_RENEWAL_TIMEOUT_SECONDS', '30')),
                 float(os.environ.get('ZZZOPS_RENEWAL_CLEANUP_SECONDS', '10')),
             )
-        result = _workflow.public_run(
-            services, args.repo.resolve(), args.intent, source, runtime, payload, args.goal,
-            skip_installation_validation=args.skip_installation_validation,
-            payload_supplied=args.input is not None,
-        )
+        if isinstance(payload, dict) and payload.get('operation') == 'submit' and args.goal is not None:
+            token = _WORKFLOW_INVOCATION.set((services, source, runtime, args.skip_installation_validation))
+            try: result = workflow_submit(args.repo.resolve(), args.goal, args.intent, payload)
+            finally: _WORKFLOW_INVOCATION.reset(token)
+        else:
+            result = _workflow.public_run(
+                services, args.repo.resolve(), args.intent, source, runtime, payload, args.goal,
+                skip_installation_validation=args.skip_installation_validation,
+                payload_supplied=args.input is not None,
+            )
         print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
         return 0
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
@@ -3419,6 +3441,7 @@ def main() -> int:
                 args.intent, str(exc),
                 "Repair the reported workflow input or current repository state, then invoke workflow again.",
                 source_skill=args.source_skill, goal=args.goal, phase=phase, operation=operation,
+                node=payload.get("node") if isinstance(payload, dict) and isinstance(payload.get("node"), dict) else None,
             )
             # Public callers historically consume ``assignment`` while the
             # validated internal instruction envelope calls the same audience
@@ -3433,7 +3456,7 @@ def main() -> int:
                 retry_args[retry_args.index('--input') + 1] = '<submission.json>'
             else:
                 retry_args = ['--input=<submission.json>' if value.startswith('--input=') else value for value in retry_args]
-            step.update(goal=args.goal, phase=payload.get('phase'), actor=payload.get('actor'),
+            step.update(goal=args.goal, node=payload.get('node'), actor=payload.get('actor'),
                 action='Renewal was not confirmed; retain the worker evidence and current lease. After resolving the reported provider or storage condition, write submission to a JSON file and retry this command with that path. Timeout or expiry alone does not authorize takeover.',
                 submission=payload, command=[sys.executable, str(Path(__file__).resolve()), *retry_args])
         print(json.dumps({"next_steps": [step]}, ensure_ascii=False, separators=(",", ":")))

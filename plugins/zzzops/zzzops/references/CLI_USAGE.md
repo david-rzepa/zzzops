@@ -1,17 +1,16 @@
 # Using the ZzzOps CLI
 
-Run package-local [`zzzops.py`](../zzzops.py), never a global command. Start with the
-skill's semantic `--intent`; continue with `workflow --intent INTENT` and
-returned `--goal`, `--runtime`, or `--input` arguments.
+Run package-local [`zzzops.py`](../zzzops.py), never a global command. Use the
+skill's `workflow --intent INTENT`; copy returned goal, runtime and input arguments.
 
-Obey `next_steps`. Read `instruction`, `policy.path`, and evidence fields.
-Unchanged policy reuses its path and receipt. Copy its `policy_receipt` into
-`start`. Delegated workers read the file and supply its receipt for `bind` before
-working. If missing, request a fresh checkpoint. Renewals/submissions need no receipt.
+Follow `next_steps`, instruction, policy.path and exact evidence. Read policy and
+supply its receipt at start/bind. Bind the actual executor.
+Submit the declared outputs with the acquired node, lease and actor.
+Renewals/submissions need no receipt. Checkpoint for missing context.
 
-Before work, send `start`, bind the actual executor, then complete `submission`
-under its lease using `command`. Preserve assignments, authority, and evidence;
-invent no arguments, operations, models, phase order, or private handlers.
-
-Invoke again after each step. Only root resolves blockers or asks the human.
-Human approval is a separate step, never implied by execution or review.
+Infer no operations, models, task order or authority. Follow finite resource
+allocations and current publication authorization. Root coordinates blockers
+and human approval; execution/review implies no approval. Reinvoke after steps.
+Old versions require reviewed conversion. Targeted historical reads never migrate
+or reopen. Renew the same live owner; expiry permits no takeover. Recover only
+with observed stopped evidence. Operational integration cannot mint Results.

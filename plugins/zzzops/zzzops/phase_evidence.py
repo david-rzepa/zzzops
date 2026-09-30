@@ -5,8 +5,11 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import marshal
 import re
 from typing import Any
+from collections import OrderedDict
+from threading import RLock
 
 
 PHASE_EVIDENCE_SCHEMA_VERSION = 2
@@ -774,3 +777,564 @@ def derive_phase_steps(
         "invalidated_ancestor_gates": _invalidated_ancestor_gates(nodes, stale, blocked),
         "diagnostics": diagnostics,
     }
+
+
+# Version two execution contracts. The phase codecs above decode historical
+# evidence only; active graph validation and execution use these task contracts.
+TASK_ID = re.compile(r'^[A-Za-z0-9_-]+$')
+RESERVED_OUTPUT_TYPES = {'result', 'relationship_context'}
+
+
+def task_identifier(value):
+    return isinstance(value, str) and TASK_ID.fullmatch(value) is not None
+
+
+def contract_fields(value, fields, label):
+    if not isinstance(value, dict) or set(value) != set(fields):
+        raise ValueError(f'{label} has missing or unknown fields; expected {sorted(fields)}')
+
+
+def positive_integer(value):
+    return type(value) is int and value > 0
+
+
+def validate_ref(value):
+    contract_fields(value, {'hash', 'uri'}, 'Ref')
+    if not isinstance(value['hash'], str) or not SHA256.fullmatch(value['hash']) or not isinstance(value['uri'], str) or not value['uri']:
+        raise ValueError('Ref requires a content hash and nonempty URI')
+
+
+def value_matches(schema, value):
+    kind = schema['kind']
+    if kind == 'string': return isinstance(value, str)
+    if kind == 'boolean': return type(value) is bool
+    if kind == 'integer': return type(value) is int
+    if kind == 'null': return value is None
+    if kind == 'enum': return any(type(value) is type(v) and value == v for v in schema['values'])
+    if kind == 'union': return sum(value_matches(s, value) for s in schema['variants']) == 1
+    if kind == 'array': return isinstance(value, list) and all(value_matches(schema['items'], v) for v in value)
+    if kind == 'map': return isinstance(value, dict) and all(isinstance(k, str) and value_matches(schema['values'], v) for k, v in value.items())
+    if kind == 'object': return isinstance(value, dict) and set(value) == set(schema['fields']) and all(value_matches(s, value[k]) for k, s in schema['fields'].items())
+    return False
+
+
+def types_overlap(a, b):
+    if a['kind'] == 'union': return any(types_overlap(v, b) for v in a['variants'])
+    if b['kind'] == 'union': return types_overlap(b, a)
+    if a['kind'] == 'enum': return any(value_matches(b, v) for v in a['values'])
+    if b['kind'] == 'enum': return types_overlap(b, a)
+    ak, bk = a['kind'], b['kind']
+    if ak == bk:
+        if ak == 'object': return set(a['fields']) == set(b['fields']) and all(types_overlap(v, b['fields'][k]) for k, v in a['fields'].items())
+        # Every array/map pair overlaps at the empty collection.
+        return True
+    if ak == 'map' and bk == 'object': return all(types_overlap(a['values'], v) for v in b['fields'].values())
+    if bk == 'map' and ak == 'object': return types_overlap(b, a)
+    return False
+
+
+def validate_type(schema, depth=0):
+    if depth > 16: raise ValueError('Type contract nesting limit is 16')
+    if not isinstance(schema, dict): raise ValueError('Type contract must be an object')
+    kind = schema.get('kind')
+    extra = {'array': 'items', 'object': 'fields', 'map': 'values', 'enum': 'values', 'union': 'variants'}
+    if kind not in {'string', 'boolean', 'integer', 'null', *extra}: raise ValueError('Unsupported type contract kind')
+    contract_fields(schema, {'kind', extra[kind]} if kind in extra else {'kind'}, 'Type schema')
+    if kind in {'array', 'map'}: validate_type(schema[extra[kind]], depth + 1)
+    elif kind == 'object':
+        if not isinstance(schema['fields'], dict): raise ValueError('Object fields must be a map')
+        for name, child in schema['fields'].items():
+            if not task_identifier(name): raise ValueError('Object field identity is invalid')
+            validate_type(child, depth + 1)
+    elif kind == 'enum':
+        values = schema['values']
+        if not isinstance(values, list) or not values or any(type(v) not in (str, bool, int, type(None)) for v in values): raise ValueError('Enum requires scalar alternatives')
+        if len({canonical_json_bytes(v) for v in values}) != len(values): raise ValueError('Enum alternatives must be distinct')
+    elif kind == 'union':
+        values = schema['variants']
+        if not isinstance(values, list) or len(values) < 2: raise ValueError('Union requires disjoint alternatives')
+        for v in values: validate_type(v, depth + 1)
+        if any(types_overlap(a, b) for i, a in enumerate(values) for b in values[i + 1:]): raise ValueError('Union alternatives overlap; disjoint values required')
+
+
+def validate_selector(value, template=False):
+    if not isinstance(value, dict): raise ValueError('Node selector must be an object')
+    kind = value.get('kind')
+    fields = {'node': {'kind', 'goal', 'node'}, 'member': {'kind', 'goal', 'expansion', 'item', 'generation'}, 'join': {'kind', 'goal', 'expansion'}, 'self': {'kind'}}
+    if kind not in fields or kind == 'self' and not template: raise ValueError('Unsupported node selector kind')
+    contract_fields(value, fields[kind], 'Node selector')
+    if kind == 'self': return
+    goal = value['goal']
+    if not positive_integer(goal) and goal not in ('#this', '#parent', '#children'): raise ValueError('Selector goal identity must be positive integer or #this/#parent/#children')
+    for field in ('node', 'expansion', 'item'):
+        if field in value and not task_identifier(value[field]): raise ValueError(f'Selector {field} identity is invalid')
+    if kind == 'member' and value['generation'] != 'current' and not positive_integer(value['generation']): raise ValueError('Member generation must be positive or current')
+
+
+def validate_scope(value, template=False):
+    contract_fields(value, {'subject', 'output'}, 'Scope')
+    validate_selector(value['subject'], template)
+    if not task_identifier(value['output']): raise ValueError('Scope output identity is invalid')
+
+
+def validate_input(value, template=False):
+    contract_fields(value, {'producer', 'output', 'path', 'mode', 'type'}, 'Input')
+    producer = value['producer']
+    if not isinstance(producer, dict) or set(producer) not in ({'node'}, {'slot'}): raise ValueError('Input producer must name one node selector or external slot')
+    if 'node' in producer: validate_selector(producer['node'], template)
+    elif not task_identifier(producer['slot']): raise ValueError('Input slot identity is invalid')
+    if not task_identifier(value['output']) or value['mode'] not in ('content', 'identity'): raise ValueError('Input output/mode is invalid')
+    if not isinstance(value['path'], list): raise ValueError('Input path must be an array')
+    for token in value['path']:
+        if isinstance(token, str) or type(token) is int and token >= 0: continue
+        if template and token == {'item_key': True}: continue
+        raise ValueError('Input path supports only typed keys/indexes and template item_key')
+    validate_type(value['type'])
+    if 'node' in producer:
+        selector = producer['node']; aggregate = value['type']
+        levels = int(selector.get('goal') == '#children') + int(selector.get('kind') == 'join')
+        for _ in range(levels):
+            if aggregate.get('kind') != 'map': raise ValueError('Plural input aggregate type must be a canonical map')
+            aggregate = aggregate['values']
+
+
+def validate_graph(graph):
+    """Closed declarative grammar; relationship closure is checked by the host."""
+    contract_fields(graph, {'nodes', 'task_sets', 'terminals'}, 'Graph')
+    if any(not isinstance(graph[k], list) for k in graph): raise ValueError('Graph nodes/task_sets/terminals must be arrays')
+    names, sets, definitions = {}, {}, []
+    for node in graph['nodes']: definitions.append((node, False))
+    for expansion in graph['task_sets']:
+        contract_fields(expansion, {'id', 'source', 'template'}, 'TaskSet')
+        if not task_identifier(expansion['id']) or expansion['id'] in sets: raise ValueError('Duplicate or invalid task-set identity')
+        sets[expansion['id']] = expansion
+        validate_input(expansion['source'])
+        definitions.append((expansion['template'], True))
+    for node, template in definitions:
+        contract_fields(node, {'id', 'prompt', 'inputs', 'outputs', 'requires', 'executor', 'independent_of', 'gates', 'resolves', 'permits'}, 'Node')
+        name = node['id']
+        if not task_identifier(name) or name in names or name in sets: raise ValueError('Duplicate or invalid node/template identity')
+        names[name] = node
+        if not isinstance(node['prompt'], str) or not node['prompt'].strip(): raise ValueError('Node prompt is required')
+        for key in ('inputs', 'outputs'):
+            if not isinstance(node[key], dict) or any(not task_identifier(k) for k in node[key]): raise ValueError(f'Node {key} must have unique slot identities')
+        for value in node['inputs'].values(): validate_input(value, template)
+        for value in node['outputs'].values():
+            contract_fields(value, {'type', 'schema'}, 'Output contract')
+            if not task_identifier(value['type']) or value['type'] in RESERVED_OUTPUT_TYPES: raise ValueError('Reserved host or invalid output type')
+            validate_type(value['schema'])
+        executor = node['executor']
+        contract_fields(executor, {'role', 'capability', 'resources', 'authority'}, 'Executor')
+        if executor['role'] not in ('root', 'worker') or not task_identifier(executor['capability']): raise ValueError('Executor role/capability is invalid')
+        if not isinstance(executor['resources'], list) or any(not task_identifier(r) for r in executor['resources']) or len(set(executor['resources'])) != len(executor['resources']): raise ValueError('Executor resources must be unique identities')
+        validate_scope(executor['authority'], template)
+        for field in ('requires', 'independent_of', 'gates', 'resolves', 'permits'):
+            if not isinstance(node[field], list): raise ValueError(f'Node {field} must be an array')
+            for value in node[field]:
+                if field in ('requires', 'independent_of'): validate_selector(value, template)
+                elif field == 'permits':
+                    contract_fields(value, {'type', 'scope'}, 'Permit')
+                    if not task_identifier(value['type']): raise ValueError('Permit type is invalid')
+                    validate_scope(value['scope'], template)
+                else: validate_scope(value, template)
+    local_goals = {n['executor']['authority']['subject'].get('goal') for n, _ in definitions if n['executor']['authority']['subject'].get('node') == n['id']}
+    def local_target(selector):
+        if selector['kind'] == 'self': return None
+        if selector['goal'] != '#this' and selector['goal'] not in local_goals: return None
+        if selector['kind'] == 'node':
+            if selector['node'] not in names: raise ValueError('Unknown node reference: ' + selector['node'])
+            return selector['node']
+        if selector['expansion'] not in sets: raise ValueError('Unknown expansion reference: ' + selector['expansion'])
+        return sets[selector['expansion']]['template']['id']
+    edges = {name: set() for name in names}
+    for node, template in definitions:
+        for ref in node['requires'] + [i['producer']['node'] for i in node['inputs'].values() if 'node' in i['producer']]:
+            target = local_target(ref)
+            if target: edges[node['id']].add(target)
+        for ref in node['independent_of']:
+            if local_target(ref) == node['id']: raise ValueError('Self independence is unsatisfiable')
+        for scoped in [node['executor']['authority'], *node['gates'], *node['resolves'], *(p['scope'] for p in node['permits'])]: local_target(scoped['subject'])
+    for expansion in sets.values():
+        if 'node' in expansion['source']['producer']:
+            target = local_target(expansion['source']['producer']['node'])
+            if target: edges[expansion['template']['id']].add(target)
+    for ref in graph['terminals']:
+        validate_selector(ref); local_target(ref)
+    for gated, _ in definitions:
+        for resolver, _ in definitions:
+            if any(gate == scope for gate in gated['gates'] for scope in resolver['resolves']): edges[gated['id']].add(resolver['id'])
+    visiting, visited = set(), set()
+    def visit(name):
+        if name in visiting: raise ValueError('Graph cycle or unsatisfiable resolver/gate dependency at ' + name)
+        if name in visited: return
+        visiting.add(name)
+        for parent in sorted(edges[name]): visit(parent)
+        visiting.remove(name); visited.add(name)
+    for name in sorted(names): visit(name)
+    return graph
+
+
+def graph_errors(graph):
+    try:
+        validate_graph(graph)
+    except (ValueError, TypeError, KeyError) as exc:
+        return [str(exc)]
+    return []
+
+
+def task_key(node):
+    return (node['goal'], node['node'], node.get('item'), node['generation'])
+
+
+def selected_path(value, path):
+    for token in path:
+        if isinstance(value, dict) and isinstance(token, str) and token in value:
+            value = value[token]
+        elif isinstance(value, list) and type(token) is int and 0 <= token < len(value):
+            value = value[token]
+        else:
+            raise ValueError('Selected typed input path is missing')
+    return value
+
+
+# This process-local projection cache is disposable, never authority. Marshal
+# preserves mapping order/key types and returns fresh output containers; only
+# bytes generated here are decoded. No cache data is read from external storage.
+_PROJECTION_CACHE = OrderedDict()
+_PROJECTION_CACHE_LOCK = RLock()
+_PROJECTION_CACHE_BYTES = 8 * 1024 * 1024
+
+
+def derive_task_steps(graph, payload, context):
+    """Project the exact current snapshot; reuse expanded projections only."""
+    if not graph.get('task_sets'):
+        return _derive_task_steps(graph, payload, context)
+    try:
+        key = marshal.dumps((graph, payload, context))
+    except (TypeError, ValueError):
+        return _derive_task_steps(graph, payload, context)
+    if len(key) > _PROJECTION_CACHE_BYTES:
+        return _derive_task_steps(graph, payload, context)
+    with _PROJECTION_CACHE_LOCK:
+        encoded = _PROJECTION_CACHE.get(key)
+        if encoded is not None:
+            _PROJECTION_CACHE.move_to_end(key)
+    if encoded is not None:
+        return marshal.loads(encoded)
+    value = _derive_task_steps(graph, payload, context)
+    try:
+        # Do not publish a projection under an input that changed mid-call.
+        if marshal.dumps((graph, payload, context)) != key:
+            return value
+        encoded = marshal.dumps(value)
+    except (TypeError, ValueError):
+        return value
+    if len(key) + len(encoded) <= _PROJECTION_CACHE_BYTES:
+        with _PROJECTION_CACHE_LOCK:
+            _PROJECTION_CACHE[key] = encoded
+            while (len(_PROJECTION_CACHE) > 4 or
+                   sum(len(k) + len(v) for k, v in _PROJECTION_CACHE.items()) > _PROJECTION_CACHE_BYTES):
+                _PROJECTION_CACHE.popitem(last=False)
+    return value
+
+
+def _derive_task_steps(graph, payload, context):
+    """Evaluate an authenticated closed snapshot without provider or clock I/O.
+
+    The host supplies content-addressed artifacts and relationship coverage.
+    Results are projections of that snapshot, not a mutable execution cursor.
+    """
+    # The host has validated the closed JSON snapshot. Avoid recursively
+    # revalidating its immutable containers for every node fingerprint.
+    def semantic_hash(value):
+        raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
+        return 'sha256:' + hashlib.sha256(raw).hexdigest()
+    goal = context['goal']
+    artifacts = dict(context['artifacts'])
+    policy = semantic_hash(context['policy'])
+    snapshots = dict(context.get('goals', {}))
+    snapshots.setdefault(goal, {'graph': graph, 'payload': payload})
+    instances, records, outputs, expansions, memberships = {}, {}, [], {}, {}
+    statuses, current, evaluating, expanding = {}, {}, set(), set()
+    member_lookup, records_by_node, selector_paths = {}, {}, {}
+    verified_artifacts = set()
+    def artifact(ref):
+        identity = ref['hash']; value = artifacts[identity]
+        if identity not in verified_artifacts:
+            raw = context.get('published_bytes', {}).get(identity)
+            if raw is not None:
+                if len(raw) > 1048576 or 'sha256:' + hashlib.sha256(raw).hexdigest() != identity or json.loads(raw) != value: raise ValueError('Published artifact bytes hash mismatch')
+            elif semantic_hash(value) != identity: raise ValueError('Artifact content checksum mismatch')
+            verified_artifacts.add(identity)
+        return value
+    def remember(value):
+        identity = semantic_hash(value); artifacts[identity] = value
+        return {'hash': identity, 'uri': 'urn:' + identity}
+    for number, snapshot in snapshots.items():
+        records[number] = []
+        for ref in snapshot['payload']['evidence']:
+            value = artifact(ref)
+            if value.get('type') != 'result': raise ValueError('Payload evidence must contain host Result artifacts')
+            result = value['content']
+            if result['node']['goal'] != number: raise ValueError('Result goal identity mismatch')
+            records[number].append((ref, result))
+            records_by_node.setdefault(task_key(result['node']), []).append((ref, result))
+            for output_ref in result['outputs'].values():
+                output = artifact(output_ref)
+                if output.get('producer') != result['attempt'] or output.get('provenance', {}).get('actor') != result['executor']:
+                    raise ValueError('Result/output producer provenance mismatch')
+                outputs.append((output_ref, output, result))
+        for index, node in enumerate(snapshot['graph']['nodes']):
+            identity = {'goal': number, 'node': node['id'], 'item': None, 'generation': 1}
+            instances[task_key(identity)] = {'node': identity, 'contract': node, 'location': ['nodes', index]}
+        for index, expansion in enumerate(snapshot['graph']['task_sets']):
+            expansions[(number, expansion['id'])] = (expansion, index)
+    latest_outputs = {key: {ref['hash'] for ref in rows[-1][1]['outputs'].values()} for key, rows in records_by_node.items()}
+    output_owners = {ref['hash']: task_key(result['node']) for rows in records.values() for _, result in rows for ref in result['outputs'].values()}
+    obligations = {}
+    for ref, output, _ in outputs:
+        value = output['content']
+        if output['type'] == 'admission':
+            finding = artifact(value['finding'])['content']
+            obligations[(finding['target']['subject'].get('goal'), finding['id'])] = {'finding': value['finding'], 'content': finding, 'admission': ref, 'applicability': value['applicability']}
+        elif output['type'] in ('withdrawal', 'retirement') and isinstance(value, dict) and 'finding' in value and value.get('decision') != 'retire_member':
+            finding = artifact(value['finding'])['content']
+            obligations.pop((finding['target']['subject'].get('goal'), finding['id']), None)
+    def relationship(number):
+        return snapshots[number].get('relationship', {'parent': {'known': False, 'value': None}, 'children': {'known': False, 'envelopes': {}}})
+    def selected_goals(selector, number):
+        target = selector['goal']
+        if target == '#this': return [number]
+        if type(target) is int: return [target]
+        relation = relationship(number)
+        if target == '#parent':
+            if not relation['parent']['known'] or relation['parent']['value'] is None: raise ValueError('Required parent relationship is missing or unknown')
+            return [relation['parent']['value']]
+        if not relation['children']['known']: raise ValueError('Required children membership completeness is unknown: ' + snapshots[number].get('relationship_error', 'missing provider coverage'))
+        return sorted(int(key) for key in relation['children']['envelopes'])
+    def targets(selector, number):
+        result = []
+        for selected in selected_goals(selector, number):
+            if selected not in snapshots: raise ValueError(f'Required goal {selected} evidence is unknown')
+            if selector['kind'] == 'node': result.append((selected, selector['node'], None, 1)); continue
+            expansion_key = (selected, selector['expansion'])
+            expand(expansion_key)
+            members = memberships.get(expansion_key)
+            if members is None: raise ValueError('Selection membership is unresolved')
+            if selector['kind'] == 'join': result.extend(members); continue
+            generation = selector['generation']
+            if generation == 'current':
+                match = member_lookup.get((expansion_key, selector['item']))
+                matches = [match] if match is not None else []
+                if not matches: raise ValueError('Member current generation is missing or retired')
+                result.extend(matches)
+            else:
+                expansion, _ = expansions[expansion_key]
+                result.append((selected, expansion['template']['id'], selector['item'], generation))
+        return sorted(set(result), key=lambda k: (k[0], k[1], k[2] or '', k[3]))
+    def get_input(binding, number):
+        producer = binding['producer']; selected = []
+        if 'slot' in producer:
+            slot = producer['slot']
+            if slot == 'relationship_context':
+                ref = snapshots[number].get('context_ref')
+                if ref is None: raise ValueError('Authenticated relationship context unavailable')
+                value = artifact(ref)['content']
+            else:
+                ref = snapshots[number]['payload'][slot]
+                value = artifact(ref)['content']
+            value = selected_path(value, binding['path']); path = binding['path']
+        else:
+            selector = producer['node']; selected = targets(selector, number)
+            plural = selector['goal'] == '#children'; joining = selector['kind'] == 'join'
+            values, sources = {}, {}
+            for key in selected:
+                evaluate(key)
+                if key not in current: raise ValueError('Input producer is not current: ' + str(key))
+                output_ref = current[key][1]['outputs'][binding['output']]
+                item = selected_path(artifact(output_ref)['content'], binding['path'])
+                if plural:
+                    child = str(key[0])
+                    if joining:
+                        values.setdefault(child, {})[key[2]] = item; sources.setdefault(child, {})[key[2]] = output_ref
+                    else: values[child] = item; sources[child] = output_ref
+                elif joining: values[key[2]] = item; sources[key[2]] = output_ref
+                else: value, ref = item, output_ref
+            if plural or joining:
+                if plural and joining:
+                    for child in selected_goals(selector, number): values.setdefault(str(child), {}); sources.setdefault(str(child), {})
+                value = values
+                ref = remember({'type': 'binding', 'content': {'values': values, 'sources': sources}, 'producer': None,
+                                'provenance': {'actor': 'host', 'source': None, 'policy': policy}})
+                path = ['values']
+            else:
+                if len(selected) != 1: raise ValueError('Required singular artifact is missing')
+                path = binding['path']
+        if not value_matches(binding['type'], value): raise ValueError('Selected input violates its aggregate type contract')
+        return ref, value, path, selected
+    def expand(key):
+        if key in memberships: return
+        if key in expanding: raise ValueError('Projected selection dependency cycle')
+        if key not in expansions: raise ValueError('Unknown expansion reference')
+        expanding.add(key)
+        expansion, index = expansions[key]; number = key[0]
+        try:
+            _, selection, _, _ = get_input(expansion['source'], number)
+            if not isinstance(selection, dict) or set(selection) != {'items', 'rationale'} or not isinstance(selection['items'], dict): raise ValueError('Selection contract is unresolved')
+            history, active = {}, set()
+            producer = expansion['source']['producer'].get('node', {})
+            for _, previous in records[number]:
+                if previous['node']['node'] != producer.get('node'): continue
+                ref = previous['outputs'].get(expansion['source']['output'])
+                if ref is None: continue
+                prior = selected_path(artifact(ref)['content'], expansion['source']['path'])
+                keys = set(prior['items'])
+                for item in keys - active: history[item] = history.get(item, 0) + 1
+                active = keys
+            selected = []
+            def compile_template(value):
+                if value == {'kind': 'self'}: return lambda item, subject: subject
+                if value == {'item_key': True}: return lambda item, subject: item
+                if isinstance(value, dict):
+                    changed = {name: fn for name, child in value.items() if (fn := compile_template(child)) is not None}
+                    if changed: return lambda item, subject: {**value, **{name: fn(item, subject) for name, fn in changed.items()}}
+                elif isinstance(value, list):
+                    changed = {i: fn for i, child in enumerate(value) if (fn := compile_template(child)) is not None}
+                    if changed: return lambda item, subject: [changed[i](item, subject) if i in changed else child for i, child in enumerate(value)]
+                return None
+            materialize = compile_template(expansion['template'])
+            for item in sorted(selection['items']):
+                if not task_identifier(item): raise ValueError('Selection item identity is invalid')
+                generation = history.get(item, 1)
+                identity = {'goal': number, 'node': expansion['template']['id'], 'item': item, 'generation': generation}
+                self_selector = {'kind': 'member', 'goal': number, 'expansion': key[1], 'item': item, 'generation': generation}
+                node_contract = materialize(item, self_selector) if materialize else expansion['template']
+                identity_key = task_key(identity)
+                instances[identity_key] = {'node': identity, 'contract': node_contract, 'expansion': key[1], 'location': ['task_sets', index, 'template']}
+                selected.append(identity_key)
+                member_lookup[(key, item)] = identity_key
+            memberships[key] = selected
+        except (KeyError, ValueError, TypeError):
+            memberships[key] = None
+        finally: expanding.remove(key)
+    def covers(scope, target, number):
+        if scope['output'] != target['output']: return False
+        a, b = scope['subject'], target['subject']
+        if b.get('goal') not in selected_goals(a, number): return False
+        if a['kind'] == 'node': return b['kind'] == 'node' and a['node'] == b['node']
+        return b.get('expansion') == a.get('expansion') and (a['kind'] == 'join' or a.get('item') == b.get('item') and (a.get('generation') == 'current' or a.get('generation') == b.get('generation')))
+    def obligation_resolved(obligation):
+        for _, result in list(current.values()):
+            for ref in result['outputs'].values():
+                output = artifact(ref)
+                if output['type'] != 'resolution': continue
+                value = output['content']
+                if value['finding'] != obligation['finding'] or value['decision'] != 'resolved': continue
+                if value['reviewer_result'] not in [r for r, _ in current.values()]: continue
+                accepted = {ref['hash'] for _, item in current.values() for ref in item['outputs'].values()}
+                if all(ref['hash'] in accepted for ref in value['subjects']): return True
+        return False
+    def evaluate(key):
+        if key in statuses: return
+        if key in evaluating: raise ValueError('Projected qualified-node dependency cycle: ' + str(key))
+        if key not in instances: raise ValueError('Unknown or retired qualified node: ' + str(key))
+        evaluating.add(key); instance = instances[key]; node = instance['contract']; number = key[0]
+        state = {**instance, 'inputs': [], 'values': {}, 'resolutions': [], 'state': 'blocked'}
+        contract = semantic_hash({'node': node, 'policy': policy})
+        state['contract_hash'] = contract
+        try:
+            # Accepted finding/admission effects were folded from history above.
+            # Their producing Result still obeys ordinary input freshness.
+            prerequisites = []
+            for selector in node['requires']:
+                for parent in targets(selector, number):
+                    evaluate(parent)
+                    if parent not in current: raise ValueError('Blocked: prerequisite is not current: ' + str(parent) + ': ' + statuses.get(parent, {}).get('reason', 'required evidence is stale or missing'))
+                    prerequisites.append(parent)
+            for gate in node['gates']:
+                for resolver_key, resolver in list(instances.items()):
+                    if resolver_key == key: continue
+                    if any(covers(gate, scope, number) for scope in resolver['contract']['resolves']): evaluate(resolver_key)
+                if any(covers(gate, o['content']['target'], number) and not obligation_resolved(o) for o in obligations.values()): raise ValueError('Unresolved finding/applicability blocks this gate')
+            hashes, bound = {}, set()
+            for name, binding in sorted(node['inputs'].items()):
+                ref, value, path, selected = get_input(binding, number)
+                state['inputs'].append({'name': name, 'source': ref, 'path': path, 'mode': binding['mode']})
+                state['values'][name] = value; bound.update(selected)
+                hashes[name] = ref['hash'] if binding['mode'] == 'identity' else semantic_hash(value)
+            if ('workspaces' in context or 'repository_workspace' in node['executor']['resources']) and not context.get('workspace_probe'):
+                workspace = context.get('workspaces', {}).get(key)
+                if not workspace or 'error' in workspace: raise ValueError((workspace or {}).get('error', 'Workspace allocation/authority is unavailable'))
+                ref = workspace['binding']
+                # Root's read-only checkout pin guards its live acquisition,
+                # not semantic reuse of decisions consuming only declared Refs.
+                if not workspace.get('readonly') or node['executor']['role'] != 'root':
+                    state['inputs'].append({'name': '__workspace', 'source': ref, 'path': [], 'mode': 'identity'})
+                    hashes['__workspace'] = ref['hash']
+                state['workspace'] = workspace
+            if 'publications' in context and 'repository_publication' in node['executor']['resources']:
+                publication = context['publications'].get(key)
+                if not publication or 'error' in publication: raise ValueError((publication or {}).get('error', 'Publication provider context is unavailable'))
+                ref = publication['binding']
+                state['inputs'].append({'name': '__publication', 'source': ref, 'path': [], 'mode': 'identity'})
+                hashes['__publication'] = ref['hash']
+                state['publication'] = publication
+            # Requires is a currentness gate. Identity dependencies must be
+            # declared inputs; unrelated prerequisite Result revisions must not
+            # override content-mode reuse once all gates are current again.
+            implicit = []
+            correction_scope = {'subject': {'kind': 'member', 'goal': number, 'expansion': instance['expansion'], 'item': key[2], 'generation': key[3]} if 'expansion' in instance else {'kind': 'node', 'goal': number, 'node': key[1]}, 'output': None}
+            applicable, unresolved = [], False
+            for obligation in obligations.values():
+                target = obligation['content']['target']
+                correction_scope['output'] = target['output']
+                if covers(correction_scope, target, number):
+                    if obligation['applicability'] == 'unresolved': unresolved = True
+                    if obligation['applicability'] == 'applicable': applicable.append(obligation['finding'])
+            implicit += [('__correction_' + str(i), ref) for i, ref in enumerate(sorted(applicable, key=lambda r: r['hash']))]
+            for name, ref in implicit:
+                state['inputs'].append({'name': name, 'source': ref, 'path': [], 'mode': 'identity'}); hashes[name] = ref['hash']
+            def locations(value, path=()):
+                if isinstance(value, dict):
+                    if value.get('kind') in ('node', 'member', 'join') and 'goal' in value:
+                        yield path
+                    else:
+                        for name in sorted(value): yield from locations(value[name], path + (name,))
+                elif isinstance(value, list):
+                    for i, child in enumerate(value): yield from locations(child, path + (i,))
+            path_key = (number, instance.get('expansion'), node['id'])
+            if path_key not in selector_paths: selector_paths[path_key] = list(locations(node))
+            for path in selector_paths[path_key]:
+                selector = selected_path(node, path)
+                selected = targets(selector, number)
+                state['resolutions'].append({'location': instance['location'] + list(path), 'selector': selector,
+                    'context': snapshots[number].get('context_ref'), 'targets': [instances[k]['node'] for k in selected]})
+            resolution_semantics = [{'location': r['location'], 'selector': r['selector'], 'targets': r['targets']} for r in state['resolutions']]
+            state.update(input_hash=semantic_hash({'node': instance['node'], 'contract': contract, 'inputs': hashes, 'resolutions': resolution_semantics}), state='ready', prerequisites=prerequisites)
+            for ref, result in reversed(records_by_node.get(key, [])):
+                if task_key(result['node']) != key or result['contract'] != contract: continue
+                old_hashes = {}
+                for binding in result['inputs']:
+                    if (context.get('workspace_probe') or 'workspaces' not in context) and binding['name'] == '__workspace': continue
+                    if 'publications' not in context and binding['name'] == '__publication': continue
+                    old_hashes[binding['name']] = binding['source']['hash'] if binding['mode'] == 'identity' else semantic_hash(selected_path(artifact(binding['source'])['content'], binding['path']))
+                old_resolutions = [{k: r[k] for k in ('location', 'selector', 'targets')} for r in result.get('resolutions', [])]
+                if old_hashes.get('__workspace') != hashes.get('__workspace'): state['reason'] = 'Workspace consumed/acquisition snapshot changed'
+                if old_hashes == hashes and old_resolutions == resolution_semantics:
+                    current[key] = (ref, result); state['state'] = 'complete'; state.pop('reason', None); break
+            if unresolved and key not in current:
+                state['state'] = 'blocked'; raise ValueError('Finding applicability unresolved')
+        except (ValueError, KeyError, TypeError) as exc:
+            state['reason'] = str(exc)
+        finally:
+            statuses[key] = state; evaluating.remove(key)
+    for key in list(instances): evaluate(key)
+    for key in expansions: expand(key)
+    for key in list(instances): evaluate(key)
+    leases = {task_key(item['node']): item for item in payload['operational']['leases']}
+    complete = True
+    for selector in graph['terminals']:
+        try: complete = complete and all(key in current for key in targets(selector, goal))
+        except (ValueError, KeyError): complete = False
+    if any(not obligation_resolved(o) for o in obligations.values()): complete = False
+    return {'ready': [s for k, s in statuses.items() if k[0] == goal and s['state'] == 'ready' and k not in leases], 'states': statuses, 'current': current, 'leases': leases, 'complete': complete, 'obligations': obligations, 'artifacts': artifacts}

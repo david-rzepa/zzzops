@@ -74,11 +74,16 @@ def parse_managed_goal(text: str, issue_number: int | None = None) -> dict[str, 
         re.escape(GOAL_BLOCK_START) + r"\s*\n(.*?)\n" + re.escape(GOAL_BLOCK_END),
         re.DOTALL,
     )
-    match = pattern.search(text)
+    matches = list(pattern.finditer(text))
+    if len(matches) > 1:
+        raise ValueError('Duplicate managed goal blocks')
+    match = matches[0] if matches else None
     if not match:
         return None
     try:
-        goal = json.loads(match.group(1))
+        if len(match.group(1).encode('utf-8')) > 1024 * 1024:
+            raise ValueError('Managed goal size limit exceeded')
+        goal = comment_store.strict_json(match.group(1))
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid managed goal JSON: {exc}") from exc
     errors = validate_managed_goal(goal, issue_number)
@@ -87,9 +92,32 @@ def parse_managed_goal(text: str, issue_number: int | None = None) -> dict[str, 
     return goal
 
 
+def validate_goal_envelope(goal, issue_number=None):
+    import zzzops_phase_evidence as evidence
+    try:
+        evidence.contract_fields(goal, {'schema_version', 'repository', 'issue', 'revision', 'state', 'parent', 'payload'}, 'GoalEnvelope')
+        if type(goal['schema_version']) is not int or goal['schema_version'] != 2: raise ValueError('Unsupported schema version')
+        if not isinstance(goal['repository'], str) or not goal['repository'].strip(): raise ValueError('Repository identity is required')
+        if not evidence.positive_integer(goal['issue']) or issue_number is not None and goal['issue'] != issue_number: raise ValueError('Provider issue identity mismatch')
+        if not evidence.positive_integer(goal['revision']): raise ValueError('Revision must be a positive integer')
+        if goal['state'] not in ('open', 'archived'): raise ValueError('State must be open or archived')
+        if goal['parent'] is not None and not evidence.positive_integer(goal['parent']): raise ValueError('Parent must be null or positive integer')
+        if goal['parent'] == goal['issue']: raise ValueError('Parent cannot be self')
+        evidence.validate_ref(goal['payload'])
+    except ValueError as exc:
+        return [str(exc)]
+    return []
+
+
 def validate_managed_goal(goal: Any, issue_number: int | None = None) -> list[str]:
     if not isinstance(goal, dict):
         return ["managed goal must be an object"]
+    if type(goal.get('schema_version')) is not int:
+        return ['schema_version must be an integer']
+    if goal['schema_version'] == 2:
+        return validate_goal_envelope(goal, issue_number)
+    if goal['schema_version'] != 1:
+        return [f"Unsupported managed goal schema version {goal['schema_version']}"]
     errors = []
     unknown = sorted(set(goal) - GOAL_FIELDS)
     if unknown:
@@ -411,6 +439,15 @@ def github_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
     goal = parse_managed_goal(body, number)
     if goal is None:
         raise ValueError("managed goal block is required")
+    if goal['schema_version'] == 2:
+        return {'key': number, 'title': issue.get('title', ''), 'status': 'done' if goal['state'] == 'archived' or str(issue.get('state', '')).lower() == 'closed' else 'ready',
+                'priority': 'P2', 'value': 'medium', 'difficulty': 'unknown', 'confidence': 'high',
+                'parent': goal['parent'], 'depends_on': [], 'claim': None, 'resources': [], 'needs_human': False,
+                'blockers': [], 'blocker_categories': [], 'next_action': 'Evaluate current generic evidence.',
+                'revision': goal['revision'], 'digest': hashlib.sha256(body.encode()).hexdigest(),
+                'updated_at': issue.get('updated_at'), 'human_spec': body.split(GOAL_BLOCK_START, 1)[0],
+                'acceptance_criteria': [], 'schema_version': 2, 'envelope': goal,
+                'state': issue.get('state'), 'url': issue.get('html_url'), 'labels': sorted(row['name'] if isinstance(row, dict) else row for row in issue.get('labels', []))}
     errors = validate_github_issue_goal(number, issue.get("title"), body)
     if errors:
         raise ValueError("; ".join(errors))
@@ -549,10 +586,11 @@ def github_archived_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
     )
     statuses = [label.removeprefix("zzzops:status:") for label in labels if label.startswith("zzzops:status:")]
     priorities = [label.removeprefix("zzzops:priority:") for label in labels if label.startswith("zzzops:priority:")]
-    if len(statuses) != 1 or statuses[0] not in {"done", "cancelled"}:
-        raise ValueError("closed goal requires exactly one terminal status label")
-    if len(priorities) != 1 or priorities[0] not in GOAL_PRIORITIES:
-        raise ValueError("closed goal requires exactly one valid priority label")
+    # Provider closure is only an operational archive observation. Labels may
+    # predate that observation; neither labels nor closure prove a terminal
+    # Result. Exact consumers resolve the archived envelope and evidence.
+    status = 'cancelled' if statuses == ['cancelled'] else 'done'
+    priority = priorities[0] if len(priorities) == 1 and priorities[0] in GOAL_PRIORITIES else 'P2'
     if str(issue.get("state", "")).casefold() != "closed":
         raise ValueError("archived goal projection requires a closed issue")
     digest_source = json.dumps(
@@ -563,8 +601,8 @@ def github_archived_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
         ensure_ascii=False, sort_keys=True, separators=(",", ":"),
     )
     return {
-        "key": issue.get("number"), "title": issue.get("title"), "status": statuses[0],
-        "priority": priorities[0], "value": None, "difficulty": None, "confidence": None,
+        "key": issue.get("number"), "title": issue.get("title"), "status": status,
+        "priority": priority, "value": None, "difficulty": None, "confidence": None,
         "parent": None, "depends_on": [], "claim": None, "resources": [], "needs_human": False,
         "blocker_categories": [], "next_action": None,
         "revision": None, "digest": hashlib.sha256(digest_source.encode("utf-8")).hexdigest(),
@@ -1202,3 +1240,79 @@ def migrate_open_goal_schemas(
         "migrated": migrated, "already_current": already_current,
         "remaining": remaining, "complete": remaining == 0,
     }
+
+
+def activate_goal_conversion(adapter, repository, number, prepared, request_id):
+    """Persist an already admitted conversion with exact retry/readback guards.
+
+    This transport seam grants no authority: the generic submission boundary
+    authenticates the conversion, independent review and root approval first.
+    """
+    if (not isinstance(prepared, dict) or prepared.get('repository') != repository
+            or prepared.get('issue') != number or prepared.get('source', {}).get('number') != number):
+        raise ValueError('Conversion source/repository/issue identity mismatch')
+    if not isinstance(request_id, str) or not request_id:
+        raise ValueError('Conversion requires exact request identity')
+    identity = comment_store.digest(prepared)
+    source = prepared['source']
+    target = {'body': prepared['target_body'], 'labels': prepared['target_labels']}
+    envelope = parse_managed_goal(target['body'], number)
+    if not envelope or envelope['schema_version'] != 2 or envelope['repository'] != repository:
+        raise ValueError('Conversion target identity mismatch')
+    def encode(value):
+        raw = comment_store.canonical(value).encode()
+        text = base64.b64encode(zlib.compress(raw)).decode()
+        return comment_store.guard_comment('<details><summary>Immutable conversion evidence</summary>\n\n```text\n' + text + '\n```\n</details>')
+    def decoded(row):
+        match = re.search(r'```text\n([A-Za-z0-9+/=]+)\n```', row.get('body', ''))
+        if not match: return None
+        try:
+            decoder = zlib.decompressobj()
+            raw = decoder.decompress(base64.b64decode(match[1]), comment_store.MAX_ARTIFACT_BYTES + 1)
+            if len(raw) > comment_store.MAX_ARTIFACT_BYTES or not decoder.eof or decoder.unused_data: return None
+            value = comment_store.strict_json(raw.decode())
+            return value if isinstance(value, dict) and value.get('conversion_request') == request_id else None
+        except (ValueError, zlib.error, UnicodeError): return None
+    comments = adapter.get_issue_comments(number)
+    existing = [value for row in comments if (value := decoded(row))]
+    if any(value.get('request_hash') != identity for value in existing):
+        raise ValueError('Conversion request/receipt payload conflict')
+    def current():
+        issue = adapter.get_issue(number)
+        if issue.get('state', '').lower() == 'closed': raise ValueError('Archived source cannot activate')
+        if issue.get('body') not in {source['body'], target['body']}:
+            raise ValueError('Concurrent conversion source changed; no overwrite or rollback')
+        if issue['body'] == target['body'] and not any(v.get('stage') == 'intent' for v in existing):
+            raise ValueError('Target body has no exact conversion intent')
+        return issue
+    current()
+    if any(value.get('stage') == 'receipt' for value in existing):
+        if current().get('labels') != target['labels']: raise ValueError('Conversion receipt/provider labels conflict')
+        return {'status': 'activated', 'request': request_id}
+    def append(stage, value):
+        record = {'conversion_request': request_id, 'request_hash': identity, 'stage': stage, **value}
+        body = encode(record)
+        if any(row.get('body') == body for row in adapter.get_issue_comments(number)):
+            existing.append(record); return
+        current()
+        try: result = adapter.create_issue_comment(number, body)
+        except (RuntimeError, OSError):
+            result = next((row for row in adapter.get_issue_comments(number) if row.get('body') == body), None)
+            if result is None: raise
+        if result.get('body') != body: raise ValueError('Conversion comment readback mismatch')
+        existing.append(record)
+        current()
+    append('backup', {'source': source})
+    append('intent', {'repository': repository, 'issue': number, 'source_hash': comment_store.digest(source),
+                      'target_hash': comment_store.digest(target), **{key: prepared[key] for key in ('converter', 'policy', 'review', 'approval', 'missing_obligations', 'mapped_evidence')}})
+    for field in ('body', 'labels'):
+        issue = current()
+        if issue.get(field) == target[field]: continue
+        try: result = adapter.update_issue(number, {field: target[field]})
+        except (RuntimeError, OSError):
+            result = current()
+            if result.get(field) != target[field]: raise
+        if result.get(field) != target[field]: raise ValueError('Conversion provider readback mismatch')
+        current()
+    append('receipt', {'target_hash': comment_store.digest(target)})
+    return {'status': 'activated', 'request': request_id}
