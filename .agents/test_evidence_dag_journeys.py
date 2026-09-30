@@ -1780,13 +1780,12 @@ class WorkspaceAuthorityPublicTests(DagFixture):
     def test_crlf_design_correction_retains_frozen_raw_checkout_overrides(self):
         self.red_design_correction(crlf=True)
 
-    def test_host_correction_predecessor_rejects_wrong_identity_disconnected_and_unbounded_chain(self):
-        """Finite proposed host wire reusing the owned-output predecessor bound.
+    def test_host_correction_predecessor_rejects_wrong_identity_disconnected_and_forged_ancestry(self):
+        """Acquisition ancestry is immutable host-issued provenance.
 
-        acquisition.predecessor is a host-issued Ref, never a caller argument.
-        Its generic snapshot binds node, allocation, authorization, approval,
-        result, proof, reviews and prior (Ref|null). The prior chain has the
-        existing 32-hop reconstruction bound; it confers no scheduling authority.
+        These mutations test the exact receipt pin, not historical traversal
+        capacity. Neither a caller-selected prior nor a long fabricated chain
+        may replace the predecessor acquired through the public contract.
         """
         self.setup_workspace_corrections()
         self.red_candidate()
@@ -1832,7 +1831,7 @@ class WorkspaceAuthorityPublicTests(DagFixture):
             snapshot = copy.deepcopy(predecessor)
             snapshot["prior"] = deep
             deep = self.blob(snapshot)
-        mutations.extend([("over_limit_chain", deep), ("null", None),
+        mutations.extend([("forged_acquisition_ancestry", deep), ("null", None),
                           ("partial", {"hash": reference["hash"]}),
                           ("unknown", {"hash": "sha256:" + "8" * 64, "uri": "urn:sha256:" + "8" * 64})])
         claimed = content_hash({"unpublished_original_predecessor": predecessor})
@@ -1853,7 +1852,7 @@ class WorkspaceAuthorityPublicTests(DagFixture):
                 response = self.session.call(100, request, expected=2)
                 self.assertRegex(json.dumps(response), r"(?i)predecessor|acquisition|allocation|scope|identity|proof|chain|reference|review")
                 # This corrupted outer acquisition may reject before decoding;
-                # the separate real-correction journey tests traversal capacity.
+                # the separate real-correction journey tests uncapped success.
                 self.assertEqual(before, (self.provider.issues, self.provider.comments))
                 self.provider.issues[100] = copy.deepcopy(original_issue)
         # Caller cannot replace even a valid host snapshot through submit data.
@@ -1865,46 +1864,199 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.assertEqual(proof, self.read_blob(proof_ref))
         self.assertEqual(predecessor, self.session.read(100, reference))
 
-    def test_real_accepted_correction_chain_reaches_bound_before_refusing_next_transition(self):
-        self.setup_workspace_corrections(correction_rounds=32)
+    def correction_projection_fixture(self):
+        """Capture real admission inputs; synthetic variants never publish authority."""
+        self.setup_workspace_corrections()
+        self.red_candidate()
+        first = self.acquire_workspace("beta")
+        (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
+        proof_ref, proof = self.candidate(first, 0)
+        self.review_candidate("beta", 0)
+        result_ref, result = self.result("beta")
+        output_ref = self.produced("beta")
+        self.admit_workspace_correction()
+        captured = []
+        method = z._workflow.Workflow.node_workspace_context
+        def observe(adapter, snapshots, projection, artifacts):
+            captured.append((adapter, copy.deepcopy(snapshots), copy.deepcopy(projection), copy.deepcopy(artifacts)))
+            return method(adapter, snapshots, projection, artifacts)
+        with mock.patch.object(z._workflow.Workflow, "node_workspace_context", observe):
+            self.assertIn("beta", self.names())
+        adapter, snapshots, projection, artifacts = captured[-1]
+        self.assertFalse(snapshots[100]["payload"]["operational"]["leases"], "No active acquisition pin can mask the count seam")
+        key = z._phase_evidence.task_key(first["node"])
+        prior = {"node": first["node"], "allocation": self.produced("charter", "grant"),
+                 "authorization": self.produced("inspect_charter", "permit"),
+                 "approval": self.produced("consent", "permit"), "result": result_ref,
+                 "proof": proof_ref, "reviews": [self.result("accept_beta")[0]], "prior": None}
+        def project(length, *, change=None, missing_root=False, result_actor=None, wrong_review_subject=False, corrupt_proof=False):
+            local_snapshots, local_projection, local_artifacts = copy.deepcopy((snapshots, projection, artifacts))
+            def remember(value):
+                ref = {"hash": content_hash(value), "uri": "urn:" + content_hash(value)}
+                local_artifacts[ref["hash"]] = value
+                return ref
+            previous = None
+            for _ in range(length):
+                # Synthetic immutable historical links: real lifetime success
+                # is not inferred from these deliberately repeated old grants.
+                previous = remember({**prior, "prior": previous})
+            revised_proof = copy.deepcopy(proof)
+            revised_proof["acquisition"]["predecessor"] = previous
+            revised_proof["acquisition_hash"] = content_hash(revised_proof["acquisition"])
+            if change:
+                change(revised_proof)
+            revised_output = copy.deepcopy(local_artifacts[output_ref["hash"]])
+            revised_output["provenance"]["source"] = remember(revised_proof)
+            if corrupt_proof:
+                local_artifacts[revised_output["provenance"]["source"]["hash"]] = {**revised_proof, "actor": "corrupt-bytes"}
+            new_output = remember(revised_output)
+            revised_result = copy.deepcopy(local_artifacts[result_ref["hash"]])
+            revised_result["content"]["outputs"]["value"] = new_output
+            if result_actor:
+                revised_result["content"]["executor"] = result_actor
+            new_result = remember(revised_result)
+            evidence = local_snapshots[100]["payload"]["evidence"]
+            for index, ref in enumerate(evidence):
+                if ref == result_ref:
+                    evidence[index] = new_result
+                    continue
+                artifact = copy.deepcopy(local_artifacts[ref["hash"]])
+                if artifact.get("type") != "result" or wrong_review_subject:
+                    continue
+                changed = False
+                for binding in artifact["content"]["inputs"]:
+                    if binding["source"] == output_ref:
+                        binding["source"] = new_output
+                        changed = True
+                if changed:
+                    evidence[index] = remember(artifact)
+            if missing_root:
+                root_key = z._phase_evidence.task_key(self.result("consent")[1]["node"])
+                local_projection["current"].pop(root_key)
+            contexts = method(adapter, local_snapshots, local_projection, local_artifacts)
+            return contexts[key], local_artifacts, previous, new_result
+        return project
+
+    def test_synthetic_prior_provenance_exceeds_32_without_lifetime_cap(self):
+        """Bounded production seam test; not forty genuine public corrections."""
+        project = self.correction_projection_fixture()
+        for length in (2, 40):
+            with self.subTest(prior_links=length):
+                context, artifacts, previous, result = project(length)
+                self.assertNotIn("error", context, context.get("error"))
+                predecessor = artifacts[context["acquisition"]["predecessor"]["hash"]]
+                self.assertEqual(previous, predecessor["prior"])
+                self.assertEqual(result, predecessor["result"])
+                self.assertEqual(self.produced("consent", "permit"), predecessor["approval"])
+
+    def test_synthetic_prior_grants_cannot_replace_current_authority_or_immediate_proof(self):
+        project = self.correction_projection_fixture()
+        good, _artifacts, _previous, _result = project(2)
+        self.assertNotIn("error", good)
+        for length in (2, 40):
+            denied, _artifacts, _previous, _result = project(length, missing_root=True)
+            self.assertRegex(denied.get("error", ""), r"(?i)current independent authorization and root approval")
+        for options in ({"result_actor": "wrong-result-executor"}, {"wrong_review_subject": True}, {"corrupt_proof": True}):
+            with self.subTest(immediate_bundle=options):
+                denied, _artifacts, _previous, _result = project(2, **options)
+                self.assertIn("error", denied, "Invalid immediate bundle cannot confer reuse")
+        for field, value in (("actor", "another-writer"), ("node", {"goal": 100, "node": "alpha", "item": None, "generation": 1}),
+                             ("acquisition_hash", "sha256:" + "0" * 64), ("workspace", "sha256:" + "0" * 64)):
+            with self.subTest(immediate_proof=field):
+                denied, _artifacts, _previous, _result = project(2, change=lambda proof: proof.update({field: value}))
+                self.assertIn("error", denied, "Invalid immediate proof cannot grant candidate reuse")
+
+    def accepted_correction_chain(self, rounds):
+        """Real corrections with identical authority/history checks at every size."""
+        self.setup_workspace_corrections(root_gate=True, correction_rounds=rounds)
         self.red_candidate()
         first = self.acquire_workspace("beta")
         (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
         initial_ref, initial_proof = self.candidate(first, 0)
         retained_proofs = [(initial_ref, initial_proof)]
+        retained_predecessors = []
         self.review_candidate("beta", 0)
-        # Every predecessor is produced through real acquire/submit/review,
-        # rather than repeating forged snapshots behind an invalid outer pin.
-        for iteration in range(1, 33):
-            admissions = self.admit_workspace_correction()
-            work = self.acquire_workspace("beta")
-            (self.fixture.repo / "source.py").write_text(
-                "def value():\n    # Accepted correction %d.\n    return 2\n" % iteration)
-            retained_proofs.append(self.candidate(work, 0))
-            self.review_candidate("beta", 0)
-            self.resolve_workspace_correction(admissions)
-        historical_comments = copy.deepcopy(self.provider.comments[100])
-        last_accepted_result = self.result("beta")[0]
-        last_accepted_output = self.produced("beta")
-        self.admit_workspace_correction()
-        response = self.session.call(100, expected=None)
-        ready = [step for step in response["next_steps"] if step.get("kind") == "execute" and step.get("node", {}).get("node") == "beta"]
-        if ready:
-            work = self.session.acquire("beta")
-            request = self.session.submission(work, {"value": "Beyond reconstruction bound"}, "over-real-chain-bound")
-            request["workspace_checks"] = [[sys.executable, "-B", "behavior_test.py"]]
-            response = self.session.call(100, request, expected=2)
-        diagnostics = [{"reason": step.get("reason"), "diagnostic": step.get("diagnostic")}
-                       for step in response["next_steps"]]
-        self.assertRegex(json.dumps(diagnostics), r"(?i)depth|limit")
-        self.assertEqual(last_accepted_result, self.result("beta")[0], "Bound refusal cannot publish a new semantic Result")
-        self.assertEqual(last_accepted_output, self.produced("beta"), "Bound refusal cannot publish a candidate output")
-        for reference, proof in retained_proofs:
-            self.assertEqual(proof, self.session.read(100, reference),
-                             "Authority traversal bound cannot prohibit targeted historical Ref reads")
-        for comment in historical_comments:
-            self.assertIn(comment, self.provider.comments[100])
         self.assertNotIn("gamma", self.names())
+        self.session.finish(self.session.acquire("accept_root_beta"), {"value": "Root accepts exact initial candidate"})
+        self.assertIn("gamma", self.names())
+        previous_prior = first["lease"]["acquisition"].get("predecessor")
+        retained_comments = {comment["id"]: content_hash(comment) for comment in self.provider.comments[100]}
+        self.correction_metrics = []
+        started = time.perf_counter()
+        # Count actual fixture-provider boundary calls, not evaluator loops.
+        import contextlib
+        with contextlib.ExitStack() as stack:
+            counters = {name: stack.enter_context(mock.patch.object(
+                self.provider, name, wraps=getattr(self.provider, name)))
+                for name in ("get_issue", "update_issue", "get_issue_comments", "create_issue_comment")}
+            for iteration in range(1, rounds + 1):
+                round_started = time.perf_counter()
+                calls_before = {name: counter.call_count for name, counter in counters.items()}
+                prior_result = self.result("beta")[0]
+                prior_proof = retained_proofs[-1][0]
+                prior_review = self.result("accept_beta")[0]
+                prior_root = self.result("accept_root_beta")[0]
+                admissions = self.admit_workspace_correction()
+                self.assertIn("beta", self.names())
+                self.assertNotIn("gamma", self.names())
+                work = self.acquire_workspace("beta")
+                reference = work["lease"]["acquisition"]["predecessor"]
+                predecessor = self.session.read(100, reference)
+                self.assertEqual(work["node"], predecessor["node"])
+                self.assertEqual(prior_result, predecessor["result"])
+                self.assertEqual(prior_proof, predecessor["proof"])
+                self.assertIn(prior_review, predecessor["reviews"])
+                self.assertEqual(previous_prior, predecessor["prior"])
+                for key, producer, slot in (("allocation", "charter", "grant"),
+                                            ("authorization", "inspect_charter", "permit"),
+                                            ("approval", "consent", "permit")):
+                    self.assertEqual(self.produced(producer, slot), predecessor[key])
+                retained_predecessors.append((reference, predecessor))
+                previous_prior = reference
+                (self.fixture.repo / "source.py").write_text(
+                    "def value():\n    # Accepted correction %d.\n    return 2\n" % iteration)
+                retained_proofs.append(self.candidate(work, 0))
+                self.assertEqual(prior_review, self.result("accept_beta")[0])
+                self.assertNotIn("gamma", self.names(), "Old review cannot accept a new candidate")
+                self.review_candidate("beta", 0)
+                self.assertNotEqual(prior_review, self.result("accept_beta")[0])
+                self.assertNotIn("gamma", self.names(), "Review alone cannot resolve findings")
+                self.resolve_workspace_correction(admissions, omit_retained=iteration == 2)
+                self.assertEqual(prior_root, self.result("accept_root_beta")[0])
+                self.assertNotIn("gamma", self.names(), "Old root acceptance cannot approve new output")
+                self.session.finish(self.session.acquire("accept_root_beta"),
+                                    {"value": "Root accepts exact correction " + str(iteration)})
+                if iteration == 2:
+                    self.assertNotIn("gamma", self.names(), "Retained distinct findings still block the join")
+                    self.resolve_workspace_pair(0, self.retained_correction_admissions[0])
+                self.assertNotEqual(prior_root, self.result("accept_root_beta")[0])
+                self.assertIn("gamma", self.names())
+                current_comments = {comment["id"]: content_hash(comment) for comment in self.provider.comments[100]}
+                self.assertTrue(all(current_comments.get(key) == digest for key, digest in retained_comments.items()),
+                                "Every original transaction comment remains byte-exact")
+                retained_comments = current_comments
+                payload = self.payload()[1]
+                measurement = {"round": iteration, "seconds": time.perf_counter() - round_started,
+                    "total_seconds": time.perf_counter() - started,
+                    "provider_requests": {name: counter.call_count - calls_before[name] for name, counter in counters.items()},
+                    "payload_bytes": len(json.dumps(payload).encode()),
+                    "comment_bytes": sum(len(comment["body"].encode()) for comment in self.provider.comments[100]),
+                    "comments": len(self.provider.comments[100])}
+                self.correction_metrics.append(measurement)
+                print("accepted_correction_measurement " + json.dumps(measurement), flush=True)
+        self.assertEqual(list(range(1, rounds + 1)), [row["round"] for row in self.correction_metrics])
+        for reference, proof in retained_proofs + retained_predecessors:
+            self.assertEqual(proof, self.session.read(100, reference), "Exact historical evidence remains readable unchanged")
+        for pair in self.retained_correction_admissions:
+            for admission in pair.values():
+                self.assertEqual("finding", self.session.read(100, admission["finding"])["type"])
+        self.assertEqual({100}, set(self.provider.issues), "Corrections cannot fabricate follow-up goals")
+        self.assertIn("gamma", self.names())
+
+    def test_accepted_correction_chain_preserves_each_round_authority_and_history(self):
+        # Real public authority/history coverage stays at two corrections;
+        # the synthetic projection-seam test separately exercises the count guard.
+        self.accepted_correction_chain(2)
 
     def test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance(self):
         self.setup_workspace_corrections(root_gate=True, correction_rounds=2)

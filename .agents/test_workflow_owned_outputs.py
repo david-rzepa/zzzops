@@ -439,7 +439,7 @@ class OwnedOutputPublicTests(unittest.TestCase):
             'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_pending_workspace_submission_reuses_exact_observed_proof_and_log',
             'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_caller_cannot_replace_authenticated_acquisition_with_supplied_envelope',
             'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_tampered_completed_workspace_proof_blocks_downstream_after_lease_removal',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_host_correction_predecessor_rejects_wrong_identity_disconnected_and_unbounded_chain',
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_host_correction_predecessor_rejects_wrong_identity_disconnected_and_forged_ancestry',
             'test_evidence_dag_journeys.EvidenceDagPublicTests.test_wrong_actor_cannot_submit_and_valid_owner_still_can',
             'test_evidence_dag_journeys.EvidenceDagPublicTests.test_wrong_lease_cannot_submit_and_valid_lease_still_can',
         )
@@ -524,12 +524,12 @@ class OwnedOutputPublicTests(unittest.TestCase):
         run_generic_regressions(self, 'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_permitted_red_to_green_edits_keep_fingerprints_and_downstream_proof_reuse')
 
     def test_recorded_output_exposes_own_review_and_correction_without_consumer_authority(self):
-        # Current own review/correction remains available while downstream waits; two accepted correction proofs/root decisions retain history, exact predecessor integrity and chain bound are checked separately, drift and withdrawn authority cannot grant reuse.
+        # Current own review/correction remains available while downstream waits; two accepted correction proofs/root decisions retain history and exact predecessor integrity; the bounded synthetic projection test separately owns the provenance-count boundary, drift and withdrawn authority cannot grant reuse.
         from test_evidence_dag_journeys import run_generic_regressions
         run_generic_regressions(self,
             'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_host_correction_predecessor_rejects_wrong_identity_disconnected_and_unbounded_chain',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_real_accepted_correction_chain_reaches_bound_before_refusing_next_transition',
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_host_correction_predecessor_rejects_wrong_identity_disconnected_and_forged_ancestry',
+            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_accepted_correction_chain_preserves_each_round_authority_and_history',
             'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_completed_output_and_consumed_drift_block_reuse_after_lease_removal',
             'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_parent_authority_revision_rejects_acquired_readonly_work_and_needs_current_review',
         )
