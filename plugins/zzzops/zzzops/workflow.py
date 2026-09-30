@@ -1372,7 +1372,7 @@ class Workflow:
         try:
             result = subprocess.run(['gh', 'pr', 'list', '--state', 'open', '--limit', '1000', '--json', 'number,headRefName,baseRefName,headRefOid'], cwd=self.repo, capture_output=True, text=True, check=True)
             observed = json.loads(result.stdout)
-        except (subprocess.SubprocessError, ValueError, TypeError):
+        except (subprocess.SubprocessError, OSError, ValueError, TypeError):
             return topology_repair('the provider observation is unavailable or malformed')
         if not isinstance(observed, list) or len(observed) >= 1000:
             return topology_repair('the provider returned an incomplete PR list')
