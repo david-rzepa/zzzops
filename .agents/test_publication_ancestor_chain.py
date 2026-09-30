@@ -58,7 +58,9 @@ class ProviderTopologySession(public_fixtures.PublicSession):
                 mock.patch.object(subprocess, "run", side_effect=provider_command),
                 mock.patch.object(api, "configure_cli_stdout"),
                 mock.patch.object(api._package, "package_status", return_value={"ok": True}),
-                mock.patch.object(api, "workflow_context_step", return_value=None),
+                # Initialization inspection is an external configuration read;
+                # keep workflow_context_step itself real.
+                mock.patch.object(api, "inspect_initialization", return_value={"initialized": True}),
                 mock.patch.object(api, "reviewed_project_state", side_effect=lambda _repo: copy.deepcopy(self.project)),
                 mock.patch.object(api, "GitHubGoalTransitionAdapter", return_value=self.provider),
                 mock.patch.object(api, "GitHubReservationAdapter", return_value=SimpleNamespace()),
@@ -92,6 +94,10 @@ class PublicationAncestorChainPublicTests(unittest.TestCase):
         control = tempfile.TemporaryDirectory()
         self.addCleanup(control.cleanup)
         self.repo = self.fixture.repo
+        self.branch_review = (
+            Path(__file__).parents[1]
+            / "plugins/zzzops/skills/execute-zzzops/references/BRANCH_REVIEW.md"
+        ).read_text()
         for name, content in {
             "source.py": "def answer():\n    return 1\n",
             "behavior_test.py": "from source import answer\nassert answer() == 1\n",
@@ -190,11 +196,20 @@ class PublicationAncestorChainPublicTests(unittest.TestCase):
 
     def observe(self, pulls, *, expected=0):
         self.session.open_pulls = copy.deepcopy(pulls)
+        before_pulls = copy.deepcopy(self.session.open_pulls)
         before_issues = copy.deepcopy(self.session.provider.issues)
         before_comments = copy.deepcopy(self.session.provider.comments)
+        before_refs = self.session.git(
+            "for-each-ref", "--format=%(refname):%(objectname)", "refs/heads",
+        )
         response = self.session.call(101, expected=expected)
+        self.assertEqual(before_pulls, self.session.open_pulls)
         self.assertEqual(before_issues, self.session.provider.issues)
         self.assertEqual(before_comments, self.session.provider.comments)
+        self.assertEqual(
+            before_refs,
+            self.session.git("for-each-ref", "--format=%(refname):%(objectname)", "refs/heads"),
+        )
         return response["next_steps"]
 
     def assert_publish_frontier(self, steps):
@@ -212,8 +227,21 @@ class PublicationAncestorChainPublicTests(unittest.TestCase):
         rendered = json.dumps(repair)
         for identity in identities:
             self.assertIn(identity, rendered)
-        self.assertRegex(rendered, r"(?i)(dev|root|continue)")
-        self.assertNotRegex(rendered, r"(?i)(force|rewrite all|blind)")
+        action = repair["action"]
+        continuation = repair.get("continuation", action)
+        self.assertIn("dev", continuation.lower())
+        self.assertRegex(continuation, r"(?i)(continue|rooted|from dev|dev root)")
+        self.assertNotRegex(action, r"(?i)(force|rewrite all|blind)")
+        self.assertNotEqual(
+            "Rebase open PRs into one linear stack before publication.", action,
+        )
+        # BRANCH_REVIEW prescribes chained-PR fallback or blocking while
+        # preserving immediate bases. This repair_stack blocks publication;
+        # observe() proves it leaves provider observations and local refs intact.
+        self.assertIn("immediate base", self.branch_review)
+        self.assertIn("chained PRs", self.branch_review)
+        self.assertIn("follow PROJECT's fallback or block", self.branch_review)
+        self.assertEqual("root", repair["assignment"])
 
     def test_public_execute_resolves_sparse_chain_and_preserves_safe_rejections(self):
         linear = self.pulls([
