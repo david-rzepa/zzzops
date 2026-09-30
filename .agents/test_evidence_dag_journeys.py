@@ -3462,6 +3462,78 @@ class RelationshipPublicTests(DagFixture):
 class GenericStoragePublicTests(DagFixture):
     """Storage invariants on exact host output Refs from generic submissions."""
 
+    def test_checkpoint_preserves_concurrent_labels_and_exact_retry(self):
+        for change_label in (False, True):
+            with self.subTest(change_label=change_label):
+                case = DagFixture()
+                case.setUp()
+                try:
+                    step = case.session.ready()[0]
+                    receipt = json.loads(Path(step["policy"]["path"]).read_text())["policy_receipt"]
+                    request = {**step["start"], "policy_receipt": receipt, "request_id": "metadata-safe-start"}
+                    append = case.provider.create_issue_comment
+                    def concurrent(number, body):
+                        result = append(number, body)
+                        if change_label and not any(row["name"] == "user-label" for row in case.provider.issues[number]["labels"]):
+                            case.provider.issues[number]["labels"].append({"name": "user-label"})
+                        return result
+                    with mock.patch.object(case.provider, "create_issue_comment", concurrent):
+                        response = case.session.call(100, request)
+                    self.assertEqual("perform", response["next_steps"][0]["kind"])
+                    self.assertEqual("open", case.provider.issues[100]["state"])
+                    self.assertEqual(change_label, any(row["name"] == "user-label" for row in case.provider.issues[100]["labels"]))
+                    self.assertTrue(case.provider.updates)
+                    self.assertTrue(all(set(payload) == {"body"} for _, payload in case.provider.updates))
+                    before = copy.deepcopy((case.provider.issues, case.provider.comments, case.provider.updates))
+                    self.assertEqual(response, case.session.call(100, request))
+                    self.assertEqual(before, (case.provider.issues, case.provider.comments, case.provider.updates))
+                finally:
+                    case.doCleanups()
+
+    def test_concurrent_closure_before_publication_preserves_pending_start_until_explicit_reopen(self):
+        step = self.session.ready()[0]
+        receipt = json.loads(Path(step["policy"]["path"]).read_text())["policy_receipt"]
+        request = {**step["start"], "policy_receipt": receipt, "request_id": "closed-pending-start"}
+        before_body = self.provider.issues[100]["body"]
+        append = self.provider.create_issue_comment
+        def close_after_append(number, body):
+            result = append(number, body)
+            self.provider.issues[number]["state"] = "closed"
+            return result
+        with mock.patch.object(self.provider, "create_issue_comment", close_after_append):
+            rejected = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)closed|reopen")
+        self.assertEqual("closed", self.provider.issues[100]["state"])
+        self.assertEqual(before_body, self.provider.issues[100]["body"])
+        self.assertFalse(self.provider.updates)
+        pending = [z._comment_store.decode_envelope(row["body"])["context"] for row in self.provider.comments[100]
+                   if (z._comment_store.decode_envelope(row["body"]) or {}).get("context", {}).get("request_id") == request["request_id"]]
+        self.assertTrue(pending)
+        frozen = copy.deepcopy((self.provider.issues, self.provider.comments, self.provider.updates))
+        self.session.call(100, request, expected=2)
+        self.assertEqual(frozen, (self.provider.issues, self.provider.comments, self.provider.updates))
+        # Only an explicit external user action returns the issue to active work.
+        self.provider.issues[100]["state"] = "open"
+        response = self.session.call(100, request)
+        self.assertEqual(pending[0]["ownership"]["token"], response["next_steps"][0]["lease"]["token"])
+        self.assertEqual(frozen[1], self.provider.comments)
+
+    def test_closure_during_body_patch_is_preserved_and_receipt_cannot_resume_work(self):
+        step = self.session.ready()[0]
+        receipt = json.loads(Path(step["policy"]["path"]).read_text())["policy_receipt"]
+        request = {**step["start"], "policy_receipt": receipt, "request_id": "closed-during-patch"}
+        update = self.provider.update_issue
+        def close_during_patch(number, payload):
+            self.provider.issues[number]["state"] = "closed"
+            return update(number, payload)
+        with mock.patch.object(self.provider, "update_issue", close_during_patch):
+            rejected = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)closed|reopen")
+        self.assertEqual("closed", self.provider.issues[100]["state"])
+        before = copy.deepcopy((self.provider.issues, self.provider.comments, self.provider.updates))
+        self.session.call(100, request, expected=2)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments, self.provider.updates))
+
     def setUp(self):
         super().setUp()
         graph = review_graph()

@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import unittest
+from unittest import mock
 
 import test_zzzops as fixtures
 
@@ -257,6 +258,86 @@ class EvidenceGraphGrammarTests(unittest.TestCase):
     def test_relationship_context_is_reserved_for_host_issuance(self):
         self.rejected_mutation(lambda graph: graph["nodes"][0]["outputs"]["value"].update(type="relationship_context"),
                                r"(?i)reserved|host|relationship")
+
+
+phase = fixtures.zzzops._phase_evidence
+
+
+class ProjectionCacheTests(unittest.TestCase):
+    def setUp(self):
+        self.assertTrue(hasattr(phase, "_PROJECTION_CACHE"), "Missing bounded projection-cache implementation")
+        phase._PROJECTION_CACHE.clear()
+        self.addCleanup(phase._PROJECTION_CACHE.clear)
+        self.graph = {'task_sets': [{}]}
+
+    def test_key_preserves_types_order_and_deep_output_independence(self):
+        def project(graph, payload, context):
+            return {'items': [(type(k).__name__, type(v).__name__, repr(v))
+                              for k, v in context.items()], 'nested': [payload]}
+        pairs = [({1: 'x'}, {'1': 'x'}), ({'x': 1}, {'x': True}),
+                 ({'x': []}, {'x': ()}), ({'x': b'x'}, {'x': 'x'}),
+                 ({'a': 1, 'b': 2}, {'b': 2, 'a': 1})]
+        with mock.patch.object(phase, '_derive_task_steps', side_effect=project) as evaluate:
+            for left, right in pairs:
+                with self.subTest(left=left, right=right):
+                    phase._PROJECTION_CACHE.clear()
+                    before = evaluate.call_count
+                    for context in (left, right):
+                        expected = project(self.graph, {}, context)
+                        self.assertEqual(expected, phase.derive_task_steps(self.graph, {}, context))
+                        self.assertEqual(expected, phase.derive_task_steps(self.graph, {}, context))
+                    self.assertEqual(before + 2, evaluate.call_count)
+            result = phase.derive_task_steps(self.graph, {'value': [1]}, {})
+            result['nested'][0]['value'].append(2)
+            self.assertEqual([1], phase.derive_task_steps(self.graph, {'value': [1]}, {})['nested'][0]['value'])
+
+    def test_changed_inputs_and_in_call_mutation_never_reuse_stale_result(self):
+        def project(graph, payload, context):
+            return {'value': graph['value'] + payload['value'] + context['artifacts']['value']}
+        graph = {**self.graph, 'value': 1}
+        payload, context = {'value': 2}, {'artifacts': {'value': 3}}
+        with mock.patch.object(phase, '_derive_task_steps', side_effect=project) as evaluate:
+            for target in (graph, payload, context['artifacts']):
+                phase.derive_task_steps(graph, payload, context)
+                target['value'] += 10
+                before = evaluate.call_count
+                self.assertEqual(project(graph, payload, context), phase.derive_task_steps(graph, payload, context))
+                self.assertEqual(before + 1, evaluate.call_count)
+        phase._PROJECTION_CACHE.clear()
+        def mutate(graph, payload, context):
+            payload['value'] += 1
+            return {'value': payload['value']}
+        with mock.patch.object(phase, '_derive_task_steps', side_effect=mutate):
+            phase.derive_task_steps(graph, payload, context)
+        self.assertFalse(phase._PROJECTION_CACHE)
+
+    def test_errors_callbacks_and_fixed_graphs_bypass_reuse(self):
+        with mock.patch.object(phase, '_derive_task_steps', side_effect=ValueError('invalid')) as evaluate:
+            for _ in range(2):
+                with self.assertRaisesRegex(ValueError, 'invalid'):
+                    phase.derive_task_steps(self.graph, {}, {})
+            self.assertEqual(2, evaluate.call_count)
+        self.assertFalse(phase._PROJECTION_CACHE)
+        with mock.patch.object(phase, '_derive_task_steps', return_value={}) as evaluate:
+            for _ in range(2):
+                phase.derive_task_steps(self.graph, {}, {'callback': lambda: None})
+                phase.derive_task_steps({'task_sets': []}, {}, {})
+            self.assertEqual(4, evaluate.call_count)
+        self.assertFalse(phase._PROJECTION_CACHE)
+
+    def test_cache_limits_entries_and_total_serialized_bytes(self):
+        with mock.patch.object(phase, '_derive_task_steps', return_value={'value': 'x' * 128}):
+            for n in range(10):
+                phase.derive_task_steps(self.graph, {'n': n}, {})
+            self.assertEqual(4, len(phase._PROJECTION_CACHE))
+            phase._PROJECTION_CACHE.clear()
+            with mock.patch.object(phase, '_PROJECTION_CACHE_BYTES', 512):
+                for n in range(10):
+                    phase.derive_task_steps(self.graph, {'n': n}, {})
+                    self.assertLessEqual(sum(len(k) + len(v) for k, v in phase._PROJECTION_CACHE.items()), 512)
+                before = dict(phase._PROJECTION_CACHE)
+                phase.derive_task_steps(self.graph, {'huge': 'x' * 1024}, {})
+                self.assertEqual(before, phase._PROJECTION_CACHE)
 
 
 if __name__ == "__main__":

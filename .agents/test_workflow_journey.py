@@ -36,11 +36,10 @@ class MemoryGoalProvider:
     def update_issue(self, number, payload):
         self.updates.append((number, copy.deepcopy(payload)))
         issue = self.issues[number]
-        issue.update({
-            "body": payload["body"], "state": payload["state"],
-            "updated_at": f"2026-09-17T12:{len(self.updates):02d}:00Z",
-            "labels": [{"name": label} for label in payload["labels"]],
-        })
+        issue.update({key: payload[key] for key in ("body", "state") if key in payload})
+        issue["updated_at"] = f"2026-09-17T12:{len(self.updates):02d}:00Z"
+        if "labels" in payload:
+            issue["labels"] = [{"name": label} for label in payload["labels"]]
         return copy.deepcopy(issue)
 
     def get_issue_comments(self, number):
