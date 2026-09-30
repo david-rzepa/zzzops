@@ -1832,11 +1832,24 @@ class EntropyModuleTests(unittest.TestCase):
             zzzops.complete_entropy_review(self.repo, {**request, "outcome": "findings"})
 
     def test_entropy_review_cli_marks_plans_and_completes_file_backed_state(self):
-        source_state = PLUGIN_ROOT.parent.parent / ".zzzops"
-        target_state = self.repo / ".zzzops"
-        target_state.mkdir()
-        for name in ("PROJECT.md", "PROJECT_AUDIT.md", "POLICY.json"):
-            shutil.copy2(source_state / name, target_state / name)
+        from test_evidence_dag import review_graph
+
+        # Review this temporary repository's generic policy independently of
+        # the development checkout's live policy and migration status.
+        fixture = InitializationTests()
+        fixture.repo = self.repo
+        plan = fixture.plan()
+        plan["repository"]["identity"] = "david-rzepa/zzzops"
+        sections = {section["id"]: section for section in plan["policy"]["sections"]}
+        sections["backend"]["configuration"]["repository_identity"] = "david-rzepa/zzzops"
+        sections["workflow_adherence"]["configuration"]["phase_dag"] = review_graph()
+        sections["workflow_adherence"]["default_disposition"] = "changed"
+        self.assertEqual([], zzzops.validate_plan(self.repo, plan))
+        applied = zzzops.apply_plan(self.repo, plan)
+        reviewed = zzzops.confirm_project(
+            self.repo, applied["policy_digest"], "entropy-fixture-reviewer", [], True,
+        )
+        self.assertTrue(reviewed["initialized"], reviewed)
         event_path = self.repo / "event.json"
         event_path.write_text(json.dumps(self.review_event()), encoding="utf-8")
         rejected = subprocess.run(
@@ -1844,12 +1857,7 @@ class EntropyModuleTests(unittest.TestCase):
             capture_output=True, text=True, check=False,
         )
         self.assertEqual(2, rejected.returncode)
-        self.assertTrue(
-            "does not match project policy" in rejected.stdout
-            or "Project policy is not ready" in rejected.stdout
-        )
-        if "Project policy is not ready" in rejected.stdout:
-            self.skipTest("repository fixture is intentionally stale until model-routing policy review")
+        self.assertIn("does not match project policy", rejected.stdout)
         event_path.write_text(json.dumps({**self.review_event(), "repository": "david-rzepa/zzzops"}), encoding="utf-8")
         mark_command = [
             sys.executable, "-c", "import runpy,sys; raise SystemExit(runpy.run_path(sys.argv.pop(1))['_private_main']())", str(MODULE_PATH), "--repo", str(self.repo),
@@ -4825,17 +4833,18 @@ class PortfolioTests(unittest.TestCase):
             TEST_RIGOR_POLICY,
         ]}}
         with (
+            tempfile.TemporaryDirectory() as repository,
             mock.patch.object(zzzops.shutil, "which", return_value="gh"),
             mock.patch.object(zzzops, "github_repository_goal_index", return_value=({}, [open_child], [], 0, 1, 0)),
             mock.patch.object(zzzops, "_github_goal_bodies", return_value=(bodies, 0, 1)),
             mock.patch.object(zzzops, "_github_goal_relations", return_value=({2: closed_parent}, 20, 1)) as relation_read,
             mock.patch.object(zzzops, "_github_pull_request_states", return_value=({}, 0, 0)) as pull_requests,
         ):
-            _, snapshot = zzzops.github_repository_portfolio_snapshot(Path("."), project)
+            _, snapshot = zzzops.github_repository_portfolio_snapshot(Path(repository), project)
 
         self.assertTrue(snapshot["valid"])
         self.assertEqual([1, 2], [goal["key"] for goal in snapshot["goals"]])
-        relation_read.assert_called_once_with(Path("."), "gh", "owner", "repo", [2])
+        relation_read.assert_called_once_with(Path(repository), "gh", "owner", "repo", [2])
         self.assertEqual([1], [issue["number"] for issue in pull_requests.call_args.args[2]])
 
     def test_goal_relation_batch_reads_only_explicit_targets(self):
