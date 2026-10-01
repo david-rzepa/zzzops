@@ -1316,6 +1316,11 @@ class Workflow:
             if goal.get('parent'):
                 return {'kind': 'publication_setup', 'assignment': 'root', 'action': 'Record the implementation branch, base and target before publication.'}
             return None
+        managed = {(g.get('implementation') or {}).get('branch') for g in self.portfolio()}
+        return self.publication_topology(implementation, self.publication_identity(goal), managed - {None})
+
+    def publication_topology(self, implementation, identity, managed_branches):
+        """Validate provider ancestry without changing refs or publication state."""
         # Read provider topology here, never accept a caller-supplied topology as
         # proof that another coordinator has not published in the meantime.
         trunk = 'dev'
@@ -1347,8 +1352,7 @@ class Workflow:
             return topology_repair('the provider observation is unavailable or malformed')
         if not isinstance(observed, list) or len(observed) >= 1000:
             return topology_repair('the provider returned an incomplete PR list')
-        managed_branches = {(g.get('implementation') or {}).get('branch') for g in self.portfolio()}
-        managed_branches.discard(None)
+        managed_branches = set(managed_branches(observed) if callable(managed_branches) else managed_branches)
         managed_branches.add(implementation['branch'])
         # An incomplete row makes the provider snapshot unsafe to reason from,
         # even when its relationship to this candidate cannot be established.
@@ -1356,7 +1360,7 @@ class Workflow:
             if (not isinstance(row, dict) or
                     not isinstance(row.get('headRefName'), str) or not row['headRefName'] or
                     not isinstance(row.get('baseRefName'), str) or not row['baseRefName'] or
-                    not isinstance(row.get('headRefOid'), str) or not row['headRefOid'] or
+                    not isinstance(row.get('headRefOid'), str) or not re.fullmatch('[0-9a-f]{40}', row['headRefOid']) or
                     ('number' in row and (type(row['number']) is not int or row['number'] <= 0))):
                 return topology_repair('the provider returned a malformed or incomplete PR row',
                                        [row] if isinstance(row, dict) else [])
@@ -1366,7 +1370,6 @@ class Workflow:
         candidate_rows = by_head.get(implementation['branch'], [])
         if len(candidate_rows) > 1:
             return topology_repair('multiple open PRs claim the candidate head', candidate_rows)
-        identity = self.publication_identity(goal)
         candidate_row = candidate_rows[0] if candidate_rows else None
         if candidate_row and (candidate_row['headRefOid'] != identity['head_oid'] or
                               candidate_row['baseRefName'] != identity['base_ref']):
@@ -1462,7 +1465,8 @@ class Workflow:
             return {'kind': 'repair_stack', 'assignment': 'root',
                     'action': f"Local {implementation['branch']} / {implementation['base']} do not match provider candidate {identity['head_oid']} and base {identity['base_oid']}; Synchronize the exact refs before publication.",
                     'continuation': f"The root continues from dev after reconciling {implementation['branch']} onto its declared immediate base {implementation['base']}; preserve existing PR heads and re-run exact-head checks.",
-                    'identities': [implementation['branch'], implementation['base'], identity['head_oid'], identity['base_oid']],
+                    'identities': [implementation['branch'], implementation['base'], identity['head_oid'], identity['base_oid'],
+                                   *(row['baseRefName'] for row in relevant if row['headRefName'] == implementation['base'])],
                     'head': identity['head_oid'], 'base': identity['base_oid']}
         directive = self.api.linear_publication_next_step(ordered, candidate, trunk=trunk)
         if directive['action'] != 'publish_linear':
@@ -1471,7 +1475,7 @@ class Workflow:
             details = [tip.get('branch'), *(row.get('baseRefName') for row in tip_rows)]
             return {**directive,
                     **topology_repair('the candidate base does not match the exact current PR tip', tip_rows, details),
-                    'goal': goal['key'], 'phase': 'publish', 'publication_directive': directive}
+                    'publication_directive': directive}
         return None
 
 
@@ -1500,7 +1504,7 @@ class Workflow:
 
 
 
-    def node_snapshot(self, number):
+    def node_snapshot(self, number, *, publication_probe=False):
         """Read exact scoped records; only relationship consumers request closure."""
         ev = self.api._phase_evidence
         snapshots, artifacts, issues, bootstrap = {}, {}, {}, {}
@@ -1699,11 +1703,12 @@ class Workflow:
         context = {'goal': number, 'policy': self.project['policy'], 'runtime': self.runtime, 'artifacts': artifacts, 'goals': closure, 'published_bytes': published, 'workspace_probe': True}
         result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
         workspaces = self.node_workspace_context(closure, result, result['artifacts'])
-        publications = self.node_publication_context(closure, result, result['artifacts'])
-        context.update(workspace_probe=False, workspaces=workspaces, publications=publications, artifacts=result['artifacts'])
+        publications = {} if publication_probe else self.node_publication_context(closure, result, result['artifacts'])
+        context.update(workspace_probe=False, workspaces=workspaces, artifacts=result['artifacts'])
+        if not publication_probe: context['publications'] = publications
         result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
         return {'number': number, 'issue': issues[number], **selected, 'snapshots': snapshots, 'issues': issues, 'bootstrap': bootstrap,
-                'projection': result, 'artifacts': result['artifacts'], 'published': published, 'workspaces': workspaces}
+                'projection': result, 'artifacts': result['artifacts'], 'published': published, 'workspaces': workspaces, 'publications': publications}
 
     def node_publication_context(self, snapshots, projection, artifacts):
         """Observe provider facts only for explicitly declared publication work."""
@@ -1738,8 +1743,12 @@ class Workflow:
                     permits.append(item['source'])
                 if len(permits) != 1: raise ValueError('Publication requires current reviewed root authorization for exact context')
                 if set(value) != {'branch', 'base', 'target', 'pr'} or any(not isinstance(value[name], str) or not value[name] for name in ('branch', 'base', 'target')): raise ValueError('Invalid repository context')
-                if not isinstance(value['pr'], str) or not re.fullmatch(r'https://github.com/' + re.escape(self.repository) + r'/pull/[1-9][0-9]*', value['pr']): raise ValueError('Publication requires an exact same-repository PR')
+                if value['pr'] is not None and (not isinstance(value['pr'], str) or not re.fullmatch(r'https://github.com/' + re.escape(self.repository) + r'/pull/[1-9][0-9]*', value['pr'])): raise ValueError('Publication requires an exact same-repository PR')
                 cache_key = (key[0], reference['hash'])
+                if value['pr'] is None:
+                    def local_oid(ref):
+                        return subprocess.run(['git', 'rev-parse', '--verify', 'refs/heads/' + ref], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
+                    observations[cache_key] = {'repository': self.repository, 'head_oid': local_oid(value['branch']), 'base_oid': local_oid(value['base']), 'base_ref': value['base']}
                 if cache_key not in observations:
                     facts, _, _ = self.api._github_pull_request_states(self.repo, 'gh', [{'number': key[0]}], {key[0]: {'repository_context': value}})
                     observations[cache_key] = facts.get(key[0])
@@ -1747,6 +1756,11 @@ class Workflow:
                 if not isinstance(facts, dict) or facts.get('repository') != self.repository or facts.get('base_ref') != value['base']: raise ValueError('Provider publication repository/base identity mismatch or unknown')
                 for name in ('head_oid', 'base_oid'):
                     if not isinstance(facts.get(name), str) or not re.fullmatch('[0-9a-f]{40}', facts[name]): raise ValueError('Provider publication head/base is unknown')
+                if not facts.get('merged'):
+                    repair = self.publication_topology(value, facts, self.node_managed_publication_branches)
+                    if repair:
+                        contexts[key] = {'error': repair['action'], 'repair': repair}
+                        continue
                 ci = 'verified' if facts.get('checks_verified') is True else 'absent' if facts.get('checks_present') is False else 'unverified' if facts.get('checks_present') is True else 'unknown'
                 observed = {name: facts[name] for name in ('repository', 'head_oid', 'base_oid', 'base_ref')}
                 observed.update(pr=value['pr'], ci=ci)
@@ -1757,11 +1771,63 @@ class Workflow:
                 identity = digest(artifact); artifacts[identity] = artifact
                 contexts[key] = {'binding': {'hash': identity, 'uri': 'urn:' + identity}, 'context': value, 'context_ref': reference,
                                  'observed': observed, 'provider': facts, 'base_branch': value['base'], 'base_commit': facts['base_oid']}
-            except (ValueError, KeyError, RuntimeError, OSError) as exc:
+            except (ValueError, KeyError, RuntimeError, OSError, subprocess.SubprocessError) as exc:
                 contexts[key] = {'error': 'Publication provider/authority: ' + str(exc)}
         return contexts
 
+    def node_managed_publication_branches(self, observed):
+        """Discover managed heads from current authenticated generic root evidence."""
+        branches = set()
+        heads = {row['headRefName'] for row in observed if isinstance(row, dict) and isinstance(row.get('headRefName'), str)}
+        root = (self.runtime or {}).get('root_id')
+        for goal in self.portfolio():
+            if goal.get('schema_version') != 2 or goal.get('status') in {'done', 'cancelled'}: continue
+            number = goal['key']
+            def read(ref):
+                value = self.read_artifact(number, ref)
+                return json.loads(value) if isinstance(value, str) else value
+            envelope = self.api.parse_managed_goal(self.adapter.get_issue(number)['body'], number)
+            payload = read(envelope['payload']); graph = read(payload['graph'])
+            # Locate possible context outputs without evaluating unrelated
+            # workspace/relationship consumers. This filter grants no authority.
+            slots = {}
+            def context_slots(value):
+                if isinstance(value, dict):
+                    if 'id' in value and 'outputs' in value:
+                        slots[value['id']] = {name for name, contract in value['outputs'].items() if contract.get('type') == 'repository_context'}
+                    for child in value.values(): context_slots(child)
+                elif isinstance(value, list):
+                    for child in value: context_slots(child)
+            context_slots(graph)
+            if not any(slots.values()): continue
+            candidate = False
+            for ref in payload['evidence']:
+                result = read(ref)
+                if result.get('type') != 'result': continue
+                result = result['content']
+                for name in slots.get(result['node']['node'], set()):
+                    if name not in result['outputs']: continue
+                    context = read(result['outputs'][name])
+                    if context.get('type') == 'repository_context' and context['content'].get('branch') in heads: candidate = True
+            if not candidate: continue
+            snapshot = self.node_snapshot(number, publication_probe=True)
+            projection = snapshot['projection']; artifacts = snapshot['artifacts']
+            owners = {ref['hash']: (key, result) for key, (_, result) in projection['current'].items() for ref in result['outputs'].values()}
+            for identity, (key, result) in owners.items():
+                artifact = artifacts[identity]
+                if artifact.get('type') != 'repository_authorization': continue
+                if result['executor'] != root or projection['states'][key]['contract']['executor']['role'] != 'root': continue
+                value = artifact['content']; reference = value.get('context', {})
+                if value.get('decision') != 'approved' or value.get('policy') != digest(self.project['policy']): continue
+                owner = owners.get(reference.get('hash'))
+                if not owner or owner[1]['executor'] != root or projection['states'][owner[0]]['contract']['executor']['role'] != 'root': continue
+                if not any(row['source'] == reference and row['mode'] == 'identity' and not row['path'] for row in result['inputs']): continue
+                context = artifacts[reference['hash']]
+                if context.get('type') == 'repository_context' and isinstance(context['content'].get('branch'), str): branches.add(context['content']['branch'])
+        return branches
+
     def node_ci_required(self, observed):
+        if observed.get('pr') is None: raise ValueError('An unpublished context has no provider CI or merge authority')
         mode = policy_section(self.project, 'verification_testing')['configuration']['required_ci']
         if mode == 'disabled': return
         if observed.get('ci') == 'verified' or mode == 'existing_only' and observed.get('ci') == 'absent': return
@@ -2156,6 +2222,8 @@ class Workflow:
                     continue
                 try: steps.append(self.node_step(state))
                 except ValueError as exc: steps.append({'kind': 'blocker', 'goal': number, 'node': state['node'], 'reason': str(exc)})
+            elif state['state'] == 'blocked' and 'repair' in snapshot['publications'].get(self.api._phase_evidence.task_key(state['node']), {}):
+                steps.append({**snapshot['publications'][self.api._phase_evidence.task_key(state['node'])]['repair'], 'goal': number, 'node': state['node']})
             elif state['state'] == 'blocked': steps.append({'kind': 'blocked' if state.get('reason', '').startswith('Workspace') else 'dependency', 'goal': number, 'node': state['node'], 'reason': state.get('reason', 'Required evidence unknown')})
         for step in steps:
             observed = snapshot['workspaces'].get(self.api._phase_evidence.task_key(step['node']), {}) if step.get('node') else {}
@@ -2672,7 +2740,7 @@ class Workflow:
                     self.node_ci_required(publication['observed'])
             elif kind == 'publication_evidence':
                 publication = state.get('publication')
-                if not publication or value != publication['observed']: raise ValueError('Publication evidence differs from current exact provider head/base/CI')
+                if not publication or publication['observed'].get('pr') is None or value != publication['observed']: raise ValueError('Publication evidence differs from current exact provider head/base/CI')
             elif kind == 'merge_observation':
                 publication = state.get('publication')
                 if not publication or not publication['provider'].get('merged'): raise ValueError('Provider merge is not observed')
