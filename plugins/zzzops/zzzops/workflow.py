@@ -1347,33 +1347,160 @@ class Workflow:
             return None
         # Read provider topology here, never accept a caller-supplied topology as
         # proof that another coordinator has not published in the meantime.
-        result = subprocess.run(['gh', 'pr', 'list', '--state', 'open', '--limit', '1000', '--json', 'headRefName,baseRefName,headRefOid'], cwd=self.repo, capture_output=True, text=True, check=True)
-        pulls = json.loads(result.stdout)
+        trunk = 'dev'
+        def topology_repair(reason, rows=(), branches=()):
+            identities = []
+            for row in rows:
+                if isinstance(row.get('headRefName'), str) and row['headRefName']:
+                    identities.append(row['headRefName'])
+                if isinstance(row.get('baseRefName'), str) and row['baseRefName']:
+                    identities.append(row['baseRefName'])
+                if isinstance(row.get('headRefOid'), str) and row['headRefOid']:
+                    identities.append(row['headRefOid'])
+                number = row.get('number')
+                if type(number) is int and number > 0:
+                    identities.append(f'#{number}')
+            identities.extend(branch for branch in branches if isinstance(branch, str) and branch)
+            identities = list(dict.fromkeys(identities))
+            detail = ', '.join(identities) or 'provider PR topology'
+            return {
+                'kind': 'repair_stack', 'assignment': 'root',
+                'action': f'Cannot verify publication topology ({reason}) for {detail}. Preserve each immediate base; follow PROJECT\'s fallback or block publication.',
+                'continuation': f'Continue from dev after the root resolves the observed topology for {detail}, preserving immediate base identities.',
+                'identities': identities,
+            }
+        try:
+            result = subprocess.run(['gh', 'pr', 'list', '--state', 'open', '--limit', '1000', '--json', 'number,headRefName,baseRefName,headRefOid'], cwd=self.repo, capture_output=True, text=True, check=True)
+            observed = json.loads(result.stdout)
+        except (subprocess.SubprocessError, OSError, ValueError, TypeError):
+            return topology_repair('the provider observation is unavailable or malformed')
+        if not isinstance(observed, list) or len(observed) >= 1000:
+            return topology_repair('the provider returned an incomplete PR list')
         managed_branches = {(g.get('implementation') or {}).get('branch') for g in self.portfolio()}
+        managed_branches.discard(None)
         managed_branches.add(implementation['branch'])
-        pulls = [pull for pull in pulls if pull['headRefName'] in managed_branches]
-        trunk = implementation.get('target') or 'dev'
+        # An incomplete row makes the provider snapshot unsafe to reason from,
+        # even when its relationship to this candidate cannot be established.
+        for row in observed:
+            if (not isinstance(row, dict) or
+                    not isinstance(row.get('headRefName'), str) or not row['headRefName'] or
+                    not isinstance(row.get('baseRefName'), str) or not row['baseRefName'] or
+                    not isinstance(row.get('headRefOid'), str) or not row['headRefOid'] or
+                    ('number' in row and (type(row['number']) is not int or row['number'] <= 0))):
+                return topology_repair('the provider returned a malformed or incomplete PR row',
+                                       [row] if isinstance(row, dict) else [])
+        by_head = {}
+        for row in observed:
+            by_head.setdefault(row['headRefName'], []).append(row)
+        candidate_rows = by_head.get(implementation['branch'], [])
+        if len(candidate_rows) > 1:
+            return topology_repair('multiple open PRs claim the candidate head', candidate_rows)
+        identity = self.publication_identity(goal)
+        candidate_row = candidate_rows[0] if candidate_rows else None
+        if candidate_row and (candidate_row['headRefOid'] != identity['head_oid'] or
+                              candidate_row['baseRefName'] != identity['base_ref']):
+            return topology_repair('the published candidate head or base differs from provider PR evidence',
+                                   [candidate_row], [implementation['branch'], identity['base_ref']])
+
+        # Build the candidate ancestry, every open managed stack, and all of
+        # their successors. At dev, unmanaged roots are independent work and
+        # stay out; below dev, any successor is a relevant fork or continuation.
+        path_rows = []
+        seeds = {candidate_row['baseRefName'] if candidate_row else
+                 implementation.get('base') or implementation.get('target') or trunk}
+        seeds.update(row['headRefName'] for row in observed
+                     if row['headRefName'] in managed_branches)
+        relevant_by_head = {}
+        def add_ancestor_chain(branch):
+            cursor = branch
+            chain_seen = set()
+            while cursor != trunk:
+                if cursor in chain_seen:
+                    return topology_repair('a relevant PR ancestry contains a cycle',
+                                           relevant_by_head.values(), [cursor])
+                chain_seen.add(cursor)
+                matches = by_head.get(cursor, [])
+                if len(matches) > 1:
+                    return topology_repair('multiple open PRs claim one relevant head', matches)
+                if not matches:
+                    return topology_repair('a relevant PR ancestor is missing before dev',
+                                           relevant_by_head.values(), [cursor, branch])
+                row = matches[0]
+                relevant_by_head[row['headRefName']] = row
+                cursor = row['baseRefName']
+            return None
+        for seed in sorted(seeds):
+            if seed == trunk:
+                continue
+            problem = add_ancestor_chain(seed)
+            if problem:
+                return problem
+        branches = set(relevant_by_head) | {implementation['branch']}
+        if candidate_row:
+            relevant_by_head[implementation['branch']] = candidate_row
+        pending = list(branches)
+        while pending:
+            base_branch = pending.pop()
+            for row in observed:
+                if row['baseRefName'] != base_branch:
+                    continue
+                if base_branch == trunk or row is candidate_row:
+                    continue
+                if row['headRefName'] in relevant_by_head:
+                    if relevant_by_head[row['headRefName']] is not row:
+                        return topology_repair('multiple open PRs claim one relevant head',
+                                               [relevant_by_head[row['headRefName']], row])
+                    continue
+                relevant_by_head[row['headRefName']] = row
+                pending.append(row['headRefName'])
+        relevant = list(relevant_by_head.values())
+        duplicates = [row for matches in by_head.values() if len(matches) > 1
+                      for row in matches if row in relevant]
+        if duplicates:
+            return topology_repair('multiple open PRs claim the same head branch', duplicates)
+        children = {}
+        for row in relevant:
+            children.setdefault(row['baseRefName'], []).append(row)
+        forks = [row for matches in children.values() if len(matches) > 1 for row in matches]
+        if forks:
+            return topology_repair('the relevant PR graph has multiple successors from one base', forks)
+
+        # Order the whole relevant provider chain so an unpublished candidate
+        # cannot bypass an already-open successor of its declared base. An
+        # observed candidate is removed only after every row has been validated.
         ordered, base = [], trunk
-        remaining = list(pulls)
+        remaining = list(relevant)
         while remaining:
-            matches = [p for p in remaining if p['baseRefName'] == base]
+            matches = [row for row in remaining if row['baseRefName'] == base]
             if len(matches) != 1:
-                return {'kind': 'repair_stack', 'assignment': 'root', 'action': 'Rebase open PRs into one linear stack before publication.'}
-            p = matches[0]; remaining.remove(p)
-            ordered.append({'branch': p['headRefName'], 'base': p['baseRefName'], 'head': p['headRefOid']})
-            base = p['headRefName']
-        def rev(ref):
-            return subprocess.run(['git', 'rev-parse', ref], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
-        published = next((i for i, p in enumerate(ordered) if p['branch'] == implementation['branch']), None)
+                return topology_repair('the relevant managed PR graph is disconnected from dev',
+                                       remaining, [base])
+            row = matches[0]
+            remaining.remove(row)
+            ordered.append({'branch': row['headRefName'], 'base': row['baseRefName'],
+                            'head': row['headRefOid']})
+            base = row['headRefName']
+        published = next((i for i, row in enumerate(ordered)
+                          if row['branch'] == implementation['branch']), None)
         if published is not None:
             ordered = ordered[:published]
-        identity = self.publication_identity(goal)
+        def rev(ref):
+            return subprocess.run(['git', 'rev-parse', ref], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
         candidate = {'branch': implementation['branch'], 'base': identity['base_ref'], 'base_head': identity['base_oid'], 'head': identity['head_oid']}
         if implementation.get('pr') and (rev(implementation['branch']) != identity['head_oid'] or rev(implementation['base']) != identity['base_oid']):
-            return {'kind': 'repair_stack', 'assignment': 'root', 'action': 'Synchronize the local candidate and base with the exact provider commits before verifying publication.', 'head': identity['head_oid'], 'base': identity['base_oid']}
+            return {'kind': 'repair_stack', 'assignment': 'root',
+                    'action': f"Local {implementation['branch']} / {implementation['base']} do not match provider candidate {identity['head_oid']} and base {identity['base_oid']}; Synchronize the exact refs before publication.",
+                    'continuation': f"The root continues from dev after reconciling {implementation['branch']} onto its declared immediate base {implementation['base']}; preserve existing PR heads and re-run exact-head checks.",
+                    'identities': [implementation['branch'], implementation['base'], identity['head_oid'], identity['base_oid']],
+                    'head': identity['head_oid'], 'base': identity['base_oid']}
         directive = self.api.linear_publication_next_step(ordered, candidate, trunk=trunk)
         if directive['action'] != 'publish_linear':
-            return {'kind': 'repair_stack', 'assignment': 'root', **directive}
+            tip = directive.get('tip') or {}
+            tip_rows = [row for row in relevant if row.get('headRefName') == tip.get('branch')]
+            details = [tip.get('branch'), *(row.get('baseRefName') for row in tip_rows)]
+            return {**directive,
+                    **topology_repair('the candidate base does not match the exact current PR tip', tip_rows, details),
+                    'goal': goal['key'], 'phase': 'publish', 'publication_directive': directive}
         return None
 
     def verify(self, number, payload):
