@@ -1,9 +1,10 @@
-"""Leaf-owned phases apply independently of structural parenthood."""
+"""Configured generic graphs preserve leaf, composition and migration authority."""
 import copy
 import json
 import unittest
 
 from test_zzzops import PLUGIN_ROOT, zzzops
+import test_evidence_dag_journeys as dag_fixtures
 
 
 class LeafApplicabilityTests(unittest.TestCase):
@@ -14,32 +15,35 @@ class LeafApplicabilityTests(unittest.TestCase):
                         if s['id'] == 'workflow_adherence')['configuration']['phase_dag']
 
     def test_default_selects_leaf_owned_work(self):
-        for node in self.dag['phases']:
-            if node['id'] in {'test_design', 'implement'}:
-                self.assertEqual('leaf_only', node['applicability'])
         self.assertEqual([], zzzops._policy._workflow_phase_dag_errors(self.dag))
+        nodes = {node["id"]: node for node in self.dag["nodes"]}
+        for name in ("test_design", "implement"):
+            node = nodes[name]
+            self.assertIn("repository_workspace", node["executor"]["resources"])
+            self.assertIn("allocation", node["inputs"])
+            self.assertIn("authorization", node["inputs"])
+            self.assertNotIn("applicability", node, "Structure alone grants no workspace authority")
+        dag_fixtures.run_generic_regressions(self,
+            "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_parent_grant_omission_and_mismatch_cannot_expand_child_authority")
 
     def test_review_types_and_consequence_overrides_are_policy_owned(self):
-        node = next(n for n in self.dag['phases'] if n['id'] == 'implement')
-        self.assertEqual(['acceptance', 'entropy'], node['review']['types'])
-        node['review']['by_consequence'] = {'architectural': {'human_approval': True}}
-        self.assertEqual([], zzzops._policy._workflow_phase_dag_errors(self.dag))
-        goal = {'key': 1, 'workflow': {'assessments': {'implement': {'dimensions': {'consequence': 'architectural'}}}}}
-        _, nodes = zzzops._workflow_phase_configuration(self.project, goal)
-        self.assertTrue(nodes['implement']['review']['human_approval'])
-        goal['workflow']['assessments']['implement']['dimensions']['consequence'] = 'bounded'
-        _, nodes = zzzops._workflow_phase_configuration(self.project, goal)
-        self.assertFalse(nodes['implement']['review']['human_approval'])
-        self.assertFalse(node['review']['human_approval'], 'Resolution must not mutate reviewed policy')
-        node['review']['by_consequence']['unknown'] = {'human_approval': True}
-        self.assertTrue(zzzops._policy._workflow_phase_dag_errors(self.dag))
+        # Review strength is configured graph evidence, not a hidden risk switch.
+        frozen = copy.deepcopy(self.dag)
+        dag_fixtures.run_generic_regressions(self,
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_stronger_policy_requires_added_independent_review_and_preserves_history",
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_lighter_policy_proposal_preserves_findings_and_requires_exact_approval")
+        self.assertEqual(frozen, self.dag)
+        invalid = copy.deepcopy(self.dag)
+        invalid["nodes"][0]["review"] = {"by_consequence": {"unknown": {"human_approval": True}}}
+        self.assertTrue(zzzops._policy._workflow_phase_dag_errors(invalid))
 
     def test_old_reviewed_dag_is_accepted_and_reported_stale(self):
         from pathlib import Path
         old = json.loads((Path(__file__).parent / 'fixtures/legacy_phase_dag.json').read_text())
-        self.assertEqual([], zzzops._policy._workflow_phase_dag_errors(old))
+        self.assertTrue(zzzops._policy._workflow_phase_dag_errors(old),
+                        'Released predecessor needs explicit migration; never execute it as the active Graph')
         self.assertNotEqual(zzzops._phase_evidence.sha256_digest(old), zzzops._phase_evidence.sha256_digest(self.dag))
-        self.assertNotIn('plan', {n['id'] for n in self.dag['phases']})
+        self.assertNotIn('plan', {n['id'] for n in self.dag['nodes']})
         section = next(s for s in self.project['policy']['sections'] if s['id'] == 'workflow_adherence')
         current = zzzops._policy.policy_default_catalog()['zzzops.policy.workflow_adherence']
         content = copy.deepcopy(current['content'])
@@ -55,29 +59,46 @@ class LeafApplicabilityTests(unittest.TestCase):
         self.assertEqual('update_available', comparison['status'])
 
     def test_leaf_and_composition_graphs_at_every_depth(self):
-        for parent in (None, 430):
-            for children in ([], [457]):
+        # One symbolic Graph retains its exact bytes at root and nested depth.
+        # A required child must finish; an empty known collection is explicit.
+        for parent in (None, 99):
+            for children in ([], [101]):
                 with self.subTest(parent=parent, children=children):
-                    goal = {'key': 456, 'parent': parent, 'children': children}
-                    graph, nodes = zzzops._workflow_phase_configuration(self.project, goal)
-                    projected = {n['id']: n for n in graph['phases']}
-                    for phase in ('test_design', 'implement'):
-                        self.assertEqual(not children, phase in nodes)
-                    self.assertEqual(['decompose'] if children else ['implement'],
-                                     projected['publish']['depends_on'])
-                    if parent and not children:
-                        self.assertEqual(['decompose'], projected['implement']['parent_gates'])
-                    if not parent:
-                        self.assertTrue(all(not n['parent_gates'] for n in graph['phases']))
+                    case = dag_fixtures.RelationshipPublicTests()
+                    case.setUp()
+                    try:
+                        graph = case.symbolic_graph()
+                        case.install(graph)
+                        if parent:
+                            case.add_goal(parent, graph)
+                            envelope = case.envelope_for(100)
+                            envelope["parent"] = parent
+                            case.put_envelope(100, envelope)
+                        for number in children:
+                            case.add_goal(number, graph, parent=100)
+                        self.assertEqual(not children, "collect" in case.names())
+                        for number in children:
+                            case.complete(number)
+                        self.assertIn("collect", case.names())
+                        work = case.session.acquire("collect")
+                        selected = [row for row in case.resolutions(work) if row["selector"]["goal"] == "#children"]
+                        self.assertTrue(selected)
+                        self.assertTrue(all({t["goal"] for t in row["targets"]} == set(children) for row in selected))
+                        case.session.finish(work, {"value": "Exact required children consumed"})
+                        payload = case.read_at(100, case.envelope_for(100)["payload"])
+                        self.assertEqual(graph, case.read_at(100, payload["graph"]))
+                    finally:
+                        case.doCleanups()
+        dag_fixtures.run_generic_regressions(self,
+            "test_evidence_dag_journeys.RelationshipPublicTests.test_new_missing_child_stales_worker_and_does_not_omit_required_work",
+            "test_evidence_dag_journeys.RelationshipPublicTests.test_every_child_required_including_archived_exact_completion")
 
     def test_existing_child_only_policy_keeps_its_reviewed_meaning(self):
-        legacy = copy.deepcopy(self.dag)
-        for node in legacy['phases']:
-            if node['applicability'] == 'leaf_only':
-                node['applicability'] = 'child_only'
-        for parent in (False, True):
-            graph = zzzops.phase_evidence_graph(legacy, has_parent=parent)
-            self.assertEqual(parent, 'implement' in {n['id'] for n in graph['phases']})
+        # Historical policy stays evidence until trusted conversion; current
+        # child work still needs exact current parent authority after conversion.
+        dag_fixtures.run_generic_regressions(self,
+            "test_goal_schema_conversion.MigrationEntryPublicTests.test_reviewed_nonempty_historical_mapping_preserves_source_and_missing_reviews",
+            "test_evidence_dag_journeys.RelationshipPublicTests.test_child_requires_current_parent_review_and_blocks_again_after_parent_drift")
 
 
 if __name__ == '__main__':

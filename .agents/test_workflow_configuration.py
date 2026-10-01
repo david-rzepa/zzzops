@@ -10,6 +10,9 @@ import subprocess
 import tempfile
 import unittest
 
+# Load the CLI's named dependency modules before isolated module subjects.
+import test_zzzops  # noqa: F401
+
 
 ROOT = Path(__file__).resolve().parents[1]
 

@@ -9,6 +9,8 @@ import unittest
 from unittest import mock
 
 import test_zzzops as fixtures
+import test_evidence_dag_journeys as dag_fixtures
+import test_workflow_publication_contract as publication_fixtures
 
 
 z = fixtures.zzzops
@@ -47,16 +49,55 @@ class WorkflowInvocationCacheTests(unittest.TestCase):
             engine.portfolio(allow_invalid=True)
 
     def test_merged_goal_emits_exact_public_reconciliation_contract(self):
-        engine = z._workflow.Workflow(self.api(MemoryIssueAdapter({}), {}), Path('.'), {}, {})
-        goal = {'key': 433, 'digest': 'a' * 64, 'status': 'ready',
-                'pull_request': {'merged': True, 'head_oid': 'head'}}
-        with mock.patch.object(engine, 'classify_merge', return_value={'status': 'merged_stale', 'reasons': ['reviewed_head_mismatch']}):
-            step = engine.reconciliation_step(goal)
-        self.assertEqual('reconcile', step['submission']['operation'])
-        self.assertEqual(goal['digest'], step['submission']['expected_digest'])
-        self.assertEqual(z._workflow.digest(goal['pull_request']), step['submission']['expected_merge'])
-        goal['status'] = 'done'
-        self.assertIsNone(engine.reconciliation_step(goal))
+        # Observed merge is data: operational integration cannot manufacture
+        # the required post-effect Result or semantic completion.
+        case = publication_fixtures.GenericPublicationPublicTests()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        case.install(case.with_merge_observation(copy.deepcopy(case.graph)))
+        case.authorize_context()
+        authority = case.approve_publication()
+        request = case.integration_request(authority)
+        case.session.call(100, request)
+        self.assertEqual(1, len(case.merge_calls))
+        self.assertTrue(case.observation["merged"])
+        self.assertEqual("open", case.provider.issues[100]["state"])
+        self.assertNotIn("finish", case.names())
+        steps = case.session.checkpoint(100)
+        reconcile = next(step for step in steps if step.get("kind") == "reconcile")
+        self.assertEqual("root", reconcile["assignment"])
+        envelope, payload = case.payload()
+        self.assertEqual(dag_fixtures.content_hash(envelope), reconcile["submission"]["expected_digest"])
+        self.assertEqual(dag_fixtures.content_hash(case.observation), reconcile["submission"]["expected_merge"])
+        before = copy.deepcopy((case.provider.issues, case.provider.comments))
+        stale = {**reconcile["submission"], "expected_merge": "sha256:" + "0" * 64}
+        case.session.call(100, stale, expected=2)
+        self.assertEqual(before, (case.provider.issues, case.provider.comments))
+        case.session.call(100, reconcile["submission"])
+        self.assertEqual(payload["evidence"], case.payload()[1]["evidence"],
+                         "Operational reconciliation cannot mint semantic Results")
+        self.assertEqual("open", case.provider.issues[100]["state"])
+        self.assertNotIn("finish", case.names())
+        acquired = case.session.acquire("observed_merge")
+        before = copy.deepcopy((case.provider.issues, case.provider.comments))
+        value = case.merge_value()
+        case.session.call(100, case.session.submission(acquired,
+            {"value": {**value, "head_oid": "a" * 40}}, "wrong-observed-head"), expected=2)
+        self.assertEqual(before, (case.provider.issues, case.provider.comments))
+        case.session.finish(acquired, {"value": value})
+        self.assertIn("finish", case.names())
+        case.submit_role("finish", "Current observed merge accepted")
+        self.assertFalse(case.session.ready())
+        final = next(step for step in case.session.checkpoint(100) if step.get("kind") == "reconcile")
+        case.session.call(100, final["submission"])
+        self.assertEqual("closed", case.provider.issues[100]["state"])
+        before = copy.deepcopy((case.provider.issues, case.provider.comments))
+        terminal = case.session.checkpoint(100)
+        self.assertEqual(1, len(terminal))
+        self.assertEqual("terminal_report", terminal[0]["kind"])
+        self.assertEqual("complete", terminal[0]["state"])
+        self.assertNotIn("submission", terminal[0])
+        self.assertEqual(before, (case.provider.issues, case.provider.comments))
 
     def api(self, adapter, portfolio):
         return SimpleNamespace(
@@ -141,37 +182,40 @@ class WorkflowInvocationCacheTests(unittest.TestCase):
 
 class AssessContractTests(unittest.TestCase):
     def test_assess_step_carries_exact_goal_read_contract_and_phase_inputs(self):
-        goal = {
-            "key": 7, "title": "Synthetic goal", "url": "https://invalid.example/issues/7",
-            "status": "ready", "needs_human": False, "claim": None, "workflow": None,
-        }
-        phase_input = {"goal_spec": "sha256:" + "1" * 64, "policy": "sha256:" + "2" * 64}
-        adapter = MemoryIssueAdapter({7: {"record": goal}})
-        api = SimpleNamespace(
-            _project_repository_identity=lambda project: "synthetic/project",
-            GitHubGoalTransitionAdapter=lambda repo, repository: adapter,
-            github_goal_record=lambda issue: copy.deepcopy(issue["record"]),
-            _workflow_section=lambda project, section: {"configuration": {}},
-            workflow_step_plan=lambda *args, **kwargs: {
-                "next_steps": [{"kind": "execute", "phase": "understand", "assignment": "root", "selection": {"model": "synthetic", "effort": "low"}}],
-                "frontier": {"blocked": []},
-            },
-            empty_phase_evidence=lambda: {"schema_version": 2, "records": {}, "reviews": {}, "human_approvals": {}, "withdrawals": []},
-            portfolio_snapshot=lambda _repo: {"complete": True, "valid": True, "goals": [copy.deepcopy(goal)]},
-        )
-        engine = z._workflow.Workflow(api, Path("."), {}, {})
-        engine.context = mock.Mock(return_value=({}, {"understand": {}}, {"understand": phase_input}, {}))
-
-        step = engine.step(7)[0]
-
-        self.assertEqual("assess", step["kind"])
-        self.assertEqual("Synthetic goal", step["title"])
-        self.assertEqual(phase_input, step["input_envelope"])
-        self.assertEqual(phase_input["goal_spec"], step["goal_specification"]["hash"])
-        self.assertEqual({"operation": "read", "phase": "understand"}, step["goal_specification"]["read"])
-        self.assertEqual("https://invalid.example/issues/7", step["goal_specification"]["reference"])
-        self.assertEqual("7", step["command"][step["command"].index("--goal") + 1])
-        self.assertEqual(step["input_hash"], step["submission"]["input_hash"])
+        # Generic execution exposes the exact contract, consumed specification,
+        # policy receipt and input hash without a privileged assess phase.
+        case = dag_fixtures.DagFixture()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        graph = copy.deepcopy(case.graph)
+        graph["nodes"][0]["inputs"] = {"request": dag_fixtures.spec_input()}
+        case.install(graph)
+        step = next(item for item in case.session.ready() if item["node"]["node"] == "produce")
+        self.assertEqual("execute", step["kind"])
+        self.assertEqual(100, step["goal"])
+        self.assertEqual(step["node"], step["input_envelope"]["node"])
+        contract = next(node for node in case.graph["nodes"] if node["id"] == "produce")
+        self.assertEqual(dag_fixtures.content_hash({"node": contract, "policy": dag_fixtures.content_hash(case.session.project["policy"])}),
+                         step["input_envelope"]["contract"])
+        self.assertEqual(contract["prompt"], step["instruction"])
+        _, payload = case.payload()
+        binding = next(item for item in step["input_envelope"]["inputs"] if item["name"] == "request")
+        self.assertEqual(payload["spec"], binding["source"])
+        specification = case.session.read(100, binding["source"])
+        self.assertEqual("specification", specification["type"])
+        self.assertEqual(dag_fixtures.content_hash(specification), binding["source"]["hash"])
+        self.assertEqual(step["input_hash"], step["start"]["input_hash"])
+        self.assertEqual(step["node"], step["start"]["node"])
+        acquired = case.session.acquire("produce")
+        self.assertEqual(step["input_hash"], acquired["lease"]["fingerprint"])
+        self.assertEqual("submit", acquired["submission"]["operation"])
+        self.assertEqual(step["node"], acquired["submission"]["node"])
+        before = copy.deepcopy((case.provider.issues, case.provider.comments))
+        request = case.session.submission(acquired, {"value": "unauthorized"}, "wrong-worker")
+        request["actor"] = "different-worker"
+        case.session.call(100, request, expected=2)
+        self.assertEqual(before, (case.provider.issues, case.provider.comments))
+        case.session.finish(acquired, {"value": "exact assigned work"})
 
 
 if __name__ == "__main__":

@@ -2580,7 +2580,7 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.setup_workspace()
         self.session.git("config", "core.autocrlf", "true")
         source = self.fixture.repo / "source.py"
-        source.write_bytes(source.read_bytes().replace(b"\n", b"\r\n"))
+        source.write_bytes(source.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
         self.session.git("add", "source.py")
         self.assertEqual("", self.session.git("diff", "--cached", "--name-only"))
         self.assertEqual("", self.session.git("status", "--porcelain", "--", "source.py"))
