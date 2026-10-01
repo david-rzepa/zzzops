@@ -1984,7 +1984,7 @@ class Workflow:
             # exact whole-snapshot proof/owned-acquisition edges; work itself
             # continues to validate every raw acquisition path above.
             def selected(files): return {path: value for path, value in files.items() if path in allocated_paths}
-            pending, seen = [selected(start)], set()
+            pending, seen = [selected(read_snapshot(start))], set()
             while pending:
                 value = pending.pop(); identity = digest(value)
                 if value == selected(read_actual): return True
