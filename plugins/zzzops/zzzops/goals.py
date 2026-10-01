@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import copy
 import base64
 import zlib
 import hmac
@@ -13,6 +14,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable
+import zzzops_comment_store as comment_store
 
 GOAL_SCHEMA_VERSION = 1
 GOAL_BLOCK_START = "<!-- zzzops-goal"
@@ -775,8 +777,218 @@ def load_goal_transition(path: Path) -> dict[str, Any]:
         raise ValueError(f"Could not read goal transition: {type(exc).__name__}") from exc
 
 
+def semantic_goal(goal):
+    result = copy.deepcopy(goal)
+    if isinstance(result.get('workflow'), dict):
+        for key in ('leases', 'workers', 'receipts'):
+            result['workflow'].pop(key, None)
+    return result
+
+
+def semantic_body(body, number):
+    goal = parse_managed_goal(body, number)
+    if goal is None:
+        raise ValueError('Missing managed goal for history')
+    pattern = re.compile(re.escape(GOAL_BLOCK_START) + r'\s*\n.*?\n' + re.escape(GOAL_BLOCK_END), re.DOTALL)
+    return {'goal': semantic_goal(goal), 'human_spec': pattern.sub('', body, count=1)}
+
+
+def history_projection(semantic, index=None, records=None):
+    """Only storage is normalized; public reconstruction returns original values."""
+    result = copy.deepcopy(semantic)
+    proofs = result['goal'].get('workflow', {}).get('artifacts', {})
+    for phase, content in list(proofs.items()):
+        identity = comment_store.digest(content)
+        if index is not None:
+            record = index.record(content)
+            if record is not None:
+                records.append(record)
+                index.records.setdefault(identity, []).append(record)
+        proofs[phase] = {'$artifact': {'hash': identity, 'reference': 'urn:' + identity}}
+    return result
+
+
+def materialize_history_projection(projection, index):
+    result = copy.deepcopy(projection)
+    for phase, reference in list(result['goal'].get('workflow', {}).get('artifacts', {}).items()):
+        if not isinstance(reference, dict) or set(reference) != {'$artifact'}:
+            raise ValueError('Malformed historical proof reference')
+        value = reference['$artifact']
+        if not isinstance(value, dict) or set(value) != {'hash', 'reference'} or value['reference'] != 'urn:' + value['hash']:
+            raise ValueError('Malformed historical proof identity')
+        content, _, work = index.resolve(value['hash'])
+        index.history_work = getattr(index, 'history_work', 0) + work
+        if index.history_work > comment_store.MAX_RECONSTRUCTION_WORK_BYTES:
+            raise ValueError('History artifact reconstruction work limit exceeded')
+        result['goal']['workflow']['artifacts'][phase] = content
+    return result
+
+
+def reconstruct_goal_history(adapter, number, revision):
+    if type(revision) is not int or revision < 1:
+        raise ValueError('Historical revision must be a positive integer')
+    body = adapter.get_issue(number)['body']
+    current = semantic_body(body, number)
+    body_hash = comment_store.text_hash(body)
+    if revision > current['goal']['revision']:
+        raise ValueError('Requested revision is not committed')
+    comments = adapter.get_issue_comments(number)
+    index = comment_store.ArtifactIndex(comments)
+    envelopes, legacy = [], []
+    for comment in comments:
+        envelope = index.decoded[comment.get('body', '')][0]
+        if envelope is not None:
+            if envelope.get('goal') == number:
+                envelopes.append(envelope)
+        else:
+            old = parse_goal_history(comment.get('body'))
+            if old is not None:
+                legacy.append(old)
+    spent, submitted = index.decode_work, None
+    while current['goal']['revision'] > revision:
+        head = current['goal']['revision']
+        matches = [e for e in envelopes if e.get('history') and e['history'].get('to_revision') == head and e.get('body_hash') == body_hash]
+        old_matches = [h for h in legacy if h.get('to_revision') == head and h.get('issue') == number]
+        if len(matches) + len(old_matches) != 1:
+            raise ValueError('Missing or conflicting committed history revision')
+        if old_matches:
+            record = old_matches[0]
+            submitted = semantic_goal(record['requested_goal'])
+            current = semantic_body(record['prior_body'], number)
+            body_hash = comment_store.text_hash(record['prior_body'])
+        else:
+            envelope = matches[0]
+            comment_store.verify_manifest([e for e in envelopes if e.get('transaction') == envelope.get('transaction')])
+            history = envelope['history']
+            raw = comment_store.canonical(history_projection(current))
+            previous = comment_store.apply_text_record(raw, history['reverse'])
+            requested = comment_store.apply_text_record(raw, history['submitted'])
+            spent += len(raw.encode()) + len(previous.encode()) + len(requested.encode())
+            if spent + getattr(index, 'history_work', 0) > comment_store.MAX_RECONSTRUCTION_WORK_BYTES:
+                raise ValueError('History reconstruction work limit exceeded')
+            current = materialize_history_projection(comment_store.strict_json(previous), index)
+            submitted = materialize_history_projection(comment_store.strict_json(requested), index)['goal']
+            body_hash = envelope['prior_body_hash']
+            if current['goal']['revision'] != history['from_revision'] or history['from_revision'] != head - 1:
+                raise ValueError('History revision endpoint mismatch')
+    return {**current, 'submitted_goal': submitted}
+
+
 def apply_goal_transition(
     adapter: Any, repository: str, issue_number: int, transition: dict[str, Any],
+    *, artifact_records=None, transaction_context=None, before_publish=None,
+    observed_issue=None, observed_comments=None, artifact_hashes=(),
+    observed_index=None,
+) -> dict[str, Any]:
+    errors = validate_goal_transition(transition, issue_number)
+    if errors:
+        raise ValueError('Invalid goal transition: ' + '; '.join(errors))
+    if adapter.repository.casefold() != repository.casefold():
+        raise GoalTransitionProviderError('Repository identity changed; no goal update was made.')
+    requested = transition['goal']
+    desired = compact_managed_goal(requested)
+    anchor = goal_history_id(issue_number, transition['expected_digest'], requested)
+    issue = copy.deepcopy(observed_issue) if observed_issue is not None else adapter.get_issue(issue_number)
+    record = github_goal_record(issue)
+    comments = observed_comments if observed_comments is not None else adapter.get_issue_comments(issue_number)
+    index = observed_index or comment_store.ArtifactIndex(comments)
+    envelopes = index.envelope_comments
+    legacy = []
+    for comment in comments:
+        try:
+            env = index.decoded[comment.get('body', '')][0]
+            old = None if env is not None else parse_goal_history(comment.get('body'))
+        except ValueError as exc:
+            raise GoalTransitionProviderError('The selected goal has malformed transition history; no update was made.') from exc
+        if old is not None and old['id'] == anchor:
+            legacy.append(old)
+    if legacy:
+        if artifact_records:
+            raise ValueError('Cannot attach new records to a persisted legacy transaction')
+        return _apply_legacy_goal_transition(adapter, repository, issue_number, transition, before_publish=before_publish)
+    body = render_managed_goal(desired, transition.get('human_spec', compact_human_goal_text(issue['body'])), issue_number)
+    compact_errors = validate_compact_goal_body(body, issue_number)
+    if compact_errors:
+        raise ValueError('Invalid compact goal body: ' + '; '.join(compact_errors))
+    state = 'closed' if desired['status'] in {'done', 'cancelled'} else 'open'
+    transaction = comment_store.digest({'anchor': anchor, 'body': body, 'requested': requested,
+                                        'human_spec': transition.get('human_spec'), 'context': transaction_context})
+    pending = [(c, e) for c, e in envelopes if e.get('anchor') == anchor or (
+        transaction_context and (e.get('context') or {}).get('request_id') == transaction_context.get('request_id'))]
+    if any(e.get('transaction') != transaction for _, e in pending):
+        raise ValueError('Existing transaction conflicts with requested body, human text or submitted evidence')
+    if record['revision'] == desired['revision']:
+        labels = {x['name'] for x in issue.get('labels', [])}
+        if issue['body'] != body or str(issue.get('state', '')).lower() != state or not {
+            current_goal_schema_label(), f"zzzops:status:{desired['status']}", f"zzzops:priority:{desired['priority']}"
+        }.issubset(labels):
+            raise ValueError('Goal changed; the requested transition was not confirmed')
+        comment_store.verify_manifest([e for _, e in pending])
+        return {'number': issue_number, 'revision': desired['revision'], 'state': state,
+                'status': desired['status'], 'url': f'https://github.com/{repository}/issues/{issue_number}'}
+    if record['revision'] != transition['expected_revision'] or record['digest'] != transition['expected_digest']:
+        raise ValueError('Goal revision or digest changed; no update was made')
+    records = list(artifact_records or [])
+    for _, envelope in sorted(pending, key=lambda pair: pair[1]['part']):
+        for item in envelope['artifacts']:
+            if not any(r['hash'] == item['hash'] for r in records):
+                records.append(item)
+    for item in records:
+        if item not in index.records.get(item['hash'], []):
+            index.records.setdefault(item['hash'], []).append(item)
+    current_projection = semantic_body(body, issue_number)
+    prior_projection = history_projection(semantic_body(issue['body'], issue_number), index, records)
+    stored_current = history_projection(current_projection, index, records)
+    submitted_projection = history_projection({**current_projection, 'goal': semantic_goal(requested)}, index, records)
+    raw = comment_store.canonical(stored_current)
+    history = {'from_revision': record['revision'], 'to_revision': desired['revision'],
+               'reverse': comment_store.text_record(raw, comment_store.canonical(prior_projection)),
+               'submitted': comment_store.text_record(raw, comment_store.canonical(submitted_projection))}
+    common = {'goal': issue_number, 'transaction': transaction, 'anchor': anchor,
+              'expected_digest': transition['expected_digest'], 'expected_revision': transition['expected_revision'],
+              'body_hash': comment_store.text_hash(body), 'prior_body_hash': comment_store.text_hash(issue['body']), 'context': transaction_context}
+    bodies = comment_store.pack_envelopes(common, records, history)
+    references = set(artifact_hashes) | {r['hash'] for r in records}
+    for projection in (prior_projection, stored_current, submitted_projection):
+        references.update(item['$artifact']['hash'] for item in projection['goal'].get('workflow', {}).get('artifacts', {}).values())
+    comment_store.preflight_comments(comments, bodies, references, previous=index)
+    # All complete bodies are preflighted before the first associated write.
+    for expected_body in bodies:
+        matching = [c for c, e in pending if c.get('body') == expected_body]
+        if len(matching) > 1:
+            raise GoalTransitionProviderError('Duplicate transaction envelope')
+        if not matching:
+            created = adapter.create_issue_comment(issue_number, expected_body)
+            if created.get('body') != expected_body or not isinstance(created.get('html_url'), str):
+                raise GoalTransitionProviderError('GitHub did not confirm exact transition history; body replacement was not attempted.')
+    confirmed = adapter.get_issue_comments(issue_number)
+    verified = comment_store.ArtifactIndex(confirmed, previous=index)
+    selected = [env for env in verified.envelopes if env.get('transaction') == transaction]
+    comment_store.verify_manifest(selected)
+    for identity in references:
+        verified.resolve(identity)
+    # A provider response is not a compare-and-swap. Recheck the exact predecessor
+    # and caller's current ownership immediately before publishing references.
+    fresh = adapter.get_issue(issue_number)
+    if github_goal_record(fresh)['digest'] != transition['expected_digest']:
+        raise ValueError('Goal changed after envelope append; body replacement was not attempted')
+    if before_publish is not None:
+        before_publish()
+    retained = sorted({x['name'] for x in fresh.get('labels', []) if isinstance(x, dict) and isinstance(x.get('name'), str)
+                       and x['name'] != 'zzzops' and not x['name'].startswith(('zzzops:status:', 'zzzops:priority:', GOAL_SCHEMA_LABEL_PREFIX))})
+    labels = ['zzzops', *retained, current_goal_schema_label(), f"zzzops:status:{desired['status']}", f"zzzops:priority:{desired['priority']}"]
+    updated = adapter.update_issue(issue_number, {'body': body, 'state': state, 'labels': labels})
+    expected_url = f'https://github.com/{repository}/issues/{issue_number}'
+    if (updated.get('body') != body or updated.get('number') != issue_number or updated.get('title') != issue.get('title')
+        or str(updated.get('state', '')).lower() != state or updated.get('html_url') != expected_url
+        or {x['name'] for x in updated.get('labels', [])} != set(labels)):
+        raise GoalTransitionProviderError('GitHub returned an unexpected goal-transition response; success was not assumed.')
+    return {'number': issue_number, 'revision': desired['revision'], 'state': state, 'status': desired['status'], 'url': expected_url}
+
+
+def _apply_legacy_goal_transition(
+    adapter: Any, repository: str, issue_number: int, transition: dict[str, Any],
+    *, before_publish=None,
 ) -> dict[str, Any]:
     errors = validate_goal_transition(transition, issue_number)
     if errors:
@@ -852,6 +1064,11 @@ def apply_goal_transition(
             raise GoalTransitionProviderError(
                 "GitHub did not confirm exact transition history; body replacement was not attempted."
             )
+    fresh = adapter.get_issue(issue_number)
+    if github_goal_record(fresh)['digest'] != transition['expected_digest']:
+        raise ValueError('Goal changed before legacy publication; body replacement was not attempted')
+    if before_publish is not None:
+        before_publish()
     _, text_present = _require_configured()
     retained_labels = sorted({
         label["name"] for label in issue.get("labels", [])

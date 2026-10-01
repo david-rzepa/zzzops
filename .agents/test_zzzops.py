@@ -2938,6 +2938,26 @@ class PhaseEvidenceTests(unittest.TestCase):
             zzzops.sha256_phase_evidence_digest(["y", "x"]),
         )
 
+    def test_pending_entropy_correction_requires_rejection_and_stays_in_goal(self):
+        envelope = self.envelope("plan")
+        evidence = zzzops.record_phase_result(
+            zzzops.empty_phase_evidence(), "plan", self.record("plan", envelope), envelope,
+        )
+        artifact = {"reference": "urn:sha256:" + "1" * 64,
+                    "hash": zzzops.sha256_phase_evidence_digest({"review": "correct"})}
+        outcomes = {"acceptance": "changes_requested", "entropy": {
+            "outcome": "correction_required", "evidence": "Repair duplication within this goal.", "goals": []}}
+        reviewed = zzzops.record_phase_review(evidence, "plan", artifact, "reviewer-2",
+                                            decision="changes_requested", outcomes=outcomes)
+        self.assertEqual(outcomes, zzzops._phase_evidence.normalize_phase_evidence(reviewed)["reviews"]["plan"]["outcomes"])
+        for decision, goals, reason in [("approved", [], "changes_requested"),
+                                         ("changes_requested", [42], "follow-up")]:
+            with self.subTest(decision=decision, goals=goals):
+                invalid = {"acceptance": decision, "entropy": {**outcomes["entropy"], "goals": goals}}
+                with self.assertRaisesRegex(zzzops.PhaseEvidenceError, reason):
+                    zzzops.record_phase_review(evidence, "plan", artifact, "reviewer-2",
+                                              decision=decision, outcomes=invalid)
+
     def test_phase_review_binds_exact_record_and_requires_independent_reviewer(self):
         envelope = self.envelope("plan")
         evidence = zzzops.record_phase_result(
@@ -3354,15 +3374,19 @@ class GoalTransitionTests(unittest.TestCase):
         )
         self.assertEqual({"number": 42, "revision": 2, "state": "open", "status": "blocked",
                           "url": "https://github.com/owner/repo/issues/42"}, result)
-        history = zzzops.parse_goal_history(adapter.comments[0]["body"])
-        self.assertEqual(issue["body"], history["prior_body"])
-        self.assertEqual(["Baseline."], history["requested_goal"]["evidence"])
+        reconstruct = getattr(zzzops._goals, "reconstruct_goal_history", None)
+        self.assertTrue(callable(reconstruct), "New history must reconstruct its complete semantic predecessor")
+        history = reconstruct(adapter, 42, 1)
+        self.assertEqual(self.goal(), history["goal"])
+        self.assertEqual("## Outcome / Why\n\nPreserve this human text.\n\n\n\n", history["human_spec"])
+        self.assertEqual(self.transition(issue)["goal"], history["submitted_goal"])
+        self.assertEqual(["Baseline."], history["submitted_goal"]["evidence"])
         self.assertEqual([], zzzops.parse_managed_goal(payload["body"], 42)["evidence"])
         self.assertEqual(
             {"risk_categories": ["authentication"], "override": None},
             zzzops.parse_managed_goal(payload["body"], 42)["engineering_rigor"],
         )
-        self.assertNotIn("effective", history["requested_goal"]["engineering_rigor"])
+        self.assertNotIn("effective", history["submitted_goal"]["engineering_rigor"])
 
         adapter = FakeGoalTransitionAdapter(issue)
         transition = self.transition(issue)
@@ -3509,8 +3533,25 @@ class GoalTransitionTests(unittest.TestCase):
         self.assertEqual(["B-001"], [blocker["id"] for blocker in compact["blockers"]])
         self.assertEqual([], zzzops.validate_compact_goal_body(adapter.issue["body"], 42))
 
-        history = zzzops.parse_goal_history(adapter.comments[0]["body"])
-        tampered = json.loads(json.dumps(history))
+        # Legacy parsing is tested against an explicit schema-1 fixture, never
+        # against a newly emitted reverse-diff envelope.
+        legacy = {
+            "schema_version": 1,
+            "id": zzzops._goals.goal_history_id(42, transition["expected_digest"], transition["goal"]),
+            "issue": 42, "expected_digest": transition["expected_digest"],
+            "from_revision": 1, "to_revision": 2,
+            "prior_body": issue["body"], "requested_goal": transition["goal"],
+        }
+        legacy["payload_digest"] = hashlib.sha256(json.dumps(
+            legacy, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        ).encode("utf-8")).hexdigest()
+        legacy_body = (
+            f"{zzzops._goals.GOAL_HISTORY_BLOCK_START}\n"
+            f"{json.dumps(legacy, sort_keys=True, separators=(',', ':'))}\n"
+            f"{zzzops._goals.GOAL_HISTORY_BLOCK_END}\n"
+        )
+        self.assertEqual(legacy, zzzops.parse_goal_history(legacy_body))
+        tampered = json.loads(json.dumps(legacy))
         tampered["prior_body"] += "tampered"
         tampered_body = (
             f"{zzzops._goals.GOAL_HISTORY_BLOCK_START}\n"
@@ -3519,6 +3560,17 @@ class GoalTransitionTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "Invalid goal history payload"):
             zzzops.parse_goal_history(tampered_body)
+
+        reconstruct = getattr(zzzops._goals, "reconstruct_goal_history", None)
+        self.assertTrue(callable(reconstruct), "New history must preserve compacted evidence and human text")
+        history = reconstruct(adapter, 42, 1)
+        self.assertEqual(self.goal(), history["goal"])
+        self.assertEqual(
+            "## Outcome / Why\n\nKeep this.\n\n```md\n## Evidence\nKeep fenced example.\n```\n\n"
+            "## Evidence\n\nArchive this.\n\n## Scope\n\nKeep scope.\n\n\n\n",
+            history["human_spec"],
+        )
+        self.assertEqual(transition["goal"], history["submitted_goal"])
 
     def test_transition_file_is_bom_tolerant(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -3680,6 +3732,40 @@ class GoalSchemaMigrationTests(unittest.TestCase):
 
 
 class PortfolioTests(unittest.TestCase):
+    def test_workflow_gateway_preserves_persisted_rigor_identity_without_rereads(self):
+        project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {"sections": [
+            {"id": "autonomy_approval_parallelism", "configuration": TEST_AUTONOMY_CONFIGURATION},
+            TEST_RIGOR_POLICY,
+        ]}}
+        def digest(goal):
+            return zzzops.goal_spec_digest(goal, title=goal["title"], human_spec=goal["human_spec"])
+        for rigor in (None, {"risk_categories": []}, {"risk_categories": ["authorization"], "override": None}):
+            with self.subTest(rigor=rigor), tempfile.TemporaryDirectory() as temporary:
+                repo = Path(temporary)
+                (repo / ".zzzops").mkdir()
+                issue = self.issue(1, engineering_rigor=rigor)
+                exact = zzzops.github_goal_record(issue)
+                bodies = {1: {"body": issue["body"], "updated_at": issue["updated_at"]}}
+                with mock.patch.object(zzzops.shutil, "which", return_value="gh"), \
+                     mock.patch.object(zzzops, "github_repository_goal_index", return_value=({}, [issue], [], 0, 1, 0)), \
+                     mock.patch.object(zzzops, "_github_goal_bodies", return_value=(bodies, 0, 1)), \
+                     mock.patch.object(zzzops, "_github_pull_request_states", return_value=({}, 0, 0)):
+                    _, snapshot = zzzops.github_repository_portfolio_snapshot(repo, project)
+                projected = snapshot["goals"][0]
+                self.assertIn("effective", projected["engineering_rigor"])
+                engine = zzzops._workflow.Workflow(zzzops, repo, project)
+                engine._portfolio_cache = snapshot
+                with mock.patch.object(engine.adapter, "get_issue", side_effect=AssertionError("Unexpected provider reread")):
+                    _, read = engine.read(1)
+                self.assertEqual(digest(exact), digest(read))
+                self.assertEqual(exact["engineering_rigor"], read["engineering_rigor"])
+                changed = copy.deepcopy(read)
+                changed["engineering_rigor"] = {"risk_categories": ["concurrency"], "override": None}
+                self.assertNotEqual(digest(exact), digest(changed))
+                changed["engineering_rigor"] = {"risk_categories": [], "override": {
+                    "level": "agentic", "authority": "human", "evidence": "Explicit approval"}}
+                self.assertNotEqual(digest(exact), digest(changed))
+
     def test_archived_summaries_remain_dependency_targets_without_provider_fields(self):
         archived = {"key": 1, "status": "done", "archived": True}
         live = {**self.goal(depends_on=[1]), "key": 2, "state": "open",

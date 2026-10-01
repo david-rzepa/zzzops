@@ -279,8 +279,10 @@ def _review_outcomes(value: Any, decision: str) -> dict[str, Any]:
         raise PhaseEvidenceError("phase review entropy outcome is invalid")
     outcome = entropy.get("outcome")
     required = {"outcome", "evidence"}
-    if outcome not in {"no_findings", "fixed", "follow_up"} or set(entropy) not in (required, required | {"goals"}):
+    if outcome not in {"no_findings", "fixed", "follow_up", "correction_required"} or set(entropy) not in (required, required | {"goals"}):
         raise PhaseEvidenceError("phase review entropy outcome is invalid")
+    if outcome == "correction_required" and acceptance != "changes_requested":
+        raise PhaseEvidenceError("pending in-goal entropy correction requires changes_requested acceptance")
     normalized_entropy: dict[str, Any] = {
         "outcome": outcome,
         "evidence": _text(entropy.get("evidence"), "phase review entropy evidence"),

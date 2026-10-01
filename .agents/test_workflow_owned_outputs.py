@@ -7,6 +7,7 @@ actual-version handoff test. The archive stays outside the repository.
 from __future__ import annotations
 
 import contextlib
+import base64
 import copy
 import hashlib
 import importlib.util
@@ -21,9 +22,11 @@ import tempfile
 import time
 from types import SimpleNamespace
 import unittest
+import zlib
 from unittest import mock
 
 import test_workflow_journey as fixtures
+from test_goal_history_delta import legacy_history_body, semantic_predecessor
 
 z = fixtures.z
 
@@ -253,6 +256,124 @@ class PublicSession:
 
 
 class OwnedOutputPublicTests(unittest.TestCase):
+    def test_publication_changes_requested_with_unfinished_ci_reaches_correction(self):
+        s = self.session
+        z._workflow_section(s.project, 'verification_testing')['configuration']['required_ci'] = 'inspect_exact_pr_head'
+        s.prepare()
+        s.design()
+        s.implement()
+        s.git('add', 'source.py')
+        s.git('commit', '-qm', 'feat: required behavior')
+        self.fixture.head_oid = s.git('rev-parse', 'HEAD')
+        self.fixture.base_oid = s.git('rev-parse', 'dev')
+        child = s.goal(101)
+        metadata = copy.deepcopy(child['implementation'])
+        metadata['pr'] = 'https://github.com/owner/repo/pull/101'
+        s.call(101, {'operation': 'revise', 'expected_digest': child['digest'],
+                     'changes': {'implementation': metadata}})
+
+        ci = {'state': 'failed'}
+        observed_states = s.pull_request_states
+
+        def states(*args, **kwargs):
+            records, size, processes = observed_states(*args, **kwargs)
+            records[101].update(checks_verified=ci['state'] == 'success', checks_present=True,
+                                observed_ci_state=ci['state'])
+            return records, size, processes
+
+        s.pull_request_states = states
+        publication = s.start(101, 'publish')
+        proof = s.verify(publication)['next_steps'][0]['verification']
+        s.result(101, publication, {'publication': 'exact produced head'}, proof)
+
+        for status in ('failed', 'pending', 'cancelled', 'incomplete'):
+            with self.subTest(ci=status):
+                ci['state'] = status
+                target = next(x for x in s.checkpoint(101) if x.get('phase') == 'publish')
+                receipt = json.loads(Path(target['policy']['path']).read_text())['policy_receipt']
+                review = s.call(101, {**target['start'], 'request_id': 'review-start-' + status,
+                                      'policy_receipt': receipt})['next_steps'][0]
+                bind = {'operation': 'bind', 'phase': 'publish', 'lease': review['lease']['token'],
+                        'actor': publication['bound_actor'], 'selection': review['lease']['selection'],
+                        'policy_receipt': receipt}
+                before_bind = copy.deepcopy(s.provider.issues[101])
+                self.assertIn('independent', json.dumps(s.call(101, bind, expected=2)))
+                self.assertEqual(before_bind, s.provider.issues[101])
+                bind['actor'] = 'independent-publication-reviewer-' + status
+                s.call(101, bind)
+                review['bound_actor'] = bind['actor']
+                artifact = s.artifact(101, review, {'finding': 'Repair failed verification',
+                                                  'head': self.fixture.head_oid, 'ci': status})
+                request = {'operation': 'record_review', 'phase': 'publish',
+                           'lease': review['lease']['token'], 'actor': review['bound_actor'],
+                           'artifact': artifact, 'request_id': 'negative-publication-' + status,
+                           'outcomes': {'acceptance': 'approved', 'entropy': {
+                               'outcome': 'no_findings', 'evidence': 'Inspected exact head.', 'goals': []}}}
+                before = copy.deepcopy(s.provider.issues[101])
+                denied = s.call(101, request, expected=2)
+                self.assertIn('CI checks', json.dumps(denied))
+                self.assertEqual(before, s.provider.issues[101])
+
+                request['outcomes'] = {'acceptance': 'changes_requested', 'entropy': {
+                    'outcome': 'correction_required', 'evidence': 'Required CI remains ' + status, 'goals': []}}
+                wrong_actor = {**request, 'actor': 'unbound-worker'}
+                self.assertIn('bound executor', json.dumps(s.call(101, wrong_actor, expected=2)))
+                self.assertEqual(before, s.provider.issues[101])
+                wrong_lease = {**request, 'lease': 'not-the-current-lease'}
+                self.assertIn('exact current phase lease', json.dumps(s.call(101, wrong_lease, expected=2)))
+                self.assertEqual(before, s.provider.issues[101])
+                old_head = self.fixture.head_oid
+                self.fixture.head_oid = 'f' * 40
+                try:
+                    stale = s.call(101, request, expected=2)
+                    self.assertRegex(json.dumps(stale), r'(?i)(changed|stale|eligible)')
+                    self.assertEqual(before, s.provider.issues[101])
+                finally:
+                    self.fixture.head_oid = old_head
+                malformed = {**request, 'outcomes': {'acceptance': 'changes_requested'}}
+                self.assertIn('separate acceptance and entropy', json.dumps(s.call(101, malformed, expected=2)))
+                self.assertEqual(before, s.provider.issues[101])
+                s.call(101, request)
+                stored = s.goal(101)['phase_evidence']['reviews']['publish']
+                self.assertEqual('changes_requested', stored['decision'])
+                self.assertEqual('correction_required', stored['outcomes']['entropy']['outcome'])
+                self.assertEqual(artifact, stored['artifact'])
+                rejected_record = s.goal(101)['phase_evidence']['records']['publish']
+                self.assertEqual(content_hash(rejected_record), stored['record_hash'])
+                self.assertEqual(rejected_record['input_hash'], stored['input_hash'])
+                finding = s.read(101, artifact)
+                self.assertEqual(status, finding['ci'])
+                self.assertEqual(self.fixture.head_oid, finding['head'])
+                self.assertEqual(self.fixture.head_oid,
+                                 rejected_record['input_envelope']['provider']['snapshot']['publication']['head_oid'])
+                after = copy.deepcopy(s.provider.issues[101])
+                comments = copy.deepcopy(s.provider.comments[101])
+                s.call(101, request)
+                self.assertEqual(after, s.provider.issues[101])
+                self.assertEqual(comments, s.provider.comments[101])
+                correction = next(x for x in s.checkpoint(101) if x.get('phase') == 'publish')
+                self.assertEqual('execute', correction['kind'])
+                self.assertEqual(['--intent', 'execute'], correction['command'][:2])
+                self.assertEqual('start', correction['start']['operation'])
+                self.assertEqual('delegate', correction['assignment'])
+                self.assertEqual('record_result', correction['submission']['operation'])
+                self.assertEqual('publish', correction['submission']['phase'])
+                self.assertEqual(correction['input_hash'], correction['result_contract']['record']['input_hash'])
+                self.assertEqual(stored['record_hash'], correction['correction']['prior_record_hash'])
+                self.assertEqual(stored['outcomes'], correction['correction']['prior_findings'])
+                self.assertEqual(stored['reviewer'], correction['correction']['prior_reviewer'])
+                self.assertIn('only the recorded findings', correction['correction']['scope'])
+                publication = s.start(101, 'publish')
+                proof = s.verify(publication)['next_steps'][0]['verification']
+                s.result(101, publication, {'publication': 'corrected after ' + status}, proof)
+
+        ci['state'] = 'success'
+        s.review(101, 'publish')
+        self.assertEqual('approved', s.goal(101)['phase_evidence']['reviews']['publish']['decision'])
+        integration = next(x for x in s.checkpoint(101) if x['kind'] == 'integration')
+        self.assertEqual(self.fixture.head_oid, integration['head'])
+        self.assertFalse(self.fixture.pr_merged)
+
     def use_shipped_dag(self):
         template = json.loads((fixtures.fixtures.PLUGIN_ROOT / 'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
         dag = z._workflow_section({'policy': template['policy']}, 'workflow_adherence')['configuration']['phase_dag']
@@ -332,6 +453,49 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.session.git('commit', '-qm', 'fixture: existing source and test')
         self.session.git('checkout', '-q', '-B', 'goal-child')
 
+    def test_pending_entropy_correction_routes_to_same_goal_without_false_approval(self):
+        s = self.session
+        execution = s.start(100, 'understand')
+        s.result(100, execution, {'requirements': 'Return two.'})
+        review = s.start(100, 'understand', 'review')
+        self.assertIn('correction_required', review['result_contract']['review']['outcomes']['entropy']['outcome'])
+        artifact = s.artifact(100, review, {'finding': 'Repair duplication within this goal.'})
+        request = {'operation': 'record_review', 'phase': 'understand',
+                   'lease': review['lease']['token'], 'actor': review['bound_actor'], 'artifact': artifact,
+                   'outcomes': {'acceptance': 'approved', 'entropy': {
+                       'outcome': 'correction_required', 'evidence': 'Pending in-goal correction.', 'goals': []}}}
+        before = copy.deepcopy(s.provider.issues[100])
+        rejected = s.call(100, request, expected=2)
+        self.assertIn('changes_requested', json.dumps(rejected))
+        self.assertEqual(before, s.provider.issues[100])
+        request['outcomes']['acceptance'] = 'changes_requested'
+        s.call(100, request)
+        stored = s.goal(100)['phase_evidence']['reviews']['understand']
+        self.assertEqual('correction_required', stored['outcomes']['entropy']['outcome'])
+        self.assertEqual('changes_requested', stored['decision'])
+        self.assertEqual({100, 101}, set(s.provider.issues))
+        step = next(x for x in s.checkpoint(100) if x.get('phase') == 'understand')
+        self.assertEqual('execute', step['kind'])
+        s.phase(100, 'understand', {'requirements': 'Corrected: return two.'})
+        self.assertEqual('approved', s.goal(100)['phase_evidence']['reviews']['understand']['decision'])
+
+    def test_verification_accepts_gateway_rigor_projection_without_scope_drift(self):
+        s = self.session
+        original = s.portfolio_snapshot
+        def projected(*args, **kwargs):
+            snapshot = original(*args, **kwargs)
+            for goal in snapshot['goals']:
+                goal['engineering_rigor_inputs'] = copy.deepcopy(goal.get('engineering_rigor'))
+                goal['engineering_rigor'] = {**(goal.get('engineering_rigor') or {}),
+                    'effective': 'agentic', 'valid': True, 'errors': [],
+                    'provenance': {'status': 'derived'}}
+            return snapshot
+        s.portfolio_snapshot = projected
+        s.prepare()
+        # This follows public start/bind/verify/result/review, rather than
+        # treating a matching hash alone as proof of accepted verification.
+        s.design()
+
     def test_mixed_checkout_raw_drift_and_dirty_acquisition(self):
         s = self.session
         s.git('config', 'core.autocrlf', 'true')
@@ -392,6 +556,33 @@ class OwnedOutputPublicTests(unittest.TestCase):
         design, _ = s.design()
         self.assertTrue(design['lease']['acquisition']['checkout_overrides'])
         s.implement()
+
+    def test_orphan_verification_proof_does_not_invalidate_new_acquisition(self):
+        s = self.session
+        s.prepare()
+        first = s.start(101, 'test_design')
+        old_ref = s.verify(first)['next_steps'][0]['verification']
+        old_proof = s.read(101, old_ref)
+        s.call(101, {'operation': 'recover', 'phase': 'test_design',
+                     'lease': first['lease']['token'], 'worker_status': 'stopped',
+                     'evidence': 'Fixture executor stopped before recording a result.'})
+        self.assertNotIn('test_design', s.goal(101)['phase_evidence']['records'])
+        # An independent committed change makes the abandoned proof historical.
+        (self.repo / 'independent.txt').write_text('new baseline\n')
+        s.git('add', 'independent.txt')
+        s.git('commit', '-qm', 'fixture: independent baseline change')
+        second = s.start(101, 'test_design')
+        current = next(x for x in s.checkpoint(101) if x.get('phase') == 'test_design')
+        self.assertEqual(second['input_hash'], current['input_hash'],
+                         'Acquiring ownership must not change substantive inputs')
+        self.assertEqual(old_proof, s.read(101, old_ref), 'Preserve historical proof')
+        (self.repo / s.test_path).write_text('from source import answer\nassert answer() == 2\n')
+        new_ref = s.verify(second)['next_steps'][0]['verification']
+        new_proof = s.read(101, new_ref)
+        self.assertFalse(new_proof['passed'])
+        self.assertEqual(second['input_hash'], new_proof['acquisition']['input_hash'])
+        s.result(101, second, {'behavior': 'Require two.'}, new_ref)
+        s.review(101, 'test_design')
 
     def test_existing_consumed_test_and_source_red_to_green(self):
         s = self.session
@@ -533,6 +724,36 @@ class OwnedOutputPublicTests(unittest.TestCase):
                             for x in changed), changed)
         self.assertNotEqual(baseline, changed)
         self.assertFalse(any(x.get('phase') == 'publish' and x['kind'] in {'assess', 'execute'} for x in changed))
+
+    def test_reacquiring_phase_keeps_stale_proof_drift_in_its_frozen_input(self):
+        s = self.session
+        s.prepare()
+        s.design()
+        goal = s.goal(101)
+        goal.update(parent=None, depends_on=[], implementation={})
+        graph, _ = z._workflow_phase_configuration(s.project, goal)
+        engine = z.workflow_engine(s.repo, s.project, s.runtime)
+        engine.adapter = s.provider
+        engine.owned_versions = lambda *_args: {'source.py': {'sha256:' + '0' * 64}}
+        engine.workspace_digest = lambda: 'sha256:' + 'a' * 64
+
+        acquired = engine.inputs(goal, graph)['test_design']
+        self.assertIn('output_drift', acquired['repository']['snapshot'])
+        goal['workflow']['leases']['test_design:execute'] = {
+            'acquisition': {'input_envelope': copy.deepcopy(acquired)},
+        }
+        current = engine.inputs(goal, graph)['test_design']
+
+        self.assertEqual(content_hash(acquired), content_hash(current))
+
+        goal['phase_evidence']['records']['test_design']['input_envelope'] = copy.deepcopy(acquired)
+        goal['phase_evidence']['records']['test_design']['input_hash'] = content_hash(acquired)
+        goal['phase_evidence']['reviews'].pop('test_design', None)
+        goal['workflow']['artifacts']['test_design'] = {'workspace': engine.workspace_digest()}
+        del goal['workflow']['leases']['test_design:execute']
+        completed = engine.inputs(goal, graph)['test_design']
+
+        self.assertEqual(content_hash(acquired), content_hash(completed))
 
     def test_durable_proof_rejects_tampered_acquisition_and_outputs(self):
         s = self.session
@@ -1176,14 +1397,32 @@ class OwnedOutputPublicTests(unittest.TestCase):
         # Broken stored contents under an unchanged claimed hash reject; this is
         # NOT a claim that a valid cryptographic self-referential artifact exists.
         real_comments = s.provider.get_issue_comments
+        damaged_records = 0
         def damaged_comments(number):
+            nonlocal damaged_records
             comments = real_comments(number)
             for comment in comments:
                 if comment['body'].startswith('<!-- zzzops-artifact ' + reference['hash'] + ' -->'):
                     comment['body'] = '<!-- zzzops-artifact ' + reference['hash'] + ' -->\ninvalid cyclic/tampered bytes'
+                    damaged_records += 1
+                elif comment['body'].startswith('<!-- zzzops-envelope\n'):
+                    path = Path(z.__file__).parent / 'comment_store.py'
+                    spec = importlib.util.spec_from_file_location('predecessor_envelope_test', path)
+                    codec = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(codec)
+                    envelope = codec.decode_envelope(comment['body'])
+                    for record in envelope['artifacts']:
+                        if record['hash'] == reference['hash']:
+                            # Keep the claimed artifact identity but give it
+                            # different content under a valid transport checksum.
+                            record.clear()
+                            record.update(hash=reference['hash'], kind='full', type='json', text='null')
+                            comment['body'] = codec.encode_envelope(envelope)
+                            damaged_records += 1
             return comments
         with mock.patch.object(s.provider, 'get_issue_comments', side_effect=damaged_comments):
             rejected = s.verify(correction, expected=2)
+            self.assertGreater(damaged_records, 0, 'The referenced predecessor must actually be corrupted')
             self.assertRegex(json.dumps(rejected), r'(?i)(artifact|predecessor|malformed|hash)')
         restored = s.verify(correction)['next_steps'][0]['verification']
         self.assertTrue(s.read(101, restored)['passed'])
@@ -1337,6 +1576,636 @@ def legacy_prepare(config_path):
         Path(data['result']).write_text(json.dumps({'issues': provider.issues, 'comments': provider.comments,
                                                     'start': acquired, 'consumed': s.consumed,
                                                     'old_code_hash': file_hash(source)}))
+
+
+class CommentCheckpointPublicTests(unittest.TestCase):
+    """#539 uses the existing public dispatcher and provider fixtures.
+
+    The implemented request shapes use artifacts=[{content, hash}]
+    on result/review; artifact={phase, slot, revision?} on read. Inline values
+    carry data only; the ordinary record and lease still confer all authority.
+    """
+
+    setUp = OwnedOutputPublicTests.setUp
+
+    def reference(self, content):
+        identity = content_hash(content)
+        return {'reference': 'urn:' + identity, 'hash': identity}
+
+    def legacy_body(self, content, *, raw=None, compressed=None):
+        identity = content_hash(content)
+        raw = raw if raw is not None else json.dumps({'hash': identity, 'content': content}, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
+        encoded = base64.b64encode(compressed if compressed is not None else zlib.compress(raw, level=0)).decode()
+        return '<!-- zzzops-artifact ' + identity + ' -->\n<details><summary>Immutable phase artifact</summary>\n\n```text\n' + encoded + '\n```\n</details>'
+
+    def test_legacy_alternate_compression_reuses_complete_content_identity(self):
+        s = self.session
+        step = s.start(101, 'understand')
+        for content in ('Raw Markdown 😀\r\nno final newline', {'text': 'long paragraph ' * 100}, [1, False, None]):
+            with self.subTest(type=type(content).__name__):
+                s.provider.create_issue_comment(101, self.legacy_body(content))
+                before = copy.deepcopy(s.provider.comments[101])
+                self.assertEqual(content, s.read(101, self.reference(content)))
+                self.assertEqual(self.reference(content), s.artifact(101, step, content))
+                self.assertEqual(before, s.provider.comments[101])
+
+    def test_public_artifact_reads_reject_duplicate_keys_trailing_and_expansion(self):
+        s = self.session
+        content = {'text': 'value'}
+        identity = content_hash(content)
+        valid = json.dumps({'hash': identity, 'content': content}, separators=(',', ':')).encode()
+        cases = {
+            'duplicate_keys': ('{"hash":' + json.dumps(identity) + ',"content":null,"content":{"text":"value"}}').encode(),
+            'trailing_json': valid + b' {}',
+            'expansion': b' ' * 1_000_001 + valid,
+        }
+        for name, raw in cases.items():
+            with self.subTest(name=name):
+                s.provider.comments[101] = []
+                s.provider.create_issue_comment(101, self.legacy_body(content, raw=raw))
+                response = s.call(101, {'operation': 'read', 'artifact': self.reference(content)}, expected=None)
+                self.assertNotEqual(0, s.calls[-1]['code'], 'Must reject ' + name)
+                self.assertTrue(response['next_steps'])
+        s.provider.comments[101] = []
+        s.provider.create_issue_comment(101, self.legacy_body(content, compressed=zlib.compress(valid) + b'trailing'))
+        s.call(101, {'operation': 'read', 'artifact': self.reference(content)}, expected=None)
+        self.assertNotEqual(0, s.calls[-1]['code'])
+
+    def test_conflicting_stored_identity_is_not_hidden_by_first_match(self):
+        s = self.session
+        content = {'text': 'verified'}
+        reference = self.reference(content)
+        s.provider.create_issue_comment(101, self.legacy_body(content))
+        raw = json.dumps({'hash': reference['hash'], 'content': 'tampered'}).encode()
+        s.provider.create_issue_comment(101, self.legacy_body(content, raw=raw))
+        s.call(101, {'operation': 'read', 'artifact': reference}, expected=None)
+        self.assertNotEqual(0, s.calls[-1]['code'], 'All definitions of an immutable identity must be checked')
+
+    def test_latest_advances_and_unchanged_revisions_remain_pinnable(self):
+        s = self.session
+        step = s.start(101, 'understand')
+        revisions = []
+        contents = [{'text': 'first'}, {'text': 'second'}, {'text': 'second'}]
+        for index, content in enumerate(contents):
+            s.result(101, step, content)
+            revisions.append(s.goal(101)['revision'])
+            if index != len(contents) - 1:
+                s.review(101, 'understand', acceptance='changes_requested')
+                step = s.start(101, 'understand')
+        selector = {'phase': 'understand', 'slot': 'output'}
+        latest = s.call(101, {'operation': 'read', 'artifact': selector})['next_steps'][0]
+        self.assertEqual(contents[-1], latest['content'])
+        self.assertEqual(revisions[-1], latest['resolved']['revision'])
+        for revision, content in zip(revisions, contents):
+            with self.subTest(revision=revision):
+                result = s.call(101, {'operation': 'read', 'artifact': {**selector, 'revision': revision}})['next_steps'][0]
+                self.assertEqual(content, result['content'])
+                self.assertEqual(content_hash(content), result['resolved']['hash'])
+                self.assertEqual(revision, result['resolved']['revision'])
+                self.assertEqual(content, s.read(101, self.reference(content)))
+
+    def test_sparse_changed_artifact_is_smaller_and_missing_base_fails_closed(self):
+        s = self.session
+        step = s.start(101, 'understand')
+        text = ''.join(hashlib.sha256(str(i).encode()).hexdigest() for i in range(500))
+        first = {'text': text}
+        base_start = len(s.provider.comments[101])
+        first_ref = s.artifact(101, step, first)
+        base_comments = copy.deepcopy(s.provider.comments[101][base_start:])
+        s.result(101, step, first)
+        s.review(101, 'understand', acceptance='changes_requested')
+        step = s.start(101, 'understand')
+        changed = {'text': text[:16000] + '!' + text[16001:]}
+        before = len(s.provider.comments[101])
+        s.call(101, self.inline_result(step, [changed]))
+        newly_stored = s.provider.comments[101][before:]
+        self.assertLess(sum(len(c['body']) for c in newly_stored), sum(len(c['body']) for c in base_comments))
+        self.assertEqual(changed, s.read(101, self.reference(changed)))
+        self.assertEqual(first, s.read(101, first_ref))
+        # Remove the verified base storage only, retaining current committed state.
+        base_ids = {c['id'] for c in base_comments}
+        s.provider.comments[101] = [c for c in s.provider.comments[101] if c['id'] not in base_ids]
+        s.call(101, {'operation': 'read', 'artifact': self.reference(changed)}, expected=None)
+        self.assertNotEqual(0, s.calls[-1]['code'], 'A missing delta base must not return stale or partial content')
+
+    def test_new_envelope_cycles_duplicate_records_and_patch_tampering_fail_closed(self):
+        """Decoded envelopes expose artifact records for semantic validation.
+
+        Records expose hash/kind/base and a decoded patch. encode_envelope performs
+        transport encoding/checksumming, allowing deliberate semantically invalid
+        fixtures; the production reader enforces semantic integrity.
+        """
+        s = self.session
+        step = s.start(101, 'understand')
+        text = ''.join(hashlib.sha256(str(i).encode()).hexdigest() for i in range(200))
+        first, changed = {'text': text}, {'text': '!' + text[1:]}
+        s.result(101, step, first)
+        s.review(101, 'understand', acceptance='changes_requested')
+        step = s.start(101, 'understand')
+        before = len(s.provider.comments[101])
+        s.call(101, self.inline_result(step, [changed]))
+        self.assertEqual(changed, s.read(101, self.reference(changed)))  # Positive control.
+        path = Path(z.__file__).parent / 'comment_store.py'
+        spec = importlib.util.spec_from_file_location('goal539_envelope_test', path)
+        codec = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(codec)
+        stored = s.provider.comments[101][before]
+        original = stored['body']
+        envelope = codec.decode_envelope(original)
+        self.assertTrue(any(r['hash'] == content_hash(changed) and r['kind'] == 'delta' for r in envelope['artifacts']))
+        for corruption in ('cycle', 'missing_base', 'duplicate_record', 'tampered_patch', 'unknown_version'):
+            with self.subTest(corruption=corruption):
+                mutated = copy.deepcopy(envelope)
+                record = next(r for r in mutated['artifacts'] if r['hash'] == content_hash(changed))
+                if corruption == 'cycle':
+                    record['base'] = record['hash']
+                elif corruption == 'missing_base':
+                    record['base'] = 'sha256:' + '0' * 64
+                elif corruption == 'duplicate_record':
+                    mutated['artifacts'].append(copy.deepcopy(record))
+                elif corruption == 'tampered_patch':
+                    record['patch']['edits'][0][2] += 'tampered'
+                else:
+                    mutated['schema_version'] = 999
+                stored['body'] = codec.encode_envelope(mutated)
+                s.call(101, {'operation': 'read', 'artifact': self.reference(changed)}, expected=None)
+                self.assertNotEqual(0, s.calls[-1]['code'], 'Must reject ' + corruption + ' without stale fallback')
+                stored['body'] = original
+                self.assertEqual(changed, s.read(101, self.reference(changed)))
+
+    def test_reconstruction_work_limit_is_enforced_even_for_compressible_content(self):
+        """The reconstruction-work constant is internal, with no public setting."""
+        s = self.session
+        step = s.start(101, 'understand')
+        content = {'text': 'compressible ' * 40000}
+        reference = s.artifact(101, step, content)
+        self.assertEqual(content, s.read(101, reference))
+        # A pristine CLI import can replace sys.modules aliases. Patch the
+        # module retained by this session's actual workflow implementation.
+        store = s.api._workflow.comment_store
+        self.assertTrue(hasattr(store, 'MAX_RECONSTRUCTION_WORK_BYTES'), 'Reconstruction-work limit is missing')
+        with mock.patch.dict(sys.modules):
+            spec = importlib.util.spec_from_file_location('budget_pristine_zzzops', s.api.__file__)
+            pristine = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(pristine)
+            self.assertIsNot(store, pristine._workflow.comment_store)
+            with mock.patch.object(store, 'MAX_RECONSTRUCTION_WORK_BYTES', 100):
+                s.call(101, {'operation': 'read', 'artifact': reference}, expected=None)
+                self.assertNotEqual(0, s.calls[-1]['code'], 'A tiny compressed body must not bypass decoded work accounting')
+        self.assertEqual(content, s.read(101, reference))
+
+    def test_unfavorable_delta_uses_independent_full_checkpoint(self):
+        s = self.session
+        step = s.start(101, 'understand')
+        first = {'text': 'a' * 20000}
+        before = len(s.provider.comments[101])
+        s.artifact(101, step, first)
+        base_ids = {c['id'] for c in s.provider.comments[101][before:]}
+        s.result(101, step, first)
+        s.review(101, 'understand', acceptance='changes_requested')
+        step = s.start(101, 'understand')
+        changed = {'text': 'z' * 20000}
+        s.call(101, self.inline_result(step, [changed]))
+        s.provider.comments[101] = [c for c in s.provider.comments[101] if c['id'] not in base_ids]
+        self.assertEqual(changed, s.read(101, self.reference(changed)), 'Cheaper full checkpoints must not depend on the prior artifact')
+
+    def test_checkpoint_rollover_breaks_dependency_before_ninth_delta_edge(self):
+        s = self.session
+        step = s.start(101, 'understand')
+        text = ''.join(hashlib.sha256(str(i).encode()).hexdigest() for i in range(200))
+        initial = {'text': text}
+        before = len(s.provider.comments[101])
+        s.artifact(101, step, initial)
+        base_ids = {c['id'] for c in s.provider.comments[101][before:]}
+        s.result(101, step, initial)
+        for index in range(9):
+            s.review(101, 'understand', acceptance='changes_requested')
+            step = s.start(101, 'understand')
+            text = text[:100 + index] + '!' + text[101 + index:]
+            content = {'text': text}
+            s.call(101, self.inline_result(step, [content], 'rollover-' + str(index)))
+            self.assertEqual(content, s.read(101, self.reference(content)))
+        s.provider.comments[101] = [c for c in s.provider.comments[101] if c['id'] not in base_ids]
+        self.assertEqual(content, s.read(101, self.reference(content)), 'Writer must checkpoint before exceeding eight edges')
+        review = s.start(101, 'understand', 'review')
+        before = copy.deepcopy(s.provider.comments[101])
+        self.assertEqual(self.reference(content), s.artifact(101, review, content))
+        self.assertEqual(before, s.provider.comments[101], 'Reuse works even for bundled delta/checkpoint representations')
+
+    def test_cached_immutable_read_does_not_pin_logical_head(self):
+        s = self.session
+        step = s.start(101, 'understand')
+        first, second = {'text': 'old'}, {'text': 'new'}
+        s.result(101, step, first)
+        with mock.patch.object(z, 'GitHubGoalTransitionAdapter', return_value=s.provider), mock.patch.object(
+            z, 'portfolio_snapshot', side_effect=s.portfolio_snapshot):
+            engine = z.workflow_engine(s.repo, s.project, s.runtime)
+            self.assertEqual(first, engine.read_artifact(101, self.reference(first)))
+            s.review(101, 'understand', acceptance='changes_requested')
+            step = s.start(101, 'understand')
+            s.result(101, step, second)
+            engine.invalidate()  # Existing gateway freshness boundary, retaining immutable cache.
+            self.assertEqual(second, engine.read_artifact(101, {'phase': 'understand', 'slot': 'output'}))
+            self.assertEqual(first, engine.read_artifact(101, self.reference(first)))
+
+    def test_partial_multipart_envelope_retry_preserves_one_logical_operation(self):
+        s = self.session
+        step = s.start(101, 'understand')
+        # Each record fits alone; the combined encoded body must require multiple parts.
+        contents = [{'text': ''.join(hashlib.sha256((str(part) + ':' + str(i)).encode()).hexdigest()
+                                    for i in range(650))} for part in range(3)]
+        request = self.inline_result(step, contents, 'multipart-retry')
+        before_comments, before_updates = len(s.provider.comments[101]), len(s.provider.updates)
+        original = s.provider.create_issue_comment
+        attempts = 0
+        def stop_after_one(number, body):
+            nonlocal attempts
+            attempts += 1
+            if attempts > 1:
+                raise z.GoalTransitionProviderError('injected second-part failure')
+            return original(number, body)
+        with mock.patch.object(s.provider, 'create_issue_comment', side_effect=stop_after_one):
+            s.call(101, request, expected=None)
+        self.assertEqual(before_comments + 1, len(s.provider.comments[101]))
+        self.assertEqual(before_updates, len(s.provider.updates), 'Do not publish state before all envelope parts exist')
+        partial = copy.deepcopy(s.provider.comments[101][-1])
+        s.call(101, request)
+        appended = s.provider.comments[101][before_comments:]
+        self.assertGreater(len(appended), 1)
+        self.assertEqual(1, sum(c['body'] == partial['body'] for c in appended))
+        self.assertTrue(all(len(c['body']) <= 65536 for c in appended))
+        self.assertEqual(before_updates + 1, len(s.provider.updates))
+        for content in contents:
+            self.assertEqual(content, s.read(101, self.reference(content)))
+
+    def test_partial_upload_cannot_bypass_live_actor_or_stale_input_checks(self):
+        s = self.session
+        step = s.start(101, 'understand')
+        request = self.inline_result(step, [{'requirements': 'Retry must retain authority.'}])
+        before_comments = len(s.provider.comments[101])
+        with mock.patch.object(s.provider, 'update_issue', side_effect=z.GoalTransitionProviderError('before body write')):
+            s.call(101, request, expected=None)
+        self.assertEqual(before_comments + 1, len(s.provider.comments[101]), 'Exercise an actually persisted pending envelope')
+        comments, updates = copy.deepcopy(s.provider.comments), copy.deepcopy(s.provider.updates)
+        for field in ('actor', 'lease'):
+            with self.subTest(field=field):
+                changed = copy.deepcopy(request)
+                changed[field] = 'different-worker-or-lease'
+                s.call(101, changed, expected=None)
+                self.assertNotEqual(0, s.calls[-1]['code'])
+                self.assertEqual(comments, s.provider.comments)
+                self.assertEqual(updates, s.provider.updates)
+        s.provider.issues[101]['body'] = 'Concurrent human change.\n' + s.provider.issues[101]['body']
+        s.call(101, request, expected=None)
+        self.assertNotEqual(0, s.calls[-1]['code'])
+        self.assertEqual(comments, s.provider.comments)
+        self.assertEqual(updates, s.provider.updates)
+
+    def test_start_and_bind_remain_separate_durable_checkpoints(self):
+        s = self.session
+        s.prepare()
+        step = s.start(101, 'test_design')
+        observed = []
+        for number, payload in s.provider.updates:
+            if number == 101:
+                goal = z.parse_managed_goal(payload['body'], number)
+                lease = goal.get('workflow', {}).get('leases', {}).get('test_design:execute')
+                if lease:
+                    observed.append(lease)
+        self.assertGreaterEqual(len(observed), 2)
+        self.assertIsNone(observed[-2]['worker'], 'Start must be durable before dispatch/bind')
+        self.assertEqual(step['bound_actor'], observed[-1]['worker'])
+        self.assertEqual(observed[-2]['token'], observed[-1]['token'])
+
+    def test_historical_semantic_projection_never_restores_live_coordination(self):
+        s = self.session
+        snapshots = {}
+        def remember():
+            body = s.provider.issues[101]['body']
+            expected = semantic_predecessor(body, 101)
+            snapshots[expected['goal']['revision']] = expected
+            return expected
+
+        # Seed an actual legacy pending record and complete it unchanged. All
+        # subsequent transitions use the production writer's current format.
+        initial = copy.deepcopy(s.provider.issues[101])
+        remember()
+        requested = copy.deepcopy(z.parse_managed_goal(initial['body'], 101))
+        requested.update(revision=requested['revision'] + 1, next_action='Continue after legacy checkpoint.')
+        transition = {'schema_version': 1, 'expected_revision': requested['revision'] - 1,
+                      'expected_digest': s.goal(101)['digest'], 'goal': requested}
+        legacy = legacy_history_body(initial, transition)
+        s.provider.create_issue_comment(101, legacy)
+        z.apply_goal_transition(s.provider, 'owner/repo', 101, transition)
+        remember()
+
+        step = s.start(101, 'understand')
+        prior = s.goal(101)
+        self.assertTrue(prior['workflow']['leases'])
+        self.assertTrue(prior['workflow']['receipts'])
+        remember()
+        s.result(101, step, {'requirements': 'Do not reactivate historical ownership.'})
+        result_state = remember()
+        self.assertIn('understand', result_state['goal']['phase_evidence']['records'])
+        s.review(101, 'understand')
+        review_state = remember()
+        self.assertIn('understand', review_state['goal']['phase_evidence']['reviews'])
+        approval = s.start(101, 'understand', 'human_approval')
+        remember()
+        s.call(101, {'operation': 'approve', 'phase': 'understand', 'lease': approval['lease']['token'],
+                     'actor': approval['bound_actor'], 'approval': {
+                         'actor': approval['bound_actor'], 'approval_token': 'user: exact fixture approval'}})
+        approved = remember()
+        self.assertIn('understand', approved['goal']['phase_evidence']['human_approvals'])
+        # Advance once more so approval-bearing state is historical too.
+        current = s.goal(101)
+        s.call(101, {'operation': 'revise', 'expected_digest': current['digest'],
+                     'changes': {'priority': 'P1', 'confidence': 'medium', 'next_action': 'Observe complete prior semantics.'}})
+        reconstruct = getattr(z._goals, 'reconstruct_goal_history', None)
+        self.assertTrue(callable(reconstruct), 'Historical semantic reconstruction API is not implemented')
+        for revision, expected in snapshots.items():
+            with self.subTest(revision=revision):
+                historical = reconstruct(s.provider, 101, revision)
+                self.assertEqual(expected, {key: historical[key] for key in ('goal', 'human_spec')})
+        self.assertEqual(legacy, s.provider.comments[101][0]['body'], 'Mixed history must not rewrite the legacy boundary')
+
+    def test_pending_start_retry_preserves_generated_lease_and_completed_retry_does_not_resurrect(self):
+        s = self.session
+        s.assess(101, 'understand')
+        ready = next(x for x in s.checkpoint(101) if x.get('phase') == 'understand')
+        receipt = json.loads(Path(ready['policy']['path']).read_text())['policy_receipt']
+        request = {**ready['start'], 'policy_receipt': receipt, 'request_id': 'stable-start-retry'}
+        before_comments = len(s.provider.comments[101])
+        attempted = []
+        def unavailable(number, payload):
+            attempted.append(copy.deepcopy(payload))
+            raise z.GoalTransitionProviderError('lost before body publication')
+        with mock.patch.object(s.provider, 'update_issue', side_effect=unavailable):
+            s.call(101, request, expected=None)
+        self.assertEqual(1, len(attempted), 'The durable append must precede body publication')
+        prior_lease = z.parse_managed_goal(attempted[0]['body'], 101)['workflow']['leases']['understand:execute']
+        perform = s.call(101, request)['next_steps'][0]
+        self.assertEqual(prior_lease['token'], perform['lease']['token'])
+        self.assertEqual(prior_lease['expires_at'], perform['lease']['expires_at'])
+        self.assertEqual(before_comments + 1, len(s.provider.comments[101]))
+        actor = 'root-thread' if ready['assignment'] == 'root' else 'retry-worker'
+        if perform['lease']['worker'] is None:
+            s.call(101, {'operation': 'bind', 'phase': 'understand', 'lease': perform['lease']['token'],
+                         'actor': actor, 'selection': perform['lease']['selection'], 'policy_receipt': receipt})
+        perform['bound_actor'] = actor
+        s.result(101, perform, {'requirements': 'Completed after recovered start.'})
+        before = copy.deepcopy(s.provider.comments[101])
+        s.call(101, request, expected=None)
+        self.assertFalse(s.goal(101)['workflow']['leases'], 'An old start receipt must never restore expired/released ownership')
+        self.assertEqual(before, s.provider.comments[101])
+
+    def inline_result(self, step, contents, request_id='inline-result'):
+        record = copy.deepcopy(step['result_contract']['record'])
+        record.update(actor=step['bound_actor'], output=self.reference(contents[0]))
+        return {'operation': 'record_result', 'phase': step['phase'], 'lease': step['lease']['token'],
+                'actor': step['bound_actor'], 'files': list(self.session.consumed), 'record': record,
+                'request_id': request_id,
+                'artifacts': [{'content': content, 'hash': content_hash(content)} for content in contents]}
+
+    def test_inline_multiple_artifacts_result_release_share_one_durable_checkpoint(self):
+        s = self.session
+        step = s.start(101, 'understand')
+        contents = [{'requirements': 'Deliver exact text.'}, {'supporting': 'Second independent evidence.'}]
+        before_comments, before_updates = len(s.provider.comments[101]), len(s.provider.updates)
+        request = self.inline_result(step, contents)
+        s.call(101, request)
+        self.assertEqual(1, len(s.provider.comments[101]) - before_comments,
+                         'Two artifacts plus result/release must use one envelope, not three comments')
+        self.assertEqual(1, len(s.provider.updates) - before_updates)
+        for content in contents:
+            self.assertEqual(content, s.read(101, self.reference(content)))
+        self.assertEqual(self.reference(contents[0]), s.goal(101)['phase_evidence']['records']['understand']['output'])
+        self.assertFalse(s.goal(101).get('workflow', {}).get('leases'))
+        comments = copy.deepcopy(s.provider.comments[101])
+        updates = len(s.provider.updates)
+        s.call(101, request)
+        self.assertEqual(comments, s.provider.comments[101])
+        self.assertEqual(updates, len(s.provider.updates))
+        self.assertTrue(any(x.get('kind') == 'review' for x in s.checkpoint(101)), 'Result does not imply independent review')
+
+    def test_inline_request_conflicting_hash_and_actor_fail_before_writes(self):
+        s = self.session
+        step = s.start(101, 'understand')
+        for change in ('hash', 'actor', 'extra_operation'):
+            with self.subTest(change=change):
+                request = self.inline_result(step, [{'requirements': 'Scoped result.'}], 'invalid-' + change)
+                if change == 'hash':
+                    request['artifacts'][0]['hash'] = 'sha256:' + '0' * 64
+                elif change == 'actor':
+                    request['actor'] = 'unbound-worker'
+                else:
+                    request['artifacts'][0]['operation'] = 'approve'
+                comments, updates = copy.deepcopy(s.provider.comments), copy.deepcopy(s.provider.updates)
+                response = s.call(101, request, expected=None)
+                self.assertNotEqual(0, s.calls[-1]['code'], response)
+                self.assertEqual(comments, s.provider.comments)
+                self.assertEqual(updates, s.provider.updates)
+
+    def test_full_transaction_oversize_preflight_precedes_first_artifact_write(self):
+        s = self.session
+        step = s.start(101, 'understand')
+        noise = ''.join(hashlib.sha256(str(i).encode()).hexdigest() for i in range(2500))
+        request = self.inline_result(step, [{'small': 'fits'}, {'large': noise}])
+        comments, updates = copy.deepcopy(s.provider.comments), copy.deepcopy(s.provider.updates)
+        response = s.call(101, request, expected=None)
+        self.assertNotEqual(0, s.calls[-1]['code'], response)
+        self.assertEqual(comments, s.provider.comments)
+        self.assertEqual(updates, s.provider.updates)
+        diagnostic = json.dumps(response).lower()
+        self.assertIn('65536', diagnostic)
+        self.assertIn('reference', diagnostic)
+
+    def test_standalone_artifact_budget_preflight_preserves_usable_existing_comments(self):
+        s = self.session
+        step = s.start(101, 'understand')
+        store = z._comment_store
+        contents = [f'existing-{i}:' + 'x' * 900000 for i in range(15)]
+        records = [store.ArtifactIndex([]).record(content) for content in contents]
+        for body in store.pack_envelopes({'goal': 101, 'transaction': 'existing-budget'}, records):
+            s.provider.create_issue_comment(101, body)
+        # Existing history is valid and its large records remain publicly readable.
+        self.assertEqual(contents[0], s.read(101, self.reference(contents[0])))
+        comments, updates = copy.deepcopy(s.provider.comments), copy.deepcopy(s.provider.updates)
+        issue = copy.deepcopy(s.provider.issues[101])
+        response = s.call(101, {'operation': 'artifact', 'lease': step['lease']['token'],
+            'actor': step['bound_actor'], 'content': 'new:' + 'x' * 900000}, expected=None)
+        self.assertNotEqual(0, s.calls[-1]['code'], response)
+        self.assertEqual(comments, s.provider.comments)
+        self.assertEqual(updates, s.provider.updates)
+        self.assertEqual(issue, s.provider.issues[101])
+        diagnostic = json.dumps(response).lower()
+        self.assertIn('limit', diagnostic)
+        self.assertIn('reference', diagnostic)
+        small = {'requirements': 'Ordinary work remains possible after rejection.'}
+        reference = s.artifact(101, step, small)
+        self.assertEqual(small, s.read(101, reference))
+        self.assertEqual(contents[0], s.read(101, self.reference(contents[0])))
+
+    def test_inline_aggregate_budget_rejection_has_no_provider_mutations(self):
+        s = self.session
+        step = s.start(101, 'understand')
+        contents = [{'requirements': f'{i}:' + 'x' * 900000} for i in range(18)]
+        comments, updates = copy.deepcopy(s.provider.comments), copy.deepcopy(s.provider.updates)
+        issue = copy.deepcopy(s.provider.issues[101])
+        response = s.call(101, self.inline_result(step, contents, 'over-budget'), expected=None)
+        self.assertNotEqual(0, s.calls[-1]['code'], response)
+        self.assertEqual(comments, s.provider.comments)
+        self.assertEqual(updates, s.provider.updates)
+        self.assertEqual(issue, s.provider.issues[101])
+        small = {'requirements': 'Ordinary result after bounded rejection.'}
+        s.call(101, self.inline_result(step, [small], 'within-budget'))
+        self.assertEqual(small, s.read(101, self.reference(small)))
+
+    def test_latest_historical_and_pinned_reads_exclude_pending_uploads(self):
+        s = self.session
+        step = s.start(101, 'understand')
+        first = {'requirements': 'Original immutable requirements.'}
+        output = s.artifact(101, step, first)
+        s.result(101, step, first)
+        committed_revision = s.goal(101)['revision']
+        selector = {'phase': 'understand', 'slot': 'output'}
+        latest = s.call(101, {'operation': 'read', 'artifact': selector})['next_steps'][0]
+        self.assertEqual(first, latest['content'])
+        self.assertEqual(output['hash'], latest['resolved']['hash'])
+        self.assertEqual(committed_revision, latest['resolved']['revision'])
+        review = s.start(101, 'understand', 'review')
+        pending = s.artifact(101, review, {'requirements': 'Uncommitted newer upload.'})
+        self.assertNotEqual(output, pending)
+        self.assertEqual(first, s.read(101, output))
+        self.assertEqual(first, s.call(101, {'operation': 'read', 'artifact': selector})['next_steps'][0]['content'])
+        historical = s.call(101, {'operation': 'read', 'artifact': {**selector, 'revision': committed_revision}})['next_steps'][0]
+        self.assertEqual(first, historical['content'])
+        self.assertEqual(output['hash'], historical['resolved']['hash'])
+
+    def test_inline_review_does_not_imply_human_approval(self):
+        s = self.session
+        step = s.start(101, 'understand')
+        s.result(101, step, {'requirements': 'A result needing review.'})
+        review = s.start(101, 'understand', 'review')
+        content = {'finding': 'Independent exact review.'}
+        before = len(s.provider.comments[101])
+        s.call(101, {'operation': 'record_review', 'phase': 'understand', 'lease': review['lease']['token'],
+                     'actor': review['bound_actor'], 'artifact': self.reference(content),
+                     'artifacts': [{'content': content, 'hash': content_hash(content)}],
+                     'outcomes': {'acceptance': 'approved', 'entropy': {'outcome': 'no_findings', 'evidence': 'Examined exact result.', 'goals': []}}})
+        self.assertEqual(1, len(s.provider.comments[101]) - before)
+        self.assertEqual(content, s.read(101, self.reference(content)))
+        self.assertTrue(any(x['kind'] == 'human_approval' for x in s.checkpoint(101)))
+
+    def test_pending_variable_verification_reuses_exact_proof_and_log(self):
+        s = self.session
+        s.prepare()
+        step = s.start(101, 'test_design')
+        request = {'operation': 'verify', 'phase': step['phase'], 'lease': step['lease']['token'],
+                   'actor': step['bound_actor'], 'request_id': 'variable-verification-retry',
+                   'input_envelope': copy.deepcopy(step['input_envelope']),
+                   'commands': [[sys.executable, '-c', 'import time; print(time.time_ns()); raise SystemExit(1)']]}
+        attempted = []
+        def unavailable(number, payload):
+            attempted.append(copy.deepcopy(payload))
+            raise z.GoalTransitionProviderError('lost before body publication')
+        with mock.patch.object(s.provider, 'update_issue', side_effect=unavailable):
+            s.call(101, request, expected=None)
+        self.assertEqual(1, len(attempted))
+        proof = z.parse_managed_goal(attempted[0]['body'], 101)['workflow']['artifacts']['test_design']
+        log = Path(proof['commands'][0]['log'])
+        original_log = log.read_bytes()
+        before = copy.deepcopy(s.provider.comments[101])
+        original_run = subprocess.run
+        reruns = []
+        def observe(command, *args, **kwargs):
+            if command == request['commands'][0]:
+                reruns.append(command)
+            return original_run(command, *args, **kwargs)
+        with mock.patch.object(subprocess, 'run', side_effect=observe):
+            response = s.call(101, request, expected=None)
+        self.assertEqual([], reruns, 'Pending verification must recover its proof before executing commands')
+        self.assertEqual(original_log, log.read_bytes())
+        self.assertEqual(0, s.calls[-1]['code'], response)
+        self.assertEqual(self.reference(proof), response['next_steps'][0]['verification'])
+        self.assertEqual(proof, s.read(101, self.reference(proof)))
+        self.assertEqual(before, s.provider.comments[101])
+
+    def test_renew_retry_preserves_expiry_before_body_publication(self):
+        self.check_renew_retry('before')
+
+    def test_renew_retry_preserves_expiry_after_body_publication(self):
+        self.check_renew_retry('after')
+
+    def check_renew_retry(self, boundary):
+        s = self.session
+        step = s.start(101, 'understand')
+        request = {'operation': 'renew', 'phase': 'understand', 'lease': step['lease']['token'],
+                   'actor': step['bound_actor'], 'worker_status': 'active',
+                   'request_id': 'renew-retry-' + boundary}
+        attempted = []
+        original = s.provider.update_issue
+        before_comments = len(s.provider.comments[101])
+        before_updates = len(s.provider.updates)
+        def unavailable(number, payload):
+            attempted.append(copy.deepcopy(payload))
+            if boundary == 'after':
+                original(number, payload)
+            raise z.GoalTransitionProviderError('lost ' + boundary + ' body publication')
+        with mock.patch.object(s.provider, 'update_issue', side_effect=unavailable):
+            s.call(101, request, expected=None)
+        self.assertEqual(1, len(attempted))
+        persisted = z.parse_managed_goal(attempted[0]['body'], 101)['workflow']['leases']['understand:execute']
+        response = s.call(101, request, expected=None)
+        self.assertEqual(0, s.calls[-1]['code'], response)
+        self.assertEqual(persisted['expires_at'], response['next_steps'][0]['expires_at'])
+        self.assertEqual(persisted, s.goal(101)['workflow']['leases']['understand:execute'])
+        self.assertEqual(before_comments + 1, len(s.provider.comments[101]))
+        self.assertEqual(before_updates + 1, len(s.provider.updates))
+
+    def test_verification_proof_and_transition_share_one_comment(self):
+        s = self.session
+        s.prepare()
+        step = s.start(101, 'test_design')
+        (s.repo / s.test_path).write_text('assert False, "required missing behavior"\n')
+        before_comments, before_updates = len(s.provider.comments[101]), len(s.provider.updates)
+        result = s.verify(step)
+        proof = s.read(101, result['next_steps'][0]['verification'])
+        self.assertFalse(proof['passed'])
+        self.assertEqual(1, len(s.provider.comments[101]) - before_comments)
+        self.assertEqual(1, len(s.provider.updates) - before_updates)
+        self.assertIn('required missing behavior', Path(proof['commands'][0]['log']).read_text())
+
+    def test_partial_envelope_and_lost_body_responses_reuse_inline_transaction(self):
+        for boundary in ('append', 'body'):
+            with self.subTest(boundary=boundary):
+                # Each scenario has independent authority and durable provider state.
+                case = CommentCheckpointPublicTests()
+                case.setUp()
+                try:
+                    s = case.session
+                    step = s.start(101, 'understand')
+                    contents = [{'requirements': 'Crash-safe result.'}, {'proof': 'Additional evidence.'}]
+                    request = case.inline_result(step, contents)
+                    before_comments, before_updates = len(s.provider.comments[101]), len(s.provider.updates)
+                    method = 'create_issue_comment' if boundary == 'append' else 'update_issue'
+                    original = getattr(s.provider, method)
+                    failed = False
+                    def lost(*args):
+                        nonlocal failed
+                        result = original(*args)
+                        if not failed:
+                            failed = True
+                            raise z.GoalTransitionProviderError('injected lost response')
+                        return result
+                    with mock.patch.object(s.provider, method, side_effect=lost):
+                        s.call(101, request, expected=None)
+                    s.call(101, request)
+                    self.assertEqual(1, len(s.provider.comments[101]) - before_comments)
+                    self.assertEqual(1, len(s.provider.updates) - before_updates)
+                    self.assertEqual(contents[0], s.read(101, case.reference(contents[0])))
+                finally:
+                    case.doCleanups()
 
 
 if __name__ == '__main__':

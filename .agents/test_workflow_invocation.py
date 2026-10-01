@@ -25,6 +25,9 @@ class MemoryIssueAdapter:
         self.reads += 1
         return copy.deepcopy(self.issues[number])
 
+    def get_issue_comments(self, number):
+        return []
+
 
 class WorkflowInvocationCacheTests(unittest.TestCase):
     def test_attributed_merge_findings_do_not_block_independent_reads(self):
@@ -94,7 +97,7 @@ class WorkflowInvocationCacheTests(unittest.TestCase):
         api.release_storage_lock = lambda *args: {"released": True}
         api.renew_storage_lock = lambda *args: {"acquired": True, "expires_at": 10**12}
         api.GOAL_TRANSITION_SCHEMA_VERSION = 1
-        def apply_transition(_adapter, _repository, _number, _transition):
+        def apply_transition(_adapter, _repository, _number, _transition, **_observed):
             issues[1]["record"]["title"] = "Saved provider state"
             return {"number": 1}
         api.apply_goal_transition = apply_transition

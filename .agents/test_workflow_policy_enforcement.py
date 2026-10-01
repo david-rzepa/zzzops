@@ -60,6 +60,7 @@ class WorkerLimitEnforcementTests(unittest.TestCase):
         engine.project = project(max_workers=1)
         engine.runtime = {"root_id": "root-thread"}
         engine.locked = lambda: contextlib.nullcontext()
+        engine.adapter = SimpleNamespace(get_issue_comments=lambda number: [])
         active = {
             "key": 1, "status": "ready",
             "workflow": durable({"expires_at": 0, "worker": "synthetic-worker"}),
@@ -153,6 +154,7 @@ class PublishCiPolicyTests(unittest.TestCase):
         engine.repository = "synthetic/project"
         engine.runtime = {"root_id": "root-thread"}
         engine.locked = lambda: contextlib.nullcontext()
+        engine.adapter = SimpleNamespace(get_issue_comments=lambda number: [])
         engine.publication_gate = mock.Mock(return_value=None)
         current = {
             "head_oid": "a" * 40, "checks_verified": False,
@@ -209,22 +211,41 @@ class PublishCiPolicyTests(unittest.TestCase):
             "artifact": {"reference": "urn:sha256:" + "2" * 64, "hash": "sha256:" + "2" * 64},
             "outcomes": {"acceptance": "approved", "entropy": {"outcome": "no_findings", "evidence": "Synthetic review", "goals": []}},
         }
-        for mode, denied in (("inspect_exact_pr_head", True), ("disabled", False)):
-            with self.subTest(mode=mode):
+        cases = (
+            ("inspect_exact_pr_head", "approved", False, True),
+            ("inspect_exact_pr_head", "changes_requested", False, False),
+            ("inspect_exact_pr_head", "approved", True, False),
+            ("existing_only", "approved", False, True),
+            ("existing_only", "changes_requested", False, False),
+            ("disabled", "approved", False, False),
+        )
+        for mode, acceptance, verified, denied in cases:
+            with self.subTest(mode=mode, acceptance=acceptance, verified=verified):
+                submitted = copy.deepcopy(payload)
+                submitted["outcomes"]["acceptance"] = acceptance
+                submitted["outcomes"]["entropy"]["outcome"] = (
+                    "correction_required" if acceptance == "changes_requested" else "no_findings"
+                )
                 engine = self.engine(required_ci=mode)
                 engine.runtime = {"root_id": "root-thread"}
-                engine.pull_request = mock.Mock(return_value={"checks_verified": False, "checks_present": False})
+                current = {"checks_verified": verified, "checks_present": True}
+                engine.pull_request = mock.Mock(return_value=current)
                 engine.context = mock.Mock(return_value=({}, {"publish": {"review": {"independent": True}}}, live, {}))
                 engine.read_artifact = mock.Mock(return_value={})
                 engine.api.derive_phase_steps = lambda *args, **kwargs: {"execute": [], "review": [{"phase": "publish"}]}
                 engine.api.empty_phase_evidence = z.empty_phase_evidence
-                engine.api.record_phase_review = lambda *args, **kwargs: {"reviewed": True}
+                engine.api.record_phase_review = mock.Mock(return_value={"reviewed": True})
+                desired = copy.deepcopy(goal)
                 if denied:
                     with self.assertRaisesRegex(ValueError, "CI checks"):
-                        engine.submit_evidence(goal, copy.deepcopy(goal), {**durable(), "leases": {"publish:review": lease}}, "publish:review", lease, payload)
+                        engine.submit_evidence(goal, desired, {**durable(), "leases": {"publish:review": lease}}, "publish:review", lease, submitted)
+                    engine.api.record_phase_review.assert_not_called()
                 else:
-                    engine.submit_evidence(goal, copy.deepcopy(goal), {**durable(), "leases": {"publish:review": lease}}, "publish:review", lease, payload)
+                    engine.submit_evidence(goal, desired, {**durable(), "leases": {"publish:review": lease}}, "publish:review", lease, submitted)
                     engine.read_artifact.assert_called_once()
+                    self.assertEqual(acceptance, engine.api.record_phase_review.call_args.kwargs["decision"])
+                    self.assertEqual({"reviewed": True}, desired["phase_evidence"])
+                self.assertEqual({"checks_verified": verified, "checks_present": True}, current)
 
 
 if __name__ == "__main__":

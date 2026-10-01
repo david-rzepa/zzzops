@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-import base64
 import contextlib
 import io
 import json
 from pathlib import Path
-import re
 import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest import mock
-import zlib
 
 import test_zzzops as fixtures
 
@@ -171,6 +168,7 @@ class ArtifactIntegrityContractTests(unittest.TestCase):
             "labels": [],
         })
         project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}}
+        self.project = project
         with mock.patch.object(z, "GitHubGoalTransitionAdapter", return_value=self.adapter):
             self.engine = z._workflow.Workflow(z, self.repo, project, {})
 
@@ -180,22 +178,26 @@ class ArtifactIntegrityContractTests(unittest.TestCase):
         self.assertEqual(content, self.engine.read_artifact(42, artifact))
 
         missing = {"reference": "urn:sha256:" + "0" * 64, "hash": "sha256:" + "0" * 64}
-        with self.assertRaisesRegex(ValueError, "Persist the phase artifact through operation=artifact"):
+        with self.assertRaisesRegex(ValueError, "Missing artifact/base.*immutable content"):
             self.engine.read_artifact(42, missing)
 
     def test_artifact_content_tampering_is_rejected(self):
         artifact = self.engine.artifact(42, {"summary": "reviewed evidence"})
-        body = self.adapter.comments[0]["body"]
-        encoded = re.search(r"```text\n([A-Za-z0-9+/=]+)\n```", body).group(1)
-        stored = json.loads(zlib.decompress(base64.b64decode(encoded)))
-        stored["content"] = {"summary": "altered evidence"}
-        tampered = base64.b64encode(zlib.compress(json.dumps(
-            stored, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
-        ).encode("utf-8"))).decode("ascii")
-        self.adapter.comments[0]["body"] = body.replace(encoded, tampered)
+        store = z._workflow.comment_store
+        stored = store.decode_envelope(self.adapter.comments[0]["body"])
+        self.assertEqual("full", stored["artifacts"][0]["kind"])
+        stored["artifacts"][0]["text"] = store.canonical({"summary": "altered evidence"})
+        # Recompute the envelope checksum while retaining the original artifact
+        # identity, so the assertion exercises complete-content verification.
+        self.adapter.comments[0]["body"] = store.encode_envelope(stored)
 
-        with self.assertRaisesRegex(ValueError, "Stored artifact content changed"):
-            self.engine.read_artifact(42, artifact)
+        # Each public invocation owns its read cache. Inspect the changed
+        # provider body in a fresh invocation, rather than reusing creation's
+        # already verified immutable content.
+        with mock.patch.object(z, "GitHubGoalTransitionAdapter", return_value=self.adapter):
+            reader = z._workflow.Workflow(z, self.repo, self.project, {})
+        with self.assertRaisesRegex(ValueError, "Stored artifact content.*identity"):
+            reader.read_artifact(42, artifact)
 
 
 if __name__ == "__main__":

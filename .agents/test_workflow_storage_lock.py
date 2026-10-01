@@ -15,7 +15,7 @@ SPEC.loader.exec_module(workflow)
 class StorageLockWriteTests(unittest.TestCase):
     def engine(self, *, acquired_expiry=500, renewal=None):
         calls = []
-        adapter = object()
+        adapter = SimpleNamespace(get_issue_comments=lambda number: [])
         renewal = renewal or {"acquired": True, "outcome": "renewed", "expires_at": 800}
         api = SimpleNamespace(
             GitHubReservationAdapter=lambda repo, repository: adapter,
@@ -24,7 +24,7 @@ class StorageLockWriteTests(unittest.TestCase):
             },
             renew_storage_lock=lambda *args: calls.append("renew") or renewal,
             release_storage_lock=lambda *args: calls.append("release") or {"released": True},
-            apply_goal_transition=lambda *args: calls.append("write"),
+            apply_goal_transition=lambda *args, **kwargs: calls.append("write"),
             GOAL_TRANSITION_SCHEMA_VERSION=2,
         )
         engine = object.__new__(workflow.Workflow)
