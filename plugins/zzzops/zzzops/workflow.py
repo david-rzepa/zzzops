@@ -31,7 +31,7 @@ PUBLIC_OPERATIONS = frozenset({
     'policy_approve', 'policy_propose', 'read', 'record_result',
     'record_review', 'recover', 'recover_legacy', 'release', 'renew',
     'reopen', 'revise', 'route_choice', 'specify', 'start', 'verify',
-    'withdraw',
+    'withdraw', 'reconcile',
 })
 
 
@@ -351,11 +351,18 @@ class Workflow:
                 return value['content']
         raise ValueError('Persist the phase artifact through operation=artifact before submitting its reference')
 
-    def portfolio(self, *, allow_invalid=False):
+    def portfolio(self, *, allow_invalid=True):
         if self._portfolio_cache is None:
             self._portfolio_cache = self.api.portfolio_snapshot(self.repo)
         portfolio = self._portfolio_cache
-        if not portfolio.get('complete'):
+        findings = portfolio.get('findings', [])
+        # A provider/inventory failure is global. Fully attributed goal findings
+        # are not: their exact prerequisite closure is checked before dispatch.
+        scoped = (isinstance(findings, list) and bool(findings)
+                  and all(isinstance(f, dict) and type(f.get('goal')) is int for f in findings)
+                  and isinstance(portfolio.get('goals'), list)
+                  and not portfolio.get('error'))
+        if not portfolio.get('complete') and not (allow_invalid and scoped):
             findings = portfolio.get('findings') if isinstance(portfolio, dict) else None
             if isinstance(findings, list) and findings:
                 details = '; '.join(
@@ -368,6 +375,26 @@ class Workflow:
                 )
             raise ValueError('Repair the goal portfolio before starting or submitting work; no detailed findings were returned by the portfolio validator.')
         return copy.deepcopy(portfolio['goals'])
+
+    def reconciliation_step(self, goal):
+        if goal.get('status') in {'done', 'cancelled'}:
+            return None
+        pull = goal.get('pull_request')
+        if not isinstance(pull, dict) or pull.get('merged') is not True:
+            return None
+        if any(b.get('id') == 'merged-pr-evidence' and b.get('status') == 'open' for b in goal.get('blockers', [])):
+            return {'kind': 'blocker', 'assignment': 'root', 'goal': goal['key'],
+                    'action': 'Repair the recorded merge evidence gaps, then resolve only the confirmed blockers using revise. Historical phase and review evidence must be retained.',
+                    'blockers': goal['blockers'],
+                    'submission': {'operation': 'revise', 'expected_digest': goal['digest'],
+                                   'request_id': 'new-unique-id',
+                                   'changes': {'blockers': goal['blockers'], 'next_action': '<observed evidence repair>'}}}
+        merge = self.classify_merge(goal, pull)
+        return {'kind': 'reconciliation', 'assignment': 'root', 'goal': goal['key'],
+                'action': 'Re-read this exact merge under the storage lock. Close only with current phase evidence; otherwise persist the missing evidence as a goal-local blocker.',
+                'merge': merge,
+                'submission': {'operation': 'reconcile', 'expected_digest': goal['digest'],
+                               'expected_merge': digest(pull), 'request_id': 'new-unique-id'}}
 
     def validation_blockers(self, goal):
         """Return findings that affect this goal or one of its prerequisites."""
@@ -1333,7 +1360,7 @@ class Workflow:
         with self.locked():
             # Public preflight already validated the portfolio. Renewal only touches
             # this exact lease; rehydrating every goal under the lock caused timeouts.
-            portfolio = [] if payload.get('operation') == 'renew' else self.portfolio(allow_invalid=payload.get('operation') in {'revise', 'recover_legacy'})
+            portfolio = [] if payload.get('operation') == 'renew' else self.portfolio(allow_invalid=True)
             # A mutation must re-read its exact provider body under the storage
             # lock; read-only workflow context remains portfolio-gateway-only.
             adapter = getattr(self, 'adapter', None)
@@ -1348,7 +1375,7 @@ class Workflow:
                 # The exact issue body is authoritative for a write, while the
                 # portfolio gateway owns the current cached PR observation.
                 goal['pull_request'] = copy.deepcopy(projected['pull_request'])
-            if portfolio and payload.get('operation') not in {'revise', 'recover_legacy'}:
+            if portfolio and payload.get('operation') not in {'revise', 'recover_legacy', 'reconcile'}:
                 if projected is not None:
                     findings = self.validation_blockers(projected)
                     if isinstance(findings, list) and findings:
@@ -1364,6 +1391,16 @@ class Workflow:
             if receipt:
                 if receipt['hash'] != fingerprint:
                     raise ValueError('request_id was already used with different inputs')
+                if payload.get('operation') == 'reconcile':
+                    expected_state = 'closed' if goal['status'] in {'done', 'cancelled'} else 'open'
+                    labels = {label['name'] for label in issue.get('labels', [])}
+                    if (str(issue.get('state', '')).lower() != expected_state
+                            or f"zzzops:status:{goal['status']}" not in labels
+                            or f"zzzops:priority:{goal['priority']}" not in labels):
+                        return {'next_steps': [{'kind': 'repair', 'assignment': 'root', 'goal': number,
+                            'action': 'The reconciliation body was saved but provider state or labels were not confirmed. Reapply an exact revision through revise; do not assume closure.',
+                            'submission': {'operation': 'revise', 'expected_digest': goal['digest'],
+                                'request_id': 'new-unique-id', 'changes': {'next_action': desired['next_action']}}}]}
                 response = {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'This request was already applied. Re-read current goal evidence.'}]}
                 return self.stop_completed_heartbeat(number, payload, durable, response)
             operation = payload.get('operation')
@@ -1497,6 +1534,36 @@ class Workflow:
                 desired['status'] = 'blocked'
                 desired['next_action'] = payload['reason']
                 response = {'next_steps': [{'kind': 'checkpoint', 'action': 'The blocker is durable. Continue independent goals.'}]}
+            elif operation == 'reconcile':
+                if goal['status'] in {'done', 'cancelled'}:
+                    return {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'action': 'Goal is already terminal; no evidence or revision changed.'}]}
+                if payload.get('expected_digest') != goal['digest']:
+                    raise ValueError('Reconciliation goal changed; request a fresh checkpoint. No update was made.')
+                current = self.pull_request(goal)
+                if payload.get('expected_merge') != digest(current) or current.get('merged') is not True:
+                    raise ValueError('Reconciliation merge evidence changed; request a fresh checkpoint. No update was made.')
+                if durable['leases']:
+                    raise ValueError('Reconcile active workers before merged-PR recovery')
+                if goal.get('claim'):
+                    raise ValueError('Confirm the legacy worker stopped and recover its claim before merged-PR recovery')
+                merge = self.classify_merge(goal, current)
+                reasons = list(merge['reasons'])
+                findings = self.validation_blockers(projected or goal)
+                reasons.extend(f"goal {f['goal']}: {f['code']}" for f in findings
+                               if f['code'] not in {'merged_pr_reconciliation_ready', 'merged_pr_stale_checkpoint'})
+                graph, nodes, live, related = self.context(goal)
+                frontier = self.api.derive_phase_steps(goal, graph, live, related, review_policy=nodes)
+                reasons.extend(f"{kind}:{item['phase']}" for kind in ('execute', 'review', 'blocked', 'approve') for item in frontier.get(kind, []))
+                if reasons:
+                    reason = 'Merged PR requires evidence repair: ' + '; '.join(sorted(set(reasons)))
+                    blocker = {'id': 'merged-pr-evidence', 'status': 'open', 'category': 'technical-unknown', 'reason': reason}
+                    desired['blockers'] = [b for b in desired['blockers'] if b.get('id') != blocker['id']] + [blocker]
+                    desired['status'] = 'blocked'
+                    desired['next_action'] = reason
+                else:
+                    desired = self.api.build_reconciliation_transition(desired, merge, goal['digest'])['goal']
+                response = {'next_steps': [{'kind': 'checkpoint', 'goal': number,
+                    'action': 'Merge reconciled from exact evidence; continue independent goals.'}]}
             elif operation == 'complete':
                 graph, nodes, live, related = self.context(goal)
                 frontier = self.api.derive_phase_steps(goal, graph, live, related, review_policy=nodes)
@@ -1731,7 +1798,7 @@ class Workflow:
 
 def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     engine = engine or Workflow(api, repo, project, runtime)
-    goals = engine.portfolio()
+    goals = engine.portfolio(allow_invalid=True)
     ordering_policy = next(
         (
             section.get('configuration', {}).get('portfolio_order')
@@ -1788,6 +1855,8 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     if pending_understanding and number is None:
         steps = []
         for goal in pending_understanding:
+            if engine.validation_blockers(goal) or isinstance(engine.reconciliation_step(goal), dict):
+                continue
             steps.extend(step for step in engine.step(goal['key']) if step.get('phase') == 'understand')
             if len(steps) >= limit:
                 break
@@ -1797,6 +1866,9 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
         if number not in {g['key'] for g in goals}:
             raise ValueError('Requested goal is not in the validated portfolio')
         goal = next(goal for goal in goals if goal['key'] == number)
+        reconciliation = engine.reconciliation_step(goal)
+        if isinstance(reconciliation, dict):
+            return {'next_steps': [reconciliation]}
         findings = engine.validation_blockers(goal)
         if isinstance(findings, list) and findings:
             return {'next_steps': [{'kind': 'blocker', 'assignment': 'root', 'goal': number,
@@ -1817,6 +1889,12 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     for item in ordered_goals:
         goal = next(goal for goal in goals if goal['key'] == item['goal'])
         if goal['status'] in {'done', 'cancelled'}:
+            continue
+        reconciliation = engine.reconciliation_step(goal)
+        if isinstance(reconciliation, dict):
+            runnable_steps.append(reconciliation)
+            if len(runnable_steps) >= limit:
+                break
             continue
         findings = engine.validation_blockers(goal)
         if isinstance(findings, list) and findings:
@@ -1905,7 +1983,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         if freshness['stale']:
             return {'next_steps': [{'kind': 'policy_review', 'assignment': 'root', 'action': 'Review policy tier mappings for newly discovered model/effort pairs before proceeding.', 'added': freshness['added'], 'submission': {'operation': 'policy_propose', 'plan': '<updated reviewed policy plan>'}}]}
     engine = Workflow(api, repo, project, runtime)
-    engine.portfolio(allow_invalid=operation in {'revise', 'adopt', 'recover_legacy'})
+    engine.portfolio(allow_invalid=True)
     if operation == 'read' and number is not None:
         _, goal = engine.read(number)
         evidence = goal.get('phase_evidence') or api.empty_phase_evidence()

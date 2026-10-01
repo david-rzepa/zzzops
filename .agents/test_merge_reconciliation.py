@@ -59,15 +59,26 @@ class MergeReconciliationTests(unittest.TestCase):
 
     def test_verified_merge_builds_one_guarded_idempotent_done_transition(self):
         record = goal()
-        record.update({"status": "blocked", "revision": 4, "blockers": [{"status": "open", "category": "human-action"}], "claim": {"owner": "agent"}})
+        record.update({"status": "ready", "revision": 4, "blockers": [{"status": "resolved", "category": "human-action"}], "claim": {"owner": "agent"}})
         merge = MODULE.classify_pr_merge(record, pull(), "example/project")
         transition = MODULE.build_reconciliation_transition(record, merge, "d" * 64)
         self.assertEqual(transition["expected_revision"], 4)
         self.assertEqual(transition["goal"]["status"], "done")
         self.assertIsNone(transition["goal"]["claim"])
-        self.assertEqual(transition["goal"]["implementation"]["review"]["checkpoint"], "merge-1")
+        self.assertEqual(transition["goal"]["implementation"], record["implementation"])
+        self.assertEqual(transition["goal"]["blockers"], record["blockers"])
+        with self.assertRaisesRegex(ValueError, "terminal"):
+            MODULE.build_reconciliation_transition(transition['goal'], merge, 'd' * 64)
         with self.assertRaises(ValueError):
             MODULE.build_reconciliation_transition(record, {"status": "merged_stale"}, "d" * 64)
+
+    def test_open_blockers_are_not_erased_by_a_merge(self):
+        record = goal()
+        record['blockers'] = [{'status': 'open', 'reason': 'Missing review'}]
+        merge = MODULE.classify_pr_merge(record, pull(), 'example/project')
+        self.assertIn('open_goal_blockers', merge['reasons'])
+        with self.assertRaises(ValueError):
+            MODULE.build_reconciliation_transition(record, merge, 'd' * 64)
 
 
 if __name__ == "__main__":

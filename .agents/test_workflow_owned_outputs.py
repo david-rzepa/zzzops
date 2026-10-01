@@ -703,7 +703,7 @@ class OwnedOutputPublicTests(unittest.TestCase):
         s.review(101, 'publish')
         # An actual remote merge is an external provider observation, not a goal-state mutation.
         self.fixture.pr_merged = True
-        completion = next(x for x in s.checkpoint(101) if x['kind'] == 'complete')
+        completion = next(x for x in s.checkpoint(101) if x['kind'] == 'reconciliation')
         s.call(101, completion['submission'])
         self.assertEqual('done', s.goal(101)['status'])
         first_closed = copy.deepcopy(s.provider.issues[101])

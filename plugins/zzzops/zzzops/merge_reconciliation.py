@@ -30,6 +30,8 @@ def classify_pr_merge(record: dict[str, Any], pull_request: dict[str, Any] | Non
         reasons.append("required_checks_unverified")
     if pull_request.get("review_verified") is not True and review.get("status") != "approved":
         reasons.append("review_evidence_unverified")
+    if any(blocker.get("status") == "open" for blocker in record.get("blockers", [])):
+        reasons.append("open_goal_blockers")
     if reasons:
         return {"status": "merged_stale", "reasons": reasons}
     return {
@@ -45,17 +47,14 @@ def build_reconciliation_transition(record: dict[str, Any], merge: dict[str, Any
     """Build an exact-revision guarded done transition for verified merge evidence."""
     if merge.get("status") != "merged_verified":
         raise ValueError("goal is not eligible for merged-PR reconciliation")
+    if record.get("status") in {"done", "cancelled"}:
+        raise ValueError("terminal goals must not be reconciled again")
+    if any(blocker.get("status") == "open" for blocker in record.get("blockers", [])):
+        raise ValueError("resolve goal blockers before reconciliation")
     desired = copy.deepcopy(record)
     desired["status"] = "done"
-    desired["blockers"] = []
     desired["claim"] = None
     desired["revision"] = record["revision"] + 1
-    implementation = desired.get("implementation") or {}
-    review = implementation.get("review") or {}
-    review["status"] = "approved"
-    review["checkpoint"] = merge["merge_commit"]
-    implementation["review"] = review
-    desired["implementation"] = implementation
     desired["next_action"] = f"Reconciled merged PR at {merge['merge_commit']}; dependencies may be re-evaluated on the next portfolio refresh."
     return {
         "schema_version": 1,
