@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "phases": [
+    {
+      "id": "understand",
+      "type": "understand",
+      "depends_on": [],
+      "parent_gates": [],
+      "applicability": "always",
+      "assignment_group": "root",
+      "inputs": [
+        "goal_spec",
+        "policy",
+        "capabilities",
+        "invocation"
+      ],
+      "not_required": "never",
+      "review": {
+        "independent": true,
+        "human_approval": true,
+        "assignment_group": "review"
+      }
+    },
+    {
+      "id": "decompose",
+      "type": "decompose",
+      "depends_on": [
+        "understand"
+      ],
+      "parent_gates": [],
+      "applicability": "parent_only",
+      "assignment_group": "planning",
+      "inputs": [
+        "goal_spec",
+        "policy",
+        "parents",
+        "dependencies",
+        "upstream_outputs"
+      ],
+      "not_required": "atomic_goal",
+      "review": {
+        "independent": true,
+        "human_approval": false,
+        "assignment_group": "review"
+      }
+    },
+    {
+      "id": "plan",
+      "type": "plan",
+      "depends_on": [
+        "decompose"
+      ],
+      "parent_gates": [
+        "decompose"
+      ],
+      "applicability": "always",
+      "assignment_group": "planning",
+      "inputs": [
+        "goal_spec",
+        "policy",
+        "phase_dag",
+        "parents",
+        "dependencies",
+        "repository",
+        "provider",
+        "capabilities",
+        "upstream_outputs"
+      ],
+      "not_required": "never",
+      "review": {
+        "independent": true,
+        "human_approval": false,
+        "assignment_group": "review"
+      }
+    },
+    {
+      "id": "test_design",
+      "type": "test_design",
+      "depends_on": [
+        "plan"
+      ],
+      "parent_gates": [
+        "plan"
+      ],
+      "applicability": "leaf_only",
+      "assignment_group": "planning",
+      "inputs": [
+        "goal_spec",
+        "policy",
+        "phase_dag",
+        "repository",
+        "provider",
+        "capabilities",
+        "upstream_outputs"
+      ],
+      "not_required": "never",
+      "review": {
+        "independent": true,
+        "human_approval": false,
+        "assignment_group": "review"
+      }
+    },
+    {
+      "id": "implement",
+      "type": "implement",
+      "depends_on": [
+        "test_design"
+      ],
+      "parent_gates": [
+        "plan"
+      ],
+      "applicability": "leaf_only",
+      "assignment_group": "implementation",
+      "inputs": [
+        "goal_spec",
+        "policy",
+        "phase_dag",
+        "parents",
+        "dependencies",
+        "repository",
+        "provider",
+        "capabilities",
+        "upstream_outputs"
+      ],
+      "not_required": "never",
+      "review": {
+        "independent": true,
+        "human_approval": false,
+        "assignment_group": "review"
+      }
+    },
+    {
+      "id": "publish",
+      "type": "publish",
+      "depends_on": [
+        "implement"
+      ],
+      "parent_gates": [],
+      "applicability": "always",
+      "assignment_group": "coordinator",
+      "inputs": [
+        "goal_spec",
+        "policy",
+        "repository",
+        "provider",
+        "upstream_outputs"
+      ],
+      "not_required": "never",
+      "review": {
+        "independent": true,
+        "human_approval": false,
+        "assignment_group": "review"
+      }
+    }
+  ]
+}

@@ -408,6 +408,9 @@
                 "inputs": [
                   "goal_spec",
                   "policy",
+                  "phase_dag",
+                  "repository",
+                  "provider",
                   "capabilities",
                   "invocation"
                 ],
@@ -415,7 +418,11 @@
                 "review": {
                   "independent": true,
                   "human_approval": true,
-                  "assignment_group": "review"
+                  "assignment_group": "review",
+                  "types": [
+                    "requirements",
+                    "architecture"
+                  ]
                 }
               },
               {
@@ -425,7 +432,7 @@
                   "understand"
                 ],
                 "parent_gates": [],
-                "applicability": "parent_only",
+                "applicability": "always",
                 "assignment_group": "planning",
                 "inputs": [
                   "goal_spec",
@@ -438,46 +445,20 @@
                 "review": {
                   "independent": true,
                   "human_approval": false,
-                  "assignment_group": "review"
-                }
-              },
-              {
-                "id": "plan",
-                "type": "plan",
-                "depends_on": [
-                  "decompose"
-                ],
-                "parent_gates": [
-                  "decompose"
-                ],
-                "applicability": "always",
-                "assignment_group": "planning",
-                "inputs": [
-                  "goal_spec",
-                  "policy",
-                  "phase_dag",
-                  "parents",
-                  "dependencies",
-                  "repository",
-                  "provider",
-                  "capabilities",
-                  "upstream_outputs"
-                ],
-                "not_required": "never",
-                "review": {
-                  "independent": true,
-                  "human_approval": false,
-                  "assignment_group": "review"
+                  "assignment_group": "review",
+                  "types": [
+                    "delivery_boundaries"
+                  ]
                 }
               },
               {
                 "id": "test_design",
                 "type": "test_design",
                 "depends_on": [
-                  "plan"
+                  "decompose"
                 ],
                 "parent_gates": [
-                  "plan"
+                  "decompose"
                 ],
                 "applicability": "leaf_only",
                 "assignment_group": "planning",
@@ -494,7 +475,11 @@
                 "review": {
                   "independent": true,
                   "human_approval": false,
-                  "assignment_group": "review"
+                  "assignment_group": "review",
+                  "types": [
+                    "acceptance_coverage",
+                    "baseline_failure"
+                  ]
                 }
               },
               {
@@ -504,7 +489,7 @@
                   "test_design"
                 ],
                 "parent_gates": [
-                  "plan"
+                  "decompose"
                 ],
                 "applicability": "leaf_only",
                 "assignment_group": "implementation",
@@ -523,7 +508,11 @@
                 "review": {
                   "independent": true,
                   "human_approval": false,
-                  "assignment_group": "review"
+                  "assignment_group": "review",
+                  "types": [
+                    "acceptance",
+                    "entropy"
+                  ]
                 }
               },
               {
@@ -546,7 +535,10 @@
                 "review": {
                   "independent": true,
                   "human_approval": false,
-                  "assignment_group": "review"
+                  "assignment_group": "review",
+                  "types": [
+                    "integration"
+                  ]
                 }
               }
             ]

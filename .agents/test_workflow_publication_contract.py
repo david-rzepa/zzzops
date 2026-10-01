@@ -57,6 +57,10 @@ class PublicationAPI:
 
 
 class WorkflowPublicationContractTests(unittest.TestCase):
+    def legacy_project(self):
+        dag = json.loads((Path(__file__).parent / 'fixtures/legacy_phase_dag.json').read_text())
+        return {'policy': {'sections': [{'id': 'workflow_adherence', 'configuration': {'phase_dag': dag}}]}}
+
     def git(self, repo, *args):
         return subprocess.run(
             ["git", *args], cwd=repo, check=True, capture_output=True, text=True,
@@ -103,7 +107,7 @@ class WorkflowPublicationContractTests(unittest.TestCase):
                 },
             }
             engine = workflow.Workflow.__new__(workflow.Workflow)
-            engine.api, engine.repo, engine.project, engine.runtime = StepAPI(), repo, {}, {
+            engine.api, engine.repo, engine.project, engine.runtime = StepAPI(), repo, self.legacy_project(), {
                 "delegation": {"available": True, "discovery_complete": True, "tool": "spawn_agent"},
             }
             # This isolated base-selection test supplies explicit artifact-only
@@ -142,6 +146,7 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         api = PublicationAPI()
         engine = workflow.Workflow.__new__(workflow.Workflow)
         engine.api, engine.repo = api, Path("/repo")
+        engine.project = self.legacy_project()
         engine.portfolio = lambda: [{"key": 7, "parent": 1, "implementation": {"branch": "goal-7"}}]
         engine.publication_identity = lambda _goal: {
             "head_oid": provider_head, "base_oid": provider_base, "base_ref": "dev",

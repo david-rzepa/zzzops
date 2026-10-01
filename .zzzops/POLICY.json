@@ -1,17 +1,17 @@
 {
   "approval": {
     "date": "2026-09-24",
-    "digest": "sha256:b0e9f2670ebf5c236463f7cf7a59ef35895dfef274b67ab20c1f5bdaac625773",
-    "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
+    "digest": "sha256:a83100c270e5b38d2d39f9784edcea5f8c5942b2108592242bdf15adf0e210dc",
+    "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
   },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:a2045378245e7e69001c60fd264178b57397fcc4068d91a09db3fc2b7f11eb78",
+      "digest": "sha256:468e18bbda7372cf736bfd65799014d60fa1aead8a378b2d896d7f242e5de4cd",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
-      "digest": "sha256:13d20ae1cbdf039643c7d7ef1a2b20410d33d54c56a4fc5b7f98b0af6ad89448",
+      "digest": "sha256:374c8ba78c84c1498a8b21801ec0005b051a909fb442f16e4713fb8dc2884cd7",
       "path": ".zzzops/PROJECT.md"
     }
   },
@@ -254,6 +254,18 @@
       "change": "Reviewed policy revision 44",
       "date": "2026-09-24",
       "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 45",
+      "date": "2026-09-24",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)",
+      "change": "Reviewed policy revision 46",
+      "date": "2026-09-24",
+      "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835."
     }
   ],
   "initialized": true,
@@ -404,8 +416,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-24",
-          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
-          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
+          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
+          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
         },
         "source_ids": [
           "E-003",
@@ -442,8 +454,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-24",
-          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
-          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
+          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
+          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
         },
         "source_ids": [
           "E-002",
@@ -482,8 +494,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-24",
-          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
-          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
+          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
+          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
         },
         "source_ids": [
           "E-002",
@@ -522,8 +534,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-24",
-          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
-          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
+          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
+          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
         },
         "source_ids": [
           "E-002",
@@ -556,8 +568,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-24",
-          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
-          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
+          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
+          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
         },
         "source_ids": [
           "E-001",
@@ -595,8 +607,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-24",
-          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
-          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
+          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
+          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
         },
         "source_ids": [
           "E-001",
@@ -629,8 +641,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-24",
-          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
-          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
+          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
+          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
         },
         "source_ids": [
           "E-002",
@@ -664,8 +676,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-24",
-          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
-          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
+          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
+          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
         },
         "source_ids": [
           "E-002",
@@ -714,8 +726,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-24",
-          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
-          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
+          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
+          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
         },
         "source_ids": [
           "E-001",
@@ -1019,8 +1031,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-24",
-          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
-          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
+          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
+          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
         },
         "source_ids": [
           "E-015",
@@ -1045,6 +1057,9 @@
                 "inputs": [
                   "goal_spec",
                   "policy",
+                  "phase_dag",
+                  "repository",
+                  "provider",
                   "capabilities",
                   "invocation"
                 ],
@@ -1053,12 +1068,16 @@
                 "review": {
                   "assignment_group": "review",
                   "human_approval": true,
-                  "independent": true
+                  "independent": true,
+                  "types": [
+                    "requirements",
+                    "architecture"
+                  ]
                 },
                 "type": "understand"
               },
               {
-                "applicability": "parent_only",
+                "applicability": "always",
                 "assignment_group": "planning",
                 "depends_on": [
                   "understand"
@@ -1076,44 +1095,18 @@
                 "review": {
                   "assignment_group": "review",
                   "human_approval": false,
-                  "independent": true
+                  "independent": true,
+                  "types": [
+                    "delivery_boundaries"
+                  ]
                 },
                 "type": "decompose"
-              },
-              {
-                "applicability": "always",
-                "assignment_group": "planning",
-                "depends_on": [
-                  "decompose"
-                ],
-                "id": "plan",
-                "inputs": [
-                  "goal_spec",
-                  "policy",
-                  "phase_dag",
-                  "parents",
-                  "dependencies",
-                  "repository",
-                  "provider",
-                  "capabilities",
-                  "upstream_outputs"
-                ],
-                "not_required": "never",
-                "parent_gates": [
-                  "decompose"
-                ],
-                "review": {
-                  "assignment_group": "review",
-                  "human_approval": false,
-                  "independent": true
-                },
-                "type": "plan"
               },
               {
                 "applicability": "leaf_only",
                 "assignment_group": "planning",
                 "depends_on": [
-                  "plan"
+                  "decompose"
                 ],
                 "id": "test_design",
                 "inputs": [
@@ -1127,12 +1120,16 @@
                 ],
                 "not_required": "never",
                 "parent_gates": [
-                  "plan"
+                  "decompose"
                 ],
                 "review": {
                   "assignment_group": "review",
                   "human_approval": false,
-                  "independent": true
+                  "independent": true,
+                  "types": [
+                    "acceptance_coverage",
+                    "baseline_failure"
+                  ]
                 },
                 "type": "test_design"
               },
@@ -1156,12 +1153,16 @@
                 ],
                 "not_required": "never",
                 "parent_gates": [
-                  "plan"
+                  "decompose"
                 ],
                 "review": {
                   "assignment_group": "review",
                   "human_approval": false,
-                  "independent": true
+                  "independent": true,
+                  "types": [
+                    "acceptance",
+                    "entropy"
+                  ]
                 },
                 "type": "implement"
               },
@@ -1184,7 +1185,10 @@
                 "review": {
                   "assignment_group": "review",
                   "human_approval": false,
-                  "independent": true
+                  "independent": true,
+                  "types": [
+                    "integration"
+                  ]
                 },
                 "type": "publish"
               }
@@ -1196,7 +1200,7 @@
         "default_origin": "ZzzOps tracked-work fallback",
         "default_provenance": {
           "default_id": "zzzops.policy.workflow_adherence",
-          "digest": "sha256:31e4f6ae6cb40a2436e9ce4089d216a910dd8ab7ee81aebb39785da48b683236",
+          "digest": "sha256:45af72b3fa82b5f7417bb1a32e2b857fa8519234c9245089ede6fb2a0da8fc35",
           "schema_version": 2,
           "snapshot": {
             "configuration": {
@@ -1210,6 +1214,9 @@
                     "inputs": [
                       "goal_spec",
                       "policy",
+                      "phase_dag",
+                      "repository",
+                      "provider",
                       "capabilities",
                       "invocation"
                     ],
@@ -1218,12 +1225,16 @@
                     "review": {
                       "assignment_group": "review",
                       "human_approval": true,
-                      "independent": true
+                      "independent": true,
+                      "types": [
+                        "requirements",
+                        "architecture"
+                      ]
                     },
                     "type": "understand"
                   },
                   {
-                    "applicability": "parent_only",
+                    "applicability": "always",
                     "assignment_group": "planning",
                     "depends_on": [
                       "understand"
@@ -1241,44 +1252,18 @@
                     "review": {
                       "assignment_group": "review",
                       "human_approval": false,
-                      "independent": true
+                      "independent": true,
+                      "types": [
+                        "delivery_boundaries"
+                      ]
                     },
                     "type": "decompose"
-                  },
-                  {
-                    "applicability": "always",
-                    "assignment_group": "planning",
-                    "depends_on": [
-                      "decompose"
-                    ],
-                    "id": "plan",
-                    "inputs": [
-                      "goal_spec",
-                      "policy",
-                      "phase_dag",
-                      "parents",
-                      "dependencies",
-                      "repository",
-                      "provider",
-                      "capabilities",
-                      "upstream_outputs"
-                    ],
-                    "not_required": "never",
-                    "parent_gates": [
-                      "decompose"
-                    ],
-                    "review": {
-                      "assignment_group": "review",
-                      "human_approval": false,
-                      "independent": true
-                    },
-                    "type": "plan"
                   },
                   {
                     "applicability": "leaf_only",
                     "assignment_group": "planning",
                     "depends_on": [
-                      "plan"
+                      "decompose"
                     ],
                     "id": "test_design",
                     "inputs": [
@@ -1292,12 +1277,16 @@
                     ],
                     "not_required": "never",
                     "parent_gates": [
-                      "plan"
+                      "decompose"
                     ],
                     "review": {
                       "assignment_group": "review",
                       "human_approval": false,
-                      "independent": true
+                      "independent": true,
+                      "types": [
+                        "acceptance_coverage",
+                        "baseline_failure"
+                      ]
                     },
                     "type": "test_design"
                   },
@@ -1321,12 +1310,16 @@
                     ],
                     "not_required": "never",
                     "parent_gates": [
-                      "plan"
+                      "decompose"
                     ],
                     "review": {
                       "assignment_group": "review",
                       "human_approval": false,
-                      "independent": true
+                      "independent": true,
+                      "types": [
+                        "acceptance",
+                        "entropy"
+                      ]
                     },
                     "type": "implement"
                   },
@@ -1349,7 +1342,10 @@
                     "review": {
                       "assignment_group": "review",
                       "human_approval": false,
-                      "independent": true
+                      "independent": true,
+                      "types": [
+                        "integration"
+                      ]
                     },
                     "type": "publish"
                   }
@@ -1360,7 +1356,7 @@
             "instructions": "Require durable tracked goals for substantial repository work. Read-only investigation and ZzzOps administration are exempt; only explicit scoped user authority grants an exception. Execute the reviewed phase graph with its independent reviews and human approvals."
           },
           "source": {
-            "revision": "bef03b908885cc6cbc8f9beae097f39b4b75b57ad4265149e2d62204cf2272f7",
+            "revision": "8cfd9e8cfd8e056807a752235c8b79da1b06e85e434801f2ff174309f4e1a1c3",
             "version": "0.0.0-dev"
           },
           "status": "adopted"
@@ -1373,8 +1369,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-24",
-          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
-          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
+          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
+          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
         },
         "source_ids": [
           "E-001",
@@ -1412,8 +1408,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-24",
-          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
-          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
+          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
+          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
         },
         "source_ids": [
           "E-002",
@@ -1469,8 +1465,8 @@
         "review": {
           "approved": true,
           "date": "2026-09-24",
-          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
-          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
+          "reviewed_digest": "sha256:af8d7c1ebd36cda1c92185de40097b07565b72fa30e09524b18984889bb69835",
+          "reviewer": "user: implement #456 and #531 ignoring ZzzOps machinery; adopt the specified five-phase default without a plan node (2026-09-24 scoped implementation instruction)"
         },
         "source_ids": [
           "E-001",
@@ -1490,6 +1486,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 44,
+  "revision": 46,
   "schema_version": 1
 }

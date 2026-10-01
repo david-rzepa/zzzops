@@ -5466,24 +5466,24 @@ class WorkflowContractTests(unittest.TestCase):
         dag = section["configuration"]["phase_dag"]
         self.assertEqual(1, dag["schema_version"])
         self.assertEqual(
-            ["understand", "decompose", "plan", "test_design", "implement", "publish"],
+            ["understand", "decompose", "test_design", "implement", "publish"],
             [phase["id"] for phase in dag["phases"]],
         )
         self.assertEqual("root", next(phase for phase in dag["phases"] if phase["id"] == "understand")["assignment_group"])
-        self.assertEqual(["plan"], next(phase for phase in dag["phases"] if phase["id"] == "implement")["parent_gates"])
+        self.assertEqual(["decompose"], next(phase for phase in dag["phases"] if phase["id"] == "implement")["parent_gates"])
         self.assertEqual(
-            {"independent": True, "human_approval": True, "assignment_group": "review"},
+            {"independent": True, "human_approval": True, "assignment_group": "review", "types": ["requirements", "architecture"]},
             next(phase for phase in dag["phases"] if phase["id"] == "understand")["review"],
         )
         self.assertTrue(all(phase["review"]["independent"] for phase in dag["phases"]))
         child_graph = zzzops.phase_evidence_graph(dag, has_parent=True)
         self.assertEqual(
-            ["understand", "plan", "test_design", "implement", "publish"],
+            ["understand", "decompose", "test_design", "implement", "publish"],
             [node["id"] for node in child_graph["phases"]],
         )
         self.assertEqual(
-            {"id": "plan", "depends_on": [], "parent_gates": ["decompose"]},
-            next(node for node in child_graph["phases"] if node["id"] == "plan"),
+            {"id": "test_design", "depends_on": ["decompose"], "parent_gates": ["decompose"]},
+            next(node for node in child_graph["phases"] if node["id"] == "test_design"),
         )
         self.assertEqual(
             {"id", "depends_on", "parent_gates"},
@@ -5493,7 +5493,7 @@ class WorkflowContractTests(unittest.TestCase):
         parent_phases = {node["id"] for node in parent_graph["phases"]}
         self.assertIn("publish", parent_phases)
         self.assertEqual(
-            ["plan"],
+            ["decompose"],
             next(node for node in parent_graph["phases"] if node["id"] == "publish")["depends_on"],
             "parent publication is present while orchestration supplies the aggregate child-completion gate",
         )

@@ -19,6 +19,41 @@ class LeafApplicabilityTests(unittest.TestCase):
                 self.assertEqual('leaf_only', node['applicability'])
         self.assertEqual([], zzzops._policy._workflow_phase_dag_errors(self.dag))
 
+    def test_review_types_and_consequence_overrides_are_policy_owned(self):
+        node = next(n for n in self.dag['phases'] if n['id'] == 'implement')
+        self.assertEqual(['acceptance', 'entropy'], node['review']['types'])
+        node['review']['by_consequence'] = {'architectural': {'human_approval': True}}
+        self.assertEqual([], zzzops._policy._workflow_phase_dag_errors(self.dag))
+        goal = {'key': 1, 'workflow': {'assessments': {'implement': {'dimensions': {'consequence': 'architectural'}}}}}
+        _, nodes = zzzops._workflow_phase_configuration(self.project, goal)
+        self.assertTrue(nodes['implement']['review']['human_approval'])
+        goal['workflow']['assessments']['implement']['dimensions']['consequence'] = 'bounded'
+        _, nodes = zzzops._workflow_phase_configuration(self.project, goal)
+        self.assertFalse(nodes['implement']['review']['human_approval'])
+        self.assertFalse(node['review']['human_approval'], 'Resolution must not mutate reviewed policy')
+        node['review']['by_consequence']['unknown'] = {'human_approval': True}
+        self.assertTrue(zzzops._policy._workflow_phase_dag_errors(self.dag))
+
+    def test_old_reviewed_dag_is_accepted_and_reported_stale(self):
+        from pathlib import Path
+        old = json.loads((Path(__file__).parent / 'fixtures/legacy_phase_dag.json').read_text())
+        self.assertEqual([], zzzops._policy._workflow_phase_dag_errors(old))
+        self.assertNotEqual(zzzops._phase_evidence.sha256_digest(old), zzzops._phase_evidence.sha256_digest(self.dag))
+        self.assertNotIn('plan', {n['id'] for n in self.dag['phases']})
+        section = next(s for s in self.project['policy']['sections'] if s['id'] == 'workflow_adherence')
+        current = zzzops._policy.policy_default_catalog()['zzzops.policy.workflow_adherence']
+        content = copy.deepcopy(current['content'])
+        content['configuration']['phase_dag'] = old
+        section.pop('default_id', None)
+        section.update(content)
+        section['default_provenance'] = {
+            'status': 'adopted', 'default_id': current['id'], 'schema_version': zzzops._policy.POLICY_DEFAULT_SCHEMA_VERSION,
+            'source': {'version': '0.0.0-dev', 'revision': 'a' * 40},
+            'digest': zzzops._policy.policy_content_digest(content), 'snapshot': content,
+        }
+        comparison = next(row for row in zzzops._policy.compare_policy_defaults(self.project['policy']) if row['section_id'] == 'workflow_adherence')
+        self.assertEqual('update_available', comparison['status'])
+
     def test_leaf_and_composition_graphs_at_every_depth(self):
         for parent in (None, 430):
             for children in ([], [457]):
@@ -28,10 +63,10 @@ class LeafApplicabilityTests(unittest.TestCase):
                     projected = {n['id']: n for n in graph['phases']}
                     for phase in ('test_design', 'implement'):
                         self.assertEqual(not children, phase in nodes)
-                    self.assertEqual(['plan'] if children else ['implement'],
+                    self.assertEqual(['decompose'] if children else ['implement'],
                                      projected['publish']['depends_on'])
                     if parent and not children:
-                        self.assertEqual(['plan'], projected['implement']['parent_gates'])
+                        self.assertEqual(['decompose'], projected['implement']['parent_gates'])
                     if not parent:
                         self.assertTrue(all(not n['parent_gates'] for n in graph['phases']))
 

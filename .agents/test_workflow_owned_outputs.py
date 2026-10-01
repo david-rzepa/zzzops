@@ -253,6 +253,68 @@ class PublicSession:
 
 
 class OwnedOutputPublicTests(unittest.TestCase):
+    def use_shipped_dag(self):
+        template = json.loads((fixtures.fixtures.PLUGIN_ROOT / 'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
+        dag = z._workflow_section({'policy': template['policy']}, 'workflow_adherence')['configuration']['phase_dag']
+        z._workflow_section(self.session.project, 'workflow_adherence')['configuration']['phase_dag'] = dag
+        self.assertEqual(['understand', 'decompose', 'test_design', 'implement', 'publish'], [n['id'] for n in dag['phases']])
+
+    def test_five_phase_default_leaf_red_to_green_and_publication(self):
+        self.use_shipped_dag()
+        s = self.session
+        del s.provider.issues[100]
+        child = s.goal(101)
+        s.call(101, {'operation': 'revise', 'expected_digest': child['digest'], 'changes': {'parent': None}})
+        s.plan['output_scope']['parent'] = 101
+        s.phase(101, 'understand', s.plan)
+        # Ordinary ordered implementation needs no holding child or plan node.
+        step = s.start(101, 'decompose')
+        record = copy.deepcopy(step['result_contract']['record'])
+        record.update(status='not_required', output=None, actor=step['bound_actor'],
+                      not_required={'policy_rule': 'atomic_goal', 'reason': 'One independently deliverable behavior.'})
+        s.call(101, {'operation': 'record_result', 'phase': 'decompose', 'lease': step['lease']['token'],
+                     'actor': step['bound_actor'], 'record': record, 'files': list(s.consumed)})
+        s.review(101, 'decompose')
+        child = s.goal(101)
+        metadata = copy.deepcopy(child['implementation'])
+        metadata.update(branch='goal-child', base='dev', target='dev')
+        s.call(101, {'operation': 'revise', 'expected_digest': child['digest'], 'changes': {'implementation': metadata}})
+        s.design()
+        s.implement()
+        s.git('add', 'source.py')
+        s.git('commit', '-qm', 'feat: required behavior')
+        self.fixture.head_oid = s.git('rev-parse', 'HEAD')
+        self.fixture.base_oid = s.git('rev-parse', 'dev')
+        child = s.goal(101)
+        metadata = copy.deepcopy(child['implementation'])
+        metadata['pr'] = 'https://github.com/owner/repo/pull/101'
+        s.call(101, {'operation': 'revise', 'expected_digest': child['digest'], 'changes': {'implementation': metadata}})
+        publication = s.start(101, 'publish')
+        proof = s.verify(publication)['next_steps'][0]['verification']
+        s.result(101, publication, {'publication': 'exact produced head'}, proof)
+        s.review(101, 'publish')
+        self.fixture.pr_merged = True
+        step = next(x for x in s.checkpoint(101) if x['kind'] == 'reconciliation')
+        s.call(101, step['submission'])
+        self.assertEqual('done', s.goal(101)['status'])
+        self.assertNotIn('plan', s.goal(101)['phase_evidence']['records'])
+
+    def test_five_phase_parent_allocates_scope_in_decomposition(self):
+        self.use_shipped_dag()
+        s = self.session
+        s.phase(100, 'understand', {'requirements': 'Integrate the child behavior.'})
+        s.phase(101, 'understand', s.plan)
+        s.phase(100, 'decompose', {'output_scopes': [s.plan['output_scope']]})
+        s.phase(101, 'decompose', {'decision': 'One atomic implementation; no further children.'})
+        child = s.goal(101)
+        metadata = copy.deepcopy(child['implementation'])
+        metadata.update(branch='goal-child', base='dev', target='dev')
+        s.call(101, {'operation': 'revise', 'expected_digest': child['digest'], 'changes': {'implementation': metadata}})
+        s.design()
+        s.implement()
+        parent_steps = s.checkpoint(100)
+        self.assertFalse(any(x.get('phase') in {'plan', 'test_design', 'implement'} for x in parent_steps))
+
     def setUp(self):
         self.fixture = fixtures.FullWorkflowJourneyTests()
         self.fixture.setUp()

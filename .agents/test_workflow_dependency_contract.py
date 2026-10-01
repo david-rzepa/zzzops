@@ -3,6 +3,7 @@
 import copy
 import hashlib
 import importlib.util
+import json
 import unittest
 from pathlib import Path
 
@@ -42,6 +43,7 @@ class WorkflowDependencyContractTests(unittest.TestCase):
     def engine(self, records):
         engine = workflow.Workflow.__new__(workflow.Workflow)
         engine.api, engine.repo, engine.project = API(), Path("."), {}
+        engine.project = {'policy': json.loads((ROOT / 'plugins/zzzops/zzzops/templates/project-goals/INIT_PLAN.json').read_text())['policy']}
         engine.read = lambda number: ({}, copy.deepcopy(records[number]))
         engine.portfolio = lambda: [copy.deepcopy(value) for value in records.values()]
         engine.file_hashes = lambda paths: {path: "sha256:" + "0" * 64 for path in paths}
