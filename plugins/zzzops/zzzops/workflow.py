@@ -2034,7 +2034,8 @@ class Workflow:
                         anchors = [row for row in candidates if 'error' not in row and row['reviews'] and connected(row['after'], accepted_only=True)]
                         if not anchors: raise ValueError('Workspace acquisition requires clean Git or exact reviewed connected output baseline') from None
                         anchor = anchors[-1]
-                        acquisition['checkout_overrides'] = anchor['data']['acquisition']['checkout_overrides']
+                        acquisition['checkout_overrides'] = {path: value for path, value in anchor['data']['acquisition']['checkout_overrides'].items()
+                                                             if baseline.get(path) == value}
                     if prior and 'error' not in prior and prior['reviews'] and connected(prior['after']):
                         previous = prior['data']['acquisition'].get('predecessor')
                         cursor, seen = previous, set()
