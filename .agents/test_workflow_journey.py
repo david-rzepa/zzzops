@@ -36,11 +36,10 @@ class MemoryGoalProvider:
     def update_issue(self, number, payload):
         self.updates.append((number, copy.deepcopy(payload)))
         issue = self.issues[number]
-        issue.update({
-            "body": payload["body"], "state": payload["state"],
-            "updated_at": f"2026-09-17T12:{len(self.updates):02d}:00Z",
-            "labels": [{"name": label} for label in payload["labels"]],
-        })
+        issue.update({key: payload[key] for key in ("body", "state") if key in payload})
+        issue["updated_at"] = f"2026-09-17T12:{len(self.updates):02d}:00Z"
+        if "labels" in payload:
+            issue["labels"] = [{"name": label} for label in payload["labels"]]
         return copy.deepcopy(issue)
 
     def get_issue_comments(self, number):
@@ -170,58 +169,19 @@ class FullWorkflowJourneyTests(unittest.TestCase):
         return z.github_goal_record(self.provider.get_issue(number))
 
     def test_external_merge_reconciliation_is_exact_and_replay_safe(self):
-        issue = self.provider.issues[101]
-        managed = z.parse_managed_goal(issue['body'], 101)
-        managed['implementation'].update(branch='goal-child', base='dev', target='dev',
-            pr='https://github.com/owner/repo/pull/9', review={'status': 'approved', 'checkpoint': self.head_oid})
-        issue['body'] = z.render_managed_goal(managed, z._goals.compact_human_goal_text(issue['body']), 101)
-        self.pr_merged = True
-        self.engine.invalidate()
-        goal = self.engine.read(101)[1]
-        request = {**self.engine.reconciliation_step(goal)['submission'], 'request_id': 'external-merge'}
-        with self.assertRaisesRegex(ValueError, 'goal changed'):
-            self.engine.mutate(101, {**request, 'expected_digest': '0' * 64})
-        with self.assertRaisesRegex(ValueError, 'merge evidence changed'):
-            self.engine.mutate(101, {**request, 'expected_merge': 'sha256:' + '0' * 64})
-        exact_reader = self.engine.api.github_goal_record
-        def claimed(issue):
-            return {**exact_reader(issue), 'claim': {'owner': 'legacy-worker'}}
-        with mock.patch.object(self.engine.api, 'github_goal_record', side_effect=claimed):
-            with self.assertRaisesRegex(ValueError, 'legacy worker stopped'):
-                self.engine.mutate(101, request)
-        self.engine.mutate(101, request)
-        after = self.goal(101)
-        self.assertEqual('blocked', after['status'])  # No phase proof: merge is not completion.
-        self.assertEqual(self.head_oid, after['implementation']['review']['checkpoint'])
-        self.assertEqual('merged-pr-evidence', after['blockers'][-1]['id'])
-        self.assertEqual(managed.get('phase_evidence'), z.parse_managed_goal(self.provider.issues[101]['body'], 101).get('phase_evidence'))
-        self.engine.mutate(101, request)
-        self.assertEqual(after['revision'], self.goal(101)['revision'])
-        self.assertEqual('blocker', self.engine.reconciliation_step(self.engine.read(101)[1])['kind'])
+        # Exact publication safeguards now consume ordinary current generic evidence.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_publication_contract.GenericPublicationPublicTests.test_external_merge_cannot_mint_missing_results_and_exact_replay_preserves_history',
+            'test_workflow_publication_contract.GenericPublicationPublicTests.test_external_merge_preserves_owned_worker_until_exact_observed_stop',
+        )
 
     def test_external_merge_closes_only_with_current_frontier(self):
-        issue = self.provider.issues[101]
-        managed = z.parse_managed_goal(issue['body'], 101)
-        managed['implementation'].update(branch='goal-child', base='dev', target='dev',
-            pr='https://github.com/owner/repo/pull/9', review={'status': 'approved', 'checkpoint': self.head_oid})
-        issue['body'] = z.render_managed_goal(managed, z._goals.compact_human_goal_text(issue['body']), 101)
-        self.pr_merged = True
-        self.engine.invalidate()
-        request = {**self.engine.reconciliation_step(self.engine.read(101)[1])['submission'], 'request_id': 'verified-external-merge'}
-        with mock.patch.object(self.engine.api, 'derive_phase_steps', return_value={'execute': [], 'review': [], 'blocked': [], 'approve': []}):
-            self.engine.mutate(101, request)
-        self.assertEqual('done', self.goal(101)['status'])
-        revision = self.goal(101)['revision']
-        self.engine.mutate(101, request)
-        self.assertEqual(revision, self.goal(101)['revision'])
-        self.assertEqual(self.head_oid, self.goal(101)['implementation']['review']['checkpoint'])
-        # A provider may save the body but fail to close the issue. A receipt
-        # alone must not falsely report that such a partial write completed.
-        self.provider.issues[101]['state'] = 'open'
-        replay = self.engine.mutate(101, request)
-        self.assertEqual('repair', replay['next_steps'][0]['kind'])
-        self.assertEqual('revise', replay['next_steps'][0]['submission']['operation'])
-        self.assertEqual(revision, self.goal(101)['revision'])
+        # Exact publication safeguards now consume ordinary current generic evidence.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_publication_contract.GenericPublicationPublicTests.test_external_merge_closes_only_current_terminal_and_partial_close_replay_repairs',
+        )
 
     def mutate(self, number, **payload):
         self.sequence += 1
@@ -366,176 +326,30 @@ class FullWorkflowJourneyTests(unittest.TestCase):
             self.approve(number, phase)
 
     def test_top_level_leaf_reaches_test_design_before_publication(self):
-        del self.provider.issues[101]
-        self.engine.invalidate()
-        self.phase(100, 'understand')
-        self.phase(100, 'decompose')
-        self.phase(100, 'plan')
-        goal = self.goal(100)
-        implementation = copy.deepcopy(goal['implementation'])
-        implementation.update(branch='goal-child', base='dev', target='dev')
-        self.mutate(100, operation='revise', expected_digest=goal['digest'],
-                    changes={'implementation': implementation})
-        subprocess.run(['git', 'checkout', '-q', 'goal-child'], cwd=self.repo, check=True)
-        self.phase(100, 'test_design', verifier='fail')
-        self.phase(100, 'implement', verifier='pass')
-        real_run = subprocess.run
-        def provider_command(command, *args, **kwargs):
-            if command[:3] == ['gh', 'pr', 'list']:
-                return subprocess.CompletedProcess(command, 0, stdout='[]', stderr='')
-            return real_run(command, *args, **kwargs)
-        with mock.patch.object(subprocess, 'run', side_effect=provider_command):
-            step = self.engine.step(100)[0]
-        self.assertEqual('publish', step['phase'])
-        self.assertEqual('assess', step['kind'])
-        self.assertEqual({'parent': 100, 'child': 100, 'test_design': [], 'implement': []},
-                         self.engine.reviewed_scope(self.goal(100)))
+        # One connected generic delivery graph retains red/green, review and publication guards.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag.EvidenceGraphGrammarTests.test_shipped_default_is_one_valid_generic_graph',
+            'test_workflow_publication_contract.GenericDeliveryPublicTests.test_reviewed_red_green_proofs_commit_and_exact_publication_form_one_delivery_graph',
+        )
 
     def test_parent_does_not_become_leaf_when_planned_child_leaves_open_index(self):
-        self.phase(100, 'understand')
-        self.phase(100, 'decompose')
-        self.phase(100, 'plan')
-        del self.provider.issues[101]
-        self.engine.invalidate()
-        graph, nodes, _, _ = self.engine.context(self.goal(100))
-        self.assertNotIn('implement', nodes)
-        self.assertNotIn('test_design', nodes)
-        blocker = self.engine.publication_gate(self.goal(100))
-        self.assertEqual('dependency', blocker['kind'])
-        self.assertEqual([101], blocker['children'])
+        # Current parent grants and all-child completion use the same generic evidence graph.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_publication_contract.GenericDeliveryPublicTests.test_parent_requires_both_children_current_terminals_and_archived_merge_evidence',
+            'test_evidence_dag_journeys.RelationshipPublicTests.test_native_subissue_omission_cannot_silently_drop_canonical_child',
+        )
 
     def test_parent_and_child_complete_only_from_reviewed_full_dag_evidence(self):
-        # Parent understanding is independently reviewed and explicitly approved.
-        self.phase(100, "understand")
-        parent = self.goal(100)
-        self.assertIn("understand", parent["phase_evidence"]["human_approvals"])
-
-        # A child can understand its goal, but its plan remains gated by the parent's decomposition.
-        self.phase(101, "understand")
-        gated = self.engine.step(101)[0]
-        self.assertEqual("dependency", gated["kind"])
-        self.assertTrue(gated["blocked"])
-
-        self.phase(100, "decompose")
-        self.phase(100, "plan", wrong_pair=True, reject_once=True)
-
-        # Parent publication and completion are impossible until implementation children finish.
-        blocked = self.engine.step(100)[0]
-        self.assertEqual("dependency", blocked["kind"])
-        self.assertEqual([101], blocked["children"])
-        with self.assertRaisesRegex(ValueError, "completion|publication"):
-            self.engine.mutate(100, {"request_id": "parent-too-early", "operation": "complete"})
-        self.assertNotEqual("done", self.goal(100)["status"])
-
-        self.phase(101, "plan")
-        child = self.goal(101)
-        implementation = copy.deepcopy(child["implementation"])
-        implementation.update(branch="goal-child", base="dev", target="dev")
-        self.mutate(101, operation="revise", expected_digest=child["digest"],
-                    changes={"implementation": implementation})
-        subprocess.run(["git", "checkout", "-q", "goal-child"], cwd=self.repo, check=True)
-
-        # No result may claim behavioural tests without an observed failing baseline.
-        design = self.start(101, "test_design", "execute")
-        design_actor = "101-test_design-no-proof"
-        design_lease = self.bind(101, design, design_actor)
-        fabricated = copy.deepcopy(design["result_contract"]["record"])
-        fabricated.update({
-            "output": self.artifact("fabricated-design"), "actor": design_actor,
-            "selection": design_lease["selection"],
-            "test_design": {
-                "baseline_failure": self.artifact("not-observed"),
-                "coverage": [{"criterion": criterion, "test": self.artifact("claimed-test"), "exclusion": None}
-                             for criterion in design["input_envelope"]["acceptance_criteria"]],
-            },
-        })
-        with self.assertRaisesRegex(ValueError, "failing-baseline"):
-            self.engine.mutate(101, {
-                "request_id": "fabricated-test-design", "operation": "record_result", "phase": "test_design",
-                "lease": design_lease["token"], "actor": design_actor, "files": [], "record": fabricated,
-            })
-        self.mutate(
-            101, operation="release", phase="test_design", lease=design_lease["token"],
-            worker_status="stopped", evidence="Test worker stopped after rejected unverified submission.",
+        # Current parent grants and all-child completion use the same generic evidence graph.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_publication_contract.GenericDeliveryPublicTests.test_parent_requires_both_children_current_terminals_and_archived_merge_evidence',
+            'test_evidence_dag_journeys.RelationshipPublicTests.test_child_requires_current_parent_review_and_blocks_again_after_parent_drift',
+            'test_workflow_integration.GenericIntegrationFreshnessTests.test_start_bind_receipt_and_actual_pair_are_guarded_before_writes',
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_failed_verification_corrects_missing_regression_without_rerunning_requirements',
         )
-        self.phase(101, "test_design", verifier="fail")
-
-        # Implementation likewise requires a current passing verifier artifact.
-        implementation = self.start(101, "implement", "execute")
-        implementation_actor = "101-implement-no-proof"
-        implementation_lease = self.bind(101, implementation, implementation_actor)
-        fabricated = copy.deepcopy(implementation["result_contract"]["record"])
-        fabricated.update({
-            "output": self.artifact("fabricated-implementation"), "actor": implementation_actor,
-            "selection": implementation_lease["selection"], "verification": self.artifact("not-observed"),
-        })
-        with self.assertRaisesRegex(ValueError, "passing verification"):
-            self.engine.mutate(101, {
-                "request_id": "fabricated-implementation", "operation": "record_result", "phase": "implement",
-                "lease": implementation_lease["token"], "actor": implementation_actor, "files": [], "record": fabricated,
-            })
-        self.mutate(
-            101, operation="release", phase="implement", lease=implementation_lease["token"],
-            worker_status="stopped", evidence="Implementation worker stopped after rejected unverified submission.",
-        )
-        self.phase(101, "implement", verifier="pass")
-        self.assertNotIn("implement", self.goal(101)["phase_evidence"]["human_approvals"])
-
-        implementation_metadata = {
-            "branch": "goal-child", "base": "dev", "target": "dev",
-            "pr": "https://github.com/owner/repo/pull/101",
-            "review": {"status": "not_started", "checkpoint": None},
-        }
-        child = self.goal(101)
-        self.mutate(
-            101, operation="revise", expected_digest=child["digest"],
-            changes={"implementation": implementation_metadata},
-        )
-
-        real_run = subprocess.run
-
-        def provider_boundary(command, *args, **kwargs):
-            if command[:3] == ["gh", "pr", "list"]:
-                pulls = [] if self.pr_merged else [{
-                    "headRefName": "goal-child", "baseRefName": "dev", "headRefOid": self.head_oid,
-                }]
-                return SimpleNamespace(returncode=0, stdout=json.dumps(pulls), stderr="")
-            if command[:3] == ["gh", "pr", "merge"]:
-                self.assertEqual(self.head_oid, command[-1])
-                self.pr_merged = True
-                return SimpleNamespace(returncode=0, stdout="", stderr="")
-            return real_run(command, *args, **kwargs)
-
-        with mock.patch.object(z._workflow.subprocess, "run", side_effect=provider_boundary):
-            self.phase(101, "publish", verifier="pass")
-            integration = self.engine.step(101)[0]
-            self.assertEqual("integration", integration["kind"])
-            self.assertEqual(self.head_oid, integration["head"])
-            self.assertFalse(self.pr_merged)
-            self.mutate(
-                101, operation="integrate", expected_head=self.head_oid,
-                approved_by="user:exact-head-approval",
-            )
-            self.assertTrue(self.pr_merged)
-            integrated = self.goal(101)["implementation"]["review"]
-            self.assertEqual({"status": "approved", "checkpoint": self.head_oid}, integrated)
-            completion = self.engine.step(101)[0]
-            self.assertEqual("complete", completion["kind"])
-            self.mutate(101, **completion["submission"])
-        self.assertEqual("done", self.goal(101)["status"])
-
-        # Child completion becomes aggregate input; the parent can now publish and complete.
-        self.phase(100, "publish", verifier="pass")
-        completion = self.engine.step(100)[0]
-        self.assertEqual("complete", completion["kind"])
-        self.mutate(100, **completion["submission"])
-        self.assertEqual("done", self.goal(100)["status"])
-
-        for number in (100, 101):
-            durable = self.goal(number)["phase_evidence"]
-            for phase, record in durable["records"].items():
-                self.assertIn(phase, durable["reviews"])
-                self.assertEqual("completed", record["status"])
 
 
 if __name__ == "__main__":

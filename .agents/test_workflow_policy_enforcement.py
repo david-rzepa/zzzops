@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -40,6 +41,55 @@ def durable(*leases):
     }
 
 
+from test_evidence_dag_journeys import DagFixture
+import test_evidence_dag_journeys as dag_fixtures
+
+
+class GenericWorkerCapacityTests(DagFixture):
+    add_goal = dag_fixtures.RelationshipPublicTests.add_goal
+    put_envelope = dag_fixtures.RelationshipPublicTests.put_envelope
+
+    def test_other_goal_unresolved_owner_consumes_reviewed_capacity_until_observed_stop(self):
+        config = z._workflow_section(self.session.project, "autonomy_approval_parallelism")["configuration"]
+        config["max_workers"] = 1
+        graph = copy.deepcopy(self.graph)
+        def symbolic(value):
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    if key == "goal" and child == 100:
+                        value[key] = "#this"
+                    else:
+                        symbolic(child)
+            elif isinstance(value, list):
+                for child in value:
+                    symbolic(child)
+        symbolic(graph)
+        self.install(graph)
+        self.add_goal(101, graph)
+        target = next(step for step in self.session.checkpoint(101) if step.get("kind") == "execute")
+        start = {**target["start"], "policy_receipt": json.loads(Path(target["policy"]["path"]).read_text())["policy_receipt"]}
+        first = self.session.acquire("produce", number=100, actor="first-writer")
+        for now in (first["lease"]["expires_at"] - 1, first["lease"]["expires_at"] + 1):
+            with self.subTest(now=now), mock.patch.object(z._workflow.time, "time", return_value=now):
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                steps = self.session.checkpoint(101)
+                self.assertFalse(any(step.get("kind") == "execute" for step in steps))
+                self.assertRegex(str(steps), r"(?i)max_workers|capacity|await_worker")
+                rejected = self.session.call(101, start, expected=2)
+                self.assertRegex(str(rejected), r"(?i)max_workers|capacity|unresolved|active.*lease")
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        with mock.patch.object(z._workflow.time, "time", return_value=first["lease"]["expires_at"] + 1):
+            steps = self.session.checkpoint(100)
+            recovery = next(step for step in steps if "recovery_contract" in step or step.get("kind") == "recover")
+            request = copy.deepcopy(recovery.get("submission", recovery.get("recovery_contract")))
+            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+            self.session.call(100, {**request, "worker_status": "unknown", "evidence": "Timeout alone"}, expected=2)
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+            self.session.call(100, {**request, "worker_status": "stopped", "evidence": "Actual first-writer terminal state observed"})
+        second = self.session.acquire("produce", number=101, actor="second-writer")
+        self.session.finish(second, {"value": "Capacity released only after observed ownership termination"}, number=101)
+
+
 class WorkerLimitEnforcementTests(unittest.TestCase):
     def test_checkpoint_uses_reviewed_max_workers_instead_of_fixed_three(self):
         goals = [
@@ -48,7 +98,8 @@ class WorkerLimitEnforcementTests(unittest.TestCase):
         ]
         engine = mock.Mock()
         engine.portfolio.return_value = goals
-        engine.step.side_effect = lambda number: [{"kind": "assess", "goal": number}]
+        engine.step.side_effect = lambda number: [{"kind": "execute", "goal": number,
+            "node": {"goal": number, "node": "work", "item": None, "generation": 1}}]
 
         result = z._workflow.checkpoint(z, Path("."), project(max_workers=2), {}, engine=engine)
 
@@ -56,39 +107,17 @@ class WorkerLimitEnforcementTests(unittest.TestCase):
         self.assertEqual([mock.call(1), mock.call(2)], engine.step.call_args_list)
 
     def test_start_rejects_capacity_consumed_by_another_unresolved_lease(self):
-        engine = z._workflow.Workflow.__new__(z._workflow.Workflow)
-        engine.project = project(max_workers=1)
-        engine.runtime = {"root_id": "root-thread"}
-        engine.locked = lambda: contextlib.nullcontext()
-        engine.adapter = SimpleNamespace(get_issue_comments=lambda number: [])
-        active = {
-            "key": 1, "status": "ready",
-            "workflow": durable({"expires_at": 0, "worker": "synthetic-worker"}),
-        }
-        goal = {
-            "key": 2, "revision": 1, "digest": "current", "status": "ready",
-            "workflow": durable(),
-        }
-        issue = {"body": "synthetic"}
-        engine.portfolio = mock.Mock(return_value=[active, goal])
-        engine.read = mock.Mock(return_value=(issue, goal))
-        engine.step = mock.Mock(return_value=[{
-            "kind": "execute", "phase": "understand", "input_hash": "sha256:input",
-        }])
-        engine.save = mock.Mock()
-        engine.api = SimpleNamespace(parse_managed_goal=lambda body, number: copy.deepcopy(goal))
-
-        with self.assertRaisesRegex(ValueError, "max_workers"):
-            engine.mutate(2, {
-                "operation": "start", "phase": "understand", "kind": "execute",
-                "input_hash": "sha256:input", "request_id": "start-2",
-            })
-        engine.save.assert_not_called()
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self, 'test_workflow_policy_enforcement.GenericWorkerCapacityTests.test_other_goal_unresolved_owner_consumes_reviewed_capacity_until_observed_stop')
 
     def test_checkpoint_replaces_unstartable_phase_with_capacity_step(self):
+        # Supported predecessor ownership still consumes capacity until actual
+        # stop/conversion; it is not a runnable second phase engine.
         active = {"key": 1, "priority": "P0", "status": "ready", "depends_on": [], "workflow": durable({"expires_at": 0, "worker": "synthetic-worker"})}
         target = {"key": 2, "priority": "P1", "status": "ready", "depends_on": []}
-        proposed = {"kind": "execute", "goal": 2, "start": {"operation": "start"}}
+        proposed = {"kind": "execute", "goal": 2,
+                    "node": {"goal": 2, "node": "work", "item": None, "generation": 1},
+                    "start": {"operation": "start"}}
         engine = mock.Mock()
         engine.portfolio.return_value = [active, target]
         engine.step.side_effect = {1: [{"kind": "await_worker", "goal": 1}], 2: [proposed]}.__getitem__
@@ -180,72 +209,20 @@ class PublishCiPolicyTests(unittest.TestCase):
         return engine
 
     def test_integrate_and_complete_enforce_strict_ci_but_honor_disabled_ci(self):
-        operations = (
-            {"operation": "integrate", "approved_by": "approved-user", "expected_head": "a" * 40},
-            {"operation": "complete"},
+        # Exact publication safeguards now consume ordinary current generic evidence.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_publication_contract.GenericPublicationPublicTests.test_strict_ci_blocks_integration_and_only_reviewed_disabled_configuration_permits_it',
+            'test_workflow_publication_contract.GenericPublicationPublicTests.test_strict_ci_blocks_complete_and_reviewed_disabled_ci_preserves_current_terminal_requirement',
         )
-        for payload in operations:
-            payload = {**payload, "request_id": "request-" + payload["operation"]}
-            with self.subTest(operation=payload["operation"], mode="strict"):
-                strict = self.transition_engine("inspect_exact_pr_head")
-                with self.assertRaisesRegex(ValueError, "CI checks|required_checks|merged PR evidence"):
-                    strict.mutate(7, payload)
-                strict.save.assert_not_called()
-            with self.subTest(operation=payload["operation"], mode="disabled"):
-                disabled = self.transition_engine("disabled")
-                disabled.mutate(7, payload)
-                disabled.save.assert_called_once()
 
     def test_publish_review_enforces_strict_ci_but_honors_disabled_ci(self):
-        record = {"status": "completed"}
-        evidence = z.empty_phase_evidence()
-        evidence["records"]["publish"] = record
-        goal = {"key": 7, "implementation": {"pr": "synthetic-pr"}, "phase_evidence": evidence}
-        live = {"publish": {"goal_spec": "sha256:" + "1" * 64}}
-        lease = {
-            "kind": "review", "worker": "review-worker", "input_hash": z._workflow.digest(live["publish"]),
-            "record_hash": z._workflow.digest(record), "review_hash": None,
-        }
-        payload = {
-            "operation": "record_review", "phase": "publish", "actor": "review-worker",
-            "artifact": {"reference": "urn:sha256:" + "2" * 64, "hash": "sha256:" + "2" * 64},
-            "outcomes": {"acceptance": "approved", "entropy": {"outcome": "no_findings", "evidence": "Synthetic review", "goals": []}},
-        }
-        cases = (
-            ("inspect_exact_pr_head", "approved", False, True),
-            ("inspect_exact_pr_head", "changes_requested", False, False),
-            ("inspect_exact_pr_head", "approved", True, False),
-            ("existing_only", "approved", False, True),
-            ("existing_only", "changes_requested", False, False),
-            ("disabled", "approved", False, False),
+        # Exact publication safeguards now consume ordinary current generic evidence.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_publication_contract.GenericPublicationPublicTests.test_ci_absent_unknown_unverified_and_disabled_authorization_are_distinct',
+            'test_workflow_publication_contract.GenericPublicationPublicTests.test_negative_ci_observation_is_recordable_and_review_can_admit_correction_without_approval',
         )
-        for mode, acceptance, verified, denied in cases:
-            with self.subTest(mode=mode, acceptance=acceptance, verified=verified):
-                submitted = copy.deepcopy(payload)
-                submitted["outcomes"]["acceptance"] = acceptance
-                submitted["outcomes"]["entropy"]["outcome"] = (
-                    "correction_required" if acceptance == "changes_requested" else "no_findings"
-                )
-                engine = self.engine(required_ci=mode)
-                engine.runtime = {"root_id": "root-thread"}
-                current = {"checks_verified": verified, "checks_present": True}
-                engine.pull_request = mock.Mock(return_value=current)
-                engine.context = mock.Mock(return_value=({}, {"publish": {"review": {"independent": True}}}, live, {}))
-                engine.read_artifact = mock.Mock(return_value={})
-                engine.api.derive_phase_steps = lambda *args, **kwargs: {"execute": [], "review": [{"phase": "publish"}]}
-                engine.api.empty_phase_evidence = z.empty_phase_evidence
-                engine.api.record_phase_review = mock.Mock(return_value={"reviewed": True})
-                desired = copy.deepcopy(goal)
-                if denied:
-                    with self.assertRaisesRegex(ValueError, "CI checks"):
-                        engine.submit_evidence(goal, desired, {**durable(), "leases": {"publish:review": lease}}, "publish:review", lease, submitted)
-                    engine.api.record_phase_review.assert_not_called()
-                else:
-                    engine.submit_evidence(goal, desired, {**durable(), "leases": {"publish:review": lease}}, "publish:review", lease, submitted)
-                    engine.read_artifact.assert_called_once()
-                    self.assertEqual(acceptance, engine.api.record_phase_review.call_args.kwargs["decision"])
-                    self.assertEqual({"reviewed": True}, desired["phase_evidence"])
-                self.assertEqual({"checks_verified": verified, "checks_present": True}, current)
 
 
 if __name__ == "__main__":

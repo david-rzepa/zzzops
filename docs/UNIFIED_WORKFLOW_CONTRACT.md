@@ -1,384 +1,227 @@
 # Unified workflow contract
 
-This contract defines the public control surface that replaces ZzzOps' separate
-commands. It implements the design approved in [#430](https://github.com/david-rzepa/zzzops/issues/430)
-and is the shared contract for its implementation children.
+The public `workflow` entrypoint implements the generic evidence DAG approved in
+[#498](https://github.com/david-rzepa/zzzops/issues/498). Repository policy remains
+reviewed authority. A goal, task name, parent relationship, artifact type, or
+caller-provided approval boolean grants no authority by itself.
 
 ## Public surface
 
-ZzzOps exposes one public operation:
+Invoke package-local `zzzops.py --repo REPOSITORY workflow --intent INTENT` through
+the installed skill. Follow the returned `next_steps`, exact goal, runtime and
+input arguments. Context, installation, policy and actual capability gates apply
+before execution. Preview accepts no mutations. Only the coordinator writes
+canonical state or integrates work; a delegated worker follows its acquired
+contract and finite workspace allocation.
 
-```text
-zzzops workflow --intent <capture|execute|approve|resume|inspect> [intent input]
-```
+Normal goal execution uses one schema-2 engine. `start`, `bind`, `renew`, `block`,
+`recover` and `submit` operate on qualified generic tasks. Evidence inspection is
+`read`. Operational `integrate`, `reconcile` and `complete` consume authenticated
+current graph evidence. They do not manufacture semantic Results. Capture,
+policy approval, installation validation and other administrative intents retain
+their own public contracts. Retired phase `assess`, `verify`, `record_result`,
+`record_review`, `approve`, `withdraw` and automatic bulk adoption are not a second
+normal execution grammar.
 
-The installed skills remain the discoverable entry points for agents. Each skill
-calls `workflow` with its appropriate intent; no skill tells an agent to invoke a
-private operation. `workflow` always evaluates current repository, policy, goal,
-provider, and lease evidence. It does not keep a workflow cursor. Caches may
-avoid repeating unchanged reads, but cached output is never authority.
+## Canonical data and identity
 
-Current public command groups become private handlers behind that operation:
+A schema-2 GoalEnvelope contains exactly `schema_version`, `repository`, `issue`,
+`revision`, `state`, `parent` and `payload`. State is `open` or `archived`; parent
+is a positive same-repository issue number or explicit null. Provider issue
+closure is separate from envelope state. Payload is an immutable Ref resolving
+to `{spec, graph, evidence, operational}`. Operational data contains `leases` and
+`receipts`; accepted evidence is an ordered array of immutable Result Refs.
 
-| Current public intent | Private handler family |
-| --- | --- |
-| `init`, `installation`, `checkpoint`, `portfolio` | context and policy gates |
-| `goal` | goal capture, inspection, transition, and adoption |
-| `reserve` | storage locks and phase leases |
-| `entropy` | entropy evidence and review records |
-| `diagnostics`, `report`, `coaching`, `feedback` | bounded diagnostics and reporting |
+A Ref is `{hash, uri}`. The SHA-256 hash authenticates content; the URI locates it.
+Local `urn:sha256:...` reads retain their behavior. A same-repository qualified
+locator is `zzzops:OWNER/REPOSITORY:goal:NUMBER:sha256:HASH`. Its repository, positive
+goal and embedded hash must agree exactly before a targeted provider read.
+Published Git references pin an exact commit, repository-relative path and raw
+bytes hash. Location never supplies execution authority.
 
-The legacy named commands are removed from the agent-facing interface when the
-unified command ships. Internal handlers remain independently testable and may
-be called only by `workflow`. The cutover inventory is exact: `init`
-(`inspect`, `validate`, `apply`, `confirm`); `installation` (`status`, `audit`,
-`record`); `entropy` (`list`, `observe`, `resolve`, `review status`, `review
-mark`, `review plan`, `review complete`); `diagnostics` (`list`, `suggest`);
-`portfolio`; `goal` (`create`, `transition`, `migrate-open`, `inspect`,
-`reconcile-merged`); `reserve` (`acquire`, `renew`, `release`); `coaching`
-(`attribute`); `report` (`record`, `list`); and `feedback` (`prepare`,
-`submit`).
+An Artifact contains `{type, content, producer, provenance}`. A host-issued
+Result binds its qualified node, attempt, contract hash, exact input bindings,
+actual executor, output Refs and selector resolutions. Qualified task identity
+contains goal, node, item and generation. Null item denotes a static node.
+Receipts contain exactly `{request, payload, result}`: the stable request ID,
+request hash and immutable response Ref. Exact retries return the same response;
+reuse of an ID for different bytes is rejected.
 
-## Response envelope
+## One graph and one evaluator
 
-Successful standard output contains only this versioned action envelope:
+Graph contains exactly `nodes`, `task_sets` and `terminals`. A task declares its
+prompt, typed inputs and outputs, prerequisites, executor capability/resources
+and authority selector, independence, finding gates, resolutions and permits.
+There is no phase-to-runtime dispatch table. The shipped graph expresses design,
+decomposition, test design, implementation and publication with ordinary tasks
+and explicit reviews/authorizations. Extra risk-review topology is outside this
+foundation.
 
-```json
-{
-  "schema_version": 1,
-  "next_steps": [
-    {
-      "id": "policy-review",
-      "skill": "$review-zzzops-policy",
-      "intent": "inspect",
-      "audience": "root",
-      "phase": "context",
-      "action": "Inspect the stale policy and prepare the explicit approval input.",
-      "reason": "Available model inventory changed since the recorded review."
-    }
-  ]
-}
-```
+Inputs select a declared external slot or a node output, a path, identity/content
+mode and a closed TypeContract. Static, member and join selectors use an explicit
+goal number or `#this`, `#parent`, `#children`. Member identity includes generation;
+join and plural-child inputs produce canonical keyed maps, including nested maps
+when both dimensions apply. Types must describe the resulting aggregate, not
+just each leaf. Every required immediate child participates, including archived
+children. Known empty, unknown, null and missing are distinct observations.
 
-`next_steps` is an ordered DAG frontier, so independent items may be returned
-together. Every item has a unique stable `id`, an installed skill reference, an
-intent from `capture`, `execute`, `approve`, `resume`, or `inspect`, an audience,
-a phase, imperative action prose, and the evidence-backed reason it is currently
-required. A step may additionally name its goal, required model and effort,
-lease, dependency IDs, or an opaque log reference when that information is needed
-to act. The response never emits a generic instruction that requires the agent
-to infer which skill to read or which workflow intent to invoke.
+The pure evaluator derives current Results, readiness, findings and terminals
+from Graph, Payload and resolved evidence. It performs no provider or process
+I/O. Host adapters supply authenticated observations; they cannot insert tasks or
+skip declared prerequisites. Projected cross-goal cycles are rejected. Relevant
+subject, membership, contract or evidence drift makes affected consumers stale;
+unrelated goals and lease/receipt bookkeeping do not invalidate reusable work.
 
-Routing is equally imperative. Once routing evidence is available, `workflow`
-emits exactly one `directive` of `delegate`, `continue_root`, or
-`resolve_blocker` for that phase. A `delegate` directive includes the required
-`model` and `effort`; the agent must launch that pair and must not apply a separate delegation heuristic. A
-`continue_root` action forbids delegation for that phase. Missing runtime model
-or delegation-harness evidence produces `resolve_blocker`, never a discretionary
-fallback.
+## Relationship and historical reads
 
-Standard output contains no diagnostics, timing, full portfolio, or tool logs.
-Those go to a bounded local log artifact; a next step may reference that artifact
-only when inspecting it is necessary to resolve the step. Errors use the same
-envelope with an actionable repair step whenever a safe repair exists.
+Canonical GoalEnvelope.parent is relationship truth. The host enumerates scoped
+provider metadata with complete pagination, then reads candidate envelopes to
+establish canonical membership. A native sub-issue index can corroborate or
+locate candidates; an empty native index alone does not prove empty canonical
+membership. Partial, mismatched or unknown facts block affected consumers.
 
-Each reviewed category separates typed `configuration` from natural-language
-`instructions`. Only configuration controls CLI decisions; instruction prose never
-changes routing, capacity, review requirements, or CI gates. Both participate in
-default comparison, explicit approval, and phase evidence invalidation. Legacy
-mixed sections require re-review; they are never converted during execution.
+The host relationship context retains exact envelope Refs as provenance while
+semantic selector fingerprints exclude irrelevant bookkeeping. Targeted reads
+may retrieve closed/archived goal bodies and exact immutable history. They do not
+reopen, migrate, compact or authorize execution. Broad portfolio discovery does
+not automatically hydrate closed bodies. A parent change is root-controlled,
+requires the exact current predecessor and preserves self/cross-repository/cycle
+guards. Its own acquisition bookkeeping does not simulate external drift.
 
-Actionable steps include a `policy` reference with an absolute temporary `path`,
-the file's `sha256`, and the selected section IDs. Read that file before performing
-the step and pass the reference to its assigned worker. It contains reviewed agent
-instructions and exceptions selected for the phase and operation; reviews
-additionally receive quality and verification policy. Unknown custom phases receive
-all applicable instruction blocks rather than silently losing constraints.
-Configuration and provenance snapshots never enter worker policy excerpts.
-Files also contain a `policy_receipt` derived from the disclosed content. It is not
-returned in stdout, paths, leases, or goal state. Phase/review starts and delegated
-worker binding require it; the public file hash is not an acknowledgment. This
-checks retrieval, not understanding or compliance. Independent review still checks
-whether the work follows policy.
+## Ownership and atomic submission
 
-Identical content reuses a private content-addressed temporary file across CLI
-invocations and restarts. Receipt and bytes remain identical after cache deletion
-and regeneration, or configuration-only changes. Changed instructions or exceptions
-invalidate the receipt for work consuming them. The CLI derives expected receipts
-from the current reviewed snapshot rather than trusting cached files. Renewals and
-result submissions do not require repeated acknowledgment. Identical disclosed
-content deliberately shares a receipt across phases; phase inputs, leases, actors,
-and model selection independently constrain the assignment. On Windows, reusable
-files live under the private user-profile temporary subtree rather than a redirected
-shared `TEMP`; on POSIX the cache enforces current-user ownership and mode 0700.
-Policy-proposal gates never label an unapproved proposal as reviewed policy.
-Their inspection is also a temporary file reference, including in preview mode.
-The CLI writes these private files outside the repository and never inlines their
-contents in stdout. Files are disposable disclosure, not durable evidence or
-authority: a fresh checkpoint regenerates a missing file, while phase freshness
-continues to depend on the full canonical policy hash.
+Acquisition pins current contract, input fingerprint, actual routing choice and
+host observations. The worker reads the exact policy file and supplies its
+receipt at start/bind; the bound actual model/effort and actor must match. An
+independent reviewer cannot be the actual subject executor. Reviewed capacity
+and declared resources include unresolved owners, even when expired or stale.
 
-`skill` is a validated installed skill ID, never a free-form hint. The workflow
-owns this registry and rejects a response whose step is not mapped to a currently
-installed skill. It selects the indicated intent of that skill, which in turn
-invokes the one public CLI command:
+Staleness or expiry never proves a worker stopped. Recovery requires root's exact
+owner/token and observed terminal evidence. Heartbeat returns a same-node,
+same-token public renewal contract; callers observe real worker liveness and
+renew that ownership rather than dispatching another worker. Infrastructure
+blockers remain operational facts, not invented semantic Results.
 
-| Condition or action | Required skill | Workflow intent |
-| --- | --- | --- |
-| Capture a goal or record an out-of-scope entropy goal | `$add-zzzops-goal` | `capture` |
-| Bootstrap or re-bootstrap policy/context | `$bootstrap-zzzops-repository` | `inspect` |
-| Review stale policy, model inventory, or default DAG | `$review-zzzops-policy` | `inspect` |
-| Validate an installed package | `$validate-zzzops-installation` | `inspect` |
-| Adopt eligible open state | `$migrate-to-zzzops` | `inspect` |
-| Dispatch, recover a lease, transition, verify, or publish | `$execute-zzzops` | `execute` |
-| Resume an existing worker or phase | `$execute-zzzops` | `resume` |
-| Explicitly approve goal design | `$execute-zzzops` | `approve` |
-| Perform independent acceptance and entropy review | `$review-zzzops-entropy` | `execute` |
-| Inspect agentic-engineering evidence and recommendations | `$review-agentic-engineering` | `inspect` |
-| Inspect policy-authorized backlog suggestions | `$suggest-zzzops-work` | `inspect` |
-| Prepare or submit opt-in product feedback | `$send-zzzops-feedback` | `execute` |
+Submit accepts exactly the declared output bundle. The host validates types,
+current authority, ownership, input identity and proofs before publishing typed
+Artifacts and one Result. The operational lease removal and request receipt share
+the checkpoint. Partial provider writes require exact readback/retry; no silent
+rollback, dropped history or completed-owner resurrection is permitted.
 
-The registry is versioned with the plugin manifest and is part of the response
-validation surface. If an action has no installed-skill mapping, the workflow
-returns a root-audience repair step to install or repair the package; it never
-emits an unmapped action.
+## Workspace evidence
 
-## Evidence-derived phases
+Repository editing requires the explicit `repository_workspace` resource and a
+declared allocation input. An authenticated root allocation names exact qualified
+tasks and finite owned/consumed paths. Current independent authorization and
+root approval bind the exact manifest, task identities and policy. A child also
+needs matching immediate-parent grant and authorization inputs; ancestry alone
+cannot expand its scope.
 
-The reviewed project policy declares one reusable phase DAG. The shipped default
-uses the following nodes; policy may tune requirements and edges through
-declarative building blocks, not executable handlers or a per-goal DAG.
+Owned paths are disjoint from another task's write authority. Traversal, absolute
+paths, symbolic links, directories, wildcards and administrative authority files
+cannot be converted into permission by a manifest. The bounded migration
+preparation file may be an explicit consumed input, never an owned path.
 
-```mermaid
-flowchart LR
-  C[Context gates] --> U[Understand]
-  U --> D[Decompose]
-  D --> P[Plan]
-  P --> A[Independent architecture review]
-  A --> I[Implement]
-  I --> V[Verify]
-  V --> R[Independent acceptance and entropy review]
-  R --> S[Publish / reconcile]
-```
+Acquisition pins raw checkout files, actual commit, consumed/owned boundaries,
+input hash and host-verified checkout overrides. Changed owned files require
+observed `workspace_checks` command results before candidate publication.
+A failing test result may be recorded factually for independent review; it does
+not authorize completion. Output, proof, acquisition, actual actor/token and
+Result identities remain connected across commits and retries.
 
-Each phase records its declared input evidence, the hash of that evidence, its
-output artifact hash, selected model and effort, actor, verification evidence,
-and any `not_required` decision. Phase eligibility is recomputed from this
-record and live evidence on every invocation. There is no mutable phase cursor.
+Reuse follows exact accepted whole before/after snapshots. Individually valid
+historical bytes cannot be combined into an unobserved workspace. Host-issued
+predecessor evidence binds qualified node, allocation, authorization, prior
+Result/proof/review and predecessor Ref. Correction count does not limit later
+attempts. Each acquisition requires current allocation, independent authorization,
+root approval, ownership and input checks. Reuse also requires the exact accepted
+prior candidate and verified workspace connectivity. Older predecessor links retain provenance;
+their historical grants cannot authorize new work. Link identity, checksum and
+cycle checks remain, as do required historical whole-workspace proof edges.
 
-A changed required input makes that phase stale. The coordinator reassesses the
-phase before invalidating downstream work. If the reassessment produces a
-byte-identical artifact, it updates the input record and preserves downstream
-validity. Policy changes stale every phase of open goals; closed goals are not
-rewritten or hydrated. If a closed goal later reopens, the then-current policy
-and evidence make stale phases visible.
+All transactions and exact historical Refs remain retained. Canonical payload and
+receipt membership use the existing trusted canonical-state boundary; content
+hashes establish byte identity, not cryptographic author authenticity. Eager
+history hydration and evidence scans still grow with retained history. This
+contract does not promise bounded total acquisition work or unlimited storage;
+codec depth, decoded-size and reconstruction-work limits remain separate resource
+constraints, never a semantic correction-count policy.
 
-`Understand` is the root-owned boundary for user questions, capability
-assessment, goal-design approval, and routing decisions. A direct root skill is
-required for every human-facing step because only the root can ask or receive
-user input. The shipped work phases are `understand`, `decompose`, `test_design`,
-`implement`, and `publish`. Planning and architecture are substantive work within
-understanding and test design, not a separate phase. Installation, bootstrap,
-policy and capability validation remain shared invocation preconditions.
+Git-clean CRLF normalization is only a host-verified read observation. Raw
+acquisition and consumed pins remain exact. A later Git configuration change
+cannot bless different raw bytes; exact durable acquisition evidence can retain
+a previously verified override. Unrelated clean committed paths do not invalidate
+a task whose authenticated finite scope does not consume them.
 
-`Decompose` may be marked not required for an atomic goal, including a nested
-leaf. Children exist only for independently deliverable outcomes. Leaves own
-test design and implementation; goals with genuine implementation children own
-composition and integration. Parent decomposition allocates child scope before
-child test design and implementation can begin.
+## Findings and correction
 
-Each phase carries policy-configured independent review and human-approval
-requirements; routing considers consequence, rigor and boundedness. Understanding
-includes architecture review. Test design requires a genuinely failing behavioural
-baseline and a reviewed mapping of every acceptance criterion to a test or justified
-exclusion. Implementation requires passing verification and independent acceptance
-and entropy review. Verification is an operation, not a standalone DAG node.
-Every review binds the exact phase record; changed evidence invalidates that binding.
-`review.types` names the required review concerns. Optional `review.by_consequence`
-overrides review fields for an assessed consequence tier; the returned checkpoint
-exposes the effective `review_requirements`. Human approval always remains on root.
+Findings have stable identity/revision, exact subject Refs, target scope and
+provenance. Root admission determines applicability under declared permits.
+Accepted obligations persist when the admitting Result later becomes stale;
+that persistence does not make the Result current or bypass an ordinary requires
+edge. Distinct unresolved findings remain distinct obligations.
 
-Existing reviewed six-phase policies remain readable until adoption. Adopting the
-five-phase default invalidates affected open evidence without rewriting historical
-artifacts or closed goals; the next checkpoint requests reassessment under the new DAG.
+Resolution needs the current finding revision, current exact subject and a
+current independent review that consumed that subject. Supersession transfers
+coverage explicitly; withdrawal and retirement require declared root authority.
+Literal findings do not silently become plural, even when a selector currently
+has one member. Correction cannot erase prior evidence or release an owner.
 
-## Routing and delegation
+## Publication and completion
 
-The root assesses the required capability for every phase with the reviewed
-decision tree. The tree maps relevant dimensions, including consequence and
-decision boundedness, to the shipped tiers: Routine, Bounded, Reasoning, and
-Architectural. A reviewed tier mapping selects the least-cost available
-`(model, effort)` pair that satisfies that phase. New models or efforts outside
-the reviewed inventory make policy review stale.
+The explicit `repository_publication` adapter consumes a declared root-issued
+`repository_context` `{branch, base, target, pr}` and current independently reviewed
+root authorization. Context is issued when the actual PR exists. Node IDs and
+output type names do not select authority implicitly.
 
-Architectural consequence or unbounded work escalates before any phase default
-is considered. Test design has a Reasoning floor because it must translate the
-accepted behavior into capable regression checks; understanding remains a
-root-owned interaction phase and keeps its Routine default when no risk rule
-raises it.
+Provider observations bind exact repository, PR, head, base and CI. CI is the
+closed enum `verified|unverified|absent|unknown`; absent requires complete known
+provider evidence. Failed/unknown observations remain recordable factual evidence.
+Configured strict, inspect-when-present or disabled CI policy controls approval,
+effects and completion rather than suppressing facts.
 
-The root records the routing comparison and either dispatches a worker with the
-selected pair or records why it retains work. A worker never asks the user,
-changes canonical goal state, approves, publishes, or delegates recursively.
-Work that needs human input stays with the root. A root-capability task runs at
-the root; a more capable model or root-level parallelism needs the policy's
-recorded default or an explicit per-session user override. Missing delegation
-capability is itself an actionable root step, never silent sequential fallback.
+`publication_authorization` binds exact current subject, independent review and
+policy. Integration checks current provider head/base, topology, ownership and
+CI, and uses exact-head protection plus readback. It may occur before a declared
+post-effect node, avoiding a cycle between integration and merge observation.
+`merge_observation` binds that authorization and actual provider merge identity.
+Reconciliation cannot mint missing Results; semantic completion still requires
+all declared terminals and retained obligations. Provider closure/archival alone
+is not evidence that required children or publication work completed.
 
-Workers may be resumed for adjacent phases or fix cycles when their previous
-context remains useful. Every resume rechecks current evidence, routing, and
-lease ownership. Deterministic CLI calls and copying a response do not justify a
-separate worker.
+## Trusted predecessor conversion
 
-## Canonical evidence and handoff
+Version 1 remains a supported historical source, not an active execution engine.
+A reviewed migration-entry Graph explicitly analyzes the preserved source,
+conversion mapping, independent review and root activation authority. Unsupported
+versions fail closed. Existing predecessor ownership must be observed stopped
+and recovered explicitly; conversion cannot adopt its old lease as a generic
+worker.
 
-Every phase input hash is `sha256` of a versioned, UTF-8 canonical JSON envelope:
-object keys sort lexicographically, arrays retain declared order, and no
-insignificant whitespace is included. The envelope names the phase and contains
-the goal-spec digest; effective policy and phase-DAG digest; relevant parent and
-dependency artifact references and hashes; repository, branch, PR, and provider
-snapshot; discovered capability and model/effort inventory; required invocation
-inputs; and upstream output hashes selected by the DAG edge. The policy declares
-which snapshot fields each phase consumes, so irrelevant provider changes do not
-invalidate it.
+Conversion preserves exact source body and transaction comments, historical
+result/review/human-approval snapshots and usable immutable Refs. Only reviewed
+compatible mappings become current generic evidence; missing obligations remain
+ready or blocked. Activation backs up exact source, validates target identity,
+parent and Graph, checks current predecessor, and confirms partial writes through
+readback. No cross-version global revision numbering is implied. Ambiguous
+unqualified historical revision reads diagnose instead of choosing arbitrarily.
 
-An output artifact has an immutable reference and `sha256` of its exact bytes
-(or the provider's immutable content identity where bytes are unavailable). The
-phase record separately stores input hash, output hash, verification hash,
-routing hash, and review hash. Downstream phase inputs consume upstream output
-hashes, never a mutable phase record. Re-recording changed inputs with the same
-output bytes therefore preserves downstream validity; a changed output hash
-invalidates only its declared descendants.
+Migration preparation consumes its exact declared path and schema-2 spec Ref
+hash with live provider/release assessment. Unknown stays unknown. An ordinary
+root factual report can preserve a blocker reason and preparation observations;
+it grants no eligibility and is not a forged host attestation.
 
-Workers return a bounded `phase_result` to the root: schema version, goal and
-phase IDs, renewable lease ID and generation, input hash, output reference and
-hash, verification evidence, selected `(model, effort)`, and opaque log
-reference. A worker cannot write it into canonical state. `workflow` verifies
-the current lease generation, route, and evidence freshness, then atomically
-records the result or returns a recovery next step. This is the sole worker
-handoff and reconciliation interface.
+## Bounded immutable storage
 
-### Owned source and test outputs
+The adapter catalogs retained comment locations and resolves only the selected
+artifact representations and delta bases under the shared codec limits. Total
+unrelated history does not consume an active read's working-set budget. Every
+selected representation/base is validated; conflicting appended representations
+invalidate affected closures before publication. Changed old comment bytes cannot
+reuse cached validation. Cached values are bounded observations, not authority.
 
-Parent decomposition declares finite `output_scopes` entries selected uniquely by
-child; leaf understanding declares matching `output_scope` with `parent`, `child`,
-and `test_design`/`implement` path lists. A standalone leaf uses its own ID for both
-identities. The singular parent form remains shorthand for one child. Both scope
-records need current independent review before execution. Legacy policies retain
-scope in their plan phase. Missing scope returns a phase-specific repair; `[]` permits
-no file outputs, including new files. Paths cannot overlap across phases, escape
-the checkout, or exempt project policy. Scope is substantive design content;
-changing input hashes, Git identities and review bindings never belong in reusable
-plan or review text.
-
-A scoped write phase starts from a clean committed checkout. Its existing lease
-gains an optional `acquisition` containing the exact `input_envelope`, immutable
-`git_commit` and start `workspace_digest`. Every consumed file remains declared,
-including files that will be edited. The coordinator assigns one exclusive writer
-to the checkout; the CLI checks the registered branch and exact actor/lease.
-Hashes detect content drift, not the identity of a malicious external writer.
-There is no cross-goal branch lock or ownership registry.
-
-Verification compares the complete workspace to the acquired Git tree and permits
-only the phase's reviewed output paths to differ. Specification, policy, graph,
-read dependencies and parent reviews remain live prerequisites. A produced proof
-retains `acquisition: {git_commit, workspace_digest, input_hash}`, `phase`, `lease`,
-`actor` and an `outputs` after-identity map alongside commands and the verified
-workspace. These facts survive lease deletion; the completed phase record retains
-the full before envelope. Missing files use an explicit `missing` input/output
-identity but are absent from workspace trees, so committing a deletion does not
-change its produced-workspace identity.
-
-Recognized source edits preserve consumed historical versions in prerequisite
-records. A test-design failure remains valid historical evidence when its exact
-workspace became the implementation baseline; reviewed test output bytes remain
-pinned. This does not exempt publication proofs or stale verification: submission
-still requires an exact current workspace and produced map. Unknown changes stay
-live and invalidate affected evidence.
-
-Historical transformations are reconstructed from connected before/after workspace
-snapshots in existing verified records and proofs, including completed siblings.
-A disconnected mixture of individually historical file versions is not valid.
-Closed sibling records remain unchanged. A snapshot becomes consumable only after
-its exact independent review and every configured human approval are current.
-The producing phase retains local access for its own review and approval; that
-access grants no sibling or downstream eligibility. A just-recorded result may explain only
-its own review and unchanged prerequisites before independent approval; other
-phases and consumers cannot use that provisional result.
-
-A `changes_requested` correction starts under a fresh lease from a clean commit
-exactly reproducing the rejected result. Its acquisition optionally freezes a
-`predecessor` artifact reference. The artifact contains the exact same-goal/phase
-`record`, rejected `review` and finite `scope`; the record references its original
-proof. The correction proof carries the same reference, preserving these facts
-after record replacement and lease deletion. New inputs describe the actual
-correction baseline. Each predecessor must reconstruct the next baseline exactly;
-wrong scope, missing/tampered facts, disconnected snapshots and chains exceeding
-32 corrections fail closed. Existing immutable artifact storage holds these facts;
-there is no history registry or workflow cursor. Explicit withdrawal instead
-permits a fresh execution from a clean approved baseline: the withdrawn proof
-does not inject old output drift into new inputs and the rejected record is not
-forced into a correction predecessor. Withdrawal does not approve discarded
-outputs or exempt current dependencies, scope, ownership or verification checks. The newest independent approval
-accepts the composed result, never the rejected intermediate output. Review targets
-expose the failing test baseline or passing verification and predecessor reference.
-
-For an old implementation lease without acquisition, the public `verify` request
-supplies the exact original `input_envelope`; its digest must equal the old lease
-hash. The unchanged candidate Git tree must reproduce the independently reviewed
-failing-test workspace and test output identities. Missing or inconsistent evidence
-fails closed. This supports a new-test bootstrap without changing old input hashes,
-rewriting closed goals, or introducing a migration framework.
-
-Reassessment may explicitly reuse byte-identical plan output. The new record
-invalidates old review and human-approval bindings. An independent reviewer may
-reuse byte-identical substantive review text after examining changed inputs, but
-must record a fresh exact binding. Downstream substantive identities remain stable
-only after all current review and approval gates pass.
-
-## Approval, leases, and batches
-
-Policy/bootstrap validation gates every intent, including goal capture. When a
-goal design needs approval, `workflow` returns a root-audience next step for the
-approval skill; the caller must explicitly invoke `workflow --intent approve`.
-Child decomposition within an approved parent scope needs no extra user approval.
-
-Canonical goal storage uses short atomic update locks. Phase work uses persisted,
-renewable leases that can be read across machines. Only a direct `workflow`
-invocation acquires a lease. It creates a local heartbeat helper with a local
-liveness probe and binds the worker after dispatch; the backend never executes a
-stored command. Uncertain renewal or expiry enters recovery and requires an
-explicit, evidence-backed decision before duplicate work starts.
-
-Independent transitions may be requested in one batch. The response reports one
-result per item and rejects dependent items before mutation. It is fail-fast for
-the invalid item while preserving already confirmed independent results.
-
-## Publication and adoption
-
-The reviewed default permits isolated implementation in parallel, but publication
-is a linear PR stack. Before a PR advances, the coordinator validates that it
-rebases onto the current stack tip and has no side branch. Agents resolve rebases
-and conflicts; the CLI validates topology and emits the next repair step.
-
-Adoption is bounded and lossless. Open goals and policy state gain the minimum
-evidence needed to derive phases; old evidence is preserved. Closed goals are never migrated or rewritten. Their immutable recorded
-proofs may be read to authenticate a connected sibling snapshot transformation. Reopening a closed goal makes normal adoption rules apply.
-
-## Representative decisions
-
-| Situation | Required next step |
-| --- | --- |
-| Policy digest or model inventory changed | Root runs `$review-zzzops-policy`; no goal action proceeds first. |
-| No capability assessment for a phase and a human answer is needed | Root runs `$add-zzzops-goal` or the relevant workflow skill to capture the answer and approval. |
-| An implementation phase has a valid plan, route, and lease | Root dispatches the named worker with recorded `(model, effort)`. |
-| Evidence changes but plan output is byte-identical | Re-record evidence hashes and continue without unnecessary replanning. |
-| A lease heartbeat becomes uncertain | Root runs the workflow recovery next step; it does not start another worker. |
-| Acceptance finds out-of-scope entropy | Create a separate goal through `$add-zzzops-goal` and continue unless correctness or safety requires a block. |
-
-
-### Exact checkout identities under Git conversion
-
-A scoped acquisition may include `checkout_overrides`, a sparse map from tracked canonical paths to exact raw SHA-256 identities where checkout bytes differ from committed blob bytes. The same optional map is copied into the durable verification acquisition and participates in exact lease/proof binding. Acquisition validates the captured raw bytes against their recorded SHA and passes those same bytes to Git's actual-path clean conversion; its object identity must equal the committed blob. Non-equivalent dirty content remains rejected.
-
-Historical snapshots reconstruct the immutable Git blob map plus frozen overrides and verify the recorded workspace digest. They never rerun current filters or reinterpret recorded raw identities. Raw input/output hashes remain unchanged, so later undeclared EOL-only changes still invalidate evidence. Correction predecessors retain each acquisition's own overrides. Missing overrides preserve the original exact-blob interpretation. Legacy leases without acquisition data cannot infer conversion overrides from edited outputs: when exact reconstruction cannot match the independently reviewed baseline, handoff fails closed and requires an explicit clean-baseline restart.
+The existing artifact size, delta depth, reconstruction work, record count and
+provider comment limits remain unchanged. Payload deltas choose addressed bases
+within those bounds while preserving all receipts and evidence. Public reads
+return detached values. Internal borrowed snapshots are read-only and reused only
+with exact provider-body/base signatures and unchanged validation limits.

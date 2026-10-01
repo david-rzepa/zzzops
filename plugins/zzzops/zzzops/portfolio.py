@@ -439,7 +439,10 @@ def build_portfolio_snapshot(
     for record in records:
         record["children"].sort(key=_portfolio_key)
         record["blocks"].sort(key=_portfolio_key)
-        record["engineering_rigor"] = derive_engineering_rigor(record.get("engineering_rigor"), rigor_policy)
+        # Generic tasks declare capability in the reviewed Graph. Legacy goal
+        # assessment metadata cannot create a hidden schema-2 dispatch gate.
+        if record.get("schema_version") != 2:
+            record["engineering_rigor"] = derive_engineering_rigor(record.get("engineering_rigor"), rigor_policy)
     resource_policy = normalize_resource_policy(resource_policy) if resource_policy is not None else None
     findings = audit_portfolio(records, backend, as_of, resource_policy)
     terminal = {"done", "cancelled"}

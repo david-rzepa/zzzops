@@ -1,5 +1,6 @@
 """Renewal regressions using real workflow mutations and subprocess deadlines."""
 import subprocess
+import copy
 import contextlib
 import io
 import json
@@ -22,26 +23,20 @@ class RenewalTests(unittest.TestCase):
         return fixture
 
     def test_renewal_acknowledges_exact_saved_lease_without_rehydrating_portfolio(self):
-        f = self.journey()
-        lease, _ = f.prepare()
-        with mock.patch.object(f.engine, 'portfolio', side_effect=AssertionError('redundant portfolio read')):
-            result = f.mutate(operation='renew', phase='plan', lease=lease['token'], actor='builder', worker_status='active')
-        step = result['next_steps'][0]
-        stored = z.github_goal_record(f.adapter.issue)['workflow']['leases']['plan:execute']
-        self.assertEqual('renewed', step['kind'])
-        self.assertEqual((42, 'plan', 'builder', lease['token'], stored['expires_at']),
-                         tuple(step[k] for k in ('goal', 'phase', 'actor', 'lease', 'expires_at')))
+        # Preserve the exact renewal or terminal-replay invariant through generic node ownership and public submit.
+        # Preserve the exact renewal or terminal-replay invariant through generic node ownership and public submit.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_renewal.GenericRenewalTests.test_exact_renewal_acknowledges_saved_node_lease_without_portfolio_fetch',
+        )
 
     def test_wrong_actor_cannot_renew_and_failed_save_does_not_acknowledge(self):
-        f = self.journey()
-        lease, _ = f.prepare()
-        before = f.adapter.issue['body']
-        with self.assertRaisesRegex(ValueError, 'bound worker'):
-            f.mutate(operation='renew', phase='plan', lease=lease['token'], actor='intruder', worker_status='active')
-        self.assertEqual(before, f.adapter.issue['body'])
-        with mock.patch.object(f.engine, 'save', side_effect=ValueError('provider failure')):
-            with self.assertRaisesRegex(ValueError, 'provider failure'):
-                f.mutate(operation='renew', phase='plan', lease=lease['token'], actor='builder', worker_status='active')
+        # Preserve the exact renewal or terminal-replay invariant through generic node ownership and public submit.
+        # Preserve the exact renewal or terminal-replay invariant through generic node ownership and public submit.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_renewal.GenericRenewalTests.test_wrong_renewal_actor_and_failed_provider_save_never_acknowledge',
+        )
 
     def test_provider_timeout_unwinds_storage_with_fresh_cleanup_budget(self):
         f = self.journey()
@@ -75,34 +70,115 @@ class RenewalTests(unittest.TestCase):
         self.assertEqual(acquire.call_args.args[:5], release.call_args.args)
 
     def test_saved_result_replay_retries_failed_local_shutdown_without_rewriting(self):
-        f = self.journey()
-        lease, record = f.prepare()
-        payload = dict(operation='record_result', phase='plan', lease=lease['token'],
-                       actor='builder', record=record, request_id='terminal-replay')
-        with mock.patch.object(f.engine.api._heartbeat, 'stop_heartbeat', side_effect=[OSError('local failure'), {}]) as stop:
-            result = f.engine.mutate(42, payload)
-            saved = f.adapter.issue['body']
-            self.assertIn('durable submission succeeded', result['next_steps'][-1]['action'])
-            self.assertEqual(payload, result['next_steps'][-1]['submission'])
-            replay = f.engine.mutate(42, payload)
-        self.assertEqual(saved, f.adapter.issue['body'])
-        self.assertEqual(2, stop.call_count)
-        self.assertEqual('checkpoint', replay['next_steps'][0]['kind'])
+        # Preserve the exact renewal or terminal-replay invariant through generic node ownership and public submit.
+        # Preserve the exact renewal or terminal-replay invariant through generic node ownership and public submit.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_renewal.GenericRenewalTests.test_exact_terminal_retry_retries_local_shutdown_without_durable_rewrite',
+        )
 
     def test_cli_renewal_error_identifies_request_and_preserves_uncertainty(self):
         f = self.journey()
         path = f.repo / 'renew.json'
-        path.write_text(json.dumps(dict(operation='renew', phase='plan', actor='builder', lease='token')))
+        node = {'goal': 42, 'node': 'planning', 'item': None, 'generation': 1}
+        path.write_text(json.dumps(dict(operation='renew', node=node, actor='builder', lease='token')))
         argv = ['zzzops.py', '--intent', 'execute', '--goal', '42', '--input', str(path)]
         output = io.StringIO()
         with mock.patch.object(sys, 'argv', argv), mock.patch.object(z._workflow, 'public_run', side_effect=ValueError('provider timeout')), contextlib.redirect_stdout(output):
             self.assertEqual(2, z.main())
         step = json.loads(output.getvalue())['next_steps'][0]
-        self.assertEqual((42, 'plan', 'builder'), tuple(step[k] for k in ('goal', 'phase', 'actor')))
+        self.assertIn('node', step, 'Generic renewal diagnostic must retain exact task identity')
+        self.assertEqual((42, node, 'builder'), tuple(step[k] for k in ('goal', 'node', 'actor')))
         self.assertEqual([*argv[1:-1], '<submission.json>', '--source-skill', '$execute-zzzops'], step['command'][2:])
         self.assertEqual(json.loads(path.read_text()), step['submission'])
         self.assertIn('does not authorize takeover', step['action'])
 
+
+
+from test_evidence_dag_journeys import DagFixture
+import test_evidence_dag_journeys as dag_fixtures
+
+
+class GenericRenewalTests(DagFixture):
+    def request(self, work, **changes):
+        return {"operation": "renew", "node": work["node"], "lease": work["lease"]["token"],
+                "actor": work["bound_actor"], "worker_status": "active", **changes}
+
+    payload_from_body = dag_fixtures.GenericStoragePublicTests.payload_from_body
+
+    def test_renewal_retry_before_body_preserves_generated_expiry(self):
+        self.renewal_lost_response("before")
+
+    def test_renewal_retry_after_body_preserves_generated_expiry(self):
+        self.renewal_lost_response("after")
+
+    def renewal_lost_response(self, boundary):
+        work = self.session.acquire("produce")
+        request = self.request(work, request_id="exact-renewal-" + boundary)
+        attempted = []
+        original = self.provider.update_issue
+        initial_comments = len(self.provider.comments[100])
+        initial_updates = len(self.provider.updates)
+        def uncertain(number, payload):
+            attempted.append(copy.deepcopy(payload))
+            if boundary == "after":
+                original(number, payload)
+            raise z.GoalTransitionProviderError("lost " + boundary + " renewal body response")
+        with mock.patch.object(self.provider, "update_issue", side_effect=uncertain):
+            self.session.call(100, request, expected=None)
+        self.assertEqual(1, len(attempted), "Fault must reach exactly one actual durable body write")
+        proposed = self.payload_from_body(attempted[0]["body"])
+        lease = next(item for item in proposed["operational"]["leases"] if item["token"] == work["lease"]["token"])
+        with mock.patch.object(z._workflow.time, "time", return_value=lease["expires_at"] - 1):
+            response = self.session.call(100, request)
+        ack = response["next_steps"][0]
+        self.assertEqual("renewed", ack["kind"])
+        self.assertEqual(lease["expires_at"], ack["expires_at"], "Retry cannot mint a fresh later expiry")
+        saved = next(item for item in self.payload()[1]["operational"]["leases"] if item["token"] == work["lease"]["token"])
+        self.assertEqual(lease, saved)
+        self.assertEqual(initial_comments + 1, len(self.provider.comments[100]))
+        self.assertEqual(initial_updates + 1, len(self.provider.updates))
+        stable = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, request)
+        self.assertEqual(stable, (self.provider.issues, self.provider.comments))
+
+    def test_exact_renewal_acknowledges_saved_node_lease_without_portfolio_fetch(self):
+        work = self.session.acquire("produce")
+        def forbidden(*_args, **_kwargs):
+            raise AssertionError("renewal rehydrated unrelated portfolio")
+        self.session.portfolio_snapshot = forbidden
+        response = self.session.call(100, self.request(work))
+        saved = next(v for v in self.payload()[1]["operational"]["leases"] if v["token"] == work["lease"]["token"])
+        step = response["next_steps"][0]
+        self.assertEqual("renewed", step["kind"])
+        self.assertEqual(work["node"], step["node"])
+        self.assertEqual((work["bound_actor"], saved["token"], saved["expires_at"]),
+                         (step["actor"], step["lease"], step["expires_at"]))
+
+    def test_wrong_renewal_actor_and_failed_provider_save_never_acknowledge(self):
+        work = self.session.acquire("produce")
+        self.session.call(100, self.request(work))
+        before = self.provider.issues[100]["body"]
+        denied = self.session.call(100, self.request(work, actor="intruder"), expected=2)
+        self.assertRegex(json.dumps(denied), r"(?i)actor|worker|bound")
+        self.assertEqual(before, self.provider.issues[100]["body"])
+        with mock.patch.object(self.provider, "update_issue", side_effect=ValueError("provider failure")):
+            failed = self.session.call(100, self.request(work), expected=2)
+        self.assertFalse(any(v.get("kind") == "renewed" for v in failed["next_steps"]))
+        self.assertEqual(before, self.provider.issues[100]["body"])
+
+    def test_exact_terminal_retry_retries_local_shutdown_without_durable_rewrite(self):
+        work = self.session.acquire("produce")
+        request = self.session.submission(work, {"value": "durably accepted"}, "terminal-shutdown")
+        stop = mock.Mock(side_effect=[OSError("local shutdown failed"), {}])
+        self.session.heartbeat_stop = stop
+        response = self.session.call(100, request)
+        before = json.dumps((self.provider.issues, self.provider.comments), sort_keys=True)
+        self.assertRegex(json.dumps(response), r"(?i)durable.*succeed|shutdown|retry")
+        retry = self.session.call(100, request)
+        self.assertEqual(2, stop.call_count)
+        self.assertEqual(before, json.dumps((self.provider.issues, self.provider.comments), sort_keys=True))
+        self.assertNotIn("produce", {s["node"]["node"] for s in retry["next_steps"] if s.get("kind") == "execute"})
 
 if __name__ == '__main__':
     unittest.main()

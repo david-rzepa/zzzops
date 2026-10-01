@@ -13,6 +13,7 @@ import base64
 import re
 import zlib
 from types import SimpleNamespace
+from pathlib import Path
 from unittest import mock
 
 import test_zzzops as fixtures
@@ -84,7 +85,7 @@ class GoalEnvelopeTests(unittest.TestCase):
     def envelope(self):
         digest = "sha256:" + "1" * 64
         return {"schema_version": 2, "repository": "owner/repo", "issue": 100,
-                "revision": 1, "state": "open",
+                "revision": 1, "state": "open", "parent": None,
                 "payload": {"hash": digest, "uri": "urn:" + digest}}
 
     def body(self, value):
@@ -95,7 +96,11 @@ class GoalEnvelopeTests(unittest.TestCase):
 
     def valid_control(self):
         envelope = self.envelope()
-        self.assertEqual(envelope, self.parse(self.body(envelope)))
+        try:
+            parsed = self.parse(self.body(envelope))
+        except ValueError as exc:
+            self.fail("Production rejected the valid revision16 envelope: " + str(exc))
+        self.assertEqual(envelope, parsed)
         return envelope
 
     def test_v2_identity_envelope_is_readable_without_decoding_payload(self):
@@ -105,6 +110,19 @@ class GoalEnvelopeTests(unittest.TestCase):
         envelope = self.valid_control()
         envelope["schema_version"] = True
         with self.assertRaisesRegex(ValueError, r"(?i)version|integer|schema"):
+            self.parse(self.body(envelope))
+
+    def test_parent_is_required_nullable_positive_integer_not_historical_guess(self):
+        envelope = self.valid_control()
+        envelope["parent"] = 99
+        self.assertEqual(envelope, self.parse(self.body(envelope)))
+        for parent in (True, 0, -1, 1.5, "99", "#parent"):
+            with self.subTest(parent=parent):
+                invalid = {**envelope, "parent": parent}
+                with self.assertRaisesRegex(ValueError, r"(?i)parent|integer|identity"):
+                    self.parse(self.body(invalid))
+        del envelope["parent"]
+        with self.assertRaisesRegex(ValueError, r"(?i)parent|missing|field"):
             self.parse(self.body(envelope))
 
 
@@ -121,7 +139,7 @@ class ConversionDurabilityTests(unittest.TestCase):
         source = copy.deepcopy(issue)
         digest = "sha256:" + "3" * 64
         envelope = {"schema_version": 2, "repository": "owner/repo", "issue": 100,
-                    "revision": 1, "state": "open", "payload": {"hash": digest, "uri": "urn:" + digest}}
+                    "revision": 1, "state": "open", "parent": None, "payload": {"hash": digest, "uri": "urn:" + digest}}
         target = "<!-- zzzops-goal\n" + json.dumps(envelope) + "\nzzzops-goal -->"
         prepared = {"repository": "owner/repo", "issue": 100, "source": source,
                     "target_body": target, "target_labels": ["zzzops", "zzzops:schema:v2"],
@@ -339,6 +357,84 @@ class MigrationEntryPublicTests(dag.DagFixture):
                       "missing_obligations": ["Current verification", "Current independent review"]}
         self.session.finish(self.session.acquire("convert"), {"conversion": conversion})
         return source, conversion
+
+    def test_selected_open_entry_is_bounded_and_retry_preserves_other_sources(self):
+        source, _graph = self.entry()
+        self.provider.issues[101] = fixtures.PortfolioTests().issue(101)
+        self.provider.issues[102] = fixtures.PortfolioTests().issue(102)
+        self.provider.issues[102]["state"] = "closed"
+        for number in (101, 102):
+            self.provider.comments[number] = []
+        others = copy.deepcopy({number: (self.provider.issues[number], self.provider.comments[number])
+                                for number in (101, 102)})
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.assertEqual({"analyze"}, self.names())
+        self.assertEqual(before, (self.provider.issues, self.provider.comments),
+                         "Discovery cannot automatically migrate any source")
+        step = next(step for step in self.session.ready() if step["node"]["node"] == "analyze")
+        receipt = json.loads(Path(step["policy"]["path"]).read_text())["policy_receipt"]
+        request = {**step["start"], "policy_receipt": receipt, "request_id": "bounded-entry-start"}
+        first = self.session.call(100, request)["next_steps"][0]
+        prepared = copy.deepcopy((self.provider.issues, self.provider.comments))
+        again = self.session.call(100, request)["next_steps"][0]
+        self.assertEqual(first["lease"]["token"], again["lease"]["token"])
+        self.assertEqual(prepared, (self.provider.issues, self.provider.comments))
+        self.assertEqual(source, self.read_blob(self.payload()[1]["spec"])["content"])
+        self.assertEqual(others, {number: (self.provider.issues[number], self.provider.comments[number])
+                                  for number in (101, 102)})
+        self.assertFalse(any(step.get("node", {}).get("node") == "produce"
+                             for step in self.session.checkpoint(100)))
+
+    def test_schema_label_cannot_authorize_noncompact_source_or_erase_history(self):
+        source, _graph = self.entry()
+        legacy = z.parse_managed_goal(source["body"], 100)
+        legacy["evidence"] = ["Historical evidence must survive exactly."]
+        human = ("## Outcome\nKeep this.\n\n```md\n## Evidence\nKeep fenced example.\n```\n\n"
+                 "## Evidence\nArchive this without erasure.\n\n## Scope\nKeep scope.\n")
+        source["body"] = z.render_managed_goal(legacy, human, 100)
+        source["labels"].append({"name": "zzzops:schema:v1"})
+        self.provider.issues[100] = copy.deepcopy(source)
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.assertEqual({"analyze"}, self.names())
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        work = self.session.acquire("analyze")
+        self.assertEqual(source, self.read_blob(self.payload()[1]["spec"])["content"])
+        self.session.finish(work, {"source": source})
+        self.assertEqual(source, self.read_blob(self.migration_result("analyze")[1]["source"])["content"])
+        self.assertEqual({"convert"}, self.names(), "A label/source backup cannot activate normal delivery")
+
+    def test_entry_backup_confirmation_precedes_body_replacement_and_retries_exactly(self):
+        source, _graph = self.entry()
+        self.assertEqual({"analyze"}, self.names())
+        step = next(step for step in self.session.ready() if step["node"]["node"] == "analyze")
+        receipt = json.loads(Path(step["policy"]["path"]).read_text())["policy_receipt"]
+        request = {**step["start"], "policy_receipt": receipt, "request_id": "source-confirmation"}
+        create, read = self.provider.create_issue_comment, self.provider.get_issue_comments
+        initial_comments = copy.deepcopy(self.provider.comments[100])
+        def unconfirmed_create(number, body):
+            result = create(number, body)
+            return {**result, "body": "Unconfirmed provider response"}
+        def unconfirmed_read(number):
+            known = {row["id"] for row in initial_comments}
+            return [row if row["id"] in known else {**row, "body": "Unconfirmed provider readback"}
+                    for row in read(number)]
+        self.provider.create_issue_comment = unconfirmed_create
+        self.provider.get_issue_comments = unconfirmed_read
+        response = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)confirm|backup|source|artifact|content|readback")
+        self.assertEqual(source, self.provider.issues[100],
+                         "No source replacement before exact immutable backup is confirmed")
+        self.assertGreater(len(self.provider.comments[100]), len(initial_comments))
+        retained = copy.deepcopy(self.provider.comments[100])
+        self.provider.create_issue_comment, self.provider.get_issue_comments = create, read
+        acquired = self.session.call(100, request)["next_steps"][0]
+        self.assertEqual(source, self.read_blob(self.payload()[1]["spec"])["content"])
+        for comment in retained:
+            self.assertEqual(1, sum(row["body"] == comment["body"] for row in self.provider.comments[100]))
+        after = copy.deepcopy((self.provider.issues, self.provider.comments))
+        retry = self.session.call(100, request)["next_steps"][0]
+        self.assertEqual(acquired["lease"]["token"], retry["lease"]["token"])
+        self.assertEqual(after, (self.provider.issues, self.provider.comments))
 
     def test_trusted_entry_review_root_approval_then_activation_without_fabricated_evidence(self):
         source, conversion = self.prepared()
@@ -564,6 +660,202 @@ class MigrationEntryPublicTests(dag.DagFixture):
         self.assertEqual(graph, self.read_blob(self.payload()[1]["graph"]))
         self.assertNotIn("produce", self.names(), "Preparation is not normal-goal activation")
 
+
+
+    def test_trusted_entry_uses_symbolic_self_and_preserves_predecessor_parent(self):
+        source, graph = self.entry()
+        def symbolic(value):
+            if isinstance(value, list):
+                return [symbolic(item) for item in value]
+            if isinstance(value, dict):
+                return {key: "#this" if key == "goal" and item == 100 else symbolic(item)
+                        for key, item in value.items()}
+            return value
+        graph = symbolic(graph)
+        config = z._workflow_section(self.session.project, "workflow_adherence")["configuration"]
+        config["migration_entries"] = [{"from": 1, "to": 2, "graph": graph}]
+        legacy = fixtures.PortfolioTests().goal(parent=99)
+        source["body"] = "## Outcome\nMigrate the exact historical goal and preserve its parent.\n\n<!-- zzzops-goal\n" + json.dumps(legacy) + "\nzzzops-goal -->"
+        self.provider.issues[100] = copy.deepcopy(source)
+        self.provider.issues[99] = fixtures.PortfolioTests().issue(99)
+        self.provider.comments[99] = []
+        target = {**self.target_envelope, "parent": 99}
+        self.target = self.blob(target)
+        self.session.finish(self.session.acquire("analyze"), {"source": source})
+        self.assertEqual(99, self.payload()[0]["parent"], "Trusted predecessor decoding must preserve canonical parent")
+        self.assertEqual(graph, self.read_blob(self.payload()[1]["graph"]))
+        conversion = {"source": self.migration_result("analyze")[1]["source"], "target": self.target,
+                      "mapped_evidence": [], "missing_obligations": ["Current independent review"]}
+        self.session.finish(self.session.acquire("convert"), {"conversion": conversion})
+        self.session.finish(self.session.acquire("conversion_review", actor="independent-reviewer"), {"value": "Exact parent and source verified"})
+        self.session.finish(self.session.acquire("conversion_approval"), {"value": "Root approves exact conversion"})
+        work = self.session.acquire("activate")
+        self.session.finish(work, {"activation": {"conversion": self.migration_result("convert")[1]["conversion"],
+                                                  "approval": self.migration_result("conversion_approval")[0]}})
+        self.assertEqual(99, self.payload()[0]["parent"])
+        self.assertEqual(source, self.read_blob(conversion["source"])["content"])
+        self.assertIn("produce", self.names(), "Preserving relationship metadata never fabricates delivery")
+
+
+    def test_mixed_history_exact_refs_preserve_predecessor_snapshots_and_live_coordination(self):
+        self.mixed_history()
+
+    def test_approval_bearing_historical_snapshots_remain_data_after_conversion(self):
+        self.mixed_history(approved=True)
+
+    def mixed_history(self, approved=False):
+        from test_goal_history_delta import legacy_history_body, semantic_predecessor
+        initial, graph = self.entry()
+        if approved:
+            # Pure supported predecessor codecs build historical fixture data;
+            # no legacy scheduler, lease acquisition or active result routing.
+            from test_phase_review_contract import PhaseReviewContractTests
+            historical = PhaseReviewContractTests()
+            old_input = historical.envelope("plan")
+            old_record = historical.record("plan", old_input)
+            evidence = z._phase_evidence.record_phase_result(None, "plan", old_record, old_input)
+            raw = z.parse_managed_goal(initial["body"], 100)
+            raw["phase_evidence"] = evidence
+            initial["body"] = z.render_managed_goal(raw, "## Outcome\nPreserve exact historical approvals as evidence.\n", 100)
+        initial["html_url"] = "https://github.com/owner/repo/issues/100"
+        self.provider.issues[100] = copy.deepcopy(initial)
+        first_snapshot = semantic_predecessor(initial["body"], 100)
+        predecessor = z.parse_managed_goal(initial["body"], 100)
+        predecessor.update(revision=predecessor["revision"] + 1, next_action="Continue after historical transition")
+        if approved:
+            evidence = z._phase_evidence.record_phase_review(evidence, "plan", historical.artifact("exact old review"),
+                "historical-independent-reviewer", outcomes={"acceptance": "approved",
+                "entropy": {"outcome": "no_findings", "evidence": "No additional historical findings", "goals": []}})
+            evidence = z._phase_evidence.record_phase_approval(evidence, "plan", "root", "user: exact historical approval")
+            predecessor["phase_evidence"] = evidence
+        transition = {"schema_version": 1, "expected_revision": predecessor["revision"] - 1,
+                      "expected_digest": z.github_goal_record(initial)["digest"], "goal": predecessor}
+        legacy = legacy_history_body(initial, transition)
+        legacy_comment = self.provider.create_issue_comment(100, legacy)
+        # Historical transport fixture, not dispatch through a retired engine.
+        z.apply_goal_transition(self.provider, "owner/repo", 100, transition)
+        source = copy.deepcopy(self.provider.issues[100])
+        second_snapshot = semantic_predecessor(source["body"], 100)
+        if approved:
+            self.assertEqual(old_record, first_snapshot["goal"]["phase_evidence"]["records"]["plan"])
+            self.assertEqual(evidence, second_snapshot["goal"]["phase_evidence"])
+            self.assertTrue(evidence["reviews"]["plan"])
+            self.assertTrue(evidence["human_approvals"]["plan"])
+        reconstructed = z._goals.reconstruct_goal_history(self.provider, 100, first_snapshot["goal"]["revision"])
+        self.assertEqual(first_snapshot, {key: reconstructed[key] for key in ("goal", "human_spec")})
+        comments = copy.deepcopy(self.provider.comments[100])
+        # Exact JSON strings preserve arbitrary historical structures, including
+        # empty collections, without introducing a second active schema grammar.
+        history = {"first_snapshot": json.dumps(first_snapshot, sort_keys=True),
+                   "second_snapshot": json.dumps(second_snapshot, sort_keys=True),
+                   "comments": json.dumps(comments, sort_keys=True)}
+        self.assertEqual(first_snapshot, json.loads(history["first_snapshot"]))
+        self.assertEqual(second_snapshot, json.loads(history["second_snapshot"]))
+        self.assertEqual(comments, json.loads(history["comments"]))
+        schema = dag.shape(history)
+        graph["nodes"][0]["outputs"]["history"] = dag.output("historical_sources", schema)
+        graph["nodes"][1]["inputs"] = {"history": {"producer": {"node": selector("analyze")},
+            "output": "history", "path": [], "mode": "identity", "type": schema}}
+        z._workflow_section(self.session.project, "workflow_adherence")["configuration"]["migration_entries"][0]["graph"] = graph
+        analyze = self.session.acquire("analyze")
+        self.session.finish(analyze, {"source": source, "history": history})
+        source_ref = self.migration_result("analyze")[1]["source"]
+        history_ref = self.migration_result("analyze")[1]["history"]
+        conversion = {"source": source_ref, "target": self.target, "mapped_evidence": [],
+                      "missing_obligations": ["Current normal delivery and independent reviews"]}
+        self.session.finish(self.session.acquire("convert"), {"conversion": conversion})
+        self.session.finish(self.session.acquire("conversion_review", actor="history-conversion-reviewer"),
+                            {"value": "Exact source and mixed historical evidence independently inspected"})
+        self.session.finish(self.session.acquire("conversion_approval"), {"value": "Root approves exact reviewed conversion"})
+        entry_result = self.migration_result("conversion_approval")[0]
+        self.session.finish(self.session.acquire("activate"), {"activation": {
+            "conversion": self.migration_result("convert")[1]["conversion"], "approval": entry_result}})
+        producer = self.session.acquire("produce")
+        self.session.finish(producer, {"value": "New generic normal evidence"})
+        normal_ref = self.produced("produce")
+        reviewer = self.session.acquire("review_a", actor="current-normal-reviewer")
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        expected = [(source_ref, source), (history_ref, history), (normal_ref, "New generic normal evidence")]
+        for reference, content in expected:
+            artifact = self.session.read(100, reference)
+            self.assertEqual(content, artifact["content"])
+        self.assertEqual(self.read_blob(entry_result), self.session.read(100, entry_result))
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        current = self.payload()[1]["operational"]
+        self.assertTrue(any(item["token"] == reviewer["lease"]["token"] for item in current["leases"]))
+        for comment in comments:
+            self.assertIn(comment, self.provider.comments[100], "Mixed predecessor transaction bytes are immutable history")
+        self.assertEqual(legacy, next(comment["body"] for comment in self.provider.comments[100]
+                                     if comment["id"] == legacy_comment["id"]))
+        self.session.finish(reviewer, {"value": "Current reviewer remains owner after all historical reads"})
+        # Cross-version revision numbers are not a global history identity. This
+        # control uses exact host Refs and makes no renumbering/API assumption.
+
+    def test_predecessor_owner_must_be_observed_stopped_before_fresh_generic_entry_lease(self):
+        from test_workflow_state import WorkflowStateValidationTests
+        source, _graph = self.entry()
+        self.assertEqual({"analyze"}, self.names(), "Owner-free predecessor is the valid entry control")
+        predecessor = z.parse_managed_goal(source["body"], 100)
+        predecessor["workflow"] = WorkflowStateValidationTests().valid()
+        lease = predecessor["workflow"]["leases"]["plan:review"]
+        source["body"] = z.render_managed_goal(predecessor, "## Outcome\nPreserve unresolved predecessor ownership.\n", 100)
+        self.provider.issues[100] = copy.deepcopy(source)
+        for timestamp in (lease["expires_at"] - 1, lease["expires_at"] + 1):
+            with self.subTest(timestamp=timestamp), mock.patch.object(z._workflow.time, "time", return_value=timestamp):
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                response = self.session.call(100, expected=None)
+                self.assertFalse(any(step.get("kind") == "execute" for step in response["next_steps"]))
+                self.assertRegex(json.dumps(response), r"(?i)owner|worker|lease|recover|migration")
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        with mock.patch.object(z._workflow.time, "time", return_value=lease["expires_at"] + 1):
+            response = self.session.call(100, expected=None)
+            recovery = next(step for step in response["next_steps"]
+                            if "recovery_contract" in step or step.get("kind") == "recover")
+            request = copy.deepcopy(recovery.get("submission", recovery.get("recovery_contract")))
+            self.assertEqual(lease["token"], request["lease"])
+            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+            self.session.call(100, {**request, "worker_status": "unknown", "evidence": "Expiry is not termination"}, expected=2)
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+            self.session.call(100, {**request, "lease": "another-owner", "worker_status": "stopped",
+                                   "evidence": "Different worker stopped"}, expected=2)
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+            self.session.call(100, {**request, "worker_status": "stopped",
+                                   "evidence": "Exact predecessor reviewer terminal state observed"})
+        recovered_source = copy.deepcopy(self.provider.issues[100])
+        analyze = self.session.acquire("analyze")
+        self.assertNotEqual(lease["token"], analyze["lease"]["token"])
+        self.assertEqual("submit", analyze["submission"]["operation"])
+        self.assertEqual(recovered_source, self.read_blob(self.payload()[1]["spec"])["content"])
+        self.session.finish(analyze, {"source": recovered_source})
+        self.assertNotIn("produce", self.names(), "Source analysis does not invent conversion review or activation")
+
+    def test_v1_cutover_rejects_phase_operations_and_uses_only_generic_submission(self):
+        source, graph = self.entry()
+        steps = self.session.checkpoint(100)
+        self.assertEqual({"analyze"}, {step["node"]["node"] for step in steps if step.get("kind") == "execute"})
+        self.assertFalse(any(step.get("phase") in {"understand", "decompose", "plan", "test_design", "implement"} for step in steps))
+        for operation in ("record_result", "record_review", "approve"):
+            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+            response = self.session.call(100, {"operation": operation, "phase": "understand", "actor": "root-thread"}, expected=2)
+            self.assertRegex(json.dumps(response), r"(?i)legacy|operation|generic|unsupported|migration")
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        analyze = self.session.acquire("analyze")
+        self.assertEqual("submit", analyze["submission"]["operation"])
+        self.session.finish(analyze, {"source": source})
+        conversion = {"source": self.migration_result("analyze")[1]["source"], "target": self.target,
+                      "mapped_evidence": [], "missing_obligations": ["Current delivery and reviews"]}
+        self.session.finish(self.session.acquire("convert"), {"conversion": conversion})
+        self.session.finish(self.session.acquire("conversion_review", actor="independent-reviewer"), {"value": "Exact conversion inspected"})
+        self.session.finish(self.session.acquire("conversion_approval"), {"value": "Root approves exact conversion"})
+        self.session.finish(self.session.acquire("activate"), {"activation": {
+            "conversion": self.migration_result("convert")[1]["conversion"],
+            "approval": self.migration_result("conversion_approval")[0]}})
+        self.assertEqual(2, self.payload()[0]["schema_version"])
+        produce = self.session.acquire("produce")
+        self.assertEqual("submit", produce["submission"]["operation"])
+        self.session.finish(produce, {"value": "Generic normal execution"})
+        self.assertEqual({"review_a", "review_b"}, self.names())
+        self.assertEqual(source, self.read_blob(conversion["source"])["content"])
 
 if __name__ == "__main__":
     unittest.main()

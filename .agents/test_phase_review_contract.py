@@ -57,59 +57,31 @@ class PhaseReviewContractTests(unittest.TestCase):
         self.assertEqual({}, phase_evidence.normalize_phase_evidence(legacy)["human_approvals"])
 
     def test_independence_is_policy_controlled(self):
-        plan_input, child_input = self.envelope("plan"), self.envelope("deliver")
-        evidence = phase_evidence.record_phase_result(
-            None, "plan", self.record("plan", plan_input), plan_input,
+        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
+        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
+        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_phase_review_contract.GenericReviewGateTests.test_configured_independence_compares_actual_subject_actor',
         )
-        evidence = phase_evidence.record_phase_review(
-            evidence, "plan", self.artifact("self review"), "worker-1", require_independent=False,
-        )
-        goal = {"status": "ready", "phase_evidence": evidence}
-        strict = phase_evidence.derive_phase_steps(
-            goal, self.graph(), {"plan": plan_input, "deliver": child_input},
-            review_policy={"plan": {"review": {"independent": True}}},
-        )
-        self.assertEqual(["plan"], [item["phase"] for item in strict["review"]])
-        self.assertEqual(["deliver"], [item["phase"] for item in strict["blocked"]])
-        relaxed = phase_evidence.derive_phase_steps(
-            goal, self.graph(), {"plan": plan_input, "deliver": child_input},
-            review_policy={"plan": {"review": {"independent": False}}},
-        )
-        self.assertEqual(["deliver"], [item["phase"] for item in relaxed["execute"]])
 
     def test_human_approval_is_additional_and_bound_to_review(self):
-        plan_input, child_input = self.envelope("plan"), self.envelope("deliver")
-        evidence = phase_evidence.record_phase_result(None, "plan", self.record("plan", plan_input), plan_input)
-        evidence = phase_evidence.record_phase_review(evidence, "plan", self.artifact("review"), "reviewer-2")
-        policy = {"plan": {"review": {"independent": True, "human_approval": True}}}
-        waiting = phase_evidence.derive_phase_steps(
-            {"status": "ready", "phase_evidence": evidence}, self.graph(),
-            {"plan": plan_input, "deliver": child_input}, review_policy=policy,
+        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
+        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
+        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_phase_review_contract.GenericReviewGateTests.test_review_is_not_human_approval_and_root_binds_current_subject_and_review',
         )
-        self.assertEqual([{"phase": "plan", "reason": "missing_human_approval"}], waiting["review"])
-        self.assertEqual(["deliver"], [item["phase"] for item in waiting["blocked"]])
-        with self.assertRaisesRegex(phase_evidence.PhaseEvidenceError, "root"):
-            phase_evidence.record_phase_approval(evidence, "plan", "worker-1", "approval-42")
-        approved = phase_evidence.record_phase_approval(evidence, "plan", "root", "approval-42")
-        ready = phase_evidence.derive_phase_steps(
-            {"status": "ready", "phase_evidence": approved}, self.graph(),
-            {"plan": plan_input, "deliver": child_input}, review_policy=policy,
-        )
-        self.assertEqual(["deliver"], [item["phase"] for item in ready["execute"]])
-        rereviewed = phase_evidence.record_phase_review(approved, "plan", self.artifact("new review"), "reviewer-3")
-        self.assertNotIn("plan", rereviewed["human_approvals"])
 
     def test_human_approval_without_independent_review_binds_record_only(self):
-        plan_input, child_input = self.envelope("plan"), self.envelope("deliver")
-        evidence = phase_evidence.record_phase_result(None, "plan", self.record("plan", plan_input), plan_input)
-        evidence = phase_evidence.record_phase_approval(evidence, "plan", "root", "approval-43")
-        self.assertIsNone(evidence["human_approvals"]["plan"]["review_hash"])
-        ready = phase_evidence.derive_phase_steps(
-            {"status": "ready", "phase_evidence": evidence}, self.graph(),
-            {"plan": plan_input, "deliver": child_input},
-            review_policy={"plan": {"review": {"independent": False, "human_approval": True}}},
+        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
+        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
+        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_phase_review_contract.GenericReviewGateTests.test_root_gate_without_review_binds_exact_producer',
         )
-        self.assertEqual(["deliver"], [item["phase"] for item in ready["execute"]])
 
     def test_review_outcomes_are_normalized_and_bound_by_human_approval(self):
         plan_input = self.envelope("plan")
@@ -156,80 +128,125 @@ class PhaseReviewContractTests(unittest.TestCase):
                 )
 
     def test_policy_authorized_not_required_decision_can_be_reviewed(self):
-        plan_input, child_input = self.envelope("plan"), self.envelope("deliver")
-        skipped = self.record("plan", plan_input, status="not_required", policy_rule="atomic_goal")
-        evidence = phase_evidence.record_phase_result(None, "plan", skipped, plan_input)
-        evidence = phase_evidence.record_phase_review(evidence, "plan", self.artifact("skip review"), "reviewer-2")
-        self.assertEqual(
-            phase_evidence.sha256_digest(skipped["not_required"]),
-            evidence["reviews"]["plan"]["decision_hash"],
+        # Superseded not_required phase mode becomes explicit current selected membership; unknown is not empty and retirement retains obligations.
+        # Superseded not_required phase mode becomes explicit current selected membership; unknown is not empty and retirement retains obligations.
+        # Superseded not_required phase mode becomes explicit current selected membership; unknown is not empty and retirement retains obligations.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_selection_missing_empty_one_and_many_are_distinct',
+            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_authorized_member_retirement_retains_historical_debt_on_empty_and_reactivation',
         )
-        goal = {"status": "ready", "phase_evidence": evidence}
-        forbidden = phase_evidence.derive_phase_steps(
-            goal, self.graph(), {"plan": plan_input, "deliver": child_input},
-            review_policy={"plan": {"not_required": "never"}},
-        )
-        self.assertEqual(["plan"], forbidden["stale"])
-        permitted = phase_evidence.derive_phase_steps(
-            goal, self.graph(), {"plan": plan_input, "deliver": child_input},
-            review_policy={"plan": {"not_required": "atomic_goal"}},
-        )
-        self.assertEqual(["deliver"], [item["phase"] for item in permitted["execute"]])
 
     def test_current_descendant_blocks_until_identical_ancestor_is_reapproved(self):
-        graph = {"phases": [
-            {"id": "plan"},
-            {"id": "deliver", "depends_on": ["plan"]},
-            {"id": "release", "depends_on": ["deliver"]},
-        ]}
-        plan_input = self.envelope("plan")
-        plan_record = self.record("plan", plan_input, "stable-output")
-        evidence = phase_evidence.record_phase_result(None, "plan", plan_record, plan_input)
-        evidence = phase_evidence.record_phase_review(evidence, "plan", self.artifact("plan review"), "reviewer-2")
-        child_input = self.envelope("deliver", upstream_outputs=[{
-            "phase": "plan", "hash": plan_record["output"]["hash"],
-        }])
-        evidence = phase_evidence.record_phase_result(evidence, "deliver", self.record("deliver", child_input), child_input)
-        evidence = phase_evidence.record_phase_review(evidence, "deliver", self.artifact("child review"), "reviewer-2")
-        release_input = self.envelope("release", upstream_outputs=[{
-            "phase": "deliver", "hash": evidence["records"]["deliver"]["output"]["hash"],
-        }])
-        evidence = phase_evidence.record_phase_result(evidence, "release", self.record("release", release_input), release_input)
-        evidence = phase_evidence.record_phase_review(evidence, "release", self.artifact("release review"), "reviewer-2")
+        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
+        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
+        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_phase_review_contract.GenericReviewGateTests.test_identical_output_cannot_bypass_current_ancestor_review_and_reapproval',
+        )
 
-        changed_input = self.envelope("plan", policy="policy-2")
-        stale = phase_evidence.derive_phase_steps(
-            {"status": "ready", "phase_evidence": evidence}, graph,
-            {"plan": changed_input, "deliver": child_input, "release": release_input},
-        )
-        self.assertEqual(["plan"], stale["stale"])
-        self.assertEqual(["deliver", "release"], [item["phase"] for item in stale["blocked"]])
-        reassessed = self.record("plan", changed_input, "stable-output")
-        evidence = phase_evidence.record_phase_result(evidence, "plan", reassessed, changed_input)
-        blocked = phase_evidence.derive_phase_steps(
-            {"status": "ready", "phase_evidence": evidence}, graph,
-            {"plan": changed_input, "deliver": child_input, "release": release_input},
-        )
-        self.assertEqual(["deliver", "release"], [item["phase"] for item in blocked["blocked"]])
-        evidence = phase_evidence.record_phase_review(evidence, "plan", self.artifact("reassessment"), "reviewer-3")
-        restored = phase_evidence.derive_phase_steps(
-            {"status": "ready", "phase_evidence": evidence}, graph,
-            {"plan": changed_input, "deliver": child_input, "release": release_input},
-        )
-        self.assertEqual([], restored["blocked"])
-        self.assertEqual([], restored["execute"])
-        self.assertEqual([], restored["review"])
-        evidence = phase_evidence.record_phase_review(
-            evidence, "plan", self.artifact("rejected reassessment"), "reviewer-3",
-            decision="changes_requested",
-        )
-        rejected = phase_evidence.derive_phase_steps(
-            {"status": "ready", "phase_evidence": evidence}, graph,
-            {"plan": changed_input, "deliver": child_input, "release": release_input},
-        )
-        self.assertEqual(["plan"], [item["phase"] for item in rejected["execute"]])
-        self.assertEqual(["deliver", "release"], [item["phase"] for item in rejected["blocked"]])
 
+
+# The helpers above construct/normalize predecessor evidence for conversion.
+# Active review and approval behavior below uses only generic public tasks.
+from test_evidence_dag_journeys import DagFixture, task, selector, subject_input, spec_input
+
+
+class GenericReviewGateTests(DagFixture):
+    def gate_graph(self, *, independent=True, review=True):
+        producer = task("produce")
+        producer["inputs"] = {"request": spec_input()}
+        nodes = [producer]
+        if review:
+            inspector = task("inspect", ["produce"])
+            inspector["inputs"] = {"subject": subject_input("produce")}
+            inspector["independent_of"] = [selector("produce")] if independent else []
+            nodes.append(inspector)
+        approval = task("consent", ["inspect" if review else "produce"], role="root")
+        approval["inputs"] = {"subject": subject_input("produce")}
+        if review:
+            approval["inputs"]["review"] = subject_input("inspect")
+        finish = task("finish", ["consent"])
+        finish["inputs"] = {"subject": subject_input("produce", mode="content")}
+        nodes.extend([approval, finish])
+        return {"nodes": nodes, "task_sets": [], "terminals": [selector("finish")]}
+
+    def test_configured_independence_compares_actual_subject_actor(self):
+        self.install(self.gate_graph())
+        producer = self.produce()
+        with self.assertRaisesRegex(AssertionError, r"(?i)independen|self.review"):
+            work = self.session.acquire("inspect", actor=producer["bound_actor"])
+            self.session.finish(work, {"value": "self-approved"})
+        self.assertNotIn("consent", self.names())
+        self.install(self.gate_graph(independent=False))
+        producer = self.produce()
+        work = self.session.acquire("inspect", actor=producer["bound_actor"])
+        self.session.finish(work, {"value": "Policy allows this actor"})
+        self.assertIn("consent", self.names())
+
+    def test_review_is_not_human_approval_and_root_binds_current_subject_and_review(self):
+        self.install(self.gate_graph())
+        self.produce()
+        self.session.finish(self.session.acquire("inspect", actor="independent-reviewer"), {"value": "inspected"})
+        self.assertEqual({"consent"}, self.names())
+        self.assertNotIn("finish", self.names())
+        work = self.session.acquire("consent")
+        self.assert_rejected(work, {"value": "approved exact review"}, {"actor": "independent-reviewer"}, r"(?i)root|actor|bound")
+        result = self.result("consent")[1]
+        refs = {binding["source"]["hash"] for binding in result["inputs"]}
+        self.assertIn(self.produced("produce")["hash"], refs)
+        self.assertIn(self.produced("inspect")["hash"], refs)
+        self.assertEqual({"finish"}, self.names())
+
+    def test_root_gate_without_review_binds_exact_producer(self):
+        self.install(self.gate_graph(review=False))
+        self.produce()
+        self.assertEqual({"consent"}, self.names())
+        self.session.finish(self.session.acquire("consent"), {"value": "approved exact producer"})
+        result = self.result("consent")[1]
+        self.assertEqual([self.produced("produce")["hash"]], [v["source"]["hash"] for v in result["inputs"]])
+        self.assertEqual({"finish"}, self.names())
+
+    def test_identical_output_cannot_bypass_current_ancestor_review_and_reapproval(self):
+        self.install(self.gate_graph())
+        self.produce()
+        self.session.finish(self.session.acquire("inspect", actor="reviewer-a"), {"value": "inspected"})
+        self.session.finish(self.session.acquire("consent"), {"value": "approved"})
+        self.session.finish(self.session.acquire("finish"), {"value": "delivered"})
+        prior = self.result("finish")[0]
+        self.replace_spec("Reassess under changed substantive requirement")
+        self.assertNotIn("finish", self.names())
+        self.produce()  # exactly the same selected output bytes
+        self.assertEqual({"inspect"}, self.names())
+        self.session.finish(self.session.acquire("inspect", actor="reviewer-b"), {"value": "inspected"})
+        self.assertEqual({"consent"}, self.names())
+        self.assertFalse(any(step.get("kind") == "complete" for step in self.session.checkpoint(100)))
+        self.session.finish(self.session.acquire("consent"), {"value": "approved"})
+        self.assertEqual(prior, self.result("finish")[0], "Unchanged valid selected values can reuse descendant evidence after gates recover")
+        self.assertTrue(any(step.get("kind") == "complete" for step in self.session.checkpoint(100)))
+
+
+    def test_empty_selection_still_requires_configured_independent_review_and_root_consent(self):
+        from test_evidence_dag_journeys import selected_graph, SELECTION_TYPE
+        graph = selected_graph()
+        graph["nodes"][0]["executor"]["role"] = "worker"
+        chosen = {"producer": {"node": selector("select")}, "output": "chosen", "path": [],
+                  "mode": "identity", "type": SELECTION_TYPE}
+        review = task("inspect", ["select"])
+        review["inputs"] = {"selection": chosen}
+        review["independent_of"] = [selector("select")]
+        consent = task("consent", ["inspect"], role="root")
+        consent["inputs"] = {"selection": chosen, "review": subject_input("inspect")}
+        graph["nodes"][1]["requires"].append(selector("consent"))
+        graph["nodes"].extend([review, consent])
+        self.install(graph)
+        self.choose({})
+        self.assertEqual({"inspect"}, self.names())
+        self.session.finish(self.session.acquire("inspect", actor="independent-reviewer"), {"value": "Exact empty selection reviewed"})
+        self.assertEqual({"consent"}, self.names())
+        self.session.finish(self.session.acquire("consent"), {"value": "Root approves exact empty selection"})
+        self.assertEqual({"synthesize"}, self.names())
 
 if __name__ == "__main__":
     unittest.main()

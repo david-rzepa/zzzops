@@ -9,7 +9,6 @@ import json
 from pathlib import Path
 import subprocess
 import sys
-import tempfile
 import time
 from types import SimpleNamespace
 import unittest
@@ -17,14 +16,14 @@ from unittest import mock
 
 # Bootstrap the shared plugin module before importing fixtures that reuse it.
 import test_zzzops  # noqa: F401
-import test_workflow_journey as journey_fixtures
-import test_workflow_owned_outputs as public_fixtures
+import test_evidence_dag_journeys as dag_fixtures
+import test_workflow_publication_contract as publication_fixtures
 
 
-z = journey_fixtures.z
+z = dag_fixtures.z
 
 
-class ProviderTopologySession(public_fixtures.PublicSession):
+class ProviderTopologySession(dag_fixtures.TaskSession):
     """Public dispatcher with only the external PR-list boundary made synthetic."""
 
     def __init__(self, *args, **kwargs):
@@ -88,48 +87,83 @@ class ProviderTopologySession(public_fixtures.PublicSession):
 
 class PublicationAncestorChainPublicTests(unittest.TestCase):
     def setUp(self):
-        self.fixture = journey_fixtures.FullWorkflowJourneyTests()
+        # Composition avoids rediscovering the publication fixture's own tests.
+        self.fixture = publication_fixtures.GenericPublicationPublicTests()
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
-        control = tempfile.TemporaryDirectory()
-        self.addCleanup(control.cleanup)
-        self.repo = self.fixture.repo
+        self.repo = self.fixture.fixture.repo
         self.branch_review = (
             Path(__file__).parents[1]
             / "plugins/zzzops/skills/execute-zzzops/references/BRANCH_REVIEW.md"
         ).read_text()
-        for name, content in {
-            "source.py": "def answer():\n    return 1\n",
-            "behavior_test.py": "from source import answer\nassert answer() == 1\n",
-            "read_dependency.txt": "unchanged dependency\n",
-        }.items():
-            (self.repo / name).write_text(content)
+        old = self.fixture.session
         self.session = ProviderTopologySession(
-            self.repo, self.fixture.project, self.fixture.runtime,
-            self.fixture.provider, control.name,
-            pull_request_states=self._pull_request_states,
+            old.repo, old.project, old.runtime, old.provider, old.control,
         )
-        self.session.git("add", "source.py", "behavior_test.py", "read_dependency.txt")
-        self.session.git("commit", "-qm", "fixture: existing source and test")
+        self.fixture.session = self.session
         self._build_provider_chain()
-        self.fixture.provider.issues[102] = self.fixture.issue(
-            102, parent=None, title="Known chain tip",
-        )
-        self.fixture.provider.comments[102] = []
-        self.fixture.provider.issues[103] = self.fixture.issue(
-            103, parent=None, title="Known competing stack",
-        )
-        self.fixture.provider.comments[103] = []
-        self._record_fixture_implementation(102, "chain-5", "chain-4")
-        self._record_fixture_implementation(103, "competing", "dev")
         self.session.git("checkout", "-q", "-B", "candidate-6", "chain-5")
-        self.session.prepare()
-        self._set_candidate("candidate-6", "chain-5", target="chain-5")
-        self.session.design()
-        self.session.implement()
-        self.session.git("add", "source.py")
-        self.session.git("commit", "-qm", "feat: required behavior")
-        self.heads["candidate-6"] = self.session.git("rev-parse", "candidate-6")
+        (self.repo / "candidate.txt").write_text("candidate change\n")
+        self.session.git("add", "candidate.txt")
+        self.session.git("commit", "-qm", "fixture: candidate change")
+        self.heads["candidate-6"] = self.session.git("rev-parse", "HEAD")
+        self.provider_queries = []
+        patch = mock.patch.object(z, "_github_pull_request_states", side_effect=self._pull_request_states)
+        patch.start()
+        self.addCleanup(patch.stop)
+        self._record_managed_context(102, "chain-5", "chain-4", 15)
+        self._record_managed_context(103, "competing", "dev", 77)
+
+    def _authorize_candidate(self, *, published=False):
+        f = self.fixture
+        f.context = {"branch": "candidate-6", "base": "chain-5", "target": "chain-5",
+                     "pr": "https://github.com/owner/repo/pull/16" if published else None}
+        f.submit_role("context", f.context)
+        f.submit_role("inspect", "Exact candidate context reviewed", actor="context-reviewer")
+        f.submit_role("consent", {"context": f.produced("context"),
+            "policy": dag_fixtures.content_hash(self.session.project["policy"]), "decision": "approved"})
+
+    def _record_managed_context(self, number, branch, base, pr):
+        """Other managed branches have real generic root/review/consent Results."""
+        f = self.fixture
+        graph = copy.deepcopy(f.graph)
+        graph["nodes"] = [node for node in graph["nodes"] if node["id"] in {"context", "inspect", "consent"}]
+        graph["terminals"] = [{"kind": "node", "goal": number, "node": "consent"}]
+        def qualify(value):
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    if key == "goal" and child == 100:
+                        value[key] = number
+                    else:
+                        qualify(child)
+            elif isinstance(value, list):
+                for child in value:
+                    qualify(child)
+        qualify(graph)
+        payload = f.blob({"spec": f.blob({"type": "specification", "content": "Managed repository context",
+            "producer": None, "provenance": {"actor": "root-thread", "source": None,
+            "policy": dag_fixtures.content_hash(self.session.project["policy"])}}),
+            "graph": f.blob(graph), "evidence": [], "operational": {"leases": [], "receipts": []}})
+        envelope = {"schema_version": 2, "repository": "owner/repo", "issue": number,
+                    "revision": 1, "state": "open", "parent": None, "payload": payload}
+        self.session.provider.issues[number] = {**copy.deepcopy(self.session.provider.issues[100]),
+            "number": number, "body": "<!-- zzzops-goal\n" + json.dumps(envelope) + "\nzzzops-goal -->"}
+        self.session.provider.comments[number] = copy.deepcopy(self.session.provider.comments[100])
+        work = self.session.acquire("context", number=number)
+        self.session.finish(work, {"value": {"branch": branch, "base": base, "target": "dev",
+            "pr": f"https://github.com/owner/repo/pull/{pr}"}}, number=number)
+        work = self.session.acquire("inspect", number=number, actor="context-reviewer")
+        self.session.finish(work, {"value": "Independent managed context review"}, number=number)
+        # Read the host-written Result through the public artifact API.
+        issue = self.session.provider.issues[number]
+        envelope = z.parse_managed_goal(issue["body"], number)
+        payload = self.session.read(number, envelope["payload"])
+        results = [self.session.read(number, ref) for ref in payload["evidence"]]
+        context = next(result["content"]["outputs"]["value"] for result in results
+                       if result["type"] == "result" and result["content"]["node"]["node"] == "context")
+        work = self.session.acquire("consent", number=number)
+        self.session.finish(work, {"value": {"context": context,
+            "policy": dag_fixtures.content_hash(self.session.project["policy"]), "decision": "approved"}}, number=number)
 
     def _build_provider_chain(self):
         s = self.session
@@ -150,43 +184,24 @@ class PublicationAncestorChainPublicTests(unittest.TestCase):
         s.git("commit", "-qm", "fixture: competing managed stack")
         self.heads["competing"] = s.git("rev-parse", "HEAD")
 
-    def _record_fixture_implementation(self, number, branch, base):
-        issue = self.fixture.provider.issues[number]
-        goal = z.parse_managed_goal(issue["body"], number)
-        goal["implementation"].update(branch=branch, base=base, target="dev")
-        issue["body"] = z.render_managed_goal(
-            goal, z._goals.compact_human_goal_text(issue["body"]), number,
-        )
-
-    def _set_candidate(self, branch, base, *, target="dev", managed_ancestor="chain-4"):
-        s = self.session
-        parent = s.goal(100)
-        parent_implementation = copy.deepcopy(parent["implementation"])
-        parent_implementation.update(branch=managed_ancestor, base="dev", target="dev")
-        s.call(100, {"operation": "revise", "expected_digest": parent["digest"],
-                     "changes": {"implementation": parent_implementation}})
-        child = s.goal(101)
-        child_implementation = copy.deepcopy(child["implementation"])
-        child_implementation.update(
-            branch=branch, base=base, target=target, pr=None,
-        )
-        s.call(101, {"operation": "revise", "expected_digest": child["digest"],
-                     "changes": {"implementation": child_implementation}})
-        self.candidate_branch, self.candidate_base = branch, base
-        s.git("checkout", "-q", branch)
-
     def _pull_request_states(self, _repo, executable, selected, bodies):
         self.assertEqual("gh", executable)
-        self.assertEqual([], [item["number"] for item in selected])
-        self.assertIn(101, bodies)
-        return ({101: {
-            "merged": False, "merged_at": None,
-            "head_oid": self.heads[self.candidate_branch],
-            "base_oid": self.heads.get(self.candidate_base, self.session.git("rev-parse", "dev")),
-            "base_ref": self.candidate_base, "merge_commit": None,
-            "repository": "owner/repo", "checks_verified": True,
-            "review_verified": False,
-        }}, 512, 1)
+        self.provider_queries.append(copy.deepcopy((selected, bodies)))
+        facts = {}
+        for item in selected:
+            number = item["number"]
+            context = bodies[number].get("repository_context", {})
+            # A null PR has no individual PR, checks, review, or merge facts.
+            if context.get("pr") is None:
+                continue
+            self.assertEqual(100, number)
+            self.assertEqual("https://github.com/owner/repo/pull/16", context["pr"])
+            facts[number] = {"merged": False, "merged_at": None,
+                "head_oid": self.heads["candidate-6"], "base_oid": self.heads["chain-5"],
+                "base_ref": "chain-5", "merge_commit": None,
+                "repository": "owner/repo", "checks_present": True,
+                "checks_verified": True, "review_verified": False}
+        return facts, 512, 1
 
     def pulls(self, links):
         return [{"number": 10 + index, "url": f"https://github.com/owner/repo/pull/{10 + index}",
@@ -196,13 +211,17 @@ class PublicationAncestorChainPublicTests(unittest.TestCase):
 
     def observe(self, pulls, *, expected=0):
         self.session.open_pulls = copy.deepcopy(pulls)
+        if self.fixture.context["pr"] and not any(row.get("headRefName") == "candidate-6" for row in pulls):
+            self.session.open_pulls.append({"number": 16, "url": self.fixture.context["pr"],
+                "headRefName": "candidate-6", "baseRefName": "chain-5",
+                "headRefOid": self.heads["candidate-6"]})
         before_pulls = copy.deepcopy(self.session.open_pulls)
         before_issues = copy.deepcopy(self.session.provider.issues)
         before_comments = copy.deepcopy(self.session.provider.comments)
         before_refs = self.session.git(
             "for-each-ref", "--format=%(refname):%(objectname)", "refs/heads",
         )
-        response = self.session.call(101, expected=expected)
+        response = self.session.call(100, expected=expected)
         self.assertEqual(before_pulls, self.session.open_pulls)
         self.assertEqual(before_issues, self.session.provider.issues)
         self.assertEqual(before_comments, self.session.provider.comments)
@@ -214,16 +233,23 @@ class PublicationAncestorChainPublicTests(unittest.TestCase):
 
     def assert_publish_frontier(self, steps):
         publication = next(
-            (step for step in steps if step.get("phase") == "publish"), None,
+            (step for step in steps if step.get("node", {}).get("node") == "observe"
+             and step.get("kind") == "execute"), None,
         )
         self.assertIsNotNone(publication, f"expected normal publish frontier, got {steps}")
-        self.assertIn(publication["kind"], {"assess", "execute", "review", "human_approval"})
+        self.assertEqual("start", publication["start"]["operation"])
+        self.assertEqual("chain-5", publication["base_branch"])
+        self.assertEqual(self.heads["chain-5"], publication["base_commit"])
+        self.assertIn("input_hash", publication)
 
     def assert_safe_repair(self, steps, *identities):
         repair = next(
             (step for step in steps if step.get("kind") == "repair_stack"), None,
         )
         self.assertIsNotNone(repair, f"expected safe repair routing, got {steps}")
+        self.assertFalse(any(step.get("kind") == "execute" and
+                             step.get("node", {}).get("node") == "observe" for step in steps),
+                         "Unsafe topology must not also grant publication work")
         rendered = json.dumps(repair)
         for identity in identities:
             self.assertIn(identity, rendered)
@@ -243,13 +269,16 @@ class PublicationAncestorChainPublicTests(unittest.TestCase):
         self.assertIn("follow PROJECT's fallback or block", self.branch_review)
         self.assertEqual("root", repair["assignment"])
 
-    def test_public_execute_resolves_sparse_chain_and_preserves_safe_rejections(self):
-        linear = self.pulls([
+    def linear(self):
+        return self.pulls([
             ("chain-1", "dev"), ("chain-2", "chain-1"),
             ("chain-3", "chain-2"), ("chain-4", "chain-3"),
             ("chain-5", "chain-4"),
         ])
 
+    def test_public_unpublished_candidate_accepts_sparse_chain_and_unmanaged_root(self):
+        self._authorize_candidate()
+        linear = self.linear()
         # The unpublished candidate directly targets the exact chain-5 tip. Its
         # target is an immediate PR base, while dev remains the integration root.
         with self.subTest(label="sparse five-PR exact-tip chain"):
@@ -261,6 +290,9 @@ class PublicationAncestorChainPublicTests(unittest.TestCase):
         with self.subTest(label="unrelated unmanaged dev-root PR"):
             self.assert_publish_frontier(self.observe(linear + [unrelated]))
 
+    def test_public_published_candidate_with_successor_keeps_immediate_base(self):
+        self._authorize_candidate(published=True)
+        linear = self.linear()
         observed_candidate = [
             *linear,
             {"number": 16, "url": "https://github.com/owner/repo/pull/16",
@@ -273,6 +305,16 @@ class PublicationAncestorChainPublicTests(unittest.TestCase):
         with self.subTest(label="observed candidate with successor"):
             self.assert_publish_frontier(self.observe(observed_candidate))
 
+    def test_public_unpublished_candidate_rejects_unsafe_topology_without_mutation(self):
+        self._authorize_candidate()
+        self._reject_unsafe_topologies()
+
+    def test_public_published_candidate_rejects_unsafe_topology_without_mutation(self):
+        self._authorize_candidate(published=True)
+        self._reject_unsafe_topologies()
+
+    def _reject_unsafe_topologies(self):
+        linear = self.linear()
         cases = [
             ("fork", linear + [{"number": 88, "url": "https://github.com/owner/repo/pull/88",
                                 "headRefName": "fork-2", "baseRefName": "chain-1", "headRefOid": "8" * 40}],
@@ -281,7 +323,7 @@ class PublicationAncestorChainPublicTests(unittest.TestCase):
             ("cycle", self.pulls([("chain-1", "chain-5"), ("chain-2", "chain-1"),
                                   ("chain-3", "chain-2"), ("chain-4", "chain-3"),
                                   ("chain-5", "chain-4")]), ("chain-1", "chain-5", "#11")),
-            ("malformed", [*linear[:-1], {"number": 15, "url": "https://github.com/owner/repo/pull/15",
+            ("malformed", [*[row for row in linear if row["headRefName"] != "chain-5"], {"number": 15, "url": "https://github.com/owner/repo/pull/15",
                                            "headRefName": "chain-5", "baseRefName": "chain-4"}],
              ("chain-5", "#15")),
             ("competing managed stack", linear + [{"number": 77, "url": "https://github.com/owner/repo/pull/77",
@@ -294,8 +336,8 @@ class PublicationAncestorChainPublicTests(unittest.TestCase):
                 self.assert_safe_repair(self.observe(pulls), *identities)
 
         drifted = copy.deepcopy(linear)
-        drifted[-1]["headRefOid"] = "d" * 40
-        with self.subTest(label="candidate head drift"):
+        next(row for row in drifted if row["headRefName"] == "chain-5")["headRefOid"] = "d" * 40
+        with self.subTest(label="provider ancestor head drift"):
             self.assert_safe_repair(self.observe(drifted), "chain-5", "#15")
 
         changed_base = self.heads["chain-5"]

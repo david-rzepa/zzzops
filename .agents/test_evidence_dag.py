@@ -8,7 +8,9 @@ so an unsupported-schema error cannot count as evidence for a specific guard.
 from __future__ import annotations
 
 import copy
+import json
 import unittest
+from unittest import mock
 
 import test_zzzops as fixtures
 
@@ -75,6 +77,14 @@ class EvidenceGraphGrammarTests(unittest.TestCase):
         self.assertTrue(errors, "Invalid graph was accepted")
         self.assertRegex("; ".join(errors), diagnostic)
         self.assertEqual(graph, review_graph(), "Validation mutated its input")
+
+    def test_shipped_default_is_one_valid_generic_graph(self):
+        plan = json.loads((fixtures.PLUGIN_ROOT / "zzzops/templates/project-goals/INIT_PLAN.json").read_text())
+        graph = next(section for section in plan["policy"]["sections"] if section["id"] == "workflow_adherence")["configuration"]["phase_dag"]
+        self.assertEqual({"nodes", "task_sets", "terminals"}, set(graph), "Shipped active default must use the same generic Graph")
+        self.accepted(graph)
+        self.assertTrue(graph["nodes"])
+        self.assertTrue(graph["terminals"])
 
     def test_two_review_tasks_share_behavior_without_sharing_identity(self):
         graph = review_graph()
@@ -195,6 +205,139 @@ class EvidenceGraphGrammarTests(unittest.TestCase):
         graph = selected_graph()
         graph["nodes"].append(task("investigate"))
         self.assertRegex("; ".join(self.errors(graph)), r"(?i)duplicate|identity|unique|template")
+
+    def test_symbolic_selectors_are_first_class_and_case_sensitive(self):
+        for goal in ("#this", "#parent", "#children", 987):
+            with self.subTest(goal=goal):
+                graph = review_graph()
+                graph["nodes"][1]["requires"] = [{**selector("produce"), "goal": goal}]
+                self.accepted(graph)
+                for invalid in ("#This", "#PARENT", "#child", "100", 0, -1, True, 1.5):
+                    broken = copy.deepcopy(graph)
+                    broken["nodes"][1]["requires"][0]["goal"] = invalid
+                    self.assertRegex("; ".join(self.errors(broken)), r"(?i)selector|goal|identity|reference")
+
+    def test_symbolic_static_member_and_join_in_all_reference_positions(self):
+        # External declarations resolve at runtime; static validation checks the
+        # selector grammar without guessing unknown relationship membership.
+        for kind in ("node", "member", "join"):
+            selected = ({"kind": "node", "node": "remote"} if kind == "node" else
+                        {"kind": "member", "expansion": "remote_set", "item": "a", "generation": "current"}
+                        if kind == "member" else {"kind": "join", "expansion": "remote_set"})
+            selected["goal"] = "#children"
+            for position in ("requires", "independent_of", "gates", "resolves", "permits", "inputs", "authority", "terminals"):
+                with self.subTest(kind=kind, position=position):
+                    node = task("local")
+                    graph = {"nodes": [node], "task_sets": [], "terminals": [selector("local")]}
+                    scoped = {"subject": selected, "output": "value"}
+                    if position in ("requires", "independent_of"):
+                        node[position] = [selected]
+                    elif position in ("gates", "resolves"):
+                        node[position] = [scoped]
+                    elif position == "permits":
+                        node[position] = [{"type": "finding", "scope": scoped}]
+                    elif position == "inputs":
+                        value_type = {"kind": "string"}
+                        if kind == "join":
+                            value_type = {"kind": "map", "values": value_type}
+                        node[position] = {"children": {**subject_input("remote"), "producer": {"node": selected},
+                                                      "type": {"kind": "map", "values": value_type}}}
+                    elif position == "authority":
+                        node["executor"]["authority"] = scoped
+                    else:
+                        graph[position] = [selected]
+                    self.accepted(graph)
+                    before = copy.deepcopy(graph)
+                    self.errors(graph)
+                    self.assertEqual(before, graph, "Validation must retain symbolic selectors")
+
+    def test_child_selection_cannot_filter_required_decomposition_membership(self):
+        self.rejected_mutation(lambda graph: graph.update(child_selection=subject_input("produce")),
+                               r"(?i)field|unknown|child_selection")
+
+    def test_relationship_context_is_reserved_for_host_issuance(self):
+        self.rejected_mutation(lambda graph: graph["nodes"][0]["outputs"]["value"].update(type="relationship_context"),
+                               r"(?i)reserved|host|relationship")
+
+
+phase = fixtures.zzzops._phase_evidence
+
+
+class ProjectionCacheTests(unittest.TestCase):
+    def setUp(self):
+        self.assertTrue(hasattr(phase, "_PROJECTION_CACHE"), "Missing bounded projection-cache implementation")
+        phase._PROJECTION_CACHE.clear()
+        self.addCleanup(phase._PROJECTION_CACHE.clear)
+        self.graph = {'task_sets': [{}]}
+
+    def test_key_preserves_types_order_and_deep_output_independence(self):
+        def project(graph, payload, context):
+            return {'items': [(type(k).__name__, type(v).__name__, repr(v))
+                              for k, v in context.items()], 'nested': [payload]}
+        pairs = [({1: 'x'}, {'1': 'x'}), ({'x': 1}, {'x': True}),
+                 ({'x': []}, {'x': ()}), ({'x': b'x'}, {'x': 'x'}),
+                 ({'a': 1, 'b': 2}, {'b': 2, 'a': 1})]
+        with mock.patch.object(phase, '_derive_task_steps', side_effect=project) as evaluate:
+            for left, right in pairs:
+                with self.subTest(left=left, right=right):
+                    phase._PROJECTION_CACHE.clear()
+                    before = evaluate.call_count
+                    for context in (left, right):
+                        expected = project(self.graph, {}, context)
+                        self.assertEqual(expected, phase.derive_task_steps(self.graph, {}, context))
+                        self.assertEqual(expected, phase.derive_task_steps(self.graph, {}, context))
+                    self.assertEqual(before + 2, evaluate.call_count)
+            result = phase.derive_task_steps(self.graph, {'value': [1]}, {})
+            result['nested'][0]['value'].append(2)
+            self.assertEqual([1], phase.derive_task_steps(self.graph, {'value': [1]}, {})['nested'][0]['value'])
+
+    def test_changed_inputs_and_in_call_mutation_never_reuse_stale_result(self):
+        def project(graph, payload, context):
+            return {'value': graph['value'] + payload['value'] + context['artifacts']['value']}
+        graph = {**self.graph, 'value': 1}
+        payload, context = {'value': 2}, {'artifacts': {'value': 3}}
+        with mock.patch.object(phase, '_derive_task_steps', side_effect=project) as evaluate:
+            for target in (graph, payload, context['artifacts']):
+                phase.derive_task_steps(graph, payload, context)
+                target['value'] += 10
+                before = evaluate.call_count
+                self.assertEqual(project(graph, payload, context), phase.derive_task_steps(graph, payload, context))
+                self.assertEqual(before + 1, evaluate.call_count)
+        phase._PROJECTION_CACHE.clear()
+        def mutate(graph, payload, context):
+            payload['value'] += 1
+            return {'value': payload['value']}
+        with mock.patch.object(phase, '_derive_task_steps', side_effect=mutate):
+            phase.derive_task_steps(graph, payload, context)
+        self.assertFalse(phase._PROJECTION_CACHE)
+
+    def test_errors_callbacks_and_fixed_graphs_bypass_reuse(self):
+        with mock.patch.object(phase, '_derive_task_steps', side_effect=ValueError('invalid')) as evaluate:
+            for _ in range(2):
+                with self.assertRaisesRegex(ValueError, 'invalid'):
+                    phase.derive_task_steps(self.graph, {}, {})
+            self.assertEqual(2, evaluate.call_count)
+        self.assertFalse(phase._PROJECTION_CACHE)
+        with mock.patch.object(phase, '_derive_task_steps', return_value={}) as evaluate:
+            for _ in range(2):
+                phase.derive_task_steps(self.graph, {}, {'callback': lambda: None})
+                phase.derive_task_steps({'task_sets': []}, {}, {})
+            self.assertEqual(4, evaluate.call_count)
+        self.assertFalse(phase._PROJECTION_CACHE)
+
+    def test_cache_limits_entries_and_total_serialized_bytes(self):
+        with mock.patch.object(phase, '_derive_task_steps', return_value={'value': 'x' * 128}):
+            for n in range(10):
+                phase.derive_task_steps(self.graph, {'n': n}, {})
+            self.assertEqual(4, len(phase._PROJECTION_CACHE))
+            phase._PROJECTION_CACHE.clear()
+            with mock.patch.object(phase, '_PROJECTION_CACHE_BYTES', 512):
+                for n in range(10):
+                    phase.derive_task_steps(self.graph, {'n': n}, {})
+                    self.assertLessEqual(sum(len(k) + len(v) for k, v in phase._PROJECTION_CACHE.items()), 512)
+                before = dict(phase._PROJECTION_CACHE)
+                phase.derive_task_steps(self.graph, {'huge': 'x' * 1024}, {})
+                self.assertEqual(before, phase._PROJECTION_CACHE)
 
 
 if __name__ == "__main__":

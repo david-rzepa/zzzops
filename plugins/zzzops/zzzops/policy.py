@@ -1046,6 +1046,10 @@ def missing_policy_settings(
             continue
         section_id = section["id"]
         expected = by_section[section_id].get("content", {}).get("configuration", {})
+        if section_id == "workflow_adherence":
+            # A reviewed graph has its own closed grammar, not the default
+            # graph's particular node names or retired phase fields.
+            expected = {**expected, "phase_dag": {}}
         missing = _missing_setting_paths(section.get("configuration"), expected)
         optional_prefixes = OPTIONAL_POLICY_SETTING_PREFIXES.get(section_id, ())
         missing = [path for path in missing if not path.startswith(optional_prefixes)]
@@ -1062,6 +1066,11 @@ def _policy_identifier(value: Any) -> bool:
 
 
 def _workflow_phase_dag_errors(value: Any) -> list[str]:
+    import zzzops_phase_evidence
+    return zzzops_phase_evidence.graph_errors(value)
+
+
+def _historical_phase_dag_errors(value: Any) -> list[str]:
     """Validate the static, declarative workflow graph stored in project policy."""
     if not isinstance(value, dict) or set(value) != {"schema_version", "phases"}:
         return ["phase_dag must contain schema_version and phases"]
@@ -1160,7 +1169,7 @@ def phase_evidence_graph(phase_dag: Any, *, has_parent: bool, has_children: bool
     Leaf-owned phases depend on child relationships, not structural parenthood.
     Legacy child_only policies retain their meaning until reviewed adoption.
     """
-    errors = _workflow_phase_dag_errors(phase_dag)
+    errors = _historical_phase_dag_errors(phase_dag)
     if errors:
         raise ValueError("Invalid workflow phase DAG: " + "; ".join(errors))
     included = {
@@ -1784,6 +1793,8 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
         elif section_id in POLICY_CONFIGURATION_KEYS:
             allowed = POLICY_CONFIGURATION_KEYS[section_id]
             required = allowed - ({"portfolio_order"} if section_id == "autonomy_approval_parallelism" else set())
+            if section_id == "workflow_adherence":
+                allowed = allowed | {"migration_entries"}
             if section_id == "git_review_release":
                 allowed = allowed | {"stacked_tooling_decline"}
             missing = sorted(required - set(configuration))
