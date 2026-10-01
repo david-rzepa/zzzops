@@ -281,6 +281,8 @@ class Workflow:
                 raise ValueError(f'Goal #{number} is absent from the current portfolio gateway')
             goal = {
                 **goal,
+                'children': [row['key'] for row in records.values()
+                             if row.get('parent') == number and row.get('status') != 'cancelled'],
                 "human_spec": goal.get("human_spec") or f"Archived goal #{number}; body unavailable.",
                 "acceptance_criteria": goal.get("acceptance_criteria", []),
                 "phase_evidence": goal.get("phase_evidence") or self.api.empty_phase_evidence(),
@@ -531,8 +533,9 @@ class Workflow:
             envelope['repository']['snapshot'] = {'files': actual}
             if assessment:
                 envelope['capabilities']['snapshot'] = {'assessment': assessment}
-            if phase == 'publish' and not goal.get('parent'):
-                children = [self.read(g['key'])[1] for g in self.portfolio() if g.get('parent') == goal['key']]
+            if phase == 'publish':
+                children = [self.read(g['key'])[1] for g in self.portfolio()
+                            if g.get('parent') == goal['key'] and g.get('status') != 'cancelled']
                 envelope['dependencies'] += [
                     {'goal': child['key'], 'artifact': {'reference': 'urn:sha256:' + digest({'status': child['status'], 'results': completion_identity(child), 'spec': self.api.goal_spec_digest(child, title=child['title'], human_spec=child['human_spec'])})[7:],
                      'hash': digest({'status': child['status'], 'results': completion_identity(child), 'spec': self.api.goal_spec_digest(child, title=child['title'], human_spec=child['human_spec'])})}}
@@ -555,10 +558,10 @@ class Workflow:
 
     def reviewed_scope(self, goal):
         """Only substantive reviewed plans grant the small, finite output scope."""
-        if not goal.get('parent'):
-            return None
+        parent = goal.get('parent') or goal['key']
         scopes = []
-        for current in (self.read(goal['parent'])[1], goal):
+        owners = (self.read(parent)[1], goal) if goal.get('parent') else (goal,)
+        for current in owners:
             evidence = current.get('phase_evidence') or self.api.empty_phase_evidence()
             record, review = evidence['records'].get('plan'), evidence['reviews'].get('plan')
             if not record or not review or review['decision'] != 'approved' or review['reviewer'] == record['actor']:
@@ -583,7 +586,7 @@ class Workflow:
                 scope = next((x for x in entries if x.get('child') == goal['key']), None)
             if not isinstance(scope, dict) or set(scope) != {'parent', 'child', 'test_design', 'implement'}:
                 return None
-            if scope['parent'] != goal['parent'] or scope['child'] != goal['key']:
+            if scope['parent'] != parent or scope['child'] != goal['key']:
                 return None
             paths = scope['test_design'] + scope['implement'] if all(isinstance(scope[p], list) for p in ('test_design', 'implement')) else []
             if not all(isinstance(scope[p], list) for p in ('test_design', 'implement')) or any(not isinstance(p, str) for p in paths) or len(paths) != len(set(paths)):
@@ -593,7 +596,7 @@ class Workflow:
                     raise ValueError('Output scope paths must be canonical repository files')
             self.file_hashes(paths)  # Resolves symlinks and rejects worktree escapes.
             scopes.append(scope)
-        if scopes[0] != scopes[1]:
+        if any(scope != scopes[0] for scope in scopes[1:]):
             return None
         return scopes[0]
 
@@ -915,12 +918,35 @@ class Workflow:
             result[relative] = 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else 'missing'
         return result
 
+    def implementation_children(self, goal):
+        """Retain reviewed ownership when a completed child leaves the open index."""
+        rows = {row['key']: row for row in self.portfolio()}
+        children = {key for key, row in rows.items()
+                    if row.get('parent') == goal['key'] and row.get('status') != 'cancelled'}
+        evidence = goal.get('phase_evidence') or {}
+        record = evidence.get('records', {}).get('plan')
+        review = evidence.get('reviews', {}).get('plan')
+        if (record and review and review.get('decision') == 'approved'
+                and review.get('record_hash') == digest(record)
+                and not any(item['phase'] == 'plan' for item in evidence.get('withdrawals', []))):
+            content = self.read_artifact(goal['key'], record['output'])
+            for scope in content.get('output_scopes', []) if isinstance(content, dict) else []:
+                child = scope.get('child') if isinstance(scope, dict) else None
+                if (isinstance(child, int) and not isinstance(child, bool)
+                        and child != goal['key'] and scope.get('parent') == goal['key']
+                        and (child not in rows or (rows[child].get('parent') == goal['key']
+                                                 and rows[child].get('status') != 'cancelled'))):
+                    children.add(child)
+        return sorted(children)
+
     def context(self, goal):
         self._input_requester = goal['key']
+        goal = {**goal, 'children': self.implementation_children(goal)}
         graph, nodes = self.api._workflow_phase_configuration(self.project, goal)
         related = {}
         if goal.get('parent'):
             _, parent = self.read(goal['parent'])
+            parent['children'] = self.implementation_children(parent)
             parent_graph, _ = self.api._workflow_phase_configuration(self.project, parent)
             related[goal['parent']] = {'goal': parent, 'live_inputs': self.inputs(parent, parent_graph)}
         return graph, nodes, self.inputs(goal, graph), related
@@ -1022,7 +1048,7 @@ class Workflow:
                 for owner in ([self.read(goal['parent'])[1]] if goal.get('parent') else []) + [goal]:
                     record = (owner.get('phase_evidence') or {}).get('records', {}).get('plan')
                     repair = {'goal': owner['key'], 'phase': 'plan',
-                              'field': 'output_scope' if owner.get('parent') else 'output_scopes',
+                              'field': 'output_scope' if owner['key'] == goal['key'] else 'output_scopes',
                               'command': ['--intent', 'execute', '--goal', str(owner['key'])]}
                     review = (owner.get('phase_evidence') or {}).get('reviews', {}).get('plan')
                     if record and (not review or review.get('record_hash') != digest(record)):
@@ -1033,7 +1059,7 @@ class Workflow:
                                                 'record_hash': digest(record), 'request_id': 'new-unique-id',
                                                 'reason': 'Correct finite output scope and independently review before file execution.'}
                     repairs.append(repair)
-                step.update(kind='repair', action='Correct and independently review the parent plan output_scopes entry and matching child plan output_scope before acquiring this phase. If content already matches, complete its current independent review instead of replacing content.',
+                step.update(kind='repair', action='Correct and independently review the leaf plan output_scope and, when nested, its matching parent output_scopes entry before acquiring this phase. If content already matches, complete its current independent review instead of replacing content.',
                             scope_repair={'goal': number, 'parent': goal.get('parent'), 'phase': phase,
                                           'field': 'output_scope', 'required_phase': 'plan', 'repairs': repairs})
                 continue
@@ -1115,9 +1141,9 @@ class Workflow:
             if phase == 'plan':
                 step['output_contract'] = {
                     'output_scope': {'parent': goal.get('parent') or goal['key'],
-                                     'child': goal['key'] if goal.get('parent') else '<implementation-child-id>',
+                                     'child': '<implementation-child-id>' if 'implement' not in nodes else goal['key'],
                                      'test_design': ['<exact test output path>'], 'implement': ['<exact source output path>']},
-                    'action': 'Parent plans declare finite output_scopes entries selected uniquely by child; each child declares its matching output_scope. Both test_design and implement arrays are required; [] permits no file changes. Independently review both plans before acquisition. Keep changing provenance out of substantive content.',
+                    'action': 'Composition parents declare finite output_scopes entries selected uniquely by child. Leaves declare output_scope; nested leaves match their parent entry, while standalone leaves use their own goal id for parent and child. Both test_design and implement arrays are required; [] permits no file changes. Independently review the applicable plans before acquisition. Keep changing provenance out of substantive content.',
                 }
             step['recovery_contract'] = {'operation': 'recover', 'phase': phase, 'lease': '<exact-token>', 'worker_status': 'stopped', 'evidence': '<observed terminal state>', 'request_id': 'new-unique-id'}
             if nodes[phase].get('not_required', 'never') != 'never':
@@ -1194,8 +1220,18 @@ class Workflow:
         return steps
 
     def publication_gate(self, goal):
-        if not goal.get('parent'):
-            children = [self.read(g['key'])[1] for g in self.portfolio() if g.get('parent') == goal['key']]
+        child_ids = self.implementation_children(goal)
+        missing = sorted(set(child_ids) - {row['key'] for row in self.portfolio()})
+        if missing:
+            return {'kind': 'dependency', 'assignment': 'root', 'children': missing,
+                    'action': 'Resolve the exact child completion evidence named by the reviewed plan before aggregate publication; absence from the open index is not completion proof.'}
+        children = [self.read(g['key'])[1] for g in self.portfolio()
+                    if g.get('parent') == goal['key'] and g.get('status') != 'cancelled']
+        legacy_aggregate = False
+        if not children and not goal.get('parent'):
+            _, nodes, _, _ = self.context(goal)
+            legacy_aggregate = 'implement' not in nodes
+        if children or legacy_aggregate:
             skipped = False
             record = (goal.get('phase_evidence') or {}).get('records', {}).get('decompose', {})
             if record.get('status') == 'not_required':

@@ -3390,6 +3390,7 @@ class GoalTransitionTests(unittest.TestCase):
         with (
             mock.patch.object(zzzops, "reviewed_project_state", return_value=project),
             mock.patch.object(zzzops, "GitHubGoalTransitionAdapter", return_value=adapter),
+            mock.patch.object(zzzops, "portfolio_snapshot", return_value={"complete": True, "valid": True, "goals": []}),
             mock.patch.object(zzzops, "_workflow_phase_configuration", return_value=(graph, nodes)),
             mock.patch.object(zzzops, "workflow_live_inputs", return_value={"plan": envelope}),
         ):
@@ -5469,7 +5470,7 @@ class WorkflowContractTests(unittest.TestCase):
             [phase["id"] for phase in dag["phases"]],
         )
         self.assertEqual("root", next(phase for phase in dag["phases"] if phase["id"] == "understand")["assignment_group"])
-        self.assertEqual(["plan", "test_design"], next(phase for phase in dag["phases"] if phase["id"] == "implement")["parent_gates"])
+        self.assertEqual(["plan"], next(phase for phase in dag["phases"] if phase["id"] == "implement")["parent_gates"])
         self.assertEqual(
             {"independent": True, "human_approval": True, "assignment_group": "review"},
             next(phase for phase in dag["phases"] if phase["id"] == "understand")["review"],
@@ -5488,7 +5489,7 @@ class WorkflowContractTests(unittest.TestCase):
             {"id", "depends_on", "parent_gates"},
             set(next(node for node in child_graph["phases"] if node["id"] == "implement")),
         )
-        parent_graph = zzzops.phase_evidence_graph(dag, has_parent=False)
+        parent_graph = zzzops.phase_evidence_graph(dag, has_parent=False, has_children=True)
         parent_phases = {node["id"] for node in parent_graph["phases"]}
         self.assertIn("publish", parent_phases)
         self.assertEqual(

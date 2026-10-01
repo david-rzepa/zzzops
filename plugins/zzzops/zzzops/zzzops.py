@@ -517,7 +517,7 @@ def workflow_phase_frontier(
     """
     if not isinstance(phase_dag, dict) or not isinstance(phase_dag.get("phases"), list):
         raise ValueError("workflow phase DAG is invalid")
-    graph = phase_evidence_graph(phase_dag, has_parent=goal.get("parent") is not None)
+    graph = phase_evidence_graph(phase_dag, has_parent=goal.get("parent") is not None, has_children=bool(goal.get("children")))
     eligibility = derive_phase_eligibility(goal, graph, live_inputs, related_goals)
     nodes = {
         node.get("id"): node for node in phase_dag["phases"]
@@ -1834,7 +1834,7 @@ def workflow_step_plan(
 def _workflow_phase_configuration(project: dict[str, Any], goal: dict[str, Any]) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     adherence = _workflow_section(project, "workflow_adherence")
     dag = adherence["configuration"].get("phase_dag")
-    graph = phase_evidence_graph(dag, has_parent=goal.get("parent") is not None)
+    graph = phase_evidence_graph(dag, has_parent=goal.get("parent") is not None, has_children=bool(goal.get("children")))
     phase_nodes = {node["id"]: node for node in dag["phases"] if node["id"] in {item["id"] for item in graph["phases"]}}
     return graph, phase_nodes
 
@@ -1892,12 +1892,15 @@ def workflow_checkpoint(repo: Path, goal_number: int, intent: str, runtime: Any)
     adapter = GitHubGoalTransitionAdapter(repo, repository)
     issue = adapter.get_issue(goal_number)
     goal = github_goal_record(issue)
+    goal['children'] = [row['key'] for row in portfolio.get('goals', [])
+                        if row.get('parent') == goal_number and row.get('status') != 'cancelled']
     graph, phase_nodes = _workflow_phase_configuration(project, goal)
     live_inputs = workflow_live_inputs(repo, project, goal, intent, graph)
     related: dict[Any, dict[str, Any]] = {}
     if goal.get("parent") is not None:
         parent_issue = adapter.get_issue(goal["parent"])
         parent = github_goal_record(parent_issue)
+        parent['children'] = [goal_number]
         parent_graph, _parent_nodes = _workflow_phase_configuration(project, parent)
         related[goal["parent"]] = {"goal": parent, "live_inputs": workflow_live_inputs(repo, project, parent, intent, parent_graph)}
     routing = _workflow_section(project, "model_routing")["configuration"]
@@ -1918,6 +1921,11 @@ def workflow_submit(repo: Path, goal_number: int, intent: str, payload: Any) -> 
     adapter = GitHubGoalTransitionAdapter(repo, repository)
     issue = adapter.get_issue(goal_number)
     goal = github_goal_record(issue)
+    portfolio = portfolio_snapshot(repo)
+    if portfolio.get('complete') is not True or portfolio.get('valid') is not True:
+        raise ValueError('Goal portfolio is not valid')
+    goal['children'] = [row['key'] for row in portfolio.get('goals', [])
+                        if row.get('parent') == goal_number and row.get('status') != 'cancelled']
     graph, phase_nodes = _workflow_phase_configuration(project, goal)
     if phase not in phase_nodes:
         raise ValueError("workflow submission phase is not applicable to this goal")
@@ -1928,6 +1936,7 @@ def workflow_submit(repo: Path, goal_number: int, intent: str, payload: Any) -> 
     if goal.get("parent") is not None:
         parent_issue = adapter.get_issue(goal["parent"])
         parent = github_goal_record(parent_issue)
+        parent['children'] = [goal_number]
         parent_graph, _parent_nodes = _workflow_phase_configuration(project, parent)
         related[goal["parent"]] = {"goal": parent, "live_inputs": workflow_live_inputs(repo, project, parent, intent, parent_graph)}
     frontier = derive_phase_steps(goal, graph, live_inputs, related)

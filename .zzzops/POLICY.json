@@ -1,17 +1,17 @@
 {
   "approval": {
-    "date": "2026-09-21",
-    "digest": "sha256:386ca14e760c462c4277173a045c7f5e6f85d72545c6290897576fde137fc64d",
-    "reviewer": "user"
+    "date": "2026-09-24",
+    "digest": "sha256:b0e9f2670ebf5c236463f7cf7a59ef35895dfef274b67ab20c1f5bdaac625773",
+    "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
   },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:b43c6ec1199144a58effa2324e57ace753cce69c585a4a25cd3a51a0a21a8fc4",
+      "digest": "sha256:a2045378245e7e69001c60fd264178b57397fcc4068d91a09db3fc2b7f11eb78",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
-      "digest": "sha256:40b07f66287401bbb24b31cb10b870235942e8a1448c2d6b595f4f0c5cae869e",
+      "digest": "sha256:13d20ae1cbdf039643c7d7ef1a2b20410d33d54c56a4fc5b7f98b0af6ad89448",
       "path": ".zzzops/PROJECT.md"
     }
   },
@@ -242,6 +242,18 @@
       "change": "Reviewed policy revision 42",
       "date": "2026-09-21",
       "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 43",
+      "date": "2026-09-24",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "user: explicitly approved adopting the shipped leaf_only default in this conversation",
+      "change": "Reviewed policy revision 44",
+      "date": "2026-09-24",
+      "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023."
     }
   ],
   "initialized": true,
@@ -391,9 +403,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-21",
-          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
-          "reviewer": "user"
+          "date": "2026-09-24",
+          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
+          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
         },
         "source_ids": [
           "E-003",
@@ -429,9 +441,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-21",
-          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
-          "reviewer": "user"
+          "date": "2026-09-24",
+          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
+          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
         },
         "source_ids": [
           "E-002",
@@ -469,9 +481,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-21",
-          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
-          "reviewer": "user"
+          "date": "2026-09-24",
+          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
+          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
         },
         "source_ids": [
           "E-002",
@@ -509,9 +521,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-21",
-          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
-          "reviewer": "user"
+          "date": "2026-09-24",
+          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
+          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
         },
         "source_ids": [
           "E-002",
@@ -543,9 +555,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-21",
-          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
-          "reviewer": "user"
+          "date": "2026-09-24",
+          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
+          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
         },
         "source_ids": [
           "E-001",
@@ -582,9 +594,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-21",
-          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
-          "reviewer": "user"
+          "date": "2026-09-24",
+          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
+          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
         },
         "source_ids": [
           "E-001",
@@ -616,9 +628,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-21",
-          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
-          "reviewer": "user"
+          "date": "2026-09-24",
+          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
+          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
         },
         "source_ids": [
           "E-002",
@@ -651,9 +663,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-21",
-          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
-          "reviewer": "user"
+          "date": "2026-09-24",
+          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
+          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
         },
         "source_ids": [
           "E-002",
@@ -701,9 +713,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-21",
-          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
-          "reviewer": "user"
+          "date": "2026-09-24",
+          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
+          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
         },
         "source_ids": [
           "E-001",
@@ -1006,9 +1018,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-21",
-          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
-          "reviewer": "user"
+          "date": "2026-09-24",
+          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
+          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
         },
         "source_ids": [
           "E-015",
@@ -1098,7 +1110,7 @@
                 "type": "plan"
               },
               {
-                "applicability": "child_only",
+                "applicability": "leaf_only",
                 "assignment_group": "planning",
                 "depends_on": [
                   "plan"
@@ -1125,7 +1137,7 @@
                 "type": "test_design"
               },
               {
-                "applicability": "child_only",
+                "applicability": "leaf_only",
                 "assignment_group": "implementation",
                 "depends_on": [
                   "test_design"
@@ -1144,8 +1156,7 @@
                 ],
                 "not_required": "never",
                 "parent_gates": [
-                  "plan",
-                  "test_design"
+                  "plan"
                 ],
                 "review": {
                   "assignment_group": "review",
@@ -1185,7 +1196,7 @@
         "default_origin": "ZzzOps tracked-work fallback",
         "default_provenance": {
           "default_id": "zzzops.policy.workflow_adherence",
-          "digest": "sha256:be3361778ff8b8c15f55b3a35d71ddd25ed4159581585e6526487be1e94fed29",
+          "digest": "sha256:31e4f6ae6cb40a2436e9ce4089d216a910dd8ab7ee81aebb39785da48b683236",
           "schema_version": 2,
           "snapshot": {
             "configuration": {
@@ -1264,7 +1275,7 @@
                     "type": "plan"
                   },
                   {
-                    "applicability": "child_only",
+                    "applicability": "leaf_only",
                     "assignment_group": "planning",
                     "depends_on": [
                       "plan"
@@ -1291,7 +1302,7 @@
                     "type": "test_design"
                   },
                   {
-                    "applicability": "child_only",
+                    "applicability": "leaf_only",
                     "assignment_group": "implementation",
                     "depends_on": [
                       "test_design"
@@ -1310,8 +1321,7 @@
                     ],
                     "not_required": "never",
                     "parent_gates": [
-                      "plan",
-                      "test_design"
+                      "plan"
                     ],
                     "review": {
                       "assignment_group": "review",
@@ -1350,7 +1360,7 @@
             "instructions": "Require durable tracked goals for substantial repository work. Read-only investigation and ZzzOps administration are exempt; only explicit scoped user authority grants an exception. Execute the reviewed phase graph with its independent reviews and human approvals."
           },
           "source": {
-            "revision": "1ae810a0fc2a7d347e9d7b1dd16813a95d32c0192112607e75cc29a8ce7f8a9b",
+            "revision": "bef03b908885cc6cbc8f9beae097f39b4b75b57ad4265149e2d62204cf2272f7",
             "version": "0.0.0-dev"
           },
           "status": "adopted"
@@ -1362,9 +1372,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-21",
-          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
-          "reviewer": "user"
+          "date": "2026-09-24",
+          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
+          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
         },
         "source_ids": [
           "E-001",
@@ -1401,9 +1411,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-21",
-          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
-          "reviewer": "user"
+          "date": "2026-09-24",
+          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
+          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
         },
         "source_ids": [
           "E-002",
@@ -1458,9 +1468,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-09-21",
-          "reviewed_digest": "sha256:b9672f3c33706b5ac876920581fcae1a4c679d2d079ba911fdd4149dfc108cf9",
-          "reviewer": "user"
+          "date": "2026-09-24",
+          "reviewed_digest": "sha256:ce1982bd17ba664d36a7a67ce7a1345664aeea6249fb4a7c83c6a3efdcd7d023",
+          "reviewer": "user: explicitly approved adopting the shipped leaf_only default in this conversation"
         },
         "source_ids": [
           "E-001",
@@ -1480,6 +1490,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 42,
+  "revision": 44,
   "schema_version": 1
 }

@@ -479,7 +479,7 @@
                 "parent_gates": [
                   "plan"
                 ],
-                "applicability": "child_only",
+                "applicability": "leaf_only",
                 "assignment_group": "planning",
                 "inputs": [
                   "goal_spec",
@@ -504,10 +504,9 @@
                   "test_design"
                 ],
                 "parent_gates": [
-                  "plan",
-                  "test_design"
+                  "plan"
                 ],
-                "applicability": "child_only",
+                "applicability": "leaf_only",
                 "assignment_group": "implementation",
                 "inputs": [
                   "goal_spec",
