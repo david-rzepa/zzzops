@@ -1790,15 +1790,10 @@ class Workflow:
             payload = read(envelope['payload']); graph = read(payload['graph'])
             # Locate possible context outputs without evaluating unrelated
             # workspace/relationship consumers. This filter grants no authority.
-            slots = {}
-            def context_slots(value):
-                if isinstance(value, dict):
-                    if 'id' in value and 'outputs' in value:
-                        slots[value['id']] = {name for name, contract in value['outputs'].items() if contract.get('type') == 'repository_context'}
-                    for child in value.values(): context_slots(child)
-                elif isinstance(value, list):
-                    for child in value: context_slots(child)
-            context_slots(graph)
+            declarations = [*graph['nodes'], *(row['template'] for row in graph['task_sets'])]
+            slots = {node['id']: {name for name, contract in node['outputs'].items()
+                                 if contract.get('type') == 'repository_context'}
+                     for node in declarations}
             if not any(slots.values()): continue
             candidate = False
             for ref in payload['evidence']:
