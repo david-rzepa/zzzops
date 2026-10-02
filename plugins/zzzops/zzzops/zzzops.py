@@ -163,6 +163,10 @@ _WORKFLOW_SPEC = importlib.util.spec_from_file_location("zzzops_workflow", Path(
 _workflow = importlib.util.module_from_spec(_WORKFLOW_SPEC)
 _WORKFLOW_SPEC.loader.exec_module(_workflow)
 
+_MIGRATION_SPEC = importlib.util.spec_from_file_location("zzzops_migration_batch", Path(__file__).with_name("migration_batch.py"))
+_migration_batch = importlib.util.module_from_spec(_MIGRATION_SPEC)
+_MIGRATION_SPEC.loader.exec_module(_migration_batch)
+
 _ADMIN_SPEC = importlib.util.spec_from_file_location("zzzops_workflow_admin", Path(__file__).with_name("workflow_admin.py"))
 _workflow_admin = importlib.util.module_from_spec(_ADMIN_SPEC)
 _ADMIN_SPEC.loader.exec_module(_workflow_admin)

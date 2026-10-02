@@ -163,7 +163,7 @@ class ObservedArtifactIndex(comment_store.ArtifactIndex):
 # being routed through an unrelated installation, policy, lease, or portfolio
 # gate.
 PUBLIC_OPERATIONS = frozenset({
-    'batch', 'bind', 'block',
+    'batch', 'bind', 'block', 'migration_batch',
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
     'feedback_submit', 'heartbeat', 'installation_record', 'integrate',
     'policy_approve', 'policy_propose', 'read', 'recover', 'renew',
@@ -2406,8 +2406,8 @@ class Workflow:
             envelope = {**activation['envelope'], 'revision': envelope['revision'], 'payload': add(target_payload)}
         if 'parent_change' in snapshot: envelope['parent'] = snapshot['parent_change']
         if snapshot.get('archive'): envelope['state'] = 'archived'
-        issue = snapshot['issue']; prefix = issue['body'].split(self.api._goals.GOAL_BLOCK_START, 1)[0]
-        body = prefix + self.api._goals.GOAL_BLOCK_START + '\n' + json.dumps(envelope, sort_keys=True) + '\n' + self.api._goals.GOAL_BLOCK_END
+        issue = snapshot['issue']; prefix, suffix = self.api._migration_batch.human_parts(self, issue['body'])
+        body = prefix + self.api._goals.GOAL_BLOCK_START + '\n' + json.dumps(envelope, sort_keys=True) + '\n' + self.api._goals.GOAL_BLOCK_END + suffix
         if self.adapter.get_issue(number)['body'] != issue['body']: raise ValueError('Concurrent predecessor source revision changed before write')
         comments = self.adapter.get_issue_comments(number)
         pending = snapshot.get('pending')
@@ -2470,7 +2470,8 @@ class Workflow:
         response_lease = response['next_steps'][0].get('lease', {})
         if not isinstance(response_lease, dict):
             response_lease = next((lease for lease in payload['operational']['leases'] if lease['token'] == response_lease), {})
-        context = {'request_id': request['request_id'], 'request_hash': digest(request), 'source_hash': digest(issue['body']), 'human_hash': digest(prefix), 'root': (self.runtime or {}).get('root_id'), 'response': self.node_ref(digest(response), number), 'ownership': {key: value for key, value in response_lease.items() if key != 'acquisition'}, 'acquisition': bool(response['next_steps'][0].get('bind')), 'payload': envelope['payload'], 'proof': proof, 'source_envelope': snapshot['envelope'], 'target_envelope': envelope, 'entry_payload': entry_payload}
+        context = {'request_id': request['request_id'], 'request_hash': digest(request), 'source_hash': digest(issue['body']), 'human_hash': digest(prefix + suffix), 'root': None if snapshot.get('migration') else (self.runtime or {}).get('root_id'), 'response': self.node_ref(digest(response), number), 'ownership': {key: value for key, value in response_lease.items() if key != 'acquisition'}, 'acquisition': bool(response['next_steps'][0].get('bind')), 'payload': envelope['payload'], 'proof': proof, 'source_envelope': snapshot['envelope'], 'target_envelope': envelope, 'entry_payload': entry_payload}
+        if snapshot.get('migration'): context['migration'] = snapshot['migration']
         if pending and pending != context: raise ValueError('Pending checkpoint exact response/payload/proof identity changed')
         bodies = comment_store.pack_envelopes({'goal': number, 'transaction': digest({'request': request, 'source': issue['body']}), 'context': context}, records)
         prospective = self.node_preflight(comments, bodies, [envelope['payload']['hash']], index)
@@ -2485,6 +2486,8 @@ class Workflow:
         confirmed = ObservedArtifactIndex(self.adapter.get_issue_comments(number), previous=prospective)
         confirmed.resolve(envelope['payload']['hash'])
         _OBSERVED_ARTIFACT_INDEXES[(str(self.repo.resolve()), self.repository, number)] = confirmed
+        if snapshot.get('migration') and digest(self.api.reviewed_project_state(self.repo)['policy']) != snapshot['migration']['policy']:
+            raise ValueError('Reviewed policy/graph changed before migration publication')
         observed = self.adapter.get_issue(number)
         if observed['body'] != issue['body']: raise ValueError('Concurrent source edit before body publication')
         if str(observed.get('state', '')).lower() == 'closed' and not snapshot.get('archive'):
@@ -2767,8 +2770,8 @@ class Workflow:
                 permit(kind, {'subject': {'kind': 'node', 'goal': snapshot['number'], 'node': state['node']['node']}, 'output': slot})
                 receipt = snapshot['payload']['operational']['receipts'][-1]['result']
                 matching = [row.get('context', {}) for row in self.artifact_index(snapshot['number']).envelopes if row.get('context', {}).get('response') == receipt]
-                prefix = snapshot['issue']['body'].split(self.api._goals.GOAL_BLOCK_START, 1)[0]
-                if not matching or any(row.get('target_envelope') != snapshot['envelope'] or row.get('human_hash') != digest(prefix) for row in matching):
+                prefix, suffix = self.api._migration_batch.human_parts(self, snapshot['issue']['body'])
+                if not matching or any(row.get('target_envelope') != snapshot['envelope'] or row.get('human_hash') != digest(prefix + suffix) for row in matching):
                     raise ValueError('Migration activation entry revision/source changed after current host receipt')
                 conversion_blob = load(value['conversion'])
                 if conversion_blob.get('type') != 'conversion' or value['conversion']['hash'] not in subject_results:
@@ -3080,6 +3083,26 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         if freshness['stale']:
             return {'next_steps': [{'kind': 'policy_review', 'assignment': 'root', 'action': 'Review policy tier mappings for newly discovered model/effort pairs before proceeding.', 'added': freshness['added'], 'submission': {'operation': 'policy_propose', 'plan': '<updated reviewed policy plan>'}}]}
     engine = Workflow(api, repo, project, runtime)
+    if operation == 'migration_batch':
+        return api._migration_batch.run(engine, payload)
+    if intent == 'execute' and source == '$execute-zzzops' and operation not in {'read', 'recover', 'renew', 'heartbeat'}:
+        if number is not None:
+            # Schema administration consumes no stale task request or ownership.
+            try:
+                _, _, schema_state = api._migration_batch.state(engine, number)
+                if schema_state == 'legacy':
+                    result = api._migration_batch.run(engine, {'action': 'migrate', 'goals': [number]})
+                    member = result['next_steps'][0]['members'][str(number)]
+                    if member['status'] == 'migrated': return {'next_steps': member['next_steps']}
+                    # Existing owner recovery stays available from its normal contract.
+                    if 'ownership' not in member.get('reason', '').lower():
+                        return {'next_steps': [{'kind': 'blocker', 'goal': number, 'reason': member.get('reason', member['status'])}]}
+            except (ValueError, KeyError, OSError) as exc:
+                return {'next_steps': [{'kind': 'blocker', 'goal': number, 'reason': str(exc)}]}
+        elif payload is None:
+            discovered = api._migration_batch.run(engine, {'action': 'discover'})['next_steps'][0]
+            if discovered['goals'] or discovered.get('remaining'):
+                return api._migration_batch.run(engine, {'action': 'migrate', 'limit': api._migration_batch.MAX_MEMBERS})
     if operation not in {'read', 'renew'}: engine.portfolio(allow_invalid=True)
     if operation == 'read' and number is not None:
         artifact = payload.get('artifact')
