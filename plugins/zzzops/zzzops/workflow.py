@@ -2949,7 +2949,10 @@ class Workflow:
                     if ancestor['repository'] != self.repository: raise ValueError('Parent ancestor repository differs')
                     parent = ancestor['parent']
                 snapshot['parent_change'] = value['parent']
-            elif kind == 'finding_registry':
+            elif kind == 'finding_registry' and any(
+                    allowed['type'] == kind for allowed in state['contract']['permits']):
+                # Scoped retention is an explicit contract. Older generic pair
+                # maps use this type name without permits and grant no authority.
                 if actor != (self.runtime or {}).get('root_id') or state['contract']['executor']['role'] != 'root':
                     raise ValueError('Retained finding registry requires authenticated root')
                 expected = {}
