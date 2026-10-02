@@ -2,6 +2,18 @@
 
 Linux remains the complete product-validation platform. Both Linux matrix jobs run the full `.agents` unittest discovery, migration-skill tests, manual coverage audit, plugin and release tests, prompt statistics, and Python compilation in their established order.
 
+The former Windows and macOS command groups have these dispositions. Full Linux coverage means the tests remain in the exact complete discovery command shown; a native-retained ID is the narrower cross-platform assurance that now runs on Windows and macOS.
+
+| Former native command group | Complete Linux disposition | Exact native-retained test IDs |
+| --- | --- | --- |
+| `.agents/test_workflow_*.py` | Covered by `python -m unittest discover -s .agents -p test_*.py`. | `test_workflow_heartbeat.HeartbeatProcessTests.test_one_coordinator_renews_multiple_leases_and_stops_tracking_workers`<br>`test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_mixed_clean_checkout_rejects_raw_consumed_drift_and_restores_exact_acquisition`<br>`test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_crlf_design_correction_retains_frozen_raw_checkout_overrides`<br>`test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_clean_crlf_checkout_pins_raw_consumed_bytes_and_allows_owned_red_edit`<br>`test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_acquired_owned_path_cannot_be_replaced_by_escaping_symlink`<br>`test_workflow_publication_contract.GenericDeliveryPublicTests.test_reviewed_red_green_proofs_commit_and_exact_publication_form_one_delivery_graph` |
+| `.agents/test_phase_*.py` | Covered by `python -m unittest discover -s .agents -p test_*.py`. | None. Its unique assurance remains Linux-only. |
+| `.agents/test_zzzops.py` | Covered by `python -m unittest discover -s .agents -p test_*.py`. | `test_zzzops.InitializationTests.test_cli_without_command_shows_help_without_writing_local_state` |
+| `.agents/test_legacy_cleanup.py` | Covered by `python -m unittest discover -s .agents -p test_*.py`. | `test_legacy_cleanup.LegacyCleanupTests.test_default_cli_is_dry_run_and_interrupted_cleanup_converges` |
+| `.agents/test_installation_validation.py` | Covered by `python -m unittest discover -s .agents -p test_*.py`. | `test_installation_validation.InstallationValidationTests.test_cli_clean_first_use_and_idempotent_status` |
+| `.agents/test_marketplace_bundle.py` | Covered by `python -m unittest discover -s .agents -p test_*.py`. | `test_marketplace_bundle.MarketplaceBundleTests.test_fixed_version_build_is_deterministic_and_complete`<br>`test_agent_plugin.AgentPluginTests.test_marketplace_points_to_the_self_contained_package` |
+| `plugins/zzzops/skills/migrate-to-zzzops/scripts/test_*.py` | Covered by `python -m unittest discover -s plugins/zzzops/skills/migrate-to-zzzops/scripts -p test_*.py`. | None. Its unique assurance remains Linux-only. |
+
 Windows and macOS run a bounded native-sensitive selection in fresh Python interpreters. The explicit mapping in `run_product_validation.py` retains these former native groups:
 
 | Coverage obligation | Retained target behaviour |
