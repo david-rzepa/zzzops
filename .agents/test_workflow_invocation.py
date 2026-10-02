@@ -156,6 +156,9 @@ class WorkflowInvocationCacheTests(unittest.TestCase):
     def test_public_checkpoint_reuses_the_validated_workflow_engine(self):
         engine = mock.Mock()
         engine.portfolio.return_value = [{"key": 1, "status": "done", "priority": "P1"}]
+        engine.api.github_repository_goal_index.return_value = (
+            {"usable": True}, [], [], 0, 0, [],
+        )
         project = {
             "backend": "github_issues", "repository": {"identity": "synthetic/project"},
             "policy": {"sections": [{

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import re
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -15,6 +18,31 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER_PATH = ROOT / ".github" / "scripts" / "run_product_validation.py"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "validate.yml"
+
+
+def assert_required_gate_contract(testcase, workflow):
+    match = re.search(
+        r"(?ms)^  required:\s*\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\s*$|\Z)",
+        workflow,
+    )
+    testcase.assertIsNotNone(match, "workflow must define the required job")
+    body = match.group("body")
+    testcase.assertRegex(body, r"(?m)^    if: \$\{\{ always\(\) \}\}\s*$")
+    testcase.assertRegex(
+        body,
+        r"(?m)^    needs: \[validate-linux, validate-windows, validate-macos, validate-claude\]\s*$",
+    )
+    run = re.search(r"(?m)^        run: >-\s*\n(?P<command>(?:^          \S.*\n?)+)", body)
+    testcase.assertIsNotNone(run, "required job must execute one folded aggregation command")
+    command = " ".join(line.strip() for line in run.group("command").splitlines())
+    expected = " ".join((
+        "python .github/scripts/require_validation.py",
+        "linux=${{ needs.validate-linux.result }}",
+        "windows=${{ needs.validate-windows.result }}",
+        "macos=${{ needs.validate-macos.result }}",
+        "claude=${{ needs.validate-claude.result }}",
+    ))
+    testcase.assertEqual(expected, command)
 
 REQUIRED_OBLIGATIONS = {
     "installation_cleanup",
@@ -72,11 +100,34 @@ class NativeSelectionContractTests(unittest.TestCase):
             "platform-independent full journeys belong to complete Linux discovery",
         )
 
-    def test_selection_accepts_only_discovered_tests(self):
+    def test_real_loader_discovery_selects_allowlist_and_excludes_extra_tests(self):
+        discover = self.require_api("discover_native_tests")
         select = self.require_api("select_native_tests")
-        selected = tuple(select(set(REQUIRED_NATIVE_IDS)))
-        self.assertEqual(REQUIRED_NATIVE_IDS, set(selected))
-        self.assertEqual(len(selected), len(set(selected)))
+        repository_discovery = discover(root=ROOT)
+        repository_selection = tuple(select(repository_discovery))
+        self.assertEqual(REQUIRED_NATIVE_IDS, set(repository_selection))
+        self.assertEqual(len(repository_selection), len(set(repository_selection)))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tests = root / ".agents"
+            tests.mkdir()
+            (tests / "test_selected.py").write_text(textwrap.dedent("""
+                import unittest
+                class Selected(unittest.TestCase):
+                    def test_kept(self): pass
+                    def test_extra(self): pass
+            """), encoding="utf-8")
+            discovered = discover(root=root)
+        kept = "test_selected.Selected.test_kept"
+        extra = "test_selected.Selected.test_extra"
+        self.assertIn(kept, discovered)
+        self.assertIn(extra, discovered)
+        with mock.patch.object(
+            self.runner, "NATIVE_COVERAGE", {"installation_cleanup": (kept,)}
+        ):
+            selected = tuple(select(discovered))
+        self.assertEqual((kept,), selected)
+        self.assertNotIn(extra, selected, "discovery must not expand the explicit allowlist")
 
     def test_selection_rejects_empty_duplicate_and_missing_ids(self):
         select = self.require_api("select_native_tests")
@@ -94,53 +145,112 @@ class NativeSelectionContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing"):
             select(set())
 
-    def test_discovery_error_stops_before_execution(self):
-        run_native = self.require_api("run_native_validation")
-        launch = mock.Mock()
-
-        def failed_discovery():
-            raise RuntimeError("bounded discovery failed")
-
-        with self.assertRaisesRegex(RuntimeError, "discovery failed"):
-            run_native(
-                "windows",
-                discover=failed_discovery,
-                launch=launch,
-                clock=lambda: 0.0,
-                emit=lambda report: None,
+    def test_real_loader_errors_are_rejected(self):
+        discover = self.require_api("discover_native_tests")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tests = root / ".agents"
+            tests.mkdir()
+            (tests / "test_broken_native_fixture.py").write_text(
+                "raise RuntimeError('native discovery fixture exploded')\n",
+                encoding="utf-8",
             )
-        launch.assert_not_called()
+            with self.assertRaisesRegex(RuntimeError, "discovery|fixture exploded|loader"):
+                discover(root=root)
 
-    def test_native_run_uses_separate_discovery_and_fresh_execution(self):
+    def test_default_native_run_stops_on_loader_error_before_child_execution(self):
         run_native = self.require_api("run_native_validation")
-        events = []
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tests = root / ".agents"
+            tests.mkdir()
+            marker = root / "executed"
+            (tests / "test_selected_before_error.py").write_text(textwrap.dedent(f"""
+                import pathlib, unittest
+                class Selected(unittest.TestCase):
+                    def test_never_runs(self): pathlib.Path({str(marker)!r}).write_text('ran')
+            """), encoding="utf-8")
+            (tests / "test_broken_after_selection.py").write_text(
+                "raise RuntimeError('default discovery exploded')\n", encoding="utf-8"
+            )
+            selected_id = "test_selected_before_error.Selected.test_never_runs"
+            with mock.patch.object(
+                self.runner,
+                "NATIVE_COVERAGE",
+                {"installation_cleanup": (selected_id,)},
+            ):
+                with self.assertRaisesRegex(RuntimeError, "discovery|exploded|loader"):
+                    run_native("windows", root=root, emit=lambda value: None)
+            self.assertFalse(marker.exists(), "loader errors must stop before test execution")
 
-        def discover():
-            events.append("discover")
-            return set(REQUIRED_NATIVE_IDS)
+    def test_default_native_run_uses_fresh_interpreter_and_cleans_fixtures(self):
+        run_native = self.require_api("run_native_validation")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tests = root / ".agents"
+            tests.mkdir()
+            evidence = root / "child.json"
+            residue = root / "fixture-residue"
+            (tests / "test_process_boundary.py").write_text(textwrap.dedent(f"""
+                import json, os, pathlib, unittest
+                EVIDENCE = pathlib.Path({str(evidence)!r})
+                RESIDUE = pathlib.Path({str(residue)!r})
+                class ProcessBoundary(unittest.TestCase):
+                    def setUp(self): RESIDUE.write_text('live')
+                    def tearDown(self): RESIDUE.unlink()
+                    def test_child(self):
+                        EVIDENCE.write_text(json.dumps({{'pid': os.getpid(), 'residue': RESIDUE.exists()}}))
+            """), encoding="utf-8")
+            selected_id = "test_process_boundary.ProcessBoundary.test_child"
+            emitted = []
+            with mock.patch.object(
+                self.runner,
+                "NATIVE_COVERAGE",
+                {"installation_cleanup": (selected_id,)},
+            ):
+                report = run_native("windows", root=root, emit=emitted.append)
+            child = json.loads(evidence.read_text(encoding="utf-8"))
+            self.assertNotEqual(os.getpid(), child["pid"])
+            self.assertTrue(child["residue"], "setUp must execute in the child test process")
+            self.assertFalse(residue.exists(), "tearDown must clean the isolated fixture")
+            self.assertEqual([report], emitted)
+            self.assertEqual([selected_id], report["selected_ids"])
+            self.assertEqual(1, report["tests_run"])
 
-        def launch(selected):
-            events.append(("launch", tuple(selected)))
-            return {
-                "returncode": 0,
-                "tests_run": len(selected),
-                "failures": 0,
-                "errors": 0,
-                "skipped": 0,
-                "durations": {test_id: 0.01 for test_id in selected},
-            }
+    def test_default_native_run_rejects_ordinary_skip_from_child_process(self):
+        run_native = self.require_api("run_native_validation")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tests = root / ".agents"
+            tests.mkdir()
+            (tests / "test_ordinary_skip.py").write_text(textwrap.dedent("""
+                import unittest
+                class OrdinarySkip(unittest.TestCase):
+                    @unittest.skip("developer preference")
+                    def test_skipped(self): pass
+            """), encoding="utf-8")
+            selected_id = "test_ordinary_skip.OrdinarySkip.test_skipped"
+            with mock.patch.object(
+                self.runner,
+                "NATIVE_COVERAGE",
+                {"installation_cleanup": (selected_id,)},
+            ):
+                with self.assertRaisesRegex(ValueError, "skip|facility|evidence"):
+                    run_native("macos", root=root, emit=lambda value: None)
 
+    def test_native_run_reports_selected_tests_from_fresh_launcher(self):
+        run_native = self.require_api("run_native_validation")
+        observation = {
+            "returncode": 0, "tests_run": len(REQUIRED_NATIVE_IDS),
+            "executed_ids": sorted(REQUIRED_NATIVE_IDS),
+            "failures": 0, "errors": 0, "skips": [],
+            "durations": {test_id: 0.01 for test_id in REQUIRED_NATIVE_IDS},
+        }
         report = run_native(
-            "macos",
-            discover=discover,
-            launch=launch,
-            clock=iter((10.0, 10.5)).__next__,
-            emit=lambda value: events.append(("emit", value)),
+            "macos", discover=lambda: set(REQUIRED_NATIVE_IDS),
+            launch=lambda selected: observation,
+            clock=iter((10.0, 10.5)).__next__, emit=lambda value: None,
         )
-        self.assertEqual("discover", events[0])
-        self.assertEqual("launch", events[1][0])
-        self.assertEqual(REQUIRED_NATIVE_IDS, set(events[1][1]))
-        self.assertEqual("emit", events[2][0])
         self.assertEqual("macos", report["platform"])
         self.assertEqual(len(REQUIRED_NATIVE_IDS), report["selected_count"])
         self.assertEqual(0.5, report["wall_seconds"])
@@ -177,11 +287,22 @@ class NativeSelectionContractTests(unittest.TestCase):
         observation = {
             "returncode": 0,
             "tests_run": len(REQUIRED_NATIVE_IDS),
+            "executed_ids": sorted(REQUIRED_NATIVE_IDS),
             "failures": 0,
             "errors": 0,
             "skips": [
-                {"id": "native.facility.one", "reason": "facility unavailable"},
-                {"id": "native.facility.two", "reason": "facility unavailable"},
+                {
+                    "id": sorted(REQUIRED_NATIVE_IDS)[0],
+                    "kind": "unavailable_native_facility",
+                    "reason": "Windows symlink privilege unavailable",
+                    "evidence": "OSError: privilege not held",
+                },
+                {
+                    "id": sorted(REQUIRED_NATIVE_IDS)[1],
+                    "kind": "unavailable_native_facility",
+                    "reason": "native process signals unavailable",
+                    "evidence": "platform has no SIGUSR1",
+                },
             ],
             "durations": durations,
         }
@@ -204,15 +325,65 @@ class NativeSelectionContractTests(unittest.TestCase):
         self.assertTrue(report["slowest_groups"])
         self.assertEqual(set(REQUIRED_NATIVE_IDS), set(report["selected_ids"]))
 
+    def test_execution_observation_rejects_empty_partial_mismatch_and_duplicates(self):
+        run_native = self.require_api("run_native_validation")
+        selected = sorted(REQUIRED_NATIVE_IDS)
+        valid = {
+            "returncode": 0, "tests_run": len(selected), "executed_ids": selected,
+            "failures": 0, "errors": 0, "skips": [], "durations": {},
+        }
+        invalid = {
+            "empty": {**valid, "tests_run": 0, "executed_ids": []},
+            "partial": {**valid, "tests_run": len(selected) - 1, "executed_ids": selected[:-1]},
+            "count mismatch": {**valid, "tests_run": len(selected) - 1},
+            "duplicate": {**valid, "executed_ids": selected[:-1] + [selected[0]]},
+        }
+        for label, observation in invalid.items():
+            with self.subTest(label=label):
+                with self.assertRaisesRegex(ValueError, "empty|partial|count|mismatch|duplicate|executed"):
+                    run_native(
+                        "windows", discover=lambda: set(REQUIRED_NATIVE_IDS),
+                        launch=lambda _selected, value=observation: value,
+                        clock=iter((1.0, 1.1)).__next__, emit=lambda value: None,
+                    )
+
+    def test_skips_require_selected_id_reason_and_native_facility_evidence(self):
+        run_native = self.require_api("run_native_validation")
+        selected = sorted(REQUIRED_NATIVE_IDS)
+        base = {
+            "returncode": 0, "tests_run": len(selected), "executed_ids": selected,
+            "failures": 0, "errors": 0, "durations": {},
+        }
+        invalid_skips = (
+            [{"id": "not.selected", "kind": "unavailable_native_facility", "reason": "facility unavailable", "evidence": "probe failed"}],
+            [{"id": selected[0], "kind": "unavailable_native_facility", "reason": "", "evidence": "probe failed"}],
+            [{"id": selected[0], "kind": "unavailable_native_facility", "reason": "facility unavailable", "evidence": ""}],
+            [{"id": selected[0], "kind": "ordinary_skip", "reason": "not requested today", "evidence": "developer preference"}],
+        )
+        for skips in invalid_skips:
+            with self.subTest(skips=skips):
+                with self.assertRaisesRegex(ValueError, "skip|selected|reason|evidence|facility"):
+                    run_native(
+                        "macos", discover=lambda: set(REQUIRED_NATIVE_IDS),
+                        launch=lambda _selected, value={**base, "skips": skips}: value,
+                        clock=iter((1.0, 1.1)).__next__, emit=lambda value: None,
+                    )
+
     def test_failed_execution_is_reported_then_propagated(self):
         run_native = self.require_api("run_native_validation")
         emitted = []
         observation = {
             "returncode": 1,
-            "tests_run": 4,
+            "tests_run": len(REQUIRED_NATIVE_IDS),
+            "executed_ids": sorted(REQUIRED_NATIVE_IDS),
             "failures": 1,
             "errors": 2,
-            "skips": [{"id": "native.facility", "reason": "facility unavailable"}],
+            "skips": [{
+                "id": sorted(REQUIRED_NATIVE_IDS)[0],
+                "kind": "unavailable_native_facility",
+                "reason": "native facility unavailable",
+                "evidence": "OSError from facility probe",
+            }],
             "durations": {},
         }
         with self.assertRaises(subprocess.CalledProcessError) as raised:
@@ -239,7 +410,12 @@ class NativeSelectionContractTests(unittest.TestCase):
             "errors": 0,
             "skipped": 1,
             "coverage_limits": [
-                {"id": "native.facility", "reason": "facility unavailable"}
+                {
+                    "id": sorted(REQUIRED_NATIVE_IDS)[0],
+                    "kind": "unavailable_native_facility",
+                    "reason": "facility unavailable",
+                    "evidence": "native probe returned ENOTSUP",
+                }
             ],
             "wall_seconds": 1.25,
             "aggregate_test_seconds": 0.75,
@@ -258,8 +434,9 @@ class NativeSelectionContractTests(unittest.TestCase):
             "0.75",
             "test.example",
             "package_cli",
-            "native.facility",
+            sorted(REQUIRED_NATIVE_IDS)[0],
             "facility unavailable",
+            "native probe returned ENOTSUP",
         ):
             self.assertIn(value, summary)
 
@@ -284,13 +461,71 @@ class ExistingCoverageControls(unittest.TestCase):
 
     def test_required_gate_keeps_all_results_truthful(self):
         workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
-        self.assertIn("if: ${{ always() }}", workflow)
-        self.assertIn(
-            "needs: [validate-linux, validate-windows, validate-macos, validate-claude]",
-            workflow,
-        )
-        for leg in ("linux", "windows", "macos", "claude"):
-            self.assertIn(f"{leg}=${{{{ needs.validate-{leg}.result }}}}", workflow)
+        assert_required_gate_contract(self, workflow)
+
+        mutations = {
+            "echo no-op": workflow.replace(
+                "          python .github/scripts/require_validation.py",
+                "          echo python .github/scripts/require_validation.py",
+                1,
+            ),
+            "comment-only decoy": workflow.replace(
+                "        run: >-",
+                "        run: echo no-op",
+                1,
+            ) + "\n# python .github/scripts/require_validation.py linux=${{ needs.validate-linux.result }} windows=${{ needs.validate-windows.result }} macos=${{ needs.validate-macos.result }} claude=${{ needs.validate-claude.result }}\n",
+            "other-job decoy": workflow.replace(
+                "        run: >-",
+                "        run: echo no-op",
+                1,
+            ) + """
+
+  decoy-aggregation:
+    runs-on: ubuntu-latest
+    steps:
+      - run: >-
+          python .github/scripts/require_validation.py
+          linux=${{ needs.validate-linux.result }}
+          windows=${{ needs.validate-windows.result }}
+          macos=${{ needs.validate-macos.result }}
+          claude=${{ needs.validate-claude.result }}
+""",
+            "missing result": workflow.replace(
+                "          claude=${{ needs.validate-claude.result }}\n", "", 1
+            ),
+        }
+        for label, mutated in mutations.items():
+            with self.subTest(label=label):
+                with self.assertRaises(AssertionError):
+                    assert_required_gate_contract(self, mutated)
+
+    def test_required_gate_propagates_every_result_state_and_missing_input(self):
+        script = ROOT / ".github" / "scripts" / "require_validation.py"
+
+        def invoke(*results):
+            return subprocess.run(
+                [sys.executable, str(script), *results], cwd=ROOT,
+                text=True, capture_output=True, check=False,
+            )
+
+        success = invoke("linux=success", "windows=success", "macos=success", "claude=success")
+        self.assertEqual(0, success.returncode, success.stderr)
+        for state in ("failure", "cancelled", "skipped"):
+            with self.subTest(state=state):
+                failed = invoke(
+                    "linux=success", f"windows={state}",
+                    "macos=success", "claude=success",
+                )
+                self.assertNotEqual(0, failed.returncode)
+                self.assertIn(f"windows={state}", failed.stderr)
+        for missing in (
+            (),
+            ("linux=success", "windows=success", "macos=success", "claude="),
+            ("linux=success", "windows=success", "macos=success", "claude"),
+        ):
+            with self.subTest(missing=missing):
+                failed = invoke(*missing)
+                self.assertNotEqual(0, failed.returncode)
 
 
 if __name__ == "__main__":
