@@ -40,10 +40,16 @@ class ReleaseValidationTests(unittest.TestCase):
         self.assertIn("needs: [validate-linux, validate-windows, validate-claude]", workflow)
         self.assertIn("python .github/scripts/run_product_validation.py --platform linux", workflow)
         self.assertIn("python .github/scripts/run_product_validation.py --platform windows", workflow)
-        runner = RUNNER_PATH.read_text(encoding="utf-8")
-        self.assertEqual(2, runner.count('run(sys.executable, ".agents/test_legacy_cleanup.py")'))
-        self.assertEqual(2, runner.count('run(sys.executable, ".agents/test_installation_validation.py")'))
-        self.assertEqual(2, runner.count('run(sys.executable, ".agents/test_marketplace_bundle.py")'))
+        runner = load_runner()
+        for platform in ("windows", "macos"):
+            with self.subTest(platform=platform):
+                with mock.patch.object(runner, "run_native_validation") as validate:
+                    getattr(runner, f"{platform}_validation")()
+                validate.assert_called_once_with(platform)
+        retained = {test_id.split(".", 1)[0]
+                    for targets in runner.NATIVE_COVERAGE.values() for test_id in targets}
+        self.assertTrue({"test_legacy_cleanup", "test_installation_validation",
+                         "test_marketplace_bundle"}.issubset(retained))
         release_job = workflow.split("  release:", 1)[1]
         self.assertIn("actions/setup-python@v5", release_job)
         self.assertIn("needs: [validate-linux, validate-windows, validate-claude]", release_job)
