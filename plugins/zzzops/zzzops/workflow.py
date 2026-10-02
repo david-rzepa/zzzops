@@ -2650,7 +2650,7 @@ class Workflow:
         def load(ref):
             ev.validate_ref(ref)
             if ref['hash'] not in artifacts:
-                artifacts[ref['hash']] = self._read_artifact(snapshot['number'], {'reference': ref['uri'], 'hash': ref['hash']})
+                artifacts[ref['hash']] = snapshot['resolve'](ref)
             return artifacts[ref['hash']]
         def conversion(value):
             source = load(value['source'])
