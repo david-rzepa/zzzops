@@ -495,7 +495,7 @@
               },
               {
                 "id": "review_understanding",
-                "prompt": "Independently review the exact design, acceptance criteria and finite allocation. Submit authorization only when all required findings are resolved; bind the exact manifest Ref, task identities and current policy hash. Emit an explicit approved or changes_requested decision and the review report. A rejected review is evidence, never downstream approval.",
+                "prompt": "Independently review the exact design, acceptance criteria and finite allocation. Submit authorization only when all required findings are resolved; bind the exact manifest Ref, task identities and current policy hash. Emit an explicit approved or changes_requested decision and the review report. A rejected review is evidence, never downstream approval. Supply both output slots: changes_requested requires authorization null; approved requires exact workspace authorization. Null never grants authority.",
                 "inputs": {
                   "design": {
                     "producer": {
@@ -597,57 +597,65 @@
                   "authorization": {
                     "type": "workspace_authorization",
                     "schema": {
-                      "kind": "object",
-                      "fields": {
-                        "manifest": {
+                      "kind": "union",
+                      "variants": [
+                        {
                           "kind": "object",
                           "fields": {
-                            "hash": {
-                              "kind": "string"
+                            "manifest": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
                             },
-                            "uri": {
-                              "kind": "string"
-                            }
-                          }
-                        },
-                        "tasks": {
-                          "kind": "array",
-                          "items": {
-                            "kind": "object",
-                            "fields": {
-                              "goal": {
-                                "kind": "integer"
-                              },
-                              "node": {
-                                "kind": "string"
-                              },
-                              "item": {
-                                "kind": "union",
-                                "variants": [
-                                  {
+                            "tasks": {
+                              "kind": "array",
+                              "items": {
+                                "kind": "object",
+                                "fields": {
+                                  "goal": {
+                                    "kind": "integer"
+                                  },
+                                  "node": {
                                     "kind": "string"
                                   },
-                                  {
-                                    "kind": "null"
+                                  "item": {
+                                    "kind": "union",
+                                    "variants": [
+                                      {
+                                        "kind": "string"
+                                      },
+                                      {
+                                        "kind": "null"
+                                      }
+                                    ]
+                                  },
+                                  "generation": {
+                                    "kind": "integer"
                                   }
-                                ]
-                              },
-                              "generation": {
-                                "kind": "integer"
+                                }
                               }
+                            },
+                            "policy": {
+                              "kind": "string"
+                            },
+                            "decision": {
+                              "kind": "enum",
+                              "values": [
+                                "approved"
+                              ]
                             }
                           }
                         },
-                        "policy": {
-                          "kind": "string"
-                        },
-                        "decision": {
-                          "kind": "enum",
-                          "values": [
-                            "approved"
-                          ]
+                        {
+                          "kind": "null"
                         }
-                      }
+                      ]
                     }
                   }
                 },
@@ -992,6 +1000,11 @@
                     "kind": "node",
                     "goal": "#this",
                     "node": "approve_understanding"
+                  },
+                  {
+                    "kind": "join",
+                    "goal": "#this",
+                    "expansion": "understand_findings"
                   }
                 ],
                 "executor": {
@@ -1008,7 +1021,16 @@
                   }
                 },
                 "independent_of": [],
-                "gates": [],
+                "gates": [
+                  {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "understand"
+                    },
+                    "output": "design"
+                  }
+                ],
                 "resolves": [],
                 "permits": []
               },
@@ -5701,6 +5723,612 @@
                     }
                   }
                 ]
+              },
+              {
+                "id": "interpret_understand_rejection",
+                "prompt": "Interpret the exact rejected understanding review into one finding covering every required design/allocation correction. Bind both current artifact Refs, target understand/design, use a unique finding id, revision one and no supersession. This is planning evidence, not workspace or product approval.",
+                "inputs": {
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      }
+                    },
+                    "output": "design",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  },
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_understanding"
+                      }
+                    },
+                    "output": "review",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "rejected": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_understanding"
+                      }
+                    },
+                    "output": "review",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "changes_requested"
+                      ]
+                    }
+                  },
+                  "allocation": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      }
+                    },
+                    "output": "allocation",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "allocations": {
+                          "kind": "map",
+                          "values": {
+                            "kind": "object",
+                            "fields": {
+                              "task": {
+                                "kind": "object",
+                                "fields": {
+                                  "goal": {
+                                    "kind": "integer"
+                                  },
+                                  "node": {
+                                    "kind": "string"
+                                  },
+                                  "item": {
+                                    "kind": "union",
+                                    "variants": [
+                                      {
+                                        "kind": "string"
+                                      },
+                                      {
+                                        "kind": "null"
+                                      }
+                                    ]
+                                  },
+                                  "generation": {
+                                    "kind": "integer"
+                                  }
+                                }
+                              },
+                              "owned": {
+                                "kind": "array",
+                                "items": {
+                                  "kind": "string"
+                                }
+                              },
+                              "consumed": {
+                                "kind": "array",
+                                "items": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "finding",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "id": {
+                          "kind": "string"
+                        },
+                        "revision": {
+                          "kind": "integer"
+                        },
+                        "source": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "subjects": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "target": {
+                          "kind": "object",
+                          "fields": {
+                            "subject": {
+                              "kind": "object",
+                              "fields": {
+                                "kind": {
+                                  "kind": "string"
+                                },
+                                "goal": {
+                                  "kind": "integer"
+                                },
+                                "node": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "output": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "request": {
+                          "kind": "string"
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        },
+                        "supersedes": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "understand"
+                  },
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_understanding"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "reasoning",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "interpret_understand_rejection"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "finding",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      },
+                      "output": "design"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "admit_understand_correction",
+                "prompt": "Admit revision of this rejected design and allocation using the exact original producer Result inputs and current root interpretation Result as authority. This permits planning revision only. Preserve history; require fresh independent review and explicit human approval of the revised artifacts before implementation.",
+                "inputs": {
+                  "finding": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "interpret_understand_rejection"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "id": {
+                          "kind": "string"
+                        },
+                        "revision": {
+                          "kind": "integer"
+                        },
+                        "source": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "subjects": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "target": {
+                          "kind": "object",
+                          "fields": {
+                            "subject": {
+                              "kind": "object",
+                              "fields": {
+                                "kind": {
+                                  "kind": "string"
+                                },
+                                "goal": {
+                                  "kind": "integer"
+                                },
+                                "node": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "output": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "request": {
+                          "kind": "string"
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        },
+                        "supersedes": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      }
+                    },
+                    "output": "design",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "admission",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "finding": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "target_inputs": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "name": {
+                                "kind": "string"
+                              },
+                              "source": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              },
+                              "path": {
+                                "kind": "array",
+                                "items": {
+                                  "kind": "string"
+                                }
+                              },
+                              "mode": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "authority": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "applicability": {
+                          "kind": "enum",
+                          "values": [
+                            "applicable",
+                            "not_applicable",
+                            "unresolved"
+                          ]
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "interpret_understand_rejection"
+                  },
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "understand"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "admit_understand_correction"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "admission",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      },
+                      "output": "design"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "retain_understand_findings",
+                "prompt": "Read retained admission history for this producer and emit a selection mapping every admitted finding id to its exact finding Ref, including earlier correction attempts. Never omit an unresolved historical finding. Empty membership is valid only when no findings were admitted. A fresh approved review does not itself resolve a finding.",
+                "inputs": {
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_understanding"
+                      }
+                    },
+                    "output": "review",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "approved": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_understanding"
+                      }
+                    },
+                    "output": "review",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "approved"
+                      ]
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "finding_registry",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "items": {
+                          "kind": "map",
+                          "values": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_understanding"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_understand_findings"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "finding_registry",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      },
+                      "output": "design"
+                    }
+                  }
+                ]
               }
             ],
             "task_sets": [
@@ -6949,6 +7577,310 @@
                           "node": "observe_publication"
                         },
                         "output": "value"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "understand_findings",
+                "source": {
+                  "producer": {
+                    "node": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_understand_findings"
+                    }
+                  },
+                  "output": "value",
+                  "path": [],
+                  "mode": "content",
+                  "type": {
+                    "kind": "object",
+                    "fields": {
+                      "items": {
+                        "kind": "map",
+                        "values": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        }
+                      },
+                      "rationale": {
+                        "kind": "string"
+                      }
+                    }
+                  }
+                },
+                "template": {
+                  "id": "resolve_understand_finding",
+                  "prompt": "Resolve only this retained finding against the current corrected subject and its exact current independent approved review. Bind the actual reviewer Result Ref and inspected subject Ref. If this finding is not covered, do not declare it resolved.",
+                  "inputs": {
+                    "finding": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "retain_understand_findings"
+                        }
+                      },
+                      "output": "value",
+                      "path": [
+                        "items",
+                        {
+                          "item_key": true
+                        }
+                      ],
+                      "mode": "content",
+                      "type": {
+                        "kind": "object",
+                        "fields": {
+                          "hash": {
+                            "kind": "string"
+                          },
+                          "uri": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    },
+                    "subject": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "understand"
+                        }
+                      },
+                      "output": "design",
+                      "path": [],
+                      "mode": "identity",
+                      "type": {
+                        "kind": "string"
+                      }
+                    },
+                    "review": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "review_understanding"
+                        }
+                      },
+                      "output": "review",
+                      "path": [],
+                      "mode": "identity",
+                      "type": {
+                        "kind": "object",
+                        "fields": {
+                          "decision": {
+                            "kind": "enum",
+                            "values": [
+                              "approved",
+                              "changes_requested"
+                            ]
+                          },
+                          "report": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    },
+                    "approved": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "review_understanding"
+                        }
+                      },
+                      "output": "review",
+                      "path": [
+                        "decision"
+                      ],
+                      "mode": "content",
+                      "type": {
+                        "kind": "enum",
+                        "values": [
+                          "approved"
+                        ]
+                      }
+                    },
+                    "allocation": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "understand"
+                        }
+                      },
+                      "output": "allocation",
+                      "path": [],
+                      "mode": "identity",
+                      "type": {
+                        "kind": "object",
+                        "fields": {
+                          "allocations": {
+                            "kind": "map",
+                            "values": {
+                              "kind": "object",
+                              "fields": {
+                                "task": {
+                                  "kind": "object",
+                                  "fields": {
+                                    "goal": {
+                                      "kind": "integer"
+                                    },
+                                    "node": {
+                                      "kind": "string"
+                                    },
+                                    "item": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "kind": "null"
+                                        }
+                                      ]
+                                    },
+                                    "generation": {
+                                      "kind": "integer"
+                                    }
+                                  }
+                                },
+                                "owned": {
+                                  "kind": "array",
+                                  "items": {
+                                    "kind": "string"
+                                  }
+                                },
+                                "consumed": {
+                                  "kind": "array",
+                                  "items": {
+                                    "kind": "string"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "outputs": {
+                    "value": {
+                      "type": "resolution",
+                      "schema": {
+                        "kind": "object",
+                        "fields": {
+                          "finding": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          },
+                          "subjects": {
+                            "kind": "array",
+                            "items": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          },
+                          "reviewer_result": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          },
+                          "decision": {
+                            "kind": "enum",
+                            "values": [
+                              "resolved"
+                            ]
+                          },
+                          "rationale": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "requires": [
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_understand_findings"
+                    },
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "review_understanding"
+                    }
+                  ],
+                  "executor": {
+                    "role": "worker",
+                    "capability": "reasoning",
+                    "resources": [],
+                    "authority": {
+                      "subject": {
+                        "kind": "self"
+                      },
+                      "output": "value"
+                    }
+                  },
+                  "independent_of": [
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "understand"
+                    }
+                  ],
+                  "gates": [],
+                  "resolves": [
+                    {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "understand"
+                      },
+                      "output": "design"
+                    }
+                  ],
+                  "permits": [
+                    {
+                      "type": "resolution",
+                      "scope": {
+                        "subject": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "understand"
+                        },
+                        "output": "design"
                       }
                     }
                   ]
