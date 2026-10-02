@@ -192,19 +192,45 @@ is not evidence that required children or publication work completed.
 ## Trusted predecessor conversion
 
 Version 1 remains a supported historical source, not an active execution engine.
-A reviewed migration-entry Graph explicitly analyzes the preserved source,
-conversion mapping, independent review and root activation authority. Unsupported
-versions fail closed. Existing predecessor ownership must be observed stopped
-and recovered explicitly; conversion cannot adopt its old lease as a generic
-worker.
+Authorized execution automatically performs deterministic lossless conversion of
+supported open v1 goals before dispatching normal v2 work. The same converter is
+available through `migration_batch` with `discover`, `migrate`, and `status`.
+Running migration requires no per-conversion reviewer or human approval; review
+and approval apply to developing and integrating the converter itself.
 
-Conversion preserves exact source body and transaction comments, historical
-result/review/human-approval snapshots and usable immutable Refs. Only reviewed
-compatible mappings become current generic evidence; missing obligations remain
-ready or blocked. Activation backs up exact source, validates target identity,
-parent and Graph, checks current predecessor, and confirms partial writes through
-readback. No cross-version global revision numbering is implied. Ambiguous
-unqualified historical revision reads diagnose instead of choosing arbitrarily.
+Discovery uses the minimal open index and bounded canonical body reads. Labels
+are hints: canonical v2 records with stale v1 labels are already current. Preview,
+status, discovery and historical reads do not mutate goals. Closed members are
+never reopened, and broad selection never hydrates closed goals. Each selected
+member has its own transaction; partial failure preserves unrelated successes.
+A stale task request that encounters v1 receives the migrated normal checkpoint
+without being executed against the new graph.
+
+The source issue, complete human prefix/suffix, all historical comments and
+transactions, priority, parent and immutable Refs are preserved. Dependency
+review/merge ordering and unresolved blockers become explicit current graph
+gates where the converter has a supported mapping. Unsupported semantics block
+the affected member. Old approvals and Results remain historical data; migration
+creates no current product evidence, workspace grant or publication authority.
+Existing ownership, whether live or expired, requires observed-stopped recovery.
+
+Before replacing the managed block, the existing immutable transaction writer
+stores checksummed source, target intent, current policy and conversion receipt.
+The receipt's `target_intent` has empty operational receipts; the transaction
+context's `target_envelope` binds the exact published envelope after adding the
+operational receipt. Successful responses expose that envelope as
+`published_target`. This avoids a circular receipt/target hash. It
+checks concurrent source changes, closure and current policy, and reconciles
+uncertain append/body responses through exact readback. Retry can resume from
+another process using remote state. A pending transaction with changed policy or
+missing artifacts cannot publish its stale target. Concurrent labels/state are
+not resent by a managed-body write. No cross-version global revision numbering
+is implied; ambiguous historical revision reads diagnose rather than guess.
+
+Existing reviewed custom migration entries, including in-progress conversions,
+remain under their declared generic analysis/review/root-activation contracts.
+The automatic converter never issues those Results or replaces their semantics.
+Only their reviewed compatible mappings may become current generic evidence.
 
 Migration preparation consumes its exact declared path and schema-2 spec Ref
 hash with live provider/release assessment. Unknown stays unknown. An ordinary
