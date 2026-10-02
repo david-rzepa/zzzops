@@ -1980,7 +1980,7 @@ class Workflow:
                     blob = content(candidate['source'])
                     if blob.get('type') != 'workspace_authorization': continue
                     value = blob['content']; owner = current_outputs.get(candidate['source']['hash'])
-                    if not owner or owner[0][0] != goal or value.get('manifest') != reference: continue
+                    if not isinstance(value, dict) or not owner or owner[0][0] != goal or value.get('manifest') != reference: continue
                     if candidate['mode'] != 'identity' or value.get('policy') != digest(self.project['policy']) or expected_entry['task'] not in value.get('tasks', []) or value.get('decision') != 'approved': raise ValueError('Workspace authorization policy/task/manifest mismatch')
                     matches.append((candidate['source'], owner[1], states[owner[0]]))
                 roots = [row for row in matches if row[2]['contract']['executor']['role'] == 'root' and row[1]['executor'] == (self.runtime or {}).get('root_id')]
@@ -2920,6 +2920,13 @@ class Workflow:
                     if owned.intersection(entry['owned']): raise ValueError('Workspace allocation owned paths overlap')
                     owned.update(entry['owned'])
             elif kind == 'workspace_authorization':
+                decisions = [review.get('decision') for output_type, review in proposed
+                             if output_type == 'review_decision' and isinstance(review, dict)]
+                if value is None:
+                    if not decisions or any(decision != 'changes_requested' for decision in decisions):
+                        raise ValueError('Null workspace authorization requires an explicit rejected review')
+                elif 'changes_requested' in decisions:
+                    raise ValueError('A rejected review cannot grant workspace authorization')
                 # A typed review may record a stale or mismatched proposition.
                 # Only the resource adapter can use a current, independently
                 # reviewed and root-approved exact manifest as edit authority.

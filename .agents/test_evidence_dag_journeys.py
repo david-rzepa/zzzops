@@ -2744,6 +2744,8 @@ class DefaultCorrectionPublicTests(DagFixture):
         self.session.finish(self.session.acquire("review_understanding"), {
             "review": {"decision": "approved", "report": "Exact scope reviewed"}, "authorization": permit})
         self.session.finish(self.session.acquire("approve_understanding"), {"authorization": permit})
+        self.session.finish(self.session.acquire("retain_understand_findings"), {
+            "value": {"items": {}, "rationale": "No understanding findings were admitted"}})
         self.session.finish(self.session.acquire("decompose"), {"value": "First atomic disposition"})
 
     def test_default_rejections_reacquire_producer_and_retain_every_finding(self):
