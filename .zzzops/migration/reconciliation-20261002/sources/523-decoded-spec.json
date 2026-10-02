@@ -1,0 +1,161 @@
+{
+  "content": {
+    "active_lock_reason": null,
+    "assignee": null,
+    "assignees": [],
+    "author_association": "OWNER",
+    "body": "## Outcome\nMake ZzzOps select and explain the highest-leverage legal work when several goals share a coarse priority. A user-directed reprioritization must be recorded without fabricating P0 urgency or relying on issue-number order.\n\n## Acceptance criteria\n\n- The public portfolio and execution dispatch expose a deterministic, effective-DAG-first selection order among open goals, with a concise reason for each selected or deferred candidate.\n- Ordering never bypasses an unresolved ancestor, dependency, ownership gate, human blocker, or active claim; it distinguishes eligible work from merely high-value work.\n- A user may explicitly order otherwise equal-priority goals through a durable, reviewable portfolio decision with rationale, and may remove or supersede that decision without rewriting historical goal evidence.\n- The system preserves the semantic meaning of P0--P3; a normal leverage reprioritization does not require falsely promoting work to P0.\n- Invalid or legacy goals are reported as repair work without masking the independently valid ordered frontier.\n- Regression coverage covers the current situation: a P1 friction-reduction frontier (#522, #521, #515, #519, and heartbeat/workflow recovery goals) is selected ahead of deferred P1 implementation stacks, while active and dependency-gated goals remain safe.\n\n## Non-goals\n\n- Do not redefine project value, alter dependencies to encode a temporary queue order, or automatically downgrade goals without an explicit reviewed decision.\n- Do not replace #521's DAG-freshness diagnostics or #522's schema/projection repair.\n\n\n<!-- zzzops-goal\n{\"blockers\":[],\"claim\":null,\"confidence\":\"high\",\"depends_on\":[521,522],\"difficulty\":\"M\",\"engineering_rigor\":{\"risk_categories\":[\"authorization\",\"external_state\"]},\"evidence\":[],\"next_action\":\"User explicitly targets523 next and retains P1 (P0 would misstate urgency). Once verified durable equal-priority ordering works, encode regular execute benefit/cost order540 ->563 ->562 ->503 ->527 ->507 ->554 ->515 ->543 ->504 ->557 ->566 ->564 ->550, subject to priority tiers, blockers, dependencies, ancestors, ownership and active claims. Verified550 is P3 and562 is P1. Existing installed ordering passed focused DAG/preference and blocked-frontier tests. Restore/resume approved evidence where current; prerequisites521 and522 remain OPEN/new and must not be bypassed. Separate worktree zzzops-goal-523 from approved routing checkpoint41f9d86;567 remains awaiting plan approval; no567 source change. User queue decision is independent of implementation/integration approval. Exact requested preference is now approved in policy and committed/pushed at aab8e0cb1d8eac8820a4b53a59a0785b01524881 on fix/523-explain-portfolio-order. Full public regular execute probe goal523-ordered-regular-checkpoint.response.json still emits understand blockers553/554/556 before ordered dispatch: pending_understanding is processed before effective_goal_order. This falsifies the prior assumption that only selected/deferred explanations remain. Revalidate the previously approved bounded understanding against this observed in-scope dispatch gap; do not claim regular execute now follows the preference. Respect unresolved521/522 prerequisite gates for source work.\",\"parent\":null,\"phase_evidence\":{\"human_approvals\":{\"understand\":{\"actor\":\"root\",\"approval_token\":\"User explicitly approved all ten exact understanding plans in the linked review packet in this Codex thread; recorded at /home/dave/Work/dev/zzzops/.git/zzzops/user-review-decisions.json; goal 523; artifact sha256:ed9bb7840c11e70732806bfff8509b1c4d00196aac43dc4fbc84bac6201ccc9a.\",\"record_hash\":\"sha256:f9ca6bae8f37631889eace5823fd9e0e3714a9deb56ec45a5a4f2898cae68ec0\",\"review_hash\":\"sha256:a0ca2c724afce800ce83b7a2dfc35e64415aa2a0b80189e3597d6c03c31a40dd\"}},\"records\":{\"understand\":{\"actor\":\"01a0e8b5-91b3-7150-b429-0df30a884792\",\"input_envelope\":{\"acceptance_criteria\":[\"The public portfolio and execution dispatch expose a deterministic, effective-DAG-first selection order among open goals, with a concise reason for each selected or deferred candidate.\",\"Ordering never bypasses an unresolved ancestor, dependency, ownership gate, human blocker, or active claim; it distinguishes eligible work from merely high-value work.\",\"A user may explicitly order otherwise equal-priority goals through a durable, reviewable portfolio decision with rationale, and may remove or supersede that decision without rewriting historical goal evidence.\",\"The system preserves the semantic meaning of P0--P3; a normal leverage reprioritization does not require falsely promoting work to P0.\",\"Invalid or legacy goals are reported as repair work without masking the independently valid ordered frontier.\",\"Regression coverage covers the current situation: a P1 friction-reduction frontier (#522, #521, #515, #519, and heartbeat/workflow recovery goals) is selected ahead of deferred P1 implementation stacks, while active and dependency-gated goals remain safe.\"],\"capabilities\":{\"identity\":\"workflow-runtime\",\"snapshot\":{\"assessment\":{\"dimensions\":{\"boundedness\":\"bounded\",\"consequence\":\"consequential\",\"engineering_rigor\":\"agentic\"},\"files\":[\"AGENTS.md\",\".zzzops/PROJECT.md\",\".zzzops/POLICY.json\",\"plugins/zzzops/zzzops/zzzops.py\",\"plugins/zzzops/zzzops/workflow.py\",\"plugins/zzzops/zzzops/portfolio.py\",\".agents/test_zzzops.py\",\".zzzops/migration/523.json\",\".agents/test_workflow_dispatch.py\"],\"goal_spec\":\"sha256:f24e69f19b400ee4dc74408e52feca6b010d7c7c54eb930415d302cca6c903af\",\"policy\":\"sha256:d6e4480f98e58765d0e0fabfc45ec3d1148ab4050f9c4986d26dfdedeea8f57f\"}}},\"dependencies\":[{\"artifact\":{\"hash\":\"sha256:e42bcacb9cc1b30494ee9028adb2c2734fa49bbeae868a0f889a225f4be0af75\",\"reference\":\"urn:sha256:e42bcacb9cc1b30494ee9028adb2c2734fa49bbeae868a0f889a225f4be0af75\"},\"goal\":521},{\"artifact\":{\"hash\":\"sha256:eb35a5464bf7efc74a3a0a25c79ec59b4876c03df2e7103e9608a6a89d5f37c7\",\"reference\":\"urn:sha256:eb35a5464bf7efc74a3a0a25c79ec59b4876c03df2e7103e9608a6a89d5f37c7\"},\"goal\":522}],\"goal_spec\":\"sha256:f24e69f19b400ee4dc74408e52feca6b010d7c7c54eb930415d302cca6c903af\",\"invocation\":{\"inputs\":{\"goal\":523},\"intent\":\"execute\"},\"parents\":[],\"phase\":\"understand\",\"phase_dag\":\"sha256:844eecf373de65b9788cd19a48eb955f5fbe638b01354950216bd171c5799fa8\",\"policy\":\"sha256:d6e4480f98e58765d0e0fabfc45ec3d1148ab4050f9c4986d26dfdedeea8f57f\",\"provider\":{\"identity\":\"github\",\"snapshot\":{\"migration\":{\"decision\":{\"action\":\"replace_reset\",\"authority\":\"Eligibility only; existing operation authority applies. Excludes unrelated user, external and deployment state.\",\"contracts\":[{\"action\":\"replace_reset\",\"id\":\"effective-portfolio-order-v1\",\"scope\":\"affected_project_owned\"}],\"reason\":\"evidenced_unreleased_contract\",\"scope\":\"affected_project_owned\"},\"release_snapshot\":{\"releases\":[{\"commit\":\"0f983a142591824c716f987d21a433d126ca4120\",\"id\":357023143,\"published_at\":\"2026-07-20T22:29:27Z\",\"tag\":\"v1.0.0\"},{\"commit\":\"83b1222e78eb48cf7f5d55b0b36809e031e3d63b\",\"id\":363878618,\"published_at\":\"2026-08-02T19:41:14Z\",\"tag\":\"v1.1.0\"},{\"commit\":\"a27b41875001bf496178ecd4cfb1b3500afc6afc\",\"id\":363924069,\"published_at\":\"2026-08-02T23:50:22Z\",\"tag\":\"v1.2.0\"},{\"commit\":\"36aaaf3565324cb76be81e1592735ef7ab80738a\",\"id\":368231888,\"published_at\":\"2026-08-10T22:26:17Z\",\"tag\":\"v2.0.0\"},{\"commit\":\"ad2adb0feaf30a867af68c664377a844d16b06c7\",\"id\":368240950,\"published_at\":\"2026-08-10T22:43:34Z\",\"tag\":\"v2.0.1\"},{\"commit\":\"a36cf3a31876385885738cf86d90d8d9f77bbd02\",\"id\":378847338,\"published_at\":\"2026-08-29T02:14:04Z\",\"tag\":\"v2.1.0\"}],\"status\":\"complete\"}},\"repository\":\"david-rzepa/zzzops\"}},\"repository\":{\"identity\":\"david-rzepa/zzzops\",\"snapshot\":{\"files\":{\".agents/test_workflow_dispatch.py\":\"sha256:82ff3045acf1c25c26464c82ee375edc36868772ffa317e759776bea2f628715\",\".agents/test_zzzops.py\":\"sha256:5c3464f01316a78d26b26b067cb4287c306a9e0800693071e5cae7f1e8027feb\",\".zzzops/POLICY.json\":\"sha256:14b360ccc20c9836113b02e407268a2b9e3bcf9dc8649b1cde00dd611418216c\",\".zzzops/PROJECT.md\":\"sha256:64c7d9737b9e4bc9490ff91a4050e94b933e86fc5e1a8fdc4dc4be4200e78160\",\".zzzops/migration/523.json\":\"sha256:056bb267a3638abbd3830735410424f4c1a91086eaf4b34558828d162055edaa\",\"AGENTS.md\":\"sha256:022a2f68dea6662e06af49b529fe33dbedb52fcadcbee1f107bab765491a187d\",\"plugins/zzzops/zzzops/portfolio.py\":\"sha256:e682aa7200f0d9b24abf4cc52084934fd2c60415fa62866edca386c08ebf821f\",\"plugins/zzzops/zzzops/workflow.py\":\"sha256:6ad9c2923371f238855de0413b8711f72da77841aabf14fcd8c01d72779704aa\",\"plugins/zzzops/zzzops/zzzops.py\":\"sha256:79239b3bb1573125b2621f434c131688a62af45038450ad57d79382d1cff8f58\"}}},\"schema_version\":2,\"upstream_outputs\":[]},\"input_hash\":\"sha256:ee27d82b9804af356202fb376576ac37a3512736abe203557a7b7a16039829ec\",\"not_required\":null,\"output\":{\"hash\":\"sha256:ed9bb7840c11e70732806bfff8509b1c4d00196aac43dc4fbc84bac6201ccc9a\",\"reference\":\"urn:sha256:ed9bb7840c11e70732806bfff8509b1c4d00196aac43dc4fbc84bac6201ccc9a\"},\"routing\":{\"hash\":\"sha256:ae8c2b4ace388abfb911d74d98091984e23caaae6bea86b445570bbbcef20d04\",\"reference\":\"urn:sha256:ae8c2b4ace388abfb911d74d98091984e23caaae6bea86b445570bbbcef20d04\"},\"selection\":{\"effort\":\"medium\",\"model\":\"gpt-6-sol\"},\"status\":\"completed\",\"test_design\":null,\"verification\":null}},\"reviews\":{\"understand\":{\"artifact\":{\"hash\":\"sha256:79d3e4603d3cc1f046d7e50c140908648d9ecbce9dffc769ec232f4842809560\",\"reference\":\"urn:sha256:79d3e4603d3cc1f046d7e50c140908648d9ecbce9dffc769ec232f4842809560\"},\"decision\":\"approved\",\"input_hash\":\"sha256:ee27d82b9804af356202fb376576ac37a3512736abe203557a7b7a16039829ec\",\"outcomes\":{\"acceptance\":\"approved\",\"entropy\":{\"evidence\":\"Existing ordering already preserves DAG constraints, P0-P3 semantics, and durable equal-priority preferences. The observed gap is limited to public selected/deferred explanations. The proposed additive diagnostics, tests, and three-file scope cover all six criteria without changing scheduling or authority.\",\"goals\":[],\"outcome\":\"no_findings\"}},\"output_hash\":\"sha256:ed9bb7840c11e70732806bfff8509b1c4d00196aac43dc4fbc84bac6201ccc9a\",\"record_hash\":\"sha256:f9ca6bae8f37631889eace5823fd9e0e3714a9deb56ec45a5a4f2898cae68ec0\",\"reviewer\":\"/root/review518\"}},\"schema_version\":2,\"withdrawals\":[]},\"priority\":\"P1\",\"resources\":[\"path:plugins/zzzops/zzzops/portfolio.py\",\"path:plugins/zzzops/zzzops/workflow.py\",\"path:plugins/zzzops/zzzops/zzzops.py\",\"path:.agents\"],\"revision\":22,\"schema_version\":1,\"status\":\"new\",\"value\":\"high\",\"workflow\":{\"artifacts\":{},\"assessments\":{\"understand\":{\"dimensions\":{\"boundedness\":\"bounded\",\"consequence\":\"consequential\",\"engineering_rigor\":\"agentic\"},\"files\":[\"AGENTS.md\",\".zzzops/PROJECT.md\",\".zzzops/POLICY.json\",\"plugins/zzzops/zzzops/zzzops.py\",\"plugins/zzzops/zzzops/workflow.py\",\"plugins/zzzops/zzzops/portfolio.py\",\".agents/test_zzzops.py\",\".zzzops/migration/523.json\",\".agents/test_workflow_dispatch.py\"],\"goal_spec\":\"sha256:f24e69f19b400ee4dc74408e52feca6b010d7c7c54eb930415d302cca6c903af\",\"policy\":\"sha256:0c5177d1c5b292d42178d1bdc671d8a28c5f62f97e42e95bae2f291174387129\"}},\"leases\":{},\"receipts\":{\"1d307aab-3328-4fcd-b9f3-7ef6bca731fe\":{\"hash\":\"sha256:7e16ccc4d02f6341b0d5cb8b525ef31ba858dafa1c561669c79f68351a65176d\"},\"22eb50a6-85f5-408f-91c0-741397a6c362\":{\"hash\":\"sha256:253f390ae2fb8b4fed589404dd6ac3f66c262de6705f31d17d0572eafdf4897f\"},\"2b5c5846-39c1-424a-91da-c56a0f719983\":{\"hash\":\"sha256:49e867fc3240da9fb60d58cddcbb3df3f18f4f7b3c2d715cd29250d343500443\"},\"2e059993-17d8-4a9d-ada0-fa0d52bea50b\":{\"hash\":\"sha256:129f0dfd11b4f40e0e2394bdba8004dd9780f139602f270c54e01fc0a94edfb9\"},\"347f70e1-e2bd-4c34-b7c0-2e160470e2c6\":{\"hash\":\"sha256:cf43578cc341859a7c514ae59b829702e022c6c502932f7da2fc34df7ba4e373\"},\"37dc5ec4-c987-4d9e-babe-c278a36bee5b\":{\"hash\":\"sha256:3a37fe0d35971d716ad43756b7b29ce5ca654cf2a656fc1b684da5f80f26025b\"},\"5754f681-094e-482b-b89a-f92dcd6fdbf9\":{\"hash\":\"sha256:2d75538ac3dd75b2cba3b65ee4477777c2099c926ca1040481f3fb830face456\"},\"6d6a431a-2e98-4f5c-9c10-9b97ec1cb17d\":{\"hash\":\"sha256:6dc7be8183b6e560b22c9b10359d570c4bcd1ba2d6d08073e6f9a2e60b37cbd1\"},\"a3f83bf5-8ac6-4fb7-9985-ff4307db62c4\":{\"hash\":\"sha256:57dbd4db3571471e367a657c9b446eba216eadb7aa4a830617165aa6c527a1b7\"},\"a67dd88b-a66f-41d8-8502-d2669da3f947\":{\"hash\":\"sha256:858a96d988a75022f2dcbae2523f7c63c22884e87c2768fcf038ee04d004e2d2\"},\"d8fbdd21-cc13-412d-86c7-82ab24357d98\":{\"hash\":\"sha256:230ea579be54b11d4f507fadce9322320d435ce8e3e7a19efeb611379655956c\"},\"goal523-record-full-checkpoint-order-gap-20260930-1\":{\"hash\":\"sha256:733966683ec918ca308310745a3a2a0d87eb60e466684f38df1f296588219765\"},\"goal523-suspend-for-user-sequence-correction-1\":{\"hash\":\"sha256:84f1842b81aa992a18680591a03f8c3d76ff76dad675bbb1f78c4f5bf2a8ae81\"},\"goal523-understand-assess-current-order-1\":{\"hash\":\"sha256:4b6a1b9150b2f9eabc9c628377668f0cdeae09b4d529447064d651ffceb7c421\"},\"goal523-understand-current-start-1\":{\"hash\":\"sha256:e233958ecc7ea3b273f1bf6bc3d90a110378dfcbd12b4baefd1401c68e8298f4\"},\"goal523-user-directed-next-and-order-20260930-1\":{\"hash\":\"sha256:de9e696475ac405fa43e5c72a305146b37ce07a6b06174c172d46423e9d6b5be\"}},\"routing_choices\":{},\"workers\":{\"/root/review518\":{\"group\":\"review\",\"id\":\"/root/review518\",\"selection\":{\"effort\":\"low\",\"model\":\"gpt-5.6-sol\"}}}}}\nzzzops-goal -->\n",
+    "closed_at": null,
+    "closed_by": null,
+    "comments": 21,
+    "comments_url": "https://api.github.com/repos/david-rzepa/zzzops/issues/523/comments",
+    "created_at": "2026-09-23T05:07:35Z",
+    "events_url": "https://api.github.com/repos/david-rzepa/zzzops/issues/523/events",
+    "html_url": "https://github.com/david-rzepa/zzzops/issues/523",
+    "id": 5549060111,
+    "issue_dependencies_summary": {
+      "blocked_by": 0,
+      "blocking": 0,
+      "total_blocked_by": 0,
+      "total_blocking": 0
+    },
+    "labels": [
+      {
+        "archived_at": null,
+        "archived_by": null,
+        "color": "5319E7",
+        "default": false,
+        "description": "Managed by ZzzOps",
+        "id": 11549538748,
+        "name": "zzzops",
+        "node_id": "LA_kwDOTasXu88AAAACsGf5vA",
+        "url": "https://api.github.com/repos/david-rzepa/zzzops/labels/zzzops"
+      },
+      {
+        "archived_at": null,
+        "archived_by": null,
+        "color": "B60205",
+        "default": false,
+        "description": "ZzzOps priority P1",
+        "id": 11549539186,
+        "name": "zzzops:priority:P1",
+        "node_id": "LA_kwDOTasXu88AAAACsGf7cg",
+        "url": "https://api.github.com/repos/david-rzepa/zzzops/labels/zzzops:priority:P1"
+      },
+      {
+        "archived_at": null,
+        "archived_by": null,
+        "color": "D4C5F9",
+        "default": false,
+        "description": "Untriaged ZzzOps goal",
+        "id": 11554314270,
+        "name": "zzzops:status:new",
+        "node_id": "LA_kwDOTasXu88AAAACsLDYHg",
+        "url": "https://api.github.com/repos/david-rzepa/zzzops/labels/zzzops:status:new"
+      },
+      {
+        "archived_at": null,
+        "archived_by": null,
+        "color": "ededed",
+        "default": false,
+        "description": null,
+        "id": 11699709150,
+        "name": "zzzops:schema:v1",
+        "node_id": "LA_kwDOTasXu88AAAACuVtk3g",
+        "url": "https://api.github.com/repos/david-rzepa/zzzops/labels/zzzops:schema:v1"
+      },
+      {
+        "archived_at": null,
+        "archived_by": null,
+        "color": "ededed",
+        "default": false,
+        "description": null,
+        "id": 12299318560,
+        "name": "workflow-runtime",
+        "node_id": "LA_kwDOTasXu88AAAAC3Ri1IA",
+        "url": "https://api.github.com/repos/david-rzepa/zzzops/labels/workflow-runtime"
+      },
+      {
+        "archived_at": null,
+        "archived_by": null,
+        "color": "ededed",
+        "default": false,
+        "description": null,
+        "id": 12320366030,
+        "name": "portfolio",
+        "node_id": "LA_kwDOTasXu88AAAAC3lndzg",
+        "url": "https://api.github.com/repos/david-rzepa/zzzops/labels/portfolio"
+      },
+      {
+        "archived_at": null,
+        "archived_by": null,
+        "color": "ededed",
+        "default": false,
+        "description": null,
+        "id": 12320404072,
+        "name": "planning",
+        "node_id": "LA_kwDOTasXu88AAAAC3lpyaA",
+        "url": "https://api.github.com/repos/david-rzepa/zzzops/labels/planning"
+      }
+    ],
+    "labels_url": "https://api.github.com/repos/david-rzepa/zzzops/issues/523/labels{/name}",
+    "locked": false,
+    "milestone": null,
+    "node_id": "I_kwDOTasXu88AAAABSr_wDw",
+    "number": 523,
+    "performed_via_github_app": null,
+    "pinned_comment": null,
+    "reactions": {
+      "+1": 0,
+      "-1": 0,
+      "confused": 0,
+      "eyes": 0,
+      "heart": 0,
+      "hooray": 0,
+      "laugh": 0,
+      "rocket": 0,
+      "total_count": 0,
+      "url": "https://api.github.com/repos/david-rzepa/zzzops/issues/523/reactions"
+    },
+    "repository_url": "https://api.github.com/repos/david-rzepa/zzzops",
+    "state": "open",
+    "state_reason": null,
+    "sub_issues_summary": {
+      "completed": 0,
+      "percent_completed": 0,
+      "total": 0
+    },
+    "timeline_url": "https://api.github.com/repos/david-rzepa/zzzops/issues/523/timeline",
+    "title": "Make effective-frontier priority ordering explicit and durable",
+    "updated_at": "2026-09-30T15:35:57Z",
+    "url": "https://api.github.com/repos/david-rzepa/zzzops/issues/523",
+    "user": {
+      "avatar_url": "https://avatars.githubusercontent.com/u/6443776?v=4",
+      "events_url": "https://api.github.com/users/david-rzepa/events{/privacy}",
+      "followers_url": "https://api.github.com/users/david-rzepa/followers",
+      "following_url": "https://api.github.com/users/david-rzepa/following{/other_user}",
+      "gists_url": "https://api.github.com/users/david-rzepa/gists{/gist_id}",
+      "gravatar_id": "",
+      "html_url": "https://github.com/david-rzepa",
+      "id": 6443776,
+      "login": "david-rzepa",
+      "node_id": "MDQ6VXNlcjY0NDM3NzY=",
+      "organizations_url": "https://api.github.com/users/david-rzepa/orgs",
+      "received_events_url": "https://api.github.com/users/david-rzepa/received_events",
+      "repos_url": "https://api.github.com/users/david-rzepa/repos",
+      "site_admin": false,
+      "starred_url": "https://api.github.com/users/david-rzepa/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/david-rzepa/subscriptions",
+      "type": "User",
+      "url": "https://api.github.com/users/david-rzepa",
+      "user_view_type": "public"
+    }
+  },
+  "producer": null,
+  "provenance": {
+    "actor": "01a0e8b5-91b3-7150-b429-0df30a884792",
+    "policy": "sha256:9747753a550c85b694fbe88bb15ea49de39495c6cfb16d3595546e95cc5377d1",
+    "source": null
+  },
+  "type": "migration_source"
+}

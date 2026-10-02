@@ -1,0 +1,4346 @@
+{
+  "nodes": [
+    {
+      "executor": {
+        "authority": {
+          "output": "source",
+          "subject": {
+            "goal": "#this",
+            "kind": "node",
+            "node": "analyze"
+          }
+        },
+        "capability": "bounded",
+        "resources": [],
+        "role": "root"
+      },
+      "gates": [],
+      "id": "analyze",
+      "independent_of": [],
+      "inputs": {
+        "source": {
+          "mode": "content",
+          "output": "content",
+          "path": [],
+          "producer": {
+            "slot": "spec"
+          },
+          "type": {
+            "kind": "map",
+            "values": {
+              "kind": "union",
+              "variants": [
+                {
+                  "kind": "null"
+                },
+                {
+                  "kind": "boolean"
+                },
+                {
+                  "kind": "integer"
+                },
+                {
+                  "kind": "string"
+                },
+                {
+                  "items": {
+                    "kind": "union",
+                    "variants": [
+                      {
+                        "kind": "null"
+                      },
+                      {
+                        "kind": "boolean"
+                      },
+                      {
+                        "kind": "integer"
+                      },
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "items": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "boolean"
+                            },
+                            {
+                              "kind": "integer"
+                            },
+                            {
+                              "kind": "string"
+                            },
+                            {
+                              "items": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              },
+                              "kind": "array"
+                            },
+                            {
+                              "kind": "map",
+                              "values": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "kind": "array"
+                      },
+                      {
+                        "kind": "map",
+                        "values": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "boolean"
+                            },
+                            {
+                              "kind": "integer"
+                            },
+                            {
+                              "kind": "string"
+                            },
+                            {
+                              "items": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              },
+                              "kind": "array"
+                            },
+                            {
+                              "kind": "map",
+                              "values": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  "kind": "array"
+                },
+                {
+                  "kind": "map",
+                  "values": {
+                    "kind": "union",
+                    "variants": [
+                      {
+                        "kind": "null"
+                      },
+                      {
+                        "kind": "boolean"
+                      },
+                      {
+                        "kind": "integer"
+                      },
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "items": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "boolean"
+                            },
+                            {
+                              "kind": "integer"
+                            },
+                            {
+                              "kind": "string"
+                            },
+                            {
+                              "items": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              },
+                              "kind": "array"
+                            },
+                            {
+                              "kind": "map",
+                              "values": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "kind": "array"
+                      },
+                      {
+                        "kind": "map",
+                        "values": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "boolean"
+                            },
+                            {
+                              "kind": "integer"
+                            },
+                            {
+                              "kind": "string"
+                            },
+                            {
+                              "items": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              },
+                              "kind": "array"
+                            },
+                            {
+                              "kind": "map",
+                              "values": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "outputs": {
+        "source": {
+          "schema": {
+            "kind": "map",
+            "values": {
+              "kind": "union",
+              "variants": [
+                {
+                  "kind": "null"
+                },
+                {
+                  "kind": "boolean"
+                },
+                {
+                  "kind": "integer"
+                },
+                {
+                  "kind": "string"
+                },
+                {
+                  "items": {
+                    "kind": "union",
+                    "variants": [
+                      {
+                        "kind": "null"
+                      },
+                      {
+                        "kind": "boolean"
+                      },
+                      {
+                        "kind": "integer"
+                      },
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "items": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "boolean"
+                            },
+                            {
+                              "kind": "integer"
+                            },
+                            {
+                              "kind": "string"
+                            },
+                            {
+                              "items": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              },
+                              "kind": "array"
+                            },
+                            {
+                              "kind": "map",
+                              "values": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "kind": "array"
+                      },
+                      {
+                        "kind": "map",
+                        "values": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "boolean"
+                            },
+                            {
+                              "kind": "integer"
+                            },
+                            {
+                              "kind": "string"
+                            },
+                            {
+                              "items": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              },
+                              "kind": "array"
+                            },
+                            {
+                              "kind": "map",
+                              "values": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  "kind": "array"
+                },
+                {
+                  "kind": "map",
+                  "values": {
+                    "kind": "union",
+                    "variants": [
+                      {
+                        "kind": "null"
+                      },
+                      {
+                        "kind": "boolean"
+                      },
+                      {
+                        "kind": "integer"
+                      },
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "items": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "boolean"
+                            },
+                            {
+                              "kind": "integer"
+                            },
+                            {
+                              "kind": "string"
+                            },
+                            {
+                              "items": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              },
+                              "kind": "array"
+                            },
+                            {
+                              "kind": "map",
+                              "values": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "kind": "array"
+                      },
+                      {
+                        "kind": "map",
+                        "values": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "boolean"
+                            },
+                            {
+                              "kind": "integer"
+                            },
+                            {
+                              "kind": "string"
+                            },
+                            {
+                              "items": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              },
+                              "kind": "array"
+                            },
+                            {
+                              "kind": "map",
+                              "values": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          "type": "migration_source"
+        }
+      },
+      "permits": [],
+      "prompt": "Read the exact declared immutable predecessor issue snapshot. Return that complete snapshot unchanged, including body and all fields. Inspect legacy ownership; recovery requires observed stopped evidence. Preserve every transaction, human specification, acceptance criterion and relation. Do not migrate closed goals or broaden discovery.",
+      "requires": [],
+      "resolves": []
+    },
+    {
+      "executor": {
+        "authority": {
+          "output": "conversion",
+          "subject": {
+            "goal": "#this",
+            "kind": "node",
+            "node": "convert"
+          }
+        },
+        "capability": "reasoning",
+        "resources": [],
+        "role": "root"
+      },
+      "gates": [],
+      "id": "convert",
+      "independent_of": [],
+      "inputs": {
+        "source": {
+          "mode": "identity",
+          "output": "source",
+          "path": [],
+          "producer": {
+            "node": {
+              "goal": "#this",
+              "kind": "node",
+              "node": "analyze"
+            }
+          },
+          "type": {
+            "kind": "map",
+            "values": {
+              "kind": "union",
+              "variants": [
+                {
+                  "kind": "null"
+                },
+                {
+                  "kind": "boolean"
+                },
+                {
+                  "kind": "integer"
+                },
+                {
+                  "kind": "string"
+                },
+                {
+                  "items": {
+                    "kind": "union",
+                    "variants": [
+                      {
+                        "kind": "null"
+                      },
+                      {
+                        "kind": "boolean"
+                      },
+                      {
+                        "kind": "integer"
+                      },
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "items": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "boolean"
+                            },
+                            {
+                              "kind": "integer"
+                            },
+                            {
+                              "kind": "string"
+                            },
+                            {
+                              "items": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              },
+                              "kind": "array"
+                            },
+                            {
+                              "kind": "map",
+                              "values": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "kind": "array"
+                      },
+                      {
+                        "kind": "map",
+                        "values": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "boolean"
+                            },
+                            {
+                              "kind": "integer"
+                            },
+                            {
+                              "kind": "string"
+                            },
+                            {
+                              "items": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              },
+                              "kind": "array"
+                            },
+                            {
+                              "kind": "map",
+                              "values": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  "kind": "array"
+                },
+                {
+                  "kind": "map",
+                  "values": {
+                    "kind": "union",
+                    "variants": [
+                      {
+                        "kind": "null"
+                      },
+                      {
+                        "kind": "boolean"
+                      },
+                      {
+                        "kind": "integer"
+                      },
+                      {
+                        "kind": "string"
+                      },
+                      {
+                        "items": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "boolean"
+                            },
+                            {
+                              "kind": "integer"
+                            },
+                            {
+                              "kind": "string"
+                            },
+                            {
+                              "items": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              },
+                              "kind": "array"
+                            },
+                            {
+                              "kind": "map",
+                              "values": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "kind": "array"
+                      },
+                      {
+                        "kind": "map",
+                        "values": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "boolean"
+                            },
+                            {
+                              "kind": "integer"
+                            },
+                            {
+                              "kind": "string"
+                            },
+                            {
+                              "items": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              },
+                              "kind": "array"
+                            },
+                            {
+                              "kind": "map",
+                              "values": {
+                                "kind": "union",
+                                "variants": [
+                                  {
+                                    "kind": "null"
+                                  },
+                                  {
+                                    "kind": "boolean"
+                                  },
+                                  {
+                                    "kind": "integer"
+                                  },
+                                  {
+                                    "kind": "string"
+                                  },
+                                  {
+                                    "items": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "kind": "array"
+                                  },
+                                  {
+                                    "kind": "map",
+                                    "values": {
+                                      "kind": "union",
+                                      "variants": [
+                                        {
+                                          "kind": "null"
+                                        },
+                                        {
+                                          "kind": "boolean"
+                                        },
+                                        {
+                                          "kind": "integer"
+                                        },
+                                        {
+                                          "kind": "string"
+                                        },
+                                        {
+                                          "items": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          },
+                                          "kind": "array"
+                                        },
+                                        {
+                                          "kind": "map",
+                                          "values": {
+                                            "kind": "union",
+                                            "variants": [
+                                              {
+                                                "kind": "null"
+                                              },
+                                              {
+                                                "kind": "boolean"
+                                              },
+                                              {
+                                                "kind": "integer"
+                                              },
+                                              {
+                                                "kind": "string"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "outputs": {
+        "conversion": {
+          "schema": {
+            "fields": {
+              "mapped_evidence": {
+                "items": {
+                  "fields": {
+                    "hash": {
+                      "kind": "string"
+                    },
+                    "uri": {
+                      "kind": "string"
+                    }
+                  },
+                  "kind": "object"
+                },
+                "kind": "array"
+              },
+              "missing_obligations": {
+                "items": {
+                  "kind": "string"
+                },
+                "kind": "array"
+              },
+              "source": {
+                "fields": {
+                  "hash": {
+                    "kind": "string"
+                  },
+                  "uri": {
+                    "kind": "string"
+                  }
+                },
+                "kind": "object"
+              },
+              "target": {
+                "fields": {
+                  "hash": {
+                    "kind": "string"
+                  },
+                  "uri": {
+                    "kind": "string"
+                  }
+                },
+                "kind": "object"
+              }
+            },
+            "kind": "object"
+          },
+          "type": "conversion"
+        }
+      },
+      "permits": [],
+      "prompt": "Prepare an auditable schema-1 to schema-2 conversion for this selected open goal using exact source evidence. Preserve repository, issue, parent, specification, acceptance criteria, priorities, dependencies and blockers. Retain every historical transaction. Restart unfinished work under the current reviewed default graph with empty live leases and no carried approvals; list every fresh obligation. Preserve old custom risk tags in the immutable source; apply current default risk rules to the converted goal. Do not silently mark an obligation satisfied or a goal done. Publish raw target envelope, payload, graph and specification as immutable Git JSON artifacts in administrator-owned artifact storage, with exact commit/path/hash references; do not edit source or rewrite existing provider records. Emit mapped_evidence=[] for a fresh restart. A converted target is only a proposal pending independent review and exact user approval.",
+      "requires": [
+        {
+          "goal": "#this",
+          "kind": "node",
+          "node": "analyze"
+        }
+      ],
+      "resolves": []
+    },
+    {
+      "executor": {
+        "authority": {
+          "output": "review",
+          "subject": {
+            "goal": "#this",
+            "kind": "node",
+            "node": "conversion_review"
+          }
+        },
+        "capability": "reasoning",
+        "resources": [],
+        "role": "worker"
+      },
+      "gates": [],
+      "id": "conversion_review",
+      "independent_of": [
+        {
+          "goal": "#this",
+          "kind": "node",
+          "node": "convert"
+        }
+      ],
+      "inputs": {
+        "conversion": {
+          "mode": "identity",
+          "output": "conversion",
+          "path": [],
+          "producer": {
+            "node": {
+              "goal": "#this",
+              "kind": "node",
+              "node": "convert"
+            }
+          },
+          "type": {
+            "fields": {
+              "mapped_evidence": {
+                "items": {
+                  "fields": {
+                    "hash": {
+                      "kind": "string"
+                    },
+                    "uri": {
+                      "kind": "string"
+                    }
+                  },
+                  "kind": "object"
+                },
+                "kind": "array"
+              },
+              "missing_obligations": {
+                "items": {
+                  "kind": "string"
+                },
+                "kind": "array"
+              },
+              "source": {
+                "fields": {
+                  "hash": {
+                    "kind": "string"
+                  },
+                  "uri": {
+                    "kind": "string"
+                  }
+                },
+                "kind": "object"
+              },
+              "target": {
+                "fields": {
+                  "hash": {
+                    "kind": "string"
+                  },
+                  "uri": {
+                    "kind": "string"
+                  }
+                },
+                "kind": "object"
+              }
+            },
+            "kind": "object"
+          }
+        }
+      },
+      "outputs": {
+        "review": {
+          "schema": {
+            "fields": {
+              "decision": {
+                "kind": "enum",
+                "values": [
+                  "approved",
+                  "changes_requested"
+                ]
+              },
+              "report": {
+                "kind": "string"
+              }
+            },
+            "kind": "object"
+          },
+          "type": "review_decision"
+        }
+      },
+      "permits": [],
+      "prompt": "Independently read the exact conversion and all referenced immutable artifacts. Check source identity, preserved user text/criteria/relations/history, current default rules, absence of inherited live ownership or fabricated approvals, and the complete list of obligations still requiring fresh evidence. Approve only if no required finding remains; otherwise emit changes_requested. This review grants no human approval or implementation authority.",
+      "requires": [
+        {
+          "goal": "#this",
+          "kind": "node",
+          "node": "convert"
+        }
+      ],
+      "resolves": []
+    },
+    {
+      "executor": {
+        "authority": {
+          "output": "approval",
+          "subject": {
+            "goal": "#this",
+            "kind": "node",
+            "node": "conversion_approval"
+          }
+        },
+        "capability": "bounded",
+        "resources": [],
+        "role": "root"
+      },
+      "gates": [],
+      "id": "conversion_approval",
+      "independent_of": [],
+      "inputs": {
+        "approved_review": {
+          "mode": "content",
+          "output": "review",
+          "path": [
+            "decision"
+          ],
+          "producer": {
+            "node": {
+              "goal": "#this",
+              "kind": "node",
+              "node": "conversion_review"
+            }
+          },
+          "type": {
+            "kind": "enum",
+            "values": [
+              "approved"
+            ]
+          }
+        },
+        "conversion": {
+          "mode": "identity",
+          "output": "conversion",
+          "path": [],
+          "producer": {
+            "node": {
+              "goal": "#this",
+              "kind": "node",
+              "node": "convert"
+            }
+          },
+          "type": {
+            "fields": {
+              "mapped_evidence": {
+                "items": {
+                  "fields": {
+                    "hash": {
+                      "kind": "string"
+                    },
+                    "uri": {
+                      "kind": "string"
+                    }
+                  },
+                  "kind": "object"
+                },
+                "kind": "array"
+              },
+              "missing_obligations": {
+                "items": {
+                  "kind": "string"
+                },
+                "kind": "array"
+              },
+              "source": {
+                "fields": {
+                  "hash": {
+                    "kind": "string"
+                  },
+                  "uri": {
+                    "kind": "string"
+                  }
+                },
+                "kind": "object"
+              },
+              "target": {
+                "fields": {
+                  "hash": {
+                    "kind": "string"
+                  },
+                  "uri": {
+                    "kind": "string"
+                  }
+                },
+                "kind": "object"
+              }
+            },
+            "kind": "object"
+          }
+        },
+        "review": {
+          "mode": "identity",
+          "output": "review",
+          "path": [],
+          "producer": {
+            "node": {
+              "goal": "#this",
+              "kind": "node",
+              "node": "conversion_review"
+            }
+          },
+          "type": {
+            "fields": {
+              "decision": {
+                "kind": "enum",
+                "values": [
+                  "approved",
+                  "changes_requested"
+                ]
+              },
+              "report": {
+                "kind": "string"
+              }
+            },
+            "kind": "object"
+          }
+        }
+      },
+      "outputs": {
+        "approval": {
+          "schema": {
+            "fields": {
+              "approval": {
+                "kind": "string"
+              },
+              "approved_by": {
+                "kind": "string"
+              }
+            },
+            "kind": "object"
+          },
+          "type": "conversion_approval"
+        }
+      },
+      "permits": [],
+      "prompt": "Present the exact current conversion and approved independent review to the user. Record only actual explicit user approval of that exact conversion; previous execution, default-policy or restart approval is not a substitute. Unanswered approval blocks activation.",
+      "requires": [
+        {
+          "goal": "#this",
+          "kind": "node",
+          "node": "conversion_review"
+        }
+      ],
+      "resolves": []
+    },
+    {
+      "executor": {
+        "authority": {
+          "output": "activation",
+          "subject": {
+            "goal": "#this",
+            "kind": "node",
+            "node": "activate"
+          }
+        },
+        "capability": "bounded",
+        "resources": [],
+        "role": "root"
+      },
+      "gates": [],
+      "id": "activate",
+      "independent_of": [],
+      "inputs": {
+        "approval": {
+          "mode": "identity",
+          "output": "approval",
+          "path": [],
+          "producer": {
+            "node": {
+              "goal": "#this",
+              "kind": "node",
+              "node": "conversion_approval"
+            }
+          },
+          "type": {
+            "fields": {
+              "approval": {
+                "kind": "string"
+              },
+              "approved_by": {
+                "kind": "string"
+              }
+            },
+            "kind": "object"
+          }
+        },
+        "conversion": {
+          "mode": "identity",
+          "output": "conversion",
+          "path": [],
+          "producer": {
+            "node": {
+              "goal": "#this",
+              "kind": "node",
+              "node": "convert"
+            }
+          },
+          "type": {
+            "fields": {
+              "mapped_evidence": {
+                "items": {
+                  "fields": {
+                    "hash": {
+                      "kind": "string"
+                    },
+                    "uri": {
+                      "kind": "string"
+                    }
+                  },
+                  "kind": "object"
+                },
+                "kind": "array"
+              },
+              "missing_obligations": {
+                "items": {
+                  "kind": "string"
+                },
+                "kind": "array"
+              },
+              "source": {
+                "fields": {
+                  "hash": {
+                    "kind": "string"
+                  },
+                  "uri": {
+                    "kind": "string"
+                  }
+                },
+                "kind": "object"
+              },
+              "target": {
+                "fields": {
+                  "hash": {
+                    "kind": "string"
+                  },
+                  "uri": {
+                    "kind": "string"
+                  }
+                },
+                "kind": "object"
+              }
+            },
+            "kind": "object"
+          }
+        }
+      },
+      "outputs": {
+        "activation": {
+          "schema": {
+            "fields": {
+              "approval": {
+                "fields": {
+                  "hash": {
+                    "kind": "string"
+                  },
+                  "uri": {
+                    "kind": "string"
+                  }
+                },
+                "kind": "object"
+              },
+              "conversion": {
+                "fields": {
+                  "hash": {
+                    "kind": "string"
+                  },
+                  "uri": {
+                    "kind": "string"
+                  }
+                },
+                "kind": "object"
+              }
+            },
+            "kind": "object"
+          },
+          "type": "schema_activation"
+        }
+      },
+      "permits": [
+        {
+          "scope": {
+            "output": "activation",
+            "subject": {
+              "goal": "#this",
+              "kind": "node",
+              "node": "activate"
+            }
+          },
+          "type": "schema_activation"
+        }
+      ],
+      "prompt": "Activate only the exact independently approved conversion with its current root approval Result reference, using the returned public submission. Preserve historical records. Activation itself completes no product goal or implementation criterion.",
+      "requires": [
+        {
+          "goal": "#this",
+          "kind": "node",
+          "node": "conversion_approval"
+        }
+      ],
+      "resolves": []
+    }
+  ],
+  "task_sets": [],
+  "terminals": [
+    {
+      "goal": "#this",
+      "kind": "node",
+      "node": "activate"
+    }
+  ]
+}
