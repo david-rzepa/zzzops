@@ -2725,6 +2725,126 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.review_candidate("alpha", 1)
         self.assertIn("beta", self.names())
 
+class DefaultCorrectionPublicTests(DagFixture):
+    """Exercise the shipped graph, retaining two real correction attempts."""
+
+    def default_decomposition(self):
+        template = json.loads((old.fixtures.PLUGIN_ROOT / "zzzops/templates/project-goals/INIT_PLAN.json").read_text())
+        graph = z._workflow_section(template, "workflow_adherence")["configuration"]["phase_dag"]
+        self.install(graph)
+        allocation = {"allocations": {name: {
+            "task": {"goal": 100, "node": name, "item": None, "generation": 1},
+            "owned": ["behavior_test.py" if name == "test_design" else "source.py"],
+            "consumed": ["product.txt"],
+        } for name in ("test_design", "implement")}}
+        self.session.finish(self.session.acquire("understand"), {"design": "Atomic bounded fixture", "allocation": allocation})
+        permit = {"manifest": self.produced("understand", "allocation"),
+                  "tasks": [item["task"] for item in allocation["allocations"].values()],
+                  "policy": content_hash(self.session.project["policy"]), "decision": "approved"}
+        self.session.finish(self.session.acquire("review_understanding"), {
+            "review": {"decision": "approved", "report": "Exact scope reviewed"}, "authorization": permit})
+        self.session.finish(self.session.acquire("approve_understanding"), {"authorization": permit})
+        self.session.finish(self.session.acquire("decompose"), {"value": "First atomic disposition"})
+
+    def test_default_rejections_reacquire_producer_and_retain_every_finding(self):
+        self.default_decomposition()
+        approval = self.result("approve_understanding")[0]
+        originals, findings = [], {}
+        for iteration in (1, 2):
+            subject = self.produced("decompose")
+            originals.append(subject)
+            self.session.finish(self.session.acquire("review_decomposition"), {
+                "value": {"decision": "changes_requested", "report": f"Required correction {iteration}"}})
+            review = self.produced("review_decomposition")
+            originals.append(review)
+            self.assertIn("interpret_decompose_rejection", self.names(),
+                          "A rejected shipped review must offer correction admission")
+            identifier = f"rejection_{iteration}"
+            finding = {"id": identifier, "revision": 1, "source": review, "subjects": [subject],
+                       "target": scope("decompose"), "request": f"Fix required defect {iteration}",
+                       "rationale": "Independent exact-subject rejection", "supersedes": None}
+            self.session.finish(self.session.acquire("interpret_decompose_rejection"), {"value": finding})
+            finding_ref = self.produced("interpret_decompose_rejection")
+            findings[identifier] = finding_ref
+            self.session.finish(self.session.acquire("admit_decompose_correction"), {"value": {
+                "finding": finding_ref, "target_inputs": self.result("decompose")[1]["inputs"],
+                "authority": self.result("interpret_decompose_rejection")[0],
+                "applicability": "applicable", "rationale": "In the exact previously approved scope"}})
+            self.assertIn("decompose", self.names())
+            self.assertNotIn("test_design", self.names())
+            self.session.finish(self.session.acquire("decompose"), {"value": f"Corrected disposition {iteration}"})
+            self.assertEqual(approval, self.result("approve_understanding")[0])
+        self.session.finish(self.session.acquire("review_decomposition"), {
+            "value": {"decision": "approved", "report": "Both retained defects verified fixed"}})
+        registry = self.session.acquire("retain_decompose_findings")
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        incomplete = self.session.submission(registry, {
+            "value": {"items": {"rejection_2": findings["rejection_2"]}, "rationale": "Omit an old defect"}},
+            "omit-retained-default-finding")
+        rejected = self.session.call(100, incomplete, expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)retain|finding|registry|complete")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.finish(registry, {
+            "value": {"items": findings, "rationale": "All historical admitted findings retained"}})
+        for identifier, finding_ref in findings.items():
+            self.assertNotIn("test_design", self.names())
+            self.session.finish(self.session.acquire("resolve_decompose_finding", item=identifier), {"value": {
+                "finding": finding_ref, "subjects": [self.produced("decompose")],
+                "reviewer_result": self.result("review_decomposition")[0],
+                "decision": "resolved", "rationale": "Fresh independent approval covers this retained defect"}})
+        self.assertIn("test_design", self.names())
+        for ref in [*originals, *findings.values()]:
+            self.read_blob(ref)
+        self.assertEqual(approval, self.result("approve_understanding")[0])
+
+    def test_default_test_design_correction_keeps_workspace_authority_and_red_proof(self):
+        self.default_decomposition()
+        self.session.finish(self.session.acquire("review_decomposition"), {
+            "value": {"decision": "approved", "report": "Atomic disposition accepted"}})
+        self.session.finish(self.session.acquire("retain_decompose_findings"), {
+            "value": {"items": {}, "rationale": "No decomposition findings were admitted"}})
+        approval = self.result("approve_understanding")[0]
+        original = self.session.acquire("test_design")
+        path = self.fixture.repo / "behavior_test.py"
+        path.write_text("raise AssertionError('expected initial red fixture')\n")
+        request = self.session.submission(original, {"value": "Initial RED test candidate"}, "default-red")
+        request["workspace_checks"] = [[sys.executable, str(path)]]
+        self.session.call(100, request)
+        candidate = self.produced("test_design")
+        proof = self.read_blob(candidate)["provenance"]["source"]
+        self.assertEqual(1, self.read_blob(proof)["commands"][0]["exit_code"])
+        self.session.finish(self.session.acquire("review_test_design"), {
+            "value": {"decision": "changes_requested", "report": "Replace unconditional failure with a meaningful probe"}})
+        self.session.finish(self.session.acquire("interpret_test_design_rejection"), {"value": {
+            "id": "bounded_probe", "revision": 1, "source": self.produced("review_test_design"),
+            "subjects": [candidate], "target": scope("test_design"), "request": "Probe the fixture behaviour",
+            "rationale": "The first candidate does not exercise behaviour", "supersedes": None}})
+        finding = self.produced("interpret_test_design_rejection")
+        self.session.finish(self.session.acquire("admit_test_design_correction"), {"value": {
+            "finding": finding, "target_inputs": self.result("test_design")[1]["inputs"],
+            "authority": self.result("interpret_test_design_rejection")[0],
+            "applicability": "applicable", "rationale": "Same exact reviewed test allocation"}})
+        self.session.git("add", path.name)
+        self.session.git("commit", "-qm", "preserve rejected test candidate")
+        corrected = self.session.acquire("test_design")
+        path.write_text("from pathlib import Path\nassert Path('product.txt').is_file()\n")
+        request = self.session.submission(corrected, {"value": "Meaningful bounded fixture probe"}, "default-corrected")
+        request["workspace_checks"] = [[sys.executable, str(path)]]
+        self.session.call(100, request)
+        self.assertNotIn("implement", self.names())
+        self.session.finish(self.session.acquire("review_test_design"), {
+            "value": {"decision": "approved", "report": "Current probe covers the required fixture"}})
+        self.session.finish(self.session.acquire("retain_test_design_findings"), {
+            "value": {"items": {"bounded_probe": finding}, "rationale": "Retain the original rejected candidate finding"}})
+        self.session.finish(self.session.acquire("resolve_test_design_finding", item="bounded_probe"), {"value": {
+            "finding": finding, "subjects": [self.produced("test_design")],
+            "reviewer_result": self.result("review_test_design")[0], "decision": "resolved",
+            "rationale": "Fresh independent approval verifies the bounded probe"}})
+        self.assertIn("implement", self.names())
+        self.assertEqual(approval, self.result("approve_understanding")[0])
+        self.assertEqual(1, self.read_blob(proof)["commands"][0]["exit_code"])
+
+
 class GatewayTransport:
     """Real cache code sees provider responses; only subprocess is simulated."""
     def __init__(self, issues):
@@ -3978,6 +4098,102 @@ class GenericStoragePublicTests(DagFixture):
             with mock.patch.object(store, "MAX_RECONSTRUCTION_WORK_BYTES", 100000):
                 self.session.call(100, {"operation": "read", "artifact": reference}, expected=2)
         self.assertEqual(artifact, self.session.read(100, reference))
+
+
+class GraphAdoptionPublicTests(DagFixture):
+    add_goal = RelationshipPublicTests.add_goal
+    put_envelope = RelationshipPublicTests.put_envelope
+    envelope_for = RelationshipPublicTests.envelope_for
+    read_at = RelationshipPublicTests.read_at
+    result_at = RelationshipPublicTests.result_at
+
+    def proposal_review(self, proposal):
+        proposer = task("propose_graph", role="root")
+        reviewer = task("review_graph", ["propose_graph"])
+        reviewer["inputs"] = {"subject": subject_input("propose_graph")}
+        reviewer["independent_of"] = [selector("propose_graph")]
+        reviewer["outputs"] = {"value": output("review_decision", shape({"decision": "approved", "report": "review"}))}
+        graph = {"nodes": [proposer, reviewer], "task_sets": [], "terminals": [selector("review_graph")]}
+        def local(value):
+            if isinstance(value, dict):
+                return {k: ("#this" if k == "goal" and v == 100 else local(v)) for k, v in value.items()}
+            return [local(v) for v in value] if isinstance(value, list) else value
+        self.add_goal(101, local(graph))
+        self.session.finish(self.session.acquire("propose_graph", number=101),
+                            {"value": json.dumps(proposal)}, number=101)
+        self.session.finish(self.session.acquire("review_graph", number=101),
+                            {"value": {"decision": "approved", "report": "Exact prospective graph preserves evidence"}}, number=101)
+        return {"operation": "graph_adopt", "review_goal": 101,
+                "proposal": self.result_at(101, "propose_graph")[1]["outputs"]["value"],
+                "review": self.result_at(101, "review_graph")[0],
+                "approved_by": "user: approved exact scoped graph repair", "request_id": "adopt-reviewed-graph"}
+
+    def test_reviewed_goal_only_adoption_preserves_results_history_and_receipt(self):
+        self.produce()
+        original = self.result("produce")[0]
+        old_payload = self.payload()[1]
+        policy = copy.deepcopy(self.session.project["policy"])
+        graph = copy.deepcopy(self.graph)
+        graph["nodes"].append(task("new_note", role="root"))
+        prepared = self.session.call(100, {"operation": "graph_prepare", "graph": graph,
+                                           "rationale": "Append a bounded repair without replacing settled work"})
+        proposal = prepared["next_steps"][0]["proposal"]
+        request = self.proposal_review(proposal)
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        for changed in ({"approved_by": ""}, {"review": self.result_at(101, "propose_graph")[0]}):
+            bad = {**request, **changed}
+            self.session.call(100, bad, expected=2)
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        accepted = self.session.call(100, request)
+        self.assertEqual(accepted, self.session.call(100, request))
+        self.assertEqual(original, self.result("produce")[0])
+        payload = self.payload()[1]
+        self.assertEqual(old_payload["evidence"], payload["evidence"])
+        self.assertEqual(graph, self.read_blob(payload["graph"]))
+        self.assertEqual(policy, self.session.project["policy"])
+        self.assertIn("new_note", self.names())
+        self.read_blob(old_payload["graph"])
+
+    def test_graph_prepare_rejects_current_contract_changes_and_live_ownership(self):
+        self.produce()
+        changed = copy.deepcopy(self.graph)
+        changed["nodes"][0]["prompt"] += " Alter settled semantics."
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, {"operation": "graph_prepare", "graph": changed,
+                                          "rationale": "Invalid current-result replacement"}, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)current|settled|preserv")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.acquire("review_a")
+        response = self.session.call(100, {"operation": "graph_prepare", "graph": self.graph,
+                                          "rationale": "Invalid concurrent adoption"}, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)lease|ownership|stopped")
+
+    def test_adoption_rejects_source_change_after_independent_review(self):
+        self.produce()
+        prepared = self.session.call(100, {"operation": "graph_prepare", "graph": self.graph,
+                                           "rationale": "Exact source pin"})
+        request = self.proposal_review(prepared["next_steps"][0]["proposal"])
+        self.replace_spec("Substantive source changed after graph review")
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)source|changed|current|policy")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_graph_prepare_rejects_an_uncommitted_checkpoint(self):
+        self.produce()
+        ready = next(step for step in self.session.ready() if step['node']['node'] == 'review_a')
+        receipt = json.loads(Path(ready['policy']['path']).read_text())['policy_receipt']
+        request = {**ready['start'], 'policy_receipt': receipt, 'request_id': 'interrupted-before-body'}
+        with mock.patch.object(self.provider, 'update_issue', side_effect=RuntimeError('provider unavailable')):
+            self.session.call(100, request, expected=2)
+        self.assertFalse(self.payload()[1]['operational']['leases'])
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, {'operation': 'graph_prepare', 'graph': self.graph,
+                                          'rationale': 'Must not cross an uncommitted transaction'}, expected=2)
+        self.assertRegex(json.dumps(response), r'(?i)uncommitted|checkpoint')
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        resumed = self.session.call(100, request)
+        self.assertEqual('perform', resumed['next_steps'][0]['kind'])
 
 
 if __name__ == "__main__":

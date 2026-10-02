@@ -167,6 +167,52 @@ coverage explicitly; withdrawal and retirement require declared root authority.
 Literal findings do not silently become plural, even when a selector currently
 has one member. Correction cannot erase prior evidence or release an owner.
 
+The shipped graph supplies correction paths for decomposition, test design,
+implementation, publication context and publication observation reviews. A
+`changes_requested` decision enables a root interpretation of that exact review,
+then root admission of a distinct finding against the inspected producer inputs.
+The interpretation's current root Result supplies admission authority; a rejected
+worker review never supplies approval. Admission makes the affected producer
+ready under its existing allocation. Repeated corrections have no round cap.
+
+After a fresh approved review, root records a `finding_registry` containing every
+admitted finding in its declared permitted scope, including previous attempts.
+The host rejects missing, substituted or extra entries before publication. The
+registry has the selection shape `{items: {finding_id: finding_ref}, rationale}`;
+one dynamic resolution task covers each retained finding. The downstream join
+requires those resolutions, and a separate scope gate retains unresolved debt.
+An empty registry is valid only when the scope has no admitted findings. Tests
+cover two actual corrections and a real workspace correction rather than a long
+permanent correction-count loop.
+
+### Applying a reviewed graph repair to an existing goal
+
+`workflow --intent execute --goal N` accepts `graph_prepare` with `graph` and a
+scoped `rationale`. This read-only operation returns a `goal_graph_adoption`
+manifest. It pins the repository, goal, policy, source graph/specification,
+evidence, parent/state and all current Results. Preparation evaluates the proposed
+graph against the actual repository: every current Result must remain current,
+existing node indices and task sets must be preserved, and terminals cannot be
+replaced. Unsettled node contracts can change and new nodes can be appended.
+Live leases and uncommitted transactions must be reconciled first.
+
+Record the exact prepared manifest as a root task output in a review goal (a JSON
+string in an ordinary text output is supported). Obtain a current independent
+`review_decision` approving that exact identity-bound output and explicit human
+approval. `graph_adopt` takes `review_goal`, `proposal` (the root output Ref),
+`review` (the reviewer Result Ref), `approved_by` and a unique `request_id`.
+The host checks actual current root provenance, declared actor independence,
+exact inspected proposal, approved decision, unchanged source/policy and the
+prospective preservation check again. Caller-written review text is insufficient.
+Using a separate review goal avoids changing the target evidence while the
+proposal is being reviewed.
+
+Adoption changes only the target goal's graph Ref and appends the normal durable
+receipt. It retains all evidence and old artifacts, leaves project policy alone,
+and supports exact-request replay after interrupted publication. Preparation
+does not grant source-edit or publication authority. Existing goals are not
+silently switched to a newly shipped default graph.
+
 ## Publication and completion
 
 The explicit `repository_publication` adapter consumes a declared root-issued

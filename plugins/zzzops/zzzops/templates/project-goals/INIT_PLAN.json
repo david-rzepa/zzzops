@@ -1365,6 +1365,11 @@
                     "kind": "node",
                     "goal": "#this",
                     "node": "review_decomposition"
+                  },
+                  {
+                    "kind": "join",
+                    "goal": "#this",
+                    "expansion": "decompose_findings"
                   }
                 ],
                 "executor": {
@@ -1383,7 +1388,16 @@
                   }
                 },
                 "independent_of": [],
-                "gates": [],
+                "gates": [
+                  {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "decompose"
+                    },
+                    "output": "value"
+                  }
+                ],
                 "resolves": [],
                 "permits": []
               },
@@ -1740,6 +1754,11 @@
                     "kind": "node",
                     "goal": "#this",
                     "node": "review_test_design"
+                  },
+                  {
+                    "kind": "join",
+                    "goal": "#this",
+                    "expansion": "test_design_findings"
                   }
                 ],
                 "executor": {
@@ -1758,7 +1777,16 @@
                   }
                 },
                 "independent_of": [],
-                "gates": [],
+                "gates": [
+                  {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "test_design"
+                    },
+                    "output": "value"
+                  }
+                ],
                 "resolves": [],
                 "permits": []
               },
@@ -1942,6 +1970,11 @@
                     "kind": "node",
                     "goal": "#this",
                     "node": "review_implement"
+                  },
+                  {
+                    "kind": "join",
+                    "goal": "#this",
+                    "expansion": "implement_findings"
                   }
                 ],
                 "executor": {
@@ -1958,7 +1991,16 @@
                   }
                 },
                 "independent_of": [],
-                "gates": [],
+                "gates": [
+                  {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "implement"
+                    },
+                    "output": "value"
+                  }
+                ],
                 "resolves": [],
                 "permits": []
               },
@@ -2205,6 +2247,11 @@
                     "kind": "node",
                     "goal": "#this",
                     "node": "review_publication_context"
+                  },
+                  {
+                    "kind": "join",
+                    "goal": "#this",
+                    "expansion": "publication_context_findings"
                   }
                 ],
                 "executor": {
@@ -2221,7 +2268,16 @@
                   }
                 },
                 "independent_of": [],
-                "gates": [],
+                "gates": [
+                  {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "publication_context"
+                    },
+                    "output": "value"
+                  }
+                ],
                 "resolves": [],
                 "permits": []
               },
@@ -2620,6 +2676,11 @@
                     "kind": "node",
                     "goal": "#this",
                     "node": "review_publication"
+                  },
+                  {
+                    "kind": "join",
+                    "goal": "#this",
+                    "expansion": "observe_publication_findings"
                   }
                 ],
                 "executor": {
@@ -2636,7 +2697,16 @@
                   }
                 },
                 "independent_of": [],
-                "gates": [],
+                "gates": [
+                  {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "observe_publication"
+                    },
+                    "output": "value"
+                  }
+                ],
                 "resolves": [],
                 "permits": []
               },
@@ -2831,9 +2901,4060 @@
                 "gates": [],
                 "resolves": [],
                 "permits": []
+              },
+              {
+                "id": "interpret_decompose_rejection",
+                "prompt": "Interpret the exact rejected review as one finding containing every required correction in that review. Freeze the current producer output Ref and literal goal/node/output target. Use a distinct finding id for each rejected review, revision one and no supersession. Preserve earlier findings. Check the already approved scope; out-of-scope requests remain blocked and confer no edit authority.",
+                "inputs": {
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "decompose"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  },
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_decomposition"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "rejected": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_decomposition"
+                      }
+                    },
+                    "output": "value",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "changes_requested"
+                      ]
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "finding",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "id": {
+                          "kind": "string"
+                        },
+                        "revision": {
+                          "kind": "integer"
+                        },
+                        "source": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "subjects": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "target": {
+                          "kind": "object",
+                          "fields": {
+                            "subject": {
+                              "kind": "object",
+                              "fields": {
+                                "kind": {
+                                  "kind": "string"
+                                },
+                                "goal": {
+                                  "kind": "integer"
+                                },
+                                "node": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "output": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "request": {
+                          "kind": "string"
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        },
+                        "supersedes": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "decompose"
+                  },
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_decomposition"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "reasoning",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "interpret_decompose_rejection"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "finding",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "decompose"
+                      },
+                      "output": "value"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "admit_decompose_correction",
+                "prompt": "Admit this exact finding only within existing reviewed authority. Bind the current producer Result inputs and use the current authenticated root interpretation Result as authority. Mark uncertain applicability unresolved; do not manufacture approval or broaden scope.",
+                "inputs": {
+                  "finding": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "interpret_decompose_rejection"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "id": {
+                          "kind": "string"
+                        },
+                        "revision": {
+                          "kind": "integer"
+                        },
+                        "source": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "subjects": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "target": {
+                          "kind": "object",
+                          "fields": {
+                            "subject": {
+                              "kind": "object",
+                              "fields": {
+                                "kind": {
+                                  "kind": "string"
+                                },
+                                "goal": {
+                                  "kind": "integer"
+                                },
+                                "node": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "output": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "request": {
+                          "kind": "string"
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        },
+                        "supersedes": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "decompose"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "admission",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "finding": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "target_inputs": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "name": {
+                                "kind": "string"
+                              },
+                              "source": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              },
+                              "path": {
+                                "kind": "array",
+                                "items": {
+                                  "kind": "string"
+                                }
+                              },
+                              "mode": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "authority": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "applicability": {
+                          "kind": "enum",
+                          "values": [
+                            "applicable",
+                            "not_applicable",
+                            "unresolved"
+                          ]
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "interpret_decompose_rejection"
+                  },
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "decompose"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "admit_decompose_correction"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "admission",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "decompose"
+                      },
+                      "output": "value"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "retain_decompose_findings",
+                "prompt": "Read retained admission history for this producer and emit a selection mapping every admitted finding id to its exact finding Ref, including earlier correction attempts. Never omit an unresolved historical finding. Empty membership is valid only when no findings were admitted. A fresh approved review does not itself resolve a finding.",
+                "inputs": {
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_decomposition"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "approved": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_decomposition"
+                      }
+                    },
+                    "output": "value",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "approved"
+                      ]
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "finding_registry",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "items": {
+                          "kind": "map",
+                          "values": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_decomposition"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_decompose_findings"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "finding_registry",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "decompose"
+                      },
+                      "output": "value"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "interpret_test_design_rejection",
+                "prompt": "Interpret the exact rejected review as one finding containing every required correction in that review. Freeze the current producer output Ref and literal goal/node/output target. Use a distinct finding id for each rejected review, revision one and no supersession. Preserve earlier findings. Check the already approved scope; out-of-scope requests remain blocked and confer no edit authority.",
+                "inputs": {
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "test_design"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  },
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_test_design"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "rejected": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_test_design"
+                      }
+                    },
+                    "output": "value",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "changes_requested"
+                      ]
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "finding",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "id": {
+                          "kind": "string"
+                        },
+                        "revision": {
+                          "kind": "integer"
+                        },
+                        "source": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "subjects": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "target": {
+                          "kind": "object",
+                          "fields": {
+                            "subject": {
+                              "kind": "object",
+                              "fields": {
+                                "kind": {
+                                  "kind": "string"
+                                },
+                                "goal": {
+                                  "kind": "integer"
+                                },
+                                "node": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "output": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "request": {
+                          "kind": "string"
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        },
+                        "supersedes": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "test_design"
+                  },
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_test_design"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "reasoning",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "interpret_test_design_rejection"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "finding",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "test_design"
+                      },
+                      "output": "value"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "admit_test_design_correction",
+                "prompt": "Admit this exact finding only within existing reviewed authority. Bind the current producer Result inputs and use the current authenticated root interpretation Result as authority. Mark uncertain applicability unresolved; do not manufacture approval or broaden scope.",
+                "inputs": {
+                  "finding": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "interpret_test_design_rejection"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "id": {
+                          "kind": "string"
+                        },
+                        "revision": {
+                          "kind": "integer"
+                        },
+                        "source": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "subjects": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "target": {
+                          "kind": "object",
+                          "fields": {
+                            "subject": {
+                              "kind": "object",
+                              "fields": {
+                                "kind": {
+                                  "kind": "string"
+                                },
+                                "goal": {
+                                  "kind": "integer"
+                                },
+                                "node": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "output": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "request": {
+                          "kind": "string"
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        },
+                        "supersedes": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "test_design"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "admission",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "finding": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "target_inputs": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "name": {
+                                "kind": "string"
+                              },
+                              "source": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              },
+                              "path": {
+                                "kind": "array",
+                                "items": {
+                                  "kind": "string"
+                                }
+                              },
+                              "mode": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "authority": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "applicability": {
+                          "kind": "enum",
+                          "values": [
+                            "applicable",
+                            "not_applicable",
+                            "unresolved"
+                          ]
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "interpret_test_design_rejection"
+                  },
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "test_design"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "admit_test_design_correction"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "admission",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "test_design"
+                      },
+                      "output": "value"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "retain_test_design_findings",
+                "prompt": "Read retained admission history for this producer and emit a selection mapping every admitted finding id to its exact finding Ref, including earlier correction attempts. Never omit an unresolved historical finding. Empty membership is valid only when no findings were admitted. A fresh approved review does not itself resolve a finding.",
+                "inputs": {
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_test_design"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "approved": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_test_design"
+                      }
+                    },
+                    "output": "value",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "approved"
+                      ]
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "finding_registry",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "items": {
+                          "kind": "map",
+                          "values": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_test_design"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_test_design_findings"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "finding_registry",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "test_design"
+                      },
+                      "output": "value"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "interpret_implement_rejection",
+                "prompt": "Interpret the exact rejected review as one finding containing every required correction in that review. Freeze the current producer output Ref and literal goal/node/output target. Use a distinct finding id for each rejected review, revision one and no supersession. Preserve earlier findings. Check the already approved scope; out-of-scope requests remain blocked and confer no edit authority.",
+                "inputs": {
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "implement"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  },
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_implement"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "rejected": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_implement"
+                      }
+                    },
+                    "output": "value",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "changes_requested"
+                      ]
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "finding",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "id": {
+                          "kind": "string"
+                        },
+                        "revision": {
+                          "kind": "integer"
+                        },
+                        "source": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "subjects": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "target": {
+                          "kind": "object",
+                          "fields": {
+                            "subject": {
+                              "kind": "object",
+                              "fields": {
+                                "kind": {
+                                  "kind": "string"
+                                },
+                                "goal": {
+                                  "kind": "integer"
+                                },
+                                "node": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "output": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "request": {
+                          "kind": "string"
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        },
+                        "supersedes": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "implement"
+                  },
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_implement"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "reasoning",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "interpret_implement_rejection"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "finding",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "implement"
+                      },
+                      "output": "value"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "admit_implement_correction",
+                "prompt": "Admit this exact finding only within existing reviewed authority. Bind the current producer Result inputs and use the current authenticated root interpretation Result as authority. Mark uncertain applicability unresolved; do not manufacture approval or broaden scope.",
+                "inputs": {
+                  "finding": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "interpret_implement_rejection"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "id": {
+                          "kind": "string"
+                        },
+                        "revision": {
+                          "kind": "integer"
+                        },
+                        "source": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "subjects": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "target": {
+                          "kind": "object",
+                          "fields": {
+                            "subject": {
+                              "kind": "object",
+                              "fields": {
+                                "kind": {
+                                  "kind": "string"
+                                },
+                                "goal": {
+                                  "kind": "integer"
+                                },
+                                "node": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "output": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "request": {
+                          "kind": "string"
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        },
+                        "supersedes": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "implement"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "admission",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "finding": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "target_inputs": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "name": {
+                                "kind": "string"
+                              },
+                              "source": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              },
+                              "path": {
+                                "kind": "array",
+                                "items": {
+                                  "kind": "string"
+                                }
+                              },
+                              "mode": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "authority": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "applicability": {
+                          "kind": "enum",
+                          "values": [
+                            "applicable",
+                            "not_applicable",
+                            "unresolved"
+                          ]
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "interpret_implement_rejection"
+                  },
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "implement"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "admit_implement_correction"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "admission",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "implement"
+                      },
+                      "output": "value"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "retain_implement_findings",
+                "prompt": "Read retained admission history for this producer and emit a selection mapping every admitted finding id to its exact finding Ref, including earlier correction attempts. Never omit an unresolved historical finding. Empty membership is valid only when no findings were admitted. A fresh approved review does not itself resolve a finding.",
+                "inputs": {
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_implement"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "approved": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_implement"
+                      }
+                    },
+                    "output": "value",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "approved"
+                      ]
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "finding_registry",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "items": {
+                          "kind": "map",
+                          "values": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_implement"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_implement_findings"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "finding_registry",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "implement"
+                      },
+                      "output": "value"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "interpret_publication_context_rejection",
+                "prompt": "Interpret the exact rejected review as one finding containing every required correction in that review. Freeze the current producer output Ref and literal goal/node/output target. Use a distinct finding id for each rejected review, revision one and no supersession. Preserve earlier findings. Check the already approved scope; out-of-scope requests remain blocked and confer no edit authority.",
+                "inputs": {
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "publication_context"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "branch": {
+                          "kind": "string"
+                        },
+                        "base": {
+                          "kind": "string"
+                        },
+                        "target": {
+                          "kind": "string"
+                        },
+                        "pr": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_publication_context"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "rejected": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_publication_context"
+                      }
+                    },
+                    "output": "value",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "changes_requested"
+                      ]
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "finding",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "id": {
+                          "kind": "string"
+                        },
+                        "revision": {
+                          "kind": "integer"
+                        },
+                        "source": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "subjects": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "target": {
+                          "kind": "object",
+                          "fields": {
+                            "subject": {
+                              "kind": "object",
+                              "fields": {
+                                "kind": {
+                                  "kind": "string"
+                                },
+                                "goal": {
+                                  "kind": "integer"
+                                },
+                                "node": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "output": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "request": {
+                          "kind": "string"
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        },
+                        "supersedes": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "publication_context"
+                  },
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_publication_context"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "reasoning",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "interpret_publication_context_rejection"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "finding",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "publication_context"
+                      },
+                      "output": "value"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "admit_publication_context_correction",
+                "prompt": "Admit this exact finding only within existing reviewed authority. Bind the current producer Result inputs and use the current authenticated root interpretation Result as authority. Mark uncertain applicability unresolved; do not manufacture approval or broaden scope.",
+                "inputs": {
+                  "finding": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "interpret_publication_context_rejection"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "id": {
+                          "kind": "string"
+                        },
+                        "revision": {
+                          "kind": "integer"
+                        },
+                        "source": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "subjects": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "target": {
+                          "kind": "object",
+                          "fields": {
+                            "subject": {
+                              "kind": "object",
+                              "fields": {
+                                "kind": {
+                                  "kind": "string"
+                                },
+                                "goal": {
+                                  "kind": "integer"
+                                },
+                                "node": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "output": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "request": {
+                          "kind": "string"
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        },
+                        "supersedes": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "publication_context"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "branch": {
+                          "kind": "string"
+                        },
+                        "base": {
+                          "kind": "string"
+                        },
+                        "target": {
+                          "kind": "string"
+                        },
+                        "pr": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "admission",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "finding": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "target_inputs": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "name": {
+                                "kind": "string"
+                              },
+                              "source": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              },
+                              "path": {
+                                "kind": "array",
+                                "items": {
+                                  "kind": "string"
+                                }
+                              },
+                              "mode": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "authority": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "applicability": {
+                          "kind": "enum",
+                          "values": [
+                            "applicable",
+                            "not_applicable",
+                            "unresolved"
+                          ]
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "interpret_publication_context_rejection"
+                  },
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "publication_context"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "admit_publication_context_correction"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "admission",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "publication_context"
+                      },
+                      "output": "value"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "retain_publication_context_findings",
+                "prompt": "Read retained admission history for this producer and emit a selection mapping every admitted finding id to its exact finding Ref, including earlier correction attempts. Never omit an unresolved historical finding. Empty membership is valid only when no findings were admitted. A fresh approved review does not itself resolve a finding.",
+                "inputs": {
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_publication_context"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "approved": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_publication_context"
+                      }
+                    },
+                    "output": "value",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "approved"
+                      ]
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "finding_registry",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "items": {
+                          "kind": "map",
+                          "values": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_publication_context"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_publication_context_findings"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "finding_registry",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "publication_context"
+                      },
+                      "output": "value"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "interpret_observe_publication_rejection",
+                "prompt": "Interpret the exact rejected review as one finding containing every required correction in that review. Freeze the current producer output Ref and literal goal/node/output target. Use a distinct finding id for each rejected review, revision one and no supersession. Preserve earlier findings. Check the already approved scope; out-of-scope requests remain blocked and confer no edit authority.",
+                "inputs": {
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "observe_publication"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "repository": {
+                          "kind": "string"
+                        },
+                        "pr": {
+                          "kind": "string"
+                        },
+                        "head_oid": {
+                          "kind": "string"
+                        },
+                        "base_oid": {
+                          "kind": "string"
+                        },
+                        "base_ref": {
+                          "kind": "string"
+                        },
+                        "ci": {
+                          "kind": "enum",
+                          "values": [
+                            "verified",
+                            "unverified",
+                            "absent",
+                            "unknown"
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_publication"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "rejected": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_publication"
+                      }
+                    },
+                    "output": "value",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "changes_requested"
+                      ]
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "finding",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "id": {
+                          "kind": "string"
+                        },
+                        "revision": {
+                          "kind": "integer"
+                        },
+                        "source": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "subjects": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "target": {
+                          "kind": "object",
+                          "fields": {
+                            "subject": {
+                              "kind": "object",
+                              "fields": {
+                                "kind": {
+                                  "kind": "string"
+                                },
+                                "goal": {
+                                  "kind": "integer"
+                                },
+                                "node": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "output": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "request": {
+                          "kind": "string"
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        },
+                        "supersedes": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "observe_publication"
+                  },
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_publication"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "reasoning",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "interpret_observe_publication_rejection"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "finding",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "observe_publication"
+                      },
+                      "output": "value"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "admit_observe_publication_correction",
+                "prompt": "Admit this exact finding only within existing reviewed authority. Bind the current producer Result inputs and use the current authenticated root interpretation Result as authority. Mark uncertain applicability unresolved; do not manufacture approval or broaden scope.",
+                "inputs": {
+                  "finding": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "interpret_observe_publication_rejection"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "id": {
+                          "kind": "string"
+                        },
+                        "revision": {
+                          "kind": "integer"
+                        },
+                        "source": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "subjects": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "target": {
+                          "kind": "object",
+                          "fields": {
+                            "subject": {
+                              "kind": "object",
+                              "fields": {
+                                "kind": {
+                                  "kind": "string"
+                                },
+                                "goal": {
+                                  "kind": "integer"
+                                },
+                                "node": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "output": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "request": {
+                          "kind": "string"
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        },
+                        "supersedes": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "observe_publication"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "repository": {
+                          "kind": "string"
+                        },
+                        "pr": {
+                          "kind": "string"
+                        },
+                        "head_oid": {
+                          "kind": "string"
+                        },
+                        "base_oid": {
+                          "kind": "string"
+                        },
+                        "base_ref": {
+                          "kind": "string"
+                        },
+                        "ci": {
+                          "kind": "enum",
+                          "values": [
+                            "verified",
+                            "unverified",
+                            "absent",
+                            "unknown"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "admission",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "finding": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "target_inputs": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "name": {
+                                "kind": "string"
+                              },
+                              "source": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              },
+                              "path": {
+                                "kind": "array",
+                                "items": {
+                                  "kind": "string"
+                                }
+                              },
+                              "mode": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "authority": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "applicability": {
+                          "kind": "enum",
+                          "values": [
+                            "applicable",
+                            "not_applicable",
+                            "unresolved"
+                          ]
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "interpret_observe_publication_rejection"
+                  },
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "observe_publication"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "admit_observe_publication_correction"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "admission",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "observe_publication"
+                      },
+                      "output": "value"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "retain_observe_publication_findings",
+                "prompt": "Read retained admission history for this producer and emit a selection mapping every admitted finding id to its exact finding Ref, including earlier correction attempts. Never omit an unresolved historical finding. Empty membership is valid only when no findings were admitted. A fresh approved review does not itself resolve a finding.",
+                "inputs": {
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_publication"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "approved": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_publication"
+                      }
+                    },
+                    "output": "value",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "approved"
+                      ]
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "finding_registry",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "items": {
+                          "kind": "map",
+                          "values": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_publication"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_observe_publication_findings"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "finding_registry",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "observe_publication"
+                      },
+                      "output": "value"
+                    }
+                  }
+                ]
               }
             ],
-            "task_sets": [],
+            "task_sets": [
+              {
+                "id": "decompose_findings",
+                "source": {
+                  "producer": {
+                    "node": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_decompose_findings"
+                    }
+                  },
+                  "output": "value",
+                  "path": [],
+                  "mode": "content",
+                  "type": {
+                    "kind": "object",
+                    "fields": {
+                      "items": {
+                        "kind": "map",
+                        "values": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        }
+                      },
+                      "rationale": {
+                        "kind": "string"
+                      }
+                    }
+                  }
+                },
+                "template": {
+                  "id": "resolve_decompose_finding",
+                  "prompt": "Resolve only this retained finding against the current corrected subject and its exact current independent approved review. Bind the actual reviewer Result Ref and inspected subject Ref. If this finding is not covered, do not declare it resolved.",
+                  "inputs": {
+                    "finding": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "retain_decompose_findings"
+                        }
+                      },
+                      "output": "value",
+                      "path": [
+                        "items",
+                        {
+                          "item_key": true
+                        }
+                      ],
+                      "mode": "content",
+                      "type": {
+                        "kind": "object",
+                        "fields": {
+                          "hash": {
+                            "kind": "string"
+                          },
+                          "uri": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    },
+                    "subject": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "decompose"
+                        }
+                      },
+                      "output": "value",
+                      "path": [],
+                      "mode": "identity",
+                      "type": {
+                        "kind": "string"
+                      }
+                    },
+                    "review": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "review_decomposition"
+                        }
+                      },
+                      "output": "value",
+                      "path": [],
+                      "mode": "identity",
+                      "type": {
+                        "kind": "object",
+                        "fields": {
+                          "decision": {
+                            "kind": "enum",
+                            "values": [
+                              "approved",
+                              "changes_requested"
+                            ]
+                          },
+                          "report": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    },
+                    "approved": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "review_decomposition"
+                        }
+                      },
+                      "output": "value",
+                      "path": [
+                        "decision"
+                      ],
+                      "mode": "content",
+                      "type": {
+                        "kind": "enum",
+                        "values": [
+                          "approved"
+                        ]
+                      }
+                    }
+                  },
+                  "outputs": {
+                    "value": {
+                      "type": "resolution",
+                      "schema": {
+                        "kind": "object",
+                        "fields": {
+                          "finding": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          },
+                          "subjects": {
+                            "kind": "array",
+                            "items": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          },
+                          "reviewer_result": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          },
+                          "decision": {
+                            "kind": "enum",
+                            "values": [
+                              "resolved"
+                            ]
+                          },
+                          "rationale": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "requires": [
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_decompose_findings"
+                    },
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "review_decomposition"
+                    }
+                  ],
+                  "executor": {
+                    "role": "worker",
+                    "capability": "reasoning",
+                    "resources": [],
+                    "authority": {
+                      "subject": {
+                        "kind": "self"
+                      },
+                      "output": "value"
+                    }
+                  },
+                  "independent_of": [
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "decompose"
+                    }
+                  ],
+                  "gates": [],
+                  "resolves": [
+                    {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "decompose"
+                      },
+                      "output": "value"
+                    }
+                  ],
+                  "permits": [
+                    {
+                      "type": "resolution",
+                      "scope": {
+                        "subject": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "decompose"
+                        },
+                        "output": "value"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "test_design_findings",
+                "source": {
+                  "producer": {
+                    "node": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_test_design_findings"
+                    }
+                  },
+                  "output": "value",
+                  "path": [],
+                  "mode": "content",
+                  "type": {
+                    "kind": "object",
+                    "fields": {
+                      "items": {
+                        "kind": "map",
+                        "values": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        }
+                      },
+                      "rationale": {
+                        "kind": "string"
+                      }
+                    }
+                  }
+                },
+                "template": {
+                  "id": "resolve_test_design_finding",
+                  "prompt": "Resolve only this retained finding against the current corrected subject and its exact current independent approved review. Bind the actual reviewer Result Ref and inspected subject Ref. If this finding is not covered, do not declare it resolved.",
+                  "inputs": {
+                    "finding": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "retain_test_design_findings"
+                        }
+                      },
+                      "output": "value",
+                      "path": [
+                        "items",
+                        {
+                          "item_key": true
+                        }
+                      ],
+                      "mode": "content",
+                      "type": {
+                        "kind": "object",
+                        "fields": {
+                          "hash": {
+                            "kind": "string"
+                          },
+                          "uri": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    },
+                    "subject": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "test_design"
+                        }
+                      },
+                      "output": "value",
+                      "path": [],
+                      "mode": "identity",
+                      "type": {
+                        "kind": "string"
+                      }
+                    },
+                    "review": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "review_test_design"
+                        }
+                      },
+                      "output": "value",
+                      "path": [],
+                      "mode": "identity",
+                      "type": {
+                        "kind": "object",
+                        "fields": {
+                          "decision": {
+                            "kind": "enum",
+                            "values": [
+                              "approved",
+                              "changes_requested"
+                            ]
+                          },
+                          "report": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    },
+                    "approved": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "review_test_design"
+                        }
+                      },
+                      "output": "value",
+                      "path": [
+                        "decision"
+                      ],
+                      "mode": "content",
+                      "type": {
+                        "kind": "enum",
+                        "values": [
+                          "approved"
+                        ]
+                      }
+                    }
+                  },
+                  "outputs": {
+                    "value": {
+                      "type": "resolution",
+                      "schema": {
+                        "kind": "object",
+                        "fields": {
+                          "finding": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          },
+                          "subjects": {
+                            "kind": "array",
+                            "items": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          },
+                          "reviewer_result": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          },
+                          "decision": {
+                            "kind": "enum",
+                            "values": [
+                              "resolved"
+                            ]
+                          },
+                          "rationale": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "requires": [
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_test_design_findings"
+                    },
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "review_test_design"
+                    }
+                  ],
+                  "executor": {
+                    "role": "worker",
+                    "capability": "reasoning",
+                    "resources": [],
+                    "authority": {
+                      "subject": {
+                        "kind": "self"
+                      },
+                      "output": "value"
+                    }
+                  },
+                  "independent_of": [
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "test_design"
+                    }
+                  ],
+                  "gates": [],
+                  "resolves": [
+                    {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "test_design"
+                      },
+                      "output": "value"
+                    }
+                  ],
+                  "permits": [
+                    {
+                      "type": "resolution",
+                      "scope": {
+                        "subject": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "test_design"
+                        },
+                        "output": "value"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "implement_findings",
+                "source": {
+                  "producer": {
+                    "node": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_implement_findings"
+                    }
+                  },
+                  "output": "value",
+                  "path": [],
+                  "mode": "content",
+                  "type": {
+                    "kind": "object",
+                    "fields": {
+                      "items": {
+                        "kind": "map",
+                        "values": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        }
+                      },
+                      "rationale": {
+                        "kind": "string"
+                      }
+                    }
+                  }
+                },
+                "template": {
+                  "id": "resolve_implement_finding",
+                  "prompt": "Resolve only this retained finding against the current corrected subject and its exact current independent approved review. Bind the actual reviewer Result Ref and inspected subject Ref. If this finding is not covered, do not declare it resolved.",
+                  "inputs": {
+                    "finding": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "retain_implement_findings"
+                        }
+                      },
+                      "output": "value",
+                      "path": [
+                        "items",
+                        {
+                          "item_key": true
+                        }
+                      ],
+                      "mode": "content",
+                      "type": {
+                        "kind": "object",
+                        "fields": {
+                          "hash": {
+                            "kind": "string"
+                          },
+                          "uri": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    },
+                    "subject": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "implement"
+                        }
+                      },
+                      "output": "value",
+                      "path": [],
+                      "mode": "identity",
+                      "type": {
+                        "kind": "string"
+                      }
+                    },
+                    "review": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "review_implement"
+                        }
+                      },
+                      "output": "value",
+                      "path": [],
+                      "mode": "identity",
+                      "type": {
+                        "kind": "object",
+                        "fields": {
+                          "decision": {
+                            "kind": "enum",
+                            "values": [
+                              "approved",
+                              "changes_requested"
+                            ]
+                          },
+                          "report": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    },
+                    "approved": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "review_implement"
+                        }
+                      },
+                      "output": "value",
+                      "path": [
+                        "decision"
+                      ],
+                      "mode": "content",
+                      "type": {
+                        "kind": "enum",
+                        "values": [
+                          "approved"
+                        ]
+                      }
+                    }
+                  },
+                  "outputs": {
+                    "value": {
+                      "type": "resolution",
+                      "schema": {
+                        "kind": "object",
+                        "fields": {
+                          "finding": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          },
+                          "subjects": {
+                            "kind": "array",
+                            "items": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          },
+                          "reviewer_result": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          },
+                          "decision": {
+                            "kind": "enum",
+                            "values": [
+                              "resolved"
+                            ]
+                          },
+                          "rationale": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "requires": [
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_implement_findings"
+                    },
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "review_implement"
+                    }
+                  ],
+                  "executor": {
+                    "role": "worker",
+                    "capability": "reasoning",
+                    "resources": [],
+                    "authority": {
+                      "subject": {
+                        "kind": "self"
+                      },
+                      "output": "value"
+                    }
+                  },
+                  "independent_of": [
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "implement"
+                    }
+                  ],
+                  "gates": [],
+                  "resolves": [
+                    {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "implement"
+                      },
+                      "output": "value"
+                    }
+                  ],
+                  "permits": [
+                    {
+                      "type": "resolution",
+                      "scope": {
+                        "subject": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "implement"
+                        },
+                        "output": "value"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "publication_context_findings",
+                "source": {
+                  "producer": {
+                    "node": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_publication_context_findings"
+                    }
+                  },
+                  "output": "value",
+                  "path": [],
+                  "mode": "content",
+                  "type": {
+                    "kind": "object",
+                    "fields": {
+                      "items": {
+                        "kind": "map",
+                        "values": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        }
+                      },
+                      "rationale": {
+                        "kind": "string"
+                      }
+                    }
+                  }
+                },
+                "template": {
+                  "id": "resolve_publication_context_finding",
+                  "prompt": "Resolve only this retained finding against the current corrected subject and its exact current independent approved review. Bind the actual reviewer Result Ref and inspected subject Ref. If this finding is not covered, do not declare it resolved.",
+                  "inputs": {
+                    "finding": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "retain_publication_context_findings"
+                        }
+                      },
+                      "output": "value",
+                      "path": [
+                        "items",
+                        {
+                          "item_key": true
+                        }
+                      ],
+                      "mode": "content",
+                      "type": {
+                        "kind": "object",
+                        "fields": {
+                          "hash": {
+                            "kind": "string"
+                          },
+                          "uri": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    },
+                    "subject": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "publication_context"
+                        }
+                      },
+                      "output": "value",
+                      "path": [],
+                      "mode": "identity",
+                      "type": {
+                        "kind": "object",
+                        "fields": {
+                          "branch": {
+                            "kind": "string"
+                          },
+                          "base": {
+                            "kind": "string"
+                          },
+                          "target": {
+                            "kind": "string"
+                          },
+                          "pr": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    },
+                    "review": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "review_publication_context"
+                        }
+                      },
+                      "output": "value",
+                      "path": [],
+                      "mode": "identity",
+                      "type": {
+                        "kind": "object",
+                        "fields": {
+                          "decision": {
+                            "kind": "enum",
+                            "values": [
+                              "approved",
+                              "changes_requested"
+                            ]
+                          },
+                          "report": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    },
+                    "approved": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "review_publication_context"
+                        }
+                      },
+                      "output": "value",
+                      "path": [
+                        "decision"
+                      ],
+                      "mode": "content",
+                      "type": {
+                        "kind": "enum",
+                        "values": [
+                          "approved"
+                        ]
+                      }
+                    }
+                  },
+                  "outputs": {
+                    "value": {
+                      "type": "resolution",
+                      "schema": {
+                        "kind": "object",
+                        "fields": {
+                          "finding": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          },
+                          "subjects": {
+                            "kind": "array",
+                            "items": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          },
+                          "reviewer_result": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          },
+                          "decision": {
+                            "kind": "enum",
+                            "values": [
+                              "resolved"
+                            ]
+                          },
+                          "rationale": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "requires": [
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_publication_context_findings"
+                    },
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "review_publication_context"
+                    }
+                  ],
+                  "executor": {
+                    "role": "worker",
+                    "capability": "bounded",
+                    "resources": [],
+                    "authority": {
+                      "subject": {
+                        "kind": "self"
+                      },
+                      "output": "value"
+                    }
+                  },
+                  "independent_of": [
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "publication_context"
+                    }
+                  ],
+                  "gates": [],
+                  "resolves": [
+                    {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "publication_context"
+                      },
+                      "output": "value"
+                    }
+                  ],
+                  "permits": [
+                    {
+                      "type": "resolution",
+                      "scope": {
+                        "subject": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "publication_context"
+                        },
+                        "output": "value"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "observe_publication_findings",
+                "source": {
+                  "producer": {
+                    "node": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_observe_publication_findings"
+                    }
+                  },
+                  "output": "value",
+                  "path": [],
+                  "mode": "content",
+                  "type": {
+                    "kind": "object",
+                    "fields": {
+                      "items": {
+                        "kind": "map",
+                        "values": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        }
+                      },
+                      "rationale": {
+                        "kind": "string"
+                      }
+                    }
+                  }
+                },
+                "template": {
+                  "id": "resolve_observe_publication_finding",
+                  "prompt": "Resolve only this retained finding against the current corrected subject and its exact current independent approved review. Bind the actual reviewer Result Ref and inspected subject Ref. If this finding is not covered, do not declare it resolved.",
+                  "inputs": {
+                    "finding": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "retain_observe_publication_findings"
+                        }
+                      },
+                      "output": "value",
+                      "path": [
+                        "items",
+                        {
+                          "item_key": true
+                        }
+                      ],
+                      "mode": "content",
+                      "type": {
+                        "kind": "object",
+                        "fields": {
+                          "hash": {
+                            "kind": "string"
+                          },
+                          "uri": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    },
+                    "subject": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "observe_publication"
+                        }
+                      },
+                      "output": "value",
+                      "path": [],
+                      "mode": "identity",
+                      "type": {
+                        "kind": "object",
+                        "fields": {
+                          "repository": {
+                            "kind": "string"
+                          },
+                          "pr": {
+                            "kind": "string"
+                          },
+                          "head_oid": {
+                            "kind": "string"
+                          },
+                          "base_oid": {
+                            "kind": "string"
+                          },
+                          "base_ref": {
+                            "kind": "string"
+                          },
+                          "ci": {
+                            "kind": "enum",
+                            "values": [
+                              "verified",
+                              "unverified",
+                              "absent",
+                              "unknown"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "review": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "review_publication"
+                        }
+                      },
+                      "output": "value",
+                      "path": [],
+                      "mode": "identity",
+                      "type": {
+                        "kind": "object",
+                        "fields": {
+                          "decision": {
+                            "kind": "enum",
+                            "values": [
+                              "approved",
+                              "changes_requested"
+                            ]
+                          },
+                          "report": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    },
+                    "approved": {
+                      "producer": {
+                        "node": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "review_publication"
+                        }
+                      },
+                      "output": "value",
+                      "path": [
+                        "decision"
+                      ],
+                      "mode": "content",
+                      "type": {
+                        "kind": "enum",
+                        "values": [
+                          "approved"
+                        ]
+                      }
+                    }
+                  },
+                  "outputs": {
+                    "value": {
+                      "type": "resolution",
+                      "schema": {
+                        "kind": "object",
+                        "fields": {
+                          "finding": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          },
+                          "subjects": {
+                            "kind": "array",
+                            "items": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          },
+                          "reviewer_result": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          },
+                          "decision": {
+                            "kind": "enum",
+                            "values": [
+                              "resolved"
+                            ]
+                          },
+                          "rationale": {
+                            "kind": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "requires": [
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "retain_observe_publication_findings"
+                    },
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "review_publication"
+                    }
+                  ],
+                  "executor": {
+                    "role": "worker",
+                    "capability": "bounded",
+                    "resources": [],
+                    "authority": {
+                      "subject": {
+                        "kind": "self"
+                      },
+                      "output": "value"
+                    }
+                  },
+                  "independent_of": [
+                    {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "observe_publication"
+                    }
+                  ],
+                  "gates": [],
+                  "resolves": [
+                    {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "observe_publication"
+                      },
+                      "output": "value"
+                    }
+                  ],
+                  "permits": [
+                    {
+                      "type": "resolution",
+                      "scope": {
+                        "subject": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "observe_publication"
+                        },
+                        "output": "value"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
             "terminals": [
               {
                 "kind": "node",

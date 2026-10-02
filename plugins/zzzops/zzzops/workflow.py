@@ -163,7 +163,7 @@ class ObservedArtifactIndex(comment_store.ArtifactIndex):
 # being routed through an unrelated installation, policy, lease, or portfolio
 # gate.
 PUBLIC_OPERATIONS = frozenset({
-    'batch', 'bind', 'block', 'migration_batch',
+    'batch', 'bind', 'block', 'migration_batch', 'graph_prepare', 'graph_adopt',
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
     'feedback_submit', 'heartbeat', 'installation_record', 'integrate',
     'policy_approve', 'policy_propose', 'read', 'recover', 'renew',
@@ -1517,7 +1517,7 @@ class Workflow:
 
 
 
-    def node_snapshot(self, number, *, publication_probe=False):
+    def node_snapshot(self, number, *, publication_probe=False, graph_override=None):
         """Read exact scoped records; only relationship consumers request closure."""
         ev = self.api._phase_evidence
         snapshots, artifacts, issues, bootstrap = {}, {}, {}, {}
@@ -1564,7 +1564,10 @@ class Workflow:
             ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'}, 'Payload')
             ev.contract_fields(payload['operational'], {'leases', 'receipts'}, 'Operational payload')
             if not isinstance(payload['evidence'], list): raise ValueError('Evidence must be an ordered Ref array')
-            graph = resolve(payload['graph']); ev.validate_graph(graph)
+            graph = resolve(payload['graph'])
+            if n == number and graph_override is not None:
+                graph = copy.deepcopy(graph_override)
+            ev.validate_graph(graph)
             source_artifact = resolve(payload['spec'])
             if source_artifact.get('type') == 'migration_source':
                 entries = policy_section(self.project, 'workflow_adherence')['configuration'].get('migration_entries', [])
@@ -1717,6 +1720,93 @@ class Workflow:
         result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
         return {'number': number, 'issue': issues[number], **selected, 'snapshots': snapshots, 'issues': issues, 'bootstrap': bootstrap,
                 'projection': result, 'artifacts': result['artifacts'], 'published': published, 'workspaces': workspaces, 'publications': publications}
+
+    def node_graph_proposal(self, snapshot, graph, rationale, *, pending_request=None):
+        """Preflight a goal-only graph repair without replacing any evidence."""
+        if not (self.runtime or {}).get('root_id'):
+            raise ValueError('Goal graph repair requires authenticated root')
+        if snapshot['envelope']['state'] != 'open' or str(snapshot['issue'].get('state', '')).lower() == 'closed':
+            raise ValueError('Archived goal cannot adopt a graph')
+        if snapshot['payload']['operational']['leases']:
+            raise ValueError('Graph repair requires observed stopped ownership; leases remain')
+        committed = {row['request'] for row in snapshot['payload']['operational']['receipts']}
+        for row in self.artifact_index(snapshot['number']).envelopes:
+            request_id = (row.get('context') or {}).get('request_id')
+            if request_id and request_id not in committed and request_id != pending_request:
+                raise ValueError('Uncommitted checkpoint must be resumed before graph repair')
+        if not isinstance(rationale, str) or not rationale.strip():
+            raise ValueError('Graph repair requires an explicit scoped rationale')
+        self.api._phase_evidence.validate_graph(graph)
+        previous = snapshot['graph']
+        if ([node['id'] for node in graph['nodes'][:len(previous['nodes'])]] !=
+                [node['id'] for node in previous['nodes']] or
+                graph['task_sets'][:len(previous['task_sets'])] != previous['task_sets'] or
+                graph['terminals'] != previous['terminals']):
+            raise ValueError('Graph repair must preserve existing node indices, task sets and terminals')
+        prospective = self.node_snapshot(snapshot['number'], graph_override=graph)
+        before = snapshot['projection']['current']
+        after = prospective['projection']['current']
+        if any(key not in after or after[key][0] != value[0] for key, value in before.items()):
+            raise ValueError('Prospective graph does not preserve every current settled Result')
+        source = {key: snapshot['payload'][key] for key in ('spec', 'graph', 'evidence')}
+        source.update(parent=snapshot['envelope']['parent'], state=snapshot['envelope']['state'],
+                      current=[{'node': result['node'], 'result': ref}
+                               for _, (ref, result) in sorted(before.items(), key=lambda row: str(row[0]))])
+        return {'kind': 'goal_graph_adoption', 'repository': self.repository, 'goal': snapshot['number'],
+                'policy': digest(self.project['policy']), 'source': source,
+                'graph': copy.deepcopy(graph), 'rationale': rationale}
+
+    def node_graph_adopt(self, snapshot, payload, request):
+        allowed = {'operation', 'request_id', 'review_goal', 'proposal', 'review', 'approved_by'}
+        if set(request) != allowed or not explicit_approval(request.get('approved_by')):
+            raise ValueError('Exact graph proposal, independent review and explicit human approval are required')
+        if not self.api._phase_evidence.positive_integer(request['review_goal']):
+            raise ValueError('Graph repair requires an exact review goal')
+        reviewed = self.node_snapshot(request['review_goal'])
+        current = reviewed['projection']['current']
+        proposer = next(((key, result) for key, (_, result) in current.items()
+                         if request['proposal'] in result['outputs'].values()), None)
+        reviewer = next(((key, result) for key, (ref, result) in current.items()
+                         if ref == request['review']), None)
+        if not proposer or not reviewer:
+            raise ValueError('Graph repair requires current canonical proposal and reviewer Result')
+        producer_key, producer = proposer
+        review_key, review = reviewer
+        states = reviewed['projection']['states']
+        if (states[producer_key]['contract']['executor']['role'] != 'root' or
+                producer['executor'] != (self.runtime or {}).get('root_id')):
+            raise ValueError('Graph proposal requires current authenticated root provenance')
+        independent = any(producer['node'] in row['targets'] for row in review['resolutions']
+                          if row['selector'] in states[review_key]['contract']['independent_of'])
+        inspected = any(row['source'] == request['proposal'] and row['mode'] == 'identity' and not row['path']
+                        for row in review['inputs'])
+        decisions = [reviewed['artifacts'][ref['hash']] for ref in review['outputs'].values()]
+        approved = any(value.get('type') == 'review_decision' and isinstance(value.get('content'), dict) and
+                       value['content'].get('decision') == 'approved' for value in decisions)
+        if producer['executor'] == review['executor'] or not independent or not inspected or not approved:
+            raise ValueError('Exact current independent approved graph review is required')
+        artifact = reviewed['artifacts'][request['proposal']['hash']]
+        proposal = artifact['content']
+        if isinstance(proposal, str):
+            try:
+                proposal = json.loads(proposal)
+            except ValueError:
+                raise ValueError('Root graph proposal must contain the exact prepared JSON manifest') from None
+        if not isinstance(proposal, dict) or set(proposal) != {'kind', 'repository', 'goal', 'policy', 'source', 'graph', 'rationale'}:
+            raise ValueError('Invalid prepared graph proposal manifest')
+        expected = self.node_graph_proposal(snapshot, proposal['graph'], proposal['rationale'],
+                                           pending_request=request['request_id'])
+        if proposal != expected:
+            raise ValueError('Graph proposal source, target, current Results or policy changed after review')
+        if self.adapter.get_issue(request['review_goal'])['body'] != reviewed['issue']['body']:
+            raise ValueError('Graph review source changed before adoption')
+        graph_hash = digest(proposal['graph'])
+        snapshot['artifacts'][graph_hash] = proposal['graph']
+        payload['graph'] = self.node_ref(graph_hash, snapshot['number'])
+        response = {'next_steps': [{'kind': 'checkpoint', 'goal': snapshot['number'],
+                    'graph': payload['graph'], 'proposal': request['proposal'], 'review': request['review'],
+                    'action': 'Reviewed goal-only graph adopted; all prior evidence and current Results retained.'}]}
+        return self.node_persist(snapshot, payload, response, request)
 
     def node_publication_context(self, snapshots, projection, artifacts):
         """Observe provider facts only for explicitly declared publication work."""
@@ -2558,6 +2648,8 @@ class Workflow:
                     if receipt['payload'] != digest(request): raise ValueError('Request receipt payload conflict')
                     return copy.deepcopy(snapshot['artifacts'][receipt['result']['hash']])
             pending = self.node_pending(snapshot, request)
+            if request['operation'] == 'graph_adopt':
+                return self.node_graph_adopt(snapshot, payload, request)
             if request['operation'] in {'integrate', 'reconcile', 'complete'}:
                 return self.node_publication_operation(snapshot, payload, request)
             node = request.get('node')
@@ -2850,6 +2942,21 @@ class Workflow:
                     if ancestor['repository'] != self.repository: raise ValueError('Parent ancestor repository differs')
                     parent = ancestor['parent']
                 snapshot['parent_change'] = value['parent']
+            elif kind == 'finding_registry':
+                if actor != (self.runtime or {}).get('root_id') or state['contract']['executor']['role'] != 'root':
+                    raise ValueError('Retained finding registry requires authenticated root')
+                expected = {}
+                for retained in projection['obligations'].values():
+                    try:
+                        permit(kind, retained['content']['target'])
+                    except ValueError:
+                        continue
+                    identifier = retained['content']['id']
+                    if identifier in expected:
+                        raise ValueError('Finding registry scope has ambiguous retained identities')
+                    expected[identifier] = retained['finding']
+                if value['items'] != expected:
+                    raise ValueError('Finding registry must retain every exact admitted finding in its permitted scope')
             elif kind == 'finding':
                 permit(kind, value['target'])
                 if not ev.task_identifier(value['id']) or not ev.positive_integer(value['revision']): raise ValueError('Finding identity/revision invalid')
@@ -3134,6 +3241,17 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             _, goal = engine.read(number)
             content = {'specification': goal['human_spec'], 'acceptance_criteria': goal.get('acceptance_criteria', [])}
         return {'next_steps': [{'kind': 'inspect_evidence', 'goal': number, 'content': content, **({'resolved': resolved} if resolved else {})}]}
+    if operation == 'graph_prepare' and number is not None:
+        if set(payload) - {'operation', 'graph', 'rationale', 'request_id'} or not {'graph', 'rationale'} <= set(payload):
+            raise ValueError('Graph preparation accepts only the proposed graph and scoped rationale')
+        with engine.locked():
+            proposal = engine.node_graph_proposal(engine.node_snapshot(number), payload['graph'], payload['rationale'])
+        return {'next_steps': [{'kind': 'review_required', 'assignment': 'root', 'goal': number,
+                'proposal': proposal,
+                'action': 'Record this exact JSON manifest as a root task output, obtain a current independent approved review of that exact output and explicit human approval, then adopt. Preparation does not mutate the goal or project policy.',
+                'submission': {'operation': 'graph_adopt', 'review_goal': '<goal containing reviewed root proposal>',
+                               'proposal': '<exact root output Ref>', 'review': '<exact independent reviewer Result Ref>',
+                               'approved_by': '<user>', 'request_id': '<unique request>'}}]}
     administrative = api._workflow_admin.handle(api, repo, project, source, runtime, payload) if operation not in {'capture_propose', 'capture'} else None
     if administrative is not None:
         return administrative
