@@ -1,0 +1,161 @@
+{
+  "content": {
+    "active_lock_reason": null,
+    "assignee": null,
+    "assignees": [],
+    "author_association": "OWNER",
+    "body": "## Outcome\nExpose stale ancestor gates and their descendant impact in the effective workflow DAG frontier before dispatch.\n\n## Acceptance\n- The public frontier identifies invalidated ancestor phase gates.\n- It reports the affected descendants and their blocked phase.\n- The result is deterministic and actionable without reconstructing historical state.\n\n## Verification\nCover stale-ancestor and descendant-impact frontier fixtures.\n\n\n<!-- zzzops-goal\n{\"blockers\":[],\"claim\":null,\"confidence\":\"high\",\"depends_on\":[],\"difficulty\":\"L\",\"engineering_rigor\":{\"risk_categories\":[\"authorization\",\"external_state\"]},\"evidence\":[],\"next_action\":\"Design a public effective-frontier diagnostic that exposes stale ancestor gates and descendant impact before child dispatch.\",\"parent\":null,\"phase_evidence\":{\"human_approvals\":{\"understand\":{\"actor\":\"root\",\"approval_token\":\"User explicitly approved all ten exact understanding plans in the linked review packet in this Codex thread; recorded at /home/dave/Work/dev/zzzops/.git/zzzops/user-review-decisions.json; goal 521; artifact sha256:e4fca119ce920fb653404b1f48842493f8c22ecba58898d880b7846a203b230a.\",\"record_hash\":\"sha256:352cd74a0c7530d1fa9d1d0ea4d2ee546ceaa6a44b87c18b04c318c8241c8047\",\"review_hash\":\"sha256:f7f1eca67c8253fa48671008413f961d0f1bb0ea5348ad1acd8297d162fe5f92\"}},\"records\":{\"understand\":{\"actor\":\"01a0e8b5-91b3-7150-b429-0df30a884792\",\"input_envelope\":{\"acceptance_criteria\":[\"The public frontier identifies invalidated ancestor phase gates.\",\"It reports the affected descendants and their blocked phase.\",\"The result is deterministic and actionable without reconstructing historical state.\"],\"capabilities\":{\"identity\":\"workflow-runtime\",\"snapshot\":{\"assessment\":{\"dimensions\":{\"boundedness\":\"bounded\",\"consequence\":\"consequential\",\"engineering_rigor\":\"structured\"},\"files\":[\"AGENTS.md\",\".zzzops/PROJECT.md\",\".zzzops/POLICY.json\",\"plugins/zzzops/zzzops/workflow.py\",\"plugins/zzzops/zzzops/phase_evidence.py\",\".zzzops/migration/521.json\"],\"goal_spec\":\"sha256:daf80498d59ec4a0ee0e6c79321c28fd25df53d9ceeb34f43175a9f8b4d06502\",\"policy\":\"sha256:d6e4480f98e58765d0e0fabfc45ec3d1148ab4050f9c4986d26dfdedeea8f57f\"}}},\"dependencies\":[],\"goal_spec\":\"sha256:daf80498d59ec4a0ee0e6c79321c28fd25df53d9ceeb34f43175a9f8b4d06502\",\"invocation\":{\"inputs\":{\"goal\":521},\"intent\":\"execute\"},\"parents\":[],\"phase\":\"understand\",\"phase_dag\":\"sha256:844eecf373de65b9788cd19a48eb955f5fbe638b01354950216bd171c5799fa8\",\"policy\":\"sha256:d6e4480f98e58765d0e0fabfc45ec3d1148ab4050f9c4986d26dfdedeea8f57f\",\"provider\":{\"identity\":\"github\",\"snapshot\":{\"migration\":{\"decision\":{\"action\":\"replace_reset\",\"authority\":\"Eligibility only; existing operation authority applies. Excludes unrelated user, external and deployment state.\",\"contracts\":[{\"action\":\"replace_reset\",\"id\":\"invalidated-ancestor-frontier-v1\",\"scope\":\"affected_project_owned\"}],\"reason\":\"evidenced_unreleased_contract\",\"scope\":\"affected_project_owned\"},\"release_snapshot\":{\"releases\":[{\"commit\":\"0f983a142591824c716f987d21a433d126ca4120\",\"id\":357023143,\"published_at\":\"2026-07-20T22:29:27Z\",\"tag\":\"v1.0.0\"},{\"commit\":\"83b1222e78eb48cf7f5d55b0b36809e031e3d63b\",\"id\":363878618,\"published_at\":\"2026-08-02T19:41:14Z\",\"tag\":\"v1.1.0\"},{\"commit\":\"a27b41875001bf496178ecd4cfb1b3500afc6afc\",\"id\":363924069,\"published_at\":\"2026-08-02T23:50:22Z\",\"tag\":\"v1.2.0\"},{\"commit\":\"36aaaf3565324cb76be81e1592735ef7ab80738a\",\"id\":368231888,\"published_at\":\"2026-08-10T22:26:17Z\",\"tag\":\"v2.0.0\"},{\"commit\":\"ad2adb0feaf30a867af68c664377a844d16b06c7\",\"id\":368240950,\"published_at\":\"2026-08-10T22:43:34Z\",\"tag\":\"v2.0.1\"},{\"commit\":\"a36cf3a31876385885738cf86d90d8d9f77bbd02\",\"id\":378847338,\"published_at\":\"2026-08-29T02:14:04Z\",\"tag\":\"v2.1.0\"}],\"status\":\"complete\"}},\"repository\":\"david-rzepa/zzzops\"}},\"repository\":{\"identity\":\"david-rzepa/zzzops\",\"snapshot\":{\"files\":{\".zzzops/POLICY.json\":\"sha256:14b360ccc20c9836113b02e407268a2b9e3bcf9dc8649b1cde00dd611418216c\",\".zzzops/PROJECT.md\":\"sha256:64c7d9737b9e4bc9490ff91a4050e94b933e86fc5e1a8fdc4dc4be4200e78160\",\".zzzops/migration/521.json\":\"sha256:0fa360ba0fe5ec35b9fc9b033cf33796b03eb4c7f3093069f0e518efb7c8dd39\",\"AGENTS.md\":\"sha256:022a2f68dea6662e06af49b529fe33dbedb52fcadcbee1f107bab765491a187d\",\"plugins/zzzops/zzzops/phase_evidence.py\":\"sha256:7ea37652b4ab34db65b3cb9d344298c067abbb10061f68c6575c8dede2f32add\",\"plugins/zzzops/zzzops/workflow.py\":\"sha256:6ad9c2923371f238855de0413b8711f72da77841aabf14fcd8c01d72779704aa\"}}},\"schema_version\":2,\"upstream_outputs\":[]},\"input_hash\":\"sha256:2d083b8c563ec1914c6b7654615a77dc2fe4b792e8de43b5caff0bbba3ee291c\",\"not_required\":null,\"output\":{\"hash\":\"sha256:e4fca119ce920fb653404b1f48842493f8c22ecba58898d880b7846a203b230a\",\"reference\":\"urn:sha256:e4fca119ce920fb653404b1f48842493f8c22ecba58898d880b7846a203b230a\"},\"routing\":{\"hash\":\"sha256:cbb0de8d62270e07ccd62fb590220e881cdcc7824c5175c4ac5e81cf7a9548ff\",\"reference\":\"urn:sha256:cbb0de8d62270e07ccd62fb590220e881cdcc7824c5175c4ac5e81cf7a9548ff\"},\"selection\":{\"effort\":\"medium\",\"model\":\"gpt-6-sol\"},\"status\":\"completed\",\"test_design\":null,\"verification\":null}},\"reviews\":{\"understand\":{\"artifact\":{\"hash\":\"sha256:6c43d837b2e641312c616b6e7c07ce10e0f94f382b2d2a13d546bc71ff5c04be\",\"reference\":\"urn:sha256:6c43d837b2e641312c616b6e7c07ce10e0f94f382b2d2a13d546bc71ff5c04be\"},\"decision\":\"approved\",\"input_hash\":\"sha256:2d083b8c563ec1914c6b7654615a77dc2fe4b792e8de43b5caff0bbba3ee291c\",\"outcomes\":{\"acceptance\":\"approved\",\"entropy\":{\"evidence\":\"The projection probe confirms that derivation already produces deterministic invalidated-ancestor diagnostics while Workflow.step drops them. The proposed additive projection covers all criteria without changing eligibility or authority. The two-file scope is sufficient and minimal.\",\"goals\":[],\"outcome\":\"no_findings\"}},\"output_hash\":\"sha256:e4fca119ce920fb653404b1f48842493f8c22ecba58898d880b7846a203b230a\",\"record_hash\":\"sha256:352cd74a0c7530d1fa9d1d0ea4d2ee546ceaa6a44b87c18b04c318c8241c8047\",\"reviewer\":\"/root/review518\"}},\"schema_version\":2,\"withdrawals\":[]},\"priority\":\"P1\",\"resources\":[\"path:plugins/zzzops/zzzops/workflow.py\",\"path:plugins/zzzops/zzzops/phase_evidence.py\",\"path:.agents\"],\"revision\":15,\"schema_version\":1,\"status\":\"new\",\"value\":\"high\",\"workflow\":{\"artifacts\":{},\"assessments\":{\"understand\":{\"dimensions\":{\"boundedness\":\"bounded\",\"consequence\":\"consequential\",\"engineering_rigor\":\"structured\"},\"files\":[\"AGENTS.md\",\".zzzops/PROJECT.md\",\".zzzops/POLICY.json\",\"plugins/zzzops/zzzops/workflow.py\",\"plugins/zzzops/zzzops/phase_evidence.py\",\".zzzops/migration/521.json\"],\"goal_spec\":\"sha256:daf80498d59ec4a0ee0e6c79321c28fd25df53d9ceeb34f43175a9f8b4d06502\",\"policy\":\"sha256:d6e4480f98e58765d0e0fabfc45ec3d1148ab4050f9c4986d26dfdedeea8f57f\"}},\"leases\":{},\"receipts\":{\"0285be6c-02d3-4db2-8388-a8870888a89d\":{\"hash\":\"sha256:23b2a4001b0b5b6c0f40488e50741ee5b13f14f2c569d2ebb035883c15acd8b4\"},\"1adbbeb5-1b4b-4384-8801-ed1a0b784b8b\":{\"hash\":\"sha256:151c8b4fa35ef0e3a50de2fa563831f4371e2a82daaaf6a41c98db6c6c3181b1\"},\"5d77a031-46de-4575-b888-1797734fe3a5\":{\"hash\":\"sha256:9e174cec106cee44ac50ffc83925a458d840e2ab4dc72902c67add8e3821a77d\"},\"89ee403f-ffa9-4adc-a899-55fea79f90bc\":{\"hash\":\"sha256:85f77f1ed4d58f1bb3097b42cc245e88d9d7882ffc69d96299b590ae28375778\"},\"8e321723-35dc-4698-83c2-932c69880223\":{\"hash\":\"sha256:8808e521c8016176cdf4b01ed46841fc7ba07af7dc25c0225f39eb3d1579bceb\"},\"b6c1d98d-a7d4-4c42-9009-63a72bf08914\":{\"hash\":\"sha256:15e7f7e0bf328c416f50713032c3443861cb7c5f98f47fe0587d3e7fdb0830a3\"},\"c546bab6-0670-4399-9158-913cedd18a83\":{\"hash\":\"sha256:5cf670537879452eeecd4e75b5a8fd27452dac773c74d7f7b7a5ba2518030c98\"},\"d0931191-c547-47e8-b874-2f2e3c6e741f\":{\"hash\":\"sha256:1cbbb38ddc90e7dfdd93ec4be74f4d4032ea5e29ab3148191f4f3a7de041f677\"},\"fa67a179-03a8-47c9-bbd9-64339e252ae5\":{\"hash\":\"sha256:de7252fe276e3472a1657f84f1d509f821d4e4355ed4b730256ffea0c0a4f184\"},\"resume-521-db7315d46ee74b65b680b8343623267c\":{\"hash\":\"sha256:4b6bc3b75946e003a0e8f4dc9f4a6b1cd73b71bc697e6271ac14b2e6a3b73ffe\"}},\"routing_choices\":{},\"workers\":{\"/root/review518\":{\"group\":\"review\",\"id\":\"/root/review518\",\"selection\":{\"effort\":\"low\",\"model\":\"gpt-5.6-sol\"}},\"01a0e8b5-91b3-7150-b429-0df30a884792\":{\"group\":\"root\",\"id\":\"01a0e8b5-91b3-7150-b429-0df30a884792\",\"selection\":{\"effort\":\"medium\",\"model\":\"gpt-6-sol\"}}}}}\nzzzops-goal -->\n",
+    "closed_at": null,
+    "closed_by": null,
+    "comments": 14,
+    "comments_url": "https://api.github.com/repos/david-rzepa/zzzops/issues/521/comments",
+    "created_at": "2026-09-23T05:00:57Z",
+    "events_url": "https://api.github.com/repos/david-rzepa/zzzops/issues/521/events",
+    "html_url": "https://github.com/david-rzepa/zzzops/issues/521",
+    "id": 5549010335,
+    "issue_dependencies_summary": {
+      "blocked_by": 0,
+      "blocking": 0,
+      "total_blocked_by": 0,
+      "total_blocking": 0
+    },
+    "labels": [
+      {
+        "archived_at": null,
+        "archived_by": null,
+        "color": "d73a4a",
+        "default": true,
+        "description": "Something isn't working",
+        "id": 11544396256,
+        "name": "bug",
+        "node_id": "LA_kwDOTasXu88AAAACsBmB4A",
+        "url": "https://api.github.com/repos/david-rzepa/zzzops/labels/bug"
+      },
+      {
+        "archived_at": null,
+        "archived_by": null,
+        "color": "5319E7",
+        "default": false,
+        "description": "Managed by ZzzOps",
+        "id": 11549538748,
+        "name": "zzzops",
+        "node_id": "LA_kwDOTasXu88AAAACsGf5vA",
+        "url": "https://api.github.com/repos/david-rzepa/zzzops/labels/zzzops"
+      },
+      {
+        "archived_at": null,
+        "archived_by": null,
+        "color": "B60205",
+        "default": false,
+        "description": "ZzzOps priority P1",
+        "id": 11549539186,
+        "name": "zzzops:priority:P1",
+        "node_id": "LA_kwDOTasXu88AAAACsGf7cg",
+        "url": "https://api.github.com/repos/david-rzepa/zzzops/labels/zzzops:priority:P1"
+      },
+      {
+        "archived_at": null,
+        "archived_by": null,
+        "color": "D4C5F9",
+        "default": false,
+        "description": "Untriaged ZzzOps goal",
+        "id": 11554314270,
+        "name": "zzzops:status:new",
+        "node_id": "LA_kwDOTasXu88AAAACsLDYHg",
+        "url": "https://api.github.com/repos/david-rzepa/zzzops/labels/zzzops:status:new"
+      },
+      {
+        "archived_at": null,
+        "archived_by": null,
+        "color": "ededed",
+        "default": false,
+        "description": null,
+        "id": 11699709150,
+        "name": "zzzops:schema:v1",
+        "node_id": "LA_kwDOTasXu88AAAACuVtk3g",
+        "url": "https://api.github.com/repos/david-rzepa/zzzops/labels/zzzops:schema:v1"
+      },
+      {
+        "archived_at": null,
+        "archived_by": null,
+        "color": "ededed",
+        "default": false,
+        "description": null,
+        "id": 12299318560,
+        "name": "workflow-runtime",
+        "node_id": "LA_kwDOTasXu88AAAAC3Ri1IA",
+        "url": "https://api.github.com/repos/david-rzepa/zzzops/labels/workflow-runtime"
+      },
+      {
+        "archived_at": null,
+        "archived_by": null,
+        "color": "ededed",
+        "default": false,
+        "description": null,
+        "id": 12320326526,
+        "name": "dag",
+        "node_id": "LA_kwDOTasXu88AAAAC3llDfg",
+        "url": "https://api.github.com/repos/david-rzepa/zzzops/labels/dag"
+      }
+    ],
+    "labels_url": "https://api.github.com/repos/david-rzepa/zzzops/issues/521/labels{/name}",
+    "locked": false,
+    "milestone": null,
+    "node_id": "I_kwDOTasXu88AAAABSr8tnw",
+    "number": 521,
+    "performed_via_github_app": null,
+    "pinned_comment": null,
+    "reactions": {
+      "+1": 0,
+      "-1": 0,
+      "confused": 0,
+      "eyes": 0,
+      "heart": 0,
+      "hooray": 0,
+      "laugh": 0,
+      "rocket": 0,
+      "total_count": 0,
+      "url": "https://api.github.com/repos/david-rzepa/zzzops/issues/521/reactions"
+    },
+    "repository_url": "https://api.github.com/repos/david-rzepa/zzzops",
+    "state": "open",
+    "state_reason": null,
+    "sub_issues_summary": {
+      "completed": 0,
+      "percent_completed": 0,
+      "total": 0
+    },
+    "timeline_url": "https://api.github.com/repos/david-rzepa/zzzops/issues/521/timeline",
+    "title": "Expose invalidated ancestor gates in the effective DAG frontier",
+    "updated_at": "2026-09-28T19:24:24Z",
+    "url": "https://api.github.com/repos/david-rzepa/zzzops/issues/521",
+    "user": {
+      "avatar_url": "https://avatars.githubusercontent.com/u/6443776?v=4",
+      "events_url": "https://api.github.com/users/david-rzepa/events{/privacy}",
+      "followers_url": "https://api.github.com/users/david-rzepa/followers",
+      "following_url": "https://api.github.com/users/david-rzepa/following{/other_user}",
+      "gists_url": "https://api.github.com/users/david-rzepa/gists{/gist_id}",
+      "gravatar_id": "",
+      "html_url": "https://github.com/david-rzepa",
+      "id": 6443776,
+      "login": "david-rzepa",
+      "node_id": "MDQ6VXNlcjY0NDM3NzY=",
+      "organizations_url": "https://api.github.com/users/david-rzepa/orgs",
+      "received_events_url": "https://api.github.com/users/david-rzepa/received_events",
+      "repos_url": "https://api.github.com/users/david-rzepa/repos",
+      "site_admin": false,
+      "starred_url": "https://api.github.com/users/david-rzepa/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/david-rzepa/subscriptions",
+      "type": "User",
+      "url": "https://api.github.com/users/david-rzepa",
+      "user_view_type": "public"
+    }
+  },
+  "producer": null,
+  "provenance": {
+    "actor": "01a0e8b5-91b3-7150-b429-0df30a884792",
+    "policy": "sha256:9747753a550c85b694fbe88bb15ea49de39495c6cfb16d3595546e95cc5377d1",
+    "source": null
+  },
+  "type": "migration_source"
+}
