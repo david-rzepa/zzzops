@@ -1,0 +1,202 @@
+{
+  "498": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 817,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "521": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 20,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "522": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 87,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "523": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 24,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "384": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 7,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "433": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 18,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "434": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 5,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "435": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 3,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "436": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 0,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "437": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 1,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "438": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 2,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "440": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 1,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "456": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 70,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "457": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 4,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "458": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 4,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "459": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 3,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "460": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 3,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "467": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 0,
+    "comments_added": 1,
+    "labels_preserved": false,
+    "recovered_priority": "P1"
+  },
+  "545": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 0,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "546": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 0,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "547": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 0,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "557": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 1,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "561": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 0,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "562": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 1,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  },
+  "566": {
+    "schema_version": 2,
+    "state_preserved": true,
+    "original_comments_retained": 0,
+    "comments_added": 1,
+    "labels_preserved": true,
+    "recovered_priority": null
+  }
+}
