@@ -393,10 +393,15 @@ def audit_portfolio(
                     findings.append({"code": "merged_pr_stale_checkpoint", "goal": key, "detail": ",".join(merge["reasons"])})
             if isinstance(review, dict) and review.get("status") == "approved" and not (record.get("implementation") or {}).get("pr"):
                 findings.append({"code": "approved_review_without_pr", "goal": key, "detail": "PR missing"})
-            expected = {"zzzops", f"zzzops:status:{record['status']}", f"zzzops:priority:{record['priority']}"}
+            # Generic workflow state comes from the envelope and graph. Legacy
+            # status labels retained during conversion are advisory metadata.
+            status_labels = record.get("schema_version") != 2
+            expected = {"zzzops", f"zzzops:priority:{record['priority']}"}
+            if status_labels:
+                expected.add(f"zzzops:status:{record['status']}")
             actual = set(record.get("labels", []))
             drift = sorted(expected - actual)
-            stale = sorted(label for label in actual if (label.startswith("zzzops:status:") or label.startswith("zzzops:priority:")) and label not in expected)
+            stale = sorted(label for label in actual if ((status_labels and label.startswith("zzzops:status:")) or label.startswith("zzzops:priority:")) and label not in expected)
             if drift or stale:
                 findings.append({"code": "label_drift", "goal": key, "detail": f"missing={drift}; stale={stale}"})
             terminal = record["status"] in {"done", "cancelled"}

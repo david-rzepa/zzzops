@@ -440,14 +440,19 @@ def github_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
     if goal is None:
         raise ValueError("managed goal block is required")
     if goal['schema_version'] == 2:
+        labels = sorted(row['name'] if isinstance(row, dict) else row for row in issue.get('labels', []))
+        priorities = [label.removeprefix('zzzops:priority:') for label in labels if label.startswith('zzzops:priority:')]
+        if len(priorities) > 1 or any(priority not in GOAL_PRIORITIES for priority in priorities):
+            raise ValueError('Schema-2 priority labels must contain at most one supported priority')
+        priority = priorities[0] if priorities else 'P2'
         return {'key': number, 'title': issue.get('title', ''), 'status': 'done' if goal['state'] == 'archived' or str(issue.get('state', '')).lower() == 'closed' else 'ready',
-                'priority': 'P2', 'value': 'medium', 'difficulty': 'unknown', 'confidence': 'high',
+                'priority': priority, 'value': 'medium', 'difficulty': 'unknown', 'confidence': 'high',
                 'parent': goal['parent'], 'depends_on': [], 'claim': None, 'resources': [], 'needs_human': False,
                 'blockers': [], 'blocker_categories': [], 'next_action': 'Evaluate current generic evidence.',
                 'revision': goal['revision'], 'digest': hashlib.sha256(body.encode()).hexdigest(),
                 'updated_at': issue.get('updated_at'), 'human_spec': body.split(GOAL_BLOCK_START, 1)[0],
                 'acceptance_criteria': [], 'schema_version': 2, 'envelope': goal,
-                'state': issue.get('state'), 'url': issue.get('html_url'), 'labels': sorted(row['name'] if isinstance(row, dict) else row for row in issue.get('labels', []))}
+                'state': issue.get('state'), 'url': issue.get('html_url'), 'labels': labels}
     errors = validate_github_issue_goal(number, issue.get("title"), body)
     if errors:
         raise ValueError("; ".join(errors))

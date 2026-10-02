@@ -126,6 +126,54 @@ class GoalEnvelopeTests(unittest.TestCase):
             self.parse(self.body(envelope))
 
 
+class GenericPortfolioMetadataTests(unittest.TestCase):
+    def issue(self, priority="P1", status="new"):
+        fixture = GoalEnvelopeTests()
+        return {"number": 100, "title": "Preserve reviewed priority",
+                "body": fixture.body(fixture.envelope()), "state": "open",
+                "labels": [{"name": label} for label in
+                           ("zzzops", f"zzzops:priority:{priority}", f"zzzops:status:{status}")]}
+
+    def test_conversion_preserves_all_supported_priorities_without_legacy_status_drift(self):
+        for priority in ("P0", "P1", "P2", "P3"):
+            with self.subTest(priority=priority):
+                record = z.github_goal_record(self.issue(priority))
+                self.assertEqual(priority, record["priority"])
+                self.assertEqual([], z.audit_portfolio([record], "github_issues"))
+
+    def test_ambiguous_or_unknown_priority_is_rejected_without_mutation(self):
+        for labels in (("P1", "P2"), ("P9",)):
+            with self.subTest(priorities=labels):
+                issue = self.issue()
+                issue["labels"] = [f"zzzops:priority:{value}" for value in labels]
+                before = copy.deepcopy(issue)
+                with self.assertRaisesRegex(ValueError, "priority"):
+                    z.github_goal_record(issue)
+                self.assertEqual(before, issue)
+
+    def test_missing_priority_keeps_default_and_required_label_diagnostic(self):
+        issue = self.issue()
+        issue["labels"] = ["zzzops", "zzzops:status:new"]
+        record = z.github_goal_record(issue)
+        self.assertEqual("P2", record["priority"])
+        findings = z.audit_portfolio([record], "github_issues")
+        self.assertEqual(["label_drift"], [finding["code"] for finding in findings])
+        self.assertIn("zzzops:priority:P2", findings[0]["detail"])
+
+    def test_status_labels_cannot_manufacture_completion_or_reopen_closed_goals(self):
+        self.assertEqual("ready", z.github_goal_record(self.issue(status="done"))["status"])
+        closed = self.issue()
+        closed["state"] = "closed"
+        self.assertEqual("done", z.github_goal_record(closed)["status"])
+
+    def test_legacy_status_label_audit_remains_active(self):
+        issue = fixtures.PortfolioTests().issue(100)
+        issue["labels"] = [label for label in issue["labels"]
+                           if not label["name"].startswith("zzzops:status:")]
+        findings = z.audit_portfolio([z.github_goal_record(issue)], "github_issues")
+        self.assertIn("label_drift", [finding["code"] for finding in findings])
+
+
 class ConversionDurabilityTests(unittest.TestCase):
     """Proposed private seam in existing goals.py, not a replacement engine.
 
@@ -357,6 +405,24 @@ class MigrationEntryPublicTests(dag.DagFixture):
                       "missing_obligations": ["Current verification", "Current independent review"]}
         self.session.finish(self.session.acquire("convert"), {"conversion": conversion})
         return source, conversion
+
+    def test_p1_entry_remains_executable_after_analyze_with_real_label_audit(self):
+        self.entry()
+        source = fixtures.PortfolioTests().issue(100, priority="P1", status="new")
+        self.provider.issues[100] = copy.deepcopy(source)
+        snapshot = self.session.portfolio_snapshot
+
+        def audited_snapshot(*args, **kwargs):
+            value = snapshot(*args, **kwargs)
+            value["findings"] = z.audit_portfolio(value["goals"], "github_issues")
+            value["valid"] = not value["findings"]
+            return value
+
+        self.session.portfolio_snapshot = audited_snapshot
+        self.session.finish(self.session.acquire("analyze"), {"source": source})
+        self.assertEqual("P1", self.session.goal(100)["priority"])
+        self.assertEqual({"convert"}, self.names())
+        self.assertEqual(source["labels"], self.provider.issues[100]["labels"])
 
     def test_selected_open_entry_is_bounded_and_retry_preserves_other_sources(self):
         source, _graph = self.entry()
