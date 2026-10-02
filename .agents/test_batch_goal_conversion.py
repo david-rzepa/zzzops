@@ -71,6 +71,95 @@ class BatchConversionTests(dag.DagFixture):
         self.assertEqual(original, self.session.read(number, spec['provenance']['source'])['content'])
         return payload
 
+    def legacy_fields(self, number, **fields):
+        issue = self.provider.issues[number]
+        value = dag.z.parse_managed_goal(issue['body'], number)
+        value.update(fields)
+        issue['body'] = issue['body'].split('<!-- zzzops-goal')[0] + '<!-- zzzops-goal\n' + json.dumps(value) + '\nzzzops-goal -->'
+        self.originals[number] = copy.deepcopy(issue)
+
+    def test_empty_rigor_and_risk_annotations_migrate_without_losing_requirements(self):
+        self.legacy_fields(100, engineering_rigor={'risk_categories': []})
+        self.legacy_fields(101, engineering_rigor={'risk_categories': ['authorization'], 'override': None})
+        routing = dag.z._workflow_section(self.session.project, 'model_routing')['configuration']
+        routing['assessment_tree'].insert(0, {'when': {'engineering_rigor': ['agentic']}, 'tier': 'architectural'})
+        self.policy = copy.deepcopy(self.session.project)
+        result = self.migrate()
+        self.assertTrue(result['complete'], result)
+        for number in (100, 101):
+            payload = self.assert_preserved(number)
+            spec = self.session.read(number, payload['spec'])['content']
+            graph = self.session.read(number, payload['graph'])
+            if number == 100:
+                self.assertEqual(dag.z._workflow_section(self.policy, 'workflow_adherence')['configuration']['phase_dag'], graph)
+            if number == 101:
+                self.assertIn('authorization', spec)
+                self.assertIn('agentic', spec)
+                self.assertTrue(all(n['executor']['capability'] == 'architectural' for n in graph['nodes']))
+
+    def test_rigor_mapping_keeps_stricter_floor_and_covers_custom_tasks_and_templates(self):
+        self.legacy_fields(100, engineering_rigor={'risk_categories': ['authorization']})
+        config = dag.z._workflow_section(self.session.project, 'workflow_adherence')['configuration']
+        graph = dag.selected_graph()
+        graph['nodes'][0]['executor']['capability'] = 'architectural'
+        graph['task_sets'][0]['template']['executor']['capability'] = 'bounded'
+        config['phase_dag'] = graph
+        routing = dag.z._workflow_section(self.session.project, 'model_routing')['configuration']
+        routing['assessment_tree'].insert(0, {'when': {'engineering_rigor': ['agentic'], 'phase_type': ['implement']}, 'tier': 'reasoning'})
+        self.assertTrue(self.migrate((100,))['complete'])
+        envelope = dag.z.parse_managed_goal(self.provider.issues[100]['body'], 100)
+        payload = self.session.read(100, envelope['payload'])
+        migrated = self.session.read(100, payload['graph'])
+        self.assertEqual('architectural', migrated['nodes'][0]['executor']['capability'])
+        self.assertEqual('reasoning', migrated['task_sets'][0]['template']['executor']['capability'])
+        self.assertIn('agentic', migrated['task_sets'][0]['template']['prompt'])
+
+    def test_nonexclusive_resources_preserve_hints_without_granting_edits(self):
+        self.legacy_fields(100, resources=[' PATH:src/a.py ', 'integration:dev'])
+        result = self.migrate((100,))
+        self.assertTrue(result['complete'], result)
+        payload = self.assert_preserved(100)
+        spec = self.session.read(100, payload['spec'])['content']
+        self.assertIn('path:src/a.py', spec)
+        self.assertIn('not edit authority', spec)
+        graph = self.session.read(100, payload['graph'])
+        self.assertEqual(dag.z._workflow_section(self.policy, 'workflow_adherence')['configuration']['phase_dag'], graph)
+        acquired = self.session.acquire('understand')
+        self.assertNotIn('owned', acquired['lease']['acquisition'])
+        self.assertNotIn('path:src/a.py', json.dumps(acquired['lease']['acquisition']))
+        self.assertFalse(any(s['node']['node'] == 'implement' for s in self.session.ready()))
+
+    def test_exclusive_resources_block_with_repair_guidance_and_no_mutation(self):
+        self.legacy_fields(100, resources=['external:shared-api'])
+        self.legacy_fields(101, resources=['branch:Topic'])
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        result = self.migrate()
+        for number in (100, 101):
+            member = result['members'][str(number)]
+            self.assertEqual('blocked', member['status'])
+            self.assertIn('exclusive resources', member['reason'])
+            self.assertEqual(['resources'], member['remediation']['fields'])
+            self.assertIn('shared reservation protocol', ' '.join(member['remediation']['steps']))
+            self.assertEqual({'operation': 'migration_batch', 'action': 'migrate', 'goals': [number]}, member['remediation']['retry'])
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_unsupported_metadata_has_specific_guidance_and_no_mutation(self):
+        self.legacy_fields(100, engineering_rigor={'risk_categories': ['unconfigured_risk']})
+        self.legacy_fields(101, engineering_rigor={'risk_categories': [], 'override': {
+            'level': 'agentic', 'authority': 'explicit_user', 'evidence': 'Historical approval'}})
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        result = self.migrate()
+        for number, member in result['members'].items():
+            self.assertEqual('blocked', member['status'])
+            self.assertIn('engineering_rigor', member['remediation']['fields'])
+            self.assertTrue(member['remediation']['steps'])
+            self.assertEqual({'operation': 'migration_batch', 'action': 'migrate', 'goals': [int(number)]}, member['remediation']['retry'])
+            self.assertIn('Preserve the requirement', ' '.join(member['remediation']['steps']))
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        response = self.session.call(101)
+        self.assertIn('remediation', response['next_steps'][0])
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
     def test_execute_encounter_automatically_migrates_without_review_or_approval(self):
         response = self.session.call(100)
         self.assert_preserved(100)

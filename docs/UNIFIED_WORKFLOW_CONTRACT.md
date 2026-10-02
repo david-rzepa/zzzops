@@ -214,6 +214,22 @@ the affected member. Old approvals and Results remain historical data; migration
 creates no current product evidence, workspace grant or publication authority.
 Existing ownership, whether live or expired, requires observed-stopped recovery.
 
+Empty metadata is normalized. Supported risk categories retain their derived
+rigor in the specification and task prompts, with reviewed routing floors applied
+without lowering existing capabilities. Unknown risk categories and explicit
+legacy rigor overrides require targeted reconciliation. Nonexclusive resource
+hints stay in the specification. Policy-exclusive resources, including invariant
+branch exclusions, remain blocked until a reviewed mapping can preserve shared
+ownership across legacy provider reservations and current workers. A generic
+DAG resource identity alone is not an interoperable provider lock. Resource
+declarations never become workspace edit grants.
+
+Blocked members and existing custom conversions expose field-specific manual
+repair guidance and a targeted retry payload. Automatic execution preserves that
+guidance. No fallback silently discards metadata, ownership, constraints or
+history. Current v2 artifacts hosted in Git use the same exact-commit, raw-byte
+hash, strict JSON decoder and semantic size bound as ordinary task inputs.
+
 Before replacing the managed block, the existing immutable transaction writer
 stores checksummed source, target intent, current policy and conversion receipt.
 The receipt's `target_intent` has empty operational receipts; the transaction
