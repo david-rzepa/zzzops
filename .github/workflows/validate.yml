@@ -33,25 +33,27 @@ jobs:
         run: python .github/scripts/run_product_validation.py --platform linux
 
   validate-windows:
-    name: Plugin core validation (Windows)
+    name: Native-sensitive validation (Windows)
     runs-on: windows-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.14'
-      - name: Test plugin runtime and package contracts
+      - name: Test native-sensitive product contracts
         run: python .github/scripts/run_product_validation.py --platform windows
 
   validate-macos:
-    name: Plugin core validation (macOS)
+    name: Native-sensitive validation (macOS)
     runs-on: macos-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.14'
-      - name: Test plugin runtime and package contracts
+      - name: Test native-sensitive product contracts
         run: python .github/scripts/run_product_validation.py --platform macos
 
   validate-claude:
