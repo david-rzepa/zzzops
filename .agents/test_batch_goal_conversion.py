@@ -264,6 +264,9 @@ class BatchConversionTests(dag.DagFixture):
         self.normal_setup(100)
         for name, outputs in (('test_design', {'value': 'Observed baseline tests'}), ('review_test_design', {'value': review}), ('implement', {'value': 'Observed baseline implementation'}), ('review_implement', {'value': review})):
             self.session.finish(self.session.acquire(name, number=100), outputs, number=100)
+            if name == 'review_test_design':
+                self.session.finish(self.session.acquire('retain_test_design_findings', number=100), {
+                    'value': {'items': {}, 'rationale': 'No test-design findings were admitted in this fixture.'}}, number=100)
         self.assertTrue(any(s.get('kind') == 'execute' and s.get('node', {}).get('node') == 'test_design' for s in self.session.checkpoint(101)))
 
     def test_child_workspace_still_requires_actual_parent_grant(self):
@@ -544,6 +547,8 @@ class BatchConversionTests(dag.DagFixture):
         self.session.finish(self.session.acquire('approve_understanding', number=number), {'authorization': permit}, number=number)
         self.session.finish(self.session.acquire('decompose', number=number), {'value': 'One atomic fixture outcome.'}, number=number)
         self.session.finish(self.session.acquire('review_decomposition', number=number), {'value': review}, number=number)
+        self.session.finish(self.session.acquire('retain_decompose_findings', number=number), {
+            'value': {'items': {}, 'rationale': 'No decomposition findings were admitted in this fixture.'}}, number=number)
         return review
 
 
