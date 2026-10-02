@@ -1,0 +1,113 @@
+{
+  "specification_commit": "312a5745103f4ab4f3af3e47ea4dbed82fd13552",
+  "members": {
+    "498": {
+      "status": "migrated",
+      "envelope": {
+        "issue": 498,
+        "parent": null,
+        "payload": {
+          "hash": "sha256:f976e75e79af7a8a7366efe5d7a72925b18ab204b34e97aba17e3620edcc2bc4",
+          "uri": "zzzops:david-rzepa/zzzops:goal:498:sha256:f976e75e79af7a8a7366efe5d7a72925b18ab204b34e97aba17e3620edcc2bc4"
+        },
+        "repository": "david-rzepa/zzzops",
+        "revision": 707,
+        "schema_version": 2,
+        "state": "open"
+      },
+      "receipt": {
+        "hash": "sha256:aab12472868f15c9d5ba488122fc855c09a46026e5537462a16a5f70d9c0be11",
+        "uri": "zzzops:david-rzepa/zzzops:goal:498:sha256:aab12472868f15c9d5ba488122fc855c09a46026e5537462a16a5f70d9c0be11"
+      },
+      "spec": {
+        "hash": "sha256:b9ff841bdbd8f7437ff87581040a4244ee658817df83a4215dc736f6a92225a0",
+        "uri": "git:312a5745103f4ab4f3af3e47ea4dbed82fd13552:.zzzops/migration/reconciliation-20261002/special/498-spec.json"
+      },
+      "graph": {
+        "hash": "sha256:6a046262fe1ab08ed3ea0bb414c5bf33e9b48aeeb8344dce3a6cc7ba8eaf583c",
+        "uri": "git:8da6ed68eb7fa3b47ce2d55da3147f498267d73a:.zzzops/migration/reconciliation-20261002/special/498-graph.json"
+      }
+    },
+    "521": {
+      "status": "migrated",
+      "envelope": {
+        "issue": 521,
+        "parent": null,
+        "payload": {
+          "hash": "sha256:753015074456c69886e92270e0b9ba09dfdb18d0bee200dcd61e7b7586496df4",
+          "uri": "zzzops:david-rzepa/zzzops:goal:521:sha256:753015074456c69886e92270e0b9ba09dfdb18d0bee200dcd61e7b7586496df4"
+        },
+        "repository": "david-rzepa/zzzops",
+        "revision": 22,
+        "schema_version": 2,
+        "state": "open"
+      },
+      "receipt": {
+        "hash": "sha256:5486c44b8549aa8145fb60d7207402a67c63429384c1a1317b9bffd388a89591",
+        "uri": "zzzops:david-rzepa/zzzops:goal:521:sha256:5486c44b8549aa8145fb60d7207402a67c63429384c1a1317b9bffd388a89591"
+      },
+      "spec": {
+        "hash": "sha256:e25afc60ef9edf84e18cd4bd900ec9d3101d1a806f8b1b8770731974db537c38",
+        "uri": "git:312a5745103f4ab4f3af3e47ea4dbed82fd13552:.zzzops/migration/reconciliation-20261002/special/521-spec.json"
+      },
+      "graph": {
+        "hash": "sha256:9032cd44595a4ba2b1fb0a77a4be8607734913ca444c9a1bbd96168ddeeb4220",
+        "uri": "git:8da6ed68eb7fa3b47ce2d55da3147f498267d73a:.zzzops/migration/reconciliation-20261002/special/521-graph.json"
+      }
+    },
+    "522": {
+      "status": "migrated",
+      "envelope": {
+        "issue": 522,
+        "parent": null,
+        "payload": {
+          "hash": "sha256:508c541016cc73d4964f4649e4652dcb790b62bdfe4207a15a36279da53c273d",
+          "uri": "zzzops:david-rzepa/zzzops:goal:522:sha256:508c541016cc73d4964f4649e4652dcb790b62bdfe4207a15a36279da53c273d"
+        },
+        "repository": "david-rzepa/zzzops",
+        "revision": 74,
+        "schema_version": 2,
+        "state": "open"
+      },
+      "receipt": {
+        "hash": "sha256:7194cea6bf7eeb27cad1f02b13f35de936feaea306bd47080dde218e32607017",
+        "uri": "zzzops:david-rzepa/zzzops:goal:522:sha256:7194cea6bf7eeb27cad1f02b13f35de936feaea306bd47080dde218e32607017"
+      },
+      "spec": {
+        "hash": "sha256:6899c85046ff93becf5c8517bc9e25953ab70c368df0b2fb0149f912a0ad24f7",
+        "uri": "git:312a5745103f4ab4f3af3e47ea4dbed82fd13552:.zzzops/migration/reconciliation-20261002/special/522-spec.json"
+      },
+      "graph": {
+        "hash": "sha256:9032cd44595a4ba2b1fb0a77a4be8607734913ca444c9a1bbd96168ddeeb4220",
+        "uri": "git:8da6ed68eb7fa3b47ce2d55da3147f498267d73a:.zzzops/migration/reconciliation-20261002/special/522-graph.json"
+      }
+    },
+    "523": {
+      "status": "migrated",
+      "envelope": {
+        "issue": 523,
+        "parent": null,
+        "payload": {
+          "hash": "sha256:7023c98bd0df5290d8f31d06801f329756c53916329419771f867b38e41f1920",
+          "uri": "zzzops:david-rzepa/zzzops:goal:523:sha256:7023c98bd0df5290d8f31d06801f329756c53916329419771f867b38e41f1920"
+        },
+        "repository": "david-rzepa/zzzops",
+        "revision": 26,
+        "schema_version": 2,
+        "state": "open"
+      },
+      "receipt": {
+        "hash": "sha256:3db877a2b2563fcdd1b4642738ffc73462c3edc976e202d3f8eb5e24fc4294c4",
+        "uri": "zzzops:david-rzepa/zzzops:goal:523:sha256:3db877a2b2563fcdd1b4642738ffc73462c3edc976e202d3f8eb5e24fc4294c4"
+      },
+      "spec": {
+        "hash": "sha256:2d0b790bd2893b37a793b249b6551f695f7dde2cd5efca5c34037ace7ce5f6c6",
+        "uri": "git:312a5745103f4ab4f3af3e47ea4dbed82fd13552:.zzzops/migration/reconciliation-20261002/special/523-spec.json"
+      },
+      "graph": {
+        "hash": "sha256:a3dce675ffe848d7ae2008910348a00042710b03bc23956e511c29ddf9e230a9",
+        "uri": "git:8da6ed68eb7fa3b47ce2d55da3147f498267d73a:.zzzops/migration/reconciliation-20261002/special/523-graph.json"
+      }
+    }
+  }
+}
