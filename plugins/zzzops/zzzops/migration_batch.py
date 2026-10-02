@@ -50,6 +50,8 @@ def page(engine, request):
 
 def load(engine, number, reference):
     engine.api._phase_evidence.validate_ref(reference)
+    if reference['uri'].startswith('git:'):
+        return engine.node_published_artifact(reference)[0]
     if engine.node_ref_goal(reference, number) != number:
         raise ValueError('Migration receipt references a different goal')
     return engine.artifact_index(number).observe(reference['hash'])[0]
@@ -66,7 +68,9 @@ def state(engine, number):
         if envelope['repository'] != engine.repository:
             raise ValueError('Canonical goal repository identity mismatch')
         payload = load(engine, number, envelope['payload'])
+        if not isinstance(payload, dict): raise ValueError('Current payload must be a JSON object')
         source = load(engine, number, payload['spec'])
+        if not isinstance(source, dict): raise ValueError('Current specification artifact must be a JSON object')
         return issue, envelope, 'custom_migration' if source.get('type') == 'migration_source' else 'already_current'
     if custom_entry(engine):
         return issue, envelope, 'custom_migration'
@@ -77,7 +81,84 @@ def selector(node, goal='#this'):
     return {'kind': 'node', 'goal': goal, 'node': node}
 
 
-def normal_graph(engine, legacy):
+def metadata(engine, legacy):
+    resources = engine.api.normalize_resources(legacy.get('resources') or [])
+    rigor = legacy.get('engineering_rigor') or {}
+    if rigor.get('override') is not None:
+        raise ValueError('Legacy engineering_rigor.override requires explicit reconciliation with current policy')
+    result = {}
+    if resources:
+        policy = engine.api.project_resource_policy(engine.project)
+        exclusive = engine.api.exclusive_resources(resources, policy)
+        if exclusive:
+            raise ValueError('Legacy exclusive resources require a compatible shared reservation protocol before migration: ' + ', '.join(exclusive))
+        result['resources'] = resources
+        result['exclusive_resources'] = exclusive
+    if rigor.get('risk_categories'):
+        assessment = engine.api.derive_engineering_rigor(rigor, engine.api._workflow_section(engine.project, 'engineering_rigor'))
+        if not assessment['valid']:
+            raise ValueError('Legacy engineering_rigor cannot be mapped under current policy: ' + ', '.join(assessment['errors']))
+        result['engineering_rigor'] = assessment
+    return result
+
+
+def map_metadata(engine, graph, legacy, preserved):
+    nodes = graph['nodes'] + [entry['template'] for entry in graph['task_sets']]
+    if 'engineering_rigor' in preserved:
+        rigor = preserved['engineering_rigor']
+        settings = engine.api._workflow_section(engine.project, 'model_routing')['configuration']
+        ranks = {row['id']: row['rank'] for row in settings['tiers']}
+        # Unknown/custom tasks take the maximum across supported phase mappings,
+        # rather than silently escaping a phase-specific reviewed risk floor.
+        phases = engine.api._policy.WORKFLOW_PHASE_TYPES
+        for node in nodes:
+            phase = node['id'].removeprefix('review_').removeprefix('approve_')
+            dimensions = {'engineering_rigor': rigor['effective'],
+                'consequence': 'architectural' if 'architecture' in rigor['risk_categories'] else 'bounded',
+                'boundedness': 'atomic' if legacy.get('difficulty') in {'XS', 'S'} else 'bounded'}
+            floors = [engine.api._policy.capability_tier(settings, {**dimensions, 'phase_type': p})['tier']
+                      for p in ([phase] if phase in phases else sorted(phases))]
+            executor = node['executor']
+            executor['capability'] = max([executor['capability'], *floors], key=ranks.__getitem__)
+            node['prompt'] += '\nPreserved engineering requirement: effective rigor ' + rigor['effective'] + '; risks ' + ', '.join(rigor['risk_categories']) + '. Apply the reviewed engineering-rigor policy to this work.'
+
+
+def remediation(number, reason):
+    """Useful even when parsing failed; never proposes blind field deletion."""
+    lower = reason.lower()
+    fields, steps = ['managed_goal'], ['Save the exact issue body and comments before making a targeted repair.']
+    if 'rigor' in lower:
+        fields = ['engineering_rigor']
+        steps += ['Inspect the named risk categories or per-goal override against the reviewed engineering_rigor policy. Preserve the requirement in goal text and reconcile its current meaning before changing metadata; do not silently delete it.']
+    elif 'ownership' in lower or ('reservation' in lower and 'exclusive resources' not in lower):
+        fields = ['claim', 'workflow.leases', 'resources']
+        steps += ['Identify the recorded owner and obtain observed stopped evidence. Use the supported recovery/release contract; expiry alone is not permission to discard ownership.']
+    elif 'dependency' in lower or 'blocker' in lower:
+        fields = ['depends_on', 'blockers']
+        steps += ['Inspect only the named dependency or blocker, including targeted historical evidence if closed. Preserve the relationship and establish equivalent current evidence or a reviewed graph mapping.']
+    elif 'resource' in lower:
+        fields = ['resources']
+        steps += ['Inspect the named exclusive resources and current reservation policy. If a resource is obsolete, preserve its history and confirm retirement before a targeted metadata change. Otherwise use a reviewed mapping with a shared reservation protocol for legacy and current workers. A DAG resource name alone cannot replace provider exclusion; resource paths do not grant edit authority.']
+    elif 'custom' in lower:
+        fields = ['payload.spec', 'payload.graph']
+        steps += ['Resume the existing custom conversion contract. If its policy entry was retired, reconcile that exact graph through policy review; do not replace its evidence or ownership with an automatic reset.']
+    elif 'revision' in lower:
+        fields = ['revision']
+        steps += ['Recover the positive integer revision from the most recent valid issue history or transaction. Do not invent a revision or rewrite unrelated fields.']
+    elif 'priority' in lower:
+        fields = ['priority', 'labels']
+        steps += ['Choose the intended priority and reconcile the canonical field with exactly one matching native priority label.']
+    elif 'pending' in lower or 'prepared' in lower:
+        fields = ['migration_receipt', 'policy']
+        steps += ['Inspect the immutable prepared transaction and its source/target/policy references. Restore missing exact artifacts or reconcile policy drift; retain the pending receipt and do not manufacture a replacement target.']
+    else:
+        steps += ['Use the reported error to repair only the invalid canonical field or missing exact artifact. Recover original values from issue history; preserve parent, dependencies, blockers, ownership, and all human text.']
+    steps += ['Rerun migration for this goal; successful members need no rollback or repeated approval.']
+    return {'fields': fields, 'steps': steps,
+        'retry': {'operation': 'migration_batch', 'action': 'migrate', 'goals': [number]}}
+
+
+def normal_graph(engine, legacy, preserved):
     graph = copy.deepcopy(configuration(engine)['phase_dag'])
     engine.api._phase_evidence.validate_graph(graph)
     nodes = {node['id']: node for node in graph['nodes']}
@@ -89,8 +170,6 @@ def normal_graph(engine, legacy):
         raise ValueError('Current graph has no supported mapping for legacy dependency/blocker gates')
     if (legacy.get('claim') or {}).get('owner') or (legacy.get('workflow') or {}).get('leases'):
         raise ValueError('Predecessor ownership requires observed stopped recovery before migration')
-    if legacy.get('resources') or legacy.get('engineering_rigor'):
-        raise ValueError('Legacy resource/rigor overrides require an explicit compatible schema mapping')
     if legacy.get('status') in {'done', 'cancelled'}:
         raise ValueError('Open predecessor has terminal status; reconcile its provider state first')
     for dependency in dependencies:
@@ -129,6 +208,7 @@ def normal_graph(engine, legacy):
         for node in graph['nodes']:
             if node['executor']['resources']:
                 node['requires'].append(selector('legacy_blockers'))
+    map_metadata(engine, graph, legacy, preserved)
     engine.api._phase_evidence.validate_graph(graph)
     return graph
 
@@ -168,7 +248,8 @@ def migrate_one(engine, number):
         if priorities != ['zzzops:priority:' + legacy['priority']]:
             raise ValueError('Canonical priority differs from native labels; reconcile priority before lossless migration')
         source_issue, pending = prepared_source(engine, number, issue)
-        graph = normal_graph(engine, legacy)
+        preserved = metadata(engine, legacy)
+        graph = normal_graph(engine, legacy, preserved)
         wf = engine.api._workflow
         artifacts = {}
         def save(value):
@@ -178,7 +259,10 @@ def migrate_one(engine, number):
         source_ref = save({'type': 'migration_source', 'content': source_issue, 'producer': None,
             'provenance': {'actor': CONVERTER, 'source': None, 'policy': policy_ref['hash']}})
         prefix, suffix = human_parts(engine, issue['body'])
-        spec = save({'type': 'goal_specification', 'content': prefix + suffix, 'producer': None,
+        specification = prefix + suffix
+        if preserved:
+            specification += '\n\nPreserved legacy planning metadata (resource declarations are reservations, not edit authority):\n' + wf.comment_store.canonical(preserved)
+        spec = save({'type': 'goal_specification', 'content': specification, 'producer': None,
             'provenance': {'actor': CONVERTER, 'source': source_ref, 'policy': policy_ref['hash']}})
         payload = {'spec': spec, 'graph': save(graph), 'evidence': [], 'operational': {'leases': [], 'receipts': []}}
         target = {'schema_version': 2, 'repository': engine.repository, 'issue': number,
@@ -237,10 +321,11 @@ def run(engine, request):
             else:
                 _, _, kind = state(engine, number)
                 member = {'status': kind}
+            if member['status'] == 'custom_migration': member['remediation'] = remediation(number, 'custom migration')
             if member['status'] == 'legacy': candidates.append(number)
             members[str(number)] = member
         except (ValueError, KeyError, OSError) as exc:
-            members[str(number)] = {'status': 'blocked', 'reason': str(exc)}
+            members[str(number)] = {'status': 'blocked', 'reason': str(exc), 'remediation': remediation(number, str(exc))}
     # All selected migrations finish before resolving related normal gates.
     # Closed and malformed members do not enter broad portfolio hydration.
     if action != 'discover':

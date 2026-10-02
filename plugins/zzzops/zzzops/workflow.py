@@ -459,6 +459,19 @@ class Workflow:
             raise ValueError('Artifact locator must bind its exact hash and same repository goal identity')
         return int(match[2])
 
+    def node_published_artifact(self, reference):
+        """Decode exact Git bytes using the same bound as generic node inputs."""
+        self.api._phase_evidence.validate_ref(reference)
+        match = re.fullmatch(r'git:([0-9a-f]{40}):(.+)', reference['uri'])
+        if not match or match[2].startswith('/') or '..' in Path(match[2]).parts:
+            raise ValueError('Published artifact locator requires exact commit and repository path')
+        result = subprocess.run(['git', 'show', match[1] + ':' + match[2]], cwd=self.repo, capture_output=True, check=False)
+        if result.returncode: raise ValueError('Published artifact read failed')
+        raw = result.stdout
+        if len(raw) > 1048576 or 'sha256:' + hashlib.sha256(raw).hexdigest() != reference['hash']:
+            raise ValueError('Published artifact bytes hash or semantic size bound rejected')
+        return comment_store.strict_json(raw.decode('utf-8')), raw
+
     def artifact_index(self, number):
         if not hasattr(self, '_artifact_indexes'):
             self._artifact_indexes = {}
@@ -1539,12 +1552,7 @@ class Workflow:
                     owner = self.node_ref_goal(ref, n)
                 if ref['hash'] not in artifacts:
                     if ref['uri'].startswith('git:'):
-                        result = subprocess.run(['git', 'show', match[1] + ':' + match[2]], cwd=self.repo, capture_output=True, check=False)
-                        if result.returncode: raise ValueError('Published artifact read failed')
-                        raw = result.stdout
-                        if len(raw) > 1048576 or 'sha256:' + hashlib.sha256(raw).hexdigest() != ref['hash']: raise ValueError('Published artifact bytes hash or semantic size bound rejected')
-                        artifacts[ref['hash']] = comment_store.strict_json(raw.decode('utf-8'))
-                        published[ref['hash']] = raw
+                        artifacts[ref['hash']], published[ref['hash']] = self.node_published_artifact(ref)
                     else:
                         artifacts[ref['hash']] = self.artifact_index(owner).observe(ref['hash'])[0]
                 value = artifacts[ref['hash']]
@@ -3096,9 +3104,9 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                     if member['status'] == 'migrated': return {'next_steps': member['next_steps']}
                     # Existing owner recovery stays available from its normal contract.
                     if 'ownership' not in member.get('reason', '').lower():
-                        return {'next_steps': [{'kind': 'blocker', 'goal': number, 'reason': member.get('reason', member['status'])}]}
+                        return {'next_steps': [{'kind': 'blocker', 'goal': number, 'reason': member.get('reason', member['status']), 'remediation': member.get('remediation')}]}
             except (ValueError, KeyError, OSError) as exc:
-                return {'next_steps': [{'kind': 'blocker', 'goal': number, 'reason': str(exc)}]}
+                return {'next_steps': [{'kind': 'blocker', 'goal': number, 'reason': str(exc), 'remediation': api._migration_batch.remediation(number, str(exc))}]}
         elif payload is None:
             discovered = api._migration_batch.run(engine, {'action': 'discover'})['next_steps'][0]
             if discovered['goals'] or discovered.get('remaining'):
