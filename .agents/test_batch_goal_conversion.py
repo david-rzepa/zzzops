@@ -542,6 +542,8 @@ class BatchConversionTests(dag.DagFixture):
         review = {'decision': 'approved', 'report': 'Independent fixture review of exact baseline.'}
         self.session.finish(self.session.acquire('review_understanding', number=number), {'review': review, 'authorization': permit}, number=number)
         self.session.finish(self.session.acquire('approve_understanding', number=number), {'authorization': permit}, number=number)
+        self.session.finish(self.session.acquire('retain_understand_findings', number=number), {
+            'value': {'items': {}, 'rationale': 'No understanding findings were admitted in this fixture.'}}, number=number)
         self.session.finish(self.session.acquire('decompose', number=number), {'value': 'One atomic fixture outcome.'}, number=number)
         self.session.finish(self.session.acquire('review_decomposition', number=number), {'value': review}, number=number)
         return review
