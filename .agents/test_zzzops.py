@@ -4643,6 +4643,9 @@ class GoalSchemaMigrationTests(unittest.TestCase):
         self.assertEqual("reuse_valid_evidence", zzzops.workflow_adoption_assessment(open_goal)["action"])
 
 
+REAL_RELEASE_OBSERVER = zzzops.github_release_evidence
+
+
 class ReleaseInvocationSnapshotTests(unittest.TestCase):
     def fixture(self, *, disk_cache=True):
         from test_migration_acceptance import ReleaseObservationTransportTests
@@ -4658,80 +4661,102 @@ class ReleaseInvocationSnapshotTests(unittest.TestCase):
         return [next(value for value in command if isinstance(value, str) and value.startswith("repos/"))
                 for command in case.calls]
 
-    def test_stable_invocation_reuses_one_complete_release_index_and_each_tag_resolution(self):
-        case = self.fixture()
-        goal = {"key": 42, "schema_version": 2,
-                "spec_ref": {"hash": "sha256:" + "1" * 64}}
-        migration = case.repo / ".zzzops" / "migration"
-        migration.mkdir()
-        (migration / "42.json").write_text(json.dumps({"contracts": []}))
-        with mock.patch.object(zzzops.shutil, "which", return_value="synthetic-gh"), \
-             mock.patch.object(zzzops.subprocess, "run", side_effect=case.transport):
-            first = zzzops.migration_assessment(
-                case.repo, {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {}}, goal,
-            )["release_snapshot"]
-            second = zzzops.migration_assessment(
-                case.repo, {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {}}, goal,
-            )["release_snapshot"]
+    def migration_fixture(self):
+        from test_migration_acceptance import GenericMigrationInputTests
+        case = GenericMigrationInputTests()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        case.real_release_observer = REAL_RELEASE_OBSERVER
+        case.transport_fixture = self.fixture(disk_cache=False)
+        case.transport_fixture.raw["id"] = 1
+        case.transport_fixture.pages = [[dict(case.transport_fixture.raw)], []]
+        return case
 
-        self.assertEqual(first, second)
-        self.assertEqual("complete", first["status"])
-        endpoints = self.endpoints(case)
+    @staticmethod
+    def migration_projection(case):
+        transport = case.transport_fixture
+        process = zzzops.subprocess.run
+        def dispatch(command, *args, **kwargs):
+            if command and command[0] == "synthetic-gh":
+                return transport.transport(command, **kwargs)
+            return process(command, *args, **kwargs)
+        with mock.patch.object(zzzops, "github_release_evidence",
+                               side_effect=case.real_release_observer), \
+             mock.patch.object(zzzops.shutil, "which", return_value="synthetic-gh"), \
+             mock.patch.object(zzzops.subprocess, "run", side_effect=dispatch):
+            return case.current()
+
+    def test_stable_invocation_reuses_one_complete_release_index_and_each_tag_resolution(self):
+        case = self.migration_fixture()
+        ready = self.migration_projection(case)
+
+        self.assertTrue({"alpha", "mirror"} <= set(ready))
+        endpoints = self.endpoints(case.transport_fixture)
         self.assertEqual(1, endpoints.count("repos/owner/repo/releases"))
         self.assertEqual(1, endpoints.count("repos/owner/repo/commits/v1"))
 
     def test_separate_repositories_never_share_release_snapshots(self):
-        first = self.fixture(disk_cache=False)
-        second = self.fixture(disk_cache=False)
-        second.commit = "d" * 40
-
-        one = first.observe()
-        two = second.observe()
-
+        from types import SimpleNamespace
+        calls = []
+        def transport(command, **_kwargs):
+            endpoint = next(value for value in command if value.startswith("repos/"))
+            calls.append(endpoint)
+            identity = endpoint.split("/releases", 1)[0].split("/commits", 1)[0]
+            if endpoint.endswith("/releases"):
+                value = [[{"id": 1, "tag_name": "v1", "draft": False,
+                           "published_at": "2026-01-01T00:00:00Z"}]]
+            else:
+                value = {"sha": ("a" if identity.endswith("/one") else "d") * 40}
+            return SimpleNamespace(returncode=0, stdout=json.dumps(value), stderr="")
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second, \
+             mock.patch.object(zzzops.shutil, "which", return_value="synthetic-gh"), \
+             mock.patch.object(zzzops.subprocess, "run", side_effect=transport):
+            one = zzzops.github_release_evidence(Path(first), {"identity": "owner/one"})
+            two = zzzops.github_release_evidence(Path(second), {"identity": "owner/two"})
         self.assertNotEqual(one, two)
-        self.assertEqual(1, self.endpoints(first).count("repos/owner/repo/releases"))
-        self.assertEqual(1, self.endpoints(second).count("repos/owner/repo/releases"))
+        self.assertIn("repos/owner/one/releases", calls)
+        self.assertIn("repos/owner/two/releases", calls)
 
     def test_release_cache_revalidates_changed_markers_and_retargeted_tag_commits(self):
         for change in ("marker", "tag"):
-            case = self.fixture()
+            case = self.migration_fixture()
+            transport = case.transport_fixture
             with self.subTest(change=change):
-                first = case.observe()
-                case.calls.clear()
+                first = self.migration_projection(case)
+                self.assertTrue({"alpha", "mirror"} <= set(first))
+                transport.calls.clear()
                 if change == "marker":
-                    case.raw["published_at"] = "2026-02-02T00:00:00Z"
-                    case.pages = [[dict(case.raw)], []]
+                    transport.raw["published_at"] = "2026-02-02T00:00:00Z"
+                    transport.pages = [[dict(transport.raw)], []]
                 else:
-                    case.commit = "c" * 40
-                second = case.observe()
-                self.assertNotEqual(first, second)
-                case.assert_complete(second)
-                self.assertIn("repos/owner/repo/releases", self.endpoints(case))
+                    transport.commit = "c" * 40
+                second = self.migration_projection(case)
+                self.assertFalse({"alpha", "mirror"} & set(second))
+                self.assertIn("repos/owner/repo/releases", self.endpoints(transport))
 
     def test_absent_or_unwritable_disk_cache_still_reuses_the_invocation_snapshot(self):
-        absent = self.fixture(disk_cache=False)
-        absent.observe()
-        absent.observe()
-        self.assertEqual(1, self.endpoints(absent).count("repos/owner/repo/releases"))
+        absent = self.migration_fixture()
+        self.migration_projection(absent)
+        self.assertEqual(1, self.endpoints(absent.transport_fixture).count("repos/owner/repo/releases"))
 
-        unwritable = self.fixture()
+        unwritable = self.migration_fixture()
         with mock.patch.object(zzzops, "atomic_text", side_effect=OSError("read-only cache")):
-            unwritable.observe()
-            unwritable.observe()
-        self.assertEqual(1, self.endpoints(unwritable).count("repos/owner/repo/releases"))
+            self.migration_projection(unwritable)
+        self.assertEqual(1, self.endpoints(unwritable.transport_fixture).count("repos/owner/repo/releases"))
 
     def test_cached_complete_release_never_masks_unavailable_or_partial_provider_state(self):
-        case = self.fixture()
-        case.assert_complete(case.observe())
+        case = self.migration_fixture()
+        self.assertTrue({"alpha", "mirror"} <= set(self.migration_projection(case)))
+        transport = case.transport_fixture
         for failure in ("/releases", "tag-resolution"):
-            case.calls.clear()
-            case.failed_endpoint = failure
+            transport.calls.clear()
+            transport.failed_endpoint = failure
             with self.subTest(failure=failure):
-                self.assertNotEqual("complete", case.observe().get("status"))
-            case.failed_endpoint = None
-        case.calls.clear()
-        case.pages = {"incomplete": True}
-        self.assertNotEqual("complete", case.observe().get("status"))
+                self.assertFalse({"alpha", "mirror"} & set(self.migration_projection(case)))
+            transport.failed_endpoint = None
+        transport.calls.clear()
+        transport.pages = {"incomplete": True}
+        self.assertFalse({"alpha", "mirror"} & set(self.migration_projection(case)))
 
 
 class PortfolioTests(unittest.TestCase):
