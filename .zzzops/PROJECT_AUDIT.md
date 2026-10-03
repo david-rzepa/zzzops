@@ -1,6 +1,6 @@
 # ZzzOps project policy audit
 
-Status: complete. Reviewer: User explicitly directed automatic v1 schema migration without conversion review/approval, then approved plugin update and live trial. Retire only the superseded temporary manual migration entry; retain normal product workflow and model inventory.. Revision: 56.
+Status: complete. Reviewer: User explicitly approved: Raise ZzzOps max_workers from 3 to 10 through policy-review; preserve all other settings. Reuse existing approvals where scope is unchanged.. Revision: 58.
 
 ## Evidence and decisions
 
@@ -116,9 +116,9 @@ Status: complete. Reviewer: User explicitly directed automatic v1 schema migrati
   - Instructions: Capture requirements adaptively with the requesting user; during unattended execution persist consequential questions as blockers. Keep human interaction on root, enforce reviewed worker and resource limits, record privacy-safe execution diagnostics, and suggest only bounded valuable work in reviewed categories. Keep worktrees clean, remove or deliberately reuse them after work, and never abandon dirty worktrees. Do not automatically adopt suggested defaults without review.
   - Rationale: User approved adoption of the installed plugin default on 2026-10-01.
   - Sources: E-DEFAULT-RESET-20261001: Current user conversation, 2026-10-01 — User approved resetting all policy to installed defaults except model inventory and removing repository-specific instructions, especially branching from dev.
-  - Confidence/default: medium; ZzzOps conservative fallback → accepted
-  - Provenance: adopted from the recorded ZzzOps default
-  - Configuration: `{"execution_reports": {"enabled": true}, "max_workers": 3, "refill": {"allowed_categories": ["documentation", "tests", "code_quality_non_behavioral", "agent_observability", "verification_efficiency"], "enabled": true, "max_suggestions": 3}, "resource_reservations": {"exclusive_prefixes": ["generated", "external"], "exclusive_resources": [], "mode": "conflict_tolerant"}}`
+  - Confidence/default: medium; ZzzOps conservative fallback → changed
+  - Provenance: customized from a ZzzOps default
+  - Configuration: `{"execution_reports": {"enabled": true}, "max_workers": 10, "refill": {"allowed_categories": ["documentation", "tests", "code_quality_non_behavioral", "agent_observability", "verification_efficiency"], "enabled": true, "max_suggestions": 3}, "resource_reservations": {"exclusive_prefixes": ["generated", "external"], "exclusive_resources": [], "mode": "conflict_tolerant"}}`
   - Exceptions: none
   - Unresolved: none
 
@@ -168,5 +168,7 @@ Status: complete. Reviewer: User explicitly directed automatic v1 schema migrati
 | 2026-10-01 | User explicitly approved this exact temporary conversion policy proposal in the current conversation: Approved | Reviewed policy revision 54 | Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:fd8d145742f847f6ef3747d9df4058b0050f519bddcfc499b68230b7c4fd6e90. |
 | 2026-10-01 | ZzzOps initialization | Created pending revision 55 | Confirmed agent-generated draft; explicit policy review still required. |
 | 2026-10-01 | User explicitly directed automatic v1 schema migration without conversion review/approval, then approved plugin update and live trial. Retire only the superseded temporary manual migration entry; retain normal product workflow and model inventory. | Reviewed policy revision 56 | Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:4fc75be7a36c8f7ed0c48f1f72710099121c9ece42bbd37dfccff07c0da6fefe. |
+| 2026-10-02 | ZzzOps initialization | Created pending revision 57 | Confirmed agent-generated draft; explicit policy review still required. |
+| 2026-10-02 | User explicitly approved: Raise ZzzOps max_workers from 3 to 10 through policy-review; preserve all other settings. Reuse existing approvals where scope is unchanged. | Reviewed policy revision 58 | Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:1c1ce5481ebeaff7deb20944a49673221f4e40835753ee88cd9c53cb7c90f743. |
 
 The machine-readable authority is [POLICY.json](POLICY.json); this file is its human audit view.

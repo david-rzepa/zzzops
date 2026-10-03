@@ -1,17 +1,17 @@
 {
   "approval": {
-    "date": "2026-10-01",
-    "digest": "sha256:be16355bd123a48c4857e8ef8aa1a9bf33624dfe78476db4dcb06355df4b5b58",
-    "reviewer": "User explicitly directed automatic v1 schema migration without conversion review/approval, then approved plugin update and live trial. Retire only the superseded temporary manual migration entry; retain normal product workflow and model inventory."
+    "date": "2026-10-02",
+    "digest": "sha256:da1a84d10492cc3d061666ef8b01cd4841298d93f0dfa36639c1bbb07495d6cd",
+    "reviewer": "User explicitly approved: Raise ZzzOps max_workers from 3 to 10 through policy-review; preserve all other settings. Reuse existing approvals where scope is unchanged."
   },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:be47c4bcfd5e2131af10caaa35f542edfe29e0e8b10b2c3b8c382f93ad4720a0",
+      "digest": "sha256:159e5ecf6e52637a9d6ac287378d914810a8ae8ea0cac6fde3fa8b276f4035d1",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
-      "digest": "sha256:661b67476f8894720051c4b22184669a808665527f092c5306bc627dc7937e86",
+      "digest": "sha256:0147c78a7f618b702285ff6d676b8d27a86b71c61b23a429513f9316dbfa990a",
       "path": ".zzzops/PROJECT.md"
     }
   },
@@ -326,6 +326,18 @@
       "change": "Reviewed policy revision 56",
       "date": "2026-10-01",
       "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:4fc75be7a36c8f7ed0c48f1f72710099121c9ece42bbd37dfccff07c0da6fefe."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 57",
+      "date": "2026-10-02",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "User explicitly approved: Raise ZzzOps max_workers from 3 to 10 through policy-review; preserve all other settings. Reuse existing approvals where scope is unchanged.",
+      "change": "Reviewed policy revision 58",
+      "date": "2026-10-02",
+      "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:1c1ce5481ebeaff7deb20944a49673221f4e40835753ee88cd9c53cb7c90f743."
     }
   ],
   "initialized": true,
@@ -462,6 +474,12 @@
         "id": "E-AUTOMATIC-MIGRATION-20261002",
         "kind": "observed",
         "source": "User direction and merged PR579 installed code verified at415e10c"
+      },
+      {
+        "finding": "Raise only autonomy_approval_parallelism.configuration.max_workers from 3 to 10; preserve every other policy setting. Resolve active leases first, refresh affected authorizations with existing unchanged-scope approvals, and respect observed live agent capacity.",
+        "id": "E-MAX-WORKERS10-20261002",
+        "kind": "observed",
+        "source": "Explicit user instruction in current conversation"
       }
     ],
     "schema_version": 2,
@@ -3754,7 +3772,7 @@
           "execution_reports": {
             "enabled": true
           },
-          "max_workers": 3,
+          "max_workers": 10,
           "refill": {
             "allowed_categories": [
               "documentation",
@@ -3775,45 +3793,17 @@
             "mode": "conflict_tolerant"
           }
         },
-        "default_disposition": "accepted",
+        "default_disposition": "changed",
         "default_origin": "ZzzOps conservative fallback",
         "default_provenance": {
+          "catalog_digest": "sha256:5b70ff2227d3a533eeccf2bd2a00ca82b7556e4098d607947c6131b366a6490d",
           "default_id": "zzzops.policy.autonomy_approval_parallelism",
-          "digest": "sha256:5b70ff2227d3a533eeccf2bd2a00ca82b7556e4098d607947c6131b366a6490d",
           "schema_version": 2,
-          "snapshot": {
-            "configuration": {
-              "execution_reports": {
-                "enabled": true
-              },
-              "max_workers": 3,
-              "refill": {
-                "allowed_categories": [
-                  "documentation",
-                  "tests",
-                  "code_quality_non_behavioral",
-                  "agent_observability",
-                  "verification_efficiency"
-                ],
-                "enabled": true,
-                "max_suggestions": 3
-              },
-              "resource_reservations": {
-                "exclusive_prefixes": [
-                  "generated",
-                  "external"
-                ],
-                "exclusive_resources": [],
-                "mode": "conflict_tolerant"
-              }
-            },
-            "instructions": "Capture requirements adaptively with the requesting user; during unattended execution persist consequential questions as blockers. Keep human interaction on root, enforce reviewed worker and resource limits, record privacy-safe execution diagnostics, and suggest only bounded valuable work in reviewed categories. Keep worktrees clean, remove or deliberately reuse them after work, and never abandon dirty worktrees. Do not automatically adopt suggested defaults without review."
-          },
           "source": {
             "revision": "7624e92ad23cd4b22915b28c747327bab70f713eefefe5650461a0da764d2cf1",
             "version": "0.0.0-dev"
           },
-          "status": "adopted"
+          "status": "customized"
         },
         "exceptions": [],
         "id": "autonomy_approval_parallelism",
@@ -3822,9 +3812,9 @@
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-10-01",
-          "reviewed_digest": "sha256:623df85e2ca88dcd541f98433ce5e1c8ea2d484d72bd41479cf7ed59be655f6a",
-          "reviewer": "User explicitly approved in the current conversation on 2026-10-01: Ok I approve resetting all to default except the model inventory. Clear the repository rules, the branch from dev especially is causing chaos... You can actually remove all those instructions..."
+          "date": "2026-10-02",
+          "reviewed_digest": "sha256:1c1ce5481ebeaff7deb20944a49673221f4e40835753ee88cd9c53cb7c90f743",
+          "reviewer": "User explicitly approved: Raise ZzzOps max_workers from 3 to 10 through policy-review; preserve all other settings. Reuse existing approvals where scope is unchanged."
         },
         "source_ids": [
           "E-DEFAULT-RESET-20261001"
@@ -3838,6 +3828,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 56,
+  "revision": 58,
   "schema_version": 1
 }
