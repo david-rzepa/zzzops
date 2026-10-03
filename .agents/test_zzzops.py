@@ -4643,6 +4643,97 @@ class GoalSchemaMigrationTests(unittest.TestCase):
         self.assertEqual("reuse_valid_evidence", zzzops.workflow_adoption_assessment(open_goal)["action"])
 
 
+class ReleaseInvocationSnapshotTests(unittest.TestCase):
+    def fixture(self, *, disk_cache=True):
+        from test_migration_acceptance import ReleaseObservationTransportTests
+        case = ReleaseObservationTransportTests()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        if disk_cache:
+            (case.repo / ".zzzops").mkdir()
+        return case
+
+    @staticmethod
+    def endpoints(case):
+        return [next(value for value in command if isinstance(value, str) and value.startswith("repos/"))
+                for command in case.calls]
+
+    def test_stable_invocation_reuses_one_complete_release_index_and_each_tag_resolution(self):
+        case = self.fixture()
+        goal = {"key": 42, "schema_version": 2,
+                "spec_ref": {"hash": "sha256:" + "1" * 64}}
+        migration = case.repo / ".zzzops" / "migration"
+        migration.mkdir()
+        (migration / "42.json").write_text(json.dumps({"contracts": []}))
+        with mock.patch.object(zzzops.shutil, "which", return_value="synthetic-gh"), \
+             mock.patch.object(zzzops.subprocess, "run", side_effect=case.transport):
+            first = zzzops.migration_assessment(
+                case.repo, {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {}}, goal,
+            )["release_snapshot"]
+            second = zzzops.migration_assessment(
+                case.repo, {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {}}, goal,
+            )["release_snapshot"]
+
+        self.assertEqual(first, second)
+        self.assertEqual("complete", first["status"])
+        endpoints = self.endpoints(case)
+        self.assertEqual(1, endpoints.count("repos/owner/repo/releases"))
+        self.assertEqual(1, endpoints.count("repos/owner/repo/commits/v1"))
+
+    def test_separate_repositories_never_share_release_snapshots(self):
+        first = self.fixture(disk_cache=False)
+        second = self.fixture(disk_cache=False)
+        second.commit = "d" * 40
+
+        one = first.observe()
+        two = second.observe()
+
+        self.assertNotEqual(one, two)
+        self.assertEqual(1, self.endpoints(first).count("repos/owner/repo/releases"))
+        self.assertEqual(1, self.endpoints(second).count("repos/owner/repo/releases"))
+
+    def test_release_cache_revalidates_changed_markers_and_retargeted_tag_commits(self):
+        for change in ("marker", "tag"):
+            case = self.fixture()
+            with self.subTest(change=change):
+                first = case.observe()
+                case.calls.clear()
+                if change == "marker":
+                    case.raw["published_at"] = "2026-02-02T00:00:00Z"
+                    case.pages = [[dict(case.raw)], []]
+                else:
+                    case.commit = "c" * 40
+                second = case.observe()
+                self.assertNotEqual(first, second)
+                case.assert_complete(second)
+                self.assertIn("repos/owner/repo/releases", self.endpoints(case))
+
+    def test_absent_or_unwritable_disk_cache_still_reuses_the_invocation_snapshot(self):
+        absent = self.fixture(disk_cache=False)
+        absent.observe()
+        absent.observe()
+        self.assertEqual(1, self.endpoints(absent).count("repos/owner/repo/releases"))
+
+        unwritable = self.fixture()
+        with mock.patch.object(zzzops, "atomic_text", side_effect=OSError("read-only cache")):
+            unwritable.observe()
+            unwritable.observe()
+        self.assertEqual(1, self.endpoints(unwritable).count("repos/owner/repo/releases"))
+
+    def test_cached_complete_release_never_masks_unavailable_or_partial_provider_state(self):
+        case = self.fixture()
+        case.assert_complete(case.observe())
+        for failure in ("/releases", "tag-resolution"):
+            case.calls.clear()
+            case.failed_endpoint = failure
+            with self.subTest(failure=failure):
+                self.assertNotEqual("complete", case.observe().get("status"))
+            case.failed_endpoint = None
+        case.calls.clear()
+        case.pages = {"incomplete": True}
+        self.assertNotEqual("complete", case.observe().get("status"))
+
+
 class PortfolioTests(unittest.TestCase):
     def test_workflow_gateway_preserves_persisted_rigor_identity_without_rereads(self):
         project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {"sections": [

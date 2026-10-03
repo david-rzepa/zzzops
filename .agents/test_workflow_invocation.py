@@ -32,6 +32,47 @@ class MemoryIssueAdapter:
 
 
 class WorkflowInvocationCacheTests(unittest.TestCase):
+    def test_real_public_v2_checkpoint_uses_gateway_without_direct_issue_or_pr_capability(self):
+        case = dag_fixtures.DagFixture()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        snapshot = case.session.portfolio_snapshot()
+        case.session.portfolio_snapshot = lambda *_args, **_kwargs: copy.deepcopy(snapshot)
+        direct_issue = case.provider.get_issue
+        direct_pr = getattr(case.provider, "get_pull_request", None)
+        case.provider.get_issue = mock.Mock(side_effect=AssertionError(
+            "read-only checkpoint bypassed the hydrated gateway"))
+        if direct_pr is not None:
+            case.provider.get_pull_request = mock.Mock(side_effect=AssertionError(
+                "read-only checkpoint fetched a PR directly"))
+
+        steps = case.session.checkpoint(100)
+
+        self.assertTrue(any(step.get("kind") == "execute" for step in steps))
+        case.provider.get_issue.assert_not_called()
+        if direct_pr is not None:
+            case.provider.get_pull_request.assert_not_called()
+        case.provider.get_issue = direct_issue
+        if direct_pr is not None:
+            case.provider.get_pull_request = direct_pr
+
+    def test_real_locked_v2_mutation_retains_fresh_exact_issue_read(self):
+        case = dag_fixtures.DagFixture()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        original = case.provider.get_issue
+        reads = []
+        def observed(number):
+            reads.append(number)
+            return original(number)
+        case.provider.get_issue = observed
+
+        work = case.session.acquire("produce")
+        reads.clear()
+        case.session.finish(work, {"value": "fresh locked mutation"})
+
+        self.assertIn(100, reads)
+
     def test_attributed_merge_findings_do_not_block_independent_reads(self):
         goals = [{'key': 433, 'status': 'ready'}, {'key': 435, 'status': 'ready'}]
         portfolio = {'complete': False, 'goals': goals, 'findings': [
