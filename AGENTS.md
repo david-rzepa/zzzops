@@ -13,3 +13,7 @@ Use `$execute-zzzops` for the goal loop and “work on all goals”/`/goal`; use
 
 Without skill discovery, install the ZzzOps Agent Plugin through Codex, then read its `rules/GOAL_SYSTEM.md`; use the plugin's create, execute, or unblock references as appropriate and load blocker/execution strategy only when relevant.
 <!-- END DURABLE PROJECT GOALS -->
+
+## Graft navigation
+
+Use [Graft](docs/graft.md) first for code navigation; build/check its graph per worktree. Fall back to `rg` and source inspection for missing results, especially excluded `.agents` and `.github` paths. Graph results never authorize skipping tests.
