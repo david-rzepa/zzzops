@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import json
 from pathlib import Path
 import tempfile
@@ -10,7 +9,7 @@ import unittest
 from unittest import mock
 
 import test_zzzops as fixtures
-from test_evidence_dag_journeys import run_generic_regressions
+from test_evidence_dag_journeys import DagFixture, run_generic_regressions
 
 
 z = fixtures.zzzops
@@ -35,88 +34,54 @@ class PortfolioScopeTests(unittest.TestCase):
     def issue(self, number, **changes):
         return self.portfolio.issue(number, **changes)
 
-    def snapshot(self, repo, issues, *, include_history=False):
-        bodies = {
-            row["number"]: {"body": row["body"], "updated_at": row["updated_at"]}
-            for row in issues if row["state"] == "open"
-        }
-        with mock.patch.object(z.shutil, "which", return_value="gh"), \
-             mock.patch.object(z, "github_repository_goal_index",
-                               return_value=({}, issues, [], 0, 1, 0)), \
-             mock.patch.object(z, "_github_goal_bodies", return_value=(bodies, 0, 1)), \
-             mock.patch.object(z, "_github_goal_relations", return_value=({}, 0, 0)), \
-             mock.patch.object(z, "_github_pull_request_states", return_value=({}, 0, 0)) as prs:
-            value = z.github_repository_portfolio_snapshot(
-                repo, project(), include_history=include_history,
-            )[1]
-        return value, prs
-
-    def test_targeted_read_hydrates_only_consumed_goal_and_omits_pr_observation(self):
-        """A single-goal read must not turn into portfolio comment/PR hydration."""
-        goals = [{**z.github_goal_record(self.issue(number)), "schema_version": 2,
-                  "envelope": {"payload": {"hash": f"payload-{number}"}}}
-                 for number in (1, 2, 3)]
-        snapshot = z.build_portfolio_snapshot("github_issues", goals, reads=1, raw_bytes=0)
-        api = mock.Mock(wraps=z)
-        api._project_repository_identity = z._project_repository_identity
-        api.GitHubGoalTransitionAdapter = mock.Mock(return_value=mock.Mock())
-        api.empty_phase_evidence = z.empty_phase_evidence
-        api.portfolio_snapshot.return_value = snapshot
-        engine = z._workflow.Workflow(api, Path("."), project())
-        resolved = {1: {"operational": {"leases": []}}}
-        engine.artifact_index = mock.Mock(side_effect=lambda number: mock.Mock(
-            resolve=lambda _identity: [resolved[number]]))
-
-        _issue, goal = engine.read(1)
-
-        self.assertEqual(1, goal["key"])
-        self.assertEqual([mock.call(1)], engine.artifact_index.call_args_list)
-        self.assertFalse(any("pull_request" in row for row in engine._portfolio_cache["goals"]))
-
-    def test_ordinary_portfolio_context_skips_unrelated_pull_requests(self):
+    def test_targeted_workflow_context_skips_unrelated_bodies_and_prs_before_fresh_publication(self):
         implementation = {"branch": "goal/x", "base": "main", "target": "main",
                           "pr": "https://github.com/owner/repo/pull/11",
                           "review": {"status": "not_started", "checkpoint": None}}
-        issues = [self.issue(1), self.issue(2, implementation=implementation)]
+        issues = [self.issue(1), self.issue(2, implementation=implementation), self.issue(3)]
         bodies = {row["number"]: {"body": row["body"], "updated_at": row["updated_at"]}
                   for row in issues}
+        hydrated = []
+        def read_bodies(_repo, _gh, _owner, _name, selected):
+            hydrated.extend(selected)
+            return ({number: bodies[number] for number in hydrated}, 10, 1)
+        def gateway(repo, **scope):
+            return z.github_repository_portfolio_snapshot(repo, project(), **scope)[1]
         with tempfile.TemporaryDirectory() as directory, \
              mock.patch.object(z.shutil, "which", return_value="gh"), \
              mock.patch.object(z, "github_repository_goal_index",
                                return_value=({}, issues, [], 0, 1, 0)), \
-             mock.patch.object(z, "_github_goal_bodies", return_value=(bodies, 0, 1)), \
+             mock.patch.object(z, "_github_goal_bodies", side_effect=read_bodies), \
              mock.patch.object(z, "_github_goal_relations", return_value=({}, 0, 0)), \
-             mock.patch.object(z, "_github_pull_request_states", return_value=({}, 0, 0)) as prs:
-            z.github_repository_portfolio_snapshot(Path(directory), project())
+             mock.patch.object(z, "_github_pull_request_states", return_value=({}, 0, 0)) as prs, \
+             mock.patch.object(z, "portfolio_snapshot", side_effect=gateway), \
+             mock.patch.object(z, "GitHubGoalTransitionAdapter", return_value=mock.Mock()):
+            _issue, goal = z._workflow.Workflow(z, Path(directory), project()).read(1)
+        self.assertEqual(1, goal["key"])
+        self.assertEqual([1], hydrated)
         prs.assert_not_called()
+        run_generic_regressions(
+            self,
+            "test_workflow_publication_contract.WorkflowPublicationContractTests."
+            "test_provider_head_or_base_drift_requires_local_sync",
+        )
 
     def test_scheduling_inventory_is_complete_and_unavailable_inventory_fails_closed(self):
         """Capacity admission sees every live owner and never treats failure as empty."""
-        goals = [{**z.github_goal_record(self.issue(number)), "schema_version": 2,
-                  "envelope": {"payload": {"hash": f"payload-{number}"}}}
-                 for number in (1, 2, 3)]
-        snapshot = z.build_portfolio_snapshot("github_issues", goals, reads=1, raw_bytes=0)
-        api = mock.Mock(wraps=z)
-        api._project_repository_identity = z._project_repository_identity
-        api.GitHubGoalTransitionAdapter = mock.Mock(return_value=mock.Mock())
-        api.empty_phase_evidence = z.empty_phase_evidence
-        api.portfolio_snapshot.return_value = snapshot
-        engine = z._workflow.Workflow(api, Path("."), project())
-        payloads = {number: {"operational": {"leases": [{"token": f"lease-{number}"}]}}
-                    for number in (1, 2, 3)}
-        engine.artifact_index = mock.Mock(side_effect=lambda number: mock.Mock(
-            resolve=lambda _identity: [payloads[number]]))
-
-        engine.portfolio(allow_invalid=False)
-        self.assertEqual({"lease-1", "lease-2", "lease-3"}, {
-            lease["token"] for goal in engine._portfolio_cache["goals"]
-            for lease in goal.get("operational_leases", [])
-        })
-        engine.invalidate()
-        api.portfolio_snapshot.return_value = copy.deepcopy(snapshot)
-        engine.artifact_index = mock.Mock(side_effect=ValueError("inventory unavailable"))
-        with self.assertRaisesRegex(ValueError, r"(?i)inventory|lease|portfolio|repair"):
-            engine.portfolio(allow_invalid=False)
+        run_generic_regressions(
+            self,
+            "test_workflow_policy_enforcement.GenericWorkerCapacityTests."
+            "test_other_goal_unresolved_owner_consumes_reviewed_capacity_until_observed_stop",
+        )
+        case = DagFixture()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        target = next(step for step in case.session.checkpoint(100) if step.get("kind") == "execute")
+        request = {**target["start"], "policy_receipt": json.loads(
+            Path(target["policy"]["path"]).read_text())["policy_receipt"]}
+        case.session.portfolio_snapshot = mock.Mock(side_effect=ValueError("ownership inventory unavailable"))
+        rejected = case.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)inventory|portfolio|unavailable|repair")
 
     def test_one_changed_marker_reparses_only_that_record(self):
         first, second = self.issue(1), self.issue(2)
@@ -149,27 +114,38 @@ class PortfolioScopeTests(unittest.TestCase):
 
     def test_malformed_or_repository_mismatched_cache_refreshes_exact_records(self):
         issues = [self.issue(1), self.issue(2)]
+        issues[0]["body"] = issues[0]["body"].replace("Useful work.", "Exact first body.")
+        issues[1]["body"] = issues[1]["body"].replace("Useful work.", "Exact second body.")
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)
             (repo / ".zzzops").mkdir()
             cache = z._portfolio_cache_path(repo)
+            plausible_mismatch = {
+                "schema_version": 1, "identity": "owner/repo", "include_feedback": False,
+                "marker": [{"number": row["number"], "updated_at": row["updated_at"]} for row in issues],
+                "bodies": {str(row["number"]): row["body"] for row in issues},
+                "records": {"1": {**z.github_goal_record(issues[1]), "key": 1},
+                            "2": z.github_goal_record(issues[1])},
+            }
             for poisoned in ("not json", json.dumps({
                     "schema_version": 1, "identity": "other/repo",
                     "include_feedback": False, "marker": [], "bodies": {}, "records": {},
-            })):
+            }), json.dumps(plausible_mismatch)):
                 cache.write_text(poisoned, encoding="utf-8")
+                hydration_processes = 0 if poisoned == json.dumps(plausible_mismatch) else 1
                 with self.subTest(cache=poisoned[:12]), \
                      mock.patch.object(z.shutil, "which", return_value="gh"), \
                      mock.patch.object(z, "github_repository_goal_index",
                                        return_value=({}, issues, [], 0, 1, 0)), \
                      mock.patch.object(z, "_github_goal_bodies", return_value=({
                          row["number"]: {"body": row["body"], "updated_at": row["updated_at"]}
-                         for row in issues}, 100, 1)), \
+                         for row in issues}, 100, hydration_processes)), \
                      mock.patch.object(z, "_github_goal_relations", return_value=({}, 0, 0)), \
                      mock.patch.object(z, "_github_pull_request_states", return_value=({}, 0, 0)), \
                      mock.patch.object(z, "github_goal_record", wraps=z.github_goal_record) as parse:
                     snapshot = z.github_repository_portfolio_snapshot(repo, project())[1]
-                self.assertEqual([1, 2], sorted(row["key"] for row in snapshot["goals"]))
+                self.assertEqual([1, 2], [row["key"] for row in snapshot["goals"]])
+                self.assertIn("Exact first body.", snapshot["goals"][0]["human_spec"])
                 self.assertEqual({1, 2}, {call.args[0]["number"] for call in parse.call_args_list})
 
     def test_targeted_closed_dependency_is_present_without_unrelated_closed_history(self):
@@ -186,13 +162,6 @@ class PortfolioScopeTests(unittest.TestCase):
             snapshot = z.github_repository_portfolio_snapshot(Path("."), project())[1]
         self.assertEqual([1, 2], [row["key"] for row in snapshot["goals"]])
         relations.assert_called_once_with(Path("."), "gh", "owner", "repo", [2])
-
-    def test_publication_observes_fresh_provider_head_and_base(self):
-        run_generic_regressions(
-            self,
-            "test_workflow_publication_contract.WorkflowPublicationContractTests."
-            "test_provider_head_or_base_drift_requires_local_sync",
-        )
 
     def test_provider_drift_still_rejects_stale_inflight_result(self):
         run_generic_regressions(
