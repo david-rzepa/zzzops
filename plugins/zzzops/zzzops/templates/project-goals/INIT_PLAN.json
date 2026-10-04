@@ -6329,6 +6329,506 @@
                     }
                   }
                 ]
+              },
+              {
+                "id": "interpret_accepted_test_defect",
+                "prompt": "Interpret the exact rejected implementation review for defects in already accepted tests. Inspect the pinned approved test review and implementation context. Emit one finding containing every required test correction, targeting only test_design/value with its exact subject Ref. Preserve separate implementation findings. Use a distinct finding id, revision one and no supersession. Existing finite reviewed test ownership remains the boundary; out-of-scope requests stay blocked and confer no edit authority.",
+                "inputs": {
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "test_design"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  },
+                  "review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_implement"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "rejected": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_implement"
+                      }
+                    },
+                    "output": "value",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "changes_requested"
+                      ]
+                    }
+                  },
+                  "accepted_review": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_test_design"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "decision": {
+                          "kind": "enum",
+                          "values": [
+                            "approved",
+                            "changes_requested"
+                          ]
+                        },
+                        "report": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  },
+                  "approved": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "review_test_design"
+                      }
+                    },
+                    "output": "value",
+                    "path": [
+                      "decision"
+                    ],
+                    "mode": "content",
+                    "type": {
+                      "kind": "enum",
+                      "values": [
+                        "approved"
+                      ]
+                    }
+                  },
+                  "implementation": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "implement"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "finding",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "id": {
+                          "kind": "string"
+                        },
+                        "revision": {
+                          "kind": "integer"
+                        },
+                        "source": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "subjects": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "target": {
+                          "kind": "object",
+                          "fields": {
+                            "subject": {
+                              "kind": "object",
+                              "fields": {
+                                "kind": {
+                                  "kind": "string"
+                                },
+                                "goal": {
+                                  "kind": "integer"
+                                },
+                                "node": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "output": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "request": {
+                          "kind": "string"
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        },
+                        "supersedes": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "test_design"
+                  },
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_test_design"
+                  },
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "implement"
+                  },
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "review_implement"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "reasoning",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "interpret_accepted_test_defect"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "finding",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "test_design"
+                      },
+                      "output": "value"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "admit_accepted_test_correction",
+                "prompt": "Admit the exact accepted-test defect only within existing reviewed test authority. Bind the original test producer Result inputs and current authenticated root interpretation Result. Preserve all Results and separate implementation findings. Admission grants no test writes: reacquire test_design under its finite allocation, current approvals and exclusive workspace ownership. Mark uncertain applicability unresolved; never broaden scope or reuse stale approval.",
+                "inputs": {
+                  "finding": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "interpret_accepted_test_defect"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "object",
+                      "fields": {
+                        "id": {
+                          "kind": "string"
+                        },
+                        "revision": {
+                          "kind": "integer"
+                        },
+                        "source": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "subjects": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "hash": {
+                                "kind": "string"
+                              },
+                              "uri": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "target": {
+                          "kind": "object",
+                          "fields": {
+                            "subject": {
+                              "kind": "object",
+                              "fields": {
+                                "kind": {
+                                  "kind": "string"
+                                },
+                                "goal": {
+                                  "kind": "integer"
+                                },
+                                "node": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "output": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "request": {
+                          "kind": "string"
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        },
+                        "supersedes": {
+                          "kind": "union",
+                          "variants": [
+                            {
+                              "kind": "null"
+                            },
+                            {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "subject": {
+                    "producer": {
+                      "node": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "test_design"
+                      }
+                    },
+                    "output": "value",
+                    "path": [],
+                    "mode": "identity",
+                    "type": {
+                      "kind": "string"
+                    }
+                  }
+                },
+                "outputs": {
+                  "value": {
+                    "type": "admission",
+                    "schema": {
+                      "kind": "object",
+                      "fields": {
+                        "finding": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "target_inputs": {
+                          "kind": "array",
+                          "items": {
+                            "kind": "object",
+                            "fields": {
+                              "name": {
+                                "kind": "string"
+                              },
+                              "source": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              },
+                              "path": {
+                                "kind": "array",
+                                "items": {
+                                  "kind": "string"
+                                }
+                              },
+                              "mode": {
+                                "kind": "string"
+                              }
+                            }
+                          }
+                        },
+                        "authority": {
+                          "kind": "object",
+                          "fields": {
+                            "hash": {
+                              "kind": "string"
+                            },
+                            "uri": {
+                              "kind": "string"
+                            }
+                          }
+                        },
+                        "applicability": {
+                          "kind": "enum",
+                          "values": [
+                            "applicable",
+                            "not_applicable",
+                            "unresolved"
+                          ]
+                        },
+                        "rationale": {
+                          "kind": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "requires": [
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "interpret_accepted_test_defect"
+                  },
+                  {
+                    "kind": "node",
+                    "goal": "#this",
+                    "node": "test_design"
+                  }
+                ],
+                "executor": {
+                  "role": "root",
+                  "capability": "bounded",
+                  "resources": [],
+                  "authority": {
+                    "subject": {
+                      "kind": "node",
+                      "goal": "#this",
+                      "node": "admit_accepted_test_correction"
+                    },
+                    "output": "value"
+                  }
+                },
+                "independent_of": [],
+                "gates": [],
+                "resolves": [],
+                "permits": [
+                  {
+                    "type": "admission",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "test_design"
+                      },
+                      "output": "value"
+                    }
+                  }
+                ]
               }
             ],
             "task_sets": [
