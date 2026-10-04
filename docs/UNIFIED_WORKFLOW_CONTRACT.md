@@ -14,6 +14,16 @@ before execution. Preview accepts no mutations. Only the coordinator writes
 canonical state or integrates work; a delegated worker follows its acquired
 contract and finite workspace allocation.
 
+The CLI renders compact workflow responses by default while the Python workflow
+API retains the complete structured object. Compact output contains the outcome,
+actionable step fields and a SHA-256-bound local reference to the complete JSON;
+`--response full` preserves the prior programmatic CLI shape. `--read-response`
+supports integrity-checked full or JSON Pointer selection without reevaluating
+the workflow. A subsequent minimal input may cite the compact step's `context`
+and supply only its operation and new evidence. The CLI restores unchanged
+machine-owned submission fields from the exact saved action before applying all
+ordinary lease, input, actor, policy, independence and idempotency checks.
+
 Normal goal execution uses one schema-2 engine. `start`, `bind`, `renew`, `block`,
 `recover` and `submit` operate on qualified generic tasks. Evidence inspection is
 `read`. Operational `integrate`, `reconcile` and `complete` consume authenticated

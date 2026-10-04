@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -227,13 +228,29 @@ def main(argv: list[str] | None = None) -> int:
             cached_skills = {path.name for path in (install / "skills").iterdir() if path.is_dir()}
             if cached_skills != EXPECTED_SKILLS:
                 raise AcceptanceError("cached skill directories differ from the intended ZzzOps surface")
-            inspection = json_output([
+            runtime_command = [
                 sys.executable, str(install / "zzzops" / "zzzops.py"), "--repo", str(project),
                 "workflow", "--intent", "inspect", "--source-skill", "$review-zzzops-policy",
-            ])
+            ]
+            inspection = json_output(runtime_command)
             steps = inspection.get("next_steps") if isinstance(inspection, dict) else None
-            if set(inspection) != {"next_steps"} or not isinstance(steps, list) or not steps:
+            reference = inspection.get("full_response") if isinstance(inspection, dict) else None
+            if (set(inspection) != {"outcome", "next_steps", "full_response"}
+                    or not isinstance(steps, list) or not steps or not isinstance(reference, dict)):
                 raise AcceptanceError("packaged ZzzOps runtime cannot produce a public workflow response")
+            required_reference = {"schema_version", "path", "sha256", "goal", "intent"}
+            if set(reference) != required_reference or reference.get("schema_version") != 1:
+                raise AcceptanceError("packaged ZzzOps runtime produced a malformed full-response reference")
+            response_path = Path(reference["path"])
+            response_bytes = response_path.read_bytes()
+            if "sha256:" + hashlib.sha256(response_bytes).hexdigest() != reference.get("sha256"):
+                raise AcceptanceError("packaged ZzzOps runtime produced a corrupt full-response reference")
+            envelope = json.loads(response_bytes)
+            full = json_output([*runtime_command, "--response", "full"])
+            if (not isinstance(envelope, dict) or envelope.get("schema_version") != 1
+                    or envelope.get("intent") != "inspect"
+                    or envelope.get("response") != full or set(full) != {"next_steps"}):
+                raise AcceptanceError("compact and full packaged runtime responses are not equivalent")
     except (AcceptanceError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         print(f"Claude plugin acceptance failed: {exc}", file=sys.stderr)
         return 2

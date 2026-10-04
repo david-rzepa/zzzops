@@ -3,6 +3,8 @@
 Run package-local [`zzzops.py`](../zzzops.py), never globally. Use the skill's
 semantic `--intent` with `workflow --intent INTENT`; copy returned `--goal`, runtime and input.
 
+Stdout is compact; `--response full` preserves full JSON. For minimal inputs and selective reads, use [response references](CLI_BOUNDARY.md).
+
 Follow `next_steps`, `instruction`, policy.path and evidence fields. Read policy;
 send `start` and `bind` with receipt and actual executor. Send `submission`
 using `command`, acquired node, lease and actor; renew/submit need no policy receipt.
