@@ -539,7 +539,7 @@ def workflow_context_step(
                 "reason": f"Repository installation validation is required ({status.get('reason')}).",
                 "instruction": workflow_instruction("installation-validation"),
             }
-    inspection = inspect_initialization(repo)
+    inspection = inspect_initialization(repo, include_capabilities=False)
     if inspection.get("initialized") is True:
         return None
     if inspection.get("state") is None:
@@ -2472,7 +2472,13 @@ def migration_assessment(repo: Path, project: dict[str, Any], goal: dict[str, An
     return {"release_snapshot": snapshot, "decision": migration_boundary(project.get("policy", {}), context)}
 
 
-def inspect_initialization(repo: Path) -> dict[str, Any]:
+def inspect_initialization(repo: Path, *, include_capabilities: bool = True) -> dict[str, Any]:
+    """Inspect fresh policy readiness, optionally enriching its review context.
+
+    Capability observations are descriptive review inputs, not prerequisites of
+    initialized policy. Consumers of release/provider authority observe those
+    facts at their own operation boundary; this projection never caches them.
+    """
     path, text = read_project(repo)
     error = None
     try:
@@ -2484,6 +2490,18 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
     except ValueError as exc:
         state = None
         error = str(exc)
+    decision_blockers = policy_blockers(state.get("policy")) if state else ["policy:missing"]
+    if error:
+        decision_blockers = [*decision_blockers, "policy:invalid_configuration"]
+    readiness = {
+        "state": state,
+        "initialized": bool(state and state.get("initialized") is True and not decision_blockers and error is None),
+        "valid_state": error is None and state is not None,
+        "state_error": error,
+        "decision_blockers": decision_blockers,
+    }
+    if not include_capabilities:
+        return readiness
     git_remote = command_probe(["git", "remote", "get-url", "origin"], repo)
     github_auth = command_probe(["gh", "auth", "status"], repo)
     github_repository = github_repository_probe(repo)
@@ -2505,9 +2523,6 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         review_policy = template["policy"]
         review_is_proposal = True
     migration_action = _policy.migration_boundary(review_policy, release_status)
-    decision_blockers = policy_blockers(state.get("policy")) if state else ["policy:missing"]
-    if error:
-        decision_blockers = [*decision_blockers, "policy:invalid_configuration"]
     github_stack = github_stack_probe(repo)
     plugin_inventory = _plugin_freshness.native_plugin_inventory()
     cache_path = Path(plugin_inventory["cache_path"])
@@ -2521,12 +2536,8 @@ def inspect_initialization(repo: Path) -> dict[str, Any]:
         "schema_version": PLAN_SCHEMA_VERSION,
         "project_path": str(path),
         "base_digest": initialization_base_digest(repo),
-        "state": state,
-        "initialized": bool(state and state.get("initialized") is True and not decision_blockers and error is None),
-        "valid_state": error is None and state is not None,
-        "state_error": error,
+        **readiness,
         "missing_charter_fields": charter_missing_fields(text),
-        "decision_blockers": decision_blockers,
         "policy_defaults": compare_policy_defaults(state["policy"]) if state and isinstance(state.get("policy"), dict) else [],
         "policy_review_table": render_policy_review_table(review_policy, proposal=review_is_proposal),
         "stack_tooling_offer": _policy.stack_tooling_offer(review_policy, github_stack),
