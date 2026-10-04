@@ -64,6 +64,8 @@ class ProviderTopologySession(dag_fixtures.TaskSession):
                 mock.patch.object(api, "GitHubGoalTransitionAdapter", return_value=self.provider),
                 mock.patch.object(api, "GitHubReservationAdapter", return_value=SimpleNamespace()),
                 mock.patch.object(api, "portfolio_snapshot", side_effect=self.portfolio_snapshot),
+                mock.patch.object(api, "provider_issue_snapshot",
+                                  side_effect=lambda _repo, _repository, number: copy.deepcopy(self.provider.issues[number])),
                 mock.patch.object(api, "acquire_storage_lock", side_effect=lambda *_a, **_k: {"acquired": True, "expires_at": time.time() + 300}),
                 mock.patch.object(api, "renew_storage_lock", side_effect=lambda *_a, **_k: {"acquired": True, "expires_at": time.time() + 300}),
                 mock.patch.object(api, "release_storage_lock", return_value={"released": True}),
