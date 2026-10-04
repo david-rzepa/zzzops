@@ -63,6 +63,26 @@ class PortfolioScopeTests(unittest.TestCase):
         self.assertFalse(any(call.args[0] in {2, 3} for call in comments.call_args_list))
         prs.assert_not_called()
 
+    def test_targeted_v2_context_hydrates_only_requested_payload_with_unrelated_live_owner(self):
+        from test_workflow_policy_enforcement import GenericWorkerCapacityTests
+        case = GenericWorkerCapacityTests()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        owner = case.session.acquire("produce", number=100, actor="unrelated-owner")
+        case.add_goal(101, case.graph)
+        unrelated_envelope, unrelated_payload = case.payload()
+        self.assertEqual(owner["lease"]["token"],
+                         unrelated_payload["operational"]["leases"][0]["token"])
+        with mock.patch.object(z, "portfolio_snapshot", side_effect=case.session.portfolio_snapshot), \
+             mock.patch.object(z, "GitHubGoalTransitionAdapter", return_value=case.provider), \
+             mock.patch.object(case.provider, "get_issue_comments", wraps=case.provider.get_issue_comments) as comments:
+            engine = z._workflow.Workflow(z, case.fixture.repo, case.session.project)
+            _, goal = engine.read(101)
+            self.assertEqual(2, goal["schema_version"])
+            requested = engine.artifact_index(101).resolve(goal["envelope"]["payload"]["hash"])[0]
+            self.assertEqual([], requested["operational"]["leases"])
+        self.assertEqual([101], [call.args[0] for call in comments.call_args_list])
+
     def test_same_session_context_then_publication_observes_fresh_provider_drift(self):
         from test_workflow_publication_contract import GenericPublicationPublicTests
         case = GenericPublicationPublicTests()
