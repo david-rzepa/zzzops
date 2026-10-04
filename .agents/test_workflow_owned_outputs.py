@@ -109,6 +109,9 @@ class PublicSession:
                 mock.patch.object(api, 'GitHubGoalTransitionAdapter', return_value=self.provider),
                 mock.patch.object(api, 'GitHubReservationAdapter', return_value=getattr(self, 'reservation_adapter', SimpleNamespace())),
                 mock.patch.object(api, 'portfolio_snapshot', side_effect=self.portfolio_snapshot),
+                mock.patch.object(api, 'provider_issue_snapshot',
+                                  side_effect=getattr(self, 'provider_issue_snapshot',
+                                                      lambda _repo, _repository, number: copy.deepcopy(self.provider.issues[number]))),
                 *([] if getattr(self, 'reservation_adapter', None) is not None else [
                     mock.patch.object(api, 'acquire_storage_lock', side_effect=lambda *_a, **_k: {'acquired': True, 'expires_at': time.time() + 300}),
                     mock.patch.object(api, 'renew_storage_lock', side_effect=lambda *_a, **_k: {'acquired': True, 'expires_at': time.time() + 300}),

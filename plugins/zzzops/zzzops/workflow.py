@@ -391,6 +391,19 @@ def valid_acquisition(value, *, envelope=False):
     )
 
 
+class ProviderReadGateway:
+    """Context capability: observations only; no raw issue/PR or write methods."""
+    def __init__(self, engine, provider):
+        self.engine = engine
+        self.get_issue_comments = provider.get_issue_comments
+        if hasattr(provider, 'list_issue_metadata'):
+            self.list_issue_metadata = provider.list_issue_metadata
+
+    def get_issue(self, number):
+        engine = self.engine
+        return engine.api.provider_issue_snapshot(engine.repo, engine.repository, number)
+
+
 class Workflow:
     def __init__(self, api, repo, project, runtime=None):
         self.api, self.repo, self.project = api, repo, project
@@ -402,8 +415,14 @@ class Workflow:
             self.adapter.timeout_budget = self.budget.timeout
         self._read_cache = {}
         self._portfolio_cache = None
+        self._mutation_adapter = self.adapter
+
+    def read_only(self):
+        self.adapter = ProviderReadGateway(self, self._mutation_adapter)
 
     def invalidate(self):
+        if hasattr(self.api, 'invalidate_provider_reads'):
+            self.api.invalidate_provider_reads(self.repo, self.repository)
         getattr(self, '_read_cache', {}).clear()
         self._read_cache = {}
         self._portfolio_cache = None
@@ -670,6 +689,8 @@ class Workflow:
         deadline = time.monotonic() + 10
         reservation = None
         attempted = False
+        observed_adapter = self.adapter
+        if isinstance(observed_adapter, ProviderReadGateway): self.adapter = self._mutation_adapter
         try:
             while True:
                 if budget:
@@ -693,6 +714,7 @@ class Workflow:
             self.invalidate()
             yield
         finally:
+            self.adapter = observed_adapter
             if getattr(self, '_storage_reservation', None) is reservation:
                 self._storage_reservation = None
             if attempted:
@@ -3232,6 +3254,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         if freshness['stale']:
             return {'next_steps': [{'kind': 'policy_review', 'assignment': 'root', 'action': 'Review policy tier mappings for newly discovered model/effort pairs before proceeding.', 'added': freshness['added'], 'submission': {'operation': 'policy_propose', 'plan': '<updated reviewed policy plan>'}}]}
     engine = Workflow(api, repo, project, runtime)
+    if payload is None or operation in {'read', 'heartbeat'}: engine.read_only()
     if operation == 'migration_batch':
         return api._migration_batch.run(engine, payload)
     if intent == 'execute' and source == '$execute-zzzops' and operation not in {'read', 'recover', 'renew', 'heartbeat'}:
@@ -3381,6 +3404,13 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
 
 
 def public_run(api, repo, intent, source, runtime, payload, number, *, skip_installation_validation=False, payload_supplied=False):
+    with api.provider_read_invocation() if hasattr(api, 'provider_read_invocation') else nullcontext():
+        return _public_response(api, repo, intent, source, runtime, payload, number,
+                                skip_installation_validation=skip_installation_validation,
+                                payload_supplied=payload_supplied)
+
+
+def _public_response(api, repo, intent, source, runtime, payload, number, *, skip_installation_validation=False, payload_supplied=False):
     snapshot = {}
     options = {'skip_installation_validation': True} if skip_installation_validation else {}
     if payload_supplied:

@@ -56,6 +56,44 @@ class WorkflowInvocationCacheTests(unittest.TestCase):
         if direct_pr is not None:
             case.provider.get_pull_request = direct_pr
 
+    def test_public_checkpoint_uses_real_gateway_and_reuses_exact_provider_bytes(self):
+        case = dag_fixtures.DagFixture(); case.setUp()
+        self.addCleanup(case.doCleanups)
+        snapshot = case.session.portfolio_snapshot()
+        case.session.portfolio_snapshot = lambda *_a, **_k: copy.deepcopy(snapshot)
+        issue = copy.deepcopy(case.provider.issues[100])
+        case.session.provider_issue_snapshot = z.provider_issue_snapshot
+        with mock.patch.object(z, '_github_goal_relations', return_value=({100: issue}, 10, 1)) as metadata, \
+             mock.patch.object(z, '_github_goal_bodies', return_value=({100: {'body': issue['body']}}, 10, 1)) as bodies, \
+             mock.patch.object(case.provider, 'get_issue', side_effect=AssertionError('Direct issue read')):
+            steps = case.session.checkpoint(100)
+        self.assertTrue(any(step.get('kind') == 'execute' for step in steps))
+        metadata.assert_called_once()
+        bodies.assert_called_once()
+        self.assertEqual([100], metadata.call_args.args[-1])
+        self.assertEqual([100], bodies.call_args.args[-1])
+
+    def test_pr_gateway_shares_invocation_snapshot_and_invalidates_on_refresh(self):
+        repo = Path('.')
+        rows = [{'number': 100}]
+        bodies = {100: {'repository_context': {'pr': 'https://github.com/owner/repo/pull/7'}}}
+        observed = {100: {'head_oid': 'a' * 40}}
+        with mock.patch.object(z, '_observe_pull_request_states', side_effect=lambda *_a: (copy.deepcopy(observed), 10, 1)) as provider:
+            with z.provider_read_invocation():
+                first, _, _ = z._github_pull_request_states(repo, 'gh', rows, bodies)
+                first[100]['head_oid'] = 'tampered'
+                second, size, count = z._github_pull_request_states(repo, 'gh', rows, bodies)
+                self.assertEqual('a' * 40, second[100]['head_oid'])
+                self.assertEqual((0, 0), (size, count))
+                self.assertEqual(1, provider.call_count)
+                observed[100]['head_oid'] = 'b' * 40
+                z.invalidate_provider_reads(repo, 'owner/repo')
+                self.assertEqual('b' * 40, z._github_pull_request_states(repo, 'gh', rows, bodies)[0][100]['head_oid'])
+                self.assertEqual(2, provider.call_count)
+            with z.provider_read_invocation():
+                z._github_pull_request_states(repo, 'gh', rows, bodies)
+                self.assertEqual(3, provider.call_count)
+
     def test_real_locked_v2_mutation_retains_fresh_exact_issue_read(self):
         case = dag_fixtures.DagFixture()
         case.setUp()
