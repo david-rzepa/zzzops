@@ -6002,7 +6002,7 @@ class WorkflowContractTests(unittest.TestCase):
     def test_workflow_scopes_portfolio_findings_to_the_affected_goal_and_prerequisites(self):
         workflow = zzzops._workflow.Workflow.__new__(zzzops._workflow.Workflow)
         workflow.repo = Path('.')
-        workflow.api = SimpleNamespace(portfolio_snapshot=lambda _repo: {
+        snapshot = {
             "complete": True, "valid": False,
             "goals": [
                 {"key": 1, "parent": None, "depends_on": []},
@@ -6013,7 +6013,11 @@ class WorkflowContractTests(unittest.TestCase):
                 {"code": "merged_pr_stale_checkpoint", "goal": 1, "detail": "stale"},
                 {"code": "merged_pr_stale_checkpoint", "goal": 3, "detail": "unrelated"},
             ],
-        })
+        }
+        def portfolio_snapshot(_repo, *, include_pull_requests=True):
+            self.assertFalse(include_pull_requests)
+            return snapshot
+        workflow.api = SimpleNamespace(portfolio_snapshot=portfolio_snapshot)
         workflow._portfolio_cache = None
 
         self.assertEqual([1, 2, 3], [goal["key"] for goal in workflow.portfolio()])
