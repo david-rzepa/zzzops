@@ -17,6 +17,7 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
     workspace_graph = journeys.WorkspaceAuthorityPublicTests.workspace_graph
     setup_workspace = journeys.WorkspaceAuthorityPublicTests.setup_workspace
     acquire_workspace = journeys.WorkspaceAuthorityPublicTests.acquire_workspace
+    review_candidate = journeys.WorkspaceAuthorityPublicTests.review_candidate
 
     def setUp(self):
         super().setUp()
@@ -34,6 +35,29 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
 
     def count(self):
         return len(self.counter.read_text().splitlines()) if self.counter.exists() else 0
+
+    def test_native_red_to_green_checks_execute_once_per_phase_request(self):
+        (self.fixture.repo / 'behavior_test.py').write_text('from source import value\nassert value() == 2\n')
+        command = [sys.executable, '-B', '-c', "from pathlib import Path; import runpy; p=Path(%r); p.write_text(p.read_text()+'run\\n' if p.exists() else 'run\\n'); runpy.run_path('behavior_test.py')" % str(self.counter)]
+        red = self.request('native-red', expectation='observed')
+        red['workspace_checks'] = [command]
+        started = time.monotonic()
+        response = self.session.call(100, red)
+        self.assertFalse(response['verification']['passed'])
+        self.review_candidate('alpha', 1)
+        self.work = self.acquire_workspace('beta')
+        (self.fixture.repo / 'source.py').write_text('def value():\n    return 2\n')
+        green = self.request('native-green')
+        green['workspace_checks'] = [command]
+        passed = self.session.call(100, green)
+        self.assertTrue(passed['verification']['passed'])
+        self.assertEqual(2, self.count())
+        self.assertEqual(response, self.session.call(100, red))
+        self.assertEqual(passed, self.session.call(100, green))
+        self.assertEqual(2, self.count())
+        elapsed = time.monotonic() - started
+        observed = sum(self.read_blob(value['verification']['proof'])['commands'][0]['duration_seconds'] for value in (response, passed))
+        self.assertGreaterEqual(elapsed, observed)
 
     def test_first_append_failure_reuses_command_proof_and_log(self):
         request = self.request('first-append')
@@ -64,6 +88,7 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
         self.assertEqual(self.work['lease']['token'], self.payload()[1]['operational']['leases'][0]['token'])
         self.assertEqual(failed, self.session.call(100, failed_request))
         self.assertEqual(1, self.count())
+        (self.fixture.repo / 'behavior_test.py').write_text('assert True\n')
         corrected = self.session.call(100, self.request('green-corrected'))
         self.assertTrue(corrected['verification']['passed'])
         self.assertEqual(2, self.count())
@@ -75,6 +100,18 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
         self.assertFalse(response['verification']['passed'])
         self.assertEqual(1, self.read_blob(response['verification']['proof'])['commands'][0]['exit_code'])
         self.assertEqual(self.result('alpha')[0], response['submitted']['result'])
+        self.assertEqual(response, self.session.call(100, request))
+        self.assertEqual(1, self.count())
+
+    def test_every_required_command_runs_and_launch_failure_is_not_red_success(self):
+        request = self.request('required-checks', expectation='observed')
+        request['workspace_checks'].append([str(Path(self.session.control) / 'missing-verifier')])
+        response = self.session.call(100, request)
+        self.assertEqual('verification_failed', response['next_steps'][0]['kind'])
+        proof = self.read_blob(response['next_steps'][0]['proof'])
+        self.assertEqual(request['workspace_checks'], [record['command'] for record in proof['commands']])
+        self.assertIn('execution_error', proof['commands'][1])
+        self.assertFalse(proof['passed'])
         self.assertEqual(response, self.session.call(100, request))
         self.assertEqual(1, self.count())
 
@@ -125,10 +162,11 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
         self.assertEqual(1, self.count())
         self.session.call(100, {**request, 'workspace_checks': [self.command(1)]}, expected=2)
         path = self.fixture.repo / 'behavior_test.py'
-        original = path.read_bytes()
+        original = path.read_bytes() if path.exists() else None
         path.write_text('assert True\n')
         self.session.call(100, request, expected=2)
-        path.write_bytes(original)
+        if original is None: path.unlink()
+        else: path.write_bytes(original)
         logs = list((self.fixture.repo / '.zzzops/diagnostics').glob('node-*.log'))
         self.assertTrue(logs)
         logs[-1].write_text('tampered log')

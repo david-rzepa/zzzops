@@ -1122,7 +1122,7 @@
               },
               {
                 "id": "test_design",
-                "prompt": "Implement falsifiable production behavioral tests for every approved criterion within the exact reviewed test allocation. Observe and report the pre-implementation baseline. Preserve valid controls and distinguish fixture errors from missing behavior.",
+                "prompt": "Implement falsifiable production behavioral tests for every approved criterion within the exact reviewed test allocation. Submit the required baseline commands once through workspace_checks with verification_expectation observed; use the returned host proof, including expected red exits. Small exploratory probes remain allowed; do not pre-run the full authoritative suite. Preserve valid controls and distinguish fixture errors from missing behavior.",
                 "inputs": {
                   "design": {
                     "producer": {
@@ -1511,7 +1511,7 @@
               },
               {
                 "id": "implement",
-                "prompt": "Implement all approved criteria within the exact reviewed source allocation. Keep accepted tests unchanged, retain history and authority guards, run the declared checks, and report observed evidence and remaining limitations.",
+                "prompt": "Implement all approved criteria within the exact reviewed source allocation. Keep accepted tests unchanged, retain history and authority guards, submit the declared checks once through workspace_checks with verification_expectation passed, and report the returned host proof and remaining limitations. Small exploratory probes remain allowed; do not pre-run the full authoritative suite. Correct failed checks under the same valid lease using a new request_id.",
                 "inputs": {
                   "design": {
                     "producer": {

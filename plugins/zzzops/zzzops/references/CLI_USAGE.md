@@ -6,6 +6,7 @@ semantic `--intent` with `workflow --intent INTENT`; copy returned `--goal`, run
 Follow `next_steps`, `instruction`, policy.path and evidence fields. Read policy;
 send `start` and `bind` with receipt and actual executor. Send `submission`
 using `command`, acquired node, lease and actor; renew/submit need no policy receipt.
+For authoritative checks and retry rules, follow [verification](VERIFICATION.md); submit suites once through `workspace_checks`.
 
 `submit` returns `submitted` and actionable next steps; no extra checkpoint.
 Retry identical request ID/payload. Returned steps grant no authority.

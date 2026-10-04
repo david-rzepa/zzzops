@@ -1,0 +1,18 @@
+# Authoritative verification
+
+Submit the required command argument arrays once as `workspace_checks` in the ordinary `submit` request, alongside the node, bound actor, lease, request ID and output bundle. The public CLI runs the commands in the acquired repository with the inherited environment, combines stdout/stderr into diagnostic logs, records exit codes and duration, and binds its immutable proof to the exact acquisition, workspace, commands, actor and lease. A successful submission returns `verification.proof` and `verification.passed`; the output artifacts also retain that proof as their provenance source.
+
+Small exploratory probes remain useful while designing or debugging. Do not run a full authoritative suite outside the CLI merely to learn its result and then submit the same suite again. Include every project-required final check, preserving native command arguments and environment controls; this optimization does not reduce test coverage.
+
+Choose the explicit submission expectation:
+
+- `verification_expectation: "passed"` requires all commands to exit zero before recording a Result. A `verification_failed` step returns the proof and command logs, preserves the lease, and records no semantic Result. Inspect the failure, correct the authorized workspace, and submit the complete required checks under a **new request ID** while the same lease remains valid.
+- `verification_expectation: "observed"` deliberately records observations, including expected red test-design exits. The proof still records the real exit statuses and `passed: false`; independent review remains required. This does not turn a failed check into passing evidence.
+
+Omitting the expectation preserves the prior observation-recording behavior for existing callers. Explicit expectations require a nonempty command set. Each command retains the existing 300-second timeout. Timeout or failure to launch returns failed verification, even for an observation request; unexecuted later commands cannot count toward complete coverage.
+
+Replay the identical request ID and payload after uncertain transport. The host journal in the checkout's Git administration directory retains completed command outcomes before provider publication. Exact replay validates request, workspace, acquisition, actor, lease, execution-directory and environment hashes, plus each log hash, and reuses those outcomes. Raw environment values are not stored. Logs have request-specific names so corrected attempts do not overwrite historical diagnostics. The running journal names the current command and its log for progress inspection.
+
+A process interruption can leave a started command without a durably observed outcome. The CLI does not infer success from a log, an expired lease or a missing process. It returns `await_worker` with the existing recovery contract. Observe the exact worker and verifier stopped, provide that evidence through `recover`, then reacquire the preserved authorized workspace before a new request. A different request ID cannot bypass an unresolved command under the old lease; a recovered new lease is not permanently blocked by the old journal.
+
+The pre-publication journal guarantee is local to the original checkout. Keep its journal and logs for recovery. Another machine or a checkout with missing local history cannot establish whether an unpublished command ran. Existing provider-pending proof and log checks remain mandatory; missing evidence is not permission to assert success or blindly rerun uncertain work. Reconcile the original worker and its records first. Published request receipts retain their exact replay behavior.

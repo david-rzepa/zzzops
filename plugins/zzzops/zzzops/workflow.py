@@ -171,6 +171,10 @@ PUBLIC_OPERATIONS = frozenset({
 })
 
 
+class VerificationUncertain(ValueError):
+    """A started command has no durably observed terminal outcome."""
+
+
 class RenewalBudget:
     """Bound provider work while reserving independent time to release storage."""
     def __init__(self, work_seconds=30, cleanup_seconds=10):
@@ -2470,6 +2474,84 @@ class Workflow:
             contexts[key] = {'binding': binding, 'files': baseline, 'acquisition': {}, 'readonly': True}
         return contexts
 
+    def node_verification_commands(self, snapshot, lease, request, commands, before):
+        """Reuse host-observed command outcomes across pre-publication failures."""
+        if not commands: return []
+        git_dir = Path(subprocess.run(['git', 'rev-parse', '--absolute-git-dir'], cwd=self.repo,
+                                      capture_output=True, text=True, check=True).stdout.strip())
+        directory = git_dir / 'zzzops' / 'verification' / str(snapshot['number'])
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        path = directory / (digest(request['request_id'])[7:] + '.json')
+        identity = {'repository': self.repository, 'goal': snapshot['number'], 'request': digest(request),
+                    'lease': lease['token'], 'actor': lease['worker'],
+                    'acquisition': digest(lease['acquisition']), 'workspace': digest(before),
+                    'directory': str(self.repo.resolve()), 'environment': digest(dict(os.environ)),
+                    'commands': commands}
+        def read(candidate):
+            value = json.loads(candidate.read_text(encoding='utf-8'))
+            if set(value) != {'hash', 'record'} or digest(value['record']) != value['hash']:
+                raise ValueError('Verification journal integrity changed; inspect original execution before retry')
+            return value['record']
+        def write(value):
+            temporary = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
+            descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            try:
+                with os.fdopen(descriptor, 'w', encoding='utf-8') as handle:
+                    json.dump({'hash': digest(value), 'record': value}, handle, sort_keys=True)
+                    handle.flush(); os.fsync(handle.fileno())
+                os.replace(temporary, path)
+                if hasattr(os, 'O_DIRECTORY'):
+                    directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+                    try: os.fsync(directory_fd)
+                    finally: os.close(directory_fd)
+            finally:
+                temporary.unlink(missing_ok=True)
+        journal = read(path) if path.exists() else {'identity': identity, 'status': 'prepared', 'results': []}
+        if journal['identity'] != identity:
+            raise ValueError('Verification request/workspace/acquisition/environment identity changed; use original bytes or a corrected new request')
+        # Unknown command liveness cannot be bypassed with another request ID.
+        for candidate in directory.glob('*.json'):
+            existing = read(candidate)
+            if existing['identity']['lease'] == lease['token'] and existing['status'] == 'running':
+                raise VerificationUncertain('Verification completion is unknown; inspect the exact worker and verifier before observed-stop recovery. Journal: ' + str(candidate))
+        results = journal['results']
+        if journal['status'] not in {'prepared', 'complete'} or [row['command'] for row in results] != commands[:len(results)] or len(results) > len(commands):
+            raise ValueError('Verification journal command coverage is invalid')
+        for record in results:
+            if hashlib.sha256(Path(record['log']).read_bytes()).hexdigest() != record['log_hash']:
+                raise ValueError('Recorded verification log changed')
+        if journal['status'] == 'complete': return results
+        logs = self.repo / '.zzzops' / 'diagnostics'; logs.mkdir(parents=True, exist_ok=True)
+        for i in range(len(results), len(commands)):
+            command = commands[i]
+            log = logs / f'node-{lease["token"]}-{path.stem}-{i}.log'
+            journal['status'] = 'running'
+            journal['active_command'] = {'index': i, 'command': command, 'log': str(log)}
+            write(journal)
+            started = time.monotonic()
+            timed_out = False
+            execution_error = None
+            with log.open('w') as output:
+                try:
+                    process = subprocess.run(command, cwd=self.repo, stdout=output, stderr=subprocess.STDOUT, timeout=300, check=False)
+                    exit_code = process.returncode
+                except subprocess.TimeoutExpired:
+                    # subprocess.run has killed and waited for the direct child.
+                    # A timeout is failed evidence, never an inferred success.
+                    timed_out = True; exit_code = None
+                except OSError as exc:
+                    execution_error = str(exc); exit_code = None
+                output.flush(); os.fsync(output.fileno())
+            results.append({'command': command, 'exit_code': exit_code, 'log': str(log),
+                            'log_hash': hashlib.sha256(log.read_bytes()).hexdigest(),
+                            'duration_seconds': time.monotonic() - started, **({'timed_out': True} if timed_out else {}),
+                            **({'execution_error': execution_error} if execution_error else {})})
+            journal.pop('active_command', None)
+            journal['status'] = 'complete' if timed_out or execution_error or len(results) == len(commands) else 'prepared'
+            write(journal)
+            if timed_out or execution_error: break
+        return results
+
     def node_workspace_proof(self, snapshot, state, lease, request):
         workspace = state.get('workspace')
         if workspace is None or workspace.get('readonly'):
@@ -2487,18 +2569,13 @@ class Workflow:
         if not isinstance(commands, list) or any(not isinstance(c, list) or not c or any(not isinstance(a, str) or not a for a in c) for c in commands): raise ValueError('Workspace checks require nonempty argument arrays')
         before = self.workspace_files(); results = []
         if before != lease['acquisition']['files'] and not commands: raise ValueError('Changed workspace outputs require observed verification checks before publishing a candidate proof')
-        logs = self.repo / '.zzzops' / 'diagnostics'; logs.mkdir(parents=True, exist_ok=True)
-        for i, command in enumerate(commands):
-            log = logs / f'node-{lease["token"]}-{i}.log'
-            with log.open('w') as output:
-                process = subprocess.run(command, cwd=self.repo, stdout=output, stderr=subprocess.STDOUT, timeout=300, check=False)
-            results.append({'command': command, 'exit_code': process.returncode, 'log': str(log), 'log_hash': hashlib.sha256(log.read_bytes()).hexdigest()})
+        results = self.node_verification_commands(snapshot, lease, request, commands, before)
         if self.workspace_files() != before: raise ValueError('Workspace checks changed source/output bytes; inspect before retry')
         proof = {'node': state['node'], 'acquisition': lease['acquisition'], 'acquisition_hash': digest(lease['acquisition']),
                  'input_hash': lease['fingerprint'], 'actor': lease['worker'], 'lease': lease['token'],
                  'outputs': self.node_workspace_paths(workspace['entry']['owned']),
                  'consumed': {p: workspace['files'].get(p, 'missing') for p in workspace['entry']['consumed']},
-                 'workspace': digest(before), 'commands': results, 'passed': all(r['exit_code'] == 0 for r in results)}
+                 'workspace': digest(before), 'commands': results, 'passed': len(results) == len(commands) and all(r['exit_code'] == 0 for r in results)}
         identity = digest(proof); snapshot['artifacts'][identity] = proof
         snapshot['workspace_proof'] = self.node_ref(identity, snapshot['number'])
         return snapshot['workspace_proof']
@@ -2703,8 +2780,10 @@ class Workflow:
         snapshot['artifacts'].update(candidate['artifacts'])
         steps = scoped_frontier(self.node_frontier(candidate, defer_envelope=True), self, worker_limit(self.project), number,
                                 prospective_leases=payload['operational']['leases'])
+        verification = snapshot.get('workspace_proof')
         return {'type': 'submission_continuation', 'version': 1, **identity,
-                'response': {'submitted': {'goal': number, 'node': node, 'result': result}, 'next_steps': steps},
+                'response': {'submitted': {'goal': number, 'node': node, 'result': result}, 'next_steps': steps,
+                    **({'verification': {'proof': verification, 'passed': snapshot['artifacts'][verification['hash']]['passed']}} if verification else {})},
                 'bindings': [{'kind': 'target_envelope_digest', 'step': i} for i, step in enumerate(steps) if step['kind'] == 'reconcile']}
 
     def node_receipt_response(self, number, request, receipt, response, *, confirmed_target=None):
@@ -3093,14 +3172,30 @@ class Workflow:
                         lease['blocker'] = {'category': request['category'], 'reason': request['reason']}
                         response = {'next_steps': [{'kind': 'await_worker', 'goal': number, 'node': node, 'reason': request['reason'], 'lease': lease}]}
                     elif operation == 'submit':
-                        if set(request) - {'operation', 'node', 'lease', 'actor', 'request_id', 'outputs', 'workspace_checks'}: raise ValueError('Unknown submission fields; host acquisition cannot be replaced')
+                        if set(request) - {'operation', 'node', 'lease', 'actor', 'request_id', 'outputs', 'workspace_checks', 'verification_expectation'}: raise ValueError('Unknown submission fields; host acquisition cannot be replaced')
+                        expectation = request.get('verification_expectation', 'observed')
+                        if expectation not in {'passed', 'observed'}: raise ValueError('Verification expectation must be passed or observed')
+                        if 'verification_expectation' in request and not request.get('workspace_checks'): raise ValueError('Explicit verification expectation requires exact workspace_checks')
                         self.node_independence(snapshot, state, lease['worker'])
                         bundle = request.get('outputs'); contracts = state['contract']['outputs']
                         if not isinstance(bundle, dict) or set(bundle) != set(contracts): raise ValueError('Submission must supply exactly declared output slots')
                         for slot, content in bundle.items():
                             if not ev.value_matches(contracts[slot]['schema'], content): raise ValueError('Output type contract rejected slot ' + slot)
                         self.node_validate_bundle(snapshot, state, bundle, lease['worker'])
-                        proof_ref = self.node_workspace_proof(snapshot, state, lease, request)
+                        try:
+                            proof_ref = self.node_workspace_proof(snapshot, state, lease, request)
+                        except VerificationUncertain as exc:
+                            return {'next_steps': [{'kind': 'await_worker', 'goal': number, 'node': node,
+                                'lease': lease['token'], 'actor': lease['worker'], 'reason': str(exc),
+                                'action': 'Observe this exact owner and verifier stopped, recover this lease, then reacquire before running a new request. Never infer completion from timeout or a log alone.',
+                                'recovery_contract': {'operation': 'recover', 'node': node, 'lease': lease['token'],
+                                    'actor': lease['worker'], 'worker_status': '<observed status>', 'evidence': '<terminal observation>'}}]}
+                        proof = snapshot['artifacts'][proof_ref['hash']] if proof_ref else None
+                        if proof and (expectation == 'passed' and not proof['passed'] or any(row.get('timed_out') or row.get('execution_error') for row in proof['commands'])):
+                            response = {'next_steps': [{'kind': 'verification_failed', 'goal': number, 'node': node,
+                                'lease': lease['token'], 'actor': lease['worker'], 'proof': proof_ref, 'commands': proof['commands'],
+                                'action': 'Inspect the recorded logs, correct the authorized workspace, then submit the required checks with a new request_id under this same valid lease. Replay this exact request to inspect its original failure without rerunning.'}]}
+                            return self.node_persist(snapshot, payload, response, request)
                         outputs = {}
                         previous = next((snapshot['artifacts'][ref['hash']]['content']['outputs'] for ref in reversed(snapshot['payload']['evidence']) if snapshot['artifacts'][ref['hash']]['content']['node'] == node), {})
                         for slot, content in bundle.items():
