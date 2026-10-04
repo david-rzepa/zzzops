@@ -396,8 +396,9 @@ class ProviderReadGateway:
     def __init__(self, engine, provider):
         self.engine = engine
         self.get_issue_comments = provider.get_issue_comments
-        if hasattr(provider, 'list_issue_metadata'):
-            self.list_issue_metadata = provider.list_issue_metadata
+        for name in ('list_issue_metadata', 'get_parent_issue', 'get_sub_issues'):
+            if hasattr(provider, name):
+                setattr(self, name, getattr(provider, name))
 
     def get_issue(self, number):
         engine = self.engine
