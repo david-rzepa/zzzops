@@ -3596,6 +3596,193 @@ _feedback.configure_entrypoint(
 )
 
 
+def _workflow_response_directory(repo: Path) -> Path:
+    probe = subprocess.run(
+        ["git", "rev-parse", "--git-path", "zzzops/responses"], cwd=repo,
+        capture_output=True, text=True, encoding="utf-8", check=False,
+    )
+    if probe.returncode or not probe.stdout.strip():
+        raise ValueError("Cannot resolve the local workflow response store")
+    path = Path(probe.stdout.strip())
+    return path if path.is_absolute() else (repo / path).resolve()
+
+
+def _response_reference(repo: Path, goal: int | None, intent: str, response: dict[str, Any]) -> dict[str, Any]:
+    envelope = {"schema_version": 1, "goal": goal, "intent": intent, "response": response}
+    raw = json.dumps(envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+    identity = "sha256:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    directory = _workflow_response_directory(repo)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / (identity.split(":", 1)[1] + ".json")
+    if path.exists():
+        if path.read_text(encoding="utf-8") != raw:
+            raise ValueError("Workflow response store contains conflicting bytes")
+    else:
+        atomic_text(path, raw)
+    return {"schema_version": 1, "path": str(path), "sha256": identity, "goal": goal, "intent": intent}
+
+
+def _load_workflow_response(repo: Path, reference: dict[str, Any], *, goal: int | None = None, intent: str | None = None) -> dict[str, Any]:
+    required = {"schema_version", "path", "sha256", "goal", "intent"}
+    if not isinstance(reference, dict) or set(reference) != required or reference.get("schema_version") != 1:
+        raise ValueError("Workflow response reference is missing or malformed; rerun the preceding workflow action")
+    identity, path = reference.get("sha256"), Path(str(reference.get("path")))
+    if not isinstance(identity, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", identity) is None:
+        raise ValueError("Workflow response reference hash is malformed; rerun the preceding workflow action")
+    directory = _workflow_response_directory(repo).resolve()
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("Workflow response reference is unavailable; rerun the preceding workflow action") from exc
+    if resolved.parent != directory or resolved.name != identity.split(":", 1)[1] + ".json":
+        raise ValueError("Workflow response reference is outside this repository response store")
+    try:
+        raw = resolved.read_bytes()
+    except OSError as exc:
+        raise ValueError("Workflow response reference is inaccessible; repair permissions or rerun the preceding action") from exc
+    if "sha256:" + hashlib.sha256(raw).hexdigest() != identity:
+        raise ValueError("Workflow response reference is corrupt; rerun the preceding workflow action")
+    try:
+        envelope = json.loads(raw)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Workflow response reference is corrupt; rerun the preceding workflow action") from exc
+    if (not isinstance(envelope, dict) or envelope.get("schema_version") != 1
+            or envelope.get("goal") != reference.get("goal") or envelope.get("intent") != reference.get("intent")
+            or not isinstance(envelope.get("response"), dict)):
+        raise ValueError("Workflow response reference metadata is corrupt; rerun the preceding workflow action")
+    if goal is not None and envelope["goal"] != goal:
+        raise ValueError("Workflow response reference belongs to a different goal")
+    if intent is not None and envelope["intent"] != intent:
+        raise ValueError("Workflow response reference belongs to a different intent")
+    return envelope
+
+
+def _select_response_value(value: Any, selector: str) -> Any:
+    if not isinstance(selector, str) or not selector.startswith("/"):
+        raise ValueError("Response selectors must be JSON Pointer paths beginning with /")
+    current = value
+    for raw in selector.split("/")[1:]:
+        token = raw.replace("~1", "/").replace("~0", "~")
+        if isinstance(current, list) and token.isdigit() and int(token) < len(current):
+            current = current[int(token)]
+        elif isinstance(current, dict) and token in current:
+            current = current[token]
+        else:
+            raise ValueError(f"Response selector is unavailable: {selector}")
+    return copy.deepcopy(current)
+
+
+def read_workflow_response(repo: Path, path: Path, identity: str | None, *, goal: int | None, selectors: list[str]) -> Any:
+    reference = {"schema_version": 1, "path": str(path), "sha256": identity, "goal": goal, "intent": None}
+    # The envelope supplies intent and, when the caller did not constrain it, goal.
+    try:
+        raw = path.resolve(strict=True).read_bytes()
+        envelope = json.loads(raw)
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Workflow response reference is unavailable or corrupt") from exc
+    if not isinstance(envelope, dict):
+        raise ValueError("Workflow response reference is unavailable or corrupt")
+    reference["goal"] = envelope.get("goal")
+    reference["intent"] = envelope.get("intent")
+    loaded = _load_workflow_response(repo, reference, goal=goal)
+    response = loaded["response"]
+    if not selectors:
+        return response
+    return {selector: _select_response_value(response, selector) for selector in selectors}
+
+
+def _compact_lease(lease: Any) -> Any:
+    if not isinstance(lease, dict):
+        return lease
+    result = {key: copy.deepcopy(value) for key, value in lease.items() if key != "acquisition"}
+    acquisition = lease.get("acquisition")
+    if isinstance(acquisition, dict):
+        result["acquisition"] = {key: copy.deepcopy(value) for key, value in acquisition.items() if key != "files"}
+        files = acquisition.get("files")
+        if isinstance(files, dict):
+            result["acquisition"]["workspace_paths"] = sorted(files)
+    return result
+
+
+def compact_workflow_response(repo: Path, goal: int | None, intent: str, response: dict[str, Any]) -> dict[str, Any]:
+    reference = _response_reference(repo, goal, intent, response)
+    steps = []
+    for step in response.get("next_steps", []):
+        if not isinstance(step, dict):
+            continue
+        # Step contracts evolve. Preserve unknown fields by default so a new
+        # action, correction, or error detail cannot silently disappear at the
+        # public boundary. Only the proven redundant workspace hash map is
+        # summarized; its exact bytes remain in the authenticated full response.
+        compact = copy.deepcopy(step)
+        if compact.get("kind") in {"execute", "perform"}:
+            compact.pop("input_envelope", None)
+            compact.pop("input_hash", None)
+        if compact.get("kind") == "perform" and isinstance(compact.get("lease"), dict):
+            # These repeat values already bound inside the lease/acquisition or
+            # the action contracts. The worker still receives prompt, bind,
+            # submission, inputs, resolutions, allocation paths, and authority.
+            for key in ("acquisition", "start", "selection"):
+                compact.pop(key, None)
+        if "lease" in compact:
+            compact["lease"] = _compact_lease(compact["lease"])
+        compact["context"] = reference
+        steps.append(compact)
+    def blocked(step):
+        members = step.get("members")
+        return (
+            step.get("kind") in {"blocker", "blocked", "repair", "resolve_blocker"}
+            or step.get("complete") is False
+            or isinstance(step.get("error"), str)
+            or (isinstance(members, dict) and any(
+                isinstance(member, dict) and member.get("status") in {"blocked", "error", "failed"}
+                for member in members.values()
+            ))
+        )
+    outcome = "blocked" if any(blocked(step) for step in steps) else "success"
+    compact = {"outcome": outcome, "next_steps": steps, "full_response": reference}
+    return compact
+
+
+def hydrate_workflow_request(repo: Path, goal: int | None, intent: str, request: dict[str, Any]) -> dict[str, Any]:
+    envelope = _load_workflow_response(repo, request["context"], goal=goal)
+    if envelope["intent"] != intent and not (envelope["intent"] == "preview" and intent == "execute"):
+        raise ValueError("Workflow response reference belongs to a different intent")
+    supplied = {key: copy.deepcopy(value) for key, value in request.items() if key != "context"}
+    operation = supplied.get("operation")
+    if not isinstance(operation, str):
+        raise ValueError("A context request still requires the intended operation")
+    matches = []
+    for step in envelope["response"].get("next_steps", []):
+        if not isinstance(step, dict):
+            continue
+        for field in ("start", "bind", "submission"):
+            action = step.get(field)
+            if isinstance(action, dict) and action.get("operation") == operation:
+                matches.append((step, action))
+    requested_node = supplied.get("node")
+    if requested_node is not None and len(matches) > 1:
+        matches = [(step, action) for step, action in matches if action.get("node", step.get("node")) == requested_node]
+    if len(matches) != 1:
+        detail = "; supply the exact node" if len(matches) > 1 else ""
+        raise ValueError("Workflow response context does not contain one matching actionable operation" + detail + "; request a fresh checkpoint")
+    step, template = matches[0]
+    hydrated = {}
+    for key, value in template.items():
+        if not (isinstance(value, str) and value.startswith("<") and value.endswith(">")):
+            hydrated[key] = copy.deepcopy(value)
+    lease = step.get("lease")
+    if isinstance(lease, dict):
+        hydrated.setdefault("lease", lease.get("token"))
+        if isinstance(lease.get("worker"), str) and lease["worker"]:
+            hydrated.setdefault("actor", lease["worker"])
+    for key, value in supplied.items():
+        if key in hydrated and hydrated[key] != value:
+            raise ValueError(f"Minimal request conflicts with response context field: {key}")
+        hydrated[key] = value
+    return hydrated
+
+
 def main() -> int:
     """Only the intent checkpoint is public; legacy parsers are internal adapters."""
     configure_cli_stdout()
@@ -3615,11 +3802,15 @@ def main() -> int:
             raise ValueError(message)
     parser = WorkflowParser(description="ZzzOps actionable workflow checkpoint")
     parser.add_argument("--repo", type=Path, default=Path.cwd())
-    parser.add_argument("--intent", choices=sorted(WORKFLOW_INTENTS), required=True)
+    parser.add_argument("--intent", choices=sorted(WORKFLOW_INTENTS))
     parser.add_argument("--source-skill", choices=sorted(WORKFLOW_SKILL_INTENTS))
     parser.add_argument("--goal", type=int)
     parser.add_argument("--runtime", type=Path)
     parser.add_argument("--input", type=Path)
+    parser.add_argument("--response", choices=("compact", "full"), default="compact")
+    parser.add_argument("--read-response", type=Path)
+    parser.add_argument("--response-hash")
+    parser.add_argument("--select", action="append", default=[])
     parser.add_argument("--skip-installation-validation", action="store_true")
     if len(sys.argv) == 1:
         parser.print_help()
@@ -3627,8 +3818,19 @@ def main() -> int:
     args, payload = None, None
     try:
         args = parser.parse_args(argv[1:])
+        if args.read_response is not None:
+            value = read_workflow_response(
+                args.repo.resolve(), args.read_response, args.response_hash,
+                goal=args.goal, selectors=args.select,
+            )
+            print(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+            return 0
+        if args.intent is None:
+            raise ValueError("--intent is required unless --read-response is used")
         runtime = json.loads(args.runtime.read_text()) if args.runtime else codex_thread_runtime()
         payload = json.loads(args.input.read_text()) if args.input else None
+        if isinstance(payload, dict) and isinstance(payload.get("context"), dict):
+            payload = hydrate_workflow_request(args.repo.resolve(), args.goal, args.intent, payload)
         source = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
         services = SimpleNamespace(**globals())
         services.runtime_path = args.runtime.resolve() if args.runtime else None
@@ -3647,10 +3849,13 @@ def main() -> int:
                 skip_installation_validation=args.skip_installation_validation,
                 payload_supplied=args.input is not None,
             )
-        print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+        rendered = result if args.response == "full" else compact_workflow_response(
+            args.repo.resolve(), args.goal, args.intent, result,
+        )
+        print(json.dumps(rendered, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
         return 0
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
-        if args is not None:
+        if args is not None and args.intent is not None:
             operation = payload.get("operation") if isinstance(payload, dict) else None
             phase = payload.get("phase") if isinstance(payload, dict) else None
             step = workflow_repair_step(
@@ -3666,7 +3871,7 @@ def main() -> int:
             step["command"] = workflow_repair_command(args)
         else:
             step = {"kind": "repair", "assignment": "root", "action": "Correct this input or backend condition and retry the same request.", "reason": str(exc)}
-        if args is not None and isinstance(payload, dict) and payload.get('operation') == 'renew':
+        if args is not None and args.intent is not None and isinstance(payload, dict) and payload.get('operation') == 'renew':
             retry_args = list(argv[1:])
             if '--input' in retry_args:
                 retry_args[retry_args.index('--input') + 1] = '<submission.json>'
@@ -3675,7 +3880,13 @@ def main() -> int:
             step.update(goal=args.goal, node=payload.get('node'), actor=payload.get('actor'),
                 action='Renewal was not confirmed; retain the worker evidence and current lease. After resolving the reported provider or storage condition, write submission to a JSON file and retry this command with that path. Timeout or expiry alone does not authorize takeover.',
                 submission=payload, command=[sys.executable, str(Path(__file__).resolve()), *retry_args])
-        print(json.dumps({"next_steps": [step]}, ensure_ascii=False, separators=(",", ":")))
+        failure = {"next_steps": [step]}
+        if args is not None and args.response == "compact" and args.intent is not None:
+            try:
+                failure = compact_workflow_response(args.repo.resolve(), args.goal, args.intent, failure)
+            except (OSError, ValueError, subprocess.SubprocessError):
+                pass
+        print(json.dumps(failure, ensure_ascii=False, separators=(",", ":")))
         return 2
 
 

@@ -347,6 +347,62 @@ class DagFixture(unittest.TestCase):
         self.session.finish(acquired, outputs, "valid-after-negative-" + acquired["lease"]["attempt"])
 
 class EvidenceDagPublicTests(DagFixture):
+    def test_compact_minimal_execute_review_and_root_approval_journey(self):
+        """Real public main/backend journey; only provider transport is synthetic."""
+        visible = []
+
+        def call(payload=None):
+            response = self.session.call(100, payload, response="compact")
+            visible.append({"input": payload, "output": response})
+            return response
+
+        def context_step(response, name):
+            steps = response["next_steps"]
+            step = next(row for row in steps if row.get("node", {}).get("node") == name)
+            self.assertIn("context", step, f"{name} response was not compact")
+            return step
+
+        def execute(name, value, actor):
+            ready = context_step(call(), name)
+            policy_text = Path(ready["policy"]["path"]).read_text()
+            visible.append({"selective_read": {"path": ready["policy"]["path"], "content": policy_text}})
+            receipt = json.loads(policy_text)["policy_receipt"]
+            started = context_step(call({
+                "context": ready["context"], "operation": "start", "node": ready["node"],
+                "policy_receipt": receipt, "request_id": "compact-start-" + name,
+            }), name)
+            self.assertEqual(ready["policy"], started["policy"])
+            if started["lease"]["worker"] is None:
+                call({
+                    "context": started["context"], "operation": "bind", "node": started["node"],
+                    "actor": actor, "policy_receipt": receipt, "request_id": "compact-bind-" + name,
+                })
+            submitted = call({
+                "context": started["context"], "operation": "submit", "node": started["node"],
+                "actor": actor, "request_id": "compact-submit-" + name,
+                "outputs": {"value": value},
+            })
+            self.assertNotEqual("blocked", submitted.get("outcome"))
+            return submitted
+
+        execute("produce", "subject", "producer")
+        execute("review_a", "approved-a", "reviewer-a")
+        execute("review_b", "approved-b", "reviewer-b")
+        final = execute("finish", "approved", "root-thread")
+        self.assertTrue(final["next_steps"])
+
+        # Retry one exact compact/minimal request: backend idempotency must return
+        # the committed response rather than manufacture another Result.
+        prior = visible[-1]
+        replay = self.session.call(100, prior["input"], response="compact")
+        self.assertEqual(prior["output"], replay)
+        visible.append({"input": prior["input"], "output": replay})
+
+        # The report harness consumes complete visible request/response bytes;
+        # it does not substitute projection-only measurements.
+        self.compact_journey_bytes = len(json.dumps(visible, sort_keys=True, separators=(",", ":")).encode())
+        self.assertGreater(self.compact_journey_bytes, 0)
+
     def test_specialist_missing_regression_corrects_tests_then_code_and_rereviews(self):
         self.regression_correction("specialist")
 

@@ -2363,7 +2363,7 @@ class DiagnosticsModuleTests(unittest.TestCase):
             mock.patch.object(zzzops, "workflow_context_step", return_value=None),
             mock.patch.object(zzzops._package, "package_status", return_value={"ok": True}),
             mock.patch.object(zzzops, "workflow_submit", return_value=expected) as submit,
-            mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--goal", "42", "--intent", "execute", "--runtime", str(runtime), "--input", str(payload_path)]),
+            mock.patch.object(sys, "argv", ["zzzops", "--repo", str(self.repo), "workflow", "--goal", "42", "--intent", "execute", "--runtime", str(runtime), "--input", str(payload_path), "--response", "full"]),
             mock.patch.object(sys, "stdout", io.StringIO()) as stream,
         ):
             exit_code = zzzops.main()

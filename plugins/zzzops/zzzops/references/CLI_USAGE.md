@@ -3,6 +3,11 @@
 Run package-local [`zzzops.py`](../zzzops.py), never globally. Use the skill's
 semantic `--intent` with `workflow --intent INTENT`; copy returned `--goal`, runtime and input.
 
+Workflow stdout is compact by default; use `--response full` for legacy JSON.
+Returned `context`/`full_response` refs hydrate unchanged CLI-owned fields or
+support selective reads after hash, repository and goal validation. Refs grant
+no authority and cause no provider read; see [the public contract](../../../../docs/UNIFIED_WORKFLOW_CONTRACT.md).
+
 Follow `next_steps`, `instruction`, policy.path and evidence fields. Read policy;
 send `start` and `bind` with receipt and actual executor. Send `submission`
 using `command`, acquired node, lease and actor; renew/submit need no policy receipt.
