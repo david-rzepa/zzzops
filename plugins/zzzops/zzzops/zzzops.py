@@ -177,6 +177,24 @@ _heartbeat = importlib.util.module_from_spec(_HEARTBEAT_SPEC)
 _HEARTBEAT_SPEC.loader.exec_module(_heartbeat)
 
 
+_PROVIDER_OPERATION_BUDGET = ContextVar("zzzops_provider_operation_budget", default=None)
+
+
+def provider_operation_remaining():
+    """Remaining caller deadline; capture before dispatching provider threads."""
+    budget = _PROVIDER_OPERATION_BUDGET.get()
+    return budget.timeout(None) if budget is not None else None
+
+
+@contextmanager
+def provider_operation_budget(budget):
+    token = _PROVIDER_OPERATION_BUDGET.set(budget)
+    try:
+        yield
+    finally:
+        _PROVIDER_OPERATION_BUDGET.reset(token)
+
+
 _PROVIDER_READ_CONTEXT = ContextVar("zzzops_provider_read_context", default=None)
 
 
@@ -810,6 +828,10 @@ COACHING_SIGNAL_CATEGORIES = _coaching.COACHING_SIGNAL_CATEGORIES
 GitHubReservationAdapter = _reservation.GitHubReservationAdapter
 
 
+class GoalHistoryReadError(GoalTransitionProviderError):
+    """Comment history is unavailable; retry observation, not schema recovery."""
+
+
 class GitHubGoalTransitionAdapter:
     def __init__(self, repo: Path, repository: str):
         self.repo = repo
@@ -820,10 +842,14 @@ class GitHubGoalTransitionAdapter:
         self._identity_checked = False
 
     def _run(
-        self, arguments: list[str], *, input_text: str | None = None, timeout: int = 30,
+        self, arguments: list[str], *, input_text: str | None = None, timeout: float | None = 30,
     ) -> subprocess.CompletedProcess[str]:
-        if getattr(self, 'timeout_budget', None):
-            timeout = self.timeout_budget(timeout)
+        budget = getattr(self, 'timeout_budget', None)
+        if budget:
+            timeout = budget(timeout)
+        elif timeout is None:
+            timeout = provider_operation_remaining()
+            if timeout is None: timeout = 90
         try:
             return subprocess.run(
                 [self.executable, *arguments], cwd=self.repo, capture_output=True, text=True,
@@ -946,24 +972,36 @@ class GitHubGoalTransitionAdapter:
         return issue
 
     def get_issue_comments(self, number: int) -> list[dict[str, Any]]:
-        self.ensure_identity()
-        result = self._run([
-            "api", "--paginate", "--slurp",
-            f"repos/{self.repository}/issues/{number}/comments?per_page=100",
-        ])
-        if result.returncode:
-            raise self._provider_error(result)
+        try:
+            self.ensure_identity()
+            result = self._run([
+                "api", "--paginate", "--slurp",
+                f"repos/{self.repository}/issues/{number}/comments?per_page=100",
+            ], timeout=None)
+            if result.returncode:
+                raise self._provider_error(result)
+        except (ValueError, OSError, RuntimeError) as exc:
+            raise GoalHistoryReadError(
+                f"Complete comment-history read for goal #{number} was not confirmed: {exc} "
+                "Retry the same workflow request and lease; no partial history or ownership takeover is assumed."
+            ) from exc
         try:
             pages = json.loads(result.stdout)
-            if not isinstance(pages, list) or any(not isinstance(page, list) for page in pages):
-                raise TypeError("comment pages must be lists")
+            if (not isinstance(pages, list) or not pages or
+                    any(not isinstance(page, list) or len(page) > 100 for page in pages) or
+                    any(len(page) != 100 for page in pages[:-1])):
+                raise TypeError("comment pagination is incomplete or malformed")
             comments = [comment for page in pages for comment in page]
-            if any(not isinstance(comment, dict) for comment in comments):
-                raise TypeError("comments must be objects")
+            if any(not isinstance(comment, dict) or type(comment.get('id')) is not int or
+                   comment['id'] <= 0 or not isinstance(comment.get('body'), str) for comment in comments):
+                raise TypeError("comments must have provider identities and bodies")
+            identities = [comment['id'] for comment in comments]
+            if identities != sorted(set(identities)):
+                raise TypeError("comment history has duplicate or unordered provider identities")
             return comments
         except (json.JSONDecodeError, TypeError) as exc:
-            raise GoalTransitionProviderError(
-                "GitHub returned invalid goal history; no body update was made."
+            raise GoalHistoryReadError(
+                f"GitHub returned invalid or partial comment history for goal #{number}; retry the same workflow request and lease. No body update was made."
             ) from exc
 
     def create_issue_comment(self, number: int, body: str) -> dict[str, Any]:

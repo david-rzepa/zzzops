@@ -179,11 +179,11 @@ class RenewalBudget:
         self.deadline = time.monotonic() + work_seconds
         self.cleanup_seconds = cleanup_seconds
 
-    def timeout(self, maximum):
+    def timeout(self, maximum=None):
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
-            raise ValueError('Heartbeat renewal deadline exhausted; retry the same lease after cleanup')
-        return min(maximum, remaining)
+            raise ValueError('Workflow operation deadline exhausted; retry the same request and lease after cleanup')
+        return remaining if maximum is None else min(maximum, remaining)
 
     @contextmanager
     def cleanup(self):
@@ -411,7 +411,7 @@ class Workflow:
         self.runtime = runtime
         self.repository = api._project_repository_identity(project)
         self.adapter = api.GitHubGoalTransitionAdapter(repo, self.repository)
-        self.budget = getattr(api, 'renewal_budget', None)
+        self.budget = getattr(api, 'operation_budget', None) or getattr(api, 'renewal_budget', None)
         if self.budget:
             self.adapter.timeout_budget = self.budget.timeout
         self._read_cache = {}
@@ -3617,6 +3617,8 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                     # Existing owner recovery stays available from its normal contract.
                     if 'ownership' not in member.get('reason', '').lower():
                         return {'next_steps': [{'kind': 'blocker', 'goal': number, 'reason': member.get('reason', member['status']), 'remediation': member.get('remediation')}]}
+            except api.GoalHistoryReadError:
+                raise
             except (ValueError, KeyError, OSError) as exc:
                 return {'next_steps': [{'kind': 'blocker', 'goal': number, 'reason': str(exc), 'remediation': api._migration_batch.remediation(number, str(exc))}]}
         elif payload is None:
@@ -3752,10 +3754,26 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
 
 
 def public_run(api, repo, intent, source, runtime, payload, number, *, skip_installation_validation=False, payload_supplied=False):
-    with api.provider_read_invocation() if hasattr(api, 'provider_read_invocation') else nullcontext():
-        return _public_response(api, repo, intent, source, runtime, payload, number,
-                                skip_installation_validation=skip_installation_validation,
-                                payload_supplied=payload_supplied)
+    operation = (payload or {}).get('operation', 'checkpoint') if isinstance(payload, (dict, type(None))) else None
+    # Bound observation/renewal work without charging long local verification or
+    # execution commands against a provider-only deadline.
+    budget = getattr(api, 'renewal_budget', None)
+    if budget is None and operation == 'renew':
+        budget = RenewalBudget(float(os.environ.get('ZZZOPS_RENEWAL_TIMEOUT_SECONDS', '30')),
+                               float(os.environ.get('ZZZOPS_RENEWAL_CLEANUP_SECONDS', '10')))
+    elif budget is None and operation in {'checkpoint', 'read'}:
+        budget = RenewalBudget(float(os.environ.get('ZZZOPS_WORKFLOW_TIMEOUT_SECONDS', '90')))
+    previous = getattr(api, 'operation_budget', None)
+    api.operation_budget = budget
+    try:
+        with (api.provider_operation_budget(budget) if hasattr(api, 'provider_operation_budget') else nullcontext()), \
+             (api.provider_read_invocation() if hasattr(api, 'provider_read_invocation') else nullcontext()):
+            return _public_response(api, repo, intent, source, runtime, payload, number,
+                                    skip_installation_validation=skip_installation_validation,
+                                    payload_supplied=payload_supplied)
+    finally:
+        if previous is None: del api.operation_budget
+        else: api.operation_budget = previous
 
 
 def _public_response(api, repo, intent, source, runtime, payload, number, *, skip_installation_validation=False, payload_supplied=False):
