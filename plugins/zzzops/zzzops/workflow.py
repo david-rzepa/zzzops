@@ -1542,7 +1542,43 @@ class Workflow:
         return self.node_mutate(number, payload)
 
 
+    def automatic_heartbeat(self, number, request, durable, response):
+        """Local post-commit effect; never changes durable acknowledgement/authority."""
+        if request.get('operation') not in {'start', 'bind'}:
+            return response
+        node = request.get('node')
+        lease = next((v for v in durable.get('leases', []) if v['node'] == node), None)
+        if not lease or not lease.get('worker') or lease['owner'] != (self.runtime or {}).get('root_id'):
+            return response
+        step = next((v for v in response.get('next_steps', []) if v.get('node') == node), None)
+        if step is None or (step.get('lease') or {}).get('token') != lease['token']:
+            return response
+        settings = (self.runtime or {}).get('heartbeat') or {}
+        probes = settings.get('probes', {}) if isinstance(settings, dict) else {}
+        probe = probes.get(lease['worker']) if isinstance(probes, dict) else None
+        runtime_path = getattr(self.api, 'runtime_path', None)
+        if not probe or not runtime_path:
+            step['monitoring'] = {'status': 'unavailable', 'action': 'Local worker liveness capability is unavailable. Finish within the lease or use exact public renewal while observing the actual worker; expiry never permits takeover.'}
+            return response
+        try:
+            grace = float(settings.get('grace_seconds', 120))
+            interval = float(settings.get('interval_seconds', 120))
+            remaining = lease['expires_at'] - time.time()
+            if not (0 <= grace <= 300 and 0 < interval <= 120) or remaining <= 60:
+                raise ValueError('Heartbeat grace/interval or remaining lease is unsafe')
+            result = self.api._heartbeat.start_heartbeat(
+                repo=self.repo, root_id=lease['owner'], runtime_path=Path(runtime_path),
+                cli_path=Path(__file__).with_name('zzzops.py'), goal=number, node=node,
+                phase=json.dumps(node, sort_keys=True), token=lease['token'], actor=lease['worker'],
+                probe_argv=probe, grace_seconds=min(grace, remaining - 60), interval_seconds=interval)
+            step['monitoring'] = {'status': 'automatic', 'pid': result['pid']}
+        except (OSError, ValueError, TypeError) as exc:
+            step['monitoring'] = {'status': 'unavailable', 'reason': str(exc),
+                'action': 'Ownership remains held. Repair local monitoring and replay this exact acquisition, or finish within the lease; observe stopped evidence before recovery.'}
+        return response
+
     def stop_completed_heartbeat(self, number, payload, durable, response):
+        response = self.automatic_heartbeat(number, payload, durable, response)
         token = payload.get('lease')
         leases = durable.get('leases', [])
         if isinstance(leases, dict): leases = leases.values()

@@ -346,6 +346,7 @@ def start_heartbeat(
     goal: int, phase: str, token: str, actor: str, probe_argv: list[str],
     interval_seconds: float = 300, probe_timeout_seconds: float = 10,
     retry_limit: int = 3, state_dir: Path | None = None,
+    node: dict[str, Any] | None = None, grace_seconds: float = 0,
 ) -> dict[str, Any]:
     """Upsert a local lease and ensure one detached coordinator for repo/root."""
     repo = repo.resolve()
@@ -354,18 +355,26 @@ def start_heartbeat(
         raise ValueError("goal must be a positive integer")
     phase, token, actor = (_identity(phase, "phase"), _identity(token, "token"), _identity(actor, "actor"))
     probe_argv = _worker_liveness_probe(probe_argv, actor)
-    if interval_seconds <= 0 or probe_timeout_seconds <= 0:
+    if not all(math.isfinite(v) for v in (interval_seconds, probe_timeout_seconds, grace_seconds)) or grace_seconds < 0 or interval_seconds <= 0 or probe_timeout_seconds <= 0:
         raise ValueError("heartbeat intervals and timeouts must be positive")
     if not isinstance(retry_limit, int) or isinstance(retry_limit, bool) or retry_limit < 1:
         raise ValueError("retry_limit must be a positive integer")
+    if node is not None and (not isinstance(node, dict) or set(node) != {"goal", "node", "item", "generation"} or node["goal"] != goal):
+        raise ValueError("heartbeat requires an exact qualified node")
     paths = _paths(repo, root_id, state_dir)
     _ensure_private_directory(paths["directory"])
     lease = {
         "goal": goal, "phase": phase, "token": token, "actor": actor,
-        "probe_argv": probe_argv,
+        "probe_argv": probe_argv, "renew_after": time.time() + grace_seconds,
+        **({"node": dict(node)} if node is not None else {}),
     }
     with _locked(paths["update_lock"]):
         config = _read(paths["config"])
+        previous = next((v for v in config["leases"] if (v.get("goal"), v.get("phase"), v.get("token")) == (goal, phase, token)), None)
+        if previous is not None:
+            if previous["actor"] != actor or previous.get("node") != node:
+                raise ValueError("heartbeat exact lease identity changed")
+            lease["renew_after"] = previous.get("renew_after", lease["renew_after"])
         config.update({
             "repo": str(repo), "root_id": root_id, "runtime_path": str(runtime_path),
             "cli_path": str(cli_path), "interval_seconds": float(interval_seconds),
@@ -421,6 +430,9 @@ def _renew(config: dict[str, Any], lease: dict[str, Any], directory: Path) -> su
         "operation": "renew", "phase": lease["phase"], "lease": lease["token"],
         "actor": lease["actor"], "worker_status": "active", "request_id": uuid.uuid4().hex,
     }
+    if "node" in lease:
+        payload.pop("phase"); payload.pop("worker_status")
+        payload["node"] = lease["node"]
     payload_path = directory / f"renew-{os.getpid()}-{uuid.uuid4().hex}.json"
     _atomic_write(payload_path, payload)
     try:
@@ -475,7 +487,7 @@ def _renewal_acknowledged(result: subprocess.CompletedProcess[str], lease: dict[
         step = steps[0]
         expiry = step.get("expires_at")
         return (step.get("kind") == "renewed"
-                and all(step.get(key) == lease[key] for key in ("goal", "phase", "actor"))
+                and all(step.get(key) == lease[key] for key in (("goal", "node", "actor") if "node" in lease else ("goal", "phase", "actor")))
                 and step.get("lease") == lease["token"]
                 and isinstance(expiry, (int, float)) and not isinstance(expiry, bool)
                 and math.isfinite(expiry) and expiry > time.time())
@@ -537,6 +549,8 @@ def run(config_path: Path) -> int:
                 token = lease["token"]
                 if not _tracked(config_path, lease):
                     continue
+                if time.time() < lease.get("renew_after", 0):
+                    continue
                 try:
                     probe = subprocess.run(
                         _command(lease["probe_argv"], "probe_argv"), cwd=config["repo"],
@@ -580,7 +594,9 @@ def run(config_path: Path) -> int:
                          reason="renewal_failed" if status == "active" else "liveness_unknown", attempts=failures[token])
                     _remove_lease(config_path, update_lock, lease["goal"], lease["phase"], token)
                     failures.pop(token, None)
-            _wait_for_config_change(config_path, interval, observed_config)
+            deadlines = [v.get("renew_after", 0) - time.time() for v in leases]
+            delay = min([interval] + [v for v in deadlines if v > 0])
+            _wait_for_config_change(config_path, delay, observed_config)
     finally:
         lifetime.__exit__(None, None, None)
 

@@ -328,5 +328,87 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
         self._wait(lambda: not heartbeat._pid_alive(first["pid"]))
 
 
+
+
+class AutomaticHeartbeatTests(unittest.TestCase):
+    setUp = HeartbeatProcessTests.setUp
+    tearDown = HeartbeatProcessTests.tearDown
+    _script = HeartbeatProcessTests._script
+    _wait = HeartbeatProcessTests._wait
+    _lines = HeartbeatProcessTests._lines
+    def start_generic(self, *, grace=.15, mode='active'):
+        self.cli.write_text('''import json,sys,time
+from pathlib import Path
+args=sys.argv[1:]; p=json.loads(Path(args[args.index('--input')+1]).read_text())
+with Path(%r).open('a') as h:h.write(json.dumps(p)+'\\n')
+print(json.dumps({'next_steps':[{'kind':'renewed','goal':int(args[args.index('--goal')+1]),'node':p['node'],'actor':p['actor'],'lease':p['lease'],'expires_at':time.time()+600}]}))
+''' % str(self.cli_records))
+        node={'goal':61,'node':'review','item':None,'generation':1}
+        result=heartbeat.start_heartbeat(repo=self.repo,root_id='root-a',runtime_path=self.runtime,cli_path=self.cli,
+            goal=61,phase=json.dumps(node,sort_keys=True),node=node,token='generic-token',actor='worker-a',
+            probe_argv=[sys.executable,str(self.probe),mode,'review','worker-a'],interval_seconds=.03,
+            grace_seconds=grace,probe_timeout_seconds=.2,state_dir=self.state)
+        self.pids.add(result['pid'])
+        return node,result
+
+    def test_short_completion_has_no_probe_or_renewal_invocation(self):
+        node,result=self.start_generic(grace=2)
+        heartbeat.stop_heartbeat(repo=self.repo,root_id='root-a',goal=61,phase=json.dumps(node,sort_keys=True),token='generic-token',state_dir=self.state)
+        self._wait(lambda:not heartbeat._pid_alive(result['pid']))
+        self.assertEqual([],self._lines(self.cli_records))
+        self.assertEqual([],self._lines(self.probe_records))
+
+    def test_generic_long_review_renews_exact_node_and_stops(self):
+        node,result=self.start_generic()
+        self._wait(lambda:any(r.get('event')=='renewal_succeeded' for r in self._lines(Path(result['log']))))
+        payload=self._lines(self.cli_records)[0]
+        self.assertEqual(node,payload['node']);self.assertNotIn('phase',payload);self.assertNotIn('worker_status',payload)
+        heartbeat.stop_heartbeat(repo=self.repo,root_id='root-a',goal=61,phase=json.dumps(node,sort_keys=True),token='generic-token',state_dir=self.state)
+        self._wait(lambda:not heartbeat._pid_alive(result['pid']))
+
+    def test_restart_same_token_does_not_reset_grace_or_duplicate_runner(self):
+        _,first=self.start_generic(grace=2)
+        deadline=heartbeat._read(Path(first['config']))['leases'][0]['renew_after']
+        _,second=self.start_generic(grace=2)
+        self.assertEqual(first['pid'],second['pid'])
+        self.assertEqual(deadline,heartbeat._read(Path(first['config']))['leases'][0]['renew_after'])
+
+    def test_public_binding_starts_tracking_and_result_stops_exact_token(self):
+        import test_evidence_dag_journeys as dag
+        case=dag.DagFixture();case.setUp();self.addCleanup(case.doCleanups)
+        case.session.runtime['heartbeat']={'probes':{'worker-produce-None':[sys.executable,str(self.probe),'active','produce','worker-produce-None']},'grace_seconds':120}
+        with mock.patch.object(dag.z._heartbeat,'start_heartbeat',return_value={'pid':123}) as start, \
+             mock.patch.object(dag.z._heartbeat,'stop_heartbeat',return_value={'stopped':True}) as stop:
+            work=case.session.acquire('produce')
+            self.assertEqual(1,start.call_count)
+            self.assertEqual(work['node'],start.call_args.kwargs['node'])
+            self.assertEqual(work['lease']['token'],start.call_args.kwargs['token'])
+            self.assertEqual(120,start.call_args.kwargs['grace_seconds'])
+            case.session.heartbeat_stop = stop
+            case.session.finish(work,{'value':'short success'})
+            self.assertEqual(work['lease']['token'],stop.call_args.kwargs['token'])
+
+    def test_missing_probe_does_not_block_public_short_phase(self):
+        import test_evidence_dag_journeys as dag
+        case=dag.DagFixture();case.setUp();self.addCleanup(case.doCleanups)
+        with mock.patch.object(dag.z._heartbeat,'start_heartbeat') as start:
+            work=case.session.acquire('produce');case.session.finish(work,{'value':'short success'})
+            start.assert_not_called()
+
+    def test_generic_stopped_probe_never_renews_or_releases_durable_ownership(self):
+        _,result=self.start_generic(grace=0,mode='stopped')
+        self._wait(lambda:not heartbeat._pid_alive(result['pid']))
+        self.assertEqual([],self._lines(self.cli_records))
+        self.assertTrue(any(r['event']=='worker_stopped' for r in self._lines(Path(result['log']))))
+
+    def test_generic_unknown_probe_stops_monitoring_without_claiming_worker_stopped(self):
+        _,result=self.start_generic(grace=0,mode='unknown')
+        self._wait(lambda:not heartbeat._pid_alive(result['pid']))
+        events=self._lines(Path(result['log']))
+        self.assertEqual([],self._lines(self.cli_records))
+        self.assertTrue(any(r['event']=='recovery_required' and r['worker_status']=='unknown' for r in events))
+        self.assertFalse(any(r['event']=='worker_stopped' for r in events))
+
+
 if __name__ == "__main__":
     unittest.main()
