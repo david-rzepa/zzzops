@@ -13,7 +13,7 @@ Retry identical request ID/payload. Returned steps grant no authority.
 Only root coordinates blockers/approval. Human approval is a separate step.
 Respect allocations and publication gates; infer no operations or models.
 Renew live owners; expiry permits no takeover. Recover only observed stopped owners.
-For replay, reconciliation or test corrections, read [recovery](CLI_RECOVERY.md).
+For monitoring, replay, reconciliation or test corrections, read [recovery](CLI_RECOVERY.md).
 
 Execution migrates supported open v1 goals automatically, preserving history
 without granting authority. Preview/historical reads never migrate or reopen.
