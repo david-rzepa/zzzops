@@ -78,6 +78,192 @@ class BatchConversionTests(dag.DagFixture):
         issue['body'] = issue['body'].split('<!-- zzzops-goal')[0] + '<!-- zzzops-goal\n' + json.dumps(value) + '\nzzzops-goal -->'
         self.originals[number] = copy.deepcopy(issue)
 
+    def legacy_checkpoint(self, *, committed=True):
+        fingerprint = 'sha256:' + 'a' * 64
+        self.legacy_fields(100, workflow={'leases': {}, 'receipts':
+            {'legacy-committed': {'hash': fingerprint}} if committed else {},
+            'workers': {}, 'assessments': {}, 'artifacts': {}})
+        envelope = {'schema_version': 2, 'goal': 100, 'transaction': 'legacy-committed',
+                    'context': {'request_id': 'legacy-committed', 'fingerprint': fingerprint,
+                                'root_id': 'historical-root'}, 'artifacts': []}
+        self.provider.comments[100].append({'id': 900, 'body': dag.z._comment_store.encode_envelope(envelope)})
+        self.assertTrue(self.migrate((100,))['complete'])
+        return self.payload()
+
+    def prepare_legacy_graph(self, *, expected=0):
+        _, payload = self.payload()
+        graph = self.session.read(100, payload['graph'])
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        result = self.session.call(100, {'operation': 'graph_prepare', 'graph': graph,
+            'rationale': 'Preserve committed legacy history during graph repair'}, expected=expected)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        return result
+
+    def replace_legacy_payload(self, envelope, payload):
+        envelope = copy.deepcopy(envelope)
+        envelope['payload'] = self.blob(payload)
+        envelope['revision'] += 1
+        self.provider.issues[100]['body'] = '<!-- zzzops-goal\n' + json.dumps(envelope) + '\nzzzops-goal -->'
+
+    def edit_checkpoint_contexts(self, change, *, legacy=False):
+        for row in self.provider.comments[100]:
+            envelope = dag.z._comment_store.decode_envelope(row['body'])
+            if envelope and bool(envelope.get('context', {}).get('fingerprint')) == legacy:
+                change(envelope)
+                row['body'] = dag.z._comment_store.encode_envelope(envelope)
+
+    def test_graph_prepare_accepts_committed_legacy_history_without_writes(self):
+        self.legacy_checkpoint()
+        self.assertEqual(self.prepare_legacy_graph(), self.prepare_legacy_graph())
+        self.assert_preserved(100)
+
+    def test_graph_prepare_legacy_proof_survives_specification_and_reviewed_policy_changes(self):
+        envelope, payload = self.legacy_checkpoint()
+        payload['spec'] = self.blob({'type': 'goal_specification', 'content': 'Later specification',
+            'producer': None, 'provenance': {'actor': 'later-author', 'source': None,
+                                           'policy': dag.content_hash(self.session.project['policy'])}})
+        self.replace_legacy_payload(envelope, payload)
+        self.session.project['policy']['sections'][0]['rationale'] = 'Later reviewed policy rationale'
+        result = self.prepare_legacy_graph()
+        self.assertEqual(dag.content_hash(self.session.project['policy']), result['next_steps'][0]['proposal']['policy'])
+
+    def test_graph_prepare_pending_legacy_history_still_blocks(self):
+        self.legacy_checkpoint(committed=False)
+        self.assertIn('Uncommitted checkpoint', json.dumps(self.prepare_legacy_graph(expected=2)))
+
+    def test_graph_prepare_legacy_context_requires_goal_and_exact_fingerprint(self):
+        self.legacy_checkpoint()
+        original = copy.deepcopy(self.provider.comments)
+        for field, value in (('fingerprint', 'sha256:' + 'b' * 64), ('fingerprint', None), ('goal', 101)):
+            with self.subTest(field=field, value=value):
+                self.provider.comments = copy.deepcopy(original)
+                def change(row):
+                    if field == 'goal': row['goal'] = value
+                    else: row['context'][field] = value
+                self.edit_checkpoint_contexts(change, legacy=True)
+                self.assertIn('Uncommitted checkpoint', json.dumps(self.prepare_legacy_graph(expected=2)))
+
+    def test_graph_prepare_orphan_migration_artifacts_do_not_prove_completion(self):
+        envelope, payload = self.legacy_checkpoint()
+        payload['operational']['receipts'] = []
+        self.replace_legacy_payload(envelope, payload)
+        self.assertIn('Uncommitted checkpoint', json.dumps(self.prepare_legacy_graph(expected=2)))
+
+    def test_graph_prepare_migration_transaction_requires_exact_binding(self):
+        self.legacy_checkpoint()
+        original = copy.deepcopy(self.provider.comments)
+        variants = {
+            'request_id': None, 'request_hash': 'sha256:' + 'b' * 64, 'source_hash': 'sha256:' + 'b' * 64,
+            'response': None, 'migration': None, 'source_envelope': None,
+            'target_envelope': None, 'entry_payload': None, 'payload': None,
+        }
+        for field, value in variants.items():
+            with self.subTest(field=field):
+                self.provider.comments = copy.deepcopy(original)
+                self.edit_checkpoint_contexts(lambda row: row['context'].update({field: value}))
+                self.assertRegex(json.dumps(self.prepare_legacy_graph(expected=2)), '(?i)migration|checkpoint')
+        for field, value in (('goal', 101), ('transaction', 'wrong-transaction')):
+            with self.subTest(field=field):
+                self.provider.comments = copy.deepcopy(original)
+                self.edit_checkpoint_contexts(lambda row: row.update({field: value}))
+                self.assertRegex(json.dumps(self.prepare_legacy_graph(expected=2)), '(?i)migration|checkpoint')
+
+    def test_graph_prepare_conflicting_migration_transaction_blocks(self):
+        self.legacy_checkpoint()
+        row = next(dag.z._comment_store.decode_envelope(r['body']) for r in self.provider.comments[100]
+                   if (dag.z._comment_store.decode_envelope(r['body']) or {}).get('context', {}).get('migration'))
+        row['context']['source_hash'] = 'sha256:' + 'b' * 64
+        self.provider.comments[100].append({'id': 901, 'body': dag.z._comment_store.encode_envelope(row)})
+        self.assertIn('conflicting exact migration transaction', json.dumps(self.prepare_legacy_graph(expected=2)))
+
+    def test_graph_prepare_committed_migration_request_identity_and_hash_must_match(self):
+        envelope, payload = self.legacy_checkpoint()
+        for field, value in (('request', 'different-request'), ('payload', 'sha256:' + 'b' * 64)):
+            with self.subTest(field=field):
+                altered = copy.deepcopy(payload)
+                altered['operational']['receipts'][0][field] = value
+                self.replace_legacy_payload(envelope, altered)
+                self.assertIn('request identity or fingerprint mismatch', json.dumps(self.prepare_legacy_graph(expected=2)))
+
+    def test_graph_prepare_migrated_history_preserves_current_results(self):
+        config = dag.z._workflow_section(self.session.project, 'workflow_adherence')['configuration']
+        config['phase_dag'] = self.graph
+        self.legacy_checkpoint()
+        self.produce()
+        before = self.result('produce')
+        self.prepare_legacy_graph()
+        self.assertEqual(before, self.result('produce'))
+        _, payload = self.payload()
+        changed = self.session.read(100, payload['graph'])
+        changed['nodes'][0]['prompt'] += ' Change settled semantics.'
+        result = self.session.call(100, {'operation': 'graph_prepare', 'graph': changed,
+            'rationale': 'Must preserve settled Results'}, expected=2)
+        self.assertRegex(json.dumps(result), '(?i)settled|current|preserv')
+
+    def test_graph_prepare_pending_v2_checkpoint_after_migration_still_blocks(self):
+        self.legacy_checkpoint()
+        ready = next(s for s in self.session.ready() if s['node']['node'] == 'understand')
+        receipt = json.loads(Path(ready['policy']['path']).read_text())['policy_receipt']
+        request = {**ready['start'], 'policy_receipt': receipt, 'request_id': 'interrupted-v2'}
+        with mock.patch.object(self.provider, 'update_issue', side_effect=RuntimeError('provider unavailable')):
+            self.session.call(100, request, expected=2)
+        self.assertIn('Uncommitted checkpoint', json.dumps(self.prepare_legacy_graph(expected=2)))
+
+    def test_graph_prepare_missing_rooted_source_policy_or_target_blocks(self):
+        _, payload = self.legacy_checkpoint()
+        response = self.session.read(100, payload['operational']['receipts'][0]['result'])
+        receipt_ref = response['next_steps'][0]['receipt']
+        receipt = self.session.read(100, receipt_ref)
+        refs = [receipt_ref, receipt['source'], receipt['policy'], receipt['target_intent'], receipt['target_payload']]
+        original = copy.deepcopy(self.provider.comments)
+        for reference in refs:
+            with self.subTest(reference=reference):
+                self.provider.comments = copy.deepcopy(original)
+                for row in self.provider.comments[100]:
+                    envelope = dag.z._comment_store.decode_envelope(row['body'])
+                    if not envelope: continue
+                    envelope['artifacts'] = [a for a in envelope['artifacts'] if a['hash'] != reference['hash']]
+                    row['body'] = dag.z._comment_store.encode_envelope(envelope)
+                self.assertRegex(json.dumps(self.prepare_legacy_graph(expected=2)), '(?i)artifact|migration|checkpoint')
+
+    def test_graph_prepare_missing_or_corrupt_rooted_response_blocks(self):
+        _, payload = self.legacy_checkpoint()
+        identity = payload['operational']['receipts'][0]['result']['hash']
+        original = copy.deepcopy(self.provider.comments)
+        for corrupt in (False, True):
+            with self.subTest(corrupt=corrupt):
+                self.provider.comments = copy.deepcopy(original)
+                for row in self.provider.comments[100]:
+                    envelope = dag.z._comment_store.decode_envelope(row['body'])
+                    if not envelope: continue
+                    if corrupt:
+                        for record in envelope['artifacts']:
+                            if record['hash'] == identity:
+                                record.clear()
+                                record.update(kind='legacy', hash=identity, content={'next_steps': []})
+                    else:
+                        envelope['artifacts'] = [a for a in envelope['artifacts'] if a['hash'] != identity]
+                    row['body'] = dag.z._comment_store.encode_envelope(envelope)
+                self.assertRegex(json.dumps(self.prepare_legacy_graph(expected=2)), '(?i)artifact|migration|checkpoint')
+
+    def test_graph_prepare_wrong_repository_goal_or_converter_lineage_blocks(self):
+        envelope, payload = self.legacy_checkpoint()
+        committed = payload['operational']['receipts'][0]
+        response = self.session.read(100, committed['result'])
+        receipt = self.session.read(100, response['next_steps'][0]['receipt'])
+        for field, value in (('repository', 'other/repo'), ('goal', 101), ('converter', 'custom-converter')):
+            with self.subTest(field=field):
+                altered = copy.deepcopy(response)
+                reference = self.blob({**receipt, field: value})
+                reference['uri'] = 'zzzops:owner/repo:goal:100:' + reference['hash']
+                altered['next_steps'][0]['receipt'] = reference
+                replacement = copy.deepcopy(payload)
+                reference = self.blob(altered)
+                reference['uri'] = 'zzzops:owner/repo:goal:100:' + reference['hash']
+                replacement['operational']['receipts'][0]['result'] = reference
+                self.replace_legacy_payload(envelope, replacement)
+                self.assertRegex(json.dumps(self.prepare_legacy_graph(expected=2)), '(?i)migration|checkpoint')
+
     def test_empty_rigor_and_risk_annotations_migrate_without_losing_requirements(self):
         self.legacy_fields(100, engineering_rigor={'risk_categories': []})
         self.legacy_fields(101, engineering_rigor={'risk_categories': ['authorization'], 'override': None})
