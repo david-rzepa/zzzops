@@ -2489,10 +2489,8 @@ class Workflow:
         else:
             candidate = self.node_project(snapshot, payload=payload)
         snapshot['artifacts'].update(candidate['artifacts'])
-        goals = self.portfolio()
-        for goal in goals:
-            if goal['key'] == number: goal['operational_leases'] = payload['operational']['leases']
-        steps = scoped_frontier(self.node_frontier(candidate, defer_envelope=True), goals, worker_limit(self.project), number)
+        steps = scoped_frontier(self.node_frontier(candidate, defer_envelope=True), self, worker_limit(self.project), number,
+                                prospective_leases=payload['operational']['leases'])
         return {'type': 'submission_continuation', 'version': 1, **identity,
                 'response': {'submitted': {'goal': number, 'node': node, 'result': result}, 'next_steps': steps},
                 'bindings': [{'kind': 'target_envelope_digest', 'step': i} for i, step in enumerate(steps) if step['kind'] == 'reconcile']}
@@ -3162,9 +3160,15 @@ def capacity_step(active_leases, limit):
                         'action': 'Recheck active leases after the interval; do not start work beyond the reviewed capacity.'}}
 
 
-def scoped_frontier(steps, goals, limit, number):
-    """Apply the addressed checkpoint's ordering and capacity policy."""
-    active = unresolved_lease_count(goals)
+def scoped_frontier(steps, engine, limit, number, *, prospective_leases=None):
+    """Observe complete ownership only when the addressed frontier offers starts."""
+    active = 0
+    if any(step.get('kind') in {'execute', 'review', 'human_approval'} and isinstance(step.get('start'), dict) for step in steps):
+        goals = engine.portfolio(allow_invalid=True, include_ownership=True)
+        if prospective_leases is not None:
+            for goal in goals:
+                if goal['key'] == number: goal['operational_leases'] = prospective_leases
+        active = unresolved_lease_count(goals)
     runnable, waiting, capacity_blocked = [], [], False
     for step in steps:
         if step.get('kind') in {'execute', 'review', 'human_approval'} and isinstance(step.get('start'), dict):
@@ -3224,7 +3228,7 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
             return {'next_steps': [{'kind': 'blocker', 'assignment': 'root', 'goal': number,
                 'action': 'Repair this goal or one of its prerequisites before continuing.',
                 'findings': findings}]}
-        return {'next_steps': scoped_frontier(engine.step(number), goals, limit, number)}
+        return {'next_steps': scoped_frontier(engine.step(number), engine, limit, number)}
     runnable_steps = []
     waiting_steps = []
     ordered_goals = api.effective_goal_order(goals, ordering_policy)

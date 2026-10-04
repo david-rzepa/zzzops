@@ -177,6 +177,82 @@ class SubmitContinuationTests(DagFixture):
         self.assertEqual(literal, self.session.call(100, request))
 
 
+class SchedulingInventoryContinuationTests(DagFixture):
+    ready_names = SubmitContinuationTests.ready_names
+    add_goal = journeys.RelationshipPublicTests.add_goal
+    put_envelope = journeys.RelationshipPublicTests.put_envelope
+
+    def setUp(self):
+        super().setUp()
+        z._workflow_section(self.session.project, 'autonomy_approval_parallelism')['configuration']['max_workers'] = 1
+        graph = json.loads(json.dumps(self.graph).replace('"goal": 100', '"goal": "#this"'))
+        self.install(graph)
+        raw = self.session.portfolio_snapshot
+        def unhydrated(*args, **kwargs):
+            value = raw(*args, **kwargs)
+            for goal in value['goals']:
+                goal.pop('operational_leases', None)
+            return value
+        self.session.portfolio_snapshot = unhydrated
+
+    def add_unrelated_owner(self, work):
+        self.add_goal(101, self.graph)
+        envelope = z.parse_managed_goal(self.provider.issues[101]['body'], 101)
+        payload = self.session.read(101, envelope['payload'])
+        lease = copy.deepcopy(work['lease'])
+        lease['node']['goal'] = 101
+        lease['token'] = 'unrelated-owner'
+        payload['operational']['leases'] = [lease]
+        offset = len(self.provider.comments[100])
+        envelope['payload'] = self.blob(payload)
+        for row in self.provider.comments[100][offset:]:
+            self.provider.create_issue_comment(101, row['body'])
+        self.put_envelope(101, envelope)
+
+    def test_targeted_checkpoint_loads_unrelated_owner_before_offering_start(self):
+        self.session.acquire('produce')
+        self.add_goal(101, self.graph)
+        response = self.session.call(101)
+        self.assertEqual(set(), self.ready_names(response))
+        self.assertEqual(1, next(step['active_leases'] for step in response['next_steps'] if 'active_leases' in step))
+
+    def test_continuation_counts_unrelated_owner_and_released_local_lease(self):
+        work = self.session.acquire('produce')
+        self.add_unrelated_owner(work)
+        response = self.session.finish(work, {'value': 'candidate'})
+        self.assertEqual(set(), self.ready_names(response))
+        self.assertEqual(1, next(step['active_leases'] for step in response['next_steps'] if 'active_leases' in step))
+        self.assertFalse(self.payload()[1]['operational']['leases'])
+
+    def test_unavailable_inventory_blocks_checkpoint_and_scheduling_submit(self):
+        work = self.session.acquire('produce')
+        self.add_goal(101, self.graph)
+        self.add_goal(102, self.graph)
+        self.provider.comments[101] = []
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        failed = self.session.call(102, expected=2)
+        self.assertFalse(self.ready_names(failed))
+        request = self.session.submission(work, {'value': 'candidate'}, 'unavailable-inventory')
+        failed = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(failed), 'Ownership inventory unavailable')
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_nonscheduling_continuation_and_owned_checkpoint_skip_unrelated_inventory(self):
+        graph = copy.deepcopy(self.graph)
+        graph['nodes'] = graph['nodes'][:1]
+        graph['terminals'] = [{'kind': 'node', 'goal': '#this', 'node': 'produce'}]
+        self.install(graph)
+        work = self.session.acquire('produce')
+        self.add_goal(101, graph)
+        self.provider.comments[101] = []
+        with mock.patch.object(self.provider, 'get_issue_comments', wraps=self.provider.get_issue_comments) as reads:
+            owned = self.session.call(100)
+            response = self.session.finish(work, {'value': 'done'})
+        self.assertFalse(self.ready_names(owned))
+        self.assertEqual(['complete'], [step['kind'] for step in response['next_steps']])
+        self.assertNotIn(101, [call.args[0] for call in reads.call_args_list])
+
+
 class MultipartContinuationTests(DagFixture):
     def setUp(self):
         super().setUp()
