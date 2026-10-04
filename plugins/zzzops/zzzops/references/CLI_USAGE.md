@@ -36,5 +36,9 @@ reads and preview never migrate or reopen.
 
 For bulk migration or a blocked conversion, read [schema migration guidance](SCHEMA_MIGRATION.md) and follow the returned remediation.
 
-Renew the same live owner; expiry permits no takeover. Recover only
-with observed stopped evidence. Integration cannot mint Results.
+Renew the same live owner; expiry permits no takeover. Recover only with
+observed-stop evidence and the exact actor. Owned drafts preserve continuity,
+not acceptance; same-task reacquisition retains verification and review gates.
+Accepted-test defects use the returned interpretation/admission route, bounded
+test ownership and fresh independent review. Existing graphs require reviewed
+graph adoption. Integration cannot mint Results.

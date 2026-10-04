@@ -1639,7 +1639,46 @@ class Workflow:
                             identity = digest(response)
                             if identity in receipt_refs: acquisition_receipts[token] = receipt_refs[identity]
             snapshot['acquisition_receipts'] = acquisition_receipts
-            pending = [(ref, n) for ref in [payload['spec'], *payload['evidence'], *acquisition_receipts.values()]]
+            # Metadata locates operational drafts, but only a committed receipt
+            # can activate one. Historical source payloads never activate drafts.
+            draft_responses = {}
+            for record in self.artifact_index(n).envelopes:
+                context = record.get('context') or {}
+                reference = context.get('response', {})
+                if not context.get('workspace_draft') or reference.get('hash') not in receipt_refs: continue
+                if reference['hash'] in draft_responses: continue
+                receipt = next(row for row in payload['operational']['receipts'] if row['result'] == reference)
+                if receipt['request'] != context.get('request_id') or receipt['payload'] != context.get('request_hash'):
+                    raise ValueError('Workspace draft recovery receipt provenance differs')
+                try: response = resolve(reference)
+                except (ValueError, KeyError) as exc: raise ValueError('Workspace draft receipt artifact is corrupt: ' + str(exc)) from exc
+                draft_ref = response['next_steps'][0].get('workspace_draft')
+                if draft_ref != context['workspace_draft']: raise ValueError('Workspace draft receipt identity differs')
+                draft = resolve(draft_ref)
+                source = resolve(draft['source_payload'])
+                lease = next((row for row in source['operational']['leases'] if row['token'] == draft['lease']['token']), None)
+                if (draft.get('type') != 'workspace_draft' or not lease or
+                    any(lease.get(k) != v for k, v in draft['lease'].items()) or
+                    lease['node'] != draft['node'] or lease['acquisition'] != draft['acquisition'] or
+                    lease['fingerprint'] != draft['input_hash'] or
+                    digest(draft['acquisition']) != draft['acquisition_hash'] or
+                    draft['contract'] != draft['acquisition']['contract'] or
+                    context.get('root') != lease['owner'] or
+                    context.get('source_envelope', {}).get('payload') != draft['source_payload']):
+                    raise ValueError('Workspace draft source lease/acquisition provenance differs')
+                acquisition_ref = draft['acquisition_receipt']
+                if not any(row['result'] == acquisition_ref for row in source['operational']['receipts']):
+                    raise ValueError('Workspace draft acquisition receipt is not committed')
+                started = resolve(acquisition_ref)
+                pins = [step['lease'] for step in started.get('next_steps', [])
+                        if step.get('bind') and step.get('lease', {}).get('token') == lease['token']]
+                if (len(pins) != 1 or pins[0]['acquisition'] != draft['acquisition'] or
+                    any(pins[0][k] != lease[k] for k in ('node', 'attempt', 'owner', 'fingerprint'))):
+                    raise ValueError('Workspace draft differs from immutable acquisition receipt')
+                draft_responses[reference['hash']] = (draft_ref, draft)
+            snapshot['workspace_drafts'] = [draft_responses[row['result']['hash']]
+                for row in payload['operational']['receipts'] if row['result']['hash'] in draft_responses]
+            pending = [(ref, n) for ref in [payload['spec'], *payload['evidence'], *acquisition_receipts.values(), *(ref for ref, _ in snapshot['workspace_drafts'])]]
             visited = set()
             def references(value):
                 if isinstance(value, dict):
@@ -1647,7 +1686,9 @@ class Workflow:
                     if set(value) == {'hash', 'uri'} and isinstance(value['hash'], str):
                         if isinstance(value['uri'], str) and value['uri'].startswith(('urn:', 'zzzops:', 'git:')): yield value
                     else:
-                        for child in value.values(): yield from references(child)
+                        for name, child in value.items():
+                            if value.get('type') == 'workspace_draft' and name == 'source_payload': continue
+                            yield from references(child)
                 elif isinstance(value, list):
                     for child in value: yield from references(child)
             while pending:
@@ -2091,6 +2132,11 @@ class Workflow:
             if not path.resolve().is_relative_to(self.repo.resolve()) or path.is_symlink() or path.is_dir(): raise ValueError('Workspace allocation path escapes or names a symlink/directory')
         return self.file_hashes(paths)
 
+    def node_workspace_authority_inputs(self, inputs, artifacts):
+        return [copy.deepcopy(binding) for binding in inputs
+                if artifacts[binding['source']['hash']].get('type') in
+                {'workspace_allocation', 'workspace_authorization'}]
+
     def node_workspace_context(self, snapshots, projection, artifacts):
         """Observe repository facts and bind the explicit workspace adapter.
 
@@ -2181,6 +2227,54 @@ class Workflow:
         # seen file hashes cannot authorize a disconnected mixed checkout.
         edges = [(row['before'], row['after']) for row in candidates if 'error' not in row]
         accepted_edges = [(row['before'], row['after']) for row in candidates if 'error' not in row and row['reviews']]
+        drafts = {}; draft_rows = {}; draft_errors = {}; consumed_drafts = set()
+        for snapshot in snapshots.values():
+            for reference, draft in snapshot.get('workspace_drafts', []):
+                draft_rows[reference['hash']] = (reference, draft)
+                drafts[ev.task_key(draft['node'])] = (reference, draft)
+        # A published candidate consumes its linked operational chain, even if
+        # its independent review is still pending. It is not itself acceptance.
+        for row in candidates:
+            if 'error' in row: continue
+            cursor = row['data']['acquisition'].get('stopped_draft'); seen = set()
+            while cursor:
+                if cursor['hash'] in seen or cursor['hash'] not in draft_rows:
+                    raise ValueError('Workspace draft provenance is cyclic or lacks a committed receipt')
+                seen.add(cursor['hash']); consumed_drafts.add(cursor['hash'])
+                cursor = draft_rows[cursor['hash']][1]['acquisition'].get('stopped_draft')
+        valid_drafts = []
+        for reference, draft in draft_rows.values():
+            key = ev.task_key(draft['node'])
+            try:
+                if key not in work: raise ValueError('Workspace draft task generation is no longer current')
+                state = work[key]; grant = authority(state); acquisition = draft['acquisition']
+                before = raw(acquisition); after = draft['files']
+                declared = lambda inputs: [binding for binding in inputs if binding['name'] != '__workspace']
+                resolutions = lambda rows: [{k: row[k] for k in ('location', 'selector', 'targets')} for row in rows]
+                expected_authority = {**{k: grant[k] for k in ('allocation', 'authorization', 'approval')},
+                    'inputs': self.node_workspace_authority_inputs(state['inputs'], artifacts)}
+                if (draft['policy'] != digest(self.project['policy']) or draft['authority'] != expected_authority or
+                    acquisition['contract'] != state['contract_hash'] or
+                    declared(acquisition['inputs']) != declared(state['inputs']) or
+                    resolutions(acquisition['resolutions']) != resolutions(state['resolutions'])):
+                    raise ValueError('Workspace draft current authority/input/contract changed')
+                delta = {p: after.get(p, 'missing') for p in before.keys() | after.keys()
+                         if before.get(p, 'missing') != after.get(p, 'missing')}
+                if (digest(after) != draft['workspace'] or delta != draft['outputs'] or
+                    set(delta) - set(grant['entry']['owned'])):
+                    raise ValueError('Workspace draft snapshot/owned delta differs')
+                cursor = acquisition.get('stopped_draft'); seen = {reference['hash']}
+                while cursor:
+                    if cursor['hash'] in seen or cursor['hash'] not in draft_rows:
+                        raise ValueError('Workspace draft chain lacks a committed receipt or contains a cycle')
+                    seen.add(cursor['hash']); previous = draft_rows[cursor['hash']][1]
+                    if previous['node'] != draft['node'] or previous['acquisition']['files'] != before:
+                        raise ValueError('Workspace draft chain changed task or original baseline')
+                    cursor = previous['acquisition'].get('stopped_draft')
+                edges.append((before, after)); valid_drafts.append(draft)
+            except (ValueError, KeyError, subprocess.SubprocessError) as exc:
+                draft_errors[reference['hash']] = str(exc)
+        drafts = {key: row for key, row in drafts.items() if row[0]['hash'] not in consumed_drafts}
         for snapshot in snapshots.values():
             for lease in snapshot['payload']['operational']['leases']:
                 key = ev.task_key(lease['node'])
@@ -2229,6 +2323,9 @@ class Workflow:
                     git = self.git_files(acquisition['git_commit'])
                     for path, raw_hash in acquisition['checkout_overrides'].items(): clean_pairs[(path, raw_hash)] = git[path]
                 except (ValueError, KeyError, subprocess.SubprocessError): continue
+        for draft in valid_drafts:
+            acquisition = draft['acquisition']; git = self.git_files(acquisition['git_commit'])
+            for path, raw_hash in acquisition['checkout_overrides'].items(): clean_pairs[(path, raw_hash)] = git[path]
         def read_snapshot(files):
             return {path: clean_pairs.get((path, value), value) for path, value in files.items()}
         read_actual = read_snapshot(actual)
@@ -2276,6 +2373,18 @@ class Workflow:
                     if head != acquisition['git_commit']:
                         original_git = self.git_files(acquisition['git_commit'])
                         if any(original_git.get(p, 'missing') != committed.get(p, 'missing') for p in original_git.keys() | committed.keys() if p not in grant['entry']['owned']): raise ValueError('Acquired Git baseline changed outside owned scope')
+                elif key in drafts:
+                    reference, draft = drafts[key]
+                    if reference['hash'] in draft_errors: raise ValueError(draft_errors[reference['hash']])
+                    if actual != draft['files']:
+                        raise ValueError('Stopped workspace draft changed without an owner; restore the exact stopped snapshot before recovery')
+                    acquisition = copy.deepcopy(draft['acquisition']); baseline = raw(acquisition)
+                    acquisition['stopped_draft'] = reference
+                    if head != acquisition['git_commit']:
+                        original_git = self.git_files(acquisition['git_commit'])
+                        if any(original_git.get(p, 'missing') != committed.get(p, 'missing')
+                               for p in original_git.keys() | committed.keys() if p not in grant['entry']['owned']):
+                            raise ValueError('Stopped draft Git baseline changed outside owned scope')
                 elif prior and current_ref == prior['result']:
                     if 'error' in prior: raise ValueError(prior['error'])
                     if not connected(prior['after']): raise ValueError('Completed workspace proof output/consumed drift or disconnected snapshot')
@@ -2302,7 +2411,7 @@ class Workflow:
                         acquisition['predecessor'] = remember({'node': state['node'], **{k: grant[k] for k in ('allocation', 'authorization', 'approval')}, 'result': prior['result'], 'proof': prior['proof'], 'reviews': [r for r, _ in prior['reviews']], 'prior': previous})
                         acquisition['predecessor_outputs'] = prior['value']['outputs']
                         acquisition['predecessor_proof'] = prior['proof']
-                if not lease and not (prior and current_ref == prior['result']):
+                if not lease and key not in drafts and not (prior and current_ref == prior['result']):
                     reachable, pending_refs = set(), [item['source'] for item in state['inputs']]
                     # Prerequisites remain currentness gates, but their exact
                     # accepted proof ancestry is acquisition provenance. This
@@ -2310,9 +2419,11 @@ class Workflow:
                     pending_refs.extend(projection['current'][parent][0] for parent in state.get('prerequisites', []) if parent in projection['current'])
                     def refs(value):
                         if isinstance(value, dict):
-                            if set(value) == {'hash', 'uri'}: yield value
+                            if set(value) == {'hash', 'uri'} and isinstance(value['hash'], str) and isinstance(value['uri'], str): yield value
                             else:
-                                for child in value.values(): yield from refs(child)
+                                for name, child in value.items():
+                                    if value.get('type') == 'workspace_draft' and name == 'source_payload': continue
+                                    yield from refs(child)
                         elif isinstance(value, list):
                             for child in value: yield from refs(child)
                     while pending_refs:
@@ -2803,6 +2914,7 @@ class Workflow:
             response_lease = next((lease for lease in payload['operational']['leases'] if lease['token'] == response_lease), {})
         context = {'request_id': request['request_id'], 'request_hash': digest(request), 'source_hash': digest(issue['body']), 'human_hash': digest(prefix + suffix), 'root': None if snapshot.get('migration') else (self.runtime or {}).get('root_id'), 'response': self.node_ref(digest(response), number), 'ownership': {key: value for key, value in response_lease.items() if key != 'acquisition'}, 'acquisition': bool(public_response['next_steps'][0].get('bind')), 'payload': envelope['payload'], 'proof': proof, 'source_envelope': snapshot['envelope'], 'target_envelope': envelope, 'entry_payload': entry_payload}
         if response.get('type') == 'submission_continuation': context['continuation'] = response
+        if public_response['next_steps'][0].get('workspace_draft'): context['workspace_draft'] = public_response['next_steps'][0]['workspace_draft']
         if snapshot.get('migration'): context['migration'] = snapshot['migration']
         if pending and pending != context: raise ValueError('Pending checkpoint exact response/payload/proof identity changed')
         bodies = comment_store.pack_envelopes({'goal': number, 'transaction': digest({'request': request, 'source': issue['body']}), 'context': context}, records)
@@ -2898,6 +3010,9 @@ class Workflow:
             if operation == 'start':
                 if lease: raise ValueError('Task already has an owner; observed-stop recovery is required')
                 if state['state'] != 'ready' or request.get('input_hash') != state.get('input_hash'): raise ValueError('Stale input or prerequisite prevents acquisition')
+                draft_acquisition = state.get('workspace', {}).get('acquisition', {})
+                if draft_acquisition.get('stopped_draft') and draft_acquisition.get('input_hash') != state['input_hash']:
+                    raise ValueError('Stopped workspace draft full input identity changed; reconcile current authority before acquisition')
                 if any(set(state['contract']['executor']['resources']).intersection(projection['states'][other]['contract']['executor']['resources']) for other in projection['leases'] if other in projection['states']): raise ValueError('Declared resource is already owned')
                 if unresolved_lease_count(self.portfolio(include_ownership=True)) >= worker_limit(self.project): raise ValueError('Reviewed max_workers capacity occupied by unresolved owner')
                 step = self.node_step(state)
@@ -2928,8 +3043,36 @@ class Workflow:
                 if not lease or request.get('lease') != lease['token'] or lease['owner'] != root: raise ValueError('Exact current owner/lease token required')
                 if operation == 'recover':
                     if request.get('worker_status') != 'stopped' or not isinstance(request.get('evidence'), str) or not request['evidence'].strip(): raise ValueError('Observed stopped worker evidence required; unknown liveness cannot recover')
+                    if request.get('actor') != lease['worker']: raise ValueError('Exact bound actor required for observed-stop recovery')
+                    step = {'kind': 'checkpoint', 'goal': number}
+                    if 'repository_workspace' in state['contract']['executor']['resources']:
+                        if state['state'] != 'ready' or state.get('input_hash') != lease['fingerprint']:
+                            raise ValueError('Stale workspace authority/input prevents draft recovery: ' + state.get('reason', 'workspace drift'))
+                        workspace = state.get('workspace')
+                        if not workspace or 'error' in workspace: raise ValueError('Current workspace authority is required for draft recovery')
+                        acquisition = lease['acquisition']; actual = self.workspace_files()
+                        delta = {p: actual.get(p, 'missing') for p in acquisition['files'].keys() | actual.keys()
+                                 if acquisition['files'].get(p, 'missing') != actual.get(p, 'missing')}
+                        if set(delta) - set(workspace['entry']['owned']): raise ValueError('Workspace draft changed unowned/consumed files')
+                        # A resumed owner can intentionally restore the original
+                        # bytes. Record that successor instead of reviving the
+                        # previous dirty draft as the latest stopped snapshot.
+                        if delta or acquisition.get('stopped_draft'):
+                            reference = snapshot['acquisition_receipts'].get(lease['token'])
+                            if reference is None: raise ValueError('Workspace draft lacks immutable acquisition receipt')
+                            draft = {'type': 'workspace_draft', 'node': node,
+                                'lease': {k: lease[k] for k in ('token', 'attempt', 'owner', 'worker')},
+                                'source_payload': snapshot['envelope']['payload'], 'acquisition_receipt': reference,
+                                'acquisition': copy.deepcopy(acquisition), 'acquisition_hash': digest(acquisition),
+                                'contract': acquisition['contract'], 'input_hash': lease['fingerprint'],
+                                'policy': digest(self.project['policy']),
+                                'authority': {**{k: workspace[k] for k in ('allocation', 'authorization', 'approval')},
+                                    'inputs': self.node_workspace_authority_inputs(acquisition['inputs'], snapshot['artifacts'])},
+                                'files': actual, 'workspace': digest(actual), 'outputs': delta, 'evidence': request['evidence']}
+                            identity = digest(draft); snapshot['artifacts'][identity] = draft
+                            step['workspace_draft'] = self.node_ref(identity, number)
                     leases.remove(lease)
-                    response = {'next_steps': [{'kind': 'checkpoint', 'goal': number}]}
+                    response = {'next_steps': [step]}
                 elif operation == 'bind':
                     _, receipt = self.node_policy(state)
                     if request.get('policy_receipt') != receipt or request.get('selection') != lease['selection']: raise ValueError('Exact policy receipt and actual model/effort required')

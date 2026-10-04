@@ -102,6 +102,22 @@ same-token public renewal contract; callers observe real worker liveness and
 renew that ownership rather than dispatching another worker. Infrastructure
 blockers remain operational facts, not invented semantic Results.
 
+Observed-stop workspace recovery also requires the exact bound actor and current
+workspace authority. Changed owned bytes are preserved in a host-created
+`workspace_draft` referenced by the committed operational response. Its original
+acquisition receipt and source payload authenticate the bound lease, raw baseline,
+contract, inputs, policy, allocation and approval pins. The exact stopped snapshot
+and owned delta supply ordinary continuity only; drafts never enter accepted
+proof edges, produce Results or satisfy review/dependency gates.
+
+The latest unfinished draft can be reacquired only by the same qualified task
+with unchanged authority and exact stopped bytes. A fresh lease retains the
+original baseline and links its draft provenance, so pre-stop edits still require
+verification. Repeated recovery preserves every connected draft, including a
+resumed worker reverting its edits to the original baseline. Unowned/consumed
+drift, altered authority, post-stop edits and orphaned or tampered receipts fail
+closed; an initial zero-delta recovery retains ordinary clean-baseline behavior.
+
 Submit accepts exactly the declared output bundle. The host validates types,
 current authority, ownership, input identity and proofs before publishing typed
 Artifacts and one Result. The operational lease removal and request receipt share
@@ -313,3 +329,15 @@ provider comment limits remain unchanged. Payload deltas choose addressed bases
 within those bounds while preserving all receipts and evidence. Public reads
 return detached values. Internal borrowed snapshots are read-only and reused only
 with exact provider-body/base signatures and unchanged validation limits.
+
+## Defects discovered in accepted tests
+
+The default graph's `interpret_accepted_test_defect` pins an approved test review,
+its test subject, implementation context and an independently rejected
+implementation review. Its finding and `admit_accepted_test_correction` permit
+only `test_design/value`. Existing finite allocation and current approvals govern
+reacquisition; implementation ownership grants no consumed-test writes. Fresh
+independent test review, finding retention and independent resolution must precede
+implementation resumption. Historical Results and separate implementation
+findings remain intact. See [accepted-test recovery](ACCEPTED_TEST_RECOVERY.md) for
+the complete sequence and explicit graph adoption for existing goals.

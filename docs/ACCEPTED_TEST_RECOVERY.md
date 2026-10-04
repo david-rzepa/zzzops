@@ -53,3 +53,28 @@ canonical root output, obtain an independent approved review of that output and
 explicit human approval, then adopt using those exact Refs. If source state or
 policy changes, prepare and review again. Retry an interrupted request with the
 same request ID and payload. Adoption authorizes no workspace edits.
+
+## Recover an unfinished owned draft
+
+For a worker actually observed stopped, use the exact task, owner, bound actor
+and lease token with `recover`, `worker_status: "stopped"` and factual evidence.
+The host checks the original immutable acquisition and current authority before
+removing ownership. It records changed owned bytes as an immutable operational
+`workspace_draft` referenced by the committed recovery response.
+
+The draft binds the original acquisition, exact stopped snapshot and owned delta,
+actor/root/token, task generation, contract and inputs, policy, allocation,
+authorization, approval, parent input pins and observed-stop evidence. It
+preserves ordinary workspace continuity; it is neither a Result nor an accepted
+proof and cannot satisfy downstream review or dependency gates.
+
+Reacquisition uses a fresh token for the same authorized task and exact stopped
+bytes. Its original baseline and linked draft provenance ensure that all edits,
+including pre-stop changes, still require verification and independent review.
+Repeated stops retain their connected history and exact raw checkout bytes.
+
+Unowned or consumed changes, stale authority, unknown liveness, tampered or
+uncommitted receipts, disconnected snapshots and edits made after the stop fail
+closed. Preserve the files and diagnose the reported mismatch; do not delete
+Results, forge approval, remove leases manually or widen allocations to make a
+checkpoint pass.
