@@ -1776,6 +1776,101 @@ class Workflow:
         return {**snapshot, 'payload': selected['payload'], 'projection': result, 'artifacts': result['artifacts'],
                 'workspaces': workspaces, 'publications': publications}
 
+    def node_committed_legacy_requests(self, snapshot):
+        """Read completed v1 requests only through a committed automatic migration."""
+        number = snapshot['number']
+        index = self.artifact_index(number)
+        completed = {}
+        converter = self.api._migration_batch.CONVERTER
+
+        def require(condition, reason):
+            if not condition: raise ValueError('Legacy migration proof: ' + reason)
+
+        def read(reference):
+            self.api._phase_evidence.validate_ref(reference)
+            require(reference == self.node_ref(reference['hash'], number),
+                    'immutable reference must bind this repository and goal')
+            value = self.read_artifact(number, reference)
+            require(isinstance(value, dict), 'migration lineage artifact must be an object')
+            return value
+
+        for committed in snapshot['payload']['operational']['receipts']:
+            response = read(committed['result'])
+            steps = response.get('next_steps', [])
+            require(isinstance(steps, list), 'committed response steps are malformed')
+            migrations = [step for step in steps if isinstance(step, dict) and step.get('kind') == 'schema_migration']
+            if not migrations: continue
+            require(len(migrations) == 1, 'conflicting migration responses')
+            step = migrations[0]
+            require('receipt' in step, 'migration response has no receipt')
+            receipt = read(step['receipt'])
+            require({'source', 'policy', 'target_intent', 'target_payload'} <= receipt.keys(),
+                    'migration receipt is incomplete')
+            require(receipt.get('type') == 'schema_migration' and receipt.get('converter') == converter,
+                    'unsupported migration converter')
+            require(receipt.get('repository') == self.repository and receipt.get('goal') == number,
+                    'migration repository or goal mismatch')
+            require(response == {'next_steps': [{'kind': 'schema_migration', 'goal': number,
+                    'status': 'migrated', 'receipt': step['receipt']}]}, 'migration response mismatch')
+            policy = read(receipt['policy'])
+            require(isinstance(policy, dict), 'historical policy is malformed')
+            source = read(receipt['source'])
+            require(source.get('type') == 'migration_source' and source.get('producer') is None and
+                    source.get('provenance') == {'actor': converter, 'source': None, 'policy': receipt['policy']['hash']},
+                    'preserved source provenance mismatch')
+            issue = source.get('content')
+            require(isinstance(issue, dict) and isinstance(issue.get('body'), str), 'preserved source is malformed')
+            require(issue.get('number') == number, 'preserved source goal mismatch')
+            legacy = self.api.parse_managed_goal(issue['body'], number)
+            require(legacy and legacy['schema_version'] == 1, 'preserved source is not a managed v1 goal')
+            require(not (legacy.get('claim') or {}).get('owner') and not (legacy.get('workflow') or {}).get('leases'),
+                    'preserved source has unsettled ownership')
+            request = {'operation': 'migration_batch', 'action': 'migrate', 'goal': number,
+                'request_id': 'migrate-' + digest({'source': receipt['source'], 'policy': receipt['policy'],
+                                                 'converter': converter})[7:]}
+            require(committed['request'] == request['request_id'] and committed['payload'] == digest(request),
+                    'committed migration request identity or fingerprint mismatch')
+            intent = read(receipt['target_intent'])
+            require(intent == {'schema_version': 2, 'repository': self.repository, 'issue': number,
+                    'revision': legacy['revision'] + 1, 'state': 'open', 'parent': legacy['parent'],
+                    'payload': receipt['target_payload']}, 'migration target identity mismatch')
+            payload = read(receipt['target_payload'])
+            self.api._phase_evidence.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'}, 'Migration payload')
+            require(payload['evidence'] == [] and payload['operational'] == {'leases': [], 'receipts': []},
+                    'migration intent must not create results or ownership')
+            spec = read(payload['spec'])
+            require(spec.get('type') == 'goal_specification' and spec.get('producer') is None and
+                    spec.get('provenance') == {'actor': converter, 'source': receipt['source'], 'policy': receipt['policy']['hash']},
+                    'migration specification provenance mismatch')
+            self.api._phase_evidence.validate_graph(read(payload['graph']))
+            entry = copy.deepcopy(payload)
+            entry['operational']['receipts'].append(committed)
+            entry_ref = self.node_ref(digest(entry), number)
+            require(read(entry_ref) == entry, 'committed migration payload mismatch')
+            target = {**intent, 'payload': entry_ref}
+            prefix, suffix = self.api._migration_batch.human_parts(self, issue['body'])
+            context = {'request_id': request['request_id'], 'request_hash': digest(request),
+                'source_hash': digest(issue['body']), 'human_hash': digest(prefix + suffix), 'root': None,
+                'response': committed['result'], 'ownership': {}, 'acquisition': False, 'payload': entry_ref,
+                'proof': None, 'source_envelope': {**intent, 'revision': legacy['revision']},
+                'target_envelope': target, 'entry_payload': entry_ref,
+                'migration': {'receipt': step['receipt'], 'policy': receipt['policy']['hash']}}
+            transactions = [row for row in index.envelopes
+                            if (row.get('context') or {}).get('request_id') == request['request_id']]
+            require(transactions and all(row.get('goal') == number and row.get('context') == context and
+                    row.get('transaction') == digest({'request': request, 'source': issue['body']})
+                    for row in transactions), 'missing or conflicting exact migration transaction')
+            receipts = (legacy.get('workflow') or {}).get('receipts', {})
+            require(isinstance(receipts, dict), 'legacy receipts are malformed')
+            for request_id, receipt in receipts.items():
+                fingerprint = receipt.get('hash') if isinstance(receipt, dict) else None
+                require(isinstance(request_id, str) and bool(request_id) and isinstance(fingerprint, str) and
+                        re.fullmatch(r'sha256:[0-9a-f]{64}', fingerprint), 'legacy request fingerprint is malformed')
+                require(request_id not in completed or completed[request_id] == fingerprint,
+                        'conflicting legacy request fingerprints')
+                completed[request_id] = fingerprint
+        return completed
+
     def node_graph_proposal(self, snapshot, graph, rationale, *, pending_request=None):
         """Preflight a goal-only graph repair without replacing any evidence."""
         if not (self.runtime or {}).get('root_id'):
@@ -1785,10 +1880,16 @@ class Workflow:
         if snapshot['payload']['operational']['leases']:
             raise ValueError('Graph repair requires observed stopped ownership; leases remain')
         committed = {row['request'] for row in snapshot['payload']['operational']['receipts']}
+        historical = None
         for row in self.artifact_index(snapshot['number']).envelopes:
-            request_id = (row.get('context') or {}).get('request_id')
+            context = row.get('context') or {}
+            request_id = context.get('request_id')
             if request_id and request_id not in committed and request_id != pending_request:
-                raise ValueError('Uncommitted checkpoint must be resumed before graph repair')
+                if historical is None: historical = self.node_committed_legacy_requests(snapshot)
+                if (row.get('goal') == snapshot['number'] and request_id in historical and
+                        context.get('fingerprint') == historical[request_id]): continue
+                raise ValueError('Uncommitted checkpoint must be resumed before graph repair: '
+                                 'no committed legacy migration proof for exact goal/request/fingerprint')
         if not isinstance(rationale, str) or not rationale.strip():
             raise ValueError('Graph repair requires an explicit scoped rationale')
         self.api._phase_evidence.validate_graph(graph)
