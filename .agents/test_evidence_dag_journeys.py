@@ -347,6 +347,18 @@ class DagFixture(unittest.TestCase):
         self.session.finish(acquired, outputs, "valid-after-negative-" + acquired["lease"]["attempt"])
 
 class EvidenceDagPublicTests(DagFixture):
+    def test_committed_submit_survives_compact_response_store_failure(self):
+        """A post-commit formatting fault cannot invite duplicate execution."""
+        acquired = self.session.acquire("produce")
+        payload = self.session.submission(acquired, {"value": "committed"}, "store-failure")
+        before = copy.deepcopy(self.provider.issues[100])
+        with mock.patch.object(z, "_response_reference", side_effect=OSError("store unavailable")):
+            response = self.session.call(100, payload, response="compact")
+        self.assertNotEqual(before, self.provider.issues[100])
+        self.assertEqual("committed", self.read_blob(self.produced("produce"))["content"])
+        self.assertEqual("warning", response["response_boundary_warning"]["kind"])
+        self.assertTrue(response["next_steps"])
+
     def test_compact_minimal_execute_review_and_root_approval_journey(self):
         """Real public main/backend journey; only provider transport is synthetic."""
         visible = []

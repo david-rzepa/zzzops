@@ -53,6 +53,17 @@ class CompactWorkflowBoundaryTests(unittest.TestCase):
         )
         self.assertEqual(self.response["next_steps"][0]["submission"], selected["/next_steps/0/submission"])
 
+    def test_compact_response_preserves_bootstrap_outside_git(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            response = {"next_steps": [{"kind": "bootstrap", "action": "Initialize this repository"}]}
+            compact = zzzops.compact_workflow_response(repo, None, "inspect", response)
+            self.assertEqual("Initialize this repository", compact["next_steps"][0]["action"])
+            reference = compact["full_response"]
+            self.assertEqual(repo / ".zzzops" / "responses", Path(reference["path"]).parent)
+            self.assertEqual(response, zzzops.read_workflow_response(
+                repo, Path(reference["path"]), reference["sha256"], goal=None, selectors=[]))
+
     def test_minimal_request_hydrates_only_cli_owned_action_identity(self):
         reference = zzzops.compact_workflow_response(self.repo, 543, "execute", self.response)["full_response"]
         request = zzzops.hydrate_workflow_request(self.repo, 543, "execute", {
@@ -166,6 +177,27 @@ class CompactWorkflowBoundaryTests(unittest.TestCase):
         self.assertEqual("worker-1", submitted["actor"])
         self.assertEqual(self.response["next_steps"][0]["submission"]["node"], submitted["node"])
         self.assertEqual(expected, json.loads(stream.getvalue()))
+
+    def test_response_store_failure_preserves_successful_submit_result(self):
+        runtime = self.repo / "runtime.json"
+        runtime.write_text(json.dumps({"root_id": "root", "available_pairs": []}), encoding="utf-8")
+        request = self.repo / "submit.json"
+        request.write_text(json.dumps({"operation": "submit"}), encoding="utf-8")
+        committed = {"next_steps": [{"kind": "complete", "lease": "committed-lease", "result": {"value": "done"}}]}
+        argv = ["zzzops", "--repo", str(self.repo), "--goal", "543", "--intent", "execute",
+                "--runtime", str(runtime), "--input", str(request)]
+        with (
+            mock.patch.object(zzzops, "configure_cli_stdout"),
+            mock.patch.object(zzzops, "workflow_submit", return_value=committed) as submit,
+            mock.patch.object(zzzops, "atomic_text", side_effect=OSError("store unavailable")),
+            mock.patch.object(sys, "argv", argv),
+            mock.patch.object(sys, "stdout", io.StringIO()) as stream,
+        ):
+            self.assertEqual(0, zzzops.main())
+        output = json.loads(stream.getvalue())
+        self.assertEqual(committed["next_steps"], output["next_steps"])
+        self.assertIn("response_boundary_warning", output)
+        self.assertEqual(1, submit.call_count)
 
     def test_public_read_response_subprocess_selects_content_and_repairs_invalid_envelope(self):
         response = {"next_steps": [{"kind": "read", "goal": 543, "content": {"large": "x" * 2000}}]}

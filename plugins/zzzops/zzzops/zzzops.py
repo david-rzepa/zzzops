@@ -3602,7 +3602,10 @@ def _workflow_response_directory(repo: Path) -> Path:
         capture_output=True, text=True, encoding="utf-8", check=False,
     )
     if probe.returncode or not probe.stdout.strip():
-        raise ValueError("Cannot resolve the local workflow response store")
+        # Bootstrap/inspection may run before a directory is a Git checkout.
+        # Keep the full response locally without replacing its actionable
+        # bootstrap result with a cache-location failure.
+        return (repo / ".zzzops" / "responses").resolve()
     path = Path(probe.stdout.strip())
     return path if path.is_absolute() else (repo / path).resolve()
 
@@ -3849,9 +3852,21 @@ def main() -> int:
                 skip_installation_validation=args.skip_installation_validation,
                 payload_supplied=args.input is not None,
             )
-        rendered = result if args.response == "full" else compact_workflow_response(
-            args.repo.resolve(), args.goal, args.intent, result,
-        )
+        if args.response == "full":
+            rendered = result
+        else:
+            try:
+                rendered = compact_workflow_response(args.repo.resolve(), args.goal, args.intent, result)
+            except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                # Formatting happens after the provider action. A local response
+                # cache failure must not turn a committed submit acknowledgement
+                # into a repair that invites the caller to execute it again.
+                rendered = copy.deepcopy(result)
+                rendered["response_boundary_warning"] = {
+                    "kind": "warning",
+                    "reason": f"Full-response reference unavailable: {exc}",
+                    "action": "Retain this complete response; repair the local response store before relying on compact references.",
+                }
         print(json.dumps(rendered, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
         return 0
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
