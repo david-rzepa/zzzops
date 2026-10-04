@@ -103,6 +103,19 @@ class PortfolioScopeTests(unittest.TestCase):
         self.assertRegex(json.dumps(rejected), r"(?i)head|stale|provider|input")
         self.assertGreater(provider_facts.call_count, 0)
 
+    def test_legacy_publication_consumer_observes_only_its_exact_pr(self):
+        goal = z.github_goal_record(self.issue(1, implementation={
+            "branch": "goal/x", "base": "main", "target": "main",
+            "pr": "https://github.com/owner/repo/pull/11",
+            "review": {"status": "not_started", "checkpoint": None}}))
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(z, "_github_pull_request_states", return_value=({1: {"head_oid": "fresh"}}, 0, 1)) as provider:
+            engine = z._workflow.Workflow(z, Path(directory), project())
+            self.assertEqual({"head_oid": "fresh"}, engine.pull_request(goal))
+            provider.assert_called_once_with(
+                Path(directory), "gh", [{"number": 1}],
+                {1: {"repository_context": goal["implementation"]}})
+
     def test_scheduling_inventory_is_complete_and_unavailable_inventory_fails_closed(self):
         """Capacity admission sees every live owner and never treats failure as empty."""
         run_generic_regressions(
@@ -119,6 +132,20 @@ class PortfolioScopeTests(unittest.TestCase):
         case.session.portfolio_snapshot = mock.Mock(side_effect=ValueError("ownership inventory unavailable"))
         rejected = case.session.call(100, request, expected=2)
         self.assertRegex(json.dumps(rejected), r"(?i)inventory|portfolio|unavailable|repair")
+
+    def test_missing_unrelated_v2_payload_blocks_capacity_but_not_target_context(self):
+        from test_workflow_policy_enforcement import GenericWorkerCapacityTests
+        case = GenericWorkerCapacityTests()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        case.add_goal(101, case.graph)
+        case.provider.comments[101] = []
+        with mock.patch.object(z, "portfolio_snapshot", side_effect=case.session.portfolio_snapshot), \
+             mock.patch.object(z, "GitHubGoalTransitionAdapter", return_value=case.provider):
+            engine = z._workflow.Workflow(z, case.fixture.repo, case.session.project)
+            self.assertEqual(100, engine.read(100)[1]["key"])
+            with self.assertRaisesRegex(ValueError, "Ownership inventory unavailable.*101"):
+                engine.portfolio(include_ownership=True)
 
     def test_one_changed_marker_reparses_only_that_record(self):
         first, second = self.issue(1), self.issue(2)
@@ -197,19 +224,36 @@ class PortfolioScopeTests(unittest.TestCase):
             body_read.assert_not_called()
             self.assertIn("Exact first body.", snapshot["goals"][0]["human_spec"])
 
+    def test_body_cache_corruption_and_discovery_hydration_drift_are_not_reused(self):
+        selected = [{"number": 1, "state": "open", "updated_at": "revision-one"}]
+        bodies = {1: {"body": "original body", "updated_at": "revision-one"}}
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            z._store_open_bodies(repo, "owner/repo", False, selected, bodies)
+            cache = z._portfolio_cache_path(repo)
+            stored = json.loads(cache.read_text())
+            stored["bodies"]["1"] = "corrupted body"
+            cache.write_text(json.dumps(stored))
+            self.assertEqual({}, z._cached_open_bodies(repo, "owner/repo", False, selected, partial=True))
+            cache.unlink()
+            bodies[1]["updated_at"] = "revision-two"
+            z._store_open_bodies(repo, "owner/repo", False, selected, bodies)
+            self.assertFalse(cache.exists())
+
     def test_targeted_closed_dependency_is_present_without_unrelated_closed_history(self):
         open_goal = self.issue(1, depends_on=[2])
         needed = self.issue(2, status="done")
         bodies = {1: {"body": open_goal["body"], "updated_at": open_goal["updated_at"]}}
-        with mock.patch.object(z.shutil, "which", return_value="gh"), \
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(z.shutil, "which", return_value="gh"), \
              mock.patch.object(z, "github_repository_goal_index",
                                return_value=({}, [open_goal], [], 0, 1, 0)), \
              mock.patch.object(z, "_github_goal_bodies", return_value=(bodies, 0, 1)), \
              mock.patch.object(z, "_github_goal_relations", return_value=({2: needed}, 20, 1)) as relations, \
              mock.patch.object(z, "_github_pull_request_states", return_value=({}, 0, 0)):
-            snapshot = z.github_repository_portfolio_snapshot(Path("."), project())[1]
+            snapshot = z.github_repository_portfolio_snapshot(Path(directory), project())[1]
         self.assertEqual([1, 2], [row["key"] for row in snapshot["goals"]])
-        relations.assert_called_once_with(Path("."), "gh", "owner", "repo", [2])
+        relations.assert_called_once_with(Path(directory), "gh", "owner", "repo", [2])
 
     def test_provider_drift_still_rejects_stale_inflight_result(self):
         run_generic_regressions(

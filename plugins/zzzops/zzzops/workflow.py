@@ -585,16 +585,27 @@ class Workflow:
             self._referenced_artifacts.add((number, expected))
         return self.artifact_index(owner).observe(expected)[0]
 
-    def portfolio(self, *, allow_invalid=True):
+    def portfolio(self, *, allow_invalid=True, include_ownership=False):
         if self._portfolio_cache is None:
-            self._portfolio_cache = self.api.portfolio_snapshot(self.repo)
+            # Context does not consume PR observations. Publication/integration
+            # validate their exact provider subjects separately.
+            self._portfolio_cache = self.api.portfolio_snapshot(self.repo, include_pull_requests=False)
+        if include_ownership:
+            if (not self._portfolio_cache.get('complete')
+                    or any(row.get('code') == 'malformed_record' for row in self._portfolio_cache.get('findings', []))):
+                raise ValueError('Ownership inventory unavailable: incomplete or malformed open-goal portfolio')
+            # Admission must observe every unresolved owner, including expired
+            # leases. Missing/corrupt payloads cannot be interpreted as free slots.
             for goal in self._portfolio_cache.get('goals', []):
-                if goal.get('schema_version') == 2 and goal.get('envelope') and goal.get('status') not in {'done', 'cancelled'}:
+                if goal.get('schema_version') == 2 and goal.get('status') not in {'done', 'cancelled'}:
                     try:
                         payload = self.artifact_index(goal['key']).resolve(goal['envelope']['payload']['hash'])[0]
-                        goal['operational_leases'] = copy.deepcopy(payload['operational']['leases'])
-                    except (ValueError, KeyError):
-                        pass
+                        leases = payload['operational']['leases']
+                        if not isinstance(leases, list):
+                            raise ValueError('Invalid operational leases')
+                        goal['operational_leases'] = copy.deepcopy(leases)
+                    except (ValueError, KeyError, TypeError) as exc:
+                        raise ValueError(f"Ownership inventory unavailable for goal #{goal['key']}: {exc}") from exc
         portfolio = self._portfolio_cache
         findings = portfolio.get('findings', [])
         # A provider/inventory failure is global. Fully attributed goal findings
@@ -1172,6 +1183,14 @@ class Workflow:
 
     def pull_request(self, goal):
         value = goal.get('pull_request')
+        if not isinstance(value, dict) and isinstance((goal.get('implementation') or {}).get('pr'), str):
+            # Legacy publication consumers also request their exact subject;
+            # a lightweight context snapshot never stands in for PR evidence.
+            observed, _, _ = self.api._github_pull_request_states(
+                self.repo, 'gh', [{'number': goal['key']}],
+                {goal['key']: {'repository_context': goal['implementation']}},
+            )
+            value = observed.get(goal['key'])
         if not isinstance(value, dict):
             raise ValueError('Current provider PR evidence is unavailable')
         return copy.deepcopy(value)
@@ -2664,7 +2683,7 @@ class Workflow:
                 if lease: raise ValueError('Task already has an owner; observed-stop recovery is required')
                 if state['state'] != 'ready' or request.get('input_hash') != state.get('input_hash'): raise ValueError('Stale input or prerequisite prevents acquisition')
                 if any(set(state['contract']['executor']['resources']).intersection(projection['states'][other]['contract']['executor']['resources']) for other in projection['leases'] if other in projection['states']): raise ValueError('Declared resource is already owned')
-                if unresolved_lease_count(self.portfolio()) >= worker_limit(self.project): raise ValueError('Reviewed max_workers capacity occupied by unresolved owner')
+                if unresolved_lease_count(self.portfolio(include_ownership=True)) >= worker_limit(self.project): raise ValueError('Reviewed max_workers capacity occupied by unresolved owner')
                 step = self.node_step(state)
                 if step['kind'] != 'execute': raise ValueError('Capability choice must be resolved before acquisition')
                 _, receipt = self.node_policy(state)
@@ -3020,7 +3039,7 @@ class Workflow:
 
 def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     engine = engine or Workflow(api, repo, project, runtime)
-    goals = engine.portfolio(allow_invalid=True)
+    goals = engine.portfolio(allow_invalid=True, include_ownership=number is None)
     ordering_policy = next(
         (
             section.get('configuration', {}).get('portfolio_order')
@@ -3032,11 +3051,16 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     limit = worker_limit(project)
     remaining_starts = max(0, limit - unresolved_lease_count(goals))
     capacity_blocked = False
+    inventory_observed = number is None
     def partition(steps, runnable, waiting):
-        nonlocal remaining_starts, capacity_blocked
+        nonlocal remaining_starts, capacity_blocked, inventory_observed, goals
         for step in steps:
             starts_worker = step.get('kind') in {'execute', 'review', 'human_approval'} and isinstance(step.get('start'), dict)
             if starts_worker:
+                if not inventory_observed:
+                    goals = engine.portfolio(allow_invalid=True, include_ownership=True)
+                    remaining_starts = max(0, limit - unresolved_lease_count(goals))
+                    inventory_observed = True
                 if remaining_starts:
                     runnable.append(step)
                     if number is None: remaining_starts -= 1

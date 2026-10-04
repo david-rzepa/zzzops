@@ -1537,7 +1537,8 @@ def _portfolio_from_hydrated_goals(
     findings: list[dict[str, Any]], discovery_bytes: int, discovery_reads: int,
     hydration_bytes: int, hydration_processes: int, excluded: int,
 ) -> dict[str, Any]:
-    records = list(open_records)
+    # Compact projection mutates records; retain parsed source fields for the gateway.
+    records = copy.deepcopy(open_records)
     for issue in selected:
         if issue["state"] != "closed":
             continue
@@ -1600,17 +1601,21 @@ def _cached_open_bodies(repo: Path, identity: str, include_feedback: bool, selec
         cache = json.loads(_portfolio_cache_path(repo).read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
         return None
-    if not isinstance(cache, dict) or cache.get("schema_version") != 1 or cache.get("identity") != identity or cache.get("include_feedback") is not include_feedback or (not partial and cache.get("marker") != marker):
+    if not isinstance(cache, dict) or cache.get("schema_version") != 2 or cache.get("identity") != identity or cache.get("include_feedback") is not include_feedback or (not partial and cache.get("marker") != marker):
         return None
-    bodies = cache.get("bodies")
-    if not isinstance(bodies, dict):
+    bodies, body_hashes = cache.get("bodies"), cache.get("body_hashes")
+    if not isinstance(bodies, dict) or not isinstance(body_hashes, dict):
         return None
-    old_markers = {item.get("number"): item.get("updated_at") for item in cache.get("marker", []) if isinstance(item, dict)}
+    if not isinstance(cache.get("marker"), list):
+        return None
+    old_markers = {item.get("number"): item.get("updated_at") for item in cache["marker"] if isinstance(item, dict) and type(item.get("number")) is int}
     normalized = {}
     for item in marker:
         if partial and old_markers.get(item["number"]) != item["updated_at"]: continue
         body = bodies.get(str(item["number"]))
-        if not isinstance(body, str):
+        if not isinstance(body, str) or body_hashes.get(str(item["number"])) != hashlib.sha256(body.encode()).hexdigest():
+            if partial:
+                continue
             return None
         normalized[item["number"]] = {"body": body, "updated_at": item["updated_at"]}
     return normalized
@@ -1620,21 +1625,65 @@ def _store_open_bodies(repo: Path, identity: str, include_feedback: bool, select
     marker = [{"number": item["number"], "updated_at": item.get("updated_at")} for item in selected if item["state"] == "open"]
     if any(not isinstance(item["updated_at"], str) or not item["updated_at"] for item in marker):
         return
+    # A provider change between discovery and body hydration cannot establish
+    # a cache entry for the older discovery revision.
+    if any(bodies.get(item["number"], {}).get("updated_at") != item["updated_at"] for item in marker):
+        return
     values = {str(item["number"]): bodies.get(item["number"], {}).get("body") for item in marker}
     if any(not isinstance(value, str) for value in values.values()):
         return
     path = _portfolio_cache_path(repo)
     try:
-        payload = {"schema_version": 1, "identity": identity, "include_feedback": include_feedback, "marker": marker, "bodies": values}
+        payload = {"schema_version": 2, "identity": identity, "include_feedback": include_feedback, "marker": marker, "bodies": values}
+        payload["body_hashes"] = {number: hashlib.sha256(body.encode()).hexdigest() for number, body in values.items()}
         if records is not None:
             payload["records"] = {str(number): records[number] for number in sorted(records)}
+            payload["record_bindings"] = {
+                str(issue["number"]): {
+                    "input": _portfolio_record_fingerprint({**issue, **bodies[issue["number"]]}),
+                    "record": _portfolio_record_fingerprint(records[issue["number"]]),
+                }
+                for issue in selected if issue["number"] in records
+            }
         atomic_text(path, json.dumps(payload, sort_keys=True, separators=(",", ":")))
     except OSError:
         pass
 
 
+def _portfolio_record_fingerprint(value: dict[str, Any]) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _cached_open_records(repo: Path, identity: str, include_feedback: bool,
+                         selected: list[dict[str, Any]], bodies: dict[int, dict[str, Any]]) -> dict[int, dict[str, Any]]:
+    """Disposable parsed records bound individually to their complete source."""
+    try:
+        cache = json.loads(_portfolio_cache_path(repo).read_text(encoding="utf-8"))
+        if not isinstance(cache, dict) or cache.get("schema_version") != 2 or cache.get("identity") != identity or cache.get("include_feedback") is not include_feedback:
+            return {}
+        records, bindings = cache.get("records"), cache.get("record_bindings")
+        if not isinstance(records, dict) or not isinstance(bindings, dict):
+            return {}
+        reused = {}
+        for issue in selected:
+            number = issue["number"]
+            record, binding = records.get(str(number)), bindings.get(str(number))
+            if (not isinstance(record, dict) or record.get("key") != number
+                    or not {"human_spec", "acceptance_criteria"} <= set(record)
+                    or not isinstance(binding, dict)):
+                continue
+            candidate = {**issue, **bodies[number]}
+            if (binding.get("input") == _portfolio_record_fingerprint(candidate)
+                    and binding.get("record") == _portfolio_record_fingerprint(record)):
+                reused[number] = copy.deepcopy(record)
+        return reused
+    except (OSError, UnicodeError, ValueError, TypeError, KeyError):
+        return {}
+
+
 def github_repository_portfolio_snapshot(
     repo: Path, project: dict[str, Any], include_feedback: bool = False, *, include_history: bool = False, timing: Any = None,
+    include_pull_requests: bool = True,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     identity = _project_repository_identity(project)
     owner, name = identity.split("/", 1)
@@ -1658,17 +1707,7 @@ def github_repository_portfolio_snapshot(
         bodies.update(hydrated)
     else:
         hydration_bytes, hydration_processes = 0, 0
-    cached_records = None
-    try:
-        cache = json.loads(_portfolio_cache_path(repo).read_text(encoding="utf-8")) if hydration_processes == 0 else {}
-        values = cache.get("records") if isinstance(cache, dict) else None
-        if isinstance(values, dict) and set(values) == {str(issue["number"]) for issue in open_selected} and all(
-            isinstance(value, dict) and {"human_spec", "acceptance_criteria"} <= set(value) and ("phase_evidence" in value or value.get("schema_version") == 2)
-            for value in values.values()
-        ):
-            cached_records = {int(number): copy.deepcopy(value) for number, value in values.items()}
-    except (OSError, ValueError, json.JSONDecodeError):
-        cached_records = None
+    cached_records = _cached_open_records(repo, identity, include_feedback, open_selected, bodies)
     open_records = []
     valid_open = []
     for issue in open_selected:
@@ -1676,7 +1715,7 @@ def github_repository_portfolio_snapshot(
         if GOAL_BLOCK_START not in candidate["body"]:
             continue
         try:
-            open_records.append(cached_records[issue["number"]] if cached_records else github_goal_record(candidate))
+            open_records.append(cached_records[issue["number"]] if issue["number"] in cached_records else github_goal_record(candidate))
             valid_open.append(candidate)
         except (KeyError, TypeError, ValueError) as exc:
             findings.append({"code": "malformed_record", "goal": issue["number"], "detail": str(exc)})
@@ -1709,11 +1748,13 @@ def github_repository_portfolio_snapshot(
                 archived_records.append(github_archived_goal_record(issue))
         except (KeyError, TypeError, ValueError) as exc:
             findings.append({"code": "relation_read_failed", "goal": target, "detail": str(exc)})
-    if hydration_processes:
+    if hydration_processes or len(cached_records) != len(open_records):
         _store_open_bodies(repo, identity, include_feedback, selected, bodies, {record["key"]: record for record in open_records})
-    pull_request_states, pull_request_bytes, pull_request_processes = _github_pull_request_states(
-        repo, executable, valid_open, bodies,
-    )
+    pull_request_states, pull_request_bytes, pull_request_processes = ({}, 0, 0)
+    if include_pull_requests:
+        pull_request_states, pull_request_bytes, pull_request_processes = _github_pull_request_states(
+            repo, executable, valid_open, bodies,
+        )
     for record in open_records:
         state = pull_request_states.get(record["key"])
         if state is not None:
@@ -1757,10 +1798,10 @@ def _validated_portfolio_project(repo: Path) -> dict[str, Any]:
     return project
 
 
-def portfolio_snapshot(repo: Path, include_feedback: bool = False, *, timing: Any = None) -> dict[str, Any]:
+def portfolio_snapshot(repo: Path, include_feedback: bool = False, *, timing: Any = None, include_pull_requests: bool = True) -> dict[str, Any]:
     project = _timed_call(timing, "policy_validation", lambda: _validated_portfolio_project(repo))
     _repository, snapshot = github_repository_portfolio_snapshot(
-        repo, project, include_feedback, timing=timing,
+        repo, project, include_feedback, timing=timing, include_pull_requests=include_pull_requests,
     )
     return snapshot
 
