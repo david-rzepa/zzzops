@@ -1,0 +1,346 @@
+"""Atomic submit continuations through the real public CLI and fake provider."""
+import copy
+import json
+import unittest
+import sys
+from pathlib import Path
+from unittest import mock
+
+import test_evidence_dag_journeys as journeys
+from test_evidence_dag_journeys import DagFixture, z
+import test_workflow_publication_contract as publication
+from test_workflow_owned_outputs import content_hash
+
+
+class SubmitContinuationTests(DagFixture):
+    def ready_names(self, response):
+        return {step['node']['node'] for step in response['next_steps'] if step['kind'] == 'execute'}
+
+    def acquire_returned(self, response, name, actor):
+        step = next(step for step in response['next_steps'] if step.get('kind') == 'execute' and step['node']['node'] == name)
+        receipt = json.loads(Path(step['policy']['path']).read_text())['policy_receipt']
+        work = self.session.call(100, {**step['start'], 'policy_receipt': receipt})['next_steps'][0]
+        self.session.call(100, {**work['bind'], 'actor': actor, 'selection': work['lease']['selection'], 'policy_receipt': receipt})
+        work['bound_actor'] = actor
+        return work
+
+    def test_execution_and_independent_reviews_continue_without_checkpoint(self):
+        work = self.session.acquire('produce')
+        request = self.session.submission(work, {'value': 'candidate'}, 'direct-continuation')
+        before = len(self.provider.updates)
+        with mock.patch.object(z._workflow.Workflow, 'node_checkpoint', side_effect=AssertionError('submit cannot checkpoint')):
+            response = self.session.call(100, request)
+        self.assertEqual({'review_a', 'review_b'}, self.ready_names(response))
+        self.assertEqual({'goal': 100, 'node': work['node'], 'result': self.result('produce')[0]}, response['submitted'])
+        self.assertEqual(before + 1, len(self.provider.updates))
+        self.assertFalse(self.payload()[1]['operational']['leases'])
+        reviewed = response
+        for name in ('review_a', 'review_b'):
+            with mock.patch.object(z._workflow.Workflow, 'node_checkpoint', side_effect=AssertionError('continuation needs no checkpoint')):
+                review = self.acquire_returned(reviewed, name, 'independent-' + name)
+                reviewed = self.session.finish(review, {'value': 'reviewed exact candidate'})
+        self.assertEqual({'finish'}, self.ready_names(reviewed))
+        root = next(step for step in reviewed['next_steps'] if step['kind'] == 'execute')
+        self.assertEqual('root', root['assignment'])
+        self.assertEqual(response, self.session.call(100, request))
+        self.assertEqual(3, len(self.payload()[1]['evidence']))
+        self.assertEqual('open', self.provider.issues[100]['state'])
+
+    def test_replay_conflict_and_invalid_actor_or_output_preserve_state(self):
+        work = self.session.acquire('produce')
+        request = self.session.submission(work, {'value': 'candidate'}, 'exact-continuation')
+        for mutation in ({'actor': 'intruder'}, {'outputs': {'wrong': 12}}):
+            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+            self.session.call(100, {**request, **mutation}, expected=2)
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        response = self.session.call(100, request)
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, {**request, 'outputs': {'value': 'changed'}}, expected=2)
+        self.assertEqual(response, self.session.call(100, request))
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_uncertain_publication_has_no_success_then_exact_retry(self):
+        work = self.session.acquire('produce')
+        request = self.session.submission(work, {'value': 'candidate'}, 'uncertain-continuation')
+        before = copy.deepcopy(self.provider.issues)
+        with mock.patch.object(self.provider, 'update_issue', side_effect=RuntimeError('unavailable')):
+            failed = self.session.call(100, request, expected=2)
+        self.assertFalse(self.ready_names(failed))
+        self.assertEqual(before, self.provider.issues)
+        response = self.session.call(100, request)
+        self.assertEqual({'review_a', 'review_b'}, self.ready_names(response))
+        self.assertEqual(response, self.session.call(100, request))
+
+    def test_exact_parent_grants_and_human_root_boundary_are_preserved(self):
+        fixture = journeys.WorkspaceAuthorityPublicTests()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        fixture.setup_parent_workspace()
+        submissions = [call['response'] for call in fixture.session.calls if call['operation'] == 'submit' and call['goal'] == 100]
+        consent = next(value for value in reversed(submissions) if value['submitted']['node']['node'] == 'consent')
+        review = next(value for value in reversed(submissions) if value['submitted']['node']['node'] == 'inspect_charter')
+        self.assertIn('consent', self.ready_names(review))
+        self.assertNotIn('alpha', self.ready_names(review))
+        self.assertIn('alpha', self.ready_names(consent))
+        step = next(step for step in consent['next_steps'] if step.get('node', {}).get('node') == 'alpha')
+        pinned = {item['name'] for item in step['input_envelope']['inputs']}
+        self.assertTrue({'parent_allocation', 'parent_authorization', 'parent_approval'} <= pinned)
+        self.assertFalse(fixture.payload()[1]['operational']['leases'])
+
+    def test_released_lease_frees_capacity_in_same_continuation(self):
+        z._workflow_section(self.session.project, 'autonomy_approval_parallelism')['configuration']['max_workers'] = 1
+        work = self.session.acquire('produce')
+        response = self.session.finish(work, {'value': 'candidate'})
+        self.assertEqual({'review_a', 'review_b'}, self.ready_names(response))
+        self.assertFalse(any(step.get('max_workers') == 1 for step in response['next_steps']))
+
+    def test_lost_successful_body_response_returns_confirmed_continuation(self):
+        work = self.session.acquire('produce')
+        request = self.session.submission(work, {'value': 'candidate'}, 'lost-body-continuation')
+        original = self.provider.update_issue
+        updates = len(self.provider.updates)
+        def lost(*args, **kwargs):
+            original(*args, **kwargs)
+            raise RuntimeError('committed response lost')
+        with mock.patch.object(self.provider, 'update_issue', side_effect=lost):
+            response = self.session.call(100, request)
+        self.assertEqual({'review_a', 'review_b'}, self.ready_names(response))
+        self.assertEqual(response, self.session.call(100, request))
+        self.assertEqual(updates + 1, len(self.provider.updates))
+
+    def test_changes_requested_review_returns_correction_without_approval(self):
+        fixture = journeys.DefaultCorrectionPublicTests()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        fixture.default_decomposition()
+        work = fixture.session.acquire('review_decomposition')
+        response = fixture.session.finish(work, {'value': {'decision': 'changes_requested', 'report': 'Required correction'}})
+        ready = self.ready_names(response)
+        self.assertIn('interpret_decompose_rejection', ready)
+        self.assertNotIn('test_design', ready)
+        self.assertNotIn('approve_understanding', ready)
+        self.assertFalse(any(step['kind'] in {'integrate', 'complete'} for step in response['next_steps']))
+
+    def test_expired_or_stale_submission_cannot_publish_continuation(self):
+        graph = copy.deepcopy(self.graph)
+        graph['nodes'][0]['inputs'] = {'request': journeys.spec_input()}
+        self.install(graph)
+        work = self.session.acquire('produce')
+        request = self.session.submission(work, {'value': 'candidate'}, 'stale-continuation')
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        with mock.patch.object(z._workflow.time, 'time', return_value=work['lease']['expires_at'] + 1):
+            self.session.call(100, request, expected=2)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.replace_spec('substantively changed input')
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, request, expected=2)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_workspace_proof_logs_and_continuation_survive_retry(self):
+        fixture = journeys.WorkspaceAuthorityPublicTests()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        fixture.setup_workspace()
+        work = fixture.acquire_workspace('alpha')
+        (fixture.fixture.repo / 'behavior_test.py').write_text("assert False, 'required missing behavior'\n")
+        request = fixture.session.submission(work, {'value': 'verified failing baseline'}, 'proof-continuation')
+        command = [sys.executable, '-c', "print('single proof'); raise SystemExit(1)"]
+        request['workspace_checks'] = [command]
+        with mock.patch.object(fixture.provider, 'update_issue', side_effect=RuntimeError('unavailable')):
+            fixture.session.call(100, request, expected=2)
+        comments = copy.deepcopy(fixture.provider.comments)
+        logs = {path: path.read_bytes() for path in (fixture.fixture.repo / '.zzzops/diagnostics').glob('node-*.log')}
+        self.assertTrue(logs)
+        import subprocess
+        original = subprocess.run
+        def no_repeat(argv, *args, **kwargs):
+            self.assertNotEqual(command, argv, 'Retry must reuse the original proof and log')
+            return original(argv, *args, **kwargs)
+        with mock.patch.object(subprocess, 'run', side_effect=no_repeat):
+            response = fixture.session.call(100, request)
+        self.assertEqual({'observe_alpha'}, self.ready_names(response))
+        self.assertNotIn('beta', self.ready_names(response))
+        self.assertEqual(comments, fixture.provider.comments)
+        self.assertEqual(logs, {path: path.read_bytes() for path in logs})
+        ref = fixture.read_blob(fixture.produced('alpha'))['provenance']['source']
+        self.assertFalse(fixture.read_blob(ref)['passed'])
+        self.assertEqual(response, fixture.session.call(100, request))
+
+    def test_legacy_literal_response_receipts_replay_unchanged(self):
+        request = {'operation': 'submit', 'request_id': 'legacy-literal'}
+        literal = {'next_steps': [{'kind': 'checkpoint', 'goal': 100}]}
+        envelope, payload = self.payload()
+        payload['operational']['receipts'].append({'request': request['request_id'],
+            'payload': content_hash(request), 'result': self.blob(literal)})
+        envelope['payload'] = self.blob(payload)
+        self.provider.issues[100]['body'] = '<!-- zzzops-goal\n' + json.dumps(envelope) + '\nzzzops-goal -->'
+        self.assertEqual(literal, self.session.call(100, request))
+
+
+class SchedulingInventoryContinuationTests(DagFixture):
+    ready_names = SubmitContinuationTests.ready_names
+    add_goal = journeys.RelationshipPublicTests.add_goal
+    put_envelope = journeys.RelationshipPublicTests.put_envelope
+
+    def setUp(self):
+        super().setUp()
+        z._workflow_section(self.session.project, 'autonomy_approval_parallelism')['configuration']['max_workers'] = 1
+        graph = json.loads(json.dumps(self.graph).replace('"goal": 100', '"goal": "#this"'))
+        self.install(graph)
+        raw = self.session.portfolio_snapshot
+        def unhydrated(*args, **kwargs):
+            value = raw(*args, **kwargs)
+            for goal in value['goals']:
+                goal.pop('operational_leases', None)
+            return value
+        self.session.portfolio_snapshot = unhydrated
+
+    def add_unrelated_owner(self, work):
+        self.add_goal(101, self.graph)
+        envelope = z.parse_managed_goal(self.provider.issues[101]['body'], 101)
+        payload = self.session.read(101, envelope['payload'])
+        lease = copy.deepcopy(work['lease'])
+        lease['node']['goal'] = 101
+        lease['token'] = 'unrelated-owner'
+        payload['operational']['leases'] = [lease]
+        offset = len(self.provider.comments[100])
+        envelope['payload'] = self.blob(payload)
+        for row in self.provider.comments[100][offset:]:
+            self.provider.create_issue_comment(101, row['body'])
+        self.put_envelope(101, envelope)
+
+    def test_targeted_checkpoint_loads_unrelated_owner_before_offering_start(self):
+        self.session.acquire('produce')
+        self.add_goal(101, self.graph)
+        response = self.session.call(101)
+        self.assertEqual(set(), self.ready_names(response))
+        self.assertEqual(1, next(step['active_leases'] for step in response['next_steps'] if 'active_leases' in step))
+
+    def test_continuation_counts_unrelated_owner_and_released_local_lease(self):
+        work = self.session.acquire('produce')
+        self.add_unrelated_owner(work)
+        response = self.session.finish(work, {'value': 'candidate'})
+        self.assertEqual(set(), self.ready_names(response))
+        self.assertEqual(1, next(step['active_leases'] for step in response['next_steps'] if 'active_leases' in step))
+        self.assertFalse(self.payload()[1]['operational']['leases'])
+
+    def test_unavailable_inventory_blocks_checkpoint_and_scheduling_submit(self):
+        work = self.session.acquire('produce')
+        self.add_goal(101, self.graph)
+        self.add_goal(102, self.graph)
+        self.provider.comments[101] = []
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        failed = self.session.call(102, expected=2)
+        self.assertFalse(self.ready_names(failed))
+        request = self.session.submission(work, {'value': 'candidate'}, 'unavailable-inventory')
+        failed = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(failed), 'Ownership inventory unavailable')
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_nonscheduling_continuation_and_owned_checkpoint_skip_unrelated_inventory(self):
+        graph = copy.deepcopy(self.graph)
+        graph['nodes'] = graph['nodes'][:1]
+        graph['terminals'] = [{'kind': 'node', 'goal': '#this', 'node': 'produce'}]
+        self.install(graph)
+        work = self.session.acquire('produce')
+        self.add_goal(101, graph)
+        self.provider.comments[101] = []
+        with mock.patch.object(self.provider, 'get_issue_comments', wraps=self.provider.get_issue_comments) as reads:
+            owned = self.session.call(100)
+            response = self.session.finish(work, {'value': 'done'})
+        self.assertFalse(self.ready_names(owned))
+        self.assertEqual(['complete'], [step['kind'] for step in response['next_steps']])
+        self.assertNotIn(101, [call.args[0] for call in reads.call_args_list])
+
+
+class MultipartContinuationTests(DagFixture):
+    def setUp(self):
+        super().setUp()
+    multipart_request = journeys.GenericStoragePublicTests.multipart_request
+    leave_partial_upload = journeys.GenericStoragePublicTests.leave_partial_upload
+
+    def test_partial_append_reuses_exact_continuation_and_result(self):
+        _work, _values, request = self.multipart_request()
+        updates = len(self.provider.updates)
+        partial, offset = self.leave_partial_upload(request)
+        response = self.session.call(100, request)
+        self.assertEqual({'review_a', 'review_b'}, SubmitContinuationTests.ready_names(self, response))
+        self.assertEqual(response, self.session.call(100, request))
+        self.assertEqual(1, sum(row['body'] == partial['body'] for row in self.provider.comments[100][offset:]))
+        self.assertEqual(updates + 1, len(self.provider.updates))
+        self.assertEqual(1, len(self.payload()[1]['evidence']))
+
+
+class PublicationContinuationTests(DagFixture):
+    def setUp(self):
+        super().setUp()
+        self.setup_publication()
+    setup_publication = publication.GenericPublicationPublicTests.setup_publication
+    provider_command = publication.GenericPublicationPublicTests.provider_command
+    configure = publication.GenericPublicationPublicTests.configure
+    submit_role = publication.GenericPublicationPublicTests.submit_role
+    authorize_context = publication.GenericPublicationPublicTests.authorize_context
+    observed_value = publication.GenericPublicationPublicTests.observed_value
+    mark_merged = publication.GenericPublicationPublicTests.mark_merged
+
+    def approval_request(self):
+        self.authorize_context()
+        self.submit_role('observe', self.observed_value())
+        self.submit_role('review', 'exact independent review', actor='publication-reviewer')
+        work = self.session.acquire(self.ids['approve'])
+        return self.session.submission(work, {'value': {'subject': self.produced(self.ids['observe']),
+            'review': self.produced(self.ids['review']), 'policy': content_hash(self.session.project['policy']),
+            'decision': 'approved'}}, 'publication-continuation')
+
+    def test_publication_approval_returns_integrate_without_effect(self):
+        request = self.approval_request()
+        response = self.session.call(100, request)
+        integration = next(step for step in response['next_steps'] if step['kind'] == 'integrate')
+        self.assertEqual(self.observation['head_oid'], integration['submission']['expected_head'])
+        self.assertEqual(self.produced(self.ids['approve']), integration['submission']['authorization'])
+        self.assertEqual([], self.merge_calls)
+        self.assertEqual(response, self.session.call(100, request))
+
+    def test_pending_publication_reuses_operational_request_id(self):
+        request = self.approval_request()
+        with mock.patch.object(self.provider, 'update_issue', side_effect=RuntimeError('unavailable')):
+            self.session.call(100, request, expected=2)
+        comments = copy.deepcopy(self.provider.comments)
+        response = self.session.call(100, request)
+        self.assertTrue(any(step['kind'] == 'integrate' for step in response['next_steps']))
+        self.assertEqual(comments, self.provider.comments)
+        self.assertEqual(response, self.session.call(100, request))
+        self.assertEqual([], self.merge_calls)
+
+    def test_deferred_binding_rejects_forged_transaction_target(self):
+        request = self.approval_request()
+        self.mark_merged()
+        response = self.session.call(100, request)
+        changed = 0
+        for row in self.provider.comments[100]:
+            envelope = z._comment_store.decode_envelope(row['body'])
+            if envelope and envelope.get('context', {}).get('request_id') == request['request_id']:
+                envelope['context']['target_envelope']['revision'] += 10
+                row['body'] = z._comment_store.encode_envelope(envelope)
+                changed += 1
+        self.assertGreater(changed, 0)
+        failed = self.session.call(100, request, expected=2)
+        self.assertNotEqual(response, failed)
+        self.assertFalse(any(step['kind'] == 'reconcile' for step in failed['next_steps']))
+
+    def test_reconciliation_binds_original_confirmed_envelope_on_replay(self):
+        request = self.approval_request()
+        self.mark_merged()
+        response = self.session.call(100, request)
+        reconciliation = next(step for step in response['next_steps'] if step['kind'] == 'reconcile')
+        original, _ = self.payload()
+        self.assertEqual(content_hash(original), reconciliation['submission']['expected_digest'])
+        self.assertIsInstance(reconciliation['submission']['expected_digest'], str)
+        self.replace_spec('later unrelated envelope state')
+        self.assertEqual(response, self.session.call(100, request))
+        self.assertNotEqual(content_hash(self.payload()[0]), reconciliation['submission']['expected_digest'])
+        self.assertEqual([], self.merge_calls)
+
+
+if __name__ == '__main__':
+    unittest.main()
