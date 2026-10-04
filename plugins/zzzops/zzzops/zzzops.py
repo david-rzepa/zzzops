@@ -6,6 +6,9 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+import threading
+
 import argparse
 import copy
 import contextvars
@@ -686,7 +689,11 @@ query($owner:String!,$name:String!,$number:Int!,$endCursor:String){
 }
 """.strip()
 GOAL_SCHEMA_LABEL = re.compile(r"^zzzops:schema:v(?P<version>[1-9][0-9]*)$")
-GOAL_HYDRATION_BATCH_SIZE = 100
+GOAL_HYDRATION_BATCH_SIZE = 5
+GOAL_HYDRATION_CONCURRENCY = 4
+GOAL_HYDRATION_TIMEOUT_SECONDS = 240
+GOAL_HYDRATION_ATTEMPTS = 2
+GOAL_RELATION_BATCH_SIZE = 100
 PULL_REQUEST_HYDRATION_BATCH_SIZE = 100
 MANAGED_SKILLS = (
     "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
@@ -1137,41 +1144,97 @@ def _goal_body_query(numbers: list[int]) -> str:
 def _github_goal_bodies(
     repo: Path, executable: str, owner: str, name: str, numbers: list[int],
 ) -> tuple[dict[int, dict[str, Any]], int, int]:
+    if any(type(number) is not int or number < 1 for number in numbers):
+        raise ValueError("Goal-body hydration requires positive integer issue numbers")
+    numbers = list(dict.fromkeys(numbers))
     if not numbers:
         return {}, 0, 0
-    hydrated = {}
-    raw_bytes = 0
-    processes = 0
-    for offset in range(0, len(numbers), GOAL_HYDRATION_BATCH_SIZE):
-        batch = numbers[offset:offset + GOAL_HYDRATION_BATCH_SIZE]
-        command = [
-            executable, "api", "graphql", "-f", f"query={_goal_body_query(batch)}",
-            "-F", f"owner={owner}", "-F", f"name={name}",
-        ]
-        try:
-            result = subprocess.run(
-                command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise ValueError(f"GitHub targeted goal-body read failed: {type(exc).__name__}") from exc
-        processes += 1
-        if result.returncode:
-            raise ValueError("GitHub targeted goal-body read failed: " + (result.stderr.strip() or "unknown gh error"))
-        try:
-            payload = json.loads(result.stdout)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"GitHub targeted goal-body read returned invalid JSON: {exc}") from exc
-        data = payload.get("data") if isinstance(payload, dict) else None
-        repository = data.get("repository") if isinstance(data, dict) else None
-        if not isinstance(repository, dict):
-            raise ValueError("GitHub targeted goal-body read is incomplete or malformed")
-        for number in batch:
-            issue = repository.get(f"goal_{number}")
-            if not isinstance(issue, dict) or issue.get("number") != number or not isinstance(issue.get("body"), str):
-                raise ValueError(f"GitHub targeted goal-body read omitted issue #{number}")
-            hydrated[number] = {"body": issue["body"], "updated_at": issue.get("updatedAt")}
-        raw_bytes += len(result.stdout.encode("utf-8"))
-    return hydrated, raw_bytes, processes
+    # Body size is unknown before its first read. A small fixed alias ceiling
+    # avoids speculative oversized requests; metadata-only queries stay broad.
+    remaining = globals().get('provider_operation_remaining')
+    parent_remaining = remaining() if remaining else None
+    duration = min(GOAL_HYDRATION_TIMEOUT_SECONDS, parent_remaining) if parent_remaining is not None else GOAL_HYDRATION_TIMEOUT_SECONDS
+    deadline = time.monotonic() + duration
+    cancelled = threading.Event()
+
+    def budget():
+        available = deadline - time.monotonic()
+        if cancelled.is_set() or available <= 0:
+            raise ValueError("GitHub goal-body hydration deadline exhausted or operation cancelled")
+        return min(60, available)
+
+    def fetch(batch):
+        command = [executable, "api", "graphql", "-f", f"query={_goal_body_query(batch)}",
+                   "-F", f"owner={owner}", "-F", f"name={name}"]
+        raw_bytes = 0
+        for attempt in range(GOAL_HYDRATION_ATTEMPTS):
+            timeout = budget()
+            try:
+                result = subprocess.run(command, cwd=repo, capture_output=True, text=True,
+                                        encoding="utf-8", timeout=timeout, check=False)
+            except subprocess.TimeoutExpired as exc:
+                if attempt + 1 < GOAL_HYDRATION_ATTEMPTS:
+                    continue
+                raise ValueError("GitHub targeted goal-body read failed: TimeoutExpired") from exc
+            except OSError as exc:
+                raise ValueError(f"GitHub targeted goal-body read failed: {type(exc).__name__}") from exc
+            raw_bytes += len(result.stdout.encode("utf-8"))
+            if result.returncode:
+                detail = result.stderr.strip() or "unknown gh error"
+                transient = re.search(r"(?i)unexpected eof|http/?2|stream.*cancel|connection reset|timed? out|HTTP 50[234]", detail)
+                if transient and attempt + 1 < GOAL_HYDRATION_ATTEMPTS:
+                    continue
+                raise ValueError("GitHub targeted goal-body read failed: " + detail)
+            try:
+                payload = _comment_store.strict_json(result.stdout)
+            except json.JSONDecodeError as exc:
+                if attempt + 1 < GOAL_HYDRATION_ATTEMPTS:
+                    continue
+                raise ValueError("GitHub targeted goal-body read returned invalid JSON") from exc
+            data = payload.get("data") if isinstance(payload, dict) else None
+            repository = data.get("repository") if isinstance(data, dict) else None
+            if (not isinstance(repository, dict) or payload.get("errors")
+                    or set(repository) != {f"goal_{number}" for number in batch}):
+                raise ValueError("GitHub targeted goal-body read is incomplete or malformed")
+            rows = {}
+            for number in batch:
+                issue = repository[f"goal_{number}"]
+                if (not isinstance(issue, dict) or type(issue.get("number")) is not int
+                        or issue["number"] != number or not isinstance(issue.get("body"), str)
+                        or not isinstance(issue.get("updatedAt"), str) or not issue["updatedAt"]):
+                    raise ValueError(f"GitHub targeted goal-body read omitted issue #{number} or its freshness marker")
+                rows[number] = {"body": issue["body"], "updated_at": issue["updatedAt"]}
+            budget()
+            return rows, raw_bytes, attempt + 1
+        raise ValueError("GitHub goal-body hydration retry budget exhausted")
+
+    batches = iter(numbers[offset:offset + GOAL_HYDRATION_BATCH_SIZE]
+                   for offset in range(0, len(numbers), GOAL_HYDRATION_BATCH_SIZE))
+    hydrated, raw_bytes, processes = {}, 0, 0
+    executor = ThreadPoolExecutor(max_workers=GOAL_HYDRATION_CONCURRENCY)
+    pending = set()
+    try:
+        for _ in range(GOAL_HYDRATION_CONCURRENCY):
+            batch = next(batches, None)
+            if batch is not None: pending.add(executor.submit(fetch, batch))
+        while pending:
+            finished, pending = wait(pending, timeout=budget(), return_when=FIRST_COMPLETED)
+            if not finished:
+                budget()
+                continue
+            # Validate the whole completed group before scheduling more work.
+            for future in finished:
+                rows, size, count = future.result()
+                hydrated.update(rows); raw_bytes += size; processes += count
+            for _ in finished:
+                batch = next(batches, None)
+                if batch is not None: pending.add(executor.submit(fetch, batch))
+        return {number: hydrated[number] for number in numbers}, raw_bytes, processes
+    finally:
+        cancelled.set()
+        # subprocess.run kills and reaps timed-out children. Every in-flight
+        # timeout is bounded by the same captured deadline, including retries.
+        executor.shutdown(wait=True, cancel_futures=True)
 
 
 def _portfolio_pull_request_cache_path(repo: Path) -> Path:
@@ -1497,8 +1560,8 @@ def _github_goal_relations(
     relations: dict[int, dict[str, Any]] = {}
     raw_bytes = 0
     processes = 0
-    for offset in range(0, len(targets), GOAL_HYDRATION_BATCH_SIZE):
-        batch = targets[offset:offset + GOAL_HYDRATION_BATCH_SIZE]
+    for offset in range(0, len(targets), GOAL_RELATION_BATCH_SIZE):
+        batch = targets[offset:offset + GOAL_RELATION_BATCH_SIZE]
         command = [
             executable, "api", "graphql", "-f", f"query={_goal_relation_query(batch)}",
             "-F", f"owner={owner}", "-F", f"name={name}",
