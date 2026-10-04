@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
+
 import argparse
 import copy
 import contextvars
@@ -23,7 +26,6 @@ from types import SimpleNamespace
 from typing import Any
 from urllib.parse import quote, urlparse
 
-RELEASE_EVIDENCE_CACHE_TTL_SECONDS = 60
 
 _PR_CORRECTION_CACHE: dict[tuple, list[dict[str, Any]]] = {}
 
@@ -173,6 +175,47 @@ _ADMIN_SPEC.loader.exec_module(_workflow_admin)
 _HEARTBEAT_SPEC = importlib.util.spec_from_file_location("zzzops_heartbeat", Path(__file__).with_name("heartbeat.py"))
 _heartbeat = importlib.util.module_from_spec(_HEARTBEAT_SPEC)
 _HEARTBEAT_SPEC.loader.exec_module(_heartbeat)
+
+
+_PROVIDER_READ_CONTEXT = ContextVar("zzzops_provider_read_context", default=None)
+
+
+@contextmanager
+def provider_read_invocation():
+    """One public invocation owns all mutable provider observations."""
+    token = _PROVIDER_READ_CONTEXT.set({"releases": {}, "issues": {}, "pull_requests": {}})
+    try:
+        yield
+    finally:
+        _PROVIDER_READ_CONTEXT.reset(token)
+
+
+def invalidate_provider_reads(repo, repository):
+    context = _PROVIDER_READ_CONTEXT.get()
+    if context is not None:
+        key = (str(repo.resolve()), repository)
+        context["issues"].pop(key, None)
+        context["releases"].pop(key, None)
+        context["pull_requests"].clear()
+
+
+def provider_issue_snapshot(repo, repository, number):
+    """Read-only gateway. Missing explicit targets use GraphQL, never REST."""
+    context = _PROVIDER_READ_CONTEXT.get()
+    key = (str(repo.resolve()), repository)
+    issues = context["issues"].setdefault(key, {}) if context is not None else {}
+    if number in issues:
+        return copy.deepcopy(issues[number])
+    executable = shutil.which("gh")
+    if not executable: raise ValueError("GitHub CLI is unavailable")
+    owner, name = repository.split("/", 1)
+    metadata, _, _ = _github_goal_relations(repo, executable, owner, name, [number])
+    bodies, _, _ = _github_goal_bodies(repo, executable, owner, name, [number])
+    if number not in metadata or number not in bodies:
+        raise ValueError("Provider gateway omitted exact goal " + str(number))
+    issue = {**metadata[number], **bodies[number]}
+    issues[number] = issue
+    return copy.deepcopy(issue)
 
 
 def workflow_engine(repo, project, runtime=None):
@@ -1197,7 +1240,19 @@ def _store_pull_request_states(repo: Path, marker: list[dict[str, Any]], states:
         pass
 
 
-def _github_pull_request_states(
+def _github_pull_request_states(repo, executable, selected, bodies):
+    context = _PROVIDER_READ_CONTEXT.get()
+    targets, fresh = _pull_request_targets(selected, bodies)
+    key = (str(repo.resolve()), json.dumps([[list(target), goals] for target, goals in sorted(targets.items())], sort_keys=True), tuple(sorted(fresh)))
+    if context is not None and key in context["pull_requests"]:
+        return copy.deepcopy(context["pull_requests"][key]), 0, 0
+    states, size, count = _observe_pull_request_states(repo, executable, selected, bodies)
+    if context is not None:
+        context["pull_requests"][key] = copy.deepcopy(states)
+    return states, size, count
+
+
+def _observe_pull_request_states(
     repo: Path, executable: str, selected: list[dict[str, Any]], bodies: dict[int, dict[str, Any]],
 ) -> tuple[dict[int, dict[str, Any]], int, int]:
     """Broadphase referenced PRs, caching unchanged scheduling evidence."""
@@ -1773,6 +1828,9 @@ def github_repository_portfolio_snapshot(
             hydration_processes + relation_processes + pull_request_processes, excluded,
         ),
     )
+    context = _PROVIDER_READ_CONTEXT.get()
+    if context is not None:
+        context["issues"][(str(repo.resolve()), identity)] = {item["number"]: copy.deepcopy(item) for item in valid_open}
     # The public graph projection is intentionally compact, but the workflow
     # gateway needs these already-hydrated fields to avoid exact issue rereads.
     by_key = {record["key"]: record for record in open_records}
@@ -2240,24 +2298,20 @@ def github_repository_probe(repo: Path) -> dict[str, Any]:
 def github_release_evidence(repo: Path, repository: dict[str, Any]) -> dict[str, Any]:
     """Capture all published releases with resolved tag commits, or fail closed."""
     identity = repository.get("identity") if isinstance(repository, dict) else None
-    disk_cache = repo / ".zzzops" / "portfolio-release-cache.json"
-    cache_directory_exists = disk_cache.parent.is_dir()
-    if cache_directory_exists:
-        try:
-            persisted = json.loads(disk_cache.read_text(encoding="utf-8"))
-            if (
-                persisted.get("schema_version") == 1 and persisted.get("identity") == identity
-                and isinstance(persisted.get("checked_at"), (int, float))
-                and time.time() - persisted["checked_at"] < RELEASE_EVIDENCE_CACHE_TTL_SECONDS
-                and isinstance(persisted.get("evidence"), dict)
-            ):
-                return copy.deepcopy(persisted["evidence"])
-        except (OSError, UnicodeError, ValueError, TypeError):
-            pass
+    context = _PROVIDER_READ_CONTEXT.get()
+    key = (str(repo.resolve()), identity if isinstance(identity, str) else None)
+    if context is not None and key in context["releases"]:
+        return copy.deepcopy(context["releases"][key])
+    # Mutable release indices AND tag targets are revalidated on every public
+    # invocation. A TTL cache cannot prove either is still current.
+    def finish(value):
+        if context is not None:
+            context["releases"][key] = copy.deepcopy(value)
+        return value
     executable = shutil.which("gh")
     unavailable = {"available": bool(executable), "status": "unavailable", "releases": None}
     if not executable or not isinstance(identity, str) or identity.count("/") != 1:
-        return {**unavailable, "reason": "repository_identity_unavailable"}
+        return finish({**unavailable, "reason": "repository_identity_unavailable"})
 
     def read(endpoint, *options):
         result = subprocess.run([executable, "api", endpoint, *options], cwd=repo,
@@ -2271,6 +2325,7 @@ def github_release_evidence(repo: Path, repository: dict[str, Any]) -> dict[str,
         if not isinstance(pages, list) or any(not isinstance(page, list) for page in pages):
             raise ValueError("release_api_malformed")
         releases = []
+        commits = {}
         for item in [item for page in pages for item in page]:
             if not isinstance(item, dict) or type(item.get("draft")) is not bool:
                 raise ValueError("release_api_malformed")
@@ -2280,8 +2335,11 @@ def github_release_evidence(repo: Path, repository: dict[str, Any]) -> dict[str,
                     or not item["tag_name"].strip() or not isinstance(item.get("published_at"), str)
                     or not item["published_at"].strip()):
                 raise ValueError("release_api_malformed")
-            commit = read(f"repos/{identity}/commits/{quote(item['tag_name'], safe='')}")
-            commit = commit.get("sha") if isinstance(commit, dict) else None
+            tag = item['tag_name']
+            if tag not in commits:
+                resolved = read(f"repos/{identity}/commits/{quote(tag, safe='')}")
+                commits[tag] = resolved.get("sha") if isinstance(resolved, dict) else None
+            commit = commits[tag]
             if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
                 raise ValueError("release_commit_unavailable")
             releases.append({"id": item["id"], "tag": item["tag_name"], "commit": commit,
@@ -2289,15 +2347,10 @@ def github_release_evidence(repo: Path, repository: dict[str, Any]) -> dict[str,
         if len({item["id"] for item in releases}) != len(releases):
             raise ValueError("release_api_duplicate")
         observed = {"available": True, "status": "complete", "releases": sorted(releases, key=lambda item: item["id"]), "reason": "ok"}
-        if cache_directory_exists:
-            try:
-                atomic_text(disk_cache, json.dumps({"schema_version": 1, "identity": identity, "checked_at": time.time(), "evidence": observed}, sort_keys=True, separators=(",", ":")))
-            except OSError:
-                pass
-        return observed
+        return finish(observed)
     except (OSError, UnicodeError, subprocess.TimeoutExpired, ValueError) as exc:
         observed = {**unavailable, "reason": str(exc) if type(exc) is ValueError else type(exc).__name__}
-        return observed
+        return finish(observed)
 
 
 def migration_assessment(repo: Path, project: dict[str, Any], goal: dict[str, Any]) -> dict[str, Any]:

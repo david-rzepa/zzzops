@@ -32,6 +32,85 @@ class MemoryIssueAdapter:
 
 
 class WorkflowInvocationCacheTests(unittest.TestCase):
+    def test_real_public_v2_checkpoint_uses_gateway_without_direct_issue_or_pr_capability(self):
+        case = dag_fixtures.DagFixture()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        snapshot = case.session.portfolio_snapshot()
+        case.session.portfolio_snapshot = lambda *_args, **_kwargs: copy.deepcopy(snapshot)
+        direct_issue = case.provider.get_issue
+        direct_pr = getattr(case.provider, "get_pull_request", None)
+        case.provider.get_issue = mock.Mock(side_effect=AssertionError(
+            "read-only checkpoint bypassed the hydrated gateway"))
+        if direct_pr is not None:
+            case.provider.get_pull_request = mock.Mock(side_effect=AssertionError(
+                "read-only checkpoint fetched a PR directly"))
+
+        steps = case.session.checkpoint(100)
+
+        self.assertTrue(any(step.get("kind") == "execute" for step in steps))
+        case.provider.get_issue.assert_not_called()
+        if direct_pr is not None:
+            case.provider.get_pull_request.assert_not_called()
+        case.provider.get_issue = direct_issue
+        if direct_pr is not None:
+            case.provider.get_pull_request = direct_pr
+
+    def test_public_checkpoint_uses_real_gateway_and_reuses_exact_provider_bytes(self):
+        case = dag_fixtures.DagFixture(); case.setUp()
+        self.addCleanup(case.doCleanups)
+        snapshot = case.session.portfolio_snapshot()
+        case.session.portfolio_snapshot = lambda *_a, **_k: copy.deepcopy(snapshot)
+        issue = copy.deepcopy(case.provider.issues[100])
+        case.session.provider_issue_snapshot = z.provider_issue_snapshot
+        with mock.patch.object(z, '_github_goal_relations', return_value=({100: issue}, 10, 1)) as metadata, \
+             mock.patch.object(z, '_github_goal_bodies', return_value=({100: {'body': issue['body']}}, 10, 1)) as bodies, \
+             mock.patch.object(case.provider, 'get_issue', side_effect=AssertionError('Direct issue read')):
+            steps = case.session.checkpoint(100)
+        self.assertTrue(any(step.get('kind') == 'execute' for step in steps))
+        metadata.assert_called_once()
+        bodies.assert_called_once()
+        self.assertEqual([100], metadata.call_args.args[-1])
+        self.assertEqual([100], bodies.call_args.args[-1])
+
+    def test_pr_gateway_shares_invocation_snapshot_and_invalidates_on_refresh(self):
+        repo = Path('.')
+        rows = [{'number': 100}]
+        bodies = {100: {'repository_context': {'pr': 'https://github.com/owner/repo/pull/7'}}}
+        observed = {100: {'head_oid': 'a' * 40}}
+        with mock.patch.object(z, '_observe_pull_request_states', side_effect=lambda *_a: (copy.deepcopy(observed), 10, 1)) as provider:
+            with z.provider_read_invocation():
+                first, _, _ = z._github_pull_request_states(repo, 'gh', rows, bodies)
+                first[100]['head_oid'] = 'tampered'
+                second, size, count = z._github_pull_request_states(repo, 'gh', rows, bodies)
+                self.assertEqual('a' * 40, second[100]['head_oid'])
+                self.assertEqual((0, 0), (size, count))
+                self.assertEqual(1, provider.call_count)
+                observed[100]['head_oid'] = 'b' * 40
+                z.invalidate_provider_reads(repo, 'owner/repo')
+                self.assertEqual('b' * 40, z._github_pull_request_states(repo, 'gh', rows, bodies)[0][100]['head_oid'])
+                self.assertEqual(2, provider.call_count)
+            with z.provider_read_invocation():
+                z._github_pull_request_states(repo, 'gh', rows, bodies)
+                self.assertEqual(3, provider.call_count)
+
+    def test_real_locked_v2_mutation_retains_fresh_exact_issue_read(self):
+        case = dag_fixtures.DagFixture()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        original = case.provider.get_issue
+        reads = []
+        def observed(number):
+            reads.append(number)
+            return original(number)
+        case.provider.get_issue = observed
+
+        work = case.session.acquire("produce")
+        reads.clear()
+        case.session.finish(work, {"value": "fresh locked mutation"})
+
+        self.assertIn(100, reads)
+
     def test_attributed_merge_findings_do_not_block_independent_reads(self):
         goals = [{'key': 433, 'status': 'ready'}, {'key': 435, 'status': 'ready'}]
         portfolio = {'complete': False, 'goals': goals, 'findings': [

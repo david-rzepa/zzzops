@@ -2901,17 +2901,21 @@ class CacheTransportTests(unittest.TestCase):
             z.github_repository_portfolio_snapshot(repo, project)
             self.assertEqual([100], transport.body_numbers(), "Unchanged goal must retain cached body")
 
-    def test_actual_release_cache_avoids_fresh_provider_fetch(self):
+    def test_actual_release_cache_reuses_invocation_and_refreshes_next_invocation(self):
         transport = GatewayTransport({})
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(z.shutil, "which", return_value="gh"), \
                 mock.patch.object(z.subprocess, "run", side_effect=transport):
             repo = Path(directory)
             (repo / ".zzzops").mkdir()
-            first = z.github_release_evidence(repo, {"identity": "owner/repo"})
-            self.assertEqual("complete", first["status"])
-            self.assertEqual(1, len(transport.requests))
-            self.assertEqual(first, z.github_release_evidence(repo, {"identity": "owner/repo"}))
-            self.assertEqual(1, len(transport.requests))
+            with z.provider_read_invocation():
+                first = z.github_release_evidence(repo, {"identity": "owner/repo"})
+                self.assertEqual("complete", first["status"])
+                self.assertEqual(1, len(transport.requests))
+                self.assertEqual(first, z.github_release_evidence(repo, {"identity": "owner/repo"}))
+                self.assertEqual(1, len(transport.requests))
+            with z.provider_read_invocation():
+                self.assertEqual(first, z.github_release_evidence(repo, {"identity": "owner/repo"}))
+                self.assertEqual(2, len(transport.requests), "A new invocation must validate mutable provider facts")
 
     def test_actual_pr_cache_batches_and_reuses_details(self):
         # Existing transport-level test asserts cold=2 and warm=1 real requests
@@ -3039,6 +3043,10 @@ class RelationshipPublicTests(DagFixture):
                               "end_cursor": str(start + 2) if more and selected else None}}
 
         self.provider.get_issue = read
+        # Both public provider transports observe the same exact issue bytes.
+        # Read-only gateway observations must participate in historical-read
+        # assertions without routing through the mutation adapter capability.
+        self.session.provider_issue_snapshot = lambda _repo, _repository, number: read(number)
         self.provider.list_issue_metadata = metadata_page
         self.provider.get_sub_issues = lambda number: [
             {"number": n} for n in sorted(self.provider.issues)

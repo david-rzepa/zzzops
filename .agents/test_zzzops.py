@@ -4643,6 +4643,152 @@ class GoalSchemaMigrationTests(unittest.TestCase):
         self.assertEqual("reuse_valid_evidence", zzzops.workflow_adoption_assessment(open_goal)["action"])
 
 
+REAL_RELEASE_OBSERVER = zzzops.github_release_evidence
+
+
+class ReleaseInvocationSnapshotTests(unittest.TestCase):
+    def fixture(self, *, disk_cache=True):
+        from test_migration_acceptance import ReleaseObservationTransportTests
+        case = ReleaseObservationTransportTests()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        if disk_cache:
+            (case.repo / ".zzzops").mkdir()
+        return case
+
+    @staticmethod
+    def endpoints(case):
+        return [next(value for value in command if isinstance(value, str) and value.startswith("repos/"))
+                for command in case.calls]
+
+    def migration_fixture(self):
+        from test_migration_acceptance import GenericMigrationInputTests
+        case = GenericMigrationInputTests()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        case.real_release_observer = REAL_RELEASE_OBSERVER
+        case.transport_fixture = self.fixture(disk_cache=False)
+        case.transport_fixture.raw["id"] = 1
+        case.transport_fixture.pages = [[dict(case.transport_fixture.raw)], []]
+        return case
+
+    @staticmethod
+    def migration_projection(case):
+        transport = case.transport_fixture
+        process = zzzops.subprocess.run
+        def dispatch(command, *args, **kwargs):
+            if command and command[0] == "synthetic-gh":
+                return transport.transport(command, **kwargs)
+            return process(command, *args, **kwargs)
+        case.observed_snapshots = []
+        def observe(*args, **kwargs):
+            value = case.real_release_observer(*args, **kwargs)
+            case.observed_snapshots.append(copy.deepcopy(value))
+            return value
+        with mock.patch.object(zzzops, "github_release_evidence",
+                               side_effect=observe), \
+             mock.patch.object(zzzops.shutil, "which", return_value="synthetic-gh"), \
+             mock.patch.object(zzzops.subprocess, "run", side_effect=dispatch):
+            return case.current()
+
+    def test_stable_invocation_reuses_one_complete_release_index_and_each_tag_resolution(self):
+        case = self.migration_fixture()
+        ready = self.migration_projection(case)
+
+        self.assertTrue({"alpha", "mirror"} <= set(ready))
+        endpoints = self.endpoints(case.transport_fixture)
+        self.assertEqual(1, endpoints.count("repos/owner/repo/releases"))
+        self.assertEqual(1, endpoints.count("repos/owner/repo/commits/v1"))
+
+    def test_separate_repositories_never_share_release_snapshots(self):
+        from types import SimpleNamespace
+        calls = []
+        def transport(command, **_kwargs):
+            endpoint = next(value for value in command if value.startswith("repos/"))
+            calls.append(endpoint)
+            identity = endpoint.split("/releases", 1)[0].split("/commits", 1)[0]
+            if endpoint.endswith("/releases"):
+                value = [[{"id": 1, "tag_name": "v1", "draft": False,
+                           "published_at": "2026-01-01T00:00:00Z"}]]
+            else:
+                value = {"sha": ("a" if identity.endswith("/one") else "d") * 40}
+            return SimpleNamespace(returncode=0, stdout=json.dumps(value), stderr="")
+        import test_evidence_dag_journeys as dag
+        fixture = dag.DagFixture(); fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        observations = []
+        for identity in ("owner/one", "owner/two"):
+            project = copy.deepcopy(fixture.session.project)
+            backend = next(section for section in project["policy"]["sections"] if section["id"] == "backend")
+            backend["configuration"]["repository_identity"] = identity
+            project["repository"]["identity"] = identity
+            def context(repo, *_args, **_kwargs):
+                observations.append(REAL_RELEASE_OBSERVER(repo, {"identity": identity}))
+                observations.append(REAL_RELEASE_OBSERVER(repo, {"identity": identity}))
+                return None
+            with mock.patch.object(zzzops.shutil, "which", return_value="synthetic-gh"), \
+                 mock.patch.object(zzzops.subprocess, "run", side_effect=transport), \
+                 mock.patch.object(zzzops._package, "package_status", return_value={"ok": True}), \
+                 mock.patch.object(zzzops, "workflow_context_step", side_effect=context), \
+                 mock.patch.object(zzzops, "reviewed_project_state", return_value=project), \
+                 mock.patch.object(zzzops, "portfolio_snapshot", return_value={"complete": True, "goals": []}), \
+                 mock.patch.object(zzzops, "github_repository_goal_index", return_value=({"usable": True}, [], [], 0, 0, [])), \
+                 mock.patch.object(zzzops._workflow_admin, "handle", return_value=None):
+                response = zzzops._workflow.public_run(zzzops, fixture.fixture.repo, "preview", "$execute-zzzops", {}, None, None)
+                self.assertEqual("terminal_report", response["next_steps"][0]["kind"])
+        self.assertEqual(observations[0], observations[1])
+        self.assertEqual(observations[2], observations[3])
+        self.assertEqual("a" * 40, observations[0]["releases"][0]["commit"])
+        self.assertEqual("d" * 40, observations[2]["releases"][0]["commit"])
+        for identity in ("owner/one", "owner/two"):
+            self.assertEqual(1, calls.count(f"repos/{identity}/releases"))
+            self.assertEqual(1, calls.count(f"repos/{identity}/commits/v1"))
+
+    def test_release_cache_revalidates_changed_markers_and_retargeted_tag_commits(self):
+        for change in ("marker", "tag"):
+            case = self.migration_fixture()
+            transport = case.transport_fixture
+            with self.subTest(change=change):
+                first = self.migration_projection(case)
+                self.assertTrue({"alpha", "mirror"} <= set(first))
+                transport.calls.clear()
+                if change == "marker":
+                    transport.raw["published_at"] = "2026-02-02T00:00:00Z"
+                    transport.pages = [[dict(transport.raw)], []]
+                else:
+                    transport.commit = "c" * 40
+                second = self.migration_projection(case)
+                self.assertFalse({"alpha", "mirror"} & set(second))
+                self.assertEqual(1, self.endpoints(transport).count("repos/owner/repo/releases"))
+                self.assertEqual(1, self.endpoints(transport).count("repos/owner/repo/commits/v1"))
+                self.assertTrue(case.observed_snapshots)
+                self.assertEqual(transport.commit, case.observed_snapshots[-1]["releases"][0]["commit"])
+
+    def test_absent_or_unwritable_disk_cache_still_reuses_the_invocation_snapshot(self):
+        absent = self.migration_fixture()
+        self.migration_projection(absent)
+        self.assertEqual(1, self.endpoints(absent.transport_fixture).count("repos/owner/repo/releases"))
+
+        unwritable = self.migration_fixture()
+        with mock.patch.object(zzzops, "atomic_text", side_effect=OSError("read-only cache")):
+            self.migration_projection(unwritable)
+        self.assertEqual(1, self.endpoints(unwritable.transport_fixture).count("repos/owner/repo/releases"))
+
+    def test_cached_complete_release_never_masks_unavailable_or_partial_provider_state(self):
+        case = self.migration_fixture()
+        self.assertTrue({"alpha", "mirror"} <= set(self.migration_projection(case)))
+        transport = case.transport_fixture
+        for failure in ("/releases", "tag-resolution"):
+            transport.calls.clear()
+            transport.failed_endpoint = failure
+            with self.subTest(failure=failure):
+                self.assertFalse({"alpha", "mirror"} & set(self.migration_projection(case)))
+            transport.failed_endpoint = None
+        transport.calls.clear()
+        transport.pages = {"incomplete": True}
+        self.assertFalse({"alpha", "mirror"} & set(self.migration_projection(case)))
+
+
 class PortfolioTests(unittest.TestCase):
     def test_workflow_gateway_preserves_persisted_rigor_identity_without_rereads(self):
         project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}, "policy": {"sections": [
