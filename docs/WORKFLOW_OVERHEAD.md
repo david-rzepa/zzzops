@@ -42,6 +42,13 @@ freshness, reviewed configuration, workflow-context validation and heartbeat
 cleanup retain the existing fixture's external-boundary fakes. This is not a
 measurement of network latency, installed-plugin startup or cross-machine races.
 
+These engine-boundary baselines retain full structured responses (the explicit
+`--response full` contract). They do not measure the default compact renderer or
+minimal input references. Use `.agents/measure_workflow_compact_boundary.py` for
+that separate end-to-end comparison, including required policy reads and an
+identified tokenizer. Do not combine the two reports as if they counted the
+same agent-visible boundary.
+
 Byte counts serialize boundary arguments and responses as canonical UTF-8 JSON,
 including repeated complete comment-list responses. They exclude HTTP framing.
 `policy_reads` records the additional local policy-file bytes read for each
