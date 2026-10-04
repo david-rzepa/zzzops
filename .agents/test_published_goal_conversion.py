@@ -53,8 +53,11 @@ class PublishedConversionTests(dag.DagFixture):
     def test_nested_published_target_is_accepted_through_public_submit(self):
         work, conversion, _target = self.prepare()
         result = self.session.finish(work, {'conversion': conversion})
-        self.assertEqual('checkpoint', result['next_steps'][0]['kind'])
-        self.assertIn('result', result['next_steps'][0])
+        self.assertEqual({'goal': 100, 'node': work['node'], 'result': self.result('convert')[0]},
+                         result['submitted'])
+        self.assertEqual(conversion, self.read_blob(self.produced('convert', 'conversion'))['content'])
+        self.assertEqual({'conversion_review'}, {step['node']['node'] for step in result['next_steps']
+                                                if step['kind'] == 'execute'})
         self.assertEqual({'conversion_review'}, self.names())
 
     def test_published_target_bounds_and_integrity_rejected_without_provider_writes(self):
