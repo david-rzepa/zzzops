@@ -240,6 +240,30 @@ class PortfolioScopeTests(unittest.TestCase):
             z._store_open_bodies(repo, "owner/repo", False, selected, bodies)
             self.assertFalse(cache.exists())
 
+    def test_unencodable_cached_body_hydrates_only_corrupt_entry(self):
+        issues = [self.issue(1), self.issue(2)]
+        bodies = {row["number"]: {"body": row["body"], "updated_at": row["updated_at"]}
+                  for row in issues}
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            z._store_open_bodies(repo, "owner/repo", False, issues, bodies)
+            cache = z._portfolio_cache_path(repo)
+            corrupted = json.loads(cache.read_text())
+            corrupted["bodies"]["1"] = chr(0xD800)
+            cache.write_text(json.dumps(corrupted))
+            self.assertIsNone(z._cached_open_bodies(repo, "owner/repo", False, issues))
+            self.assertEqual({2: bodies[2]}, z._cached_open_bodies(
+                repo, "owner/repo", False, issues, partial=True))
+            with mock.patch.object(z.shutil, "which", return_value="gh"), \
+                 mock.patch.object(z, "github_repository_goal_index", return_value=({}, issues, [], 0, 1, 0)), \
+                 mock.patch.object(z, "_github_goal_bodies", return_value=({1: bodies[1]}, 100, 1)) as hydration, \
+                 mock.patch.object(z, "_github_goal_relations", return_value=({}, 0, 0)), \
+                 mock.patch.object(z, "_github_pull_request_states", return_value=({}, 0, 0)):
+                snapshot = z.github_repository_portfolio_snapshot(repo, project())[1]
+            hydration.assert_called_once_with(repo, "gh", "owner", "repo", [1])
+            self.assertEqual([1, 2], [row["key"] for row in snapshot["goals"]])
+            self.assertEqual(bodies, z._cached_open_bodies(repo, "owner/repo", False, issues))
+
     def test_targeted_closed_dependency_is_present_without_unrelated_closed_history(self):
         open_goal = self.issue(1, depends_on=[2])
         needed = self.issue(2, status="done")

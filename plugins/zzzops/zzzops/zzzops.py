@@ -1613,7 +1613,13 @@ def _cached_open_bodies(repo: Path, identity: str, include_feedback: bool, selec
     for item in marker:
         if partial and old_markers.get(item["number"]) != item["updated_at"]: continue
         body = bodies.get(str(item["number"]))
-        if not isinstance(body, str) or body_hashes.get(str(item["number"])) != hashlib.sha256(body.encode()).hexdigest():
+        try:
+            valid_body = isinstance(body, str) and body_hashes.get(str(item["number"])) == hashlib.sha256(body.encode()).hexdigest()
+        except UnicodeError:
+            # JSON can contain lone surrogates; corrupt disposable bytes must
+            # fall back to the provider rather than prevent portfolio reads.
+            valid_body = False
+        if not valid_body:
             if partial:
                 continue
             return None
