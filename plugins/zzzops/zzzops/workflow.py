@@ -1559,10 +1559,10 @@ class Workflow:
 
 
 
-    def node_snapshot(self, number, *, publication_probe=False, graph_override=None):
+    def node_snapshot(self, number, *, publication_probe=False, graph_override=None, prospective=None):
         """Read exact scoped records; only relationship consumers request closure."""
         ev = self.api._phase_evidence
-        snapshots, artifacts, issues, bootstrap = {}, {}, {}, {}
+        snapshots, artifacts, issues, bootstrap = {}, dict((prospective or {}).get('artifacts', {})), {}, {}
         published, validated = {}, set()
         def remember(value):
             key = digest(value); artifacts[key] = value
@@ -1570,7 +1570,7 @@ class Workflow:
         def load(n):
             if n in snapshots: return snapshots[n]
             issue = self.adapter.get_issue(n); issues[n] = issue
-            envelope = self.api.parse_managed_goal(issue.get('body', ''), n)
+            envelope = prospective['envelope'] if prospective and n == number else self.api.parse_managed_goal(issue.get('body', ''), n)
             if not envelope: raise ValueError(f'Goal {n} has no readable identity envelope')
             if envelope['schema_version'] == 1:
                 if str(issue.get('state', '')).lower() == 'closed': raise ValueError(f'Archived predecessor {n} requires reviewed historical evidence equivalence')
@@ -1753,15 +1753,28 @@ class Workflow:
         # Some scoped discovery candidates were needed only for parent coverage.
         # They are not evaluated unless referenced by the selected graph closure.
         closure = {n: snapshots[n] for n in visited}
-        context = {'goal': number, 'policy': self.project['policy'], 'runtime': self.runtime, 'artifacts': artifacts, 'goals': closure, 'published_bytes': published, 'workspace_probe': True}
+        context = {'goal': number, 'policy': self.project['policy'], 'runtime': self.runtime, 'artifacts': artifacts, 'goals': closure, 'published_bytes': published}
+        snapshot = {'number': number, 'issue': issues[number], **selected, 'snapshots': snapshots, 'issues': issues,
+                    'bootstrap': bootstrap, 'artifacts': artifacts, 'published': published, 'evaluation_context': context}
+        return self.node_project(snapshot, publication_probe=publication_probe)
+
+    def node_project(self, snapshot, *, payload=None, publication_probe=False):
+        """Evaluate observed context with either durable or prospective evidence."""
+        ev = self.api._phase_evidence
+        context = {**snapshot['evaluation_context'], 'artifacts': snapshot['artifacts'], 'workspace_probe': True}
+        closure = {n: dict(value) for n, value in context['goals'].items()}
+        if payload is not None:
+            closure[snapshot['number']]['payload'] = payload
+        selected = closure[snapshot['number']]
+        context['goals'] = closure
         result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
         workspaces = self.node_workspace_context(closure, result, result['artifacts'])
         publications = {} if publication_probe else self.node_publication_context(closure, result, result['artifacts'])
         context.update(workspace_probe=False, workspaces=workspaces, artifacts=result['artifacts'])
         if not publication_probe: context['publications'] = publications
         result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
-        return {'number': number, 'issue': issues[number], **selected, 'snapshots': snapshots, 'issues': issues, 'bootstrap': bootstrap,
-                'projection': result, 'artifacts': result['artifacts'], 'published': published, 'workspaces': workspaces, 'publications': publications}
+        return {**snapshot, 'payload': selected['payload'], 'projection': result, 'artifacts': result['artifacts'],
+                'workspaces': workspaces, 'publications': publications}
 
     def node_graph_proposal(self, snapshot, graph, rationale, *, pending_request=None):
         """Preflight a goal-only graph repair without replacing any evidence."""
@@ -2339,6 +2352,11 @@ class Workflow:
                     for lease in predecessor['workflow']['leases'].values()]
         try: snapshot = self.node_snapshot(number)
         except (ValueError, KeyError, OSError) as exc: return [{'kind': 'blocker', 'goal': number, 'reason': str(exc), 'action': 'Resolve the exact missing schema, evidence or authority.'}]
+        return self.node_frontier(snapshot)
+
+    def node_frontier(self, snapshot, *, defer_envelope=False):
+        """Format the same readiness and authority boundaries for both callers."""
+        number = snapshot['number']
         projection = snapshot['projection']; steps = []
         for state in projection['states'].values():
             if state['node']['goal'] != number: continue
@@ -2371,7 +2389,7 @@ class Workflow:
             merged = next((value for value in publications if value['provider'].get('merged')), None)
             if merged:
                 steps.append({'kind': 'reconcile', 'goal': number, 'assignment': 'root', 'submission': {'operation': 'reconcile', 'request_id': uuid.uuid4().hex,
-                              'expected_digest': digest(snapshot['envelope']), 'expected_merge': digest(merged['provider'])}})
+                              'expected_digest': None if defer_envelope else digest(snapshot['envelope']), 'expected_merge': digest(merged['provider'])}})
             else:
                 for authority, publication in self.node_publication_authorities(snapshot):
                     try: self.node_ci_required(publication['observed'])
@@ -2445,6 +2463,79 @@ class Workflow:
             response = {'next_steps': [{'kind': 'checkpoint', 'goal': snapshot['number'], 'provider_state': 'closed' if close else 'open',
                                         'action': 'Observed merge reconciled; semantic Results preserved.'}]}
         return self.node_persist(snapshot, payload, response, request)
+
+    def node_continuation(self, snapshot, payload, node, result):
+        number = snapshot['number']
+        target_payload = copy.deepcopy(snapshot.get('activation', {}).get('payload', payload))
+        target_payload['operational'] = copy.deepcopy(payload['operational'])
+        target = {**snapshot.get('activation', {}).get('envelope', snapshot['envelope']),
+                  'revision': snapshot['envelope']['revision'] + 1, 'payload': self.node_ref(digest(target_payload), number)}
+        if 'parent_change' in snapshot: target['parent'] = snapshot['parent_change']
+        for value in (payload, target_payload): snapshot['artifacts'][digest(value)] = copy.deepcopy(value)
+        identity = {'source_envelope': snapshot['envelope'], 'target_metadata': {key: value for key, value in target.items() if key != 'payload'},
+                    'candidate_payload': target['payload'], 'entry_candidate_payload': self.node_ref(digest(payload), number)}
+        pending = snapshot.get('pending')
+        if pending and 'continuation' in pending:
+            template = copy.deepcopy(pending['continuation'])
+            if digest(template) != pending['response']['hash']:
+                raise ValueError('Pending continuation response identity changed')
+            if any(template.get(key) != value for key, value in identity.items()) or template.get('response', {}).get('submitted') != {'goal': number, 'node': node, 'result': result}:
+                raise ValueError('Pending continuation candidate identity changed')
+            return template
+        # A structural submission can change the relationship/graph closure;
+        # read that candidate through the same snapshot loader before publication.
+        if 'parent_change' in snapshot or 'activation' in snapshot:
+            candidate = self.node_snapshot(number, prospective={'envelope': target, 'artifacts': snapshot['artifacts']})
+        else:
+            candidate = self.node_project(snapshot, payload=payload)
+        snapshot['artifacts'].update(candidate['artifacts'])
+        goals = self.portfolio()
+        for goal in goals:
+            if goal['key'] == number: goal['operational_leases'] = payload['operational']['leases']
+        steps = scoped_frontier(self.node_frontier(candidate, defer_envelope=True), goals, worker_limit(self.project), number)
+        return {'type': 'submission_continuation', 'version': 1, **identity,
+                'response': {'submitted': {'goal': number, 'node': node, 'result': result}, 'next_steps': steps},
+                'bindings': [{'kind': 'target_envelope_digest', 'step': i} for i, step in enumerate(steps) if step['kind'] == 'reconcile']}
+
+    def node_receipt_response(self, number, request, receipt, response, *, confirmed_target=None):
+        """Bind only the original committed transaction, never today's envelope."""
+        if response.get('type') != 'submission_continuation': return copy.deepcopy(response)
+        if set(response) != {'type', 'version', 'source_envelope', 'target_metadata', 'candidate_payload', 'entry_candidate_payload', 'response', 'bindings'} or response['version'] != 1:
+            raise ValueError('Invalid submission continuation template')
+        if receipt != {'request': request['request_id'], 'payload': digest(request), 'result': self.node_ref(digest(response), number)}:
+            raise ValueError('Continuation receipt identity mismatch')
+        index = self.artifact_index(number)
+        contexts = [row['context'] for row in index.envelopes if (row.get('context') or {}).get('request_id') == request['request_id']]
+        if not contexts or any(context != contexts[0] for context in contexts):
+            raise ValueError('Missing or conflicting continuation transaction')
+        context = contexts[0]
+        if context.get('request_hash') != receipt['payload'] or context.get('response') != receipt['result'] or context.get('continuation') != response:
+            raise ValueError('Continuation transaction receipt mismatch')
+        candidate = copy.deepcopy(index.resolve(response['candidate_payload']['hash'])[0])
+        candidate['operational']['receipts'].append(receipt)
+        entry = copy.deepcopy(index.resolve(response['entry_candidate_payload']['hash'])[0])
+        entry['operational']['receipts'].append(receipt)
+        source = response['source_envelope']
+        target = {**response['target_metadata'], 'payload': self.node_ref(digest(candidate), number)}
+        if (source.get('issue') != number or source.get('repository') != self.repository
+                or context.get('source_envelope') != source or context.get('target_envelope') != target
+                or context.get('payload') != target['payload'] or context.get('entry_payload') != self.node_ref(digest(entry), number)
+                or target.get('revision') != source['revision'] + 1 or target.get('repository') != self.repository or target.get('issue') != number):
+            raise ValueError('Continuation exact transaction target mismatch')
+        if confirmed_target is not None and target != confirmed_target:
+            raise ValueError('Continuation publication target mismatch')
+        if index.resolve(target['payload']['hash'])[0] != candidate:
+            raise ValueError('Continuation target payload mismatch')
+        materialized = copy.deepcopy(response['response'])
+        steps = materialized['next_steps']
+        expected = [{'kind': 'target_envelope_digest', 'step': i} for i, step in enumerate(steps) if step.get('kind') == 'reconcile']
+        if response['bindings'] != expected: raise ValueError('Invalid deferred continuation bindings')
+        for binding in expected:
+            step = steps[binding['step']]
+            if step.get('goal') != number or step.get('submission', {}).get('operation') != 'reconcile' or step['submission'].get('expected_digest', 'missing') is not None:
+                raise ValueError('Invalid deferred reconciliation digest')
+            step['submission']['expected_digest'] = digest(target)
+        return materialized
 
     def node_pending(self, snapshot, request):
         index = self.artifact_index(snapshot['number'])
@@ -2607,10 +2698,12 @@ class Workflow:
             if identity in index.records and artifacts[identity] is index.observe(identity)[0]: continue
             record = payload_record if identity == payload_identity else self.node_artifact_record(index, artifacts[identity], snapshot.get('output_bases', {}).get(identity))
             if record is not None: records.append(record)
-        response_lease = response['next_steps'][0].get('lease', {})
+        public_response = response['response'] if response.get('type') == 'submission_continuation' else response
+        response_lease = public_response['next_steps'][0].get('lease', {})
         if not isinstance(response_lease, dict):
             response_lease = next((lease for lease in payload['operational']['leases'] if lease['token'] == response_lease), {})
-        context = {'request_id': request['request_id'], 'request_hash': digest(request), 'source_hash': digest(issue['body']), 'human_hash': digest(prefix + suffix), 'root': None if snapshot.get('migration') else (self.runtime or {}).get('root_id'), 'response': self.node_ref(digest(response), number), 'ownership': {key: value for key, value in response_lease.items() if key != 'acquisition'}, 'acquisition': bool(response['next_steps'][0].get('bind')), 'payload': envelope['payload'], 'proof': proof, 'source_envelope': snapshot['envelope'], 'target_envelope': envelope, 'entry_payload': entry_payload}
+        context = {'request_id': request['request_id'], 'request_hash': digest(request), 'source_hash': digest(issue['body']), 'human_hash': digest(prefix + suffix), 'root': None if snapshot.get('migration') else (self.runtime or {}).get('root_id'), 'response': self.node_ref(digest(response), number), 'ownership': {key: value for key, value in response_lease.items() if key != 'acquisition'}, 'acquisition': bool(public_response['next_steps'][0].get('bind')), 'payload': envelope['payload'], 'proof': proof, 'source_envelope': snapshot['envelope'], 'target_envelope': envelope, 'entry_payload': entry_payload}
+        if response.get('type') == 'submission_continuation': context['continuation'] = response
         if snapshot.get('migration'): context['migration'] = snapshot['migration']
         if pending and pending != context: raise ValueError('Pending checkpoint exact response/payload/proof identity changed')
         bodies = comment_store.pack_envelopes({'goal': number, 'transaction': digest({'request': request, 'source': issue['body']}), 'context': context}, records)
@@ -2646,7 +2739,8 @@ class Workflow:
         if not snapshot.get('archive') and str(updated.get('state', '')).lower() == 'closed':
             raise ValueError('Goal closed during body publication; execution cannot resume without explicit reopening')
         self.invalidate()
-        return self.stop_completed_heartbeat(number, request, payload['operational'], copy.deepcopy(response))
+        response = self.node_receipt_response(number, request, payload['operational']['receipts'][-1], response, confirmed_target=envelope)
+        return self.stop_completed_heartbeat(number, request, payload['operational'], response)
 
     def node_mutate(self, number, request):
         ev = self.api._phase_evidence
@@ -2677,7 +2771,7 @@ class Workflow:
                 for receipt in durable['operational']['receipts']:
                     if receipt['request'] == request['request_id']:
                         if receipt['payload'] != digest(request): raise ValueError('Request receipt payload conflict')
-                        response = copy.deepcopy(self.artifact_index(number).resolve(receipt['result']['hash'])[0])
+                        response = self.node_receipt_response(number, request, receipt, self.artifact_index(number).resolve(receipt['result']['hash'])[0])
                         if any(step.get('provider_state') == 'closed' for step in response['next_steps']) and str(issue.get('state', '')).lower() != 'closed': raise ValueError('Stored closure receipt conflicts with partial provider state; repair required')
                         if str(issue.get('state', '')).lower() == 'closed' and not any(step.get('provider_state') == 'closed' for step in response['next_steps']):
                             raise ValueError('Closed goal cannot resume an execution receipt without explicit reopening')
@@ -2775,7 +2869,7 @@ class Workflow:
                         artifact = {'type': 'result', 'content': result, 'producer': lease['attempt'], 'provenance': {'actor': lease['worker'], 'source': None, 'policy': digest(self.project['policy'])}}
                         identity = digest(artifact); snapshot['artifacts'][identity] = artifact
                         ref = self.node_ref(identity, number); payload['evidence'].append(ref); leases.remove(lease)
-                        response = {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'node': node, 'result': ref}]}
+                        response = self.node_continuation(snapshot, payload, node, ref)
                     else: raise ValueError('Unsupported generic operation; semantic evidence uses submit')
             return self.node_persist(snapshot, payload, response, request)
 
@@ -3060,6 +3154,31 @@ class Workflow:
                 if current and current[1]['executor'] == actor: raise ValueError('Independent reviewer cannot be the actual subject executor')
 
 
+def capacity_step(active_leases, limit):
+    return {'kind': 'await_worker', 'assignment': 'root',
+            'action': 'Reviewed max_workers capacity is occupied. Reconcile, release, or recover an existing task lease before starting another worker.',
+            'active_leases': active_leases, 'max_workers': limit,
+            'recheck': {'after_seconds': 30, 'command': ['--intent', 'execute', '--runtime', '<runtime.json>'],
+                        'action': 'Recheck active leases after the interval; do not start work beyond the reviewed capacity.'}}
+
+
+def scoped_frontier(steps, goals, limit, number):
+    """Apply the addressed checkpoint's ordering and capacity policy."""
+    active = unresolved_lease_count(goals)
+    runnable, waiting, capacity_blocked = [], [], False
+    for step in steps:
+        if step.get('kind') in {'execute', 'review', 'human_approval'} and isinstance(step.get('start'), dict):
+            if active < limit: runnable.append(step)
+            else: capacity_blocked = True
+        elif step.get('kind') in {'blocker', 'blocked', 'dependency', 'await_worker'}: waiting.append(step)
+        else: runnable.append(step)
+    if capacity_blocked and len(runnable) < limit: runnable.append(capacity_step(active, limit))
+    generic = any('node' in row for row in runnable + waiting)
+    result = runnable + waiting if generic else (runnable or waiting)[:limit]
+    return result or [{'kind': 'terminal_report', 'assignment': 'root', 'goal': number,
+                       'state': 'complete', 'action': 'This goal has no remaining workflow work. Report completion; no CLI command is required.'}]
+
+
 def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     engine = engine or Workflow(api, repo, project, runtime)
     goals = engine.portfolio(allow_invalid=True, include_ownership=number is None)
@@ -3093,17 +3212,6 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
                 waiting.append(step)
             else:
                 runnable.append(step)
-    def capacity_step():
-        return {
-            'kind': 'await_worker', 'assignment': 'root',
-            'action': 'Reviewed max_workers capacity is occupied. Reconcile, release, or recover an existing task lease before starting another worker.',
-            'active_leases': unresolved_lease_count(goals), 'max_workers': limit,
-            'recheck': {
-                'after_seconds': 30,
-                'command': ['--intent', 'execute', '--runtime', '<runtime.json>'],
-                'action': 'Recheck active leases after the interval; do not start work beyond the reviewed capacity.',
-            },
-        }
     if number is not None:
         if number not in {g['key'] for g in goals}:
             raise ValueError('Requested goal is not in the validated portfolio')
@@ -3116,16 +3224,7 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
             return {'next_steps': [{'kind': 'blocker', 'assignment': 'root', 'goal': number,
                 'action': 'Repair this goal or one of its prerequisites before continuing.',
                 'findings': findings}]}
-        runnable_steps, waiting_steps = [], []
-        partition(engine.step(number), runnable_steps, waiting_steps)
-        if capacity_blocked and len(runnable_steps) < limit:
-            runnable_steps.append(capacity_step())
-        generic = any('node' in row for row in runnable_steps + waiting_steps)
-        steps = runnable_steps + waiting_steps if generic else (runnable_steps or waiting_steps)[:limit]
-        if not steps:
-            steps = [{'kind': 'terminal_report', 'assignment': 'root', 'goal': number,
-                      'state': 'complete', 'action': 'This goal has no remaining workflow work. Report completion; no CLI command is required.'}]
-        return {'next_steps': steps}
+        return {'next_steps': scoped_frontier(engine.step(number), goals, limit, number)}
     runnable_steps = []
     waiting_steps = []
     ordered_goals = api.effective_goal_order(goals, ordering_policy)
@@ -3153,7 +3252,7 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
         if len(runnable_steps) >= limit:
             break
     if capacity_blocked and len(runnable_steps) < limit:
-        runnable_steps.append(capacity_step())
+        runnable_steps.append(capacity_step(unresolved_lease_count(goals), limit))
     steps = (runnable_steps or waiting_steps)[:limit]
     if not steps:
         steps = [{'kind': 'terminal_report', 'assignment': 'root', 'state': 'complete',
