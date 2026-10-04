@@ -410,5 +410,46 @@ print(json.dumps({'next_steps':[{'kind':'renewed','goal':int(args[args.index('--
         self.assertFalse(any(r['event']=='worker_stopped' for r in events))
 
 
+    def test_linked_worktree_can_stop_exact_originating_lease(self):
+        import shutil
+        subprocess.run(['git', 'init', '-q', str(self.repo)], check=True)
+        subprocess.run(['git', '-C', str(self.repo), '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+                        'commit', '--allow-empty', '-qm', 'fixture'], check=True)
+        other=self.directory/'other'
+        subprocess.run(['git', '-C', str(self.repo), 'worktree', 'add', '--detach', '-q', str(other)], check=True)
+        node={'goal':61,'node':'review','item':None,'generation':1};phase=json.dumps(node,sort_keys=True)
+        result=heartbeat.start_heartbeat(repo=self.repo,root_id='root-a',runtime_path=self.runtime,cli_path=self.cli,
+            goal=61,phase=phase,node=node,token='linked-token',actor='worker-a',
+            probe_argv=[sys.executable,str(self.probe),'active','review','worker-a'],grace_seconds=2,interval_seconds=.03)
+        self.pids.add(result['pid'])
+        self.addCleanup(lambda:shutil.rmtree(Path(result['config']).parent,ignore_errors=True))
+        config=heartbeat._read(Path(result['config']))
+        self.assertEqual(str(self.repo.resolve()),config['leases'][0]['repo'])
+        heartbeat.stop_heartbeat(repo=other,root_id='root-a',goal=61,phase=phase,token='linked-token')
+        self.assertEqual([],heartbeat._read(Path(result['config']))['leases'])
+        self._wait(lambda:not heartbeat._pid_alive(result['pid']))
+
+    def test_local_registration_lock_is_bounded(self):
+        ready=self.directory/'lock-ready'
+        paths=heartbeat._paths(self.repo,'root-a',self.state)
+        holder=self._script('holder.py', """import importlib.util,sys,time
+from pathlib import Path
+spec=importlib.util.spec_from_file_location('held_heartbeat',sys.argv[1]);h=importlib.util.module_from_spec(spec);spec.loader.exec_module(h)
+with h._locked(Path(sys.argv[2])):
+ Path(sys.argv[3]).touch()
+ time.sleep(10)
+""")
+        process=subprocess.Popen([sys.executable,str(holder),str(MODULE_PATH),str(paths['update_lock']),str(ready)])
+        try:
+            self._wait(ready.exists)
+            started=time.monotonic()
+            with self.assertRaisesRegex(ValueError,'lock is busy'):
+                self.start_generic(grace=2)
+            self.assertLess(time.monotonic()-started,2)
+            self.assertFalse(self.cli_records.exists())
+        finally:
+            process.terminate();process.wait(timeout=3)
+
+
 if __name__ == "__main__":
     unittest.main()

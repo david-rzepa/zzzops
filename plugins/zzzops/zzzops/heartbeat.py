@@ -66,7 +66,15 @@ def _worker_liveness_probe(value: list[str], actor: str) -> list[str]:
 
 
 def _default_state_dir(repo: Path) -> Path:
-    key = hashlib.sha256(str(repo.resolve()).encode()).hexdigest()[:24]
+    identity = str(repo.resolve())
+    try:
+        observed = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=repo, capture_output=True, text=True, timeout=2, check=False)
+        if observed.returncode == 0 and observed.stdout.strip():
+            identity = str(Path(observed.stdout.strip()).resolve())
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    key = hashlib.sha256(identity.encode()).hexdigest()[:24]
     uid = getattr(os, "getuid", lambda: 0)()
     return Path(tempfile.gettempdir()) / f"zzzops-heartbeats-{uid}" / key
 
@@ -92,29 +100,44 @@ def _ensure_private_directory(path: Path) -> None:
 
 
 @contextlib.contextmanager
-def _locked(path: Path, blocking: bool = True) -> Iterator[Any]:
+def _locked(path: Path, blocking: bool = True, timeout_seconds: float | None = None) -> Iterator[Any]:
     if _fcntl is None and _msvcrt is None:
         raise ValueError("Local heartbeat locking is unavailable on this platform; keep the lease and request explicit recovery coordination.")
     _ensure_private_directory(path.parent)
     handle = path.open("a+b")
     try:
         if _fcntl is not None:
-            flags = _fcntl.LOCK_EX | (0 if blocking else _fcntl.LOCK_NB)
-            _fcntl.flock(handle.fileno(), flags)
+            flags = _fcntl.LOCK_EX | (0 if blocking and timeout_seconds is None else _fcntl.LOCK_NB)
+            deadline = time.monotonic() + (timeout_seconds or 0)
+            while True:
+                try:
+                    _fcntl.flock(handle.fileno(), flags)
+                    break
+                except BlockingIOError:
+                    if timeout_seconds is None: raise
+                    if time.monotonic() >= deadline:
+                        raise ValueError("Local heartbeat lock is busy; retry monitoring setup")
+                    time.sleep(.01)
         else:
             handle.seek(0, os.SEEK_END)
             if handle.tell() == 0:
                 handle.write(b"\0")
                 handle.flush()
             handle.seek(0)
-            mode = _msvcrt.LK_LOCK if blocking else _msvcrt.LK_NBLCK
-            try:
-                _msvcrt.locking(handle.fileno(), mode, 1)
-            except OSError as exc:
-                if not blocking:
-                    raise BlockingIOError(str(exc)) from exc
-                raise
-    except (OSError, BlockingIOError):
+            mode = _msvcrt.LK_LOCK if blocking and timeout_seconds is None else _msvcrt.LK_NBLCK
+            deadline = time.monotonic() + (timeout_seconds or 0)
+            while True:
+                try:
+                    _msvcrt.locking(handle.fileno(), mode, 1)
+                    break
+                except OSError as exc:
+                    if timeout_seconds is not None:
+                        if time.monotonic() >= deadline:
+                            raise ValueError("Local heartbeat lock is busy; retry monitoring setup") from exc
+                        time.sleep(.01)
+                    elif not blocking: raise BlockingIOError(str(exc)) from exc
+                    else: raise
+    except (OSError, ValueError):
         handle.close()
         raise
     try:
@@ -332,7 +355,7 @@ def record_health(
 
 
 def _remove_lease(config_path: Path, update_lock: Path, goal: int, phase: str, token: str) -> None:
-    with _locked(update_lock):
+    with _locked(update_lock, timeout_seconds=1):
         config = _read(config_path)
         config["leases"] = [
             lease for lease in config["leases"]
@@ -366,15 +389,18 @@ def start_heartbeat(
     lease = {
         "goal": goal, "phase": phase, "token": token, "actor": actor,
         "probe_argv": probe_argv, "renew_after": time.time() + grace_seconds,
+        "repo": str(repo), "runtime_path": str(runtime_path), "cli_path": str(cli_path),
         **({"node": dict(node)} if node is not None else {}),
     }
-    with _locked(paths["update_lock"]):
+    with _locked(paths["update_lock"], timeout_seconds=1):
         config = _read(paths["config"])
         previous = next((v for v in config["leases"] if (v.get("goal"), v.get("phase"), v.get("token")) == (goal, phase, token)), None)
         if previous is not None:
             if previous["actor"] != actor or previous.get("node") != node:
                 raise ValueError("heartbeat exact lease identity changed")
             lease["renew_after"] = previous.get("renew_after", lease["renew_after"])
+            for key in ("repo", "runtime_path", "cli_path"):
+                if key in previous: lease[key] = previous[key]
         config.update({
             "repo": str(repo), "root_id": root_id, "runtime_path": str(runtime_path),
             "cli_path": str(cli_path), "interval_seconds": float(interval_seconds),
@@ -426,6 +452,7 @@ def stop_heartbeat(
 
 
 def _renew(config: dict[str, Any], lease: dict[str, Any], directory: Path) -> subprocess.CompletedProcess[str]:
+    config = {**config, **{key: lease[key] for key in ("repo", "runtime_path", "cli_path") if key in lease}}
     payload = {
         "operation": "renew", "phase": lease["phase"], "lease": lease["token"],
         "actor": lease["actor"], "worker_status": "active", "request_id": uuid.uuid4().hex,
@@ -553,7 +580,7 @@ def run(config_path: Path) -> int:
                     continue
                 try:
                     probe = subprocess.run(
-                        _command(lease["probe_argv"], "probe_argv"), cwd=config["repo"],
+                        _command(lease["probe_argv"], "probe_argv"), cwd=lease.get("repo", config["repo"]),
                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                         timeout=timeout, check=False, shell=False,
                     )

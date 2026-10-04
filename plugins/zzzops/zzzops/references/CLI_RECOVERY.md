@@ -47,3 +47,10 @@ and lease expiry never establishes that the worker stopped. After interruption,
 replay the exact acquisition to restore monitoring or use observed-stopped
 recovery; do not start a duplicate worker. Monitoring annotations are operational
 and separate from the durable result acknowledgement.
+
+Linked worktrees share the local registry through Git's common directory, so
+completion in the coordinator checkout stops the exact originating worker token.
+Each tracked lease keeps its originating checkout and runtime for probes and
+renewals. Local registration/removal lock waits are bounded; a busy local lock
+returns operational monitoring/cleanup guidance without undoing a committed
+provider result or granting recovery authority.
