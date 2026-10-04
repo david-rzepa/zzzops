@@ -1,7 +1,7 @@
 # Measuring workflow coordination overhead
 
-Goal #510 owns integrated measurement and acceptance. The maintained fixture is
-an initial ordinary test-design/implementation and independent-review baseline;
+Goal #510 owns integrated measurement and acceptance. The maintained fixtures establish
+ordinary, correction, live-renewal and post-upgrade-validation baselines;
 it does not complete the parent goal or its other required journeys.
 
 Run the finite regression and produce a machine-readable transcript:
@@ -9,6 +9,8 @@ Run the finite regression and produce a machine-readable transcript:
 ```sh
 PYTHONPATH=.agents python -m unittest test_workflow_overhead
 PYTHONPATH=.agents python .agents/test_workflow_overhead.py --report /tmp/workflow-overhead.json
+PYTHONPATH=.agents python -m unittest test_workflow_overhead_extended
+PYTHONPATH=.agents python .agents/test_workflow_overhead_extended.py --report /tmp/workflow-overhead-extended.json
 ```
 
 The report binds the source revision, harness checksum and Python version. It
@@ -92,8 +94,8 @@ and the provider-call ceiling is 400. The direct/comparator byte-ratio allowance
 is 10% plus 16 KiB. There is no wall-clock assertion. Update these budgets only
 with an explained evidence/contract change, not to hide a regression.
 
-Remaining required #510 work includes atomic correction, long delegated phase
-and renewal, self-upgrade, actual model input/output tokens and before/after
+Remaining required #510 work includes final automatic long-phase renewal and
+full self-upgrade journeys, actual model input/output tokens and before/after
 agent transcripts, integration of all optimization children and the referenced
 disclosure/review/heartbeat/recovery owners, and final integrated authority,
 stale-input, exact-replay and multi-machine acceptance. Existing correctness
@@ -106,3 +108,54 @@ data or removing redundant transitions, not by skipping them. Worker limits,
 model routing, scope and approval/review policy are configuration boundaries;
 relaxing any default requires explicit reviewed policy. This harness changes
 none of those defaults.
+
+## Additional finite boundary baselines
+
+The extended fixture adds one correction round, one renewal, and one changed
+package validation. It performs no stress repetitions or lease-duration sleeps.
+These are separate baselines, not an equal-work comparison with the optimized
+ordinary driver above.
+
+| Boundary | Public calls | Provider boundary calls | Provider response JSON |
+| --- | ---: | ---: | ---: |
+| One accepted workspace correction | 150 | 699 | about 72 MB |
+| Live delegated acquisition, renewal, completion | 6 | 74 | about 175 KB |
+| Changed-package validation audit and record | 2 | 0 | 0 |
+
+The correction uses existing correctness-fixture helpers unchanged: 105 artifact
+reads, 17 checkpoints, 11 starts, 11 submissions and six binds. This exposes
+helper-driven inspection/coordination costs; it does not claim that 150 calls
+are irreducible or necessary in a caller consuming direct continuations. Its
+phases are intake/admission (49), verified correction (52), independent
+review/resolution (44), and fresh root acceptance/history inspection (five).
+One authoritative check executes during the correction. Initial authority and
+reviewed test/implementation setup adds 87 calls and 601 provider boundary calls,
+with two earlier authoritative checks. The synthetic external reviewer comment
+is a separately reported out-of-band provider event. Its request/response bytes
+are retained, rather than silently folded into or excluded from CLI traffic.
+
+The renewal baseline starts a real lightweight child process with a pipe-based
+lifetime, binds its actual identity, observes it alive, advances only the lease
+clock to 60 seconds before expiry, invokes one exact-node public renewal, and
+submits under the same owner. Closing the pipe and waiting confirms worker exit.
+The child spawn is separately counted. This is public renewal protocol evidence,
+not a model workload or automatic heartbeat-runner performance claim; this
+measurement branch predates #504 until the coordinator integrates it. Actual
+automatic scheduling/cleanup and concurrent-machine measurements remain needed.
+
+The self-upgrade boundary changes installed-package metadata from one synthetic
+version/revision to another, observes that real local installation validation
+becomes stale, and invokes the real public audit/record route. Two pre-upgrade
+audit/record calls are shown as setup. It counts local Git processes and confirms
+the new record pins the new provenance. No provider request occurs. Plugin
+download, replacement, restart and full resumed-workflow costs are outside this
+boundary and remain required end-to-end work.
+
+Extended regressions cap correction calls at 160 and repeated provider response
+JSON at 120 MiB, retain exact mutation/check counts, and bound renewal and
+validation interaction counts. No hard wall-time limit is used for performance;
+the local child cleanup has only a safety timeout. Token fields remain `null`:
+no tokenizer was installed for the captured run and these fixtures have no
+actual model usage records. Extended helper-driven journeys do not meter local
+policy-file reads, so their byte totals are not complete agent contexts.
+Serialized JSON bytes must not be reported as model tokens.

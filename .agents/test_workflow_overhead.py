@@ -29,10 +29,12 @@ def wire_bytes(value):
 
 
 class Meter:
-    def __init__(self, session):
+    def __init__(self, session, *, request_ids=True):
         self.session = session
+        self.request_ids = request_ids
         self.phase = "authority_setup"
         self.calls, self.provider, self.checks, self.policies = [], [], [], []
+        self.processes = []
         self.current = None
 
     def boundary(self, name, function):
@@ -47,7 +49,7 @@ class Meter:
     def call(self, number, payload=None, **kwargs):
         invocation = len(self.calls) + 1
         request = copy.deepcopy(payload)
-        if request is not None:
+        if request is not None and self.request_ids:
             request.setdefault("request_id", f"measurement-{invocation}")
         self.current = invocation
         started = time.perf_counter()
@@ -57,7 +59,8 @@ class Meter:
             elapsed = time.perf_counter() - started
             self.current = None
         self.calls.append({"invocation": invocation, "phase": self.phase,
-            "operation": (request or {}).get("operation", "checkpoint"),
+            "operation": (request or {}).get("operation", kwargs.get("intent", "checkpoint")),
+            "intent": kwargs.get("intent", "execute"),
             "node": (request or {}).get("node"), "actor": (request or {}).get("actor"),
             "request_id": (request or {}).get("request_id"),
             "request_bytes": wire_bytes(request), "response_bytes": wire_bytes(response),
@@ -92,6 +95,8 @@ class Meter:
         run = subprocess.run
         def observed(command, *args, **kwargs):
             result = run(command, *args, **kwargs)
+            self.processes.append({"phase": self.phase, "invocation": self.current,
+                "command": list(command), "exit_code": result.returncode})
             if list(command) == [sys.executable, "-B", "behavior_test.py"]:
                 self.checks.append({"phase": self.phase, "invocation": self.current,
                     "command": list(command), "exit_code": result.returncode})
@@ -101,6 +106,7 @@ class Meter:
     def summary(self, phases):
         calls = [row for row in self.calls if row["phase"] in phases]
         events = [row for row in self.provider if row["phase"] in phases and row["invocation"] is not None]
+        outside = [row for row in self.provider if row["phase"] in phases and row["invocation"] is None]
         return {"public_invocations": len(calls),
             "operations": dict(Counter(row["operation"] for row in calls)),
             "provider_calls": dict(Counter(row["method"] for row in events)),
@@ -109,6 +115,11 @@ class Meter:
             "public_response_bytes": sum(row["response_bytes"] for row in calls),
             "provider_request_bytes": sum(row["request_bytes"] for row in events),
             "provider_response_bytes": sum(row["response_bytes"] for row in events),
+            "out_of_band_provider_calls": dict(Counter(row["method"] for row in outside)),
+            "out_of_band_provider_request_bytes": sum(row["request_bytes"] for row in outside),
+            "out_of_band_provider_response_bytes": sum(row["response_bytes"] for row in outside),
+            "local_process_count": sum(row["phase"] in phases for row in self.processes),
+            "authoritative_check_count": sum(row["phase"] in phases for row in self.checks),
             "public_elapsed_seconds": sum(row["elapsed_seconds"] for row in calls)}
 
 
@@ -198,8 +209,10 @@ def comparison():
                        "PublicSession fakes reviewed configuration, package freshness, workflow-context validation and heartbeat cleanup; this is not installed-plugin or multi-machine acceptance.",
                        "Policy file bytes are recorded for measured phase acquisitions. CLI bytes are not full agent contexts or model-token estimates."],
         "direct": measure_journey(), "with_checkpoints": measure_journey(checkpoints=True),
-        "remaining_acceptance": ["Atomic correction baseline", "Long delegated phase and renewal baseline",
-                                 "Self-upgrade baseline", "Actual root/worker input-output tokens and agent transcripts",
+        "remaining_acceptance": ["Final integrated correction and ordinary journey remeasurement",
+                                 "Automatic long-phase renewal after heartbeat integration",
+                                 "Full self-upgrade journey beyond local validation boundary",
+                                 "Actual root/worker input-output tokens and agent transcripts",
                                  "All goal510 children and referenced disclosure/review/recovery owners integrated",
                                  "Final integrated stale-input, human-approval, idempotency and multi-machine acceptance",
                                  "Re-measure after remaining optimization children; three-interaction target not yet reached"]}
