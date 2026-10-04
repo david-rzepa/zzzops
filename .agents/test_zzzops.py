@@ -4680,8 +4680,13 @@ class ReleaseInvocationSnapshotTests(unittest.TestCase):
             if command and command[0] == "synthetic-gh":
                 return transport.transport(command, **kwargs)
             return process(command, *args, **kwargs)
+        case.observed_snapshots = []
+        def observe(*args, **kwargs):
+            value = case.real_release_observer(*args, **kwargs)
+            case.observed_snapshots.append(copy.deepcopy(value))
+            return value
         with mock.patch.object(zzzops, "github_release_evidence",
-                               side_effect=case.real_release_observer), \
+                               side_effect=observe), \
              mock.patch.object(zzzops.shutil, "which", return_value="synthetic-gh"), \
              mock.patch.object(zzzops.subprocess, "run", side_effect=dispatch):
             return case.current()
@@ -4708,14 +4713,36 @@ class ReleaseInvocationSnapshotTests(unittest.TestCase):
             else:
                 value = {"sha": ("a" if identity.endswith("/one") else "d") * 40}
             return SimpleNamespace(returncode=0, stdout=json.dumps(value), stderr="")
-        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second, \
-             mock.patch.object(zzzops.shutil, "which", return_value="synthetic-gh"), \
-             mock.patch.object(zzzops.subprocess, "run", side_effect=transport):
-            one = zzzops.github_release_evidence(Path(first), {"identity": "owner/one"})
-            two = zzzops.github_release_evidence(Path(second), {"identity": "owner/two"})
-        self.assertNotEqual(one, two)
-        self.assertIn("repos/owner/one/releases", calls)
-        self.assertIn("repos/owner/two/releases", calls)
+        import test_evidence_dag_journeys as dag
+        fixture = dag.DagFixture(); fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        observations = []
+        for identity in ("owner/one", "owner/two"):
+            project = copy.deepcopy(fixture.session.project)
+            backend = next(section for section in project["policy"]["sections"] if section["id"] == "backend")
+            backend["configuration"]["repository_identity"] = identity
+            project["repository"]["identity"] = identity
+            def context(repo, *_args, **_kwargs):
+                observations.append(REAL_RELEASE_OBSERVER(repo, {"identity": identity}))
+                observations.append(REAL_RELEASE_OBSERVER(repo, {"identity": identity}))
+                return None
+            with mock.patch.object(zzzops.shutil, "which", return_value="synthetic-gh"), \
+                 mock.patch.object(zzzops.subprocess, "run", side_effect=transport), \
+                 mock.patch.object(zzzops._package, "package_status", return_value={"ok": True}), \
+                 mock.patch.object(zzzops, "workflow_context_step", side_effect=context), \
+                 mock.patch.object(zzzops, "reviewed_project_state", return_value=project), \
+                 mock.patch.object(zzzops, "portfolio_snapshot", return_value={"complete": True, "goals": []}), \
+                 mock.patch.object(zzzops, "github_repository_goal_index", return_value=({"usable": True}, [], [], 0, 0, [])), \
+                 mock.patch.object(zzzops._workflow_admin, "handle", return_value=None):
+                response = zzzops._workflow.public_run(zzzops, fixture.fixture.repo, "preview", "$execute-zzzops", {}, None, None)
+                self.assertEqual("terminal_report", response["next_steps"][0]["kind"])
+        self.assertEqual(observations[0], observations[1])
+        self.assertEqual(observations[2], observations[3])
+        self.assertEqual("a" * 40, observations[0]["releases"][0]["commit"])
+        self.assertEqual("d" * 40, observations[2]["releases"][0]["commit"])
+        for identity in ("owner/one", "owner/two"):
+            self.assertEqual(1, calls.count(f"repos/{identity}/releases"))
+            self.assertEqual(1, calls.count(f"repos/{identity}/commits/v1"))
 
     def test_release_cache_revalidates_changed_markers_and_retargeted_tag_commits(self):
         for change in ("marker", "tag"):
@@ -4732,7 +4759,10 @@ class ReleaseInvocationSnapshotTests(unittest.TestCase):
                     transport.commit = "c" * 40
                 second = self.migration_projection(case)
                 self.assertFalse({"alpha", "mirror"} & set(second))
-                self.assertIn("repos/owner/repo/releases", self.endpoints(transport))
+                self.assertEqual(1, self.endpoints(transport).count("repos/owner/repo/releases"))
+                self.assertEqual(1, self.endpoints(transport).count("repos/owner/repo/commits/v1"))
+                self.assertTrue(case.observed_snapshots)
+                self.assertEqual(transport.commit, case.observed_snapshots[-1]["releases"][0]["commit"])
 
     def test_absent_or_unwritable_disk_cache_still_reuses_the_invocation_snapshot(self):
         absent = self.migration_fixture()
