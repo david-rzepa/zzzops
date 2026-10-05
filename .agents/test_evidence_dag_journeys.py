@@ -4297,6 +4297,29 @@ class GraphAdoptionPublicTests(DagFixture):
                 "review": self.result_at(101, "review_graph")[0],
                 "approved_by": "user: approved exact scoped graph repair", "request_id": "adopt-reviewed-graph"}
 
+    def test_fresh_goal_can_bootstrap_closed_graph_review_without_recursion(self):
+        self.add_goal(101, copy.deepcopy(self.graph))
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(101, {"operation": "graph_review_bootstrap", "request_id": "bootstrap-review",
+                                "approved_by": "user: approved administrative graph review"})
+        self.assertEqual({"propose_graph"}, {step["node"]["node"] for step in self.session.ready(101)})
+        proposal = self.session.acquire("propose_graph", number=101)
+        self.session.finish(proposal, {"value": "exact proposal"}, number=101)
+        review = self.session.acquire("review_graph", number=101)
+        self.assertNotEqual(proposal["bound_actor"], review["bound_actor"])
+        self.session.finish(review, {"value": {"decision": "approved", "report": "exact"}}, number=101)
+        after = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(101, {"operation": "graph_review_bootstrap", "request_id": "late-bootstrap",
+                                "approved_by": "user: approved administrative graph review"}, expected=2)
+        self.assertEqual(after, (self.provider.issues, self.provider.comments))
+
+    def test_graph_review_bootstrap_requires_explicit_approval(self):
+        self.add_goal(101, copy.deepcopy(self.graph))
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(101, {"operation": "graph_review_bootstrap", "request_id": "bootstrap-review",
+                                "approved_by": ""}, expected=2)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
     def test_reviewed_goal_only_adoption_preserves_results_history_and_receipt(self):
         self.produce()
         original = self.result("produce")[0]

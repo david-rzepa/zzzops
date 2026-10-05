@@ -164,7 +164,7 @@ class ObservedArtifactIndex(comment_store.ArtifactIndex):
 # being routed through an unrelated installation, policy, lease, or portfolio
 # gate.
 PUBLIC_OPERATIONS = frozenset({
-    'batch', 'bind', 'block', 'migration_batch', 'graph_prepare', 'graph_adopt',
+    'batch', 'bind', 'block', 'migration_batch', 'graph_prepare', 'graph_adopt', 'graph_review_bootstrap',
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
     'feedback_submit', 'heartbeat', 'installation_record', 'integrate',
     'policy_approve', 'policy_propose', 'read', 'recover', 'renew',
@@ -2063,6 +2063,52 @@ class Workflow:
                     'action': 'Reviewed goal-only graph adopted; all prior evidence and current Results retained.'}]}
         return self.node_persist(snapshot, payload, response, request)
 
+    def node_graph_review_bootstrap(self, snapshot, payload, request):
+        """Install the closed, authority-free graph-review workflow on a fresh goal.
+
+        Graph adoption normally requires durable root proposal and independent
+        review Results.  A newly captured review goal otherwise inherits the
+        project product graph and cannot produce those Results without first
+        adopting a graph, creating an impossible recursion.  This host-defined
+        graph is the finite bootstrap: it grants no workspace resources and is
+        usable only before the goal has Results or live ownership.
+        """
+        allowed = {'operation', 'request_id', 'approved_by'}
+        if set(request) != allowed or not explicit_approval(request.get('approved_by')):
+            raise ValueError('Graph-review bootstrap requires explicit human approval')
+        if snapshot['projection']['current'] or snapshot['projection']['leases']:
+            raise ValueError('Graph-review bootstrap requires a fresh goal with no Results or live ownership')
+        selector = lambda node: {'kind': 'node', 'goal': '#this', 'node': node}
+        text = {'type': 'text', 'schema': {'kind': 'string'}}
+        review = {'type': 'review_decision', 'schema': {'kind': 'object', 'fields': {
+            'decision': {'kind': 'enum', 'values': ['approved', 'changes_requested']},
+            'report': {'kind': 'string'},
+        }}}
+        graph = {'nodes': [
+            {'id': 'propose_graph',
+             'prompt': 'Emit the exact prepared graph proposal manifest without modification.',
+             'inputs': {}, 'outputs': {'value': text}, 'requires': [],
+             'executor': {'role': 'root', 'capability': 'bounded', 'resources': [],
+                          'authority': {'subject': selector('propose_graph'), 'output': 'value'}},
+             'independent_of': [], 'gates': [], 'resolves': [], 'permits': []},
+            {'id': 'review_graph',
+             'prompt': 'Independently inspect the exact proposal by identity and emit an explicit review decision.',
+             'inputs': {'subject': {'producer': {'node': selector('propose_graph')}, 'output': 'value',
+                                    'path': [], 'mode': 'identity', 'type': {'kind': 'string'}}},
+             'outputs': {'value': review}, 'requires': [selector('propose_graph')],
+             'executor': {'role': 'worker', 'capability': 'architectural', 'resources': [],
+                          'authority': {'subject': selector('review_graph'), 'output': 'value'}},
+             'independent_of': [selector('propose_graph')], 'gates': [], 'resolves': [], 'permits': []},
+        ], 'task_sets': [], 'terminals': [selector('review_graph')]}
+        self.api._phase_evidence.validate_graph(graph)
+        graph_hash = digest(graph)
+        snapshot['artifacts'][graph_hash] = graph
+        payload['graph'] = self.node_ref(graph_hash, snapshot['number'])
+        response = {'next_steps': [{'kind': 'checkpoint', 'goal': snapshot['number'],
+                    'graph': payload['graph'],
+                    'action': 'Fresh administrative goal bootstrapped with the closed proposal/review graph.'}]}
+        return self.node_persist(snapshot, payload, response, request)
+
     def node_publication_context(self, snapshots, projection, artifacts):
         """Observe provider facts only for explicitly declared publication work."""
         ev = self.api._phase_evidence
@@ -3198,6 +3244,8 @@ class Workflow:
             pending = self.node_pending(snapshot, request)
             if request['operation'] == 'graph_adopt':
                 return self.node_graph_adopt(snapshot, payload, request)
+            if request['operation'] == 'graph_review_bootstrap':
+                return self.node_graph_review_bootstrap(snapshot, payload, request)
             if request['operation'] in {'integrate', 'reconcile', 'complete'}:
                 return self.node_publication_operation(snapshot, payload, request)
             node = request.get('node')
