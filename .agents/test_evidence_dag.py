@@ -269,6 +269,132 @@ class EvidenceGraphGrammarTests(unittest.TestCase):
 phase = fixtures.zzzops._phase_evidence
 
 
+class Goal499DefaultGraphContractTests(unittest.TestCase):
+    """Observable contract for the reviewed #499 default workflow."""
+
+    @classmethod
+    def setUpClass(cls):
+        plan = json.loads(
+            (fixtures.PLUGIN_ROOT / "zzzops/templates/project-goals/INIT_PLAN.json").read_text()
+        )
+        cls.graph = next(
+            section for section in plan["policy"]["sections"]
+            if section["id"] == "workflow_adherence"
+        )["configuration"]["phase_dag"]
+        cls.nodes = {node["id"]: node for node in cls.graph["nodes"]}
+        cls.sets = {item["id"]: item for item in cls.graph["task_sets"]}
+        cls.set_templates = {
+            item["template"]["id"]: item for item in cls.graph["task_sets"]
+        }
+
+    def node(self, name):
+        self.assertTrue(name in self.nodes, f"Shipped #499 graph is missing node {name!r}")
+        return self.nodes[name]
+
+    def task_set(self, template):
+        self.assertTrue(template in self.set_templates,
+                        f"Shipped #499 graph is missing expansion template {template!r}")
+        return self.set_templates[template]
+
+    def test_default_uses_reviewed_discovery_delivery_and_feedback_vocabulary(self):
+        required = {
+            "requirements", "spec", "approve_spec", "decompose",
+            "decomposition_review", "test_design", "test_verification",
+            "test_design_review", "implement", "implementation_verification",
+            "migration_verification", "integration_verification", "publish",
+            "integrate", "integration_feedback_review", "authorize_merge", "merge",
+        }
+        self.assertEqual(set(), required - set(self.nodes),
+                         "Every concrete #499 phase must ship in the one default graph")
+        obsolete = {
+            "understand", "review_understanding", "approve_understanding",
+            "review_decomposition", "review_test_design", "review_implement",
+            "publication_context", "observe_publication", "observe_merge",
+        }
+        self.assertEqual(set(), obsolete & set(self.nodes),
+                         "The old linear phase vocabulary must not remain active")
+        self.assertEqual([], z._policy._workflow_phase_dag_errors(self.graph))
+
+    def test_only_root_owns_human_answers_approvals_publication_and_merge(self):
+        for name in ("requirements", "approve_spec", "publish", "authorize_merge", "merge"):
+            with self.subTest(node=name):
+                self.assertEqual("root", self.node(name)["executor"]["role"])
+        for name in ("spec", "decompose", "decomposition_review", "integrate",
+                     "integration_feedback_review"):
+            with self.subTest(node=name):
+                self.assertEqual("worker", self.node(name)["executor"]["role"])
+        requirements = json.dumps(self.node("requirements")).casefold()
+        for contract in ("question", "id", "provenance", "blocking", "status",
+                         "answer", "revision", "settled"):
+            self.assertIn(contract, requirements)
+        self.assertRegex(requirements, r"stable|same id|preserve.{0,40}id")
+        self.assertRegex(requirements, r"do not.{0,40}(repeat|re-ask)|no repeated")
+
+    def test_review_expansions_declare_required_members_and_independent_templates(self):
+        expected = {
+            "spec_review": {"acceptance_contracts", "maintainability_entropy"},
+            "implementation_review": {"correctness_acceptance", "maintainability_entropy"},
+            "integration_review": {"acceptance_contracts", "maintainability_entropy"},
+        }
+        for family, required_members in expected.items():
+            with self.subTest(family=family):
+                task_set = self.task_set(family)
+                encoded = json.dumps(task_set).casefold()
+                for member in required_members:
+                    self.assertIn(member, encoded)
+                self.assertIn("independent_of", task_set["template"])
+                self.assertIn("finding", encoded)
+                self.assertIn("non-applic", encoded)
+        self.assertTrue("spec_investigation" in self.set_templates,
+                        "Shipped #499 graph is missing spec investigation expansion")
+        self.assertTrue("child_delivery" in self.nodes,
+                        "Shipped #499 graph is missing relationship-bound child delivery observer")
+
+    def test_delivery_topologies_encode_atomic_leaf_and_child_to_parent_direction(self):
+        decomposition = json.dumps(self.node("decompose")).casefold()
+        self.assertIn("leaf", decomposition)
+        self.assertIn("composition", decomposition)
+        self.assertIn("atomic", decomposition)
+        self.assertIn("indivisible", decomposition)
+        for proof in ("no independently deliverable", "no useful parallel"):
+            self.assertIn(proof, decomposition,
+                          "Atomic non-applicability must demand the reviewed proof, not a shortcut")
+        review = json.dumps(self.node("decomposition_review")).casefold()
+        self.assertIn("atomic", review)
+        self.assertRegex(review, r"reject|unjustified|non-applic")
+        child_template = self.node("child_delivery")
+        child = json.dumps(child_template).casefold()
+        self.assertIn("delivery_result", child)
+        self.assertEqual("#children", child_template["inputs"]["children"]["producer"]["node"]["goal"])
+        self.assertEqual("merge", child_template["inputs"]["children"]["producer"]["node"]["node"])
+        self.assertEqual("identity", child_template["inputs"]["children"]["mode"])
+        self.assertEqual("child_delivery_join", child_template["outputs"]["value"]["type"])
+        self.assertNotRegex(child, r'producer[^}]+(?:publish|integrate|merge)[^}]+#parent')
+        for forbidden in ("parent publication", "parent integration", "parent merge"):
+            self.assertNotIn(forbidden, child)
+        self.assertEqual([], child_template["executor"]["resources"],
+                         "Child delivery observation cannot own either workspace")
+        integration = json.dumps(self.node("integration_verification")).casefold()
+        self.assertRegex(integration, r"parent.{0,80}(owned|workspace)")
+        self.assertRegex(integration, r"child.{0,80}(read.only|immutable|do not edit)")
+
+    def test_migration_evidence_and_review_are_upstream_of_publication(self):
+        publish = json.dumps(self.node("publish")).casefold()
+        graph = json.dumps(self.graph).casefold()
+        self.assertIn("migration_verification", graph)
+        self.assertIn("migration_review", graph)
+        self.assertIn("migration", publish)
+        self.assertRegex(publish, r"review|approved|resolution")
+
+    def test_feedback_assessment_is_fresh_before_root_merge_authorization(self):
+        assessment = json.dumps(self.node("integrate")).casefold()
+        approval = json.dumps(self.node("authorize_merge")).casefold()
+        for word in ("actionable", "obsolete", "ambiguous", "provenance"):
+            self.assertIn(word, assessment)
+        self.assertIn("integration_feedback_review", approval)
+        self.assertRegex(approval, r"fresh|current")
+
+
 class ProjectionCacheTests(unittest.TestCase):
     def setUp(self):
         self.assertTrue(hasattr(phase, "_PROJECTION_CACHE"), "Missing bounded projection-cache implementation")

@@ -883,7 +883,14 @@ def validate_selector(value, template=False):
     goal = value['goal']
     if not positive_integer(goal) and goal not in ('#this', '#parent', '#children'): raise ValueError('Selector goal identity must be positive integer or #this/#parent/#children')
     for field in ('node', 'expansion', 'item'):
-        if field in value and not task_identifier(value[field]): raise ValueError(f'Selector {field} identity is invalid')
+        if field not in value:
+            continue
+        # A task-set template may address the same item in another expansion.
+        # Materialization replaces this placeholder with the validated current
+        # item key before evaluation; no arbitrary selector field is dynamic.
+        if template and field == 'item' and value[field] == {'item_key': True}:
+            continue
+        if not task_identifier(value[field]): raise ValueError(f'Selector {field} identity is invalid')
     if kind == 'member' and value['generation'] != 'current' and not positive_integer(value['generation']): raise ValueError('Member generation must be positive or current')
 
 
@@ -927,7 +934,9 @@ def validate_graph(graph):
         validate_input(expansion['source'])
         definitions.append((expansion['template'], True))
     for node, template in definitions:
-        contract_fields(node, {'id', 'prompt', 'inputs', 'outputs', 'requires', 'executor', 'independent_of', 'gates', 'resolves', 'permits'}, 'Node')
+        node_fields = {'id', 'prompt', 'inputs', 'outputs', 'requires', 'executor', 'independent_of', 'gates', 'resolves', 'permits'}
+        if not isinstance(node, dict) or set(node) - node_fields - {'applicability'} or node_fields - set(node):
+            raise ValueError('Node has unsupported or missing fields')
         name = node['id']
         if not task_identifier(name) or name in names or name in sets: raise ValueError('Duplicate or invalid node/template identity')
         names[name] = node
@@ -941,6 +950,18 @@ def validate_graph(graph):
             contract_fields(value, {'type', 'schema'}, 'Output contract')
             if not task_identifier(value['type']) or value['type'] in RESERVED_OUTPUT_TYPES: raise ValueError('Reserved host or invalid output type')
             validate_type(value['schema'])
+        applicability = node.get('applicability')
+        if applicability is not None:
+            contract_fields(applicability, {'input', 'values', 'outputs', 'rationale'}, 'Node applicability')
+            validate_input(applicability['input'], template)
+            if (not isinstance(applicability['values'], list) or not applicability['values']
+                    or any(type(value) not in (str, bool, int, type(None)) for value in applicability['values'])):
+                raise ValueError('Node applicability values must be non-empty scalar alternatives')
+            if set(applicability['outputs']) != set(node['outputs']) or not isinstance(applicability['rationale'], str) or not applicability['rationale'].strip():
+                raise ValueError('Node non-applicability must provide every output and a rationale')
+            for slot, value in applicability['outputs'].items():
+                if not value_matches(node['outputs'][slot]['schema'], value):
+                    raise ValueError('Node non-applicability output violates its declared schema')
         executor = node['executor']
         contract_fields(executor, {'role', 'capability', 'resources', 'authority'}, 'Executor')
         if executor['role'] not in ('root', 'worker') or not task_identifier(executor['capability']): raise ValueError('Executor role/capability is invalid')
@@ -1276,6 +1297,33 @@ def _derive_task_steps(graph, payload, context):
         contract = semantic_hash({'node': node, 'policy': policy})
         state['contract_hash'] = contract
         try:
+            applicability = node.get('applicability')
+            applicability_hash = None
+            if applicability is not None:
+                ref, selected, path, _ = get_input(applicability['input'], number)
+                state['inputs'].append({'name': '__applicability', 'source': ref, 'path': path,
+                                        'mode': applicability['input']['mode']})
+                state['values']['__applicability'] = selected
+                applicability_hash = (ref['hash'] if applicability['input']['mode'] == 'identity'
+                                      else semantic_hash(selected))
+                if selected not in applicability['values']:
+                    attempt = 'host-nonapplicable-' + contract[7:23]
+                    outputs = {}
+                    for slot, value in applicability['outputs'].items():
+                        output_blob = {'type': node['outputs'][slot]['type'], 'content': value,
+                                       'producer': attempt, 'provenance': {
+                                           'actor': 'host', 'source': ref, 'policy': policy}}
+                        outputs[slot] = remember(output_blob)
+                    result = {'node': instance['node'], 'attempt': attempt, 'contract': contract,
+                              'inputs': state['inputs'], 'executor': 'host', 'outputs': outputs,
+                              'resolutions': [], 'non_applicability': {
+                                  'source': ref, 'value': selected,
+                                  'rationale': applicability['rationale']}}
+                    result_ref = remember({'type': 'result', 'content': result, 'producer': attempt,
+                                           'provenance': {'actor': 'host', 'source': ref, 'policy': policy}})
+                    current[key] = (result_ref, result)
+                    state['state'] = 'complete'; state['non_applicability'] = result['non_applicability']
+                    return
             # Accepted finding/admission effects were folded from history above.
             # Their producing Result still obeys ordinary input freshness.
             prerequisites = []
@@ -1290,6 +1338,8 @@ def _derive_task_steps(graph, payload, context):
                     if any(covers(gate, scope, number) for scope in resolver['contract']['resolves']): evaluate(resolver_key)
                 if any(covers(gate, o['content']['target'], number) and not obligation_resolved(o) for o in obligations.values()): raise ValueError('Unresolved finding/applicability blocks this gate')
             hashes, bound = {}, set()
+            if applicability_hash is not None:
+                hashes['__applicability'] = applicability_hash
             for name, binding in sorted(node['inputs'].items()):
                 ref, value, path, selected = get_input(binding, number)
                 state['inputs'].append({'name': name, 'source': ref, 'path': path, 'mode': binding['mode']})

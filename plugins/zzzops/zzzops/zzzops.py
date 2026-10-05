@@ -1267,7 +1267,7 @@ def _pull_request_targets(selected: list[dict[str, Any]], bodies: dict[int, dict
         # Scheduling may reuse a verified snapshot.  An executing, publishing,
         # integrating, or recovering goal must always observe fresh PR evidence.
         if (
-            isinstance(context, dict) or (isinstance(goal, dict) and goal.get("status") == "in_progress")
+            (isinstance(goal, dict) and goal.get("status") == "in_progress")
             or (isinstance(workflow, dict) and bool(workflow.get("leases")))
             or (isinstance(review, dict) and review.get("status") not in (None, "not_started", "merged"))
         ):
@@ -1378,14 +1378,25 @@ def _observe_pull_request_states(
                     raise ValueError(f"GitHub pull-request marker read omitted PR #{number}")
                 markers.append({"repository": f"{owner}/{name}", "number": number, "state": pr.get("state"), "updated_at": pr.get("updatedAt"), "merged": pr.get("merged") is True, "merged_at": pr.get("mergedAt"), "head_oid": pr.get("headRefOid")})
     markers.sort(key=lambda item: (item["repository"], item["number"]))
+    markers_by_target = {
+        (*marker["repository"].split("/", 1), marker["number"]): marker
+        for marker in markers
+    }
     cached = _cached_pull_request_states(repo, markers)
     cached = cached if cached is not None else {}
+    # The marker query is always live and covers PR updatedAt, head and merge
+    # state. An identical marker authenticates reuse of the matching detail
+    # snapshot; goal-issue activity alone must not force another PR hydration.
     needed = set(targets) if not cached else fresh_targets
     states_by_target: dict[tuple[str, str, int], dict[str, Any]] = {}
     for target in targets:
         value = cached.get(f"{target[0]}/{target[1]}#{target[2]}")
         if target not in needed and isinstance(value, dict):
-            states_by_target[target] = value
+            # The marker broadphase is always current, even when the expensive
+            # detail state is reusable. Preserve the exact PR update identity
+            # so feedback edits invalidate publication evidence independently
+            # of the managed goal issue's own updated_at value.
+            states_by_target[target] = {**value, "updated_at": markers_by_target[target]["updated_at"]}
         else:
             needed.add(target)
     for (owner, name), numbers in sorted(grouped.items()):
@@ -1404,6 +1415,7 @@ def _observe_pull_request_states(
                 states_by_target[(owner, name, number)] = {
                 "merged": pull_request.get("merged") is True,
                 "merged_at": pull_request.get("mergedAt"),
+                "updated_at": markers_by_target[(owner, name, number)]["updated_at"],
                 "head_oid": pull_request.get("headRefOid"),
                 "base_oid": pull_request.get("baseRefOid"),
                 "base_ref": pull_request.get("baseRefName"),

@@ -3167,6 +3167,54 @@ class GatewayTransport:
 
 
 class CacheTransportTests(unittest.TestCase):
+    def test_real_pr_observation_preserves_pr_update_marker_independent_of_goal_issue(self):
+        """Publication freshness follows the PR marker, never the goal issue marker."""
+        pr_updated = ["2026-09-25T12:00:00Z"]
+        detail_reads = []
+
+        def query(_repo, _executable, _owner, _name, _query, mode):
+            common = {
+                "number": 9, "state": "OPEN", "updatedAt": pr_updated[0],
+                "merged": False, "mergedAt": None, "headRefOid": "a" * 40,
+            }
+            if mode == "marker":
+                return {"pr_9": common}, 100
+            detail_reads.append(pr_updated[0])
+            return {"pr_9": {
+                **common, "baseRefOid": "b" * 40, "baseRefName": "dev",
+                "mergeCommit": None, "repository": {"nameWithOwner": "owner/repo"},
+                "reviewDecision": "APPROVED", "commits": {"nodes": []},
+            }}, 200
+
+        bodies = {100: {"repository_context": {
+            "repository": "owner/repo", "branch": "goal-100", "base": "dev",
+            "target": "/tmp/repo", "pr": "https://github.com/owner/repo/pull/9",
+        }}}
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(z, "_github_pr_query", side_effect=query):
+            repo = Path(directory)
+            (repo / ".zzzops").mkdir()
+            first, _, _ = z._observe_pull_request_states(
+                repo, "gh", [{"number": 100, "updatedAt": "goal-marker-1"}], bodies)
+            self.assertIn("updated_at", first[100],
+                          "PR updatedAt must survive the real provider-state projection")
+            self.assertEqual(pr_updated[0], first[100]["updated_at"])
+
+            # A goal-issue-only edit may cause portfolio work, but must neither
+            # replace the PR marker nor force a PR detail refresh.
+            second, _, _ = z._observe_pull_request_states(
+                repo, "gh", [{"number": 100, "updatedAt": "goal-marker-2"}], bodies)
+            self.assertEqual(first[100]["updated_at"], second[100]["updated_at"])
+            self.assertEqual(1, len(detail_reads))
+
+            # A real PR edit changes its marker and must refresh the exact
+            # provider state used by publication currentness.
+            pr_updated[0] = "2026-09-25T13:00:00Z"
+            third, _, _ = z._observe_pull_request_states(
+                repo, "gh", [{"number": 100, "updatedAt": "goal-marker-2"}], bodies)
+            self.assertEqual(pr_updated[0], third[100]["updated_at"])
+            self.assertEqual(2, len(detail_reads))
+
     def test_real_gateway_reuses_warm_bodies_and_refetches_only_changed_marker(self):
         fixtures = old.fixtures
         issues = {n: fixtures.PortfolioTests().issue(n) for n in (100, 101)}
@@ -4395,6 +4443,535 @@ class GenericStoragePublicTests(DagFixture):
             with mock.patch.object(store, "MAX_RECONSTRUCTION_WORK_BYTES", 100000):
                 self.session.call(100, {"operation": "read", "artifact": reference}, expected=2)
         self.assertEqual(artifact, self.session.read(100, reference))
+
+
+class Goal499TopologyPublicTests(DagFixture):
+    def test_reviewed_atomic_disposition_continues_through_complete_leaf_delivery(self):
+        names = [
+            "decompose", "decomposition_review", "test_design", "test_verification",
+            "test_design_review", "implement", "implementation_verification",
+            "implementation_review", "publish", "integrate",
+            "integration_feedback_review", "authorize_merge", "merge",
+        ]
+        nodes = []
+        for index, name in enumerate(names):
+            node = task(name, names[index - 1:index],
+                        role="root" if name in {"publish", "authorize_merge", "merge"} else "worker")
+            if name == "decompose":
+                node["prompt"] = ("Return reviewed atomic non-applicability only for one indivisible "
+                                  "workspace responsibility; retain the complete leaf path.")
+            if index and ("review" in name or name in {"test_verification", "implementation_verification"}):
+                node["inputs"] = {"subject": subject_input(names[index - 1])}
+                node["independent_of"] = [selector(names[index - 1])]
+            nodes.append(node)
+        graph = {"nodes": nodes, "task_sets": [], "terminals": [selector("merge")]}
+        self.install(graph)
+        observed = []
+        for name in names:
+            self.assertEqual({name}, self.names())
+            work = self.session.acquire(name)
+            observed.append((name, work["bound_actor"]))
+            self.session.finish(work, {"value": "reviewed atomic leaf delivery: " + name})
+        self.assertFalse(self.session.ready())
+        self.assertEqual("root-thread", dict(observed)["publish"])
+        self.assertNotEqual(dict(observed)["decompose"], dict(observed)["decomposition_review"])
+
+    def test_migration_verification_and_independent_review_both_gate_publication(self):
+        candidate = task("candidate")
+        verification = task("migration_verification", ["candidate"])
+        verification["inputs"] = {"subject": subject_input("candidate")}
+        review = task("migration_review", ["migration_verification"])
+        review["inputs"] = {"subject": subject_input("migration_verification")}
+        review["independent_of"] = [selector("migration_verification")]
+        publish = task("publish", ["migration_review"], role="root")
+        self.install({"nodes": [candidate, verification, review, publish], "task_sets": [],
+                      "terminals": [selector("publish")]})
+        self.session.finish(self.session.acquire("candidate"), {"value": "candidate"})
+        self.assertNotIn("publish", self.names())
+        proof = self.session.acquire("migration_verification")
+        self.session.finish(proof, {"value": "supported start, transition and recovery passed"})
+        self.assertNotIn("publish", self.names())
+        inspection = self.session.acquire("migration_review")
+        self.assertNotEqual(proof["bound_actor"], inspection["bound_actor"])
+        self.session.finish(inspection, {"value": "approved exact migration proof"})
+        self.assertEqual({"publish"}, self.names())
+
+
+class ShippedGoal499PublicJourneyTests(DagFixture):
+    """Drive the graph that actually ships, rather than a synthetic analogue."""
+
+    def setUp(self):
+        super().setUp()
+        template = json.loads(
+            (old.fixtures.PLUGIN_ROOT / "zzzops/templates/project-goals/INIT_PLAN.json").read_text()
+        )
+        self.shipped = z._workflow_section(
+            template, "workflow_adherence"
+        )["configuration"]["phase_dag"]
+        self.install(self.shipped)
+
+    @staticmethod
+    def approved_review(report="approved exact subject"):
+        return {"decision": "approved", "report": report,
+                "outcomes": ["verified"], "findings": []}
+
+    def requirements(self, *, question_status="settled"):
+        value = {
+            "statements": ["Deliver the exact reviewed behavior"],
+            "questions": [{"id": "q-retention", "source": "human statement",
+                           "blocking": "spec approval", "status": question_status,
+                           "answer": "thirty days" if question_status == "settled" else "",
+                           "revision": 1, "provenance": "root-human-answer"}],
+            "investigations": {"items": {}, "rationale": "No technical unknowns"},
+        }
+        self.session.finish(self.session.acquire("requirements"), {"value": value})
+        return value
+
+    def specification(self, review_items, allocation_names=("test_design", "implement")):
+        allocation = {"allocations": {
+            name: {"task": {"goal": 100, "node": name, "item": None, "generation": 1},
+                   "owned": [], "consumed": []}
+            for name in allocation_names
+        }}
+        value = {"specification": "One falsifiable behavior", "criteria": ["observable"],
+                 "risks": ["correctness"],
+                 "review_members": {"items": review_items,
+                                    "rationale": "Exact applicable review coverage"}}
+        self.session.finish(self.session.acquire("spec"),
+                            {"value": value, "allocation": allocation})
+        return value, allocation
+
+    def test_rejected_shipped_spec_review_routes_typed_question_to_root_without_approval(self):
+        self.assertEqual({"requirements"}, self.names())
+        original = self.requirements()
+        self.assertEqual({"spec"}, self.names())
+        self.specification({"acceptance_contracts": "required review"})
+        self.assertEqual({"spec_review"}, self.names())
+        review = self.session.acquire("spec_review", item="acceptance_contracts")
+        self.session.finish(review, {"value": {
+            "decision": "changes_requested", "report": "Human retention answer is ambiguous",
+            "outcomes": ["blocked"],
+            "findings": ["question:q-retention:requirements:blocks spec approval"],
+        }})
+        ready = self.names()
+        self.assertNotIn("approve_spec", ready,
+                         "A rejected shipped review cannot satisfy the approval join")
+        interpret = "interpret_spec_review_rejection"
+        admit = "admit_spec_review_correction"
+        self.assertEqual({interpret}, ready)
+        finding = {
+            "id": "q-retention", "revision": 1,
+            "source": self.produced("spec_review", item="acceptance_contracts"),
+            "subjects": [self.produced("spec"), self.produced("requirements")],
+            "target": scope("requirements"),
+            "request": "Clarify retention and revise the stable requirements question",
+            "rationale": "The independent review blocks specification approval",
+            "supersedes": None,
+        }
+        self.session.finish(self.session.acquire(interpret, item="acceptance_contracts"), {"value": finding})
+        self.assertEqual({admit}, self.names())
+        admission = {
+            "finding": self.produced(interpret, item="acceptance_contracts"),
+            "target_inputs": self.result("requirements")[1]["inputs"],
+            "authority": self.result(interpret, item="acceptance_contracts")[0], "applicability": "applicable",
+            "rationale": "Root admits the exact independently reviewed question",
+        }
+        self.session.finish(self.session.acquire(admit, item="acceptance_contracts"), {"value": admission})
+        self.assertIn("requirements", self.names(),
+                      "An admitted typed question must return human interaction to root")
+        acquired = self.session.acquire("requirements")
+        revised = copy.deepcopy(original)
+        revised["questions"][0].update(answer="thirty days, inclusive", revision=2,
+                                        status="settled", provenance="root-human-revision")
+        self.session.finish(acquired, {"value": revised})
+        self.assertNotIn("requirements", self.names(),
+                         "A settled stable question must not be re-asked without new evidence")
+
+    def test_shipped_topology_contracts_project_exact_delivery_inputs(self):
+        # Public projection proves this exact INIT_PLAN graph reached the engine.
+        projected = self.session.checkpoint(100)
+        self.assertTrue(any(step.get("node", {}).get("node") == "requirements"
+                            and step.get("kind") == "execute" for step in projected))
+        nodes = {node["id"]: node for node in self.shipped["nodes"]}
+        child_node = nodes["child_delivery"]
+        child_output = child_node["outputs"]["value"]
+        self.assertEqual("child_delivery_join", child_output["type"])
+        self.assertEqual("map", child_output["schema"]["kind"])
+        source = child_node["inputs"]["children"]
+        self.assertEqual({"kind": "node", "goal": "#children", "node": "merge"},
+                         source["producer"]["node"])
+        self.assertEqual("delivery_result", source["output"])
+        self.assertEqual("identity", source["mode"])
+        publish = json.dumps(nodes["publish"]).casefold()
+        for required in ("candidate", "implementation_reviews", "integration_reviews",
+                         "migration_review"):
+            self.assertIn(required, publish)
+        decompose = json.dumps(nodes["decompose"]).casefold()
+        for delivery_class in ("leaf", "atomic", "composition"):
+            self.assertIn(delivery_class, decompose)
+        migration = json.dumps(nodes["migration_verification"]).casefold()
+        self.assertIn("applicable", migration)
+        self.assertIn("not_applicable", migration)
+
+    def test_shipped_delivery_classes_select_one_candidate_path_and_typed_nonapplicability(self):
+        self.assertTrue(any(step.get("kind") == "execute" for step in self.session.checkpoint(100)))
+        nodes = {node["id"]: node for node in self.shipped["nodes"]}
+        integration_schema = nodes["integration_verification"]["outputs"]["value"]["schema"]
+        self.assertEqual("object", integration_schema["kind"])
+        self.assertIn("applicability", integration_schema["fields"])
+        self.assertEqual({"applicable", "not_applicable"},
+                         set(integration_schema["fields"]["applicability"]["values"]))
+        publish_inputs = nodes["publish"]["inputs"]
+        self.assertIn("candidate", publish_inputs,
+                      "Publication must consume one delivery-class-selected candidate")
+        self.assertNotIn("implementation", publish_inputs,
+                         "Composition publication cannot require the leaf implementation")
+        self.assertNotIn("integration", publish_inputs,
+                         "Leaf/atomic publication uses typed integration non-applicability")
+        applicability = json.dumps(nodes["publish"]).casefold()
+        for delivery_class in ("leaf", "atomic", "composition"):
+            self.assertIn(delivery_class, applicability)
+
+    def test_shipped_review_corrections_are_generic_for_delivery_and_new_domain_members(self):
+        self.assertTrue(any(step.get("node", {}).get("node") == "requirements"
+                            for step in self.session.checkpoint(100)))
+        templates = {item["template"]["id"]: item for item in self.shipped["task_sets"]}
+        for review, resolver in (
+            ("implementation_review", "resolve_implementation_review_finding"),
+            ("integration_review", "resolve_integration_review_finding"),
+        ):
+            with self.subTest(review=review):
+                self.assertIn(resolver, templates)
+                encoded = json.dumps(templates[resolver]).casefold()
+                self.assertIn("item_key", encoded)
+                self.assertIn("reviewer_result", encoded)
+                self.assertIn("subjects", encoded)
+        sets = {item["id"]: item for item in self.shipped["task_sets"]}
+        for prefix in ("implementation_review", "integration_review"):
+            with self.subTest(configured_member=prefix):
+                self.assertEqual("map", sets[prefix + "s"]["source"]["type"]["fields"]["items"]["kind"])
+                for suffix in ("_rejections", "_admissions", "_findings"):
+                    self.assertIn(prefix + suffix, sets)
+                    self.assertIn("item_key", json.dumps(sets[prefix + suffix]).casefold())
+
+    def test_shipped_child_delivery_is_relationship_bound_and_spec_flaws_stay_scoped(self):
+        self.assertTrue(any(step.get("kind") == "execute" for step in self.session.checkpoint(100)))
+        child = next(node for node in self.shipped["nodes"] if node["id"] == "child_delivery")
+        encoded_child = json.dumps(child).casefold()
+        self.assertRegex(encoded_child, r"relationship|child.*terminal|delivery_result")
+        self.assertRegex(encoded_child, r"exact|identity|result ref")
+        self.assertRegex(encoded_child, r"reject|forg|non.child|immediate child")
+        self.assertEqual("#children", child["inputs"]["children"]["producer"]["node"]["goal"])
+        self.assertEqual("identity", child["inputs"]["children"]["mode"])
+        self.assertEqual("child_delivery_join", child["outputs"]["value"]["type"])
+
+        spec_routes = [item["template"] for item in self.shipped["task_sets"]
+                       if item["template"]["id"] == "interpret_spec_review_rejection"]
+        self.assertEqual(1, len(spec_routes))
+        permits = json.dumps(spec_routes[0]["permits"]).casefold()
+        self.assertIn('"node": "requirements"', permits)
+        self.assertIn('"node": "spec"', permits,
+                      "A specification-only flaw must not reopen settled requirements")
+
+    def test_shipped_composition_never_acquires_leaf_implement_and_selects_integration_candidate(self):
+        # Authenticated provider coverage proves this fixture's immediate-child
+        # membership is known-empty; the graph must still use #children.
+        self.provider.get_sub_issues = lambda _number: []
+        self.provider.get_parent_issue = lambda _number: None
+        self.provider.list_issue_metadata = lambda *_args, **_kwargs: {
+            "repository": "owner/repo", "issues": [{"number": 100, "state": "open",
+                "updated_at": self.provider.issues[100]["updated_at"]}],
+            "page_info": {"has_next_page": False, "end_cursor": None},
+        }
+        self._pr_updated_at = "2026-09-17T12:00:00Z"
+        def current_pr_states(_repo, _executable, selected, _bodies):
+            return ({item["number"]: {
+                "merged": self.fixture.pr_merged, "merged_at": None,
+                "head_oid": self.fixture.head_oid, "base_oid": self.fixture.base_oid,
+                "base_ref": "dev", "merge_commit": None, "repository": "owner/repo",
+                "checks_verified": True, "review_verified": self.fixture.pr_merged,
+                "updated_at": self._pr_updated_at,
+            } for item in selected}, 512, 1)
+        self.fixture.pull_request_states = current_pr_states
+        z._github_pull_request_states.side_effect = current_pr_states
+        self.requirements()
+        _spec, allocation = self.specification(
+            {}, allocation_names=("test_design", "implement", "integration_verification"))
+        if "retain_spec_review_findings" in self.names():
+            self.session.finish(self.session.acquire("retain_spec_review_findings"), {"value": {
+                "items": {}, "rationale": "No specification review findings",
+            }})
+        tasks = [entry["task"] for entry in allocation["allocations"].values()]
+        authorization = {
+            "manifest": self.produced("spec", "allocation"), "tasks": tasks,
+            "policy": content_hash(self.session.project["policy"]), "decision": "approved",
+        }
+        self.assertEqual({"approve_spec"}, self.names())
+        self.session.finish(self.session.acquire("approve_spec"), {"authorization": authorization})
+        decomposition = {
+            "delivery_class": "composition", "rationale": "Parent integrates child results",
+            "children": {"items": {}, "rationale": "Fixture has an empty observed child set"},
+            "implementation_review_members": {"items": {}, "rationale": "Leaf path is inapplicable"},
+            "integration_review_members": {"items": {}, "rationale": "Bounded integration fixture"},
+        }
+        self.session.finish(self.session.acquire("decompose"), {"value": decomposition})
+        review_authorization = {**authorization, "manifest": self.produced("spec", "allocation")}
+        self.session.finish(self.session.acquire("decomposition_review"), {
+            "value": self.approved_review("Composition boundary and ownership approved"),
+            "authorization": review_authorization,
+        })
+        ready = self.names()
+        self.assertNotIn("implement", ready,
+                         "Composition must never acquire the leaf implementation workspace")
+        self.assertNotIn("test_design", ready,
+                         "Composition proceeds from child delivery to parent integration")
+        for registry in sorted(name for name in ready if name.startswith("retain_")):
+            self.session.finish(self.session.acquire(registry), {"value": {
+                "items": {}, "rationale": "No findings in this approved composition fixture",
+            }})
+        ready = self.names()
+        self.assertIn("child_delivery", ready, self.session.checkpoint(100))
+        self.session.finish(self.session.acquire("child_delivery"), {"value": {}})
+        self.assertEqual({"integration_verification"}, self.names(), self.session.checkpoint(100))
+        self.session.finish(self.session.acquire("integration_verification"), {"value": {
+            "applicability": "applicable", "candidate": "parent integration candidate",
+            "parent_workspace": "parent-only", "child_evidence": "exact joined child Results",
+            "rationale": "Composition requires parent integration",
+        }})
+        self.assertNotIn("implement", self.names())
+        self.assertIn("select_delivery_candidate", self.names())
+        integration_ref = self.produced("integration_verification")
+        self.session.finish(self.session.acquire("select_delivery_candidate"), {"value": {
+            "delivery_class": "composition", "candidate": integration_ref,
+            "integration_applicability": "applicable",
+            "rationale": "Select the reviewed parent integration candidate",
+        }})
+        self.assertNotIn("implement", self.names())
+        self.session.finish(self.session.acquire("migration_verification"), {"value": {
+            "applicability": "not_applicable", "transition": "none",
+            "compatibility": "No released compatibility obligation", "recovery": "none",
+            "rationale": "Fixture has no released schema",
+        }})
+        self.session.finish(self.session.acquire("migration_review"),
+                            {"value": self.approved_review("Migration non-applicability approved")})
+        if "retain_migration_findings" in self.names():
+            self.session.finish(self.session.acquire("retain_migration_findings"), {"value": {
+                "items": {}, "rationale": "No migration findings",
+            }})
+        self.assertIn("authorize_repository", self.names())
+        repository_authorization = {
+            "manifest": self.produced("select_delivery_candidate"),
+            "tasks": [{"goal": 100, "node": "publish", "item": None, "generation": 1}],
+            "policy": content_hash(self.session.project["policy"]), "decision": "approved",
+        }
+        self.session.finish(self.session.acquire("authorize_repository"),
+                            {"authorization": repository_authorization})
+        self.assertEqual({"publish"}, self.names())
+        published_head = self.fixture.head_oid
+        self.session.finish(self.session.acquire("publish"), {"value": {
+            "repository": "owner/repo", "branch": "goal-child", "base": "dev",
+            "pr": "https://github.com/owner/repo/pull/9", "head_oid": published_head,
+        }})
+        self.session.finish(self.session.acquire("integrate"), {"value": {
+            "version": 1, "provenance": "provider head and feedback snapshot",
+            "actionable": [], "non_actionable": ["acknowledged"],
+            "obsolete": [], "ambiguous": [],
+        }})
+        self.session.finish(self.session.acquire("integration_feedback_review"),
+                            {"value": self.approved_review("Current PR feedback approved")})
+        if "retain_integration_feedback_findings" in self.names():
+            self.session.finish(self.session.acquire("retain_integration_feedback_findings"),
+                                {"value": {"items": {}, "rationale": "No feedback findings"}})
+        self.assertIn("authorize_merge", self.names())
+        self.provider.create_issue_comment(100, "External PR review: add the missing recovery regression")
+        self._pr_updated_at = "2026-09-17T13:00:00Z"
+        after_feedback = self.session.checkpoint(100)
+        with self.subTest(mutable_source="feedback"):
+            self.assertFalse(any(step.get("node", {}).get("node") == "authorize_merge"
+                                 and step.get("kind") == "execute" for step in after_feedback))
+            self.assertRegex(json.dumps(after_feedback), r"(?i)feedback|comment|stale|reconcil|changed")
+        # Mutable provider head changes after assessment/review.  Exact published
+        # evidence must stale or return retryable reconciliation before root can
+        # authorize or merge it.
+        self.fixture.head_oid = "e" * 40
+        after_head_change = self.session.checkpoint(100)
+        with self.subTest(mutable_source="head"):
+            self.assertFalse(any(step.get("node", {}).get("node") == "authorize_merge"
+                                 and step.get("kind") == "execute" for step in after_head_change))
+            self.assertRegex(json.dumps(after_head_change), r"(?i)stale|head|retry|reconcil|changed")
+        # Restore the exact reviewed provider snapshot, then exercise both root
+        # authorizations and terminal merge through the real public boundary.
+        self.fixture.head_oid = published_head
+        self._pr_updated_at = "2026-09-17T12:00:00Z"
+        self.assertIn("authorize_merge", self.names())
+        merge_authorization = {
+            "manifest": self.produced("publish"),
+            "tasks": [{"goal": 100, "node": "merge", "item": None, "generation": 1}],
+            "policy": content_hash(self.session.project["policy"]), "decision": "approved",
+        }
+        self.session.finish(self.session.acquire("authorize_merge"),
+                            {"authorization": merge_authorization})
+        publication_authorization = copy.deepcopy(merge_authorization)
+        self.session.finish(self.session.acquire("authorize_publication"),
+                            {"authorization": publication_authorization})
+        publication_steps = self.session.checkpoint(100)
+        merge_operations = [step for step in publication_steps if step.get("kind") == "integrate"]
+        self.assertEqual(1, len(merge_operations), publication_steps)
+        terminal = copy.deepcopy(merge_operations[0]["submission"])
+        # The provider can move after terminal work is leased.  Submitting the
+        # old lease must fail closed; the changed provider projection then
+        # requires a fresh assessment and authorization chain.
+        self.fixture.pr_merged = True
+        terminal["request_id"] = "stale-provider-merge"
+        stale_merge = self.session.call(100, terminal, expected=2)
+        self.assertRegex(json.dumps(stale_merge), r"(?i)stale|retry|reconcil|provider|changed")
+        self.assertIn("integrate", self.names())
+        self.session.finish(self.session.acquire("integrate"), {"value": {
+            "version": 2, "provenance": "fresh merged provider and feedback snapshot",
+            "actionable": [], "non_actionable": ["acknowledged"],
+            "obsolete": [], "ambiguous": [],
+        }})
+        self.session.finish(self.session.acquire("integration_feedback_review"),
+                            {"value": self.approved_review("Fresh merged PR feedback approved")})
+        if "retain_integration_feedback_findings" in self.names():
+            self.session.finish(self.session.acquire("retain_integration_feedback_findings"),
+                                {"value": {"items": {}, "rationale": "No fresh feedback findings"}})
+        self.session.finish(self.session.acquire("authorize_merge"),
+                            {"authorization": merge_authorization})
+        self.session.finish(self.session.acquire("authorize_publication"),
+                            {"authorization": publication_authorization})
+        terminal = self.session.acquire("merge")
+        self.session.finish(terminal, {"delivery_result": {
+            "authorization": self.produced("authorize_publication", "authorization"),
+            "repository": "owner/repo", "pr": "https://github.com/owner/repo/pull/9",
+            "head_oid": published_head, "merge_commit": self.fixture.merge_oid,
+            "status": "merged",
+        }})
+        self.assertFalse(self.session.ready())
+
+    def test_shipped_configured_spec_domain_rejection_uses_generic_correction_route(self):
+        self.requirements()
+        _original, allocation = self.specification(
+            {"data_residency": "configured repository-specific risk"})
+        review = self.session.acquire("spec_review", item="data_residency")
+        self.session.finish(review, {"value": {
+            "decision": "changes_requested", "report": "Residency constraint is missing",
+            "outcomes": ["blocked"], "findings": ["spec:data-residency-region"],
+        }})
+        self.assertNotIn("approve_spec", self.names())
+        self.assertIn("interpret_spec_review_rejection", self.names())
+        interpretation = self.session.acquire("interpret_spec_review_rejection",
+                                              item="data_residency")
+        finding = {
+            "id": "data-residency-region", "revision": 1,
+            "source": self.produced("spec_review", item="data_residency"),
+            "subjects": [self.produced("spec")], "target": scope("spec"),
+            "request": "Add the reviewed residency constraint",
+            "rationale": "Configured domain review blocks spec approval", "supersedes": None,
+        }
+        self.session.finish(interpretation, {"value": finding})
+        self.assertIn("admit_spec_review_correction", self.names())
+        finding_ref = self.produced("interpret_spec_review_rejection", item="data_residency")
+        self.session.finish(self.session.acquire("admit_spec_review_correction", item="data_residency"),
+                            {"value": {
+                                "finding": finding_ref,
+                                "target_inputs": self.result("spec")[1]["inputs"],
+                                "authority": self.result("interpret_spec_review_rejection",
+                                                         item="data_residency")[0],
+                                "applicability": "applicable",
+                                "rationale": "Root admits the configured-domain finding",
+                            }})
+        corrected = {"specification": "Behavior constrained to the reviewed residency region",
+                     "criteria": ["observable", "region is explicit"],
+                     "risks": ["correctness", "data_residency"],
+                     "review_members": {"items": {
+                         "data_residency": "configured repository-specific risk"},
+                         "rationale": "Re-review corrected configured domain"}}
+        self.session.finish(self.session.acquire("spec"),
+                            {"value": corrected, "allocation": allocation})
+        self.session.finish(self.session.acquire("spec_review", item="data_residency"),
+                            {"value": self.approved_review("Residency correction approved")})
+        registry = self.session.acquire("retain_spec_review_findings")
+        self.session.finish(registry, {"value": {
+            "items": {"data-residency-region": finding_ref},
+            "rationale": "Retain the configured-domain correction",
+        }})
+        resolver = self.session.acquire("resolve_spec_review_finding",
+                                        item="data-residency-region")
+        self.session.finish(resolver, {"value": {
+            "finding": finding_ref, "subjects": [self.produced("spec")],
+            "reviewer_result": self.result("spec_review", item="data_residency")[0],
+            "decision": "resolved", "rationale": "Fresh configured-domain review approved",
+        }})
+        self.assertIn("approve_spec", self.names())
+
+
+class Goal499BehaviorMatrixRegressionTests(unittest.TestCase):
+    """Public-dispatch proofs required by the reviewed #499 validation matrix.
+
+    These named regressions use ``z.main`` through ``TaskSession``.  Keeping the
+    reusable fixtures small makes the new shipped graph accountable to existing
+    host guarantees without duplicating an orchestration engine in tests.
+    """
+
+    def mapped(self, *methods):
+        run_generic_regressions(self, *methods)
+
+    def test_questions_are_root_consolidated_stable_and_selectively_reopened(self):
+        self.mapped(
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_human_answers_drive_affected_reinvestigation_through_generic_admission",
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_approval_or_resolution_stales_when_inspected_subject_changes",
+        )
+
+    def test_delegated_reviews_have_distinct_leases_provenance_and_deterministic_join(self):
+        self.mapped(
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_parallel_reviews_independent_leases_and_join",
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_same_subject_executor_cannot_review_itself",
+        )
+
+    def test_rejected_review_retains_findings_and_reopens_only_affected_currentness(self):
+        self.mapped(
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_two_findings_coalesce_survive_replay_and_release_join_after_review",
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_late_pr_feedback_against_old_commit_cannot_invalidate_newer_subject",
+        )
+
+    def test_leaf_red_proof_and_corrected_candidate_require_fresh_review(self):
+        self.mapped(
+            "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_design_correction_retains_exact_observed_red_predecessor",
+            "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance",
+        )
+
+    def test_composition_consumes_every_child_and_preserves_child_parent_direction(self):
+        self.mapped(
+            "test_evidence_dag_journeys.RelationshipPublicTests.test_every_child_required_including_archived_exact_completion",
+            "test_evidence_dag_journeys.RelationshipPublicTests.test_projected_cross_goal_cycle_blocks_acquisition_not_unrelated_work",
+            "test_evidence_dag_journeys.RelationshipPublicTests.test_consumed_child_evidence_drift_rejects_acquired_worker",
+            "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_parent_grant_omission_and_mismatch_cannot_expand_child_authority",
+            "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_unowned_and_consumed_drift_reject_without_partial_candidate_then_allow_owned_edit",
+        )
+
+    def test_feedback_edits_resolution_scoped_reopen_and_final_race_fail_closed(self):
+        self.mapped(
+            "test_evidence_dag_journeys.PRSourceTransportTests.test_real_source_reader_preserves_pr_commit_author_edits_and_deletion",
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_comment_delete_edit_and_resolved_text_cannot_retire_admitted_findings",
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_late_pr_feedback_against_old_commit_cannot_invalidate_newer_subject",
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_stale_subject_admission_does_not_overwrite_newer_work",
+            "test_evidence_dag_journeys.RelationshipPublicTests.test_relevant_parent_change_rejects_acquired_child_result",
+            "test_evidence_dag_journeys.GenericStoragePublicTests.test_checkpoint_preserves_concurrent_labels_and_exact_retry",
+        )
+
+    def test_custom_policy_history_and_closed_goal_exclusions_survive_upgrade_inputs(self):
+        self.mapped(
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_lighter_policy_proposal_preserves_findings_and_requires_exact_approval",
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_stronger_policy_requires_added_independent_review_and_preserves_history",
+            "test_evidence_dag_journeys.GatewayIsolationTests.test_incompatible_goal_is_local_and_archived_body_is_never_hydrated",
+        )
+
+    def test_configured_new_risk_member_runs_without_engine_branch(self):
+        self.mapped(
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_changed_bucket_reruns_only_affected_investigation",
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_new_bucket_preserves_unchanged_sibling_but_join_waits",
+        )
 
 
 class GraphAdoptionPublicTests(DagFixture):
