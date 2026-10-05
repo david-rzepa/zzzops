@@ -426,6 +426,22 @@ class Workflow:
     def node_evidence_policy(self):
         return digest(self.api._phase_evidence.evidence_policy(self.project['policy']))
 
+    def node_authorization_policy_matches(self, value, artifact, result, artifacts):
+        """Keep an exact authorization valid across later policy settings changes."""
+        accepted = {
+            self.node_evidence_policy(),
+            artifact.get('provenance', {}).get('policy'),
+        }
+        bindings = [item for item in result.get('inputs', []) if item.get('name') == '__policy']
+        if len(bindings) == 1:
+            binding = bindings[0]; source = binding.get('source', {})
+            context = artifacts.get(source.get('hash')) if isinstance(source, dict) else None
+            if (binding.get('mode') == 'identity' and not binding.get('path')
+                    and isinstance(context, dict) and context.get('type') == 'policy_context'
+                    and digest(context) == source.get('hash')):
+                accepted.add(source['hash'])
+        return value.get('policy') in accepted
+
     def read_only(self):
         self.adapter = ProviderReadGateway(self, self._mutation_adapter)
 
@@ -2134,7 +2150,7 @@ class Workflow:
                     issuer = owners.get(item['source']['hash'])
                     if item['mode'] != 'identity' or item['path'] or not issuer or issuer[1]['executor'] != root or projection['states'][issuer[0]]['contract']['executor']['role'] != 'root': continue
                     content = artifact['content']
-                    if content.get('policy') not in {self.node_evidence_policy(), artifact.get('provenance', {}).get('policy')} or content.get('decision') != 'approved': continue
+                    if not self.node_authorization_policy_matches(content, artifact, issuer[1], artifacts) or content.get('decision') != 'approved': continue
                     if artifact['type'] == 'repository_authorization' and content.get('context') != reference: continue
                     if artifact['type'] == 'publication_authorization':
                         subject = owners.get(content.get('subject', {}).get('hash'))
@@ -2212,7 +2228,7 @@ class Workflow:
                 if artifact.get('type') != 'repository_authorization': continue
                 if result['executor'] != root or projection['states'][key]['contract']['executor']['role'] != 'root': continue
                 value = artifact['content']; reference = value.get('context', {})
-                if value.get('decision') != 'approved' or value.get('policy') not in {self.node_evidence_policy(), artifact.get('provenance', {}).get('policy')}: continue
+                if value.get('decision') != 'approved' or not self.node_authorization_policy_matches(value, artifact, result, artifacts): continue
                 owner = owners.get(reference.get('hash'))
                 if not owner or owner[1]['executor'] != root or projection['states'][owner[0]]['contract']['executor']['role'] != 'root': continue
                 if not any(row['source'] == reference and row['mode'] == 'identity' and not row['path'] for row in result['inputs']): continue
@@ -2287,7 +2303,7 @@ class Workflow:
                     if blob.get('type') != 'workspace_authorization': continue
                     value = blob['content']; owner = current_outputs.get(candidate['source']['hash'])
                     if not isinstance(value, dict) or not owner or owner[0][0] != goal or value.get('manifest') != reference: continue
-                    if candidate['mode'] != 'identity' or value.get('policy') not in {self.node_evidence_policy(), blob.get('provenance', {}).get('policy')} or expected_entry['task'] not in value.get('tasks', []) or value.get('decision') != 'approved': raise ValueError('Workspace authorization policy/task/manifest mismatch')
+                    if candidate['mode'] != 'identity' or not self.node_authorization_policy_matches(value, blob, owner[1], artifacts) or expected_entry['task'] not in value.get('tasks', []) or value.get('decision') != 'approved': raise ValueError('Workspace authorization policy/task/manifest mismatch')
                     matches.append((candidate['source'], owner[1], states[owner[0]]))
                 roots = [row for row in matches if row[2]['contract']['executor']['role'] == 'root' and row[1]['executor'] == (self.runtime or {}).get('root_id')]
                 reviewers = [row for row in matches if row[1]['executor'] != producer['executor'] and row[2]['contract']['independent_of']]
@@ -2866,7 +2882,7 @@ class Workflow:
             if blob.get('type') != 'publication_authorization': continue
             value = blob['content']; issuer = projection['states'][key]
             if issuer['contract']['executor']['role'] != 'root' or result['executor'] != (self.runtime or {}).get('root_id'): continue
-            if value.get('policy') not in {self.node_evidence_policy(), blob.get('provenance', {}).get('policy')} or value.get('decision') != 'approved': continue
+            if not self.node_authorization_policy_matches(value, blob, result, artifacts) or value.get('decision') != 'approved': continue
             subject = owners.get(value.get('subject', {}).get('hash')); review = owners.get(value.get('review', {}).get('hash'))
             if not subject or not review: continue
             observed = projection['states'][subject[0]].get('publication')
