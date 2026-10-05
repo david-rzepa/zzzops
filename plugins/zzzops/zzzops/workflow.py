@@ -2390,7 +2390,12 @@ class Workflow:
             return False
         contexts = {}; migrations = {}
         for key, state in work.items():
-            if state['state'] == 'blocked': continue
+            if state['state'] == 'blocked':
+                # Preserve the preliminary semantic blocker. Omitting this key
+                # makes the second projection replace it with the misleading
+                # generic "workspace unavailable" fallback.
+                contexts[key] = {'error': state.get('reason', 'Workspace task is blocked')}
+                continue
             try:
                 grant = authority(state)
                 migration = None
@@ -2717,6 +2722,40 @@ class Workflow:
         """Format the same readiness and authority boundaries for both callers."""
         number = snapshot['number']
         projection = snapshot['projection']; steps = []
+        unresolved = [value for value in projection.get('obligations', {}).values()
+                      if value.get('applicability') == 'unresolved']
+        supports_assessment = any(
+            any(output.get('type') == 'applicability_assessment'
+                for output in node.get('outputs', {}).values())
+            for node in snapshot['graph']['nodes'])
+        if unresolved and not supports_assessment:
+            steps.append({
+                'kind': 'repair', 'assignment': 'root', 'goal': number,
+                'reason': 'Finding applicability unresolved; the current graph has no reviewed applicability-assessment route.',
+                'diagnostic': 'Finding applicability unresolved',
+                'action': ('Append a root applicability-assessment node through graph_prepare, independently review the exact proposal, '
+                           'then graph_adopt it. The node must bind each returned admission/finding, the current corrected subject(s), '
+                           'their current independent reviewer Result, and current root authority. It classifies applicability only; '
+                           'it does not waive, resolve, or authorize implementation.'),
+                'obligations': [{'admission': value['admission'], 'finding': value['finding'],
+                                 'target': value['content']['target']}
+                                for value in unresolved],
+                'required_output': {
+                    'type': 'applicability_assessment',
+                    'fields': ['admission', 'finding', 'subjects', 'reviewer_result', 'authority',
+                               'applicability', 'rationale'],
+                    'applicability': ['applicable', 'not_applicable'],
+                    'requirements': ['exact current unresolved admission and finding',
+                                     'exact current corrected subject outputs',
+                                     'current independent reviewer Result that inspected every subject',
+                                     'current authenticated root authority Result'],
+                },
+                'historical_input': {'producer': {'slot': 'obligations'},
+                                     'path': ['<finding id>'], 'mode': 'content',
+                                     'fields': ['admission', 'finding', 'target', 'applicability']},
+                'submission': {'operation': 'graph_prepare', 'graph': '<current graph plus append-only assessment node>',
+                               'rationale': '<why this exact historical obligation can now be classified>'},
+            })
         for state in projection['states'].values():
             if state['node']['goal'] != number: continue
             lease = projection['leases'].get(self.api._phase_evidence.task_key(state['node']))
@@ -3370,6 +3409,15 @@ class Workflow:
             return projection['obligations'].get((finding['target']['subject']['goal'], finding['id']))
         def exact_input(reference):
             return any(item['source'] == reference and item['mode'] == 'identity' and not item['path'] for item in state['inputs'])
+        def exact_obligation_input(reference):
+            for item in state['inputs']:
+                source = artifacts[item['source']['hash']]
+                if source.get('type') != 'obligation_context': continue
+                try: selected = ev.selected_path(source['content'], item['path'])
+                except (ValueError, KeyError, TypeError): continue
+                if isinstance(selected, dict) and reference in (selected.get('admission'), selected.get('finding')):
+                    return True
+            return False
         def reviewed(reference, review=None):
             producer = subject_results.get(reference['hash'])
             if not producer: raise ValueError('Current subject evidence is required')
@@ -3547,6 +3595,28 @@ class Workflow:
                 if value['applicability'] not in ('applicable', 'not_applicable', 'unresolved'): raise ValueError('Unknown admission applicability')
                 prior = obligation(finding)
                 if prior and prior['finding'] != value['finding'] and not any(k == 'supersession' and v['prior'] == prior['finding'] and v['replacement'] == value['finding'] for k, v in proposed): raise ValueError('Supersession requires atomic exact coverage transfer')
+            elif kind == 'applicability_assessment':
+                finding = read(value['finding'], 'finding'); prior = obligation(finding)
+                permit(kind, finding['target']); authority(value['authority'])
+                if not prior or prior['finding'] != value['finding'] or prior['admission'] != value['admission'] or prior['applicability'] != 'unresolved':
+                    raise ValueError('Applicability assessment requires the exact current unresolved admission and finding')
+                if value['applicability'] not in ('applicable', 'not_applicable') or not value['rationale'].strip():
+                    raise ValueError('Applicability assessment must classify the obligation with evidence rationale')
+                if not exact_obligation_input(value['admission']) or not exact_obligation_input(value['finding']):
+                    raise ValueError('Applicability assessment must bind the exact admission and finding')
+                if not value['subjects'] or any(ref['hash'] not in subject_results or not exact_input(ref) for ref in value['subjects']):
+                    raise ValueError('Applicability assessment requires exact current corrected subjects')
+                reviewer = read(value['reviewer_result'], 'result')
+                if value['reviewer_result']['hash'] not in current:
+                    raise ValueError('Applicability assessment requires the exact current reviewer Result')
+                if not any(binding['source'] in reviewer['outputs'].values() and binding['mode'] == 'identity'
+                           for binding in state['inputs']):
+                    raise ValueError('Applicability assessment must bind output from the current reviewer Result')
+                inspected = {binding['source']['hash'] for binding in reviewer['inputs']}
+                if any(ref['hash'] not in inspected for ref in value['subjects']):
+                    raise ValueError('Applicability reviewer did not inspect every corrected subject')
+                if any(subject_results[ref['hash']]['executor'] == reviewer['executor'] for ref in value['subjects']):
+                    raise ValueError('Applicability reviewer must be independent of corrected subjects')
             elif kind == 'supersession':
                 prior = read(value['prior'], 'finding'); replacement = read(value['replacement'], 'finding')
                 permit(kind, replacement['target']); authority(value['authority']); authority(value['coverage_evidence'])

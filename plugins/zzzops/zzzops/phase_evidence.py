@@ -1113,6 +1113,12 @@ def _derive_task_steps(graph, payload, context):
         if output['type'] == 'admission':
             finding = artifact(value['finding'])['content']
             obligations[(finding['target']['subject'].get('goal'), finding['id'])] = {'finding': value['finding'], 'content': finding, 'admission': ref, 'applicability': value['applicability']}
+        elif output['type'] == 'applicability_assessment':
+            finding = artifact(value['finding'])['content']
+            key = (finding['target']['subject'].get('goal'), finding['id'])
+            prior = obligations.get(key)
+            if prior and prior['finding'] == value['finding'] and prior['admission'] == value['admission']:
+                obligations[key] = {**prior, 'assessment': ref, 'applicability': value['applicability']}
         elif output['type'] in ('withdrawal', 'retirement') and isinstance(value, dict) and 'finding' in value and value.get('decision') != 'retire_member':
             finding = artifact(value['finding'])['content']
             obligations.pop((finding['target']['subject'].get('goal'), finding['id']), None)
@@ -1156,6 +1162,15 @@ def _derive_task_steps(graph, payload, context):
                 ref = snapshots[number].get('context_ref')
                 if ref is None: raise ValueError('Authenticated relationship context unavailable')
                 value = artifact(ref)['content']
+            elif slot == 'obligations':
+                value = {identifier: {'admission': obligation['admission'],
+                                      'finding': obligation['finding'],
+                                      'target': obligation['content']['target'],
+                                      'applicability': obligation['applicability']}
+                         for (target_goal, identifier), obligation in obligations.items()
+                         if target_goal == number}
+                ref = remember({'type': 'obligation_context', 'content': value, 'producer': None,
+                                'provenance': {'actor': 'host', 'source': None, 'policy': policy}})
             else:
                 ref = snapshots[number]['payload'][slot]
                 value = artifact(ref)['content']
@@ -1278,6 +1293,15 @@ def _derive_task_steps(graph, payload, context):
                 state['inputs'].append({'name': name, 'source': ref, 'path': path, 'mode': binding['mode']})
                 state['values'][name] = value; bound.update(selected)
                 hashes[name] = ref['hash'] if binding['mode'] == 'identity' else semantic_hash(value)
+            # Authorization decisions are explicitly policy-bound content. Bind
+            # their producer Result to the same current policy so a policy
+            # change reopens ordinary independent/root authorization work while
+            # retaining every previous Result as immutable history.
+            if any(output.get('type') == 'workspace_authorization' for output in node['outputs'].values()):
+                ref = remember({'type': 'policy_context', 'content': {'policy': policy}, 'producer': None,
+                                'provenance': {'actor': 'host', 'source': None, 'policy': policy}})
+                state['inputs'].append({'name': '__policy', 'source': ref, 'path': [], 'mode': 'identity'})
+                hashes['__policy'] = ref['hash']
             if ('workspaces' in context or 'repository_workspace' in node['executor']['resources']) and not context.get('workspace_probe'):
                 workspace = context.get('workspaces', {}).get(key)
                 if not workspace or 'error' in workspace: raise ValueError((workspace or {}).get('error', 'Workspace allocation/authority is unavailable'))
