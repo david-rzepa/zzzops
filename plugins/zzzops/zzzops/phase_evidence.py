@@ -1308,7 +1308,7 @@ def _derive_task_steps(graph, payload, context):
                 ref = workspace['binding']
                 # Root's read-only checkout pin guards its live acquisition,
                 # not semantic reuse of decisions consuming only declared Refs.
-                if not workspace.get('readonly') or node['executor']['role'] != 'root':
+                if not workspace.get('readonly'):
                     state['inputs'].append({'name': '__workspace', 'source': ref, 'path': [], 'mode': 'identity'})
                     hashes['__workspace'] = ref['hash']
                 state['workspace'] = workspace
@@ -1355,14 +1355,23 @@ def _derive_task_steps(graph, payload, context):
                 recorded_policy = artifact(ref).get('provenance', {}).get('policy')
                 legacy_contract = semantic_hash({'node': node, 'policy': recorded_policy}) if isinstance(recorded_policy, str) else None
                 if task_key(result['node']) != key or result['contract'] not in {contract, legacy_contract}: continue
+                legacy = result['contract'] == legacy_contract and result['contract'] != contract
                 old_hashes = {}
                 for binding in result['inputs']:
-                    if (context.get('workspace_probe') or 'workspaces' not in context) and binding['name'] == '__workspace': continue
+                    if binding['name'] == '__workspace' and (context.get('workspace_probe') or 'workspaces' not in context or '__workspace' not in hashes): continue
                     if 'publications' not in context and binding['name'] == '__publication': continue
                     old_hashes[binding['name']] = binding['source']['hash'] if binding['mode'] == 'identity' else semantic_hash(selected_path(artifact(binding['source'])['content'], binding['path']))
+                comparable_hashes = dict(hashes)
+                # Results created before policy_context existed already carry
+                # immutable policy provenance and a legacy contract.  Do not
+                # invalidate them merely because the host later introduced
+                # this redundant binding; all declared semantic inputs still
+                # require exact equality.
+                if legacy and '__policy' not in old_hashes:
+                    comparable_hashes.pop('__policy', None)
                 old_resolutions = [{k: r[k] for k in ('location', 'selector', 'targets')} for r in result.get('resolutions', [])]
                 if old_hashes.get('__workspace') != hashes.get('__workspace'): state['reason'] = 'Workspace consumed/acquisition snapshot changed'
-                if old_hashes == hashes and old_resolutions == resolution_semantics:
+                if old_hashes == comparable_hashes and old_resolutions == resolution_semantics:
                     current[key] = (ref, result); state['state'] = 'complete'; state.pop('reason', None); break
             if unresolved and key not in current:
                 state['state'] = 'blocked'; raise ValueError('Finding applicability unresolved')
