@@ -2638,6 +2638,12 @@ class Workflow:
         if not delegation.get('available') or not delegation.get('discovery_complete') or not delegation.get('tool'): raise ValueError('Delegation capability discovery is unavailable')
         choices = [row for row in pairs if tiers.index(row['tier']) >= tiers.index(required) and any(all(p.get(k) == row.get(k) for k in ('model', 'effort')) for p in available)]
         if not choices: raise ValueError('Reviewed capability/model inventory unavailable')
+        root_record = next((row for row in pairs if all(row.get(k) == root.get(k) for k in ('model', 'effort'))), None)
+        if root_record is None: raise ValueError('Actual root pair requires current model policy review')
+        if not config.get('allow_above_root_delegation', False):
+            choices = [row for row in choices if tiers.index(row['tier']) <= tiers.index(root_record['tier'])]
+            if not choices:
+                raise ValueError('Project policy forbids above-root delegation; review model_routing.allow_above_root_delegation to enable stronger workers, then retry. Root and task requirements remain unchanged.')
         chosen = min(choices, key=lambda row: (row['cost'], tiers.index(row['tier']), row['model'], row['effort']))
         return 'delegate', {k: chosen[k] for k in ('model', 'effort')}
 
@@ -2649,7 +2655,7 @@ class Workflow:
         root_record = next((row for row in config['model_inventory']['reviewed_pairs'] if all(row.get(k) == root.get(k) for k in ('model', 'effort'))), None)
         if root_record is None: raise ValueError('Actual root pair requires current model policy review')
         if executor['capability'] not in tiers: raise ValueError('Unknown reviewed capability tier')
-        if tiers.index(root_record['tier']) < tiers.index(executor['capability']):
+        if executor['role'] == 'root' and tiers.index(root_record['tier']) < tiers.index(executor['capability']):
             choices = [row for row in config['model_inventory']['reviewed_pairs'] if tiers.index(row['tier']) >= tiers.index(executor['capability']) and any(all(pair.get(k) == row.get(k) for k in ('model', 'effort')) for pair in runtime.get('available_pairs', []))]
             if not choices: raise ValueError('Required reviewed capability/model is unavailable')
             requested = min(choices, key=lambda row: (row['cost'], tiers.index(row['tier']), row['model'], row['effort']))

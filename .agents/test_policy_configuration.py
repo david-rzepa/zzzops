@@ -27,7 +27,7 @@ EXPECTED_CONFIGURATION_KEYS = {
     "documentation_style": set(),
     "deployment_resources": set(),
     "engineering_rigor": {"level", "minimums", "overrides"},
-    "model_routing": {"tiers", "assessment_tree", "model_inventory"},
+    "model_routing": {"tiers", "assessment_tree", "model_inventory", "allow_above_root_delegation"},
     "workflow_adherence": {"phase_dag"},
     "automated_design": set(),
     "autonomy_approval_parallelism": {
@@ -99,6 +99,18 @@ class PolicyConfigurationSchemaTests(unittest.TestCase):
             self.assertTrue(section["instructions"].strip())
             self.assertEqual(expected, set(section["configuration"]))
         self.assertEqual(set(), set(z.validate_policy(policy, require_pending=True)))
+
+    def test_delegation_upgrade_setting_is_optional_strict_boolean_and_default_denied(self):
+        policy = self.template_policy()
+        config = next(s["configuration"] for s in policy["sections"] if s["id"] == "model_routing")
+        self.assertIs(False, config.pop("allow_above_root_delegation"))
+        self.assertEqual([], z.validate_policy(policy, require_pending=True))
+        for valid in (False, True):
+            config["allow_above_root_delegation"] = valid
+            self.assertEqual([], z.validate_policy(policy, require_pending=True))
+        for invalid in (None, 0, 1, "true", [], {}):
+            config["allow_above_root_delegation"] = invalid
+            self.assertIn("allow_above_root_delegation", str(z.validate_policy(policy, require_pending=True)))
 
     def test_unknown_configuration_and_empty_instructions_are_rejected(self):
         for mutation, expected in (

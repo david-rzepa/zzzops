@@ -51,7 +51,9 @@ POLICY_SECTION_TITLES = {
     "automated_design": "Automated design",
     "autonomy_approval_parallelism": "Autonomy, approvals, and parallel work",
 }
-OPTIONAL_POLICY_SETTING_PREFIXES: dict[str, tuple[str, ...]] = {}
+OPTIONAL_POLICY_SETTING_PREFIXES: dict[str, tuple[str, ...]] = {
+    "model_routing": ("configuration.allow_above_root_delegation",),
+}
 
 GIT_REVIEW_SETTING_VALUES = {
     "review_pending_dependency": {"wait_for_completed_dependencies", "stack_from_reviewed_checkpoint"},
@@ -99,7 +101,7 @@ POLICY_CONFIGURATION_KEYS = {
     "documentation_style": set(),
     "deployment_resources": set(),
     "engineering_rigor": {"level", "minimums", "overrides"},
-    "model_routing": {"tiers", "assessment_tree", "model_inventory"},
+    "model_routing": {"tiers", "assessment_tree", "model_inventory", "allow_above_root_delegation"},
     "workflow_adherence": {"phase_dag"},
     "automated_design": set(),
     "autonomy_approval_parallelism": {
@@ -1194,9 +1196,12 @@ def phase_evidence_graph(phase_dag: Any, *, has_parent: bool, has_children: bool
 
 
 def _routing_settings_errors(settings: Any) -> list[str]:
-    if not isinstance(settings, dict) or set(settings) != POLICY_CONFIGURATION_KEYS["model_routing"]:
+    required = POLICY_CONFIGURATION_KEYS["model_routing"] - {"allow_above_root_delegation"}
+    if not isinstance(settings, dict) or not required <= set(settings) or set(settings) - POLICY_CONFIGURATION_KEYS["model_routing"]:
         return ["configuration must contain the declarative routing contract"]
     errors = []
+    if not isinstance(settings.get("allow_above_root_delegation", False), bool):
+        errors.append("configuration.allow_above_root_delegation must be a boolean")
     inventory = settings.get("model_inventory")
     inventory_fields = {"reviewed_pairs"}
     if not isinstance(inventory, dict) or set(inventory) != inventory_fields:
@@ -1793,6 +1798,8 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
         elif section_id in POLICY_CONFIGURATION_KEYS:
             allowed = POLICY_CONFIGURATION_KEYS[section_id]
             required = allowed - ({"portfolio_order"} if section_id == "autonomy_approval_parallelism" else set())
+            if section_id == "model_routing":
+                required = required - {"allow_above_root_delegation"}
             if section_id == "workflow_adherence":
                 allowed = allowed | {"migration_entries"}
             if section_id == "git_review_release":

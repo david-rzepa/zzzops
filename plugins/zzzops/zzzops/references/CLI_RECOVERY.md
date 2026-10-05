@@ -54,3 +54,18 @@ Each tracked lease keeps its originating checkout and runtime for probes and
 renewals. Local registration/removal lock waits are bounded; a busy local lock
 returns operational monitoring/cleanup guidance without undoing a committed
 provider result or granting recovery authority.
+
+## Delegation above root capability
+
+The reviewed `model_routing.configuration.allow_above_root_delegation` boolean
+permits worker tasks to select a stronger reviewed, available model/effort pair
+while the actual root remains unchanged. It defaults to false, including in
+older policies where the field is absent. Change it through policy review; a
+session override alone cannot override a denying project policy. The same
+eligibility checks apply to preview and acquisition. Root-only tasks retain
+their declared capability and actual-root requirement.
+
+Capability is the pair's reviewed tier, not its name, price or an inferred
+reasoning-effort ordering. Pairs assigned the same tier remain equivalent for
+capability selection; enabling delegation does not resolve that separate
+policy-mapping limitation. Existing leases retain their exact selected pair.

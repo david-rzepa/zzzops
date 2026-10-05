@@ -295,8 +295,9 @@
         "review": {
           "approved": false
         },
-        "instructions": "Route each phase by effective rigor, consequence, boundedness, and phase type. Refresh runtime model and effort availability, select only reviewed pairs at sufficient capability and least cost, keep human interaction on root, require a session override above root capability, and persist a blocker when no reviewed capable pair is available.",
+        "instructions": "Route each phase by effective rigor, consequence, boundedness, and phase type. Refresh runtime model and effort availability, select only reviewed pairs at sufficient capability and least cost, keep human interaction on root, allow workers above root capability only when reviewed policy enables allow_above_root_delegation, and persist a blocker when no reviewed capable pair is available.",
         "configuration": {
+          "allow_above_root_delegation": false,
           "tiers": [
             {
               "id": "routine",
