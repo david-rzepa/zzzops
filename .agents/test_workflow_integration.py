@@ -182,6 +182,16 @@ class GenericIntegrationFreshnessTests(DagFixture):
         self.session.project = original
         self.session.finish(work, {"value": "unchanged approved policy"})
 
+    def test_operational_routing_and_capacity_settings_do_not_stale_owned_or_completed_work(self):
+        work = self.session.acquire("produce")
+        routing = z._workflow_section(self.session.project, "model_routing")["configuration"]
+        routing["allow_above_root_delegation"] = not routing.get("allow_above_root_delegation", False)
+        parallelism = z._workflow_section(self.session.project, "autonomy_approval_parallelism")["configuration"]
+        parallelism["max_workers"] += 7
+        self.session.finish(work, {"value": "settings do not alter this result"})
+        self.assertNotIn("produce", self.names())
+        self.assertIn("review_a", self.names())
+
 
 class WorkflowIntegrationTests(unittest.TestCase):
     def setUp(self):

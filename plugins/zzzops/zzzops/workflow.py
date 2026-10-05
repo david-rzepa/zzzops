@@ -422,6 +422,9 @@ class Workflow:
         self._portfolio_cache = None
         self._mutation_adapter = self.adapter
 
+    def node_evidence_policy(self):
+        return digest(self.api._phase_evidence.evidence_policy(self.project['policy']))
+
     def read_only(self):
         self.adapter = ProviderReadGateway(self, self._mutation_adapter)
 
@@ -1620,7 +1623,7 @@ class Workflow:
                 if envelope.get('workflow', {}).get('leases'): raise ValueError('Predecessor worker ownership must be observed stopped before conversion')
                 ev.validate_graph(entry)
                 source = {'type': 'migration_source', 'content': copy.deepcopy(issue), 'producer': None,
-                          'provenance': {'actor': (self.runtime or {}).get('root_id', ''), 'source': None, 'policy': digest(self.project['policy'])}}
+                          'provenance': {'actor': (self.runtime or {}).get('root_id', ''), 'source': None, 'policy': self.node_evidence_policy()}}
                 payload = {'spec': remember(source), 'graph': remember(entry), 'evidence': [], 'operational': {'leases': [], 'receipts': []}}
                 envelope = {'schema_version': 2, 'repository': self.repository, 'issue': n, 'revision': envelope['revision'], 'state': 'open', 'parent': envelope['parent'], 'payload': remember(payload)}
                 bootstrap[n] = copy.deepcopy(issue)
@@ -1790,7 +1793,7 @@ class Workflow:
                         'parent': {'known': True, 'value': envelope['parent']}, 'children': {'known': known, 'envelopes': children}}
             snapshot['relationship'] = relation
             snapshot['context_ref'] = remember({'type': 'relationship_context', 'content': relation, 'producer': None,
-                'provenance': {'actor': 'host', 'source': None, 'policy': digest(self.project['policy'])}})
+                'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
             related = {ref['goal'] for ref in refs if type(ref['goal']) is int}
             if any(ref['goal'] == '#parent' for ref in refs) and envelope['parent'] is not None: related.add(envelope['parent'])
             related.update(int(key) for key in children)
@@ -1830,7 +1833,7 @@ class Workflow:
                 snapshot['relationship'] = copy.deepcopy(snapshot['relationship'])
                 snapshot['relationship']['children']['known'] = False
                 snapshot['context_ref'] = remember({'type': 'relationship_context', 'content': snapshot['relationship'], 'producer': None,
-                    'provenance': {'actor': 'host', 'source': None, 'policy': digest(self.project['policy'])}})
+                    'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
         # Some scoped discovery candidates were needed only for parent coverage.
         # They are not evaluated unless referenced by the selected graph closure.
         closure = {n: snapshots[n] for n in visited}
@@ -1990,7 +1993,7 @@ class Workflow:
                       current=[{'node': result['node'], 'result': ref}
                                for _, (ref, result) in sorted(before.items(), key=lambda row: str(row[0]))])
         return {'kind': 'goal_graph_adoption', 'repository': self.repository, 'goal': snapshot['number'],
-                'policy': digest(self.project['policy']), 'source': source,
+                'policy': self.node_evidence_policy(), 'source': source,
                 'graph': copy.deepcopy(graph), 'rationale': rationale}
 
     def node_graph_adopt(self, snapshot, payload, request):
@@ -2033,7 +2036,9 @@ class Workflow:
             raise ValueError('Invalid prepared graph proposal manifest')
         expected = self.node_graph_proposal(snapshot, proposal['graph'], proposal['rationale'],
                                            pending_request=request['request_id'])
-        if proposal != expected:
+        recorded_policy = artifact.get('provenance', {}).get('policy')
+        if (proposal.get('policy') not in {expected['policy'], recorded_policy} or
+                {**proposal, 'policy': expected['policy']} != expected):
             raise ValueError('Graph proposal source, target, current Results or policy changed after review')
         if self.adapter.get_issue(request['review_goal'])['body'] != reviewed['issue']['body']:
             raise ValueError('Graph review source changed before adoption')
@@ -2070,7 +2075,7 @@ class Workflow:
                     issuer = owners.get(item['source']['hash'])
                     if item['mode'] != 'identity' or item['path'] or not issuer or issuer[1]['executor'] != root or projection['states'][issuer[0]]['contract']['executor']['role'] != 'root': continue
                     content = artifact['content']
-                    if content.get('policy') != digest(self.project['policy']) or content.get('decision') != 'approved': continue
+                    if content.get('policy') not in {self.node_evidence_policy(), artifact.get('provenance', {}).get('policy')} or content.get('decision') != 'approved': continue
                     if artifact['type'] == 'repository_authorization' and content.get('context') != reference: continue
                     if artifact['type'] == 'publication_authorization':
                         subject = owners.get(content.get('subject', {}).get('hash'))
@@ -2102,7 +2107,7 @@ class Workflow:
                 semantic = {**observed, 'context': reference}
                 if policy_section(self.project, 'verification_testing')['configuration']['required_ci'] == 'disabled': semantic.pop('ci')
                 artifact = {'type': 'publication_snapshot', 'content': semantic, 'producer': None,
-                            'provenance': {'actor': 'host', 'source': None, 'policy': digest(self.project['policy'])}}
+                            'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}}
                 identity = digest(artifact); artifacts[identity] = artifact
                 contexts[key] = {'binding': {'hash': identity, 'uri': 'urn:' + identity}, 'context': value, 'context_ref': reference,
                                  'observed': observed, 'provider': facts, 'base_branch': value['base'], 'base_commit': facts['base_oid']}
@@ -2148,7 +2153,7 @@ class Workflow:
                 if artifact.get('type') != 'repository_authorization': continue
                 if result['executor'] != root or projection['states'][key]['contract']['executor']['role'] != 'root': continue
                 value = artifact['content']; reference = value.get('context', {})
-                if value.get('decision') != 'approved' or value.get('policy') != digest(self.project['policy']): continue
+                if value.get('decision') != 'approved' or value.get('policy') not in {self.node_evidence_policy(), artifact.get('provenance', {}).get('policy')}: continue
                 owner = owners.get(reference.get('hash'))
                 if not owner or owner[1]['executor'] != root or projection['states'][owner[0]]['contract']['executor']['role'] != 'root': continue
                 if not any(row['source'] == reference and row['mode'] == 'identity' and not row['path'] for row in result['inputs']): continue
@@ -2223,7 +2228,7 @@ class Workflow:
                     if blob.get('type') != 'workspace_authorization': continue
                     value = blob['content']; owner = current_outputs.get(candidate['source']['hash'])
                     if not isinstance(value, dict) or not owner or owner[0][0] != goal or value.get('manifest') != reference: continue
-                    if candidate['mode'] != 'identity' or value.get('policy') != digest(self.project['policy']) or expected_entry['task'] not in value.get('tasks', []) or value.get('decision') != 'approved': raise ValueError('Workspace authorization policy/task/manifest mismatch')
+                    if candidate['mode'] != 'identity' or value.get('policy') not in {self.node_evidence_policy(), blob.get('provenance', {}).get('policy')} or expected_entry['task'] not in value.get('tasks', []) or value.get('decision') != 'approved': raise ValueError('Workspace authorization policy/task/manifest mismatch')
                     matches.append((candidate['source'], owner[1], states[owner[0]]))
                 roots = [row for row in matches if row[2]['contract']['executor']['role'] == 'root' and row[1]['executor'] == (self.runtime or {}).get('root_id')]
                 reviewers = [row for row in matches if row[1]['executor'] != producer['executor'] and row[2]['contract']['independent_of']]
@@ -2293,7 +2298,7 @@ class Workflow:
                 resolutions = lambda rows: [{k: row[k] for k in ('location', 'selector', 'targets')} for row in rows]
                 expected_authority = {**{k: grant[k] for k in ('allocation', 'authorization', 'approval')},
                     'inputs': self.node_workspace_authority_inputs(state['inputs'], artifacts)}
-                if (draft['policy'] != digest(self.project['policy']) or draft['authority'] != expected_authority or
+                if (draft['policy'] != self.node_evidence_policy() or draft['authority'] != expected_authority or
                     acquisition['contract'] != state['contract_hash'] or
                     declared(acquisition['inputs']) != declared(state['inputs']) or
                     resolutions(acquisition['resolutions']) != resolutions(state['resolutions'])):
@@ -2479,7 +2484,7 @@ class Workflow:
                         if 'error' not in row and row['reviews'] and row['proof']['hash'] in reachable and connected(row['after']): selected_anchors[row['key']] = row
                     acquisition['baseline_proofs'] = [{'result': row['result'], 'proof': row['proof'], 'reviews': [ref for ref, _ in row['reviews']]}
                         for row in selected_anchors.values()]
-                binding = remember({'type': 'workspace_snapshot', 'content': {'files': baseline, **{k: grant[k] for k in ('allocation', 'authorization', 'approval')}, **({'migration': migration} if migration is not None else {})}, 'producer': None, 'provenance': {'actor': 'host', 'source': None, 'policy': digest(self.project['policy'])}})
+                binding = remember({'type': 'workspace_snapshot', 'content': {'files': baseline, **{k: grant[k] for k in ('allocation', 'authorization', 'approval')}, **({'migration': migration} if migration is not None else {})}, 'producer': None, 'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
                 contexts[key] = {'binding': binding, 'files': baseline, 'acquisition': acquisition, **grant}
             except (ValueError, KeyError, subprocess.SubprocessError) as exc:
                 contexts[key] = {'error': 'Workspace authority/acquisition: ' + str(exc)}
@@ -2506,7 +2511,7 @@ class Workflow:
                     unrelated_clean_commit = read_actual == read_snapshot(committed) and not changed.intersection(allocated_paths)
                     if observed == read_actual or unrelated_clean_commit or (work and read_connected(observed)): baseline = observed
             binding = remember({'type': 'workspace_snapshot', 'content': {'files': baseline}, 'producer': None,
-                                'provenance': {'actor': 'host', 'source': None, 'policy': digest(self.project['policy'])}})
+                                'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
             contexts[key] = {'binding': binding, 'files': baseline, 'acquisition': {}, 'readonly': True}
         return contexts
 
@@ -2763,7 +2768,7 @@ class Workflow:
             if blob.get('type') != 'publication_authorization': continue
             value = blob['content']; issuer = projection['states'][key]
             if issuer['contract']['executor']['role'] != 'root' or result['executor'] != (self.runtime or {}).get('root_id'): continue
-            if value.get('policy') != digest(self.project['policy']) or value.get('decision') != 'approved': continue
+            if value.get('policy') not in {self.node_evidence_policy(), blob.get('provenance', {}).get('policy')} or value.get('decision') != 'approved': continue
             subject = owners.get(value.get('subject', {}).get('hash')); review = owners.get(value.get('review', {}).get('hash'))
             if not subject or not review: continue
             observed = projection['states'][subject[0]].get('publication')
@@ -3226,7 +3231,7 @@ class Workflow:
                                 'source_payload': snapshot['envelope']['payload'], 'acquisition_receipt': reference,
                                 'acquisition': copy.deepcopy(acquisition), 'acquisition_hash': digest(acquisition),
                                 'contract': acquisition['contract'], 'input_hash': lease['fingerprint'],
-                                'policy': digest(self.project['policy']),
+                                'policy': self.node_evidence_policy(),
                                 'authority': {**{k: workspace[k] for k in ('allocation', 'authorization', 'approval')},
                                     'inputs': self.node_workspace_authority_inputs(acquisition['inputs'], snapshot['artifacts'])},
                                 'files': actual, 'workspace': digest(actual), 'outputs': delta, 'evidence': request['evidence']}
@@ -3328,7 +3333,7 @@ class Workflow:
                 node = next((node for node in graph['nodes'] if node['id'] == mapping.get('target', {}).get('node')), None)
                 if mapping.get('source') != value['source'] or not record or digest(record) != mapping.get('source_record_hash'):
                     raise ValueError('Historical mapping source record hash differs')
-                if mapping.get('contract') != {'node': node, 'policy': digest(self.project['policy'])} or mapping['target'] != {'goal': snapshot['number'], 'node': node['id'], 'item': None, 'generation': 1}:
+                if mapping.get('contract') != {'node': node, 'policy': self.node_evidence_policy()} or mapping['target'] != {'goal': snapshot['number'], 'node': node['id'], 'item': None, 'generation': 1}:
                     raise ValueError('Historical mapping current contract differs')
                 if mapping.get('inputs') != [] or node['inputs'] or len(mapping.get('outputs', {})) != 1:
                     raise ValueError('Historical mapping input equivalence is not established')
@@ -3382,7 +3387,7 @@ class Workflow:
                 if set(value) != {'branch', 'base', 'target', 'pr'} or any(not isinstance(value[name], str) or not value[name].strip() for name in ('branch', 'base', 'target')): raise ValueError('Invalid repository context')
             elif kind in {'repository_authorization', 'publication_authorization'}:
                 if actor != (self.runtime or {}).get('root_id') or state['contract']['executor']['role'] != 'root': raise ValueError('Authorization requires authenticated root')
-                if value.get('policy') != digest(self.project['policy']) or value.get('decision') != 'approved': raise ValueError('Authorization policy or decision mismatch')
+                if value.get('policy') not in {digest(self.project['policy']), self.node_evidence_policy()} or value.get('decision') != 'approved': raise ValueError('Authorization policy or decision mismatch')
                 reference = value['context'] if kind == 'repository_authorization' else value['subject']
                 read(reference, 'repository_context' if kind == 'repository_authorization' else 'publication_evidence')
                 if not exact_input(reference): raise ValueError('Authorization subject differs from exact declared input')

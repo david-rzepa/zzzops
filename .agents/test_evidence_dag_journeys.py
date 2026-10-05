@@ -4257,6 +4257,21 @@ class GraphAdoptionPublicTests(DagFixture):
         self.assertRegex(json.dumps(response), r"(?i)source|changed|current|policy")
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
+    def test_adoption_accepts_legacy_full_policy_manifest_after_operational_change(self):
+        self.produce()
+        graph = copy.deepcopy(self.graph)
+        graph["nodes"].append(task("new_note", role="root"))
+        prepared = self.session.call(100, {"operation": "graph_prepare", "graph": graph,
+                                           "rationale": "Legacy reviewed graph manifest"})
+        proposal = prepared["next_steps"][0]["proposal"]
+        proposal["policy"] = content_hash(self.session.project["policy"])
+        request = self.proposal_review(proposal)
+        routing = z._workflow_section(self.session.project, "model_routing")["configuration"]
+        routing["allow_above_root_delegation"] = not routing.get("allow_above_root_delegation", False)
+        accepted = self.session.call(100, request)
+        self.assertTrue(accepted["next_steps"])
+        self.assertIn("new_note", self.names())
+
     def test_graph_prepare_rejects_an_uncommitted_checkpoint(self):
         self.produce()
         ready = next(step for step in self.session.ready() if step['node']['node'] == 'review_a')
