@@ -2868,6 +2868,102 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.review_candidate("alpha", 1)
         self.assertIn("beta", self.names())
 
+    def test_historical_stopped_recovery_preserves_owned_delta_as_unaccepted_draft(self):
+        def independent_beta(graph, _allocations):
+            beta = next(node for node in graph["nodes"] if node["id"] == "beta")
+            beta["requires"] = [selector("consent")]
+        self.setup_workspace(independent_beta)
+        first = self.acquire_workspace("beta")
+        recovery_request = {"operation": "recover", "request_id": "legacy-observed-stop",
+            "node": first["node"], "lease": first["lease"]["token"],
+            "actor": first["bound_actor"], "worker_status": "stopped",
+            "evidence": "Exact historical worker observed stopped before its lease was released"}
+        recovered = self.session.call(100, recovery_request)
+        self.assertEqual([{"kind": "checkpoint", "goal": 100}], recovered["next_steps"])
+        self.assertFalse(self.payload()[1]["operational"]["leases"])
+
+        source = self.fixture.repo / "source.py"
+        dependency = self.fixture.repo / "read_dependency.txt"
+        original_dependency = dependency.read_bytes()
+        source.write_text("def value():\n    return 2\n")
+        dependency.write_text("unauthorized consumed change\n")
+        unauthorized = self.session.checkpoint(100)
+        self.assertFalse(any(step.get("kind") == "recover_draft" for step in unauthorized))
+        self.assertRegex(json.dumps(unauthorized), r"(?i)baseline|workspace|owned|drift")
+        dependency.write_bytes(original_dependency)
+
+        step = next(item for item in self.session.checkpoint(100) if item.get("kind") == "recover_draft")
+        self.assertEqual("alpha", step["node"]["node"])
+        self.assertEqual("beta", recovery_request["node"]["node"])
+        submission = copy.deepcopy(step["submission"])
+        submission.update(request_id="preserve-historical-draft", recovery_request=recovery_request)
+        tampered = copy.deepcopy(submission)
+        tampered["recovery_request"]["evidence"] = "Different observation"
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        rejected = self.session.call(100, tampered, expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)historical|recovery|changed")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+        preserved = self.session.call(100, submission)
+        draft_ref = preserved["next_steps"][0]["workspace_draft"]
+        draft = self.read_blob(draft_ref)
+        self.assertEqual("workspace_draft", draft["type"])
+        self.assertEqual(recovery_request, draft["historical_recovery"]["request"])
+        self.assertEqual({"source.py"}, set(draft["outputs"]))
+        self.assertNotIn(first["lease"]["token"], json.dumps(self.payload()[1]["operational"]["leases"]))
+        self.assertNotIn("beta", [self.read_blob(ref)["content"]["node"]["node"]
+                                   for ref in self.payload()[1]["evidence"]])
+
+        source.write_text("def value():\n    return 3\n")
+        drifted = self.session.checkpoint(100)
+        self.assertFalse(any(item.get("kind") == "execute" and item.get("node", {}).get("node") == "alpha"
+                             for item in drifted))
+        self.assertRegex(json.dumps(drifted), r"(?i)stopped|draft|changed")
+        source.write_text("def value():\n    return 2\n")
+        resumed = self.acquire_workspace("alpha")
+        self.assertNotEqual(first["lease"]["token"], resumed["lease"]["token"])
+        self.assertIn(draft_ref, resumed["lease"]["acquisition"]["baseline_drafts"])
+        (self.fixture.repo / "behavior_test.py").write_text("from source import value\nassert value() == 2\n")
+        self.candidate(resumed, 0)
+
+    def test_readonly_acquisition_separates_historical_identity_from_live_raw_pin(self):
+        (self.fixture.repo / "tests").mkdir()
+        first_path = self.fixture.repo / "tests" / "acceptance.md"
+        second_path = self.fixture.repo / "tests" / "test_environment_isolation.py"
+        first_path.write_text("corrected acceptance\n")
+        second_path.write_text("def test_isolated(): pass\n")
+        self.session.git("add", "tests")
+        self.session.git("commit", "-qm", "read-only raw acquisition fixture")
+        graph = {"nodes": [task("decompose", role="root")], "task_sets": [],
+                 "terminals": [selector("decompose")]}
+        self.install(graph)
+        work = self.session.acquire("decompose")
+        acquisition = work["lease"]["acquisition"]
+        self.assertIn("read_files", acquisition)
+        self.assertEqual(acquisition["files"], acquisition["read_files"])
+
+        engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
+        actual = engine.workspace_files()
+        historical = copy.deepcopy(actual)
+        historical["tests/acceptance.md"] = "sha256:" + "1" * 64
+        historical["tests/test_environment_isolation.py"] = "sha256:" + "2" * 64
+        node = {"goal": 100, "node": "decompose", "item": None, "generation": 1}
+        key = (100, "decompose", None, 1)
+        state = {"node": node, "state": "ready", "contract": {"executor": {"resources": [], "role": "root"}}}
+        lease = {"node": node, "token": "readonly-pin", "acquisition": {"files": historical, "read_files": actual}}
+        snapshots = {100: {"payload": {"evidence": [], "operational": {"leases": [lease], "receipts": []}},
+                           "acquisition_receipts": {}, "workspace_drafts": []}}
+        projection = {"states": {key: state}, "current": {}}
+        context = engine.node_workspace_context(snapshots, projection, {})[key]
+        self.assertNotIn("error", context)
+        self.assertEqual(historical, context["files"])
+
+        tampered = copy.deepcopy(snapshots)
+        tampered[100]["payload"]["operational"]["leases"][0]["acquisition"]["read_files"] = historical
+        self.assertRegex(engine.node_workspace_context(tampered, projection, {})[key]["error"], r"Read-only.*changed")
+        first_path.write_text("genuine post-acquisition drift\n")
+        self.assertRegex(engine.node_workspace_context(snapshots, projection, {})[key]["error"], r"Read-only.*changed")
+
     def test_unreferenced_proof_artifact_does_not_change_acquisition_inputs(self):
         self.setup_workspace()
         before = next(v["input_hash"] for v in self.session.ready() if v["node"]["node"] == "alpha")
