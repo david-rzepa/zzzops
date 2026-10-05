@@ -113,6 +113,12 @@ ADMISSION_TYPE = {"kind": "object", "fields": {
     "finding": REF_TYPE, "target_inputs": {"kind": "array", "items": BINDING_TYPE},
     "authority": REF_TYPE, "applicability": {"kind": "enum", "values": ["applicable", "not_applicable", "unresolved"]},
     "rationale": {"kind": "string"}}}
+APPLICABILITY_ASSESSMENT_TYPE = {"kind": "object", "fields": {
+    "admission": REF_TYPE, "finding": REF_TYPE,
+    "subjects": {"kind": "array", "items": REF_TYPE},
+    "reviewer_result": REF_TYPE, "authority": REF_TYPE,
+    "applicability": {"kind": "enum", "values": ["applicable", "not_applicable"]},
+    "rationale": {"kind": "string"}}}
 RESOLUTION_TYPE = shape({"finding": REF, "subjects": [REF], "reviewer_result": REF,
                          "decision": "resolved", "rationale": "verified"})
 SOURCE_SAMPLE = {"provider": "github", "id": "comment_1", "revision": 1,
@@ -495,6 +501,47 @@ class EvidenceDagPublicTests(DagFixture):
         self.assertNotIn("finish", self.names())
         self.assertFalse(any(step["kind"] == "complete" for step in self.session.checkpoint(100)))
         self.assertEqual("unresolved", self.read_blob(self.produced("admit", "first"))["content"]["applicability"])
+
+    def test_reviewed_applicability_assessment_classifies_exact_historical_obligation(self):
+        graph = correction_graph()
+        assessment = task("assess_applicability", ["review", "authorize"], role="root")
+        obligation_type = shape({"admission": REF, "finding": REF, "target": scope("produce"),
+                                 "applicability": "unresolved"})
+        assessment["inputs"] = {
+            "obligation": {"producer": {"slot": "obligations"}, "output": "content", "path": ["first"],
+                           "mode": "content", "type": obligation_type},
+            "subject": subject_input("produce"),
+            "review": subject_input("review"),
+        }
+        assessment["outputs"] = {"assessment": output("applicability_assessment", APPLICABILITY_ASSESSMENT_TYPE)}
+        assessment["permits"] = [{"type": "applicability_assessment", "scope": scope("produce")}]
+        graph["nodes"].append(assessment)
+        findings, admissions = self.findings(graph=graph, applicability="unresolved")
+        self.session.finish(self.session.acquire("review", actor="independent-reviewer"), {"value": "Inspected exact corrected subject"})
+        historical_admission = self.produced("admit", "first")
+        historical_finding = admissions["first"]["finding"]
+        work = self.session.acquire("assess_applicability")
+        assessment_value = {
+            "admission": historical_admission, "finding": historical_finding,
+            "subjects": [self.produced("produce")], "reviewer_result": self.result("review")[0],
+            "authority": self.result("authorize")[0], "applicability": "applicable",
+            "rationale": "The current corrected subject and independent review preserve this exact obligation."}
+        invalid = copy.deepcopy(assessment_value)
+        invalid["reviewer_result"] = self.result("authorize")[0]
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        rejected = self.session.call(100, self.session.submission(
+            work, {"assessment": invalid}, "invalid-applicability-review"), expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)review|independent|input")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.finish(work, {"assessment": assessment_value})
+        snapshot = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime).node_snapshot(100)
+        obligation = snapshot["projection"]["obligations"][(100, findings["first"]["id"])]
+        self.assertEqual("applicable", obligation["applicability"])
+        self.assertEqual(historical_admission, obligation["admission"])
+        self.assertEqual(historical_finding, obligation["finding"])
+        self.assertIn("assessment", obligation)
+        self.assertFalse(any(step.get("diagnostic") == "Finding applicability unresolved"
+                             for step in self.session.checkpoint(100)))
 
     def test_worker_capacity_and_resource_conflicts_limit_dispatch(self):
         graph = review_graph()
@@ -1404,6 +1451,17 @@ class WorkspaceAuthorityPublicTests(DagFixture):
                 nodes.extend([observe, accept])
         return {"nodes": nodes, "task_sets": [], "terminals": [selector("gamma")]}
 
+    def test_workspace_projection_preserves_preliminary_semantic_blocker(self):
+        engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
+        node = {"goal": 100, "node": "alpha", "item": None, "generation": 1}
+        key = (100, "alpha", None, 1)
+        state = {"node": node, "state": "blocked", "reason": "Finding applicability unresolved",
+                 "contract": {"executor": {"resources": ["repository_workspace"]}}}
+        contexts = engine.node_workspace_context(
+            {100: {"payload": {"evidence": [], "operational": {"leases": [], "receipts": []}}}},
+            {"states": {key: state}, "current": {}}, {})
+        self.assertEqual({"error": "Finding applicability unresolved"}, contexts[key])
+
     def setup_workspace(self, mutate=None, *, defer_authorization=False):
         (self.fixture.repo / "source.py").write_text("def value():\n    return 1\n")
         (self.fixture.repo / "read_dependency.txt").write_text("stable dependency\n")
@@ -2233,6 +2291,39 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.session.finish(work, {"permit": self.permit})
         self.session.finish(self.session.acquire("consent"), {"permit": self.permit})
         self.acquire_workspace("alpha")
+
+    def test_legacy_authorizations_without_policy_input_reopen_normal_review_chain(self):
+        self.setup_workspace()
+        _envelope, payload = self.payload()
+        payload = copy.deepcopy(payload)
+        artifacts = {
+            payload["spec"]["hash"]: self.read_blob(payload["spec"]),
+            payload["graph"]["hash"]: self.read_blob(payload["graph"]),
+        }
+        replacements = {}
+        for result_ref in payload["evidence"]:
+            artifact = self.read_blob(result_ref)
+            for output_ref in artifact["content"]["outputs"].values():
+                artifacts[output_ref["hash"]] = self.read_blob(output_ref)
+            if artifact["content"]["node"]["node"] in {"inspect_charter", "consent"}:
+                legacy = copy.deepcopy(artifact)
+                legacy["content"]["inputs"] = [row for row in legacy["content"]["inputs"]
+                                                   if row["name"] != "__policy"]
+                replacement = {"hash": content_hash(legacy), "uri": "urn:" + content_hash(legacy)}
+                artifacts[replacement["hash"]] = legacy
+                replacements[result_ref["hash"]] = replacement
+            else:
+                artifacts[result_ref["hash"]] = artifact
+        payload["evidence"] = [replacements.get(ref["hash"], ref) for ref in payload["evidence"]]
+        projection = z._phase_evidence.derive_task_steps(
+            self.graph, payload, {"goal": 100, "policy": self.session.project["policy"],
+                                  "runtime": self.session.runtime, "artifacts": artifacts,
+                                  "workspace_probe": True})
+        self.assertEqual("ready", projection["states"][(100, "inspect_charter", None, 1)]["state"])
+        self.assertEqual("blocked", projection["states"][(100, "consent", None, 1)]["state"])
+        self.assertNotIn((100, "inspect_charter", None, 1), projection["current"])
+        self.assertTrue(any(row["name"] == "__policy"
+                            for row in projection["states"][(100, "inspect_charter", None, 1)]["inputs"]))
 
     def assert_workspace_blocker(self, response, pattern):
         # Task names and echoed input schemas are not rejection evidence.

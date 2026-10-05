@@ -20,6 +20,43 @@ Accepted-test defects use the returned interpretation/admission route, bounded
 test ownership and fresh independent review. Existing graphs require reviewed
 graph adoption. Integration cannot mint Results.
 
+### Historical applicability assessment
+
+When an unresolved historical admission blocks its target and the current graph
+has no route that can run before that target, execute returns a `repair` step
+with diagnostic `Finding applicability unresolved`. Its `obligations` carry the
+exact immutable admission, finding and target. Append a node through the normal
+`graph_prepare` and independently reviewed `graph_adopt` workflow; do not edit or
+replace the historical Result.
+
+Bind the returned historical entry through the host-authenticated input producer
+`{"slot":"obligations"}` at path `["<finding id>"]`. Its content contains only
+the exact `admission`, `finding`, `target`, and current `applicability`; this is a
+read route, not authority. Bind corrected subjects and reviewer output through
+their ordinary current node producers.
+
+The appended root node emits `applicability_assessment` with exactly:
+`admission`, `finding`, nonempty `subjects`, `reviewer_result`, `authority`,
+`applicability`, and `rationale`. It must bind the exact admission and finding,
+each current corrected subject, and an output from the current independent
+reviewer Result. `authority` must be a current authenticated root Result.
+`applicability` is `applicable` or `not_applicable`; uncertainty remains the
+original unresolved admission and must not produce an assessment. The evaluator
+retains the original source, finding and admission, records the assessment as a
+separate immutable output, and applies normal correction and resolution gates.
+Classification alone never resolves the finding or authorizes implementation.
+
+### Stale workspace authorization
+
+Workspace-authorization producer Results include a host-authenticated
+`__policy` input. Legacy Results without that input, and Results bound to a
+different policy, become stale through ordinary input identity. Execute then
+returns the independent authorization producer followed by its root approval as
+normal `execute` tasks. Acquire and submit them normally with the unchanged
+manifest and task identities and the exact current policy digest. Old Results
+remain immutable; downstream inputs become stale when the new authorization
+outputs are published. No special rewrite or authorization bypass exists.
+
 ### Automatic local lease monitoring
 
 Generic start (for a root task) or bind (for a delegated task) registers local
