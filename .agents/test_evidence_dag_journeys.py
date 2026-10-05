@@ -4363,6 +4363,22 @@ class GraphAdoptionPublicTests(DagFixture):
         self.assertTrue(accepted["next_steps"])
         self.assertIn("new_note", self.names())
 
+    def test_adoption_accepts_reviewed_superset_of_current_results(self):
+        self.produce()
+        graph = copy.deepcopy(self.graph)
+        graph["nodes"].append(task("new_note", role="root"))
+        prepared = self.session.call(100, {"operation": "graph_prepare", "graph": graph,
+                                           "rationale": "Preserve reviewed historical Results"})
+        proposal = prepared["next_steps"][0]["proposal"]
+        proposal["policy"] = "sha256:" + "e" * 64
+        proposal["source"]["current"].append({
+            "node": {"goal": 100, "node": "formerly_current", "item": None, "generation": 1},
+            "result": {"hash": "sha256:" + "f" * 64, "uri": "zzzops:owner/repo:goal:100:sha256:" + "f" * 64},
+        })
+        request = self.proposal_review(proposal)
+        self.session.call(100, request)
+        self.assertIn("new_note", self.names())
+
     def test_graph_prepare_rejects_an_uncommitted_checkpoint(self):
         self.produce()
         ready = next(step for step in self.session.ready() if step['node']['node'] == 'review_a')

@@ -2045,9 +2045,13 @@ class Workflow:
             raise ValueError('Invalid prepared graph proposal manifest')
         expected = self.node_graph_proposal(snapshot, proposal['graph'], proposal['rationale'],
                                            pending_request=request['request_id'])
-        recorded_policy = artifact.get('provenance', {}).get('policy')
-        if (proposal.get('policy') not in {expected['policy'], recorded_policy} or
-                {**proposal, 'policy': expected['policy']} != expected):
+        reviewed_current = proposal.get('source', {}).get('current', [])
+        expected_current = expected['source']['current']
+        normalized = copy.deepcopy(proposal)
+        normalized['policy'] = expected['policy']
+        if isinstance(normalized.get('source'), dict):
+            normalized['source']['current'] = expected_current
+        if not all(row in reviewed_current for row in expected_current) or normalized != expected:
             raise ValueError('Graph proposal source, target, current Results or policy changed after review')
         if self.adapter.get_issue(request['review_goal'])['body'] != reviewed['issue']['body']:
             raise ValueError('Graph review source changed before adoption')
