@@ -14,6 +14,7 @@ import subprocess
 import time
 import uuid
 import re
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
 import zzzops_comment_store as comment_store
@@ -623,16 +624,24 @@ class Workflow:
                 raise ValueError('Ownership inventory unavailable: incomplete or malformed open-goal portfolio')
             # Admission must observe every unresolved owner, including expired
             # leases. Missing/corrupt payloads cannot be interpreted as free slots.
-            for goal in self._portfolio_cache.get('goals', []):
-                if goal.get('schema_version') == 2 and goal.get('status') not in {'done', 'cancelled'}:
-                    try:
-                        payload = self.artifact_index(goal['key']).resolve(goal['envelope']['payload']['hash'])[0]
-                        leases = payload['operational']['leases']
-                        if not isinstance(leases, list):
-                            raise ValueError('Invalid operational leases')
-                        goal['operational_leases'] = copy.deepcopy(leases)
-                    except (ValueError, KeyError, TypeError) as exc:
-                        raise ValueError(f"Ownership inventory unavailable for goal #{goal['key']}: {exc}") from exc
+            goals = [goal for goal in self._portfolio_cache.get('goals', [])
+                     if goal.get('schema_version') == 2 and goal.get('status') not in {'done', 'cancelled'}]
+            def ownership(goal):
+                try:
+                    payload = self.artifact_index(goal['key']).resolve(goal['envelope']['payload']['hash'])[0]
+                    leases = payload['operational']['leases']
+                    if not isinstance(leases, list):
+                        raise ValueError('Invalid operational leases')
+                    return goal['key'], copy.deepcopy(leases), None
+                except (ValueError, KeyError, TypeError) as exc:
+                    return goal['key'], None, exc
+            with ThreadPoolExecutor(max_workers=min(10, len(goals) or 1)) as pool:
+                observed = {key: (leases, error) for key, leases, error in pool.map(ownership, goals)}
+            for goal in goals:
+                leases, error = observed[goal['key']]
+                if error is not None:
+                    raise ValueError(f"Ownership inventory unavailable for goal #{goal['key']}: {error}") from error
+                goal['operational_leases'] = leases
         portfolio = self._portfolio_cache
         findings = portfolio.get('findings', [])
         # A provider/inventory failure is global. Fully attributed goal findings
