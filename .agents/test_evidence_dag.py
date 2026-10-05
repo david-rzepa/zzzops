@@ -347,8 +347,8 @@ class Goal499DefaultGraphContractTests(unittest.TestCase):
                 self.assertIn("non-applic", encoded)
         self.assertTrue("spec_investigation" in self.set_templates,
                         "Shipped #499 graph is missing spec investigation expansion")
-        self.assertTrue("child_delivery" in self.set_templates,
-                        "Shipped #499 graph is missing child delivery expansion")
+        self.assertTrue("child_delivery" in self.nodes,
+                        "Shipped #499 graph is missing relationship-bound child delivery observer")
 
     def test_delivery_topologies_encode_atomic_leaf_and_child_to_parent_direction(self):
         decomposition = json.dumps(self.node("decompose")).casefold()
@@ -362,9 +362,13 @@ class Goal499DefaultGraphContractTests(unittest.TestCase):
         review = json.dumps(self.node("decomposition_review")).casefold()
         self.assertIn("atomic", review)
         self.assertRegex(review, r"reject|unjustified|non-applic")
-        child = json.dumps(self.task_set("child_delivery")).casefold()
-        child_template = self.task_set("child_delivery")["template"]
+        child_template = self.node("child_delivery")
+        child = json.dumps(child_template).casefold()
         self.assertIn("delivery_result", child)
+        self.assertEqual("#children", child_template["inputs"]["children"]["producer"]["node"]["goal"])
+        self.assertEqual("merge", child_template["inputs"]["children"]["producer"]["node"]["node"])
+        self.assertEqual("identity", child_template["inputs"]["children"]["mode"])
+        self.assertEqual("child_delivery_join", child_template["outputs"]["value"]["type"])
         self.assertNotRegex(child, r'producer[^}]+(?:publish|integrate|merge)[^}]+#parent')
         for forbidden in ("parent publication", "parent integration", "parent merge"):
             self.assertNotIn(forbidden, child)
