@@ -2292,6 +2292,38 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.session.finish(self.session.acquire("consent"), {"permit": self.permit})
         self.acquire_workspace("alpha")
 
+    def test_workspace_authorization_preserves_its_exact_policy_input_across_settings_changes(self):
+        self.setup_workspace(defer_authorization=True)
+        review = self.session.acquire("inspect_charter", actor="allocation-reviewer")
+        policy = next(row["source"]["hash"] for row in review["lease"]["acquisition"]["inputs"]
+                      if row["name"] == "__policy")
+        self.permit["policy"] = policy
+        self.session.finish(review, {"permit": self.permit})
+        self.session.finish(self.session.acquire("consent"), {"permit": self.permit})
+
+        parallelism = z._workflow_section(
+            self.session.project, "autonomy_approval_parallelism")["configuration"]
+        parallelism["max_workers"] += 1
+
+        self.acquire_workspace("alpha")
+
+    def test_authorization_policy_rejects_spoofed_or_duplicate_host_bindings(self):
+        engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
+        context = {"type": "policy_context", "content": {"policy": "sha256:" + "1" * 64},
+                   "producer": None, "provenance": {"actor": "host", "source": None,
+                   "policy": "sha256:" + "1" * 64}}
+        reference = {"hash": content_hash(context), "uri": "urn:" + content_hash(context)}
+        binding = {"name": "__policy", "source": reference, "path": [], "mode": "identity"}
+        value = {"policy": reference["hash"]}
+        artifact = {"provenance": {"policy": "sha256:" + "2" * 64}}
+
+        self.assertFalse(engine.node_authorization_policy_matches(
+            value, artifact, {"inputs": [binding]}, {reference["hash"]: {**context, "type": "text"}}))
+        self.assertFalse(engine.node_authorization_policy_matches(
+            value, artifact, {"inputs": [binding, copy.deepcopy(binding)]}, {reference["hash"]: context}))
+        self.assertFalse(engine.node_authorization_policy_matches(
+            value, artifact, {"inputs": [binding]}, {reference["hash"]: {**context, "content": {"changed": True}}}))
+
     def test_legacy_authorizations_without_policy_input_reopen_normal_review_chain(self):
         self.setup_workspace()
         _envelope, payload = self.payload()

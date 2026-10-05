@@ -176,6 +176,12 @@ class EvidenceGraphGrammarTests(unittest.TestCase):
         self.rejected_mutation(lambda g: g["nodes"][0]["outputs"]["value"].update(type="result"),
                                r"(?i)reserved|host|result")
 
+    def test_reserved_host_policy_input_cannot_be_declared(self):
+        self.rejected_mutation(
+            lambda g: g["nodes"][0]["inputs"].update(__policy=subject_input("produce")),
+            r"(?i)reserved|host|slot",
+        )
+
     def test_map_union_overlaps_on_empty_object(self):
         self.rejected_mutation(lambda g: g["nodes"][0]["outputs"]["value"].update(schema={
             "kind": "union", "variants": [

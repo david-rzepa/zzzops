@@ -934,6 +934,8 @@ def validate_graph(graph):
         if not isinstance(node['prompt'], str) or not node['prompt'].strip(): raise ValueError('Node prompt is required')
         for key in ('inputs', 'outputs'):
             if not isinstance(node[key], dict) or any(not task_identifier(k) for k in node[key]): raise ValueError(f'Node {key} must have unique slot identities')
+        if any(key.startswith('__') for key in node['inputs']):
+            raise ValueError('Node input uses a reserved host slot identity')
         for value in node['inputs'].values(): validate_input(value, template)
         for value in node['outputs'].values():
             contract_fields(value, {'type', 'schema'}, 'Output contract')
@@ -1293,10 +1295,8 @@ def _derive_task_steps(graph, payload, context):
                 state['inputs'].append({'name': name, 'source': ref, 'path': path, 'mode': binding['mode']})
                 state['values'][name] = value; bound.update(selected)
                 hashes[name] = ref['hash'] if binding['mode'] == 'identity' else semantic_hash(value)
-            # Authorization decisions are explicitly policy-bound content. Bind
-            # their producer Result to the same current policy so a policy
-            # change reopens ordinary independent/root authorization work while
-            # retaining every previous Result as immutable history.
+            # Preserve the exact policy context reviewed with an authorization.
+            # Later policy changes do not alter its approved task/manifest scope.
             if any(output.get('type') == 'workspace_authorization' for output in node['outputs'].values()):
                 ref = remember({'type': 'policy_context', 'content': {'policy': policy}, 'producer': None,
                                 'provenance': {'actor': 'host', 'source': None, 'policy': policy}})
