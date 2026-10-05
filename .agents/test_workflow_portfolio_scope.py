@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
 
@@ -146,6 +148,31 @@ class PortfolioScopeTests(unittest.TestCase):
             self.assertEqual(100, engine.read(100)[1]["key"])
             with self.assertRaisesRegex(ValueError, "Ownership inventory unavailable.*101"):
                 engine.portfolio(include_ownership=True)
+
+    def test_ownership_inventory_hydrates_independent_goals_concurrently(self):
+        with tempfile.TemporaryDirectory() as directory:
+            engine = z._workflow.Workflow(z, Path(directory), project())
+            engine._portfolio_cache = {"complete": True, "findings": [], "goals": [
+                {"key": number, "schema_version": 2, "status": "ready",
+                 "envelope": {"payload": {"hash": f"sha256:{number:064x}"}}}
+                for number in range(1, 4)
+            ]}
+            lock = threading.Lock()
+            active = peak = 0
+            class Index:
+                def resolve(self, _identity):
+                    nonlocal active, peak
+                    with lock:
+                        active += 1
+                        peak = max(peak, active)
+                    time.sleep(0.05)
+                    with lock:
+                        active -= 1
+                    return ({"operational": {"leases": []}}, None)
+            engine.artifact_index = mock.Mock(side_effect=lambda _number: Index())
+            goals = engine.portfolio(include_ownership=True)
+            self.assertGreater(peak, 1)
+            self.assertTrue(all(goal["operational_leases"] == [] for goal in goals))
 
     def test_one_changed_marker_reparses_only_that_record(self):
         first, second = self.issue(1), self.issue(2)
