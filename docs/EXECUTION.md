@@ -30,6 +30,14 @@ Native stacks use GitHub's atomic asynchronous merge after every layer passes it
 
 The workflow remains agent-driven. ZzzOps deliberately has no universal branch-management script: repository instructions, hosting rules, dependency ancestry, dirty state, and merge authority require contextual inspection.
 
+## Default discovery and delivery DAG
+
+Execution follows the reviewed declarative graph: requirements, expanded specification investigation, specification, expanded independent specification review, root approval, decomposition, and independent decomposition review. Root alone asks human questions and owns approvals, publication, merge authorization, and merge. Workers investigate, synthesize, verify, and independently review exact immutable subjects under model policy.
+
+A leaf and a reviewed atomic non-applicability disposition continue through test design, red verification, test review, implementation, implementation verification, applicable migration verification and review, expanded implementation review, publication, feedback assessment and review, merge authorization, and merge. A composition joins immutable child delivery results, verifies them in the parent-owned integration workspace, applies the same migration verification when relevant, and joins independent integration reviews before publication. Optional cleanup becomes a separate goal rather than a delivery condition.
+
+After publication, integration classifies current feedback as actionable, non-actionable, obsolete, or ambiguous with versioned provenance. New or edited feedback stales the assessment and affected evidence. A resolved thread alone does not resolve a finding. The final root authorization checks feedback freshness and exact provider head; a race produces a retryable reconciliation instead of a false merge result.
+
 ## Delegation and sequential fallback
 
 Agents delegate when there are at least two independent bounded tasks, or one clearly beneficial long or context-heavy isolated task, capped by eligible work and reviewed worker capacity. Before declaring the harness incapable, inspect the complete runtime tool catalog, including deferred delegation tools; the visible tool list alone is insufficient. Each delegated launch records an explicit phase routing decision with both `model` and `effort`, including comparison with the root pair; inherited defaults do not satisfy this requirement. Safety or authority boundaries, dependency/resource conflict, tight coupling, trivial scope, and measured setup or synthesis overhead are fixed reasons to stay sequential. If no eligible work exists, sequential execution is valid. If eligible work requires delegation and the complete catalog exposes no launch capability, report an actionable harness-capability blocker and do not silently claim a fallback.

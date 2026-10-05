@@ -2134,29 +2134,55 @@ class Workflow:
             if 'repository_publication' not in state['contract']['executor']['resources'] or state['state'] == 'blocked': continue
             try:
                 selected = [(binding, artifacts[binding['source']['hash']]) for binding in state['inputs']
-                            if artifacts[binding['source']['hash']].get('type') == 'repository_context']
+                            if artifacts[binding['source']['hash']].get('type') in {'repository_context', 'published_candidate'}]
                 if len(selected) != 1: raise ValueError('Publication requires one exact declared repository context input')
                 binding, blob = selected[0]; reference = binding['source']; value = blob['content']
                 owner_key, owner = owners[reference['hash']]
                 root = (self.runtime or {}).get('root_id')
                 if binding['mode'] != 'identity' or binding['path'] or owner['executor'] != root or projection['states'][owner_key]['contract']['executor']['role'] != 'root': raise ValueError('Repository context requires authenticated current root output')
-                declared = state['contract']['executor']['authority']
-                targets = [target for row in state['resolutions'] if row['selector'] == declared['subject'] for target in row['targets']]
-                if owner['node'] not in targets or owner['outputs'].get(declared['output']) != reference: raise ValueError('Publication context differs from declared authority selector')
+                candidate = blob.get('type') == 'published_candidate'
+                if candidate:
+                    if (set(value) != {'repository', 'branch', 'base', 'pr', 'head_oid'}
+                            or value.get('repository') != self.repository
+                            or any(not isinstance(value.get(name), str) or not value[name] for name in ('branch', 'base', 'pr', 'head_oid'))
+                            or not re.fullmatch('[0-9a-f]{40}', value['head_oid'])
+                            or not re.fullmatch(r'https://github.com/' + re.escape(self.repository) + r'/pull/[1-9][0-9]*', value['pr'])):
+                        raise ValueError('Invalid published candidate')
+                    publication_context = {'branch': value['branch'], 'base': value['base'],
+                                           'target': str(self.repo.resolve()), 'pr': value['pr']}
+                else:
+                    declared = state['contract']['executor']['authority']
+                    targets = [target for row in state['resolutions'] if row['selector'] == declared['subject'] for target in row['targets']]
+                    if owner['node'] not in targets or owner['outputs'].get(declared['output']) != reference: raise ValueError('Publication context differs from declared authority selector')
+                    publication_context = value
                 permits = []
+                has_publication_authorization = any(
+                    artifacts[item['source']['hash']].get('type') == 'publication_authorization'
+                    for item in state['inputs'])
                 for item in state['inputs']:
                     artifact = artifacts[item['source']['hash']]
-                    if artifact.get('type') not in {'repository_authorization', 'publication_authorization'}: continue
+                    if artifact.get('type') not in {'repository_authorization', 'publication_authorization', 'merge_authorization'}: continue
+                    if artifact.get('type') == 'merge_authorization' and has_publication_authorization: continue
                     issuer = owners.get(item['source']['hash'])
                     if item['mode'] != 'identity' or item['path'] or not issuer or issuer[1]['executor'] != root or projection['states'][issuer[0]]['contract']['executor']['role'] != 'root': continue
                     content = artifact['content']
                     if not self.node_authorization_policy_matches(content, artifact, issuer[1], artifacts) or content.get('decision') != 'approved': continue
-                    if artifact['type'] == 'repository_authorization' and content.get('context') != reference: continue
+                    if artifact['type'] == 'repository_authorization' and content.get('context', content.get('manifest')) != reference: continue
                     if artifact['type'] == 'publication_authorization':
-                        subject = owners.get(content.get('subject', {}).get('hash'))
-                        if not subject or not any(row['source'] == reference for row in subject[1]['inputs']): continue
+                        subject_ref = content.get('subject', content.get('manifest'))
+                        if subject_ref != reference:
+                            subject = owners.get((subject_ref or {}).get('hash'))
+                            if not subject or not any(row['source'] == reference for row in subject[1]['inputs']): continue
+                    if artifact['type'] == 'merge_authorization' and content.get('manifest') != reference: continue
                     permits.append(item['source'])
+                # The root-produced published candidate is itself downstream of
+                # exact repository authorization.  Later observation and review
+                # nodes may consume it before merge authorization exists.
+                if not permits and candidate:
+                    permits = [row['source'] for row in owner['inputs']
+                               if artifacts[row['source']['hash']].get('type') == 'repository_authorization']
                 if len(permits) != 1: raise ValueError('Publication requires current reviewed root authorization for exact context')
+                value = publication_context
                 if set(value) != {'branch', 'base', 'target', 'pr'} or any(not isinstance(value[name], str) or not value[name] for name in ('branch', 'base', 'target')): raise ValueError('Invalid repository context')
                 if value['pr'] is not None and (not isinstance(value['pr'], str) or not re.fullmatch(r'https://github.com/' + re.escape(self.repository) + r'/pull/[1-9][0-9]*', value['pr'])): raise ValueError('Publication requires an exact same-repository PR')
                 cache_key = (key[0], reference['hash'])
@@ -2171,6 +2197,8 @@ class Workflow:
                 if not isinstance(facts, dict) or facts.get('repository') != self.repository or facts.get('base_ref') != value['base']: raise ValueError('Provider publication repository/base identity mismatch or unknown')
                 for name in ('head_oid', 'base_oid'):
                     if not isinstance(facts.get(name), str) or not re.fullmatch('[0-9a-f]{40}', facts[name]): raise ValueError('Provider publication head/base is unknown')
+                if candidate and facts['head_oid'] != blob['content']['head_oid']:
+                    raise ValueError('Published candidate head differs from current provider head')
                 if not facts.get('merged'):
                     repair = self.publication_topology(value, facts, self.node_managed_publication_branches)
                     if repair:
@@ -2178,7 +2206,14 @@ class Workflow:
                         continue
                 ci = 'verified' if facts.get('checks_verified') is True else 'absent' if facts.get('checks_present') is False else 'unverified' if facts.get('checks_present') is True else 'unknown'
                 observed = {name: facts[name] for name in ('repository', 'head_oid', 'base_oid', 'base_ref')}
-                observed.update(pr=value['pr'], ci=ci)
+                observed.update(pr=value['pr'], ci=ci, review_verified=facts.get('review_verified'))
+                # Provider adapters may expose an update marker covering review,
+                # comment and thread edits.  Bind it when available so any
+                # feedback change invalidates the assessment/authorization.
+                marker = facts.get('updated_at')
+                provider_goal = snapshots.get(key[0], {}).get('issue', {})
+                if not isinstance(marker, str): marker = provider_goal.get('updated_at')
+                if isinstance(marker, str): observed['feedback_marker'] = marker
                 semantic = {**observed, 'context': reference}
                 if policy_section(self.project, 'verification_testing')['configuration']['required_ci'] == 'disabled': semantic.pop('ci')
                 artifact = {'type': 'publication_snapshot', 'content': semantic, 'producer': None,
@@ -2883,12 +2918,27 @@ class Workflow:
             value = blob['content']; issuer = projection['states'][key]
             if issuer['contract']['executor']['role'] != 'root' or result['executor'] != (self.runtime or {}).get('root_id'): continue
             if not self.node_authorization_policy_matches(value, blob, result, artifacts) or value.get('decision') != 'approved': continue
-            subject = owners.get(value.get('subject', {}).get('hash')); review = owners.get(value.get('review', {}).get('hash'))
-            if not subject or not review: continue
-            observed = projection['states'][subject[0]].get('publication')
-            if not observed or 'error' in observed: continue
-            if not all(any(row['source'] == value[name] and row['mode'] == 'identity' for row in result['inputs']) for name in ('subject', 'review')): continue
-            if review[1]['executor'] == subject[1]['executor'] or not any(row['source'] == value['subject'] for row in review[1]['inputs']): continue
+            if value.get('subject') is not None:
+                subject = owners.get(value.get('subject', {}).get('hash')); review = owners.get(value.get('review', {}).get('hash'))
+                if not subject or not review: continue
+                observed = projection['states'][subject[0]].get('publication')
+                if not observed or 'error' in observed: continue
+                if not all(any(row['source'] == value[name] and row['mode'] == 'identity' for row in result['inputs']) for name in ('subject', 'review')): continue
+                if review[1]['executor'] == subject[1]['executor'] or not any(row['source'] == value['subject'] for row in review[1]['inputs']): continue
+            else:
+                manifest = value.get('manifest'); subject = owners.get((manifest or {}).get('hash'))
+                if (not subject or artifacts[manifest['hash']].get('type') != 'published_candidate'
+                        or not any(row['source'] == manifest and row['mode'] == 'identity' and not row['path'] for row in result['inputs'])): continue
+                observed = issuer.get('publication') or projection['states'][subject[0]].get('publication')
+                if not observed or 'error' in observed: continue
+                merge_permits = [row for row in result['inputs']
+                                 if artifacts[row['source']['hash']].get('type') == 'merge_authorization'
+                                 and artifacts[row['source']['hash']]['content'].get('manifest') == manifest]
+                reviews = [owners.get(row['source']['hash']) for row in result['inputs']
+                           if artifacts[row['source']['hash']].get('type') == 'review_decision']
+                if len(merge_permits) != 1 or not any(
+                        review and artifacts[next(iter(review[1]['outputs'].values()))['hash']]['content'].get('decision') == 'approved'
+                        for review in reviews): continue
             found.append((next(ref for ref in result['outputs'].values() if ref['hash'] == identity), observed))
         return found
 
@@ -2905,7 +2955,7 @@ class Workflow:
             match = [(ref, value) for ref, value in authorities if ref == reference]
             resource_declared = any('repository_publication' in state['contract']['executor']['resources'] for state in projection['states'].values())
             if operation == 'integrate' or resource_declared:
-                if len(match) != 1: raise ValueError('Exact current authenticated root publication authorization is required')
+                if len(match) != 1: raise ValueError('Stale provider publication authorization; retry after provider reconciliation')
                 publication = match[0][1]; self.node_ci_required(publication['observed'])
         else:
             candidates = [state['publication'] for state in projection['states'].values() if state.get('publication', {}).get('provider', {}).get('merged')]
@@ -3520,11 +3570,30 @@ class Workflow:
             elif kind in {'repository_authorization', 'publication_authorization'}:
                 if actor != (self.runtime or {}).get('root_id') or state['contract']['executor']['role'] != 'root': raise ValueError('Authorization requires authenticated root')
                 if value.get('policy') not in {digest(self.project['policy']), self.node_evidence_policy()} or value.get('decision') != 'approved': raise ValueError('Authorization policy or decision mismatch')
-                reference = value['context'] if kind == 'repository_authorization' else value['subject']
-                read(reference, 'repository_context' if kind == 'repository_authorization' else 'publication_evidence')
-                if not exact_input(reference): raise ValueError('Authorization subject differs from exact declared input')
-                reviewed(reference, value.get('review'))
-                if kind == 'publication_authorization':
+                legacy_field = 'context' if kind == 'repository_authorization' else 'subject'
+                reference = value.get(legacy_field)
+                if reference is not None:
+                    read(reference, 'repository_context' if kind == 'repository_authorization' else 'publication_evidence')
+                    if not exact_input(reference): raise ValueError('Authorization subject differs from exact declared input')
+                    reviewed(reference, value.get('review'))
+                else:
+                    # The evidence-DAG publication path authorizes its exact
+                    # topology-selected or published candidate directly.  The
+                    # candidate and all approved review/migration joins are
+                    # declared inputs of this root node; task identities bound
+                    # the authorization to the configured downstream effect.
+                    reference = value.get('manifest')
+                    candidate_kind = 'delivery_candidate' if kind == 'repository_authorization' else 'published_candidate'
+                    read(reference, candidate_kind)
+                    if not exact_input(reference): raise ValueError('Authorization manifest differs from exact declared candidate input')
+                    tasks = value.get('tasks')
+                    expected = 'publish' if kind == 'repository_authorization' else 'merge'
+                    if (not isinstance(tasks, list) or not any(
+                            item.get('goal') == snapshot['number'] and item.get('node') == expected
+                            and item.get('item') is None and item.get('generation') == 1
+                            for item in tasks if isinstance(item, dict))):
+                        raise ValueError('Authorization tasks omit the exact configured downstream effect')
+                if kind == 'publication_authorization' and value.get('subject') is not None:
                     producer = subject_results[reference['hash']]
                     publication = projection['states'][ev.task_key(producer['node'])].get('publication')
                     if not publication or 'error' in publication: raise ValueError('Current provider publication evidence is required')
@@ -3611,6 +3680,29 @@ class Workflow:
                         self.node_workspace_paths(entry[field], consumed=field == 'consumed')
                     if owned.intersection(entry['owned']): raise ValueError('Workspace allocation owned paths overlap')
                     owned.update(entry['owned'])
+            elif kind == 'child_delivery_join':
+                # Relationship selection is resolved by the host from
+                # ``#children``.  The worker may summarize or inspect it but
+                # cannot substitute a non-child/stale Result in the emitted
+                # join: the output must equal the exact identity-bound input.
+                selected = state['values'].get('children')
+                if not isinstance(selected, dict) or value != selected:
+                    raise ValueError('Child delivery join must preserve every exact immediate-child terminal Result')
+            elif kind == 'delivery_candidate':
+                decomposition = state['values'].get('decomposition')
+                integration = state['values'].get('integration')
+                delivery_class = decomposition.get('delivery_class') if isinstance(decomposition, dict) else None
+                applicability = integration.get('applicability') if isinstance(integration, dict) else None
+                sources = {binding['name']: binding['source'] for binding in state['inputs']}
+                selected = 'integration' if delivery_class == 'composition' else 'implementation'
+                expected_applicability = 'applicable' if delivery_class == 'composition' else 'not_applicable'
+                if (delivery_class not in {'leaf', 'composition', 'atomic'}
+                        or applicability != expected_applicability
+                        or value.get('delivery_class') != delivery_class
+                        or value.get('integration_applicability') != expected_applicability
+                        or value.get('candidate') != sources.get(selected)
+                        or not value.get('rationale', '').strip()):
+                    raise ValueError('Delivery candidate must bind exactly one candidate selected by reviewed topology and typed integration applicability')
             elif kind == 'workspace_authorization':
                 decisions = [review.get('decision') for output_type, review in proposed
                              if output_type == 'review_decision' and isinstance(review, dict)]

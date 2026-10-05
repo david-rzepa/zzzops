@@ -2,6 +2,10 @@
 
 Reusable decision vocabulary uses [progressively disclosed concept references](CONCEPTS.md), keeping definitions precise without adding an eager glossary to routed workflows.
 
+The default evidence DAG keeps context proportional by expanding investigations and reviews from declared items. Required acceptance and maintainability members always run; security, privacy, performance, UX, accessibility, architecture, concurrency, migration, and new-domain members run together when evidence makes them applicable. Each member receives exact immutable subjects. Deterministic joins count every applicable result and justified non-applicability without voting or duplicating unrelated context.
+
+Corrections use findings and Result currentness instead of backward graph edges. A finding targets the smallest sufficient scope, binds its reviewed subjects and provenance, and invalidates only affected downstream evidence. Stable question identities prevent repeated human prompts. Closed goals stay out of broad automatic hydration, though explicit historical reads remain valid when a current task requires them.
+
 This historical audit applies Anthropic's July 2026 [context-engineering guidance](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models) only to the context used by agents maintaining this repository. It does not prescribe Agent Plugin behavior.
 
 | Guideline | Disposition | Repository evidence or decision |
