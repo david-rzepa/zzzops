@@ -269,6 +269,101 @@ class EvidenceGraphGrammarTests(unittest.TestCase):
 phase = fixtures.zzzops._phase_evidence
 
 
+class Goal499DefaultGraphContractTests(unittest.TestCase):
+    """Observable contract for the reviewed #499 default workflow."""
+
+    @classmethod
+    def setUpClass(cls):
+        plan = json.loads(
+            (fixtures.PLUGIN_ROOT / "zzzops/templates/project-goals/INIT_PLAN.json").read_text()
+        )
+        cls.graph = next(
+            section for section in plan["policy"]["sections"]
+            if section["id"] == "workflow_adherence"
+        )["configuration"]["phase_dag"]
+        cls.nodes = {node["id"]: node for node in cls.graph["nodes"]}
+        cls.sets = {item["id"]: item for item in cls.graph["task_sets"]}
+        cls.set_templates = {
+            item["template"]["id"]: item for item in cls.graph["task_sets"]
+        }
+
+    def test_default_uses_reviewed_discovery_delivery_and_feedback_vocabulary(self):
+        required = {
+            "requirements", "spec", "approve_spec", "decompose",
+            "decomposition_review", "test_design", "test_verification",
+            "test_design_review", "implement", "implementation_verification",
+            "migration_verification", "integration_verification", "publish",
+            "integrate", "integration_feedback_review", "authorize_merge", "merge",
+        }
+        self.assertEqual(set(), required - set(self.nodes),
+                         "Every concrete #499 phase must ship in the one default graph")
+        obsolete = {
+            "understand", "review_understanding", "approve_understanding",
+            "review_decomposition", "review_test_design", "review_implement",
+            "publication_context", "observe_publication", "observe_merge",
+        }
+        self.assertEqual(set(), obsolete & set(self.nodes),
+                         "The old linear phase vocabulary must not remain active")
+        self.assertEqual([], z._policy._workflow_phase_dag_errors(self.graph))
+
+    def test_only_root_owns_human_answers_approvals_publication_and_merge(self):
+        for name in ("requirements", "approve_spec", "publish", "authorize_merge", "merge"):
+            with self.subTest(node=name):
+                self.assertEqual("root", self.nodes[name]["executor"]["role"])
+        for name in ("spec", "decompose", "decomposition_review", "integrate",
+                     "integration_feedback_review"):
+            with self.subTest(node=name):
+                self.assertEqual("worker", self.nodes[name]["executor"]["role"])
+        requirements = json.dumps(self.nodes["requirements"]).casefold()
+        self.assertIn("question", requirements)
+        self.assertIn("provenance", requirements)
+        self.assertIn("blocking", requirements)
+
+    def test_review_expansions_declare_required_members_and_independent_templates(self):
+        expected = {
+            "spec_review": {"acceptance_contracts", "maintainability_entropy"},
+            "implementation_review": {"correctness_acceptance", "maintainability_entropy"},
+            "integration_review": {"acceptance_contracts", "maintainability_entropy"},
+        }
+        for family, required_members in expected.items():
+            with self.subTest(family=family):
+                task_set = self.set_templates[family]
+                encoded = json.dumps(task_set).casefold()
+                for member in required_members:
+                    self.assertIn(member, encoded)
+                self.assertIn("independent_of", task_set["template"])
+                self.assertIn("finding", encoded)
+                self.assertIn("non-applic", encoded)
+        self.assertIn("spec_investigation", self.set_templates)
+        self.assertIn("child_delivery", self.set_templates)
+
+    def test_delivery_topologies_encode_atomic_leaf_and_child_to_parent_direction(self):
+        decomposition = json.dumps(self.nodes["decompose"]).casefold()
+        self.assertIn("leaf", decomposition)
+        self.assertIn("composition", decomposition)
+        self.assertIn("atomic", decomposition)
+        self.assertIn("indivisible", decomposition)
+        child = json.dumps(self.set_templates["child_delivery"]).casefold()
+        self.assertIn("delivery_result", child)
+        self.assertNotRegex(child, r'producer[^}]+(?:publish|integrate|merge)[^}]+#parent')
+
+    def test_migration_evidence_and_review_are_upstream_of_publication(self):
+        publish = json.dumps(self.nodes["publish"]).casefold()
+        graph = json.dumps(self.graph).casefold()
+        self.assertIn("migration_verification", graph)
+        self.assertIn("migration_review", graph)
+        self.assertIn("migration", publish)
+        self.assertRegex(publish, r"review|approved|resolution")
+
+    def test_feedback_assessment_is_fresh_before_root_merge_authorization(self):
+        assessment = json.dumps(self.nodes["integrate"]).casefold()
+        approval = json.dumps(self.nodes["authorize_merge"]).casefold()
+        for word in ("actionable", "obsolete", "ambiguous", "provenance"):
+            self.assertIn(word, assessment)
+        self.assertIn("integration_feedback_review", approval)
+        self.assertRegex(approval, r"fresh|current")
+
+
 class ProjectionCacheTests(unittest.TestCase):
     def setUp(self):
         self.assertTrue(hasattr(phase, "_PROJECTION_CACHE"), "Missing bounded projection-cache implementation")

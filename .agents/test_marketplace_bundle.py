@@ -96,6 +96,32 @@ class MarketplaceBundleTests(unittest.TestCase):
             self.assertGreaterEqual(len(tests["negative"]), 3)
             self.assertIn("human review gates", attestations)
 
+    def test_goal_499_graph_and_operator_guidance_ship_in_the_bundle(self) -> None:
+        """The new default must not rely on checkout-only prompts or docs."""
+        files = self.builder.plugin_files(ROOT, "2.0.0")
+        plan = json.loads(files["zzzops/templates/project-goals/INIT_PLAN.json"])
+        graph = next(
+            section for section in plan["policy"]["sections"]
+            if section["id"] == "workflow_adherence"
+        )["configuration"]["phase_dag"]
+        graph_text = json.dumps(graph).casefold()
+        for phrase in (
+            "requirements", "spec_investigation", "maintainability_entropy",
+            "child_delivery", "integration_feedback_review", "authorize_merge",
+        ):
+            self.assertIn(phrase, graph_text)
+
+        operator_docs = "\n".join(
+            (ROOT / path).read_text(encoding="utf-8") for path in (
+                "docs/CONCEPTS.md", "docs/CONTEXT_ENGINEERING.md", "docs/EXECUTION.md"
+            )
+        ).casefold()
+        for phrase in (
+            "stable question", "atomic", "composition", "migration verification",
+            "feedback", "closed goals",
+        ):
+            self.assertIn(phrase, operator_docs)
+
     def test_invalid_version_or_incomplete_sources_fail_before_output(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
