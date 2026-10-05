@@ -17,6 +17,22 @@ SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 PROVIDER_CONTENT_IDENTITY = re.compile(r"^provider:[A-Za-z0-9._-]+:(?:sha256:[0-9a-f]{64}|oid:[0-9a-f]{40,64})$")
 IMMUTABLE_REFERENCE = re.compile(r"^(?:git:[0-9a-f]{40,64}(?::[A-Za-z0-9._:/@-]+)?|urn:sha256:[0-9a-f]{64}|provider:[A-Za-z0-9._-]+:(?:sha256:[0-9a-f]{64}|oid:[0-9a-f]{40,64}))$")
 PHASE_RECORD_STATUSES = {"completed", "not_required"}
+OPERATIONAL_POLICY_SECTIONS = {"model_routing", "autonomy_approval_parallelism"}
+
+
+def evidence_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    """Return policy meaning that can change the validity of completed work.
+
+    Routing, inventory, concurrency and refill settings affect scheduling and
+    future acquisition.  They are deliberately excluded from Result identity;
+    the graph and declared inputs continue to carry substantive requirements.
+    """
+    value = copy.deepcopy(policy)
+    sections = value.get("sections")
+    if isinstance(sections, list):
+        value["sections"] = [section for section in sections
+                             if section.get("id") not in OPERATIONAL_POLICY_SECTIONS]
+    return value
 
 
 class PhaseEvidenceError(ValueError):
@@ -1051,7 +1067,7 @@ def _derive_task_steps(graph, payload, context):
         return 'sha256:' + hashlib.sha256(raw).hexdigest()
     goal = context['goal']
     artifacts = dict(context['artifacts'])
-    policy = semantic_hash(context['policy'])
+    policy = semantic_hash(evidence_policy(context['policy']))
     snapshots = dict(context.get('goals', {}))
     snapshots.setdefault(goal, {'graph': graph, 'payload': payload})
     instances, records, outputs, expansions, memberships = {}, {}, [], {}, {}
@@ -1312,7 +1328,9 @@ def _derive_task_steps(graph, payload, context):
             resolution_semantics = [{'location': r['location'], 'selector': r['selector'], 'targets': r['targets']} for r in state['resolutions']]
             state.update(input_hash=semantic_hash({'node': instance['node'], 'contract': contract, 'inputs': hashes, 'resolutions': resolution_semantics}), state='ready', prerequisites=prerequisites)
             for ref, result in reversed(records_by_node.get(key, [])):
-                if task_key(result['node']) != key or result['contract'] != contract: continue
+                recorded_policy = artifact(ref).get('provenance', {}).get('policy')
+                legacy_contract = semantic_hash({'node': node, 'policy': recorded_policy}) if isinstance(recorded_policy, str) else None
+                if task_key(result['node']) != key or result['contract'] not in {contract, legacy_contract}: continue
                 old_hashes = {}
                 for binding in result['inputs']:
                     if (context.get('workspace_probe') or 'workspaces' not in context) and binding['name'] == '__workspace': continue
