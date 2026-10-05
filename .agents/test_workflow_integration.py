@@ -60,7 +60,16 @@ class GenericIntegrationFreshnessTests(DagFixture):
                     self.assertEqual(self.session.runtime["root_pair"], choice["root_pair"])
                     self.assertEqual({"model": "worker-bounded", "effort": "medium"}, choice["requested_pair"])
                     self.assertEqual(["use_requested_pair", alternative], choice["choices"])
-                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+                    request = copy.deepcopy(choice["submission"])
+                    request.update(choice=alternative, approved_by="user approved this exact downgrade")
+                    self.session.call(100, request)
+                    checkpoint = self.session.checkpoint(100)
+                    routed = [step for step in checkpoint if step.get("kind") == "execute"]
+                    self.assertEqual(["produce"], [step["node"]["node"] for step in routed], checkpoint)
+                    self.assertEqual("root", routed[0]["assignment"])
+                    self.assertEqual(self.session.runtime["root_pair"], routed[0]["selection"])
+                if role == "worker":
+                    self.assertEqual(before, (self.provider.issues, self.provider.comments))
         self.session.runtime.update(original_runtime)
         graph = copy.deepcopy(self.graph)
         graph["nodes"][0]["executor"]["role"] = "worker"

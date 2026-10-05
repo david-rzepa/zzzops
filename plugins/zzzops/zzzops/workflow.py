@@ -167,7 +167,7 @@ PUBLIC_OPERATIONS = frozenset({
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
     'feedback_submit', 'heartbeat', 'installation_record', 'integrate',
     'policy_approve', 'policy_propose', 'read', 'recover', 'renew',
-    'start', 'reconcile', 'submit',
+    'route_choice', 'start', 'reconcile', 'submit',
 })
 
 
@@ -2647,7 +2647,23 @@ class Workflow:
         chosen = min(choices, key=lambda row: (row['cost'], tiers.index(row['tier']), row['model'], row['effort']))
         return 'delegate', {k: chosen[k] for k in ('model', 'effort')}
 
-    def node_step(self, state):
+    def node_routing_choice(self, snapshot, state):
+        """Return the current reviewed root downgrade for this exact task."""
+        if snapshot is None:
+            return None
+        for receipt in reversed(snapshot['payload']['operational']['receipts']):
+            response = self.read_artifact(snapshot['number'], receipt['result'])
+            if not isinstance(response, dict):
+                continue
+            for step in response.get('next_steps', []):
+                if (step.get('kind') == 'routing_choice' and step.get('node') == state['node'] and
+                        step.get('contract') == state['contract_hash'] and
+                        step.get('policy') == digest(self.project['policy']) and
+                        step.get('root_pair') == (self.runtime or {}).get('root_pair')):
+                    return step
+        return None
+
+    def node_step(self, state, snapshot=None):
         executor = state['contract']['executor']; runtime = self.runtime or {}
         config = policy_section(self.project, 'model_routing')['configuration']
         tiers = [row['id'] for row in config['tiers']]
@@ -2655,13 +2671,20 @@ class Workflow:
         root_record = next((row for row in config['model_inventory']['reviewed_pairs'] if all(row.get(k) == root.get(k) for k in ('model', 'effort'))), None)
         if root_record is None: raise ValueError('Actual root pair requires current model policy review')
         if executor['capability'] not in tiers: raise ValueError('Unknown reviewed capability tier')
-        if executor['role'] == 'root' and tiers.index(root_record['tier']) < tiers.index(executor['capability']):
+        reviewed_choice = self.node_routing_choice(snapshot, state)
+        if (executor['role'] == 'root' and tiers.index(root_record['tier']) < tiers.index(executor['capability']) and
+                not (reviewed_choice and reviewed_choice.get('choice') == 'downgrade_to_root')):
             choices = [row for row in config['model_inventory']['reviewed_pairs'] if tiers.index(row['tier']) >= tiers.index(executor['capability']) and any(all(pair.get(k) == row.get(k) for k in ('model', 'effort')) for pair in runtime.get('available_pairs', []))]
             if not choices: raise ValueError('Required reviewed capability/model is unavailable')
             requested = min(choices, key=lambda row: (row['cost'], tiers.index(row['tier']), row['model'], row['effort']))
             return {'kind': 'capability_choice', 'goal': state['node']['goal'], 'node': state['node'],
                     'root_pair': root, 'requested_pair': {k: requested[k] for k in ('model', 'effort')},
                     'choices': ['use_requested_pair', 'delegate_at_root' if executor['role'] == 'worker' else 'downgrade_to_root'],
+                    'submission': {'operation': 'route_choice', 'node': state['node'],
+                                   'root_pair': root,
+                                   'requested_pair': {k: requested[k] for k in ('model', 'effort')},
+                                   'choice': '<one returned choice>', 'approved_by': '<user>',
+                                   'request_id': uuid.uuid4().hex},
                     'action': 'Use the required actual root capability, or explicitly review the declared capability/policy alternative before acquisition. This choice grants no work authority.'}
         assignment, selection = self.node_route(state); policy, _ = self.node_policy(state)
         return {'kind': 'execute', 'goal': state['node']['goal'], 'node': state['node'], 'assignment': assignment, 'selection': selection,
@@ -2705,7 +2728,7 @@ class Workflow:
                 if occupied:
                     steps.append({'kind': 'await_worker', 'goal': number, 'node': state['node'], 'reason': 'Declared resource is owned by another task'})
                     continue
-                try: steps.append(self.node_step(state))
+                try: steps.append(self.node_step(state, snapshot))
                 except ValueError as exc: steps.append({'kind': 'blocker', 'goal': number, 'node': state['node'], 'reason': str(exc)})
             elif state['state'] == 'blocked' and 'repair' in snapshot['publications'].get(self.api._phase_evidence.task_key(state['node']), {}):
                 steps.append({**snapshot['publications'][self.api._phase_evidence.task_key(state['node'])]['repair'], 'goal': number, 'node': state['node']})
@@ -3128,7 +3151,24 @@ class Workflow:
             operation = request['operation']; leases = payload['operational']['leases']
             lease = next((item for item in leases if item['node'] == node), None)
             root = (self.runtime or {}).get('root_id')
-            if operation == 'start':
+            if operation == 'route_choice':
+                allowed = {'operation', 'request_id', 'node', 'root_pair', 'requested_pair', 'choice', 'approved_by'}
+                if set(request) != allowed or request.get('choice') != 'downgrade_to_root' or not explicit_approval(request.get('approved_by')):
+                    raise ValueError('Root capability downgrade requires the exact returned choice and explicit human approval')
+                if lease or state['state'] != 'ready':
+                    raise ValueError('Capability choice applies only to an unowned ready task')
+                unresolved = self.node_step(state)
+                if (unresolved.get('kind') != 'capability_choice' or
+                        request.get('root_pair') != unresolved.get('root_pair') or
+                        request.get('requested_pair') != unresolved.get('requested_pair') or
+                        'downgrade_to_root' not in unresolved.get('choices', [])):
+                    raise ValueError('Capability choice no longer matches the current task, root or reviewed routing policy')
+                response = {'next_steps': [{'kind': 'routing_choice', 'goal': number, 'node': node,
+                    'choice': request['choice'], 'root_pair': request['root_pair'],
+                    'requested_pair': request['requested_pair'], 'contract': state['contract_hash'],
+                    'policy': digest(self.project['policy']),
+                    'action': 'Exact root capability downgrade recorded; invoke the checkpoint again to acquire work.'}]}
+            elif operation == 'start':
                 if lease: raise ValueError('Task already has an owner; observed-stop recovery is required')
                 if state['state'] != 'ready' or request.get('input_hash') != state.get('input_hash'): raise ValueError('Stale input or prerequisite prevents acquisition')
                 draft_acquisition = state.get('workspace', {}).get('acquisition', {})
@@ -3136,7 +3176,7 @@ class Workflow:
                     raise ValueError('Stopped workspace draft full input identity changed; reconcile current authority before acquisition')
                 if any(set(state['contract']['executor']['resources']).intersection(projection['states'][other]['contract']['executor']['resources']) for other in projection['leases'] if other in projection['states']): raise ValueError('Declared resource is already owned')
                 if unresolved_lease_count(self.portfolio(include_ownership=True)) >= worker_limit(self.project): raise ValueError('Reviewed max_workers capacity occupied by unresolved owner')
-                step = self.node_step(state)
+                step = self.node_step(state, snapshot)
                 if step['kind'] != 'execute': raise ValueError('Capability choice must be resolved before acquisition')
                 _, receipt = self.node_policy(state)
                 if request.get('policy_receipt') != receipt: raise ValueError('Exact policy receipt is required')
