@@ -20,6 +20,39 @@ Accepted-test defects use the returned interpretation/admission route, bounded
 test ownership and fresh independent review. Existing graphs require reviewed
 graph adoption. Integration cannot mint Results.
 
+### Historical stopped workspace draft
+
+When an older CLI committed an observed-stop `recover` transaction but removed
+the lease without publishing a workspace-draft receipt, execute may return
+`kind: recover_draft`. It is returned only when the host can authenticate one
+original acquisition receipt, the committed recovery result, the removed lease,
+fresh current allocation/reviewer/root authority, and an exact current delta
+limited to the task's owned paths.
+
+Copy the returned `submission` and replace only `recovery_request` with the
+exact original recover request. Add a new unique `request_id`. The operation is
+`preserve_historical_draft`; all returned hashes, Refs, workspace identity, delta
+and qualified node must remain exact.
+
+The operation preserves the bytes as unaccepted work and returns a new
+workspace-draft Ref. Reinvoke execute and acquire the current task normally.
+The draft records a continuity transition under the stopped task's fresh
+current allocation and approvals. A later task may consume the exact resulting
+snapshot as its raw baseline, including when it only reads the recovered paths;
+its lease uses its own current semantic inputs and write scope. Normal
+verification, independent review, workspace gates, and publication gates still
+apply. The operation never revives the old lease or approval and never creates
+a Result.
+
+### Read-only historical semantic identity
+
+A read-only acquisition can reuse a connected historical semantic workspace
+identity. Its lease separately records `acquisition.read_files`, the exact raw
+workspace observed when the lease starts. Live validation compares current raw
+bytes with `read_files`, while the semantic `files` identity remains available
+for legitimate proof-chain reuse. Any post-acquisition raw drift still rejects
+the submission, and neither pin grants write authority.
+
 ### Historical applicability assessment
 
 When an unresolved historical admission blocks its target and the current graph
