@@ -287,6 +287,15 @@ class Goal499DefaultGraphContractTests(unittest.TestCase):
             item["template"]["id"]: item for item in cls.graph["task_sets"]
         }
 
+    def node(self, name):
+        self.assertTrue(name in self.nodes, f"Shipped #499 graph is missing node {name!r}")
+        return self.nodes[name]
+
+    def task_set(self, template):
+        self.assertTrue(template in self.set_templates,
+                        f"Shipped #499 graph is missing expansion template {template!r}")
+        return self.set_templates[template]
+
     def test_default_uses_reviewed_discovery_delivery_and_feedback_vocabulary(self):
         required = {
             "requirements", "spec", "approve_spec", "decompose",
@@ -309,15 +318,17 @@ class Goal499DefaultGraphContractTests(unittest.TestCase):
     def test_only_root_owns_human_answers_approvals_publication_and_merge(self):
         for name in ("requirements", "approve_spec", "publish", "authorize_merge", "merge"):
             with self.subTest(node=name):
-                self.assertEqual("root", self.nodes[name]["executor"]["role"])
+                self.assertEqual("root", self.node(name)["executor"]["role"])
         for name in ("spec", "decompose", "decomposition_review", "integrate",
                      "integration_feedback_review"):
             with self.subTest(node=name):
-                self.assertEqual("worker", self.nodes[name]["executor"]["role"])
-        requirements = json.dumps(self.nodes["requirements"]).casefold()
-        self.assertIn("question", requirements)
-        self.assertIn("provenance", requirements)
-        self.assertIn("blocking", requirements)
+                self.assertEqual("worker", self.node(name)["executor"]["role"])
+        requirements = json.dumps(self.node("requirements")).casefold()
+        for contract in ("question", "id", "provenance", "blocking", "status",
+                         "answer", "revision", "settled"):
+            self.assertIn(contract, requirements)
+        self.assertRegex(requirements, r"stable|same id|preserve.{0,40}id")
+        self.assertRegex(requirements, r"do not.{0,40}(repeat|re-ask)|no repeated")
 
     def test_review_expansions_declare_required_members_and_independent_templates(self):
         expected = {
@@ -327,28 +338,44 @@ class Goal499DefaultGraphContractTests(unittest.TestCase):
         }
         for family, required_members in expected.items():
             with self.subTest(family=family):
-                task_set = self.set_templates[family]
+                task_set = self.task_set(family)
                 encoded = json.dumps(task_set).casefold()
                 for member in required_members:
                     self.assertIn(member, encoded)
                 self.assertIn("independent_of", task_set["template"])
                 self.assertIn("finding", encoded)
                 self.assertIn("non-applic", encoded)
-        self.assertIn("spec_investigation", self.set_templates)
-        self.assertIn("child_delivery", self.set_templates)
+        self.assertTrue("spec_investigation" in self.set_templates,
+                        "Shipped #499 graph is missing spec investigation expansion")
+        self.assertTrue("child_delivery" in self.set_templates,
+                        "Shipped #499 graph is missing child delivery expansion")
 
     def test_delivery_topologies_encode_atomic_leaf_and_child_to_parent_direction(self):
-        decomposition = json.dumps(self.nodes["decompose"]).casefold()
+        decomposition = json.dumps(self.node("decompose")).casefold()
         self.assertIn("leaf", decomposition)
         self.assertIn("composition", decomposition)
         self.assertIn("atomic", decomposition)
         self.assertIn("indivisible", decomposition)
-        child = json.dumps(self.set_templates["child_delivery"]).casefold()
+        for proof in ("no independently deliverable", "no useful parallel"):
+            self.assertIn(proof, decomposition,
+                          "Atomic non-applicability must demand the reviewed proof, not a shortcut")
+        review = json.dumps(self.node("decomposition_review")).casefold()
+        self.assertIn("atomic", review)
+        self.assertRegex(review, r"reject|unjustified|non-applic")
+        child = json.dumps(self.task_set("child_delivery")).casefold()
+        child_template = self.task_set("child_delivery")["template"]
         self.assertIn("delivery_result", child)
         self.assertNotRegex(child, r'producer[^}]+(?:publish|integrate|merge)[^}]+#parent')
+        for forbidden in ("parent publication", "parent integration", "parent merge"):
+            self.assertNotIn(forbidden, child)
+        self.assertEqual([], child_template["executor"]["resources"],
+                         "Child delivery observation cannot own either workspace")
+        integration = json.dumps(self.node("integration_verification")).casefold()
+        self.assertRegex(integration, r"parent.{0,80}(owned|workspace)")
+        self.assertRegex(integration, r"child.{0,80}(read.only|immutable|do not edit)")
 
     def test_migration_evidence_and_review_are_upstream_of_publication(self):
-        publish = json.dumps(self.nodes["publish"]).casefold()
+        publish = json.dumps(self.node("publish")).casefold()
         graph = json.dumps(self.graph).casefold()
         self.assertIn("migration_verification", graph)
         self.assertIn("migration_review", graph)
@@ -356,8 +383,8 @@ class Goal499DefaultGraphContractTests(unittest.TestCase):
         self.assertRegex(publish, r"review|approved|resolution")
 
     def test_feedback_assessment_is_fresh_before_root_merge_authorization(self):
-        assessment = json.dumps(self.nodes["integrate"]).casefold()
-        approval = json.dumps(self.nodes["authorize_merge"]).casefold()
+        assessment = json.dumps(self.node("integrate")).casefold()
+        approval = json.dumps(self.node("authorize_merge")).casefold()
         for word in ("actionable", "obsolete", "ambiguous", "provenance"):
             self.assertIn(word, assessment)
         self.assertIn("integration_feedback_review", approval)

@@ -238,6 +238,36 @@ class WorkflowOverheadTests(unittest.TestCase):
         self.assertLess(direct["provider_call_count"], baseline["provider_call_count"])
         self.assertEqual(10, direct["operations"]["read"], "Review evidence inspection remains counted")
 
+    def test_goal499_lightweight_and_strict_coordination_remain_proportional(self):
+        """Compare public transcripts, including an explicit stricter checkpoint pass."""
+        report = comparison()
+        lightweight = report["direct"]["normal_journey"]
+        strict = report["with_checkpoints"]["normal_journey"]
+        self.assertEqual(lightweight["authoritative_check_count"],
+                         strict["authoritative_check_count"])
+        self.assertEqual(lightweight["operations"]["read"], strict["operations"]["read"],
+                         "Stricter coordination must not duplicate reviewed context")
+        self.assertEqual(6, strict["operations"].get("checkpoint", 0)
+                         - lightweight["operations"].get("checkpoint", 0))
+        for operation in ("create_issue_comment", "update_issue", "create_label", "delete_label"):
+            self.assertEqual(lightweight["provider_calls"][operation],
+                             strict["provider_calls"][operation],
+                             "Assurance checkpoints must not add provider mutations")
+        added_provider_reads = strict["provider_call_count"] - lightweight["provider_call_count"]
+        self.assertLessEqual(added_provider_reads, 36,
+                             "Six stricter checkpoints get a bounded fresh provider view")
+        duplicated_context = strict["public_response_bytes"] - lightweight["public_response_bytes"]
+        self.assertLessEqual(duplicated_context, 96 * 1024)
+        lightweight_token_estimate = (lightweight["public_request_bytes"]
+                                      + lightweight["public_response_bytes"] + 3) // 4
+        strict_token_estimate = (strict["public_request_bytes"]
+                                 + strict["public_response_bytes"] + 3) // 4
+        self.assertLessEqual(strict_token_estimate - lightweight_token_estimate, 24 * 1024)
+        self.assertLessEqual(strict["provider_call_count"], 400)
+        self.assertLessEqual(strict["public_elapsed_seconds"],
+                             max(10.0, lightweight["public_elapsed_seconds"] * 8),
+                             "Elapsed time is a generous regression bound, not a speed claim")
+
 
 if __name__ == "__main__":
     if "--report" in sys.argv:

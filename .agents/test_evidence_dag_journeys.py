@@ -4301,6 +4301,126 @@ class GenericStoragePublicTests(DagFixture):
         self.assertEqual(artifact, self.session.read(100, reference))
 
 
+class Goal499TopologyPublicTests(DagFixture):
+    def test_reviewed_atomic_disposition_continues_through_complete_leaf_delivery(self):
+        names = [
+            "decompose", "decomposition_review", "test_design", "test_verification",
+            "test_design_review", "implement", "implementation_verification",
+            "implementation_review", "publish", "integrate",
+            "integration_feedback_review", "authorize_merge", "merge",
+        ]
+        nodes = []
+        for index, name in enumerate(names):
+            node = task(name, names[index - 1:index],
+                        role="root" if name in {"publish", "authorize_merge", "merge"} else "worker")
+            if name == "decompose":
+                node["prompt"] = ("Return reviewed atomic non-applicability only for one indivisible "
+                                  "workspace responsibility; retain the complete leaf path.")
+            if index and ("review" in name or name in {"test_verification", "implementation_verification"}):
+                node["inputs"] = {"subject": subject_input(names[index - 1])}
+                node["independent_of"] = [selector(names[index - 1])]
+            nodes.append(node)
+        graph = {"nodes": nodes, "task_sets": [], "terminals": [selector("merge")]}
+        self.install(graph)
+        observed = []
+        for name in names:
+            self.assertEqual({name}, self.names())
+            work = self.session.acquire(name)
+            observed.append((name, work["bound_actor"]))
+            self.session.finish(work, {"value": "reviewed atomic leaf delivery: " + name})
+        self.assertFalse(self.session.ready())
+        self.assertEqual("root-thread", dict(observed)["publish"])
+        self.assertNotEqual(dict(observed)["decompose"], dict(observed)["decomposition_review"])
+
+    def test_migration_verification_and_independent_review_both_gate_publication(self):
+        candidate = task("candidate")
+        verification = task("migration_verification", ["candidate"])
+        verification["inputs"] = {"subject": subject_input("candidate")}
+        review = task("migration_review", ["migration_verification"])
+        review["inputs"] = {"subject": subject_input("migration_verification")}
+        review["independent_of"] = [selector("migration_verification")]
+        publish = task("publish", ["migration_review"], role="root")
+        self.install({"nodes": [candidate, verification, review, publish], "task_sets": [],
+                      "terminals": [selector("publish")]})
+        self.session.finish(self.session.acquire("candidate"), {"value": "candidate"})
+        self.assertNotIn("publish", self.names())
+        proof = self.session.acquire("migration_verification")
+        self.session.finish(proof, {"value": "supported start, transition and recovery passed"})
+        self.assertNotIn("publish", self.names())
+        inspection = self.session.acquire("migration_review")
+        self.assertNotEqual(proof["bound_actor"], inspection["bound_actor"])
+        self.session.finish(inspection, {"value": "approved exact migration proof"})
+        self.assertEqual({"publish"}, self.names())
+
+
+class Goal499BehaviorMatrixRegressionTests(unittest.TestCase):
+    """Public-dispatch proofs required by the reviewed #499 validation matrix.
+
+    These named regressions use ``z.main`` through ``TaskSession``.  Keeping the
+    reusable fixtures small makes the new shipped graph accountable to existing
+    host guarantees without duplicating an orchestration engine in tests.
+    """
+
+    def mapped(self, *methods):
+        run_generic_regressions(self, *methods)
+
+    def test_questions_are_root_consolidated_stable_and_selectively_reopened(self):
+        self.mapped(
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_human_answers_drive_affected_reinvestigation_through_generic_admission",
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_approval_or_resolution_stales_when_inspected_subject_changes",
+        )
+
+    def test_delegated_reviews_have_distinct_leases_provenance_and_deterministic_join(self):
+        self.mapped(
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_parallel_reviews_independent_leases_and_join",
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_same_subject_executor_cannot_review_itself",
+        )
+
+    def test_rejected_review_retains_findings_and_reopens_only_affected_currentness(self):
+        self.mapped(
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_two_findings_coalesce_survive_replay_and_release_join_after_review",
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_late_pr_feedback_against_old_commit_cannot_invalidate_newer_subject",
+        )
+
+    def test_leaf_red_proof_and_corrected_candidate_require_fresh_review(self):
+        self.mapped(
+            "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_design_correction_retains_exact_observed_red_predecessor",
+            "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance",
+        )
+
+    def test_composition_consumes_every_child_and_preserves_child_parent_direction(self):
+        self.mapped(
+            "test_evidence_dag_journeys.RelationshipPublicTests.test_every_child_required_including_archived_exact_completion",
+            "test_evidence_dag_journeys.RelationshipPublicTests.test_projected_cross_goal_cycle_blocks_acquisition_not_unrelated_work",
+            "test_evidence_dag_journeys.RelationshipPublicTests.test_consumed_child_evidence_drift_rejects_acquired_worker",
+            "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_parent_grant_omission_and_mismatch_cannot_expand_child_authority",
+            "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_unowned_and_consumed_drift_reject_without_partial_candidate_then_allow_owned_edit",
+        )
+
+    def test_feedback_edits_resolution_scoped_reopen_and_final_race_fail_closed(self):
+        self.mapped(
+            "test_evidence_dag_journeys.PRSourceTransportTests.test_real_source_reader_preserves_pr_commit_author_edits_and_deletion",
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_comment_delete_edit_and_resolved_text_cannot_retire_admitted_findings",
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_late_pr_feedback_against_old_commit_cannot_invalidate_newer_subject",
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_stale_subject_admission_does_not_overwrite_newer_work",
+            "test_evidence_dag_journeys.RelationshipPublicTests.test_relevant_parent_change_rejects_acquired_child_result",
+            "test_evidence_dag_journeys.GenericStoragePublicTests.test_checkpoint_preserves_concurrent_labels_and_exact_retry",
+        )
+
+    def test_custom_policy_history_and_closed_goal_exclusions_survive_upgrade_inputs(self):
+        self.mapped(
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_lighter_policy_proposal_preserves_findings_and_requires_exact_approval",
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_stronger_policy_requires_added_independent_review_and_preserves_history",
+            "test_evidence_dag_journeys.GatewayIsolationTests.test_incompatible_goal_is_local_and_archived_body_is_never_hydrated",
+        )
+
+    def test_configured_new_risk_member_runs_without_engine_branch(self):
+        self.mapped(
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_changed_bucket_reruns_only_affected_investigation",
+            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_new_bucket_preserves_unchanged_sibling_but_join_waits",
+        )
+
+
 class GraphAdoptionPublicTests(DagFixture):
     add_goal = RelationshipPublicTests.add_goal
     put_envelope = RelationshipPublicTests.put_envelope
