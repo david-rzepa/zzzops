@@ -3319,7 +3319,14 @@ class Workflow:
                         bundle = request.get('outputs'); contracts = state['contract']['outputs']
                         if not isinstance(bundle, dict) or set(bundle) != set(contracts): raise ValueError('Submission must supply exactly declared output slots')
                         for slot, content in bundle.items():
-                            if not ev.value_matches(contracts[slot]['schema'], content): raise ValueError('Output type contract rejected slot ' + slot)
+                            legacy_rejected_authorization = (
+                                contracts[slot]['type'] == 'workspace_authorization'
+                                and content is None
+                                and isinstance(bundle.get('review'), dict)
+                                and bundle['review'].get('decision') == 'changes_requested'
+                            )
+                            if not legacy_rejected_authorization and not ev.value_matches(contracts[slot]['schema'], content):
+                                raise ValueError('Output type contract rejected slot ' + slot)
                         self.node_validate_bundle(snapshot, state, bundle, lease['worker'])
                         try:
                             proof_ref = self.node_workspace_proof(snapshot, state, lease, request)

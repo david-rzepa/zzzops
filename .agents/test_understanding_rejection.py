@@ -99,6 +99,29 @@ class UnderstandingRejectionTests(j.DagFixture):
                                      'authorization': None})
         self.assertNotIn('approve_understanding', self.names())
 
+    def test_legacy_review_contract_accepts_rejection_without_granting_authority(self):
+        template = json.loads((j.old.fixtures.PLUGIN_ROOT / 'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
+        graph = j.z._workflow_section(template, 'workflow_adherence')['configuration']['phase_dag']
+        review_contract = next(node for node in graph['nodes'] if node['id'] == 'review_understanding')
+        review_contract['outputs']['authorization']['schema'] = \
+            review_contract['outputs']['authorization']['schema']['variants'][0]
+        self.setup_design(graph)
+        review = self.session.acquire('review_understanding')
+        self.session.finish(review, {
+            'review': {'decision': 'changes_requested', 'report': 'Legacy graph still permits honest rejection'},
+            'authorization': None})
+        self.assertIsNone(self.read_blob(self.produced('review_understanding', 'authorization'))['content'])
+        self.assertNotIn('approve_understanding', self.names())
+        self.assertNotIn('test_design', self.names())
+
+        self.setup_design(graph)
+        review = self.session.acquire('review_understanding')
+        request = self.session.submission(review, {
+            'review': {'decision': 'approved', 'report': 'Approval still needs exact authority'},
+            'authorization': None}, 'legacy-approved-without-authority')
+        response = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(response), r'(?i)authorization')
+
     def test_design_revision_invalidates_prior_human_approval_and_downstream_results(self):
         template = json.loads((j.old.fixtures.PLUGIN_ROOT / 'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
         graph = j.z._workflow_section(template, 'workflow_adherence')['configuration']['phase_dag']
