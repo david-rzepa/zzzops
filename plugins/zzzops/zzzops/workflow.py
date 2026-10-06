@@ -3060,7 +3060,11 @@ class Workflow:
                          'lease': lease['token'], 'expected_source': digest(issue['body']), 'worker_status': '<observed status>', 'evidence': '<terminal observation>'}}
                     for lease in predecessor['workflow']['leases'].values()]
         try: snapshot = self.node_snapshot(number)
-        except (ValueError, KeyError, OSError) as exc: return [{'kind': 'blocker', 'goal': number, 'reason': str(exc), 'action': 'Resolve the exact missing schema, evidence or authority.'}]
+        except (ValueError, KeyError, OSError) as exc: return [{
+            'kind': 'blocker', 'goal': number, 'reason': str(exc),
+            'action': 'Resolve the exact missing schema, evidence or authority.',
+            'invalidated_ancestor_gates': [],
+        }]
         return self.node_frontier(snapshot)
 
     def node_append_review_correction(self, graph, target_name, target_output, review_name, review_output,
@@ -3460,6 +3464,9 @@ class Workflow:
         if not steps and not projection['complete']: steps.append({'kind': 'dependency', 'goal': number, 'reason': 'Required terminals or retained findings remain unresolved'})
         if not steps and projection['complete']:
             steps.append({'kind': 'complete', 'goal': number, 'assignment': 'root', 'action': 'All configured generic terminals are current.', 'submission': {'operation': 'complete'}})
+        invalidated = projection.get('invalidated_ancestor_gates', [])
+        for step in steps:
+            step['invalidated_ancestor_gates'] = copy.deepcopy(invalidated)
         return steps
 
     def node_publication_authorities(self, snapshot):
@@ -4825,6 +4832,10 @@ def _public_response(api, repo, intent, source, runtime, payload, number, *, ski
         api, repo, intent, source, runtime, payload, number,
         policy_snapshot=snapshot, **options,
     )
+    if number is not None and source == '$execute-zzzops':
+        for step in result.get('next_steps', []):
+            if isinstance(step, dict):
+                step.setdefault('invalidated_ancestor_gates', [])
     if any('node' in step and 'policy' in step for step in result.get('next_steps', [])):
         return result
     if api._policy_context.needs_context(result):

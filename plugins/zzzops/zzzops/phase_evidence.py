@@ -1094,6 +1094,7 @@ def _derive_task_steps(graph, payload, context):
     snapshots = dict(context.get('goals', {}))
     snapshots.setdefault(goal, {'graph': graph, 'payload': payload})
     instances, records, outputs, expansions, memberships = {}, {}, [], {}, {}
+    instance_order = []
     statuses, current, evaluating, expanding = {}, {}, set(), set()
     member_lookup, records_by_node, selector_paths = {}, {}, {}
     verified_artifacts = set()
@@ -1126,6 +1127,7 @@ def _derive_task_steps(graph, payload, context):
         for index, node in enumerate(snapshot['graph']['nodes']):
             identity = {'goal': number, 'node': node['id'], 'item': None, 'generation': 1}
             instances[task_key(identity)] = {'node': identity, 'contract': node, 'location': ['nodes', index]}
+            instance_order.append(task_key(identity))
         for index, expansion in enumerate(snapshot['graph']['task_sets']):
             expansions[(number, expansion['id'])] = (expansion, index)
     latest_outputs = {key: {ref['hash'] for ref in rows[-1][1]['outputs'].values()} for key, rows in records_by_node.items()}
@@ -1293,7 +1295,9 @@ def _derive_task_steps(graph, payload, context):
         if key in evaluating: raise ValueError('Projected qualified-node dependency cycle: ' + str(key))
         if key not in instances: raise ValueError('Unknown or retired qualified node: ' + str(key))
         evaluating.add(key); instance = instances[key]; node = instance['contract']; number = key[0]
-        state = {**instance, 'inputs': [], 'values': {}, 'resolutions': [], 'state': 'blocked'}
+        state = {**instance, 'inputs': [], 'values': {}, 'resolutions': [], 'state': 'blocked',
+                 'had_evidence': bool(records_by_node.get(key)),
+                 'required_dependencies': [], 'required_parent_gates': []}
         contract = semantic_hash({'node': node, 'policy': policy})
         state['contract_hash'] = contract
         try:
@@ -1329,6 +1333,10 @@ def _derive_task_steps(graph, payload, context):
             prerequisites = []
             for selector in node['requires']:
                 for parent in targets(selector, number):
+                    relationship_field = ('required_parent_gates'
+                                          if selector.get('goal') == '#parent'
+                                          else 'required_dependencies')
+                    state[relationship_field].append(instances[parent]['node'])
                     evaluate(parent)
                     if parent not in current: raise ValueError('Blocked: prerequisite is not current: ' + str(parent) + ': ' + statuses.get(parent, {}).get('reason', 'required evidence is stale or missing'))
                     prerequisites.append(parent)
@@ -1438,4 +1446,33 @@ def _derive_task_steps(graph, payload, context):
         try: complete = complete and all(key in current for key in targets(selector, goal))
         except (ValueError, KeyError): complete = False
     if any(not obligation_resolved(o) for o in obligations.values()): complete = False
-    return {'ready': [s for k, s in statuses.items() if k[0] == goal and s['state'] == 'ready' and k not in leases], 'states': statuses, 'current': current, 'leases': leases, 'complete': complete, 'obligations': obligations, 'artifacts': artifacts}
+    stale_roots = [key for key in instance_order
+                   if statuses[key]['had_evidence'] and key not in current
+                   and statuses[key]['state'] == 'ready']
+    def descends_from(key, ancestor, seen=None):
+        seen = set() if seen is None else seen
+        if key in seen:
+            return False
+        seen.add(key)
+        relationships = (statuses[key]['required_dependencies']
+                         + statuses[key]['required_parent_gates'])
+        parents = [task_key(identity) for identity in relationships]
+        return ancestor in parents or any(
+            parent in statuses and descends_from(parent, ancestor, seen)
+            for parent in parents
+        )
+    invalidated = []
+    for ancestor in stale_roots:
+        affected = []
+        for key in instance_order:
+            state = statuses[key]
+            if state['had_evidence'] and key not in current and descends_from(key, ancestor):
+                affected.append({
+                    'blocked_task': state['node'],
+                    'dependencies': copy.deepcopy(state['required_dependencies']),
+                    'parent_gates': copy.deepcopy(state['required_parent_gates']),
+                })
+        if affected:
+            invalidated.append({'ancestor': instances[ancestor]['node'], 'reason': 'stale_input',
+                                'affected_descendants': affected})
+    return {'ready': [s for k, s in statuses.items() if k[0] == goal and s['state'] == 'ready' and k not in leases], 'states': statuses, 'current': current, 'leases': leases, 'complete': complete, 'obligations': obligations, 'artifacts': artifacts, 'invalidated_ancestor_gates': invalidated}
