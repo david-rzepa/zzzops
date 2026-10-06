@@ -164,7 +164,7 @@ class ObservedArtifactIndex(comment_store.ArtifactIndex):
 # being routed through an unrelated installation, policy, lease, or portfolio
 # gate.
 PUBLIC_OPERATIONS = frozenset({
-    'batch', 'bind', 'block', 'migration_batch', 'graph_prepare', 'graph_adopt', 'graph_review_bootstrap',
+    'batch', 'bind', 'block', 'migration_batch', 'graph_prepare', 'graph_review', 'graph_adopt', 'graph_review_bootstrap',
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
     'feedback_submit', 'heartbeat', 'installation_record', 'integrate',
     'policy_approve', 'policy_propose', 'read', 'recover', 'renew',
@@ -2113,35 +2113,54 @@ class Workflow:
                 'impact': impact, 'rationale': rationale}
 
     def node_graph_adopt(self, snapshot, payload, request):
-        allowed = {'operation', 'request_id', 'review_goal', 'proposal', 'review', 'approved_by'}
-        if set(request) != allowed or not explicit_approval(request.get('approved_by')):
+        direct = {'operation', 'request_id', 'proposal', 'review', 'approved_by'}
+        legacy = direct | {'review_goal'}
+        if set(request) not in (direct, legacy) or not explicit_approval(request.get('approved_by')):
             raise ValueError('Exact graph proposal, independent review and explicit human approval are required')
-        if not self.api._phase_evidence.positive_integer(request['review_goal']):
-            raise ValueError('Graph repair requires an exact review goal')
-        reviewed = self.node_snapshot(request['review_goal'])
-        current = reviewed['projection']['current']
-        proposer = next(((key, result) for key, (_, result) in current.items()
-                         if request['proposal'] in result['outputs'].values()), None)
-        reviewer = next(((key, result) for key, (ref, result) in current.items()
-                         if ref == request['review']), None)
-        if not proposer or not reviewer:
-            raise ValueError('Graph repair requires current canonical proposal and reviewer Result')
-        producer_key, producer = proposer
-        review_key, review = reviewer
-        states = reviewed['projection']['states']
-        if (states[producer_key]['contract']['executor']['role'] != 'root' or
-                producer['executor'] != (self.runtime or {}).get('root_id')):
-            raise ValueError('Graph proposal requires current authenticated root provenance')
-        independent = any(producer['node'] in row['targets'] for row in review['resolutions']
-                          if row['selector'] in states[review_key]['contract']['independent_of'])
-        inspected = any(row['source'] == request['proposal'] and row['mode'] == 'identity' and not row['path']
-                        for row in review['inputs'])
-        decisions = [reviewed['artifacts'][ref['hash']] for ref in review['outputs'].values()]
-        approved = any(value.get('type') == 'review_decision' and isinstance(value.get('content'), dict) and
-                       value['content'].get('decision') == 'approved' for value in decisions)
-        if producer['executor'] == review['executor'] or not independent or not inspected or not approved:
-            raise ValueError('Exact current independent approved graph review is required')
-        artifact = reviewed['artifacts'][request['proposal']['hash']]
+        if 'review_goal' in request:
+            if not self.api._phase_evidence.positive_integer(request['review_goal']):
+                raise ValueError('Graph repair requires an exact review goal')
+            reviewed = self.node_snapshot(request['review_goal'])
+            current = reviewed['projection']['current']
+            proposer = next(((key, result) for key, (_, result) in current.items()
+                             if request['proposal'] in result['outputs'].values()), None)
+            reviewer = next(((key, result) for key, (ref, result) in current.items()
+                             if ref == request['review']), None)
+            if not proposer or not reviewer:
+                raise ValueError('Graph repair requires current canonical proposal and reviewer Result')
+            producer_key, producer = proposer
+            review_key, review = reviewer
+            states = reviewed['projection']['states']
+            if (states[producer_key]['contract']['executor']['role'] != 'root' or
+                    producer['executor'] != (self.runtime or {}).get('root_id')):
+                raise ValueError('Graph proposal requires current authenticated root provenance')
+            independent = any(producer['node'] in row['targets'] for row in review['resolutions']
+                              if row['selector'] in states[review_key]['contract']['independent_of'])
+            inspected = any(row['source'] == request['proposal'] and row['mode'] == 'identity' and not row['path']
+                            for row in review['inputs'])
+            decisions = [reviewed['artifacts'][ref['hash']] for ref in review['outputs'].values()]
+            approved = any(value.get('type') == 'review_decision' and isinstance(value.get('content'), dict) and
+                           value['content'].get('decision') == 'approved' for value in decisions)
+            if producer['executor'] == review['executor'] or not independent or not inspected or not approved:
+                raise ValueError('Exact current independent approved graph review is required')
+            artifact = reviewed['artifacts'][request['proposal']['hash']]
+            reviewed_issue = reviewed['issue']['body']
+        else:
+            for name in ('proposal', 'review'):
+                self.api._phase_evidence.validate_ref(request[name])
+                if self.node_ref_goal(request[name], snapshot['number']) != snapshot['number']:
+                    raise ValueError('Administrative graph review must be stored on the affected goal')
+            artifact = snapshot['resolve'](request['proposal'])
+            review = snapshot['resolve'](request['review'])
+            root = (self.runtime or {}).get('root_id')
+            if (not isinstance(artifact, dict) or artifact.get('type') != 'administrative_graph_proposal' or
+                    artifact.get('provenance', {}).get('actor') != root or
+                    not isinstance(review, dict) or review.get('type') != 'administrative_graph_review' or
+                    review.get('provenance', {}).get('source') != request['proposal'] or
+                    review.get('provenance', {}).get('actor') in (None, root) or
+                    review.get('content', {}).get('decision') != 'approved'):
+                raise ValueError('Exact current independent approved administrative graph review is required')
+            reviewed_issue = snapshot['issue']['body']
         proposal = artifact['content']
         if isinstance(proposal, str):
             try:
@@ -2158,9 +2177,14 @@ class Workflow:
         normalized = copy.deepcopy(proposal)
         if isinstance(normalized.get('source'), dict):
             normalized['source']['current'] = expected_current
+        if 'review_goal' not in request:
+            # The same-goal review appends only an operational receipt. The
+            # reviewed spec, graph, evidence, parent/state and current Results
+            # remain exact, while that receipt necessarily changes payload Ref.
+            expected['source']['payload'] = normalized['source']['payload']
         if not all(row in reviewed_current for row in expected_current) or normalized != expected:
             raise ValueError('Graph proposal source, target, current Results or policy changed after review')
-        if self.adapter.get_issue(request['review_goal'])['body'] != reviewed['issue']['body']:
+        if 'review_goal' in request and self.adapter.get_issue(request['review_goal'])['body'] != reviewed_issue:
             raise ValueError('Graph review source changed before adoption')
         graph_hash = digest(proposal['graph'])
         snapshot['artifacts'][graph_hash] = proposal['graph']
@@ -2170,6 +2194,62 @@ class Workflow:
                     'impact': proposal['impact'],
                     'action': ('Reviewed goal-only graph adopted; immutable evidence was preserved and only the '
                                'explicitly reviewed affected Results lost currentness.')}]}
+        return self.node_persist(snapshot, payload, response, request)
+
+    def node_graph_review(self, snapshot, payload, request):
+        """Persist an authority-free independent review on the affected goal."""
+        allowed = {'operation', 'request_id', 'proposal', 'actor', 'decision', 'report'}
+        if set(request) != allowed:
+            raise ValueError('Administrative graph review submission does not match the returned contract')
+        root = (self.runtime or {}).get('root_id')
+        actor = request.get('actor')
+        if not root or not isinstance(actor, str) or not actor.strip() or actor == root:
+            raise ValueError('Administrative graph review requires an authenticated actor independent of root')
+        if request.get('decision') not in {'approved', 'changes_requested'}:
+            raise ValueError('Administrative graph review requires an explicit decision')
+        if not isinstance(request.get('report'), str) or not request['report'].strip():
+            raise ValueError('Administrative graph review requires a nonempty report')
+        proposal = request.get('proposal')
+        if not isinstance(proposal, dict) or set(proposal) != {
+                'kind', 'repository', 'goal', 'policy', 'source', 'target', 'graph', 'impact', 'rationale'}:
+            raise ValueError('Administrative graph review requires the exact prepared proposal')
+        expected = self.node_graph_proposal(snapshot, proposal['graph'], proposal['rationale'],
+                                            pending_request=request['request_id'])
+        reviewed_current = proposal.get('source', {}).get('current', [])
+        expected_current = expected['source']['current']
+        normalized = copy.deepcopy(proposal)
+        if isinstance(normalized.get('source'), dict):
+            normalized['source']['current'] = expected_current
+        if not all(row in reviewed_current for row in expected_current) or normalized != expected:
+            raise ValueError('Graph proposal source, target, policy or impact changed before review')
+        policy = self.node_evidence_policy()
+        proposal_artifact = {'type': 'administrative_graph_proposal', 'content': copy.deepcopy(proposal),
+            'producer': None, 'provenance': {'actor': root, 'source': None, 'policy': policy}}
+        proposal_hash = digest(proposal_artifact)
+        snapshot['artifacts'][proposal_hash] = proposal_artifact
+        proposal_ref = self.node_ref(proposal_hash, snapshot['number'])
+        review_artifact = {'type': 'administrative_graph_review',
+            'content': {'decision': request['decision'], 'report': request['report']},
+            'producer': None, 'provenance': {'actor': actor, 'source': proposal_ref, 'policy': policy}}
+        review_hash = digest(review_artifact)
+        snapshot['artifacts'][review_hash] = review_artifact
+        review_ref = self.node_ref(review_hash, snapshot['number'])
+        if request['decision'] == 'approved':
+            step = {'kind': 'human_approval', 'assignment': 'root',
+                'goal': snapshot['number'], 'proposal': proposal_ref, 'review': review_ref,
+                'decision': request['decision'], 'report': request['report'],
+                'action': ('Show the exact reviewed graph proposal and impact to the user. Adopt only after '
+                           'explicit approval; this transaction grants no workspace or publication authority.'),
+                'submission': {'operation': 'graph_adopt', 'proposal': proposal_ref, 'review': review_ref,
+                               'approved_by': None,
+                               'request_id': 'graph-adopt-' + proposal['target']['graph'][7:23]}}
+        else:
+            step = {'kind': 'changes_requested', 'assignment': 'root',
+                'goal': snapshot['number'], 'proposal': proposal_ref, 'review': review_ref,
+                'decision': request['decision'], 'report': request['report'],
+                'action': ('Revise the prospective graph to resolve this exact review, then run graph_prepare '
+                           'again. The rejected transaction remains durable evidence and grants no authority.')}
+        response = {'next_steps': [step]}
         return self.node_persist(snapshot, payload, response, request)
 
     def node_graph_review_bootstrap(self, snapshot, payload, request):
@@ -3863,6 +3943,8 @@ class Workflow:
             pending = self.node_pending(snapshot, request)
             if request['operation'] == 'graph_adopt':
                 return self.node_graph_adopt(snapshot, payload, request)
+            if request['operation'] == 'graph_review':
+                return self.node_graph_review(snapshot, payload, request)
             if request['operation'] == 'graph_review_bootstrap':
                 return self.node_graph_review_bootstrap(snapshot, payload, request)
             if request['operation'] in {'integrate', 'reconcile', 'complete'}:
@@ -4694,11 +4776,12 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             proposal = engine.node_graph_proposal(engine.node_snapshot(number), payload['graph'], payload['rationale'])
         return {'next_steps': [{'kind': 'review_required', 'assignment': 'root', 'goal': number,
                 'proposal': proposal,
-                'action': 'Record this exact JSON manifest as a root task output, obtain a current independent approved review of that exact output and explicit human approval, then adopt. Preparation does not mutate the goal or project policy.',
-                'submission': {'operation': 'graph_adopt', 'review_goal': None,
-                               'proposal': None, 'review': None,
-                               'approved_by': None,
-                               'request_id': 'graph-adopt-' + proposal['target']['graph'][7:23]}}]}
+                'action': ('Give this exact manifest to an independent reviewer. Submit its explicit decision '
+                           'through the authority-free graph_review transaction on this affected goal. '
+                           'Preparation does not mutate the goal or project policy.'),
+                'submission': {'operation': 'graph_review', 'proposal': proposal, 'actor': None,
+                               'decision': None, 'report': None,
+                               'request_id': 'graph-review-' + proposal['target']['graph'][7:23]}}]}
     administrative = api._workflow_admin.handle(api, repo, project, source, runtime, payload) if operation not in {'capture_propose', 'capture'} else None
     if administrative is not None:
         return administrative

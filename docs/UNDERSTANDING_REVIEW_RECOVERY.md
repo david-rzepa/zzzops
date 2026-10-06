@@ -52,26 +52,23 @@ and gates on `understand/design`. Preserve unrelated graph customization.
 Its `review_required.proposal` is the exact manifest to review. Preparation does
 not change goal evidence, the persisted graph or project policy.
 
-Record the exact manifest as a current root output in an administrative review
-goal, using normal capture/start/submit contracts. An independent reviewer must
-consume that output by identity and record an approved review Result. A report
-file or a claimed actor name alone cannot substitute for those canonical Refs.
-Obtain explicit human approval of this exact graph change, then use the returned
-adoption contract:
+Give the exact manifest to an independent reviewer, then submit the reviewer's
+actual actor identity, decision, and report through the returned `graph_review`
+contract on the affected goal. The host atomically stores canonical proposal and
+review Refs without changing the graph or granting authority. Obtain explicit
+human approval of this exact graph change, then use the returned adoption contract:
 
 ```json
 {
   "operation": "graph_adopt",
-  "review_goal": 123,
   "proposal": {"hash": "<exact root output hash>", "uri": "<exact root output URI>"},
-  "review": {"hash": "<independent reviewer Result hash>", "uri": "<reviewer Result URI>"},
+  "review": {"hash": "<independent review hash>", "uri": "<review URI>"},
   "approved_by": "<actual explicit human approval>",
   "request_id": "<unique request ID>"
 }
 ```
 
-Here `123` is an example administrative goal number, not a reusable ID. The
-manifest pins the target's source graph, specification, evidence, current
+The manifest pins the target's source graph, specification, evidence, current
 Results, state, parent and policy. If those change, prepare and review again.
 Adoption preserves immutable history and affects only the target goal's graph.
 

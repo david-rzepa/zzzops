@@ -9,6 +9,7 @@ Order: user/safety; project instructions; reviewed `.zzzops/PROJECT.md`; canonic
 - The charter defines value. Preserve unknown KPIs/targets/tradeoffs; capture asks and execution blocks rather than inventing answers.
 - PROJECT holds operational choices; installed rules hold invariants/value interpreters. Missing choices require policy review.
 - Templates live in the plugin package at `zzzops/templates/project-goals/`; plugin installation never creates or copies project state.
+- ZzzOps administration is direct, authority-free workflow maintenance. Never create a goal whose sole outcome is creating, updating, migrating, repairing, reviewing, approving, reprioritizing, superseding, reopening, or closing another goal. Capture a separate goal only for an independently deliverable product or tooling defect.
 
 ## Lifecycle
 

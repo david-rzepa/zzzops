@@ -2,6 +2,8 @@
 
 ## Observable work
 
+Administrative mutations use their host-defined proposal, independent-review, and human-approval contracts on the affected goal. They grant no workspace or publication authority and do not require an administrative meta-goal. A defect discovered while administering goals remains distinct product work and follows the normal durable-goal rule.
+
 Before editing record baseline, falsifiable hypothesis, observation surface, expected signal, and smallest chunk. Change one variable; inspect the narrowest real probe, then widen per PROJECT. Prefer public/native hooks or the smallest least-privileged adapter. Avoid secrets/production mutation; retain only regression value. Build/lint/types prove only themselves. Block if required behavior is unobservable.
 
 Apply PROJECT artifact-verification settings; missing settings defer verification to policy review. Interpret selected values:
