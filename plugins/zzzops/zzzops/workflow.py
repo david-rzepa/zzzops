@@ -3023,10 +3023,168 @@ class Workflow:
         except (ValueError, KeyError, OSError) as exc: return [{'kind': 'blocker', 'goal': number, 'reason': str(exc), 'action': 'Resolve the exact missing schema, evidence or authority.'}]
         return self.node_frontier(snapshot)
 
+    def node_append_review_correction(self, graph, target_name, target_output, review_name, review_output):
+        """Append the closed finding/admission/resolution route for one rejected review."""
+        contracts = {node['id']: node for node in graph['nodes']}
+        target, review = contracts[target_name], contracts[review_name]
+        selector = lambda node: {'kind': 'node', 'goal': '#this', 'node': node}
+        scope = {'subject': selector(target_name), 'output': target_output}
+        ref = {'kind': 'object', 'fields': {'hash': {'kind': 'string'}, 'uri': {'kind': 'string'}}}
+        finding = {'kind': 'object', 'fields': {
+            'id': {'kind': 'string'}, 'revision': {'kind': 'integer'}, 'source': copy.deepcopy(ref),
+            'subjects': {'kind': 'array', 'items': copy.deepcopy(ref)},
+            'target': {'kind': 'object', 'fields': {
+                'subject': {'kind': 'object', 'fields': {'kind': {'kind': 'string'},
+                    'goal': {'kind': 'integer'}, 'node': {'kind': 'string'}}},
+                'output': {'kind': 'string'}}},
+            'request': {'kind': 'string'}, 'rationale': {'kind': 'string'},
+            'supersedes': {'kind': 'union', 'variants': [{'kind': 'null'}, copy.deepcopy(ref)]},
+        }}
+        binding = {'kind': 'object', 'fields': {'name': {'kind': 'string'},
+            'source': copy.deepcopy(ref), 'path': {'kind': 'array', 'items': {'kind': 'string'}},
+            'mode': {'kind': 'string'}}}
+        admission = {'kind': 'object', 'fields': {'finding': copy.deepcopy(ref),
+            'target_inputs': {'kind': 'array', 'items': binding}, 'authority': copy.deepcopy(ref),
+            'applicability': {'kind': 'enum', 'values': ['applicable', 'not_applicable', 'unresolved']},
+            'rationale': {'kind': 'string'}}}
+        registry = {'kind': 'object', 'fields': {
+            'items': {'kind': 'map', 'values': copy.deepcopy(ref)}, 'rationale': {'kind': 'string'}}}
+        resolution = {'kind': 'object', 'fields': {'finding': copy.deepcopy(ref),
+            'subjects': {'kind': 'array', 'items': copy.deepcopy(ref)},
+            'reviewer_result': copy.deepcopy(ref),
+            'decision': {'kind': 'enum', 'values': ['resolved']}, 'rationale': {'kind': 'string'}}}
+        target_type = copy.deepcopy(target['outputs'][target_output]['schema'])
+        review_type = copy.deepcopy(review['outputs'][review_output]['schema'])
+        interpret_name = 'interpret_' + target_name + '_rejection'
+        admit_name = 'admit_' + target_name + '_correction'
+        retain_name = 'retain_' + target_name + '_findings'
+        expansion_name = target_name + '_findings'
+        resolve_name = 'resolve_' + target_name + '_finding'
+        reserved = {interpret_name, admit_name, retain_name}
+        if reserved.intersection(contracts) or any(item['id'] == expansion_name for item in graph['task_sets']):
+            raise ValueError('Rejected review correction route uses an occupied graph identity')
+        graph['nodes'].extend([
+            {'id': interpret_name,
+             'prompt': ('Root converts the exact rejected review into one typed finding for the smallest sufficient '
+                        'target. Preserve the exact review source and rejected subject.'),
+             'inputs': {
+                 'subject': {'producer': {'node': selector(target_name)}, 'output': target_output, 'path': [],
+                             'mode': 'identity', 'type': target_type},
+                 'review': {'producer': {'node': selector(review_name)}, 'output': review_output, 'path': [],
+                            'mode': 'identity', 'type': review_type},
+                 'rejected': {'producer': {'node': selector(review_name)}, 'output': review_output,
+                              'path': ['decision'], 'mode': 'content',
+                              'type': {'kind': 'enum', 'values': ['changes_requested']}},
+             },
+             'outputs': {'value': {'type': 'finding', 'schema': finding}},
+             'requires': [selector(target_name), selector(review_name)],
+             'executor': {'role': 'root', 'capability': 'reasoning', 'resources': [],
+                          'authority': {'subject': selector(interpret_name), 'output': 'value'}},
+             'independent_of': [], 'gates': [], 'resolves': [],
+             'permits': [{'type': 'finding', 'scope': copy.deepcopy(scope)}]},
+            {'id': admit_name,
+             'prompt': ('Root classifies the exact typed finding. Applicable correction preserves history and '
+                        'reopens only its exact rejected target.'),
+             'inputs': {
+                 'finding': {'producer': {'node': selector(interpret_name)}, 'output': 'value', 'path': [],
+                             'mode': 'identity', 'type': copy.deepcopy(finding)},
+                 'subject': {'producer': {'node': selector(target_name)}, 'output': target_output, 'path': [],
+                             'mode': 'identity', 'type': copy.deepcopy(target_type)},
+             },
+             'outputs': {'value': {'type': 'admission', 'schema': admission}},
+             'requires': [selector(interpret_name), selector(target_name)],
+             'executor': {'role': 'root', 'capability': 'bounded', 'resources': [],
+                          'authority': {'subject': selector(admit_name), 'output': 'value'}},
+             'independent_of': [], 'gates': [], 'resolves': [],
+             'permits': [{'type': 'admission', 'scope': copy.deepcopy(scope)}]},
+            {'id': retain_name,
+             'prompt': ('After a fresh approved independent review, retain every admitted finding id and exact '
+                        'finding reference. Approval alone does not resolve a finding.'),
+             'inputs': {
+                 'review': {'producer': {'node': selector(review_name)}, 'output': review_output, 'path': [],
+                            'mode': 'identity', 'type': copy.deepcopy(review_type)},
+                 'approved': {'producer': {'node': selector(review_name)}, 'output': review_output,
+                              'path': ['decision'], 'mode': 'content',
+                              'type': {'kind': 'enum', 'values': ['approved']}},
+             },
+             'outputs': {'value': {'type': 'finding_registry', 'schema': registry}},
+             'requires': [selector(review_name)],
+             'executor': {'role': 'root', 'capability': 'bounded', 'resources': [],
+                          'authority': {'subject': selector(retain_name), 'output': 'value'}},
+             'independent_of': [], 'gates': [], 'resolves': [],
+             'permits': [{'type': 'finding_registry', 'scope': copy.deepcopy(scope)}]},
+        ])
+        graph['task_sets'].append({'id': expansion_name,
+            'source': {'producer': {'node': selector(retain_name)}, 'output': 'value', 'path': [],
+                       'mode': 'content', 'type': copy.deepcopy(registry)},
+            'template': {'id': resolve_name,
+                'prompt': ('Independently resolve only this retained finding against the corrected exact subject '
+                           'and fresh approved reviewer Result.'),
+                'inputs': {
+                    'finding': {'producer': {'node': selector(retain_name)}, 'output': 'value',
+                                'path': ['items', {'item_key': True}], 'mode': 'content',
+                                'type': copy.deepcopy(ref)},
+                    'subject': {'producer': {'node': selector(target_name)}, 'output': target_output, 'path': [],
+                                'mode': 'identity', 'type': copy.deepcopy(target_type)},
+                    'review': {'producer': {'node': selector(review_name)}, 'output': review_output, 'path': [],
+                               'mode': 'identity', 'type': copy.deepcopy(review_type)},
+                    'approved': {'producer': {'node': selector(review_name)}, 'output': review_output,
+                                 'path': ['decision'], 'mode': 'content',
+                                 'type': {'kind': 'enum', 'values': ['approved']}},
+                },
+                'outputs': {'value': {'type': 'resolution', 'schema': resolution}},
+                'requires': [selector(retain_name), selector(review_name)],
+                'executor': {'role': 'worker', 'capability': 'reasoning', 'resources': [],
+                             'authority': {'subject': {'kind': 'self'}, 'output': 'value'}},
+                'independent_of': [selector(target_name)], 'gates': [],
+                'resolves': [copy.deepcopy(scope)],
+                'permits': [{'type': 'resolution', 'scope': copy.deepcopy(scope)}],
+            }})
+
     def node_frontier(self, snapshot, *, defer_envelope=False):
         """Format the same readiness and authority boundaries for both callers."""
         number = snapshot['number']
         projection = snapshot['projection']; steps = []
+        rejected = []
+        for key, (_, result) in projection['current'].items():
+            state = projection['states'].get(key)
+            if state is None: continue
+            contract = state['contract']
+            for review_output, output_ref in result['outputs'].items():
+                value = snapshot['artifacts'][output_ref['hash']].get('content')
+                if not isinstance(value, dict) or value.get('decision') != 'changes_requested': continue
+                for target_selector in contract.get('independent_of', []):
+                    subject = next((binding for binding in contract.get('inputs', {}).values()
+                                    if binding.get('producer', {}).get('node') == target_selector and
+                                    binding.get('mode') == 'identity' and not binding.get('path')), None)
+                    if subject is None or target_selector.get('kind') != 'node': continue
+                    target_name, target_output = target_selector['node'], subject['output']
+                    covered = any(any(output.get('type') == 'finding' for output in node['outputs'].values()) and
+                        any(permit.get('type') == 'finding' and
+                            permit.get('scope', {}).get('output') == target_output and
+                            permit.get('scope', {}).get('subject', {}).get('kind') == 'node' and
+                            permit.get('scope', {}).get('subject', {}).get('node') == target_name
+                            for permit in node.get('permits', [])) and
+                        any(binding.get('producer', {}).get('node', {}).get('kind') == 'node' and
+                            binding.get('producer', {}).get('node', {}).get('node') == contract['id'] and
+                            binding.get('path') == ['decision'] for binding in node.get('inputs', {}).values())
+                        for node in snapshot['graph']['nodes'])
+                    if not covered:
+                        route = (target_name, target_output, contract['id'], review_output)
+                        if route not in rejected:
+                            rejected.append(route)
+        if rejected:
+            graph = copy.deepcopy(snapshot['graph'])
+            for route in rejected:
+                self.node_append_review_correction(graph, *route)
+            self.api._phase_evidence.validate_graph(graph)
+            steps.append({'kind': 'repair', 'assignment': 'root', 'goal': number,
+                'diagnostic': 'Rejected review lacks correction route',
+                'reason': 'A current independent review requested changes but the reviewed graph cannot admit and resolve that correction.',
+                'action': ('Append the exact finding, admission, retention and independent-resolution route through '
+                           'graph_prepare, independently review the proposal, then graph_adopt it.'),
+                'submission': {'operation': 'graph_prepare', 'graph': graph,
+                               'rationale': 'Add only the missing correction route for the exact rejected review.'}})
         unresolved = [{**value, '_finding_id': key[1]}
                       for key, value in projection.get('obligations', {}).items()
                       if value.get('applicability') == 'unresolved']

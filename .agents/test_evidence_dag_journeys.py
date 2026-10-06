@@ -5120,6 +5120,49 @@ class GraphAdoptionPublicTests(DagFixture):
         self.assertIn((findings["first"]["id"],), assessment_paths)
         self.assertIn((findings["second"]["id"],), assessment_paths)
 
+    def test_rejected_review_without_correction_route_returns_executable_recovery(self):
+        producer = task("produce")
+        producer["inputs"] = {"request": spec_input()}
+        reviewer = task("review_produce", ["produce"])
+        reviewer["inputs"] = {"subject": subject_input("produce")}
+        reviewer["independent_of"] = [selector("produce")]
+        reviewer["outputs"] = {"value": output("review_decision", shape({
+            "decision": "approved", "report": "review"}))}
+        finish = task("finish", ["review_produce"], role="root")
+        finish["inputs"] = {"approved": {
+            "producer": {"node": selector("review_produce")}, "output": "value",
+            "path": ["decision"], "mode": "content",
+            "type": {"kind": "enum", "values": ["approved"]}}}
+        graph = {"nodes": [producer, reviewer, finish], "task_sets": [],
+                 "terminals": [selector("finish")]}
+        self.install(graph)
+        self.produce()
+        self.session.finish(self.session.acquire("review_produce", actor="independent-reviewer"),
+                            {"value": {"decision": "changes_requested", "report": "Correct the value"}})
+
+        repair = next(step for step in self.session.checkpoint(100)
+                      if step.get("diagnostic") == "Rejected review lacks correction route")
+        self.assertEqual("graph_prepare", repair["submission"]["operation"])
+        recovered = repair["submission"]["graph"]
+        z._phase_evidence.validate_graph(recovered)
+        prepared = self.session.call(100, repair["submission"])["next_steps"][0]["proposal"]
+        self.session.call(100, self.proposal_review(prepared))
+
+        interpretation = self.session.acquire("interpret_produce_rejection")
+        finding = {"id": "review_produce_rejection", "revision": 1,
+                   "source": self.produced("review_produce"),
+                   "subjects": [self.produced("produce")], "target": scope("produce"),
+                   "request": "Correct the independently rejected value",
+                   "rationale": "The exact current review requested changes", "supersedes": None}
+        self.session.finish(interpretation, {"value": finding})
+        finding_ref = self.produced("interpret_produce_rejection")
+        self.session.finish(self.session.acquire("admit_produce_correction"), {"value": {
+            "finding": finding_ref, "target_inputs": self.result("produce")[1]["inputs"],
+            "authority": self.result("interpret_produce_rejection")[0],
+            "applicability": "applicable", "rationale": "Same exact approved scope"}})
+        self.assertIn("produce", self.names())
+        self.assertNotIn("finish", self.names())
+
     def test_interrupted_adoption_retries_once_and_already_adopted_is_idempotent(self):
         graph = copy.deepcopy(self.graph)
         graph["nodes"].append(task("new_note", role="root"))
