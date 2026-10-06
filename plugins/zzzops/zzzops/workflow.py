@@ -4203,7 +4203,24 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         directory = repo / '.zzzops' / 'proposals'
         if operation == 'policy_propose':
             proposal = payload['plan']
-            prospective = preflight_policy_proposal(api, repo, proposal)
+            proposal_hash = digest(proposal)
+            proposal_path = directory / (proposal_hash.split(':')[1] + '.json')
+            stale_exact_replay = False
+            try:
+                prospective = preflight_policy_proposal(api, repo, proposal)
+            except ValueError as error:
+                stored = None
+                try:
+                    stored = json.loads(proposal_path.read_text())
+                except FileNotFoundError:
+                    pass
+                if (str(error) != 'Invalid policy proposal: base_digest is stale or missing'
+                        or stored != proposal or digest(stored) != proposal_hash):
+                    raise
+                replay = copy.deepcopy(proposal)
+                replay['base_digest'] = api.initialization_base_digest(repo)
+                prospective = preflight_policy_proposal(api, repo, replay)
+                stale_exact_replay = True
             old_state = api.read_project_state(repo)[2]
             target = api.prepare_policy_defaults(repo, prospective['policy'], (old_state or {}).get('policy'))
             target['evidence'] = prospective['evidence']
@@ -4220,11 +4237,11 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                     and all(api._policy._exact(old_state.get(key), prospective.get(key)) for key in ('backend', 'repository', 'charter'))):
                 return {'next_steps': [{'kind': 'checkpoint', 'action': 'The exact policy is already reviewed.',
                                         'classification': classification}]}
-            proposal_hash = digest(proposal)
+            if stale_exact_replay:
+                raise ValueError('Invalid policy proposal: base_digest is stale or missing')
             directory.mkdir(parents=True, exist_ok=True)
-            path = directory / (proposal_hash.split(':')[1] + '.json')
-            api.atomic_text(path, json.dumps(proposal, ensure_ascii=False, sort_keys=True))
-            return {'next_steps': [{'kind': 'human_approval', 'assignment': 'root', 'action': 'Review this exact project/policy proposal with the user before approving.', 'proposal': str(path), 'hash': proposal_hash, 'classification': classification, 'submission': {'operation': 'policy_approve', 'proposal_hash': proposal_hash, 'approved_by': '<user>'}}]}
+            api.atomic_text(proposal_path, json.dumps(proposal, ensure_ascii=False, sort_keys=True))
+            return {'next_steps': [{'kind': 'human_approval', 'assignment': 'root', 'action': 'Review this exact project/policy proposal with the user before approving.', 'proposal': str(proposal_path), 'hash': proposal_hash, 'classification': classification, 'submission': {'operation': 'policy_approve', 'proposal_hash': proposal_hash, 'approved_by': '<user>'}}]}
         proposal_hash = payload['proposal_hash']
         if not explicit_approval(payload.get('approved_by')) or not isinstance(proposal_hash, str) or not __import__('re').fullmatch(r'sha256:[0-9a-f]{64}', proposal_hash):
             raise ValueError('Explicit human approval of the exact proposal hash is required')

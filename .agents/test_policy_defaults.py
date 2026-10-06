@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import importlib.util
+import copy
+import json
 import sys
 import unittest
 from pathlib import Path
+
+import test_zzzops as fixtures
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +17,9 @@ assert SPEC and SPEC.loader
 inventory = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = inventory
 SPEC.loader.exec_module(inventory)
+
+policy = fixtures.zzzops._policy
+PLAN = ROOT / "plugins" / "zzzops" / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json"
 
 
 class PolicyDefaultInventoryTests(unittest.TestCase):
@@ -58,6 +65,62 @@ class PolicyDefaultInventoryTests(unittest.TestCase):
                 text = (ROOT / path).read_text()
                 self.assertNotIn(obsolete, text)
                 self.assertIn('contract', text.lower())
+
+    def test_explicit_accept_restores_canonical_adoption_without_value_inference(self) -> None:
+        proposed = json.loads(PLAN.read_text(encoding="utf-8"))["policy"]
+        adopted = policy.prepare_policy_defaults(ROOT, copy.deepcopy(proposed), None)
+        section_id = "workflow_adherence"
+        default_id = "zzzops.policy.workflow_adherence"
+        catalog = policy.policy_default_catalog()
+
+        customized_proposal = copy.deepcopy(adopted)
+        customized = next(item for item in customized_proposal["sections"] if item["id"] == section_id)
+        customized["instructions"] += " Temporary reviewed conversion constraint."
+        customized["default_disposition"] = "changed"
+        customized_policy = policy.prepare_policy_defaults(ROOT, customized_proposal, adopted)
+        customized = next(item for item in customized_policy["sections"] if item["id"] == section_id)
+        self.assertEqual("customized", customized["default_provenance"]["status"])
+
+        matching_proposal = copy.deepcopy(customized_policy)
+        matching = next(item for item in matching_proposal["sections"] if item["id"] == section_id)
+        matching.update(copy.deepcopy(catalog[default_id]["content"]))
+        still_customized = policy.prepare_policy_defaults(ROOT, matching_proposal, customized_policy)
+        matching = next(item for item in still_customized["sections"] if item["id"] == section_id)
+        self.assertEqual("customized", matching["default_provenance"]["status"])
+
+        accepting_proposal = copy.deepcopy(customized_policy)
+        accepting = next(item for item in accepting_proposal["sections"] if item["id"] == section_id)
+        accepting["default_resolution"] = {"action": "accept", "digest": catalog[default_id]["digest"]}
+        readopted = policy.prepare_policy_defaults(ROOT, accepting_proposal, customized_policy)
+        accepted = next(item for item in readopted["sections"] if item["id"] == section_id)
+        provenance = accepted["default_provenance"]
+        self.assertEqual({
+            "status", "default_id", "schema_version", "source", "digest", "snapshot",
+        }, set(provenance))
+        self.assertEqual("adopted", provenance["status"])
+        self.assertEqual(default_id, provenance["default_id"])
+        self.assertEqual(catalog[default_id]["digest"], provenance["digest"])
+        self.assertEqual(catalog[default_id]["content"], provenance["snapshot"])
+        self.assertEqual(policy.POLICY_DEFAULT_SCHEMA_VERSION, provenance["schema_version"])
+        self.assertEqual(policy.machinery_provenance(ROOT), provenance["source"])
+
+        classification = policy.classify_policy_upgrade(None, readopted)
+        classified = next(
+            item for item in classification["sections"] if item["section_id"] == section_id
+        )
+        self.assertEqual("adopted", classified["target_provenance"]["status"])
+        self.assertEqual("current", classified["target_default_status"])
+
+        changed_catalog = copy.deepcopy(catalog)
+        changed_catalog[default_id]["content"]["instructions"] += " A later installed default."
+        changed_catalog[default_id]["digest"] = policy.policy_content_digest(
+            changed_catalog[default_id]["content"]
+        )
+        comparison = next(
+            item for item in policy.compare_policy_defaults(readopted, changed_catalog)
+            if item["section_id"] == section_id
+        )
+        self.assertEqual("update_available", comparison["status"])
 
 
 if __name__ == "__main__":
