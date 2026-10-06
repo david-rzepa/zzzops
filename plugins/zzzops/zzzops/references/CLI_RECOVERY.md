@@ -117,6 +117,39 @@ normal `execute` tasks. Acquire and submit them normally with the unchanged
 manifest and task identities and the exact current policy digest. Old Results
 remain immutable; downstream inputs become stale when the new authorization
 outputs are published. No special rewrite or authorization bypass exists.
+## Staged bootstrap for an existing goal
+
+An infrastructure goal whose final tests require infrastructure that does not
+yet exist uses goal-only graph adoption; deployed-state evidence is never
+invented and the ordinary final acceptance nodes are retained.
+
+1. With no live leases, submit `graph_prepare` to the affected goal with the
+   complete prospective `graph`, a scoped `rationale`, and an optional unique
+   `request_id`. Preserve existing node indices, task sets, terminals, settled
+   Results, and every unchanged acceptance requirement. The graph should add a
+   concrete bootstrap-plan output, an independent review of that exact output,
+   a root human-approval gate bound to the plan and review, an execution node
+   consuming only that approval, and an observation node producing actual
+   infrastructure evidence for the retained final checks.
+2. Persist the returned exact `proposal` as a root task output in a separately
+   tracked review goal. Obtain a current independent approved review whose
+   identity input is that exact proposal Result. Preparation itself changes
+   neither the target goal nor project policy.
+3. After the human approves that exact proposal, submit the returned
+   `graph_adopt` contract with `review_goal`, the proposal output Ref, the
+   independent reviewer Result Ref, `approved_by`, and a unique `request_id`.
+   Adoption rechecks the target source, policy, settled Results, review goal,
+   proposal bytes, and absence of live ownership before publishing.
+4. Reinvoke execution and acquire a fresh returned task. Execute only the
+   approved plan, then record provider-observed infrastructure evidence. The
+   existing final test, review, publication, and acceptance nodes remain
+   mandatory. A prior API-enablement approval is evidence only for that exact
+   enablement and must not be replayed as bootstrap approval.
+
+If `graph_prepare` cannot preserve a settled Result or the existing terminal,
+capture a new durable goal rather than weakening the accepted contract. Never
+edit the managed goal body, revive an old lease, or treat proposal/review/approval
+artifacts as evidence that infrastructure was deployed.
 
 ### Automatic local lease monitoring
 

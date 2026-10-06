@@ -5357,6 +5357,36 @@ class GraphAdoptionPublicTests(DagFixture):
         self.assertIn("new_note", self.names())
         self.read_blob(old_payload["graph"])
 
+    def test_existing_graph_route_can_stage_exact_bootstrap_before_observed_acceptance(self):
+        graph = copy.deepcopy(self.graph)
+        plan = task("bootstrap_plan", role="root")
+        review = task("review_bootstrap_plan", ["bootstrap_plan"])
+        review["inputs"] = {"subject": subject_input("bootstrap_plan")}
+        review["independent_of"] = [selector("bootstrap_plan")]
+        approve = task("approve_bootstrap_plan", ["review_bootstrap_plan"], role="root")
+        approve["inputs"] = {"plan": subject_input("bootstrap_plan"),
+                             "review": subject_input("review_bootstrap_plan")}
+        execute = task("execute_approved_bootstrap", ["approve_bootstrap_plan"])
+        execute["inputs"] = {"authorization": subject_input("approve_bootstrap_plan")}
+        observe = task("observe_bootstrap", ["execute_approved_bootstrap"])
+        observe["inputs"] = {"execution": subject_input("execute_approved_bootstrap")}
+        graph["nodes"].extend([plan, review, approve, execute, observe])
+        prepared = self.session.call(100, {"operation": "graph_prepare", "graph": graph,
+            "rationale": "Authorize one reviewed initial bootstrap, then collect actual infrastructure evidence for unchanged final acceptance"})
+        proposal = prepared["next_steps"][0]["proposal"]
+        self.assertEqual("review_required", prepared["next_steps"][0]["kind"])
+        self.assertEqual(self.graph["terminals"], proposal["graph"]["terminals"])
+        request = self.proposal_review(proposal)
+        self.session.call(100, request)
+        adopted = self.read_blob(self.payload()[1]["graph"])
+        self.assertEqual(["bootstrap_plan", "review_bootstrap_plan", "approve_bootstrap_plan",
+                          "execute_approved_bootstrap", "observe_bootstrap"],
+                         [node["id"] for node in adopted["nodes"][-5:]])
+        self.assertEqual(subject_input("approve_bootstrap_plan"),
+                         adopted["nodes"][-2]["inputs"]["authorization"])
+        self.assertEqual(self.graph["terminals"], adopted["terminals"],
+                         "Staging must not waive the existing final acceptance terminal")
+
     def test_graph_prepare_rejects_current_contract_changes_and_live_ownership(self):
         self.produce()
         changed = copy.deepcopy(self.graph)
