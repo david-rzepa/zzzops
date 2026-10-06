@@ -514,6 +514,36 @@ class BatchConversionTests(dag.DagFixture):
         self.assertEqual(closed, (self.provider.issues[100], self.provider.comments[100]))
         self.assert_preserved(101)
 
+    def test_null_transaction_context_is_ignored_during_migration(self):
+        envelope = {
+            'schema_version': 2, 'goal': 100, 'transaction': 'historical-null-context',
+            'context': None, 'artifacts': [],
+        }
+        self.provider.comments[100].append({
+            'id': 900, 'body': dag.z._comment_store.encode_envelope(envelope),
+        })
+
+        result = self.migrate((100,))
+
+        self.assertEqual('migrated', result['members']['100']['status'])
+        self.assert_preserved(100)
+
+    def test_malformed_transaction_context_blocks_only_its_batch_member(self):
+        envelope = {
+            'schema_version': 2, 'goal': 100, 'transaction': 'historical-scalar-context',
+            'context': 'invalid', 'artifacts': [],
+        }
+        self.provider.comments[100].append({
+            'id': 900, 'body': dag.z._comment_store.encode_envelope(envelope),
+        })
+
+        result = self.migrate()
+
+        self.assertEqual('blocked', result['members']['100']['status'])
+        self.assertIn('context must be an object or null', result['members']['100']['reason'])
+        self.assertEqual('migrated', result['members']['101']['status'])
+        self.assert_preserved(101)
+
     def test_concurrent_human_edit_during_publication_cannot_be_overwritten(self):
         append = self.provider.create_issue_comment; fired = set()
         def concurrent(n, body):
