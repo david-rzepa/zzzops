@@ -98,6 +98,37 @@ class ExactTextPatchContractTests(unittest.TestCase):
         self.assertLessEqual(decoded, codec.MAX_RECONSTRUCTION_WORK_BYTES,
                              'Lookup materialized unrelated envelopes beyond its total budget before returning or rejecting')
 
+    def test_single_review_artifact_over_comment_limit_is_split_and_resolves_exactly(self):
+        codec = self.codec
+        value = ''.join(hashlib.sha256(str(index).encode()).hexdigest() for index in range(2000))
+        record = {'kind': 'full', 'type': 'text', 'text': value, 'hash': codec.digest(value)}
+        common = {'goal': 21, 'transaction': 'review-test-design',
+                  'context': {'provenance': 'p' * 8000}}
+        with self.assertRaisesRegex(ValueError, r'65536'):
+            codec.encode_envelope({'schema_version': 2, **common, 'part': 0,
+                'manifest': [codec.digest({'kind': 'artifact', 'value': record})],
+                'members': [0], 'artifacts': [record], 'history': None})
+        bodies = codec.pack_envelopes(common, [record])
+        self.assertGreater(len(bodies), 1)
+        self.assertTrue(all(len(body) <= codec.MAX_COMMENT_CHARACTERS for body in bodies))
+        resolved = codec.ArtifactIndex([{'body': body} for body in bodies]).resolve(record['hash'])[0]
+        self.assertEqual(value, resolved)
+
+    def test_chunked_artifact_requires_one_complete_immutable_set(self):
+        codec = self.codec
+        value = ''.join(hashlib.sha256(('chunk-' + str(index)).encode()).hexdigest() for index in range(2000))
+        record = {'kind': 'full', 'type': 'text', 'text': value, 'hash': codec.digest(value)}
+        bodies = codec.pack_envelopes({'goal': 21, 'transaction': 'chunk-integrity',
+                                       'context': {'provenance': 'p' * 8000}}, [record])
+        comments = [{'body': body} for body in bodies]
+        with self.assertRaisesRegex(ValueError, r'(?i)incomplete|missing'):
+            codec.ArtifactIndex(comments[:-1]).resolve(record['hash'])
+        envelope = codec.decode_envelope(comments[0]['body'])
+        envelope['artifacts'][0]['text'] += 'tampered'
+        comments[0]['body'] = codec.encode_envelope(envelope)
+        with self.assertRaisesRegex(ValueError, r'(?i)conflict|identity'):
+            codec.ArtifactIndex(comments).resolve(record['hash'])
+
     def test_unicode_original_base_offsets_and_exact_newlines(self):
         before = 'A😀e\u0301BC🌍D'
         after = 'AXY😀e\u0301bC🌍!'

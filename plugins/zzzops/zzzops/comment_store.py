@@ -285,7 +285,35 @@ class ArtifactIndex:
             if not records:
                 raise ValueError('Missing artifact/base; persist the complete immutable content before referencing it')
             values, depths = [], []
-            for record in records:
+            chunks = [record for record in records if record.get('kind') == 'chunk']
+            ordinary = [record for record in records if record.get('kind') != 'chunk']
+            if chunks:
+                allowed_chunk = {'kind', 'hash', 'type', 'index', 'total', 'text'}
+                if any(set(record) != allowed_chunk or record.get('hash') != key or
+                       record.get('type') not in {'json', 'text'} or
+                       type(record.get('index')) is not int or type(record.get('total')) is not int
+                       for record in chunks):
+                    raise ValueError('Malformed artifact chunk fields')
+                totals = {record['total'] for record in chunks}
+                if len(totals) != 1 or next(iter(totals)) != len(chunks) or len(chunks) > MAX_ARTIFACT_RECORDS:
+                    raise ValueError('Incomplete artifact chunk set')
+                ordered = sorted(chunks, key=lambda record: record['index'])
+                if [record['index'] for record in ordered] != list(range(len(chunks))):
+                    raise ValueError('Duplicate or missing artifact chunk')
+                record_type = ordered[0]['type']
+                if any(record['type'] != record_type for record in ordered):
+                    raise ValueError('Artifact chunk type mismatch')
+                text = ''.join(record['text'] for record in ordered)
+                value = _from_text(record_type, text)
+                spent += sum(len(canonical(record).encode('utf-8')) for record in ordered)
+                raw = canonical(value).encode('utf-8')
+                spent += len(raw)
+                if len(raw) > MAX_ARTIFACT_BYTES or spent > MAX_RECONSTRUCTION_WORK_BYTES:
+                    raise ValueError('Artifact decoded/reconstruction size limit exceeded')
+                if digest(value) != key:
+                    raise ValueError('Stored artifact content conflicts with its identity')
+                values.append(value); depths.append(0)
+            for record in ordinary:
                 spent += len(canonical(record).encode('utf-8'))
                 if spent > MAX_RECONSTRUCTION_WORK_BYTES:
                     raise ValueError('Artifact reconstruction work limit exceeded')
@@ -359,6 +387,32 @@ def _from_text(kind, text):
 
 
 def pack_envelopes(common, artifacts, history=None):
+    expanded = []
+    for record in artifacts:
+        probe = {'schema_version': 2, **common, 'part': 0, 'manifest': [digest({'kind': 'artifact', 'value': record})],
+                 'members': [0], 'artifacts': [record], 'history': None}
+        try:
+            encode_envelope(probe)
+        except ValueError:
+            if record.get('kind') != 'full' or record.get('type') not in {'json', 'text'}:
+                raise
+            text = record['text']
+            for total in range(2, MAX_ARTIFACT_RECORDS + 1):
+                size = (len(text) + total - 1) // total
+                chunks = [{'kind': 'chunk', 'hash': record['hash'], 'type': record['type'],
+                           'index': index, 'total': total, 'text': text[index * size:(index + 1) * size]}
+                          for index in range(total)]
+                if all(len(encode_envelope({'schema_version': 2, **common, 'part': index,
+                       'manifest': [digest({'kind': 'artifact', 'value': chunk})], 'members': [0],
+                       'artifacts': [chunk], 'history': None})) <= MAX_COMMENT_CHARACTERS
+                       for index, chunk in enumerate(chunks)):
+                    expanded.extend(chunks)
+                    break
+            else:
+                raise ValueError('Artifact cannot be split within the provider comment contract; use a published Git content reference')
+        else:
+            expanded.append(record)
+    artifacts = expanded
     if len(artifacts) > MAX_ARTIFACT_RECORDS:
         raise ValueError('Transaction artifact record limit exceeded')
     pieces = [('artifact', record) for record in artifacts]

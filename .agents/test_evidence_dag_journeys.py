@@ -4048,18 +4048,22 @@ class GenericStoragePublicTests(DagFixture):
             self.assertEqual(before, (self.provider.issues, self.provider.comments))
         self.session.finish(work, {"value": "host derives all authoritative metadata"})
 
-    def test_oversized_single_record_preflight_precedes_every_bundle_write(self):
+    def test_oversized_single_review_record_uses_multipart_immutable_storage(self):
         graph = copy.deepcopy(self.graph)
         graph["nodes"][0]["outputs"]["large"] = output("text", {"kind": "string"})
         self.install(graph)
         work = self.session.acquire("produce")
         noise = "".join(hashlib.sha256(str(i).encode()).hexdigest() for i in range(2500))
-        before = copy.deepcopy((self.provider.issues, self.provider.comments))
-        response = self.session.call(100, self.session.submission(work, {"value": "small valid slot", "large": noise}, "record-too-large"), expected=2)
-        self.assertEqual(before, (self.provider.issues, self.provider.comments))
-        self.assertRegex(json.dumps(response), r"65536")
-        self.assertRegex(json.dumps(response), r"(?i)reference")
-        self.session.finish(work, {"value": "small valid slot", "large": "bounded valid control"})
+        before = len(self.provider.comments[100])
+        response = self.session.call(100, self.session.submission(
+            work, {"value": "small valid slot", "large": noise}, "record-over-comment-limit"))
+        self.assertIn("submitted", response)
+        appended = self.provider.comments[100][before:]
+        self.assertGreater(len(appended), 1)
+        self.assertTrue(all(len(comment["body"]) <= 65536 for comment in appended))
+        self.assertEqual(noise, self.session.read(100, self.produced("produce", "large"))["content"])
+        records = self.records(self.produced("produce", "large"))
+        self.assertTrue(all(record[2]["kind"] == "chunk" for record in records))
 
     def test_existing_storage_budget_rejection_preserves_readable_history_and_usable_lease(self):
         work = self.session.acquire("produce")
