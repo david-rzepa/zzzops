@@ -2043,15 +2043,34 @@ class Workflow:
         prospective = self.node_snapshot(snapshot['number'], graph_override=graph)
         before = snapshot['projection']['current']
         after = prospective['projection']['current']
-        if any(key not in after or after[key][0] != value[0] for key, value in before.items()):
-            raise ValueError('Prospective graph does not preserve every current settled Result')
         source = {key: snapshot['payload'][key] for key in ('spec', 'graph', 'evidence')}
-        source.update(parent=snapshot['envelope']['parent'], state=snapshot['envelope']['state'],
+        source.update(payload=snapshot['envelope']['payload'],
+                      parent=snapshot['envelope']['parent'], state=snapshot['envelope']['state'],
                       current=[{'node': result['node'], 'result': ref}
                                for _, (ref, result) in sorted(before.items(), key=lambda row: str(row[0]))])
+        retained, invalidated = [], []
+        for key, (ref, result) in sorted(before.items(), key=lambda row: str(row[0])):
+            if key in after and after[key][0] == ref:
+                retained.append(ref)
+            else:
+                invalidated.append({
+                    'node': result['node'], 'result': ref,
+                    'reason': 'The reviewed prospective graph changes this Result contract, inputs, or target currentness.',
+                })
+        impact = {
+            'retained': retained,
+            'invalidated': invalidated,
+            'rationale': ('Preserve every Result that remains current under the exact prospective graph; '
+                          'invalidate only Results whose reviewed contract or declared inputs no longer match.'),
+        }
+        changed_nodes = {row['node']['node'] for row in invalidated}
+        contracts = {node['id']: node for node in previous['nodes']}
+        if any(not contracts.get(name, {}).get('independent_of') for name in changed_nodes):
+            raise ValueError('Graph repair must preserve every non-review current Result and its settled contract')
         return {'kind': 'goal_graph_adoption', 'repository': self.repository, 'goal': snapshot['number'],
                 'policy': self.node_evidence_policy(), 'source': source,
-                'graph': copy.deepcopy(graph), 'rationale': rationale}
+                'target': {'graph': digest(graph)}, 'graph': copy.deepcopy(graph),
+                'impact': impact, 'rationale': rationale}
 
     def node_graph_adopt(self, snapshot, payload, request):
         allowed = {'operation', 'request_id', 'review_goal', 'proposal', 'review', 'approved_by'}
@@ -2089,14 +2108,14 @@ class Workflow:
                 proposal = json.loads(proposal)
             except ValueError:
                 raise ValueError('Root graph proposal must contain the exact prepared JSON manifest') from None
-        if not isinstance(proposal, dict) or set(proposal) != {'kind', 'repository', 'goal', 'policy', 'source', 'graph', 'rationale'}:
+        if not isinstance(proposal, dict) or set(proposal) != {
+                'kind', 'repository', 'goal', 'policy', 'source', 'target', 'graph', 'impact', 'rationale'}:
             raise ValueError('Invalid prepared graph proposal manifest')
         expected = self.node_graph_proposal(snapshot, proposal['graph'], proposal['rationale'],
                                            pending_request=request['request_id'])
         reviewed_current = proposal.get('source', {}).get('current', [])
         expected_current = expected['source']['current']
         normalized = copy.deepcopy(proposal)
-        normalized['policy'] = expected['policy']
         if isinstance(normalized.get('source'), dict):
             normalized['source']['current'] = expected_current
         if not all(row in reviewed_current for row in expected_current) or normalized != expected:
@@ -2108,7 +2127,9 @@ class Workflow:
         payload['graph'] = self.node_ref(graph_hash, snapshot['number'])
         response = {'next_steps': [{'kind': 'checkpoint', 'goal': snapshot['number'],
                     'graph': payload['graph'], 'proposal': request['proposal'], 'review': request['review'],
-                    'action': 'Reviewed goal-only graph adopted; all prior evidence and current Results retained.'}]}
+                    'impact': proposal['impact'],
+                    'action': ('Reviewed goal-only graph adopted; immutable evidence was preserved and only the '
+                               'explicitly reviewed affected Results lost currentness.')}]}
         return self.node_persist(snapshot, payload, response, request)
 
     def node_graph_review_bootstrap(self, snapshot, payload, request):
@@ -3006,13 +3027,99 @@ class Workflow:
         """Format the same readiness and authority boundaries for both callers."""
         number = snapshot['number']
         projection = snapshot['projection']; steps = []
-        unresolved = [value for value in projection.get('obligations', {}).values()
+        unresolved = [{**value, '_finding_id': key[1]}
+                      for key, value in projection.get('obligations', {}).items()
                       if value.get('applicability') == 'unresolved']
-        supports_assessment = any(
-            any(output.get('type') == 'applicability_assessment'
-                for output in node.get('outputs', {}).values())
-            for node in snapshot['graph']['nodes'])
-        if unresolved and not supports_assessment:
+        def assessment_covers(node, obligation):
+            obligation_input = next((value for value in node.get('inputs', {}).values()
+                if value.get('producer') == {'slot': 'obligations'} and
+                value.get('output') == 'content' and value.get('path') == [obligation['_finding_id']]), None)
+            return (obligation_input is not None and
+                    any(output.get('type') == 'applicability_assessment'
+                        for output in node.get('outputs', {}).values()) and
+                    any(permit.get('type') == 'applicability_assessment' and
+                        permit.get('scope') == obligation['content']['target']
+                        for permit in node.get('permits', [])))
+        uncovered = [obligation for obligation in unresolved if not any(
+            assessment_covers(node, obligation) for node in snapshot['graph']['nodes'])]
+        if uncovered:
+            graph = copy.deepcopy(snapshot['graph'])
+            contracts = {node['id']: node for node in graph['nodes']}
+            owners = {}
+            for _, (result_ref, result) in projection['current'].items():
+                owners[result_ref['hash']] = result
+                owners.update({ref['hash']: result for ref in result['outputs'].values()})
+            for obligation in uncovered:
+                target = obligation['content']['target']
+                target_name = target.get('subject', {}).get('node')
+                target_output = target.get('output')
+                target_contract = contracts.get(target_name)
+                if not target_contract or target_output not in target_contract['outputs']:
+                    raise ValueError('Unresolved finding target cannot be represented by the current graph')
+                target_selector = copy.deepcopy(target['subject'])
+                reviewer = next((node for node in graph['nodes'] if
+                    target_selector in node.get('independent_of', []) and
+                    any(binding.get('producer', {}).get('node') == target_selector
+                        for binding in node.get('inputs', {}).values()) and node.get('outputs')), None)
+                admission = snapshot['artifacts'].get(obligation['admission']['hash'])
+                authority_ref = (admission or {}).get('content', {}).get('authority')
+                authority_result = owners.get((authority_ref or {}).get('hash'))
+                authority_name = (authority_result or {}).get('node', {}).get('node')
+                authority_contract = contracts.get(authority_name)
+                if reviewer is None:
+                    raise ValueError('Unresolved finding lacks a declared independent reviewer route')
+                if authority_contract is None:
+                    raise ValueError('Unresolved finding lacks a current root authority route')
+                review_output = next(iter(reviewer['outputs']))
+                finding_id = obligation['finding']['hash'][7:19]
+                name = 'assess_applicability_' + finding_id
+                assessment_schema = {'kind': 'object', 'fields': {
+                    'admission': {'kind': 'object', 'fields': {'hash': {'kind': 'string'}, 'uri': {'kind': 'string'}}},
+                    'finding': {'kind': 'object', 'fields': {'hash': {'kind': 'string'}, 'uri': {'kind': 'string'}}},
+                    'subjects': {'kind': 'array', 'items': {'kind': 'object', 'fields': {
+                        'hash': {'kind': 'string'}, 'uri': {'kind': 'string'}}}},
+                    'reviewer_result': {'kind': 'object', 'fields': {'hash': {'kind': 'string'}, 'uri': {'kind': 'string'}}},
+                    'authority': {'kind': 'object', 'fields': {'hash': {'kind': 'string'}, 'uri': {'kind': 'string'}}},
+                    'applicability': {'kind': 'enum', 'values': ['applicable', 'not_applicable']},
+                    'rationale': {'kind': 'string'},
+                }}
+                ref_type = {'kind': 'object', 'fields': {'hash': {'kind': 'string'}, 'uri': {'kind': 'string'}}}
+                def value_schema(value):
+                    if value is None: return {'kind': 'null'}
+                    if isinstance(value, bool): return {'kind': 'boolean'}
+                    if isinstance(value, int): return {'kind': 'integer'}
+                    if isinstance(value, str): return {'kind': 'string'}
+                    if isinstance(value, list) and value: return {'kind': 'array', 'items': value_schema(value[0])}
+                    if isinstance(value, dict):
+                        return {'kind': 'object', 'fields': {key: value_schema(item) for key, item in value.items()}}
+                    raise ValueError('Historical obligation contains an unsupported schema value')
+                obligation_schema = {'kind': 'object', 'fields': {
+                    'admission': copy.deepcopy(ref_type), 'finding': copy.deepcopy(ref_type),
+                    'target': value_schema(target),
+                    'applicability': {'kind': 'enum', 'values': ['unresolved']},
+                }}
+                node_selector = lambda node: {'kind': 'node', 'goal': '#this', 'node': node}
+                graph['nodes'].append({
+                    'id': name,
+                    'prompt': ('Classify the exact retained historical finding applicability after fresh independent '
+                               'review. This classification does not resolve the finding or authorize implementation.'),
+                    'inputs': {
+                        'obligation': {'producer': {'slot': 'obligations'}, 'output': 'content',
+                                       'path': [obligation['_finding_id']],
+                                       'mode': 'content', 'type': obligation_schema},
+                        'subject': {'producer': {'node': target_selector}, 'output': target_output, 'path': [],
+                                    'mode': 'identity', 'type': copy.deepcopy(target_contract['outputs'][target_output]['schema'])},
+                        'review': {'producer': {'node': node_selector(reviewer['id'])}, 'output': review_output, 'path': [],
+                                   'mode': 'identity', 'type': copy.deepcopy(reviewer['outputs'][review_output]['schema'])},
+                    },
+                    'outputs': {'assessment': {'type': 'applicability_assessment', 'schema': assessment_schema}},
+                    'requires': [node_selector(reviewer['id']), node_selector(authority_name)],
+                    'executor': {'role': 'root', 'capability': 'bounded', 'resources': [],
+                                 'authority': {'subject': node_selector(name), 'output': 'assessment'}},
+                    'independent_of': [], 'gates': [], 'resolves': [],
+                    'permits': [{'type': 'applicability_assessment', 'scope': copy.deepcopy(target)}],
+                })
+            self.api._phase_evidence.validate_graph(graph)
             steps.append({
                 'kind': 'repair', 'assignment': 'root', 'goal': number,
                 'reason': 'Finding applicability unresolved; the current graph has no reviewed applicability-assessment route.',
@@ -3021,9 +3128,9 @@ class Workflow:
                            'then graph_adopt it. The node must bind each returned admission/finding, the current corrected subject(s), '
                            'their current independent reviewer Result, and current root authority. It classifies applicability only; '
                            'it does not waive, resolve, or authorize implementation.'),
-                'obligations': [{'admission': value['admission'], 'finding': value['finding'],
+                'obligations': [{'id': value['_finding_id'], 'admission': value['admission'], 'finding': value['finding'],
                                  'target': value['content']['target']}
-                                for value in unresolved],
+                                for value in uncovered],
                 'required_output': {
                     'type': 'applicability_assessment',
                     'fields': ['admission', 'finding', 'subjects', 'reviewer_result', 'authority',
@@ -3037,8 +3144,9 @@ class Workflow:
                 'historical_input': {'producer': {'slot': 'obligations'},
                                      'path': ['<finding id>'], 'mode': 'content',
                                      'fields': ['admission', 'finding', 'target', 'applicability']},
-                'submission': {'operation': 'graph_prepare', 'graph': '<current graph plus append-only assessment node>',
-                               'rationale': '<why this exact historical obligation can now be classified>'},
+                'submission': {'operation': 'graph_prepare', 'graph': graph,
+                               'rationale': ('Add only the missing applicability-assessment route for the exact '
+                                             'retained unresolved historical obligation(s).')},
             })
         for state in projection['states'].values():
             if state['node']['goal'] != number: continue
@@ -4332,9 +4440,10 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         return {'next_steps': [{'kind': 'review_required', 'assignment': 'root', 'goal': number,
                 'proposal': proposal,
                 'action': 'Record this exact JSON manifest as a root task output, obtain a current independent approved review of that exact output and explicit human approval, then adopt. Preparation does not mutate the goal or project policy.',
-                'submission': {'operation': 'graph_adopt', 'review_goal': '<goal containing reviewed root proposal>',
-                               'proposal': '<exact root output Ref>', 'review': '<exact independent reviewer Result Ref>',
-                               'approved_by': '<user>', 'request_id': '<unique request>'}}]}
+                'submission': {'operation': 'graph_adopt', 'review_goal': None,
+                               'proposal': None, 'review': None,
+                               'approved_by': None,
+                               'request_id': 'graph-adopt-' + proposal['target']['graph'][7:23]}}]}
     administrative = api._workflow_admin.handle(api, repo, project, source, runtime, payload) if operation not in {'capture_propose', 'capture'} else None
     if administrative is not None:
         return administrative
