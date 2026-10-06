@@ -5423,6 +5423,38 @@ class GraphAdoptionPublicTests(DagFixture):
         resumed = self.session.call(100, request)
         self.assertEqual('perform', resumed['next_steps'][0]['kind'])
 
+    def test_graph_repair_uses_only_exact_committed_migration_cutoff(self):
+        engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
+        result = {"hash": "sha256:" + "a" * 64, "uri": "urn:sha256:" + "a" * 64}
+        migration = {"hash": "sha256:" + "b" * 64, "uri": "urn:sha256:" + "b" * 64}
+        receipt = {"request": "manual-migration", "payload": "sha256:" + "c" * 64,
+                   "result": result}
+        snapshot = {"number": 100, "payload": {"operational": {"receipts": [receipt]}}}
+        response = {"next_steps": [{"kind": "schema_migration", "goal": 100,
+                                     "status": "migrated", "receipt": migration}]}
+        envelopes = [
+            {"goal": 100, "transaction": "sha256:" + "0" * 64,
+             "context": {"request_id": "old-uncommitted"}},
+            {"goal": 100, "transaction": "sha256:" + "1" * 64,
+             "context": {"request_id": "manual-migration",
+                "request_hash": receipt["payload"], "response": result,
+                "migration": {"receipt": migration}}},
+            {"goal": 100, "transaction": "sha256:" + "2" * 64,
+             "context": {"request_id": "later-uncommitted"}},
+        ]
+        with mock.patch.object(engine, "read_artifact", return_value=response):
+            self.assertEqual(1, engine.node_committed_migration_cutoff(
+                snapshot, SimpleNamespace(envelopes=envelopes)))
+            tampered = copy.deepcopy(envelopes)
+            tampered[1]["context"]["request_hash"] = "sha256:" + "d" * 64
+            self.assertEqual(-1, engine.node_committed_migration_cutoff(
+                snapshot, SimpleNamespace(envelopes=tampered)))
+            copied = copy.deepcopy(envelopes)
+            copied.append(copy.deepcopy(envelopes[1]))
+            copied[-1]["transaction"] = "sha256:" + "3" * 64
+            self.assertEqual(-1, engine.node_committed_migration_cutoff(
+                snapshot, SimpleNamespace(envelopes=copied)))
+
 
 if __name__ == "__main__":
     unittest.main()

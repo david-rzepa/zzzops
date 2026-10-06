@@ -2012,6 +2012,41 @@ class Workflow:
                 completed[request_id] = fingerprint
         return completed
 
+    def node_committed_migration_cutoff(self, snapshot, index):
+        """Return the last exactly committed migration transaction position."""
+        receipts = snapshot['payload']['operational']['receipts']
+        migration_commits = {}
+        for row in receipts:
+            response = self.read_artifact(snapshot['number'], row['result'])
+            steps = response.get('next_steps', []) if isinstance(response, dict) else []
+            migrations = [step for step in steps if isinstance(step, dict) and
+                          step.get('kind') == 'schema_migration' and
+                          step.get('goal') == snapshot['number'] and step.get('status') == 'migrated' and
+                          isinstance(step.get('receipt'), dict)]
+            if len(migrations) == 1:
+                migration_commits[row['request']] = (row, migrations[0]['receipt'])
+        matches = []
+        for position, envelope in enumerate(index.envelopes):
+            context = envelope.get('context') or {}
+            committed_migration = migration_commits.get(context.get('request_id'))
+            if committed_migration is None or envelope.get('goal') != snapshot['number']:
+                continue
+            receipt, migration_ref = committed_migration
+            if (context.get('request_hash') == receipt['payload'] and
+                    context.get('response') == receipt['result'] and
+                    context.get('migration', {}).get('receipt') == migration_ref):
+                transaction = envelope.get('transaction')
+                if (not isinstance(transaction, str) or
+                        re.fullmatch(r'sha256:[0-9a-f]{64}', transaction) is None):
+                    return -1
+                matches.append((position, transaction))
+        if not matches or len({transaction for _, transaction in matches}) != 1:
+            return -1
+        positions = [position for position, _ in matches]
+        if positions != list(range(positions[0], positions[-1] + 1)):
+            return -1
+        return positions[-1]
+
     def node_graph_proposal(self, snapshot, graph, rationale, *, pending_request=None):
         """Preflight a goal-only graph repair without replacing any evidence."""
         if not (self.runtime or {}).get('root_id'):
@@ -2020,9 +2055,14 @@ class Workflow:
             raise ValueError('Archived goal cannot adopt a graph')
         if snapshot['payload']['operational']['leases']:
             raise ValueError('Graph repair requires observed stopped ownership; leases remain')
-        committed = {row['request'] for row in snapshot['payload']['operational']['receipts']}
+        receipts = snapshot['payload']['operational']['receipts']
+        committed = {row['request'] for row in receipts}
+        index = self.artifact_index(snapshot['number'])
+        migration_cutoff = self.node_committed_migration_cutoff(snapshot, index)
         historical = None
-        for row in self.artifact_index(snapshot['number']).envelopes:
+        for position, row in enumerate(index.envelopes):
+            if position <= migration_cutoff:
+                continue
             context = row.get('context') or {}
             request_id = context.get('request_id')
             if request_id and request_id not in committed and request_id != pending_request:
