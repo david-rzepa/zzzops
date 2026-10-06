@@ -93,6 +93,19 @@ class PublicWorkflowContractTests(unittest.TestCase):
         context_step.assert_not_called()
         mutate.assert_not_called()
 
+    def test_recovery_guide_has_executable_graph_adoption_and_distinct_blockers(self):
+        guide = fixtures.PLUGIN_ROOT / "zzzops" / "references" / "CLI_RECOVERY.md"
+        self.assertTrue(guide.is_file(), "The installed plugin must ship public recovery guidance")
+        content = guide.read_text(encoding="utf-8")
+        for operation in ("graph_prepare", "graph_review_bootstrap", "graph_adopt"):
+            self.assertIn(operation, content)
+        self.assertRegex(content, r"(?s)--intent\s+execute.*--input")
+        self.assertRegex(content, r"(?i)missing.*(route|graph|capabilit)")
+        self.assertRegex(content, r"(?i)workspace.*invalid")
+        self.assertRegex(content, r"(?i)model.*(effort|reasoning|required)")
+        self.assertNotIn("<current graph plus", content,
+                         "Recovery guidance must not leave the target graph as a prose placeholder")
+
     def public_batch(self, items, records):
         engine = SimpleNamespace(
             portfolio=mock.Mock(return_value=[]),

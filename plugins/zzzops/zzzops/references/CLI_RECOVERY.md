@@ -58,9 +58,19 @@ the submission, and neither pin grants write authority.
 When an unresolved historical admission blocks its target and the current graph
 has no route that can run before that target, execute returns a `repair` step
 with diagnostic `Finding applicability unresolved`. Its `obligations` carry the
-exact immutable admission, finding and target. Append a node through the normal
-`graph_prepare` and independently reviewed `graph_adopt` workflow; do not edit or
-replace the historical Result.
+exact immutable admission, finding and target, and its `submission` contains the
+complete append-only target graph. Save that submission as JSON and run the
+returned public command, or invoke the installed CLI with `--intent execute`, the
+affected `--goal`, current `--runtime`, and `--input` pointing to that JSON file.
+This `graph_prepare` operation persists no adoption and grants no authority.
+
+The returned proposal must be produced and independently reviewed in a dedicated
+review goal. A fresh review goal can first use `graph_review_bootstrap` with
+explicit human approval; then its root proposal task and independent review task
+bind the exact manifest. Submit the returned `graph_adopt` continuation to the
+affected goal only after the user approves that exact reviewed proposal. Adoption
+recomputes the source, target, policy and Result-impact manifest, rejects stale or
+tampered reviews, and is idempotent when the same transaction is retried.
 
 Bind the returned historical entry through the host-authenticated input producer
 `{"slot":"obligations"}` at path `["<finding id>"]`. Its content contains only
@@ -78,6 +88,14 @@ original unresolved admission and must not produce an assessment. The evaluator
 retains the original source, finding and admission, records the assessment as a
 separate immutable output, and applies normal correction and resolution gates.
 Classification alone never resolves the finding or authorizes implementation.
+
+Do not use graph adoption for a stale workspace or an unavailable model. A
+workspace invalidation requires normal stopped-owner/workspace recovery. A model
+or reasoning-effort blocker requires an available policy-allowed capability.
+Installation validation confirms package integrity; it does not repair a goal
+whose reviewed graph lacks the required route.
+
+Use this flow when a goal has a missing graph route or capability.
 
 ### Stale workspace authorization
 
