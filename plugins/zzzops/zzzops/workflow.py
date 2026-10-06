@@ -3208,7 +3208,8 @@ class Workflow:
                 value = artifact.get('content')
                 decision = output_contract.get('schema', {}).get('fields', {}).get('decision', {})
                 if (output_contract.get('type') != 'review_decision' or artifact.get('type') != 'review_decision' or
-                        decision.get('kind') != 'enum' or 'changes_requested' not in decision.get('values', []) or
+                        decision.get('kind') != 'enum' or
+                        not {'approved', 'changes_requested'} <= set(decision.get('values', [])) or
                         not isinstance(value, dict) or value.get('decision') != 'changes_requested'):
                     continue
                 for target_selector in contract.get('independent_of', []):

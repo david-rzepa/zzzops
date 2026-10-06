@@ -5209,6 +5209,23 @@ class GraphAdoptionPublicTests(DagFixture):
         self.assertFalse(any(step.get("diagnostic") == "Rejected review lacks correction route"
                              for step in self.session.checkpoint(100)))
 
+    def test_changes_only_review_contract_does_not_get_impossible_approval_route(self):
+        producer = task("produce")
+        producer["inputs"] = {"request": spec_input()}
+        reviewer = task("review_produce", ["produce"])
+        reviewer["inputs"] = {"subject": subject_input("produce")}
+        reviewer["independent_of"] = [selector("produce")]
+        reviewer["outputs"] = {"value": output("review_decision", {"kind": "object", "fields": {
+            "decision": {"kind": "enum", "values": ["changes_requested"]},
+            "report": {"kind": "string"}}})}
+        graph = {"nodes": [producer, reviewer], "task_sets": [], "terminals": [selector("review_produce")]}
+        self.install(graph)
+        self.produce()
+        self.session.finish(self.session.acquire("review_produce"), {"value": {
+            "decision": "changes_requested", "report": "Terminal rejection protocol"}})
+        self.assertFalse(any(step.get("diagnostic") == "Rejected review lacks correction route"
+                             for step in self.session.checkpoint(100)))
+
     def test_multiple_rejected_reviewers_get_distinct_correction_routes(self):
         producer = task("produce")
         producer["inputs"] = {"request": spec_input()}
