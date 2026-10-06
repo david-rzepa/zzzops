@@ -207,6 +207,67 @@ class WorkflowPolicyApprovalTests(unittest.TestCase):
                 self.assertEqual(before, self.canonical_files())
                 self.assertEqual([], z.validate_project_state(z.read_project_state(self.repo)[2]))
 
+    def test_public_proposal_distinguishes_content_copy_from_explicit_readoption(self):
+        self.approve(self.public({'operation': 'policy_propose', 'plan': self.plan()}), 'initial-reviewer')
+        section_id = 'workflow_adherence'
+        default_id = 'zzzops.policy.workflow_adherence'
+
+        customized_plan = self.plan()
+        customized = next(s for s in customized_plan['policy']['sections'] if s['id'] == section_id)
+        customized['instructions'] += ' Temporary reviewed conversion constraint.'
+        customized['default_disposition'] = 'changed'
+        customized_plan['base_digest'] = z.initialization_base_digest(self.repo)
+        self.approve(
+            self.public({'operation': 'policy_propose', 'plan': customized_plan}),
+            'customization-reviewer',
+        )
+
+        copy_plan = self.plan()
+        copy_plan['base_digest'] = z.initialization_base_digest(self.repo)
+        copied = self.public({'operation': 'policy_propose', 'plan': copy_plan})
+        copied_decision = next(
+            item for item in copied['next_steps'][0]['classification']['sections']
+            if item['section_id'] == section_id
+        )
+        self.assertEqual('customized', copied_decision['source_provenance']['status'])
+        self.assertEqual('customized', copied_decision['target_provenance']['status'])
+        self.assertEqual('customized', copied_decision['target_default_status'])
+
+        catalog = z.policy_default_catalog()
+        accept_plan = self.plan()
+        accept_plan['base_digest'] = z.initialization_base_digest(self.repo)
+        accepting = next(s for s in accept_plan['policy']['sections'] if s['id'] == section_id)
+        accepting['default_resolution'] = {
+            'action': 'accept',
+            'digest': catalog[default_id]['digest'],
+        }
+        proposed = self.public({'operation': 'policy_propose', 'plan': accept_plan})
+        decision = next(
+            item for item in proposed['next_steps'][0]['classification']['sections']
+            if item['section_id'] == section_id
+        )
+        self.assertEqual('customized', decision['source_provenance']['status'])
+        self.assertEqual('adopted', decision['target_provenance']['status'])
+        self.assertEqual('current', decision['target_default_status'])
+        self.assertEqual(catalog[default_id]['digest'], decision['target_provenance']['digest'])
+
+        stale = copy.deepcopy(accept_plan)
+        next(s for s in stale['policy']['sections'] if s['id'] == section_id)[
+            'default_resolution'
+        ]['digest'] = 'sha256:' + '0' * 64
+        with self.assertRaisesRegex(ValueError, 'default resolution is stale'):
+            self.public({'operation': 'policy_propose', 'plan': stale})
+
+        approved = self.approve(proposed, 'readoption-reviewer')
+        self.assertEqual('checkpoint', approved['next_steps'][0]['kind'])
+        state = z.read_project_state(self.repo)[2]
+        readopted = next(s for s in state['policy']['sections'] if s['id'] == section_id)
+        self.assertEqual('adopted', readopted['default_provenance']['status'])
+        self.assertEqual(catalog[default_id]['digest'], readopted['default_provenance']['digest'])
+
+        retry = self.public({'operation': 'policy_propose', 'plan': accept_plan})
+        self.assertFalse(any(step['kind'] == 'human_approval' for step in retry['next_steps']))
+
     def test_cross_version_supported_section_retains_real_authority_after_reload(self):
         source = self.install_legacy_fixture()
         old = next(s for s in source['policy']['sections'] if s['id'] == 'documentation_style')

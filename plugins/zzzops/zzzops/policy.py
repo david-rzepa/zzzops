@@ -556,6 +556,9 @@ def classify_policy_upgrade(source: dict[str, Any] | None, target: dict[str, Any
     version = source_policy.get("schema_version")
     old = {s["id"]: s for s in source_policy.get("sections", [])}
     new = {s["id"]: s for s in target.get("sections", [])}
+    target_defaults = {
+        item["section_id"]: item for item in compare_policy_defaults(target)
+    }
     source_errors = (validate_project_state(source) if version == 2 else
                      _legacy_authority_errors(source, artifacts or {}, review=False) if version == 1 else
                      ["unsupported or absent source policy schema"])
@@ -593,6 +596,8 @@ def classify_policy_upgrade(source: dict[str, Any] | None, target: dict[str, Any
         prior, candidate = old.get(section_id), new.get(section_id)
         item = {"section_id": section_id, "classification": "unknown", "differences": [],
                 "source_provenance": copy.deepcopy((prior or {}).get("default_provenance")),
+                "target_provenance": copy.deepcopy((candidate or {}).get("default_provenance")),
+                "target_default_status": (target_defaults.get(section_id) or {}).get("status"),
                 "authority_retained": False, "reasons": []}
         if prior is not None and candidate is not None:
             item["differences"] = _field_differences(
