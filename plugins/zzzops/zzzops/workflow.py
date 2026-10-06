@@ -2203,7 +2203,11 @@ class Workflow:
             raise ValueError('Administrative graph review submission does not match the returned contract')
         root = (self.runtime or {}).get('root_id')
         actor = request.get('actor')
-        if not root or not isinstance(actor, str) or not actor.strip() or actor == root:
+        invoking_actor = os.environ.get('CODEX_THREAD_ID')
+        if (not root or not isinstance(actor, str) or not actor.strip() or actor == root or
+                not isinstance(invoking_actor, str) or not invoking_actor.strip() or actor != invoking_actor):
+            if actor != root and actor != invoking_actor:
+                raise ValueError('Administrative graph review actor must match the authenticated invoking thread identity')
             raise ValueError('Administrative graph review requires an authenticated actor independent of root')
         if request.get('decision') not in {'approved', 'changes_requested'}:
             raise ValueError('Administrative graph review requires an explicit decision')

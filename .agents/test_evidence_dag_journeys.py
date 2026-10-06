@@ -21,6 +21,7 @@ import time
 import statistics
 import hashlib
 import importlib
+import os
 import sys
 from types import SimpleNamespace
 from unittest import mock
@@ -4985,8 +4986,13 @@ class GraphAdoptionPublicTests(DagFixture):
     read_at = RelationshipPublicTests.read_at
     result_at = RelationshipPublicTests.result_at
 
+    def administrative_review(self, request, *, observed_actor=None, expected=0):
+        actor = request.get("actor") if observed_actor is None else observed_actor
+        with mock.patch.dict(os.environ, {"CODEX_THREAD_ID": actor}):
+            return self.session.call(100, request, expected=expected)
+
     def proposal_review(self, proposal):
-        reviewed = self.session.call(100, {
+        reviewed = self.administrative_review({
             "operation": "graph_review", "proposal": proposal,
             "actor": "independent-reviewer", "decision": "approved",
             "report": "Exact prospective graph preserves evidence",
@@ -5042,7 +5048,7 @@ class GraphAdoptionPublicTests(DagFixture):
                    "report": "Exact source, impact, and target are safe",
                    "request_id": "direct-review"}
         before_graph = copy.deepcopy(self.read_blob(self.payload()[1]["graph"]))
-        reviewed = self.session.call(100, request)
+        reviewed = self.administrative_review(request)
         comments = copy.deepcopy(self.provider.comments)
         self.assertEqual(reviewed, self.session.call(100, request))
         self.assertEqual(comments, self.provider.comments)
@@ -5053,15 +5059,20 @@ class GraphAdoptionPublicTests(DagFixture):
         self.assertNotIn("review_goal", step["submission"])
 
         bad = {**request, "request_id": "root-self-review", "actor": "root-thread"}
-        response = self.session.call(100, bad, expected=2)
+        response = self.administrative_review(bad, observed_actor="root-thread", expected=2)
         self.assertRegex(json.dumps(response), r"(?i)independent|root")
+
+        spoofed = {**request, "request_id": "spoofed-review", "actor": "claimed-reviewer"}
+        response = self.administrative_review(
+            spoofed, observed_actor="actual-reviewer", expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)actor|identity|invoking")
 
     def test_direct_changes_requested_review_returns_revision_not_adoption(self):
         graph = copy.deepcopy(self.graph)
         graph["nodes"].append(task("new_note", role="root"))
         proposal = self.session.call(100, {"operation": "graph_prepare", "graph": graph,
                                            "rationale": "Review a proposal that needs revision"})["next_steps"][0]["proposal"]
-        reviewed = self.session.call(100, {
+        reviewed = self.administrative_review({
             "operation": "graph_review", "proposal": proposal,
             "actor": "independent-reviewer", "decision": "changes_requested",
             "report": "The appended route lacks a required input",
@@ -5122,7 +5133,7 @@ class GraphAdoptionPublicTests(DagFixture):
         altered = copy.deepcopy(proposal)
         altered["impact"]["retained"] = []
         before = copy.deepcopy((self.provider.issues[100], self.provider.comments.get(100, [])))
-        response = self.session.call(100, {
+        response = self.administrative_review({
             "operation": "graph_review", "proposal": altered,
             "actor": "independent-reviewer", "decision": "approved",
             "report": "tampered impact", "request_id": "tampered-impact",
