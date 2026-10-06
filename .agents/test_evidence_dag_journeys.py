@@ -5433,11 +5433,14 @@ class GraphAdoptionPublicTests(DagFixture):
         response = {"next_steps": [{"kind": "schema_migration", "goal": 100,
                                      "status": "migrated", "receipt": migration}]}
         envelopes = [
-            {"goal": 100, "context": {"request_id": "old-uncommitted"}},
-            {"goal": 100, "context": {"request_id": "manual-migration",
+            {"goal": 100, "transaction": "sha256:" + "0" * 64,
+             "context": {"request_id": "old-uncommitted"}},
+            {"goal": 100, "transaction": "sha256:" + "1" * 64,
+             "context": {"request_id": "manual-migration",
                 "request_hash": receipt["payload"], "response": result,
                 "migration": {"receipt": migration}}},
-            {"goal": 100, "context": {"request_id": "later-uncommitted"}},
+            {"goal": 100, "transaction": "sha256:" + "2" * 64,
+             "context": {"request_id": "later-uncommitted"}},
         ]
         with mock.patch.object(engine, "read_artifact", return_value=response):
             self.assertEqual(1, engine.node_committed_migration_cutoff(
@@ -5446,6 +5449,11 @@ class GraphAdoptionPublicTests(DagFixture):
             tampered[1]["context"]["request_hash"] = "sha256:" + "d" * 64
             self.assertEqual(-1, engine.node_committed_migration_cutoff(
                 snapshot, SimpleNamespace(envelopes=tampered)))
+            copied = copy.deepcopy(envelopes)
+            copied.append(copy.deepcopy(envelopes[1]))
+            copied[-1]["transaction"] = "sha256:" + "3" * 64
+            self.assertEqual(-1, engine.node_committed_migration_cutoff(
+                snapshot, SimpleNamespace(envelopes=copied)))
 
 
 if __name__ == "__main__":
