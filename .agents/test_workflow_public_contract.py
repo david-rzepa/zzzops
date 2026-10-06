@@ -97,8 +97,9 @@ class PublicWorkflowContractTests(unittest.TestCase):
         guide = fixtures.PLUGIN_ROOT / "zzzops" / "references" / "CLI_RECOVERY.md"
         self.assertTrue(guide.is_file(), "The installed plugin must ship public recovery guidance")
         content = guide.read_text(encoding="utf-8")
-        for operation in ("graph_prepare", "graph_review_bootstrap", "graph_adopt"):
+        for operation in ("graph_prepare", "graph_review", "graph_adopt"):
             self.assertIn(operation, content)
+        self.assertNotRegex(content, r"(?i)(create|dedicated|fresh).*review goal")
         self.assertRegex(content, r"(?s)--intent\s+execute.*--input")
         self.assertRegex(content, r"(?i)missing.*(route|graph|capabilit)")
         self.assertRegex(content, r"(?i)workspace.*invalid")

@@ -4986,25 +4986,14 @@ class GraphAdoptionPublicTests(DagFixture):
     result_at = RelationshipPublicTests.result_at
 
     def proposal_review(self, proposal):
-        proposer = task("propose_graph", role="root")
-        reviewer = task("review_graph", ["propose_graph"])
-        reviewer["inputs"] = {"subject": subject_input("propose_graph")}
-        reviewer["independent_of"] = [selector("propose_graph")]
-        reviewer["outputs"] = {"value": output("review_decision", shape({"decision": "approved", "report": "review"}))}
-        graph = {"nodes": [proposer, reviewer], "task_sets": [], "terminals": [selector("review_graph")]}
-        def local(value):
-            if isinstance(value, dict):
-                return {k: ("#this" if k == "goal" and v == 100 else local(v)) for k, v in value.items()}
-            return [local(v) for v in value] if isinstance(value, list) else value
-        self.add_goal(101, local(graph))
-        self.session.finish(self.session.acquire("propose_graph", number=101),
-                            {"value": json.dumps(proposal)}, number=101)
-        self.session.finish(self.session.acquire("review_graph", number=101),
-                            {"value": {"decision": "approved", "report": "Exact prospective graph preserves evidence"}}, number=101)
-        return {"operation": "graph_adopt", "review_goal": 101,
-                "proposal": self.result_at(101, "propose_graph")[1]["outputs"]["value"],
-                "review": self.result_at(101, "review_graph")[0],
-                "approved_by": "user: approved exact scoped graph repair", "request_id": "adopt-reviewed-graph"}
+        reviewed = self.session.call(100, {
+            "operation": "graph_review", "proposal": proposal,
+            "actor": "independent-reviewer", "decision": "approved",
+            "report": "Exact prospective graph preserves evidence",
+            "request_id": "review-graph-" + proposal["target"]["graph"][7:23],
+        })["next_steps"][0]
+        return {**reviewed["submission"],
+                "approved_by": "user: approved exact scoped graph repair"}
 
     def applicability_graph(self):
         graph = correction_graph()
@@ -5039,9 +5028,48 @@ class GraphAdoptionPublicTests(DagFixture):
 
         prepared = self.session.call(100, submission)["next_steps"][0]
         self.assertEqual("review_required", prepared["kind"])
-        self.assertEqual("graph_adopt", prepared["submission"]["operation"])
+        self.assertEqual("graph_review", prepared["submission"]["operation"])
         self.assertNotIn("<", json.dumps(prepared["submission"]),
-                         "The public continuation must be executable after filling only durable review refs")
+                         "The public continuation must contain the exact prepared proposal")
+
+    def test_direct_review_is_durable_independent_authority_free_and_replayable(self):
+        graph = copy.deepcopy(self.graph)
+        graph["nodes"].append(task("new_note", role="root"))
+        proposal = self.session.call(100, {"operation": "graph_prepare", "graph": graph,
+                                           "rationale": "Review directly on the affected goal"})["next_steps"][0]["proposal"]
+        request = {"operation": "graph_review", "proposal": proposal,
+                   "actor": "independent-reviewer", "decision": "approved",
+                   "report": "Exact source, impact, and target are safe",
+                   "request_id": "direct-review"}
+        before_graph = copy.deepcopy(self.read_blob(self.payload()[1]["graph"]))
+        reviewed = self.session.call(100, request)
+        comments = copy.deepcopy(self.provider.comments)
+        self.assertEqual(reviewed, self.session.call(100, request))
+        self.assertEqual(comments, self.provider.comments)
+        self.assertEqual(before_graph, self.read_blob(self.payload()[1]["graph"]))
+        step = reviewed["next_steps"][0]
+        self.assertEqual("human_approval", step["kind"])
+        self.assertEqual("graph_adopt", step["submission"]["operation"])
+        self.assertNotIn("review_goal", step["submission"])
+
+        bad = {**request, "request_id": "root-self-review", "actor": "root-thread"}
+        response = self.session.call(100, bad, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)independent|root")
+
+    def test_direct_changes_requested_review_returns_revision_not_adoption(self):
+        graph = copy.deepcopy(self.graph)
+        graph["nodes"].append(task("new_note", role="root"))
+        proposal = self.session.call(100, {"operation": "graph_prepare", "graph": graph,
+                                           "rationale": "Review a proposal that needs revision"})["next_steps"][0]["proposal"]
+        reviewed = self.session.call(100, {
+            "operation": "graph_review", "proposal": proposal,
+            "actor": "independent-reviewer", "decision": "changes_requested",
+            "report": "The appended route lacks a required input",
+            "request_id": "direct-rejection",
+        })["next_steps"][0]
+        self.assertEqual("changes_requested", reviewed["kind"])
+        self.assertNotIn("submission", reviewed)
+        self.assertRegex(reviewed["action"], r"(?i)revise|prepare")
 
     def test_prepared_manifest_binds_source_target_policy_and_explicit_impact(self):
         self.produce()
@@ -5093,9 +5121,12 @@ class GraphAdoptionPublicTests(DagFixture):
         self.assertIn("impact", proposal)
         altered = copy.deepcopy(proposal)
         altered["impact"]["retained"] = []
-        request = self.proposal_review(altered)
         before = copy.deepcopy((self.provider.issues[100], self.provider.comments.get(100, [])))
-        response = self.session.call(100, request, expected=2)
+        response = self.session.call(100, {
+            "operation": "graph_review", "proposal": altered,
+            "actor": "independent-reviewer", "decision": "approved",
+            "report": "tampered impact", "request_id": "tampered-impact",
+        }, expected=2)
         self.assertRegex(json.dumps(response), r"(?i)review|source|target|policy|impact|changed")
         self.assertEqual(before, (self.provider.issues[100], self.provider.comments.get(100, [])))
 
@@ -5343,7 +5374,7 @@ class GraphAdoptionPublicTests(DagFixture):
         proposal = prepared["next_steps"][0]["proposal"]
         request = self.proposal_review(proposal)
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
-        for changed in ({"approved_by": ""}, {"review": self.result_at(101, "propose_graph")[0]}):
+        for changed in ({"approved_by": ""}, {"review": request["proposal"]}):
             bad = {**request, **changed}
             self.session.call(100, bad, expected=2)
             self.assertEqual(before, (self.provider.issues, self.provider.comments))
