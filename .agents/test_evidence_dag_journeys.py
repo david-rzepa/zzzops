@@ -5095,6 +5095,31 @@ class GraphAdoptionPublicTests(DagFixture):
         self.assertRegex(json.dumps(response), r"(?i)review|source|target|policy|impact|changed")
         self.assertEqual(before, (self.provider.issues[100], self.provider.comments.get(100, [])))
 
+    def test_adoption_rejects_policy_change_after_independent_review(self):
+        graph = copy.deepcopy(self.graph)
+        graph["nodes"].append(task("new_note", role="root"))
+        proposal = self.session.call(100, {"operation": "graph_prepare", "graph": graph,
+                                           "rationale": "Bind the reviewed evidence policy"})["next_steps"][0]["proposal"]
+        request = self.proposal_review(proposal)
+        engine_type = type(z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime))
+        with mock.patch.object(engine_type, "node_evidence_policy", return_value="sha256:" + "f" * 64):
+            response = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)policy|changed|review")
+
+    def test_existing_assessment_route_does_not_hide_uncovered_obligation(self):
+        findings, _admissions = self.findings(applicability="unresolved", graph=self.applicability_graph())
+        repair = next(step for step in self.session.checkpoint(100)
+                      if step.get("diagnostic") == "Finding applicability unresolved")
+        obligation_ids = {row["id"] for row in repair["obligations"]}
+        self.assertEqual({findings["second"]["id"]}, obligation_ids)
+        generated = repair["submission"]["graph"]
+        assessment_paths = {tuple(binding["path"])
+                            for node in generated["nodes"]
+                            for binding in node.get("inputs", {}).values()
+                            if binding.get("producer") == {"slot": "obligations"}}
+        self.assertIn((findings["first"]["id"],), assessment_paths)
+        self.assertIn((findings["second"]["id"],), assessment_paths)
+
     def test_interrupted_adoption_retries_once_and_already_adopted_is_idempotent(self):
         graph = copy.deepcopy(self.graph)
         graph["nodes"].append(task("new_note", role="root"))
@@ -5114,11 +5139,16 @@ class GraphAdoptionPublicTests(DagFixture):
         findings, admissions = self.findings(applicability="unresolved")
         self.session.finish(self.session.acquire("review", actor="independent-reviewer"),
                             {"value": "Inspected the corrected subject"})
-        graph = self.applicability_graph()
+        graph = next(step["submission"]["graph"] for step in self.session.checkpoint(100)
+                     if step.get("diagnostic") == "Finding applicability unresolved")
         proposal = self.session.call(100, {"operation": "graph_prepare", "graph": graph,
                                            "rationale": "Classify the retained unresolved obligation"})["next_steps"][0]["proposal"]
         self.session.call(100, self.proposal_review(proposal))
-        work = self.session.acquire("assess_applicability")
+        assessment_name = next(node["id"] for node in graph["nodes"]
+                               if any(binding.get("producer") == {"slot": "obligations"} and
+                                      binding.get("path") == ["first"]
+                                      for binding in node.get("inputs", {}).values()))
+        work = self.session.acquire(assessment_name)
         self.assertNotEqual(self.result("produce")[1]["executor"], self.result("review")[1]["executor"])
         self.session.finish(work, {"assessment": {
             "admission": self.produced("admit", "first"), "finding": admissions["first"]["finding"],
@@ -5204,14 +5234,13 @@ class GraphAdoptionPublicTests(DagFixture):
         self.assertRegex(json.dumps(response), r"(?i)source|changed|current|policy")
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
-    def test_adoption_accepts_legacy_full_policy_manifest_after_operational_change(self):
+    def test_adoption_accepts_evidence_policy_manifest_after_operational_change(self):
         self.produce()
         graph = copy.deepcopy(self.graph)
         graph["nodes"].append(task("new_note", role="root"))
         prepared = self.session.call(100, {"operation": "graph_prepare", "graph": graph,
-                                           "rationale": "Legacy reviewed graph manifest"})
+                                           "rationale": "Reviewed graph manifest"})
         proposal = prepared["next_steps"][0]["proposal"]
-        proposal["policy"] = content_hash(self.session.project["policy"])
         request = self.proposal_review(proposal)
         routing = z._workflow_section(self.session.project, "model_routing")["configuration"]
         routing["allow_above_root_delegation"] = not routing.get("allow_above_root_delegation", False)
@@ -5226,7 +5255,6 @@ class GraphAdoptionPublicTests(DagFixture):
         prepared = self.session.call(100, {"operation": "graph_prepare", "graph": graph,
                                            "rationale": "Preserve reviewed historical Results"})
         proposal = prepared["next_steps"][0]["proposal"]
-        proposal["policy"] = "sha256:" + "e" * 64
         proposal["source"]["current"].append({
             "node": {"goal": 100, "node": "formerly_current", "item": None, "generation": 1},
             "result": {"hash": "sha256:" + "f" * 64, "uri": "zzzops:owner/repo:goal:100:sha256:" + "f" * 64},

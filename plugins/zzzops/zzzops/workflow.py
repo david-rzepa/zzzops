@@ -2116,7 +2116,6 @@ class Workflow:
         reviewed_current = proposal.get('source', {}).get('current', [])
         expected_current = expected['source']['current']
         normalized = copy.deepcopy(proposal)
-        normalized['policy'] = expected['policy']
         if isinstance(normalized.get('source'), dict):
             normalized['source']['current'] = expected_current
         if not all(row in reviewed_current for row in expected_current) or normalized != expected:
@@ -3031,18 +3030,26 @@ class Workflow:
         unresolved = [{**value, '_finding_id': key[1]}
                       for key, value in projection.get('obligations', {}).items()
                       if value.get('applicability') == 'unresolved']
-        supports_assessment = any(
-            any(output.get('type') == 'applicability_assessment'
-                for output in node.get('outputs', {}).values())
-            for node in snapshot['graph']['nodes'])
-        if unresolved and not supports_assessment:
+        def assessment_covers(node, obligation):
+            obligation_input = next((value for value in node.get('inputs', {}).values()
+                if value.get('producer') == {'slot': 'obligations'} and
+                value.get('output') == 'content' and value.get('path') == [obligation['_finding_id']]), None)
+            return (obligation_input is not None and
+                    any(output.get('type') == 'applicability_assessment'
+                        for output in node.get('outputs', {}).values()) and
+                    any(permit.get('type') == 'applicability_assessment' and
+                        permit.get('scope') == obligation['content']['target']
+                        for permit in node.get('permits', [])))
+        uncovered = [obligation for obligation in unresolved if not any(
+            assessment_covers(node, obligation) for node in snapshot['graph']['nodes'])]
+        if uncovered:
             graph = copy.deepcopy(snapshot['graph'])
             contracts = {node['id']: node for node in graph['nodes']}
             owners = {}
             for _, (result_ref, result) in projection['current'].items():
                 owners[result_ref['hash']] = result
                 owners.update({ref['hash']: result for ref in result['outputs'].values()})
-            for obligation in unresolved:
+            for obligation in uncovered:
                 target = obligation['content']['target']
                 target_name = target.get('subject', {}).get('node')
                 target_output = target.get('output')
@@ -3123,7 +3130,7 @@ class Workflow:
                            'it does not waive, resolve, or authorize implementation.'),
                 'obligations': [{'id': value['_finding_id'], 'admission': value['admission'], 'finding': value['finding'],
                                  'target': value['content']['target']}
-                                for value in unresolved],
+                                for value in uncovered],
                 'required_output': {
                     'type': 'applicability_assessment',
                     'fields': ['admission', 'finding', 'subjects', 'reviewer_result', 'authority',
