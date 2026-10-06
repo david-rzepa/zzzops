@@ -216,9 +216,15 @@ def normal_graph(engine, legacy, preserved):
 def prepared_source(engine, number, issue):
     """Recover exact pre-publication inputs, never infer a receipt from labels."""
     digest = engine.api._workflow.digest
-    rows = [row['context'] for row in engine.artifact_index(number).envelopes
-            if row.get('context', {}).get('migration')
-            and row['context'].get('source_hash') == digest(issue['body'])]
+    rows = []
+    for row in engine.artifact_index(number).envelopes:
+        context = row.get('context')
+        if context is None:
+            continue
+        if not isinstance(context, dict):
+            raise ValueError('Pending migration transaction context must be an object or null')
+        if context.get('migration') and context.get('source_hash') == digest(issue['body']):
+            rows.append(context)
     if not rows:
         return issue, None
     context = rows[-1]
