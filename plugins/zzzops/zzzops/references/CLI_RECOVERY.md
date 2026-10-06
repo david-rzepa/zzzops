@@ -64,13 +64,16 @@ returned public command, or invoke the installed CLI with `--intent execute`, th
 affected `--goal`, current `--runtime`, and `--input` pointing to that JSON file.
 This `graph_prepare` operation persists no adoption and grants no authority.
 
-The returned proposal must be produced and independently reviewed in a dedicated
-review goal. A fresh review goal can first use `graph_review_bootstrap` with
-explicit human approval; then its root proposal task and independent review task
-bind the exact manifest. Submit the returned `graph_adopt` continuation to the
-affected goal only after the user approves that exact reviewed proposal. Adoption
+Give the returned exact proposal to an independent reviewer and submit its
+decision through the returned `graph_review` operation on the affected goal.
+That atomic, lease-free administrative transaction stores immutable proposal
+and review artifacts plus an idempotent receipt; it grants no workspace,
+product, publication, or goal authority. Submit its returned `graph_adopt`
+continuation only after the user approves that exact reviewed proposal. Adoption
 recomputes the source, target, policy and Result-impact manifest, rejects stale or
-tampered reviews, and is idempotent when the same transaction is retried.
+tampered reviews, and is idempotent when the same transaction is retried. The
+legacy `graph_review_bootstrap` operation remains readable for old transactions
+but is not a current recovery route.
 
 Bind the returned historical entry through the host-authenticated input producer
 `{"slot":"obligations"}` at path `["<finding id>"]`. Its content contains only
@@ -131,15 +134,14 @@ invented and the ordinary final acceptance nodes are retained.
    a root human-approval gate bound to the plan and review, an execution node
    consuming only that approval, and an observation node producing actual
    infrastructure evidence for the retained final checks.
-2. Persist the returned exact `proposal` as a root task output in a separately
-   tracked review goal. Obtain a current independent approved review whose
-   identity input is that exact proposal Result. Preparation itself changes
-   neither the target goal nor project policy.
+2. Give the returned exact `proposal` to an independent reviewer. Submit the
+   reviewer's actor identity, explicit decision, and report through the returned
+   `graph_review` contract on the affected goal. The host persists proposal and
+   review Refs atomically without changing the graph or granting authority.
 3. After the human approves that exact proposal, submit the returned
-   `graph_adopt` contract with `review_goal`, the proposal output Ref, the
-   independent reviewer Result Ref, `approved_by`, and a unique `request_id`.
-   Adoption rechecks the target source, policy, settled Results, review goal,
-   proposal bytes, and absence of live ownership before publishing.
+   `graph_adopt` contract with the proposal and review Refs, `approved_by`, and
+   a unique `request_id`. Adoption rechecks the target source, policy, settled
+   Results, proposal bytes, and absence of live ownership before publishing.
 4. Reinvoke execution and acquire a fresh returned task. Execute only the
    approved plan, then record provider-observed infrastructure evidence. The
    existing final test, review, publication, and acceptance nodes remain

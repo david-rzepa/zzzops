@@ -9,6 +9,13 @@ Run [`zzzops.py`](../../zzzops/zzzops.py) with `--intent execute`; follow its `n
 
 Read [CLI usage](../../zzzops/references/CLI_USAGE.md) before invoking it.
 
+Treat goal creation, migration, graph repair, evidence/review recording, lease
+recovery, relationship and priority changes, supersession, reopening, and
+closure as direct ZzzOps administration. Follow the returned authority-free
+proposal/review/approval contract on the affected goal; never create a goal
+whose sole outcome is that mutation. A distinct product or tooling defect still
+requires its own durable goal.
+
 For runtime evidence, observe the active Codex harness; never select the root
 pair. Read `model` and `model_reasoning_effort` from `~/.codex/config.toml`.
 Build `available_pairs` from each delegable `slug` and supported `effort` in

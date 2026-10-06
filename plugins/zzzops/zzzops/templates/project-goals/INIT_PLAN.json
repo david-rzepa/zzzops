@@ -394,7 +394,7 @@
         "review": {
           "approved": false
         },
-        "instructions": "Require durable tracked goals for substantial repository work. Read-only investigation and ZzzOps administration are exempt; only explicit scoped user authority grants an exception. Execute the one strict adaptable declarative evidence DAG. Root owns stable human questions, approvals, publication and merge; independent delegated agents investigate and review configured risks. Preserve unaffected Results through correction, require reviewed atomic non-applicability to retain the leaf path, and consume child delivery Results read-only for composition.",
+        "instructions": "Require durable tracked goals for substantial repository work. Read-only investigation and ZzzOps administration are exempt; administrative mutations use direct authority-free host transactions on the affected goal and never require a meta-goal. Only a distinct product or tooling defect is captured separately; only explicit scoped user authority grants an exception. Execute the one strict adaptable declarative evidence DAG. Root owns stable human questions, approvals, publication and merge; independent delegated agents investigate and review configured risks. Preserve unaffected Results through correction, require reviewed atomic non-applicability to retain the leaf path, and consume child delivery Results read-only for composition.",
         "configuration": {
           "phase_dag": {
             "nodes": [

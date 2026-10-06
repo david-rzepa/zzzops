@@ -222,22 +222,27 @@ existing node indices and task sets must be preserved, and terminals cannot be
 replaced. Unsettled node contracts can change and new nodes can be appended.
 Live leases and uncommitted transactions must be reconciled first.
 
-Record the exact prepared manifest as a root task output in a review goal (a JSON
-string in an ordinary text output is supported). Obtain a current independent
-`review_decision` approving that exact identity-bound output and explicit human
-approval. `graph_adopt` takes `review_goal`, `proposal` (the root output Ref),
-`review` (the reviewer Result Ref), `approved_by` and a unique `request_id`.
-The host checks actual current root provenance, declared actor independence,
-exact inspected proposal, approved decision, unchanged source/policy and the
-prospective preservation check again. Caller-written review text is insufficient.
-Using a separate review goal avoids changing the target evidence while the
-proposal is being reviewed.
+Give the exact prepared manifest to an independent reviewer. `graph_review`
+takes that complete proposal, the actual reviewer actor, an explicit decision,
+a nonempty report, and a unique `request_id`. It atomically persists immutable
+proposal and review artifacts plus an idempotent receipt on the affected goal.
+It is lease-free, changes no graph or evidence, and grants no workspace,
+product, publication, or goal authority. Root cannot review its own proposal.
+After explicit human approval, `graph_adopt` takes the returned `proposal` and
+`review` Refs, `approved_by`, and its unique `request_id`. The host checks root
+provenance, actor independence, approved decision, unchanged source/policy and
+the prospective preservation check again. Caller-written review text is
+insufficient because adoption accepts only the host-persisted exact artifacts.
 
 Adoption changes only the target goal's graph Ref and appends the normal durable
 receipt. It retains all evidence and old artifacts, leaves project policy alone,
 and supports exact-request replay after interrupted publication. Preparation
 does not grant source-edit or publication authority. Existing goals are not
 silently switched to a newly shipped default graph.
+
+`graph_review_bootstrap` and cross-goal `graph_adopt` inputs remain supported for
+replaying historical transactions. Current workflows never recommend an
+administrative review goal.
 
 ## Publication and completion
 
