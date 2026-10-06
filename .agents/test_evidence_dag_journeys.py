@@ -5120,6 +5120,150 @@ class GraphAdoptionPublicTests(DagFixture):
         self.assertIn((findings["first"]["id"],), assessment_paths)
         self.assertIn((findings["second"]["id"],), assessment_paths)
 
+    def test_rejected_review_without_correction_route_returns_executable_recovery(self):
+        producer = task("produce")
+        producer["inputs"] = {"request": spec_input()}
+        reviewer = task("review_produce", ["produce"])
+        reviewer["inputs"] = {"subject": subject_input("produce")}
+        reviewer["independent_of"] = [selector("produce")]
+        reviewer["outputs"] = {"value": output("review_decision", {"kind": "object", "fields": {
+            "decision": {"kind": "enum", "values": ["approved", "changes_requested"]},
+            "report": {"kind": "string"}}})}
+        finish = task("finish", ["review_produce"], role="root")
+        finish["inputs"] = {"approved": {
+            "producer": {"node": selector("review_produce")}, "output": "value",
+            "path": ["decision"], "mode": "content",
+            "type": {"kind": "enum", "values": ["approved"]}}}
+        graph = {"nodes": [producer, reviewer, finish], "task_sets": [],
+                 "terminals": [selector("finish")]}
+        self.install(graph)
+        self.produce()
+        self.session.finish(self.session.acquire("review_produce", actor="independent-reviewer"),
+                            {"value": {"decision": "changes_requested", "report": "Correct the value"}})
+
+        repair = next(step for step in self.session.checkpoint(100)
+                      if step.get("diagnostic") == "Rejected review lacks correction route")
+        self.assertEqual("graph_prepare", repair["submission"]["operation"])
+        recovered = repair["submission"]["graph"]
+        z._phase_evidence.validate_graph(recovered)
+        prepared = self.session.call(100, repair["submission"])["next_steps"][0]["proposal"]
+        self.session.call(100, self.proposal_review(prepared))
+
+        interpretation = self.session.acquire("interpret_produce_rejection")
+        finding = {"id": "review_produce_rejection", "revision": 1,
+                   "source": self.produced("review_produce"),
+                   "subjects": [self.produced("produce")], "target": scope("produce"),
+                   "request": "Correct the independently rejected value",
+                   "rationale": "The exact current review requested changes", "supersedes": None}
+        self.session.finish(interpretation, {"value": finding})
+        finding_ref = self.produced("interpret_produce_rejection")
+        self.session.finish(self.session.acquire("admit_produce_correction"), {"value": {
+            "finding": finding_ref, "target_inputs": self.result("produce")[1]["inputs"],
+            "authority": self.result("interpret_produce_rejection")[0],
+            "applicability": "applicable", "rationale": "Same exact approved scope"}})
+        self.assertIn("produce", self.names())
+        self.assertNotIn("finish", self.names())
+
+    def test_partial_rejected_review_route_is_repaired_to_closed_route(self):
+        producer = task("produce")
+        producer["inputs"] = {"request": spec_input()}
+        reviewer = task("review_produce", ["produce"])
+        reviewer["inputs"] = {"subject": subject_input("produce")}
+        reviewer["independent_of"] = [selector("produce")]
+        reviewer["outputs"] = {"value": output("review_decision", {"kind": "object", "fields": {
+            "decision": {"kind": "enum", "values": ["approved", "changes_requested"]},
+            "report": {"kind": "string"}}})}
+        graph = {"nodes": [producer, reviewer], "task_sets": [], "terminals": [selector("review_produce")]}
+        self.install(graph)
+        expanded = copy.deepcopy(graph)
+        z.workflow_engine(self.fixture.repo, self.session.project,
+                          self.session.runtime).node_append_review_correction(
+                              expanded, "produce", "value", "review_produce", "value")
+        partial = copy.deepcopy(graph)
+        partial["nodes"].append(expanded["nodes"][2])
+        self.install(partial)
+        self.produce()
+        self.session.finish(self.session.acquire("review_produce", actor="independent-reviewer"),
+                            {"value": {"decision": "changes_requested", "report": "Correct it"}})
+        repair = next(step for step in self.session.checkpoint(100)
+                      if step.get("diagnostic") == "Rejected review lacks correction route")
+        recovered = repair["submission"]["graph"]
+        self.assertTrue(any(node["id"] == "admit_produce_correction_from_review_produce"
+                            for node in recovered["nodes"]))
+        self.assertTrue(any(item["id"] == "produce_findings_from_review_produce"
+                            for item in recovered["task_sets"]))
+
+    def test_decision_shaped_non_review_output_does_not_trigger_recovery(self):
+        producer = task("produce")
+        producer["inputs"] = {"request": spec_input()}
+        analysis = task("analyze", ["produce"])
+        analysis["inputs"] = {"subject": subject_input("produce")}
+        analysis["independent_of"] = [selector("produce")]
+        analysis["outputs"] = {"value": output("status", shape({
+            "decision": "approved", "report": "analysis"}))}
+        graph = {"nodes": [producer, analysis], "task_sets": [], "terminals": [selector("analyze")]}
+        self.install(graph)
+        self.produce()
+        self.session.finish(self.session.acquire("analyze"), {"value": {
+            "decision": "changes_requested", "report": "This is status data"}})
+        self.assertFalse(any(step.get("diagnostic") == "Rejected review lacks correction route"
+                             for step in self.session.checkpoint(100)))
+
+    def test_changes_only_review_contract_does_not_get_impossible_approval_route(self):
+        producer = task("produce")
+        producer["inputs"] = {"request": spec_input()}
+        reviewer = task("review_produce", ["produce"])
+        reviewer["inputs"] = {"subject": subject_input("produce")}
+        reviewer["independent_of"] = [selector("produce")]
+        reviewer["outputs"] = {"value": output("review_decision", {"kind": "object", "fields": {
+            "decision": {"kind": "enum", "values": ["changes_requested"]},
+            "report": {"kind": "string"}}})}
+        graph = {"nodes": [producer, reviewer], "task_sets": [], "terminals": [selector("review_produce")]}
+        self.install(graph)
+        self.produce()
+        self.session.finish(self.session.acquire("review_produce"), {"value": {
+            "decision": "changes_requested", "report": "Terminal rejection protocol"}})
+        self.assertFalse(any(step.get("diagnostic") == "Rejected review lacks correction route"
+                             for step in self.session.checkpoint(100)))
+
+    def test_multiple_rejected_reviewers_get_distinct_correction_routes(self):
+        producer = task("produce")
+        producer["inputs"] = {"request": spec_input()}
+        reviewers = []
+        for name in ("review_a", "review_b"):
+            reviewer = task(name, ["produce"])
+            reviewer["inputs"] = {"subject": subject_input("produce")}
+            reviewer["independent_of"] = [selector("produce")]
+            reviewer["outputs"] = {"value": output("review_decision", {"kind": "object", "fields": {
+                "decision": {"kind": "enum", "values": ["approved", "changes_requested"]},
+                "report": {"kind": "string"}}})}
+            reviewers.append(reviewer)
+        graph = {"nodes": [producer, *reviewers], "task_sets": [],
+                 "terminals": [selector("review_a"), selector("review_b")]}
+        self.install(graph)
+        self.produce()
+        for name in ("review_a", "review_b"):
+            self.session.finish(self.session.acquire(name, actor=name), {"value": {
+                "decision": "changes_requested", "report": name + " correction"}})
+        repair = next(step for step in self.session.checkpoint(100)
+                      if step.get("diagnostic") == "Rejected review lacks correction route")
+        recovered = repair["submission"]["graph"]
+        z._phase_evidence.validate_graph(recovered)
+        names = {node["id"] for node in recovered["nodes"]}
+        self.assertIn("interpret_produce_rejection_from_review_a", names)
+        self.assertIn("interpret_produce_rejection_from_review_b", names)
+
+    def test_rejected_review_of_nonlocal_target_does_not_generate_local_route(self):
+        engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
+        self.assertFalse(engine.node_local_selector(
+            {"kind": "node", "goal": "#parent", "node": "produce"}, 100))
+        self.assertFalse(engine.node_local_selector(
+            {"kind": "node", "goal": 101, "node": "produce"}, 100))
+        self.assertTrue(engine.node_local_selector(
+            {"kind": "node", "goal": "#this", "node": "produce"}, 100))
+        self.assertTrue(engine.node_local_selector(
+            {"kind": "node", "goal": 100, "node": "produce"}, 100))
+
     def test_interrupted_adoption_retries_once_and_already_adopted_is_idempotent(self):
         graph = copy.deepcopy(self.graph)
         graph["nodes"].append(task("new_note", role="root"))

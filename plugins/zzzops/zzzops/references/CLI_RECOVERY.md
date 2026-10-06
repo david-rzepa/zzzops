@@ -97,6 +97,16 @@ whose reviewed graph lacks the required route.
 
 Use this flow when a goal has a missing graph route or capability.
 
+A current independent review with `decision: changes_requested` must have a
+typed correction route before downstream work can proceed. If an older graph
+lacks that route, execute returns `Rejected review lacks correction route` and a
+concrete append-only `graph_prepare` submission. The proposed graph adds root
+interpretation and admission, reacquires only the exact rejected producer after
+an applicable admission, requires a fresh independent review, retains every
+admitted finding, and independently resolves each retained finding. Review and
+adopt that proposal through the same bootstrap flow above; do not bypass the
+rejection by changing the downstream approval input.
+
 ### Stale workspace authorization
 
 Workspace-authorization producer Results include a host-authenticated
