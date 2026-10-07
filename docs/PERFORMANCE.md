@@ -23,7 +23,8 @@ state in the user's platform cache directory. The entry is partitioned by
 repository, goal, and issue-body hash, and records explicit schema and reducer
 versions. A resumed invocation still obtains one compact comment-head
 observation. An exact head reuses the materialized state without replaying
-deltas; a strict append folds the later comments once. Edits, deletions,
+deltas; a strict overlapping append fetches and folds the exact suffix once,
+even when the checkpoint has moved beyond the provider's 100-comment tail. Edits, deletions,
 duplicate or unordered identities, issue-body changes, version drift, corrupt
 storage, and failed or partial reads force a complete provider read. Cache
 writes are atomic and best-effort, and cache contents never authorize a remote
@@ -31,7 +32,7 @@ mutation.
 
 Deterministic provider ledgers cover cold, warm, resumed, advancing, failure,
 retry, and write paths. Every provider write retains fresh ordered checks for
-installation, repository context, reviewed policy, ownership, current target,
+installation, repository context, reviewed policy, targeted storage ownership, current target,
 complete history, and provider uncertainty. These checks deliberately occur
 again between two writes in the same transaction.
 
