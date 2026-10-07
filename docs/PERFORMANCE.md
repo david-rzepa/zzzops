@@ -28,7 +28,10 @@ even when the checkpoint has moved beyond the provider's 100-comment tail. Edits
 duplicate or unordered identities, issue-body changes, version drift, corrupt
 storage, and failed or partial reads force a complete provider read. Cache
 writes are atomic and best-effort, and cache contents never authorize a remote
-mutation.
+mutation. Each entry retains the time of its last successful complete provider
+history audit. Tail and suffix reads preserve that time. Once the shared
+checkpoint-age bound expires, ZzzOps completes another full read before reuse
+and refreshes the audit time only after that read succeeds.
 
 Deterministic provider ledgers cover cold, warm, resumed, advancing, failure,
 retry, and write paths. Every provider write retains fresh ordered checks for

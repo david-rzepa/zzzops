@@ -554,6 +554,8 @@ class Workflow:
             comments = None
             provider_comments = None
             cache_head = None
+            cached = None
+            complete_audit = None
             issue = getattr(self, '_issue_observations', {}).get(number)
             tail_reader = getattr(self.adapter, 'get_issue_comment_tail', None)
             if issue is None and callable(tail_reader):
@@ -568,6 +570,10 @@ class Workflow:
                     if cached is None and state_cache.requires_full_read(
                             self.repository, number, issue_hash, contract):
                         raise ValueError('materialized state is stale or unreadable')
+                    if cached is not None:
+                        audit_age = time.time() - cached['last_complete_audit']
+                        if audit_age < 0 or audit_age > HYDRATION_CHECKPOINT_MAX_AGE_SECONDS:
+                            raise ValueError('materialized state complete audit is stale')
                     cache_head, suffix = (state_cache.classify_head(cached['provider_head'], tail)
                                           if cached is not None else (None, []))
                     if cache_head == 'exact':
@@ -651,6 +657,7 @@ class Workflow:
             if comments is None:
                 comments = self.adapter.get_issue_comments(number)
                 provider_comments = comments
+                complete_audit = time.time()
             limits = (comment_store.MAX_ARTIFACT_BYTES, comment_store.MAX_DELTA_DEPTH,
                       comment_store.MAX_RECONSTRUCTION_WORK_BYTES, comment_store.MAX_ARTIFACT_RECORDS)
             # Reuse only an exact fresh provider observation with no locally
@@ -662,7 +669,8 @@ class Workflow:
             observed._materialized_state_cache = cache_head in {'exact', 'append'}
             if issue is not None and provider_comments is not None:
                 state_cache.store(self.repository, number, comment_store.text_hash(issue['body']),
-                                  provider_comments, observed.comments, materialized_state_contract())
+                                  provider_comments, observed.comments, materialized_state_contract(),
+                                  complete_audit or (cached or {}).get('last_complete_audit'))
             self._artifact_indexes[number] = observed
             if key not in _OBSERVED_ARTIFACT_INDEXES and len(_OBSERVED_ARTIFACT_INDEXES) >= 4:
                 _OBSERVED_ARTIFACT_INDEXES.pop(next(iter(_OBSERVED_ARTIFACT_INDEXES)))
@@ -739,6 +747,18 @@ class Workflow:
         full_read = getattr(self.adapter, 'get_issue_comments_full', self.adapter.get_issue_comments)
         comments = full_read(number)
         existing_index = ObservedArtifactIndex(comments)
+        issue_hash = comment_store.text_hash(issue['body'])
+        def cache_complete(source, checkpoint, transaction):
+            source_index = ObservedArtifactIndex(source)
+            rows = [row for row, item in source_index.envelope_comments
+                    if item.get('transaction') == transaction]
+            row_ids = {row.get('id') for row in rows}
+            last_id = checkpoint['observation']['last_id']
+            later = [row for row in source if row.get('id', 0) > last_id and row.get('id') not in row_ids]
+            materialized = comment_store.hydration_checkpoint_view(
+                rows, later, repository=self.repository, goal=number, issue_body_hash=issue_hash)[0]
+            state_cache.store(self.repository, number, issue_hash, source, materialized,
+                              materialized_state_contract(), time.time())
         generation = 1
         for record in existing_index.envelopes:
             context = record.get('context') or {}
@@ -748,6 +768,7 @@ class Workflow:
                 comment_store.hydration_checkpoint_view(
                     rows, [], repository=self.repository, goal=number,
                     issue_body_hash=comment_store.text_hash(issue['body']))
+                cache_complete(comments, checkpoint, expected)
                 return {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'checkpoint': expected,
                                         'action': 'Hydration checkpoint is durable; resume the goal.'}]}
             if isinstance(checkpoint, dict) and checkpoint.get('goal') == number:
@@ -773,6 +794,7 @@ class Workflow:
         comment_store.hydration_checkpoint_view(
             rows, [], repository=self.repository, goal=number,
             issue_body_hash=comment_store.text_hash(issue['body']))
+        cache_complete(confirmed, checkpoint, identity)
         self.invalidate()
         return {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'checkpoint': identity,
                                 'action': 'Hydration checkpoint is durable; resume the goal.'}]}

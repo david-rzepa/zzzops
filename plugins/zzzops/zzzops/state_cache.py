@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -89,6 +90,10 @@ def load(repository: str, goal: int, issue_body_hash: str, contract: dict) -> di
                 or document.get("repository") != repository or document.get("goal") != goal
                 or document.get("issue_body_hash") != issue_body_hash
                 or document.get("artifact_contract") != contract
+                or not isinstance(document.get("last_complete_audit"), (int, float))
+                or isinstance(document.get("last_complete_audit"), bool)
+                or not math.isfinite(document["last_complete_audit"])
+                or document["last_complete_audit"] <= 0
                 or head(document.get("materialized_comments")) is None
                 or not isinstance(document.get("provider_head"), list)):
             return None
@@ -114,18 +119,29 @@ def requires_full_read(repository: str, goal: int, issue_body_hash: str, contrac
             if (document.get("issue_body_hash") != issue_body_hash
                     or document.get("schema_version") != SCHEMA_VERSION
                     or document.get("reducer_version") != REDUCER_VERSION
-                    or document.get("artifact_contract") != contract):
+                    or document.get("artifact_contract") != contract
+                    or not isinstance(document.get("last_complete_audit"), (int, float))
+                    or isinstance(document.get("last_complete_audit"), bool)
+                    or not math.isfinite(document["last_complete_audit"])
+                    or document["last_complete_audit"] <= 0):
                 return True
     return False
 
 
 def store(repository: str, goal: int, issue_body_hash: str,
-          provider_comments: list[dict], materialized_comments: list[dict], contract: dict) -> None:
-    observed = head(provider_comments)
-    if observed is None or head(materialized_comments) is None: return
+          provider_comments: list[dict], materialized_comments: list[dict], contract: dict,
+          last_complete_audit: float | None) -> None:
+    # Bind the same compact suffix shape used by the provider head endpoint.
+    # Older history is periodically re-audited through last_complete_audit.
+    observed = head(provider_comments[-100:])
+    if (observed is None or head(materialized_comments) is None
+            or not isinstance(last_complete_audit, (int, float))
+            or isinstance(last_complete_audit, bool) or not math.isfinite(last_complete_audit)
+            or last_complete_audit <= 0): return
     document = {"schema_version": SCHEMA_VERSION, "reducer_version": REDUCER_VERSION,
                 "repository": repository, "goal": goal, "issue_body_hash": issue_body_hash,
                 "artifact_contract": contract,
+                "last_complete_audit": last_complete_audit,
                 "provider_head": observed, "materialized_comments": materialized_comments}
     path = _path(repository, goal, issue_body_hash)
     try:
