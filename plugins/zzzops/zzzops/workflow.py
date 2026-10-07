@@ -564,7 +564,7 @@ class Workflow:
                             rows, later, repository=self.repository, goal=number,
                             issue_body_hash=comment_store.text_hash(issue['body']))[0]
                         break
-                except (ValueError, KeyError, TypeError):
+                except (ValueError, KeyError, TypeError, self.api.GoalHistoryReadError):
                     comments = None
             if comments is None:
                 comments = self.adapter.get_issue_comments(number)

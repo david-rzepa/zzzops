@@ -175,6 +175,17 @@ class WorkflowHydrationCheckpointTests(DagFixture):
         step = next(item for item in repaired['next_steps'] if item['kind'] == 'hydration_checkpoint')
         self.assertNotEqual(original['checkpoint'], step['checkpoint'])
 
+    def test_uncertain_incremental_read_falls_back_to_complete_history(self):
+        self.publish_checkpoint()
+        self.provider.get_issue_comment_tail = mock.Mock(
+            side_effect=z.GoalHistoryReadError('tail unavailable'))
+
+        with mock.patch.object(self.provider, 'get_issue_comments',
+                               wraps=self.provider.get_issue_comments) as full:
+            resumed = self.session.call(100)
+        self.assertGreater(full.call_count, 0)
+        self.assertTrue(resumed['next_steps'])
+
     def test_oversized_checkpoint_does_not_block_the_workflow_frontier(self):
         start = max(row['id'] for row in self.provider.comments[100]) + 1
         self.provider.comments[100].extend(
