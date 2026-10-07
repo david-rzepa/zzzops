@@ -1267,6 +1267,7 @@ def _derive_task_steps(graph, payload, context):
                 node_contract = materialize(item, self_selector) if materialize else expansion['template']
                 identity_key = task_key(identity)
                 instances[identity_key] = {'node': identity, 'contract': node_contract, 'expansion': key[1], 'location': ['task_sets', index, 'template']}
+                instance_order.append(identity_key)
                 selected.append(identity_key)
                 member_lookup[(key, item)] = identity_key
             memberships[key] = selected
@@ -1330,16 +1331,19 @@ def _derive_task_steps(graph, payload, context):
                     return
             # Accepted finding/admission effects were folded from history above.
             # Their producing Result still obeys ordinary input freshness.
-            prerequisites = []
+            prerequisites, declared_prerequisites = [], []
             for selector in node['requires']:
-                for parent in targets(selector, number):
+                selected = targets(selector, number)
+                for parent in selected:
                     relationship_field = ('required_parent_gates'
                                           if selector.get('goal') == '#parent'
                                           else 'required_dependencies')
                     state[relationship_field].append(instances[parent]['node'])
-                    evaluate(parent)
-                    if parent not in current: raise ValueError('Blocked: prerequisite is not current: ' + str(parent) + ': ' + statuses.get(parent, {}).get('reason', 'required evidence is stale or missing'))
-                    prerequisites.append(parent)
+                declared_prerequisites.extend(selected)
+            for parent in declared_prerequisites:
+                evaluate(parent)
+                if parent not in current: raise ValueError('Blocked: prerequisite is not current: ' + str(parent) + ': ' + statuses.get(parent, {}).get('reason', 'required evidence is stale or missing'))
+                prerequisites.append(parent)
             for gate in node['gates']:
                 for resolver_key, resolver in list(instances.items()):
                     if resolver_key == key: continue

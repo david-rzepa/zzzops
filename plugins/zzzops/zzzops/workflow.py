@@ -4832,7 +4832,7 @@ def _public_response(api, repo, intent, source, runtime, payload, number, *, ski
         api, repo, intent, source, runtime, payload, number,
         policy_snapshot=snapshot, **options,
     )
-    if number is not None and source == '$execute-zzzops':
+    if payload is None and number is not None and source == '$execute-zzzops':
         for step in result.get('next_steps', []):
             if isinstance(step, dict):
                 step.setdefault('invalidated_ancestor_gates', [])
