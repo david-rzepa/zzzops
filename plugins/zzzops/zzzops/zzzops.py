@@ -978,22 +978,10 @@ class GitHubGoalTransitionAdapter:
             )
         return issue
 
-    def get_issue_comments(self, number: int) -> list[dict[str, Any]]:
+    @staticmethod
+    def _comment_pages(stdout: str, number: int) -> list[dict[str, Any]]:
         try:
-            self.ensure_identity()
-            result = self._run([
-                "api", "--paginate", "--slurp",
-                f"repos/{self.repository}/issues/{number}/comments?per_page=100",
-            ], timeout=None)
-            if result.returncode:
-                raise self._provider_error(result)
-        except (ValueError, OSError, RuntimeError) as exc:
-            raise GoalHistoryReadError(
-                f"Complete comment-history read for goal #{number} was not confirmed: {exc} "
-                "Retry the same workflow request and lease; no partial history or ownership takeover is assumed."
-            ) from exc
-        try:
-            pages = json.loads(result.stdout)
+            pages = json.loads(stdout)
             if (not isinstance(pages, list) or not pages or
                     any(not isinstance(page, list) or len(page) > 100 for page in pages) or
                     any(len(page) != 100 for page in pages[:-1])):
@@ -1010,6 +998,44 @@ class GitHubGoalTransitionAdapter:
             raise GoalHistoryReadError(
                 f"GitHub returned invalid or partial comment history for goal #{number}; retry the same workflow request and lease. No body update was made."
             ) from exc
+
+    def get_issue_comments_full(self, number: int) -> list[dict[str, Any]]:
+        try:
+            self.ensure_identity()
+            result = self._run([
+                "api", "--paginate", "--slurp",
+                f"repos/{self.repository}/issues/{number}/comments?per_page=100",
+            ], timeout=None)
+            if result.returncode:
+                raise self._provider_error(result)
+        except (ValueError, OSError, RuntimeError) as exc:
+            raise GoalHistoryReadError(
+                f"Complete comment-history read for goal #{number} was not confirmed: {exc} "
+                "Retry the same workflow request and lease; no partial history or ownership takeover is assumed."
+            ) from exc
+        return self._comment_pages(result.stdout, number)
+
+    def get_issue_comments_since(self, number: int, since: str) -> list[dict[str, Any]]:
+        """Read every comment updated at or after a checkpoint overlap marker."""
+        if not isinstance(since, str) or not since or urlparse(since).scheme:
+            raise GoalHistoryReadError(f"Invalid incremental comment marker for goal #{number}")
+        try:
+            self.ensure_identity()
+            result = self._run([
+                "api", "--paginate", "--slurp",
+                f"repos/{self.repository}/issues/{number}/comments?per_page=100&since={quote(since, safe=':-TZ.')}",
+            ], timeout=None)
+            if result.returncode:
+                raise self._provider_error(result)
+        except (ValueError, OSError, RuntimeError) as exc:
+            raise GoalHistoryReadError(
+                f"Incremental comment-history read for goal #{number} was not confirmed: {exc} "
+                "Fall back to a complete history read; no partial history is authoritative."
+            ) from exc
+        return self._comment_pages(result.stdout, number)
+
+    def get_issue_comments(self, number: int) -> list[dict[str, Any]]:
+        return self.get_issue_comments_full(number)
 
     def create_issue_comment(self, number: int, body: str) -> dict[str, Any]:
         _comment_store.guard_comment(body)

@@ -4547,6 +4547,25 @@ class GoalTransitionTests(unittest.TestCase):
         self.assertEqual(["gh", "api", "--method", "POST", "repos/owner/repo/issues/42/comments", "--input", "-"], write_command)
         self.assertEqual({"body": "history"}, json.loads(run.call_args_list[2].kwargs["input"]))
 
+    @mock.patch.object(zzzops.shutil, "which", return_value="gh")
+    @mock.patch.object(zzzops.subprocess, "run")
+    def test_github_transition_adapter_reads_complete_incremental_overlap(self, run, _which):
+        comment = {"id": 9, "body": "history", "updated_at": "2026-01-02T00:00:00Z"}
+        run.side_effect = [
+            SimpleNamespace(returncode=0, stderr="", stdout=json.dumps({
+                "nameWithOwner": "owner/repo", "hasIssuesEnabled": True, "viewerPermission": "ADMIN",
+            })),
+            SimpleNamespace(returncode=0, stderr="", stdout=json.dumps([[comment]])),
+        ]
+        adapter = zzzops.GitHubGoalTransitionAdapter(Path.cwd(), "owner/repo")
+
+        self.assertEqual([comment], adapter.get_issue_comments_since(42, "2026-01-01T23:59:59Z"))
+        self.assertEqual(
+            ["gh", "api", "--paginate", "--slurp",
+             "repos/owner/repo/issues/42/comments?per_page=100&since=2026-01-01T23:59:59Z"],
+            run.call_args_list[1].args[0],
+        )
+
 
 class FakeGoalSchemaAdapter:
     def __init__(self, issues):
