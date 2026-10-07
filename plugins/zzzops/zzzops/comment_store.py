@@ -488,8 +488,24 @@ def hydration_checkpoint_bodies(goal, issue_body_hash, comments, required_hashes
     source = ArtifactIndex(comments)
     materialized = ArtifactIndex([])
     records = []
-    for identity in required:
+    pending = list(required)
+    included = []
+    while pending:
+        identity = pending.pop(0)
+        if identity in included:
+            continue
         value = source.resolve(identity)[0]
+        included.append(identity)
+        def references(child):
+            if isinstance(child, dict):
+                if (set(child) == {'hash', 'uri'} and isinstance(child.get('hash'), str)
+                        and child['hash'] in source.records):
+                    pending.append(child['hash'])
+                else:
+                    for nested in child.values(): references(nested)
+            elif isinstance(child, list):
+                for nested in child: references(nested)
+        references(value)
         record = materialized.record(value)
         if record is not None:
             records.append(record)
@@ -500,7 +516,7 @@ def hydration_checkpoint_bodies(goal, issue_body_hash, comments, required_hashes
         'goal': goal,
         'issue_body_hash': issue_body_hash,
         'observation': observation,
-        'required': required,
+        'required': included,
         'codec': {'envelope': 2, 'checkpoint': HYDRATION_CHECKPOINT_SCHEMA},
     }
     checkpoint_id = digest(checkpoint)

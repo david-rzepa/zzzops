@@ -1034,6 +1034,39 @@ class GitHubGoalTransitionAdapter:
             ) from exc
         return self._comment_pages(result.stdout, number)
 
+    def get_issue_comment_tail(self, number: int, limit: int = 100) -> list[dict[str, Any]]:
+        """Read a bounded newest-first-discoverable tail for checkpoint activation."""
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise GoalHistoryReadError(f"Invalid comment-tail limit for goal #{number}")
+        self.ensure_identity()
+        owner, name = self.repository.split('/', 1)
+        query = ("query($owner:String!,$name:String!,$number:Int!,$limit:Int!){repository(owner:$owner,name:$name){"
+                 "issue(number:$number){comments(last:$limit){nodes{databaseId body createdAt updatedAt}}}}}")
+        result = self._run(["api", "graphql", "-f", "query=" + query, "-F", "owner=" + owner,
+                            "-F", "name=" + name, "-F", "number=" + str(number),
+                            "-F", "limit=" + str(limit)], timeout=None)
+        if result.returncode:
+            raise self._provider_error(result)
+        try:
+            payload = json.loads(result.stdout)
+            issue = payload['data']['repository']['issue']
+            nodes = issue['comments']['nodes']
+            if not isinstance(nodes, list) or len(nodes) > limit:
+                raise TypeError
+            comments = [{'id': row['databaseId'], 'body': row['body'], 'created_at': row['createdAt'],
+                         'updated_at': row['updatedAt']} for row in nodes]
+            if any(type(row['id']) is not int or row['id'] <= 0 or not isinstance(row['body'], str)
+                   for row in comments):
+                raise TypeError
+            identities = [row['id'] for row in comments]
+            if identities != sorted(set(identities)):
+                raise TypeError
+            return comments
+        except (KeyError, TypeError, json.JSONDecodeError) as exc:
+            raise GoalHistoryReadError(
+                f"GitHub returned an invalid comment tail for goal #{number}; use a complete history read."
+            ) from exc
+
     def get_issue_comments(self, number: int) -> list[dict[str, Any]]:
         return self.get_issue_comments_full(number)
 

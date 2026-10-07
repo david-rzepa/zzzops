@@ -14,6 +14,7 @@ import subprocess
 import time
 import uuid
 import re
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
@@ -22,6 +23,10 @@ import zzzops_comment_store as comment_store
 
 _OBSERVED_ARTIFACT_INDEXES = {}
 _GIT_ARTIFACT_SNAPSHOTS = {}
+HYDRATION_CHECKPOINT_MIN_COMMENTS = 32
+HYDRATION_CHECKPOINT_MIN_BYTES = 262144
+HYDRATION_CHECKPOINT_MAX_AGE_SECONDS = 86400
+HYDRATION_CHECKPOINT_MAX_LATER_COMMENTS = 32
 
 
 class ObservedArtifactIndex(comment_store.ArtifactIndex):
@@ -166,7 +171,7 @@ class ObservedArtifactIndex(comment_store.ArtifactIndex):
 PUBLIC_OPERATIONS = frozenset({
     'batch', 'bind', 'block', 'migration_batch', 'graph_prepare', 'graph_review', 'graph_adopt', 'graph_review_bootstrap',
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
-    'feedback_submit', 'heartbeat', 'installation_record', 'integrate',
+    'feedback_submit', 'heartbeat', 'hydration_checkpoint', 'installation_record', 'integrate',
     'policy_approve', 'policy_propose', 'read', 'recover', 'renew',
     'preserve_historical_draft', 'route_choice', 'start', 'reconcile', 'submit',
 })
@@ -401,6 +406,9 @@ class ProviderReadGateway:
     def __init__(self, engine, provider):
         self.engine = engine
         self.get_issue_comments = provider.get_issue_comments
+        for name in ('get_issue_comments_full', 'get_issue_comments_since', 'get_issue_comment_tail'):
+            if hasattr(provider, name):
+                setattr(self, name, getattr(provider, name))
         for name in ('list_issue_metadata', 'get_parent_issue', 'get_sub_issues'):
             if hasattr(provider, name):
                 setattr(self, name, getattr(provider, name))
@@ -522,7 +530,43 @@ class Workflow:
         if number not in self._artifact_indexes:
             key = (str(self.repo.resolve()), self.repository, number)
             previous = _OBSERVED_ARTIFACT_INDEXES.get(key)
-            comments = self.adapter.get_issue_comments(number)
+            comments = None
+            issue = getattr(self, '_issue_observations', {}).get(number)
+            tail_reader = getattr(self.adapter, 'get_issue_comment_tail', None)
+            if issue is None and callable(tail_reader):
+                issue = self.adapter.get_issue(number)
+            if issue is not None and callable(tail_reader):
+                try:
+                    envelope = self.api.parse_managed_goal(issue.get('body', ''), number)
+                    tail = tail_reader(number)
+                    discovered = ObservedArtifactIndex(tail)
+                    candidates = []
+                    for row, record in discovered.envelope_comments:
+                        context = record.get('context') or {}
+                        checkpoint = context.get('checkpoint') if context.get('kind') == 'hydration_checkpoint' else None
+                        if (isinstance(checkpoint, dict) and checkpoint.get('goal') == number
+                                and checkpoint.get('issue_body_hash') == comment_store.text_hash(issue['body'])
+                                and envelope and envelope.get('payload', {}).get('hash') in checkpoint.get('required', [])):
+                            candidates.append((row['id'], record.get('transaction'), checkpoint))
+                    for _, transaction, checkpoint in sorted(candidates, reverse=True):
+                        rows = [row for row, record in discovered.envelope_comments
+                                if record.get('transaction') == transaction]
+                        ids = {row['id'] for row in rows}
+                        later = [row for row in tail if row['id'] > checkpoint['observation']['last_id'] and row['id'] not in ids]
+                        created = max((row.get('created_at') or '' for row in rows), default='')
+                        try:
+                            age = time.time() - datetime.fromisoformat(created.replace('Z', '+00:00')).timestamp()
+                        except (ValueError, TypeError):
+                            continue
+                        if age < 0 or age > HYDRATION_CHECKPOINT_MAX_AGE_SECONDS or len(later) > HYDRATION_CHECKPOINT_MAX_LATER_COMMENTS:
+                            continue
+                        comments = comment_store.hydration_checkpoint_view(
+                            rows, later, goal=number, issue_body_hash=comment_store.text_hash(issue['body']))[0]
+                        break
+                except (ValueError, KeyError, TypeError):
+                    comments = None
+            if comments is None:
+                comments = self.adapter.get_issue_comments(number)
             limits = (comment_store.MAX_ARTIFACT_BYTES, comment_store.MAX_DELTA_DEPTH,
                       comment_store.MAX_RECONSTRUCTION_WORK_BYTES, comment_store.MAX_ARTIFACT_RECORDS)
             # Reuse only an exact fresh provider observation with no locally
@@ -536,6 +580,81 @@ class Workflow:
                 _OBSERVED_ARTIFACT_INDEXES.pop(next(iter(_OBSERVED_ARTIFACT_INDEXES)))
             _OBSERVED_ARTIFACT_INDEXES[key] = observed
         return self._artifact_indexes[number]
+
+    def hydration_checkpoint_candidate(self, number):
+        """Prepare an idempotent compact checkpoint after an expensive full read."""
+        index = self.artifact_index(number)
+        size = sum(len(row.get('body', '').encode('utf-8')) for row in index.comments)
+        if len(index.comments) < HYDRATION_CHECKPOINT_MIN_COMMENTS and size < HYDRATION_CHECKPOINT_MIN_BYTES:
+            return None
+        issue = self.adapter.get_issue(number)
+        envelope = self.api.parse_managed_goal(issue.get('body', ''), number)
+        if not envelope or envelope.get('schema_version') != 2:
+            return None
+        issue_hash = comment_store.text_hash(issue['body'])
+        for record in index.envelopes:
+            context = record.get('context') or {}
+            checkpoint = context.get('checkpoint') if context.get('kind') == 'hydration_checkpoint' else None
+            if (isinstance(checkpoint, dict) and checkpoint.get('goal') == number
+                    and checkpoint.get('issue_body_hash') == issue_hash
+                    and envelope['payload']['hash'] in checkpoint.get('required', [])):
+                transaction = record.get('transaction')
+                rows = [row for row, item in index.envelope_comments if item.get('transaction') == transaction]
+                comment_store.hydration_checkpoint_view(rows, [], goal=number, issue_body_hash=issue_hash)
+                prefix = [row for row in index.comments if row.get('id', 0) <= checkpoint['observation']['last_id']]
+                if comment_store.comment_observation(prefix) == checkpoint['observation']:
+                    return None
+        bodies, checkpoint = comment_store.hydration_checkpoint_bodies(
+            number, issue_hash, index.comments, [envelope['payload']['hash']])
+        present = {row.get('body', '') for row in index.comments}
+        if all(body in present for body in bodies):
+            return None
+        identity = digest(checkpoint)
+        return {'kind': 'hydration_checkpoint', 'assignment': 'root', 'goal': number,
+                'action': 'Publish the prepared idempotent hydration checkpoint, then resume this goal.',
+                'checkpoint': identity, 'source_comments': len(index.comments), 'source_bytes': size,
+                'submission': {'operation': 'hydration_checkpoint', 'checkpoint': identity,
+                               'request_id': 'hydration-' + identity[7:23]}}
+
+    def publish_hydration_checkpoint(self, number, expected):
+        """Re-observe, preflight, append and verify one exact checkpoint transaction."""
+        issue = self.adapter.get_issue(number)
+        envelope = self.api.parse_managed_goal(issue.get('body', ''), number)
+        if not envelope or envelope.get('schema_version') != 2:
+            raise ValueError('Hydration checkpoints require a current schema v2 goal')
+        full_read = getattr(self.adapter, 'get_issue_comments_full', self.adapter.get_issue_comments)
+        comments = full_read(number)
+        existing_index = ObservedArtifactIndex(comments)
+        for record in existing_index.envelopes:
+            context = record.get('context') or {}
+            checkpoint = context.get('checkpoint') if context.get('kind') == 'hydration_checkpoint' else None
+            if isinstance(checkpoint, dict) and digest(checkpoint) == expected:
+                rows = [row for row, item in existing_index.envelope_comments if item.get('transaction') == expected]
+                comment_store.hydration_checkpoint_view(
+                    rows, [], goal=number, issue_body_hash=comment_store.text_hash(issue['body']))
+                return {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'checkpoint': expected,
+                                        'action': 'Hydration checkpoint is durable; resume the goal.'}]}
+        bodies, checkpoint = comment_store.hydration_checkpoint_bodies(
+            number, comment_store.text_hash(issue['body']), comments, [envelope['payload']['hash']])
+        identity = digest(checkpoint)
+        if identity != expected:
+            raise ValueError('Hydration checkpoint source changed; request a fresh checkpoint')
+        comment_store.preflight_comments(comments, bodies, checkpoint['required'])
+        present = {row.get('body', '') for row in comments}
+        for body in bodies:
+            if body in present:
+                continue
+            stored = self.adapter.create_issue_comment(number, body)
+            if stored.get('body') != body:
+                raise ValueError('Provider did not confirm the exact hydration checkpoint body')
+        confirmed = full_read(number)
+        expected_bodies = set(bodies)
+        rows = [row for row in confirmed if row.get('body') in expected_bodies]
+        comment_store.hydration_checkpoint_view(
+            rows, [], goal=number, issue_body_hash=comment_store.text_hash(issue['body']))
+        self.invalidate()
+        return {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'checkpoint': identity,
+                                'action': 'Hydration checkpoint is durable; resume the goal.'}]}
 
     def stage_artifact(self, number, content, base=None):
         self._referenced_artifacts.add((number, comment_store.digest(content)))
@@ -1638,6 +1757,9 @@ class Workflow:
         def load(n):
             if n in snapshots: return snapshots[n]
             issue = self.adapter.get_issue(n); issues[n] = issue
+            if not hasattr(self, '_issue_observations'):
+                self._issue_observations = {}
+            self._issue_observations[n] = copy.deepcopy(issue)
             envelope = prospective['envelope'] if prospective and n == number else self.api.parse_managed_goal(issue.get('body', ''), n)
             if not envelope: raise ValueError(f'Goal {n} has no readable identity envelope')
             if envelope['schema_version'] == 1:
@@ -4587,7 +4709,9 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
             return {'next_steps': [{'kind': 'blocker', 'assignment': 'root', 'goal': number,
                 'action': 'Repair this goal or one of its prerequisites before continuing.',
                 'findings': findings}]}
-        return {'next_steps': scoped_frontier(engine.step(number), engine, limit, number)}
+        steps = scoped_frontier(engine.step(number), engine, limit, number)
+        hydration = engine.hydration_checkpoint_candidate(number)
+        return {'next_steps': [hydration] if hydration is not None else steps}
     runnable_steps = []
     waiting_steps = []
     ordered_goals = api.effective_goal_order(goals, ordering_policy)
@@ -4737,6 +4861,13 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
     if payload is None or operation in {'read', 'heartbeat'}: engine.read_only()
     if operation == 'migration_batch':
         return api._migration_batch.run(engine, payload)
+    if operation == 'hydration_checkpoint':
+        if number is None or set(payload) != {'operation', 'checkpoint', 'request_id'}:
+            raise ValueError('Hydration checkpoint requires exact goal, checkpoint and request_id fields')
+        if not isinstance(payload.get('request_id'), str) or not payload['request_id']:
+            raise ValueError('Hydration checkpoint request_id is required')
+        with engine.locked():
+            return engine.publish_hydration_checkpoint(number, payload.get('checkpoint'))
     if intent == 'execute' and source == '$execute-zzzops' and operation not in {'read', 'recover', 'renew', 'heartbeat'}:
         if number is not None:
             # Schema administration consumes no stale task request or ownership.
