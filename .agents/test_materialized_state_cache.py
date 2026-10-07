@@ -20,9 +20,14 @@ class RestartedMaterializedStateTests(DagFixture):
 
     def setUp(self):
         super().setUp()
+        z._workflow._OBSERVED_ARTIFACT_INDEXES.clear()
+        self.addCleanup(z._workflow._OBSERVED_ARTIFACT_INDEXES.clear)
         self.cache_directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.cache_directory.cleanup)
-        environment = mock.patch.dict(os.environ, {"XDG_CACHE_HOME": self.cache_directory.name})
+        environment = mock.patch.dict(os.environ, {
+            "XDG_CACHE_HOME": self.cache_directory.name,
+            "LOCALAPPDATA": self.cache_directory.name,
+        })
         environment.start()
         self.addCleanup(environment.stop)
 
@@ -92,6 +97,7 @@ class RestartedMaterializedStateTests(DagFixture):
                     self.restart().call(100)
                 self.assertEqual(1, full.call_count)
                 self.provider.comments[100] = copy.deepcopy(original)
+        self._assert_pre_tail_edit_and_delete_are_bounded_by_periodic_complete_audit()
 
     def test_persisted_version_mismatch_is_a_safe_miss_without_naming_an_implementation_constant(self):
         self.publish_checkpoint(); self.session.call(100)
@@ -133,6 +139,51 @@ class RestartedMaterializedStateTests(DagFixture):
                 self.assertEqual(1, full.call_count,
                                  "ambiguous head cannot authorize absolute-state reuse")
         self.provider.get_issue_comment_tail = original_tail
+
+    def _assert_pre_tail_edit_and_delete_are_bounded_by_periodic_complete_audit(self):
+        stamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        first = max(row["id"] for row in self.provider.comments[100]) + 1
+        self.provider.comments[100].extend(
+            {"id": first + offset, "body": f"post-checkpoint retained {offset}",
+             "created_at": stamp, "updated_at": stamp}
+            for offset in range(120))
+        pristine = copy.deepcopy(self.provider.comments[100])
+        base = 2_000_000_000.0
+
+        for change in ("edit", "delete"):
+            with self.subTest(change=change):
+                self.provider.comments[100] = copy.deepcopy(pristine)
+                for path in Path(self.cache_directory.name).rglob("*"):
+                    if path.is_file(): path.unlink()
+                z._workflow._OBSERVED_ARTIFACT_INDEXES.clear()
+                with mock.patch.object(z._workflow.time, "time", return_value=base):
+                    self.restart().call(100)  # checkpoint is outside tail; complete audit seeds cache
+                cached = self.files()
+                self.assertTrue(cached)
+                tail_before = self.provider.get_issue_comment_tail(100)
+                historical = self.provider.comments[100][0]
+                if change == "edit": historical["body"] += " historical edit"
+                else: self.provider.comments[100].remove(historical)
+                self.assertEqual(tail_before, self.provider.get_issue_comment_tail(100),
+                                 "the compact provider head cannot see this historical change")
+
+                with mock.patch.object(z._workflow.time, "time",
+                                       return_value=base + z._workflow.HYDRATION_CHECKPOINT_MAX_AGE_SECONDS - 1), \
+                     mock.patch.object(self.provider, "get_issue_comments",
+                                       side_effect=AssertionError("bounded cache age permits reuse")):
+                    self.restart().call(100)
+                self.assertEqual(cached, self.files())
+
+                with mock.patch.object(z._workflow.time, "time",
+                                       return_value=base + z._workflow.HYDRATION_CHECKPOINT_MAX_AGE_SECONDS + 1), \
+                     mock.patch.object(self.provider, "get_issue_comments",
+                                       wraps=self.provider.get_issue_comments) as full:
+                    response = self.restart().call(100)
+                self.assertTrue(response["next_steps"])
+                self.assertEqual(1, full.call_count,
+                                 "expired compact evidence requires a complete historical audit")
+                self.assertNotEqual(cached, self.files(),
+                                    "stale absolute state must be replaced after the audit")
 
     def test_corrupt_or_ambiguous_derived_storage_is_a_safe_miss(self):
         self.publish_checkpoint()

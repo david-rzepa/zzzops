@@ -29,9 +29,14 @@ class Ledger:
 class PublicCliGithubCheckTests(DagFixture):
     def setUp(self):
         super().setUp()
+        z._workflow._OBSERVED_ARTIFACT_INDEXES.clear()
+        self.addCleanup(z._workflow._OBSERVED_ARTIFACT_INDEXES.clear)
         self.cache_directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.cache_directory.cleanup)
-        environment = mock.patch.dict(os.environ, {"XDG_CACHE_HOME": self.cache_directory.name})
+        environment = mock.patch.dict(os.environ, {
+            "XDG_CACHE_HOME": self.cache_directory.name,
+            "LOCALAPPDATA": self.cache_directory.name,
+        })
         environment.start(); self.addCleanup(environment.stop)
 
     def restart(self):
