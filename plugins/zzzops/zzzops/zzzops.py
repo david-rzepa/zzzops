@@ -847,6 +847,14 @@ class GitHubGoalTransitionAdapter:
         if not self.executable:
             raise GoalTransitionProviderError("GitHub CLI is unavailable; no goal update was made.")
         self._identity_checked = False
+        self.comment_read_counters = {}
+
+    def _record_comment_read(self, number: int, mode: str, stdout: str, comments: list[dict[str, Any]]) -> None:
+        current = self.comment_read_counters.setdefault(number, {'calls': 0, 'bytes': 0, 'comments': 0, 'modes': {}})
+        current['calls'] += 1
+        current['bytes'] += len(stdout.encode('utf-8'))
+        current['comments'] += len(comments)
+        current['modes'][mode] = current['modes'].get(mode, 0) + 1
 
     def _run(
         self, arguments: list[str], *, input_text: str | None = None, timeout: float | None = 30,
@@ -1013,7 +1021,9 @@ class GitHubGoalTransitionAdapter:
                 f"Complete comment-history read for goal #{number} was not confirmed: {exc} "
                 "Retry the same workflow request and lease; no partial history or ownership takeover is assumed."
             ) from exc
-        return self._comment_pages(result.stdout, number)
+        comments = self._comment_pages(result.stdout, number)
+        self._record_comment_read(number, 'full', result.stdout, comments)
+        return comments
 
     def get_issue_comments_since(self, number: int, since: str) -> list[dict[str, Any]]:
         """Read every comment updated at or after a checkpoint overlap marker."""
@@ -1032,7 +1042,9 @@ class GitHubGoalTransitionAdapter:
                 f"Incremental comment-history read for goal #{number} was not confirmed: {exc} "
                 "Fall back to a complete history read; no partial history is authoritative."
             ) from exc
-        return self._comment_pages(result.stdout, number)
+        comments = self._comment_pages(result.stdout, number)
+        self._record_comment_read(number, 'since', result.stdout, comments)
+        return comments
 
     def get_issue_comment_tail(self, number: int, limit: int = 100) -> list[dict[str, Any]]:
         """Read a bounded newest-first-discoverable tail for checkpoint activation."""
@@ -1061,6 +1073,7 @@ class GitHubGoalTransitionAdapter:
             identities = [row['id'] for row in comments]
             if identities != sorted(set(identities)):
                 raise TypeError
+            self._record_comment_read(number, 'tail', result.stdout, comments)
             return comments
         except (KeyError, TypeError, json.JSONDecodeError) as exc:
             raise GoalHistoryReadError(

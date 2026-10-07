@@ -474,12 +474,16 @@ def comment_observation(comments):
     }
 
 
-def hydration_checkpoint_bodies(goal, issue_body_hash, comments, required_hashes):
+def hydration_checkpoint_bodies(repository, goal, issue_body_hash, comments, required_hashes, *, generation=1):
     """Materialize a minimal current artifact closure from a complete observation."""
+    if not isinstance(repository, str) or not re.fullmatch(r'[^/\s]+/[^/\s]+', repository):
+        raise ValueError('Hydration checkpoint repository is invalid')
     if type(goal) is not int or goal <= 0:
         raise ValueError('Hydration checkpoint goal must be positive')
     if not isinstance(issue_body_hash, str) or not re.fullmatch(r'sha256:[0-9a-f]{64}', issue_body_hash):
         raise ValueError('Hydration checkpoint issue body hash is invalid')
+    if type(generation) is not int or generation < 1:
+        raise ValueError('Hydration checkpoint generation must be positive')
     required = list(required_hashes)
     if not required or len(required) != len(set(required)) or any(
             not isinstance(value, str) or not re.fullmatch(r'sha256:[0-9a-f]{64}', value)
@@ -513,6 +517,8 @@ def hydration_checkpoint_bodies(goal, issue_body_hash, comments, required_hashes
     observation = comment_observation(comments)
     checkpoint = {
         'schema_version': HYDRATION_CHECKPOINT_SCHEMA,
+        'generation': generation,
+        'repository': repository,
         'goal': goal,
         'issue_body_hash': issue_body_hash,
         'observation': observation,
@@ -529,7 +535,7 @@ def hydration_checkpoint_bodies(goal, issue_body_hash, comments, required_hashes
     return pack_envelopes(common, records), checkpoint
 
 
-def hydration_checkpoint_view(checkpoint_comments, later_comments, *, goal, issue_body_hash):
+def hydration_checkpoint_view(checkpoint_comments, later_comments, *, repository, goal, issue_body_hash):
     """Validate one checkpoint transaction and return its compact reader view."""
     index = ArtifactIndex(checkpoint_comments)
     candidates = [envelope for envelope in index.envelopes
@@ -543,6 +549,8 @@ def hydration_checkpoint_view(checkpoint_comments, later_comments, *, goal, issu
     verify_manifest(selected)
     checkpoint = (selected[0].get('context') or {}).get('checkpoint')
     if (not isinstance(checkpoint, dict) or checkpoint.get('schema_version') != HYDRATION_CHECKPOINT_SCHEMA
+            or type(checkpoint.get('generation')) is not int or checkpoint['generation'] < 1
+            or checkpoint.get('repository') != repository
             or checkpoint.get('goal') != goal or checkpoint.get('issue_body_hash') != issue_body_hash
             or checkpoint.get('codec') != {'envelope': 2, 'checkpoint': HYDRATION_CHECKPOINT_SCHEMA}
             or not isinstance(checkpoint.get('observation'), dict)

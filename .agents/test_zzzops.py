@@ -4560,6 +4560,8 @@ class GoalTransitionTests(unittest.TestCase):
         adapter = zzzops.GitHubGoalTransitionAdapter(Path.cwd(), "owner/repo")
 
         self.assertEqual([comment], adapter.get_issue_comments_since(42, "2026-01-01T23:59:59Z"))
+        self.assertEqual({"calls": 1, "bytes": len(json.dumps([[comment]]).encode()), "comments": 1,
+                          "modes": {"since": 1}}, adapter.comment_read_counters[42])
         self.assertEqual(
             ["gh", "api", "--paginate", "--slurp",
              "repos/owner/repo/issues/42/comments?per_page=100&since=2026-01-01T23:59:59Z"],
@@ -4583,6 +4585,7 @@ class GoalTransitionTests(unittest.TestCase):
 
         self.assertEqual([{"id": 9, "body": "checkpoint", "created_at": "2026-01-01T00:00:00Z",
                            "updated_at": "2026-01-01T00:00:00Z"}], adapter.get_issue_comment_tail(42))
+        self.assertEqual({"tail": 1}, adapter.comment_read_counters[42]["modes"])
         command = run.call_args_list[1].args[0]
         self.assertEqual(["gh", "api", "graphql"], command[:3])
         self.assertIn("number=42", command)

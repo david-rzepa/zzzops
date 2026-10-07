@@ -561,7 +561,8 @@ class Workflow:
                         if age < 0 or age > HYDRATION_CHECKPOINT_MAX_AGE_SECONDS or len(later) > HYDRATION_CHECKPOINT_MAX_LATER_COMMENTS:
                             continue
                         comments = comment_store.hydration_checkpoint_view(
-                            rows, later, goal=number, issue_body_hash=comment_store.text_hash(issue['body']))[0]
+                            rows, later, repository=self.repository, goal=number,
+                            issue_body_hash=comment_store.text_hash(issue['body']))[0]
                         break
                 except (ValueError, KeyError, TypeError):
                     comments = None
@@ -592,20 +593,44 @@ class Workflow:
         if not envelope or envelope.get('schema_version') != 2:
             return None
         issue_hash = comment_store.text_hash(issue['body'])
+        generation = 1
         for record in index.envelopes:
             context = record.get('context') or {}
             checkpoint = context.get('checkpoint') if context.get('kind') == 'hydration_checkpoint' else None
             if (isinstance(checkpoint, dict) and checkpoint.get('goal') == number
                     and checkpoint.get('issue_body_hash') == issue_hash
                     and envelope['payload']['hash'] in checkpoint.get('required', [])):
+                generation = max(generation, checkpoint.get('generation', 0) + 1)
                 transaction = record.get('transaction')
                 rows = [row for row, item in index.envelope_comments if item.get('transaction') == transaction]
-                comment_store.hydration_checkpoint_view(rows, [], goal=number, issue_body_hash=issue_hash)
+                comment_store.hydration_checkpoint_view(
+                    rows, [], repository=self.repository, goal=number, issue_body_hash=issue_hash)
                 prefix = [row for row in index.comments if row.get('id', 0) <= checkpoint['observation']['last_id']]
                 if comment_store.comment_observation(prefix) == checkpoint['observation']:
-                    return None
-        bodies, checkpoint = comment_store.hydration_checkpoint_bodies(
-            number, issue_hash, index.comments, [envelope['payload']['hash']])
+                    created = max((row.get('created_at') or '' for row in rows), default='')
+                    if not created:
+                        return None
+                    try:
+                        age = time.time() - datetime.fromisoformat(created.replace('Z', '+00:00')).timestamp()
+                    except (TypeError, ValueError):
+                        age = HYDRATION_CHECKPOINT_MAX_AGE_SECONDS + 1
+                    if 0 <= age <= HYDRATION_CHECKPOINT_MAX_AGE_SECONDS:
+                        return None
+        try:
+            bodies, checkpoint = comment_store.hydration_checkpoint_bodies(
+                self.repository, number, issue_hash, index.comments, [envelope['payload']['hash']],
+                generation=generation)
+        except ValueError as exc:
+            # Checkpointing is an optimization. Histories whose live closure
+            # cannot fit the bounded checkpoint format must continue through
+            # the verified full-hydration path instead of blocking execution.
+            if str(exc) in {
+                'Transaction artifact record limit exceeded',
+                'Transaction reconstruction work limit exceeded',
+                'Artifact cannot be split within the provider comment contract; use a published Git content reference',
+            }:
+                return None
+            raise
         present = {row.get('body', '') for row in index.comments}
         if all(body in present for body in bodies):
             return None
@@ -625,17 +650,23 @@ class Workflow:
         full_read = getattr(self.adapter, 'get_issue_comments_full', self.adapter.get_issue_comments)
         comments = full_read(number)
         existing_index = ObservedArtifactIndex(comments)
+        generation = 1
         for record in existing_index.envelopes:
             context = record.get('context') or {}
             checkpoint = context.get('checkpoint') if context.get('kind') == 'hydration_checkpoint' else None
             if isinstance(checkpoint, dict) and digest(checkpoint) == expected:
                 rows = [row for row, item in existing_index.envelope_comments if item.get('transaction') == expected]
                 comment_store.hydration_checkpoint_view(
-                    rows, [], goal=number, issue_body_hash=comment_store.text_hash(issue['body']))
+                    rows, [], repository=self.repository, goal=number,
+                    issue_body_hash=comment_store.text_hash(issue['body']))
                 return {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'checkpoint': expected,
                                         'action': 'Hydration checkpoint is durable; resume the goal.'}]}
+            if isinstance(checkpoint, dict) and checkpoint.get('goal') == number:
+                generation = max(generation, checkpoint.get('generation', 0) + 1)
         bodies, checkpoint = comment_store.hydration_checkpoint_bodies(
-            number, comment_store.text_hash(issue['body']), comments, [envelope['payload']['hash']])
+            self.repository, number, comment_store.text_hash(issue['body']), comments,
+            [envelope['payload']['hash']],
+            generation=generation)
         identity = digest(checkpoint)
         if identity != expected:
             raise ValueError('Hydration checkpoint source changed; request a fresh checkpoint')
@@ -651,7 +682,8 @@ class Workflow:
         expected_bodies = set(bodies)
         rows = [row for row in confirmed if row.get('body') in expected_bodies]
         comment_store.hydration_checkpoint_view(
-            rows, [], goal=number, issue_body_hash=comment_store.text_hash(issue['body']))
+            rows, [], repository=self.repository, goal=number,
+            issue_body_hash=comment_store.text_hash(issue['body']))
         self.invalidate()
         return {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'checkpoint': identity,
                                 'action': 'Hydration checkpoint is durable; resume the goal.'}]}
@@ -4711,7 +4743,12 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
                 'findings': findings}]}
         steps = scoped_frontier(engine.step(number), engine, limit, number)
         hydration = engine.hydration_checkpoint_candidate(number)
-        return {'next_steps': [hydration] if hydration is not None else steps}
+        if hydration is None:
+            return {'next_steps': steps}
+        semantic_blockers = {'blocker', 'blocked', 'dependency', 'await_worker', 'repair'}
+        if any(step.get('kind') in semantic_blockers for step in steps):
+            return {'next_steps': steps + [hydration]}
+        return {'next_steps': [hydration]}
     runnable_steps = []
     waiting_steps = []
     ordered_goals = api.effective_goal_order(goals, ordering_policy)
