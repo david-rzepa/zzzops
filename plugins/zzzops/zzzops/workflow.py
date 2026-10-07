@@ -19,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
 import zzzops_comment_store as comment_store
+import zzzops_state_cache as state_cache
 
 
 _OBSERVED_ARTIFACT_INDEXES = {}
@@ -27,6 +28,19 @@ HYDRATION_CHECKPOINT_MIN_COMMENTS = 32
 HYDRATION_CHECKPOINT_MIN_BYTES = 262144
 HYDRATION_CHECKPOINT_MAX_AGE_SECONDS = 86400
 HYDRATION_CHECKPOINT_MAX_LATER_COMMENTS = 32
+
+
+def materialized_state_contract():
+    """Exact decoder/reconstruction semantics bound into derived cache identity."""
+    return {
+        'envelope_codec': 2,
+        'hydration_checkpoint_schema': comment_store.HYDRATION_CHECKPOINT_SCHEMA,
+        'max_artifact_bytes': comment_store.MAX_ARTIFACT_BYTES,
+        'max_delta_depth': comment_store.MAX_DELTA_DEPTH,
+        'max_reconstruction_work_bytes': comment_store.MAX_RECONSTRUCTION_WORK_BYTES,
+        'max_artifact_records': comment_store.MAX_ARTIFACT_RECORDS,
+        'max_history_bytes': comment_store.MAX_HISTORY_BYTES,
+    }
 
 
 class ObservedArtifactIndex(comment_store.ArtifactIndex):
@@ -415,7 +429,13 @@ class ProviderReadGateway:
 
     def get_issue(self, number):
         engine = self.engine
-        return engine.api.provider_issue_snapshot(engine.repo, engine.repository, number)
+        cache = getattr(engine, '_provider_issue_cache', None)
+        if cache is None:
+            cache = engine._provider_issue_cache = {}
+        if number not in cache:
+            cache[number] = engine.api.provider_issue_snapshot(
+                engine.repo, engine.repository, number)
+        return copy.deepcopy(cache[number])
 
 
 class Workflow:
@@ -460,6 +480,7 @@ class Workflow:
         self._read_cache = {}
         self._portfolio_cache = None
         self._artifact_indexes = {}
+        self._provider_issue_cache = {}
 
     def read(self, number):
         if number not in self._read_cache:
@@ -531,6 +552,10 @@ class Workflow:
             key = (str(self.repo.resolve()), self.repository, number)
             previous = _OBSERVED_ARTIFACT_INDEXES.get(key)
             comments = None
+            provider_comments = None
+            cache_head = None
+            cached = None
+            complete_audit = None
             issue = getattr(self, '_issue_observations', {}).get(number)
             tail_reader = getattr(self.adapter, 'get_issue_comment_tail', None)
             if issue is None and callable(tail_reader):
@@ -538,7 +563,69 @@ class Workflow:
             if issue is not None and callable(tail_reader):
                 try:
                     envelope = self.api.parse_managed_goal(issue.get('body', ''), number)
+                    issue_hash = comment_store.text_hash(issue['body'])
                     tail = tail_reader(number)
+                    contract = materialized_state_contract()
+                    cached = state_cache.load(self.repository, number, issue_hash, contract)
+                    if cached is None and state_cache.requires_full_read(
+                            self.repository, number, issue_hash, contract):
+                        raise ValueError('materialized state is stale or unreadable')
+                    if cached is not None:
+                        audit_age = time.time() - cached['last_complete_audit']
+                        if audit_age < 0 or audit_age > HYDRATION_CHECKPOINT_MAX_AGE_SECONDS:
+                            raise ValueError('materialized state complete audit is stale')
+                    cache_head, suffix = (state_cache.classify_head(cached['provider_head'], tail)
+                                          if cached is not None else (None, []))
+                    if cache_head == 'exact':
+                        comments = cached['materialized_comments']
+                        provider_comments = tail
+                    elif cache_head == 'append':
+                        marker = cached['provider_head'][-1].get('updated_at')
+                        since_reader = getattr(self.adapter, 'get_issue_comments_since', None)
+                        if marker and callable(since_reader):
+                            incremental = since_reader(number, marker)
+                            if state_cache.head(incremental) is None:
+                                raise ValueError('incremental materialized state suffix is ambiguous')
+                            prior = {row['id']: row for row in cached['provider_head']}
+                            observed_incremental = state_cache.head(incremental)
+                            for row in observed_incremental:
+                                if (row['id'] in prior and
+                                        row['body_hash'] != prior[row['id']]['body_hash']):
+                                    raise ValueError('incremental materialized state changed cached history')
+                            last_cached = cached['provider_head'][-1]['id']
+                            suffix = [row for row in incremental if row['id'] > last_cached]
+                            tail_suffix_ids = {row['id'] for row in tail if row['id'] > last_cached}
+                            if not suffix or not tail_suffix_ids.issubset({row['id'] for row in suffix}):
+                                raise ValueError('incremental materialized state suffix is incomplete')
+                        checkpoint_rows, checkpoint_ids, checkpoint_last = [], set(), None
+                        transaction = None
+                        for row in cached['materialized_comments']:
+                            envelope = comment_store.decode_envelope(row.get('body', ''))
+                            context = (envelope or {}).get('context') or {}
+                            checkpoint = context.get('checkpoint') if context.get('kind') == 'hydration_checkpoint' else None
+                            if isinstance(checkpoint, dict):
+                                transaction = envelope.get('transaction')
+                                checkpoint_last = checkpoint.get('observation', {}).get('last_id')
+                                break
+                        if transaction is None or type(checkpoint_last) is not int:
+                            raise ValueError('cached materialized state lacks its checkpoint binding')
+                        for row in cached['materialized_comments']:
+                            envelope = comment_store.decode_envelope(row.get('body', ''))
+                            if (envelope or {}).get('transaction') == transaction:
+                                checkpoint_rows.append(row); checkpoint_ids.add(row.get('id'))
+                        later = [row for row in cached['materialized_comments']
+                                 if row.get('id', 0) > checkpoint_last and row.get('id') not in checkpoint_ids]
+                        retained_ids = {row.get('id') for row in later}
+                        later.extend(row for row in suffix if row.get('id') not in retained_ids)
+                        comments = comment_store.hydration_checkpoint_view(
+                            checkpoint_rows, later, repository=self.repository, goal=number,
+                            issue_body_hash=issue_hash)[0]
+                        provider_comments = tail
+                    elif cache_head in {'changed', 'invalid'}:
+                        # A compact observation that is not a strict append may
+                        # represent an edit, deletion, reorder, or ambiguity.
+                        # Only a complete provider read can safely replace it.
+                        raise ValueError('materialized state head changed')
                     discovered = ObservedArtifactIndex(tail)
                     candidates = []
                     for row, record in discovered.envelope_comments:
@@ -548,7 +635,7 @@ class Workflow:
                                 and checkpoint.get('issue_body_hash') == comment_store.text_hash(issue['body'])
                                 and envelope and envelope.get('payload', {}).get('hash') in checkpoint.get('required', [])):
                             candidates.append((row['id'], record.get('transaction'), checkpoint))
-                    for _, transaction, checkpoint in sorted(candidates, reverse=True):
+                    for _, transaction, checkpoint in sorted(candidates, reverse=True) if comments is None else []:
                         rows = [row for row, record in discovered.envelope_comments
                                 if record.get('transaction') == transaction]
                         ids = {row['id'] for row in rows}
@@ -563,11 +650,14 @@ class Workflow:
                         comments = comment_store.hydration_checkpoint_view(
                             rows, later, repository=self.repository, goal=number,
                             issue_body_hash=comment_store.text_hash(issue['body']))[0]
+                        provider_comments = tail
                         break
                 except (ValueError, KeyError, TypeError, self.api.GoalHistoryReadError):
                     comments = None
             if comments is None:
                 comments = self.adapter.get_issue_comments(number)
+                provider_comments = comments
+                complete_audit = time.time()
             limits = (comment_store.MAX_ARTIFACT_BYTES, comment_store.MAX_DELTA_DEPTH,
                       comment_store.MAX_RECONSTRUCTION_WORK_BYTES, comment_store.MAX_ARTIFACT_RECORDS)
             # Reuse only an exact fresh provider observation with no locally
@@ -576,6 +666,11 @@ class Workflow:
                         and previous.comments == comments
                         and all(value is None for value in previous.records.values()))
             observed = previous if reusable else ObservedArtifactIndex(comments, previous=previous)
+            observed._materialized_state_cache = cache_head in {'exact', 'append'}
+            if issue is not None and provider_comments is not None:
+                state_cache.store(self.repository, number, comment_store.text_hash(issue['body']),
+                                  provider_comments, observed.comments, materialized_state_contract(),
+                                  complete_audit or (cached or {}).get('last_complete_audit'))
             self._artifact_indexes[number] = observed
             if key not in _OBSERVED_ARTIFACT_INDEXES and len(_OBSERVED_ARTIFACT_INDEXES) >= 4:
                 _OBSERVED_ARTIFACT_INDEXES.pop(next(iter(_OBSERVED_ARTIFACT_INDEXES)))
@@ -585,6 +680,8 @@ class Workflow:
     def hydration_checkpoint_candidate(self, number):
         """Prepare an idempotent compact checkpoint after an expensive full read."""
         index = self.artifact_index(number)
+        if getattr(index, '_materialized_state_cache', False):
+            return None
         size = sum(len(row.get('body', '').encode('utf-8')) for row in index.comments)
         if len(index.comments) < HYDRATION_CHECKPOINT_MIN_COMMENTS and size < HYDRATION_CHECKPOINT_MIN_BYTES:
             return None
@@ -650,6 +747,18 @@ class Workflow:
         full_read = getattr(self.adapter, 'get_issue_comments_full', self.adapter.get_issue_comments)
         comments = full_read(number)
         existing_index = ObservedArtifactIndex(comments)
+        issue_hash = comment_store.text_hash(issue['body'])
+        def cache_complete(source, checkpoint, transaction):
+            source_index = ObservedArtifactIndex(source)
+            rows = [row for row, item in source_index.envelope_comments
+                    if item.get('transaction') == transaction]
+            row_ids = {row.get('id') for row in rows}
+            last_id = checkpoint['observation']['last_id']
+            later = [row for row in source if row.get('id', 0) > last_id and row.get('id') not in row_ids]
+            materialized = comment_store.hydration_checkpoint_view(
+                rows, later, repository=self.repository, goal=number, issue_body_hash=issue_hash)[0]
+            state_cache.store(self.repository, number, issue_hash, source, materialized,
+                              materialized_state_contract(), time.time())
         generation = 1
         for record in existing_index.envelopes:
             context = record.get('context') or {}
@@ -659,6 +768,7 @@ class Workflow:
                 comment_store.hydration_checkpoint_view(
                     rows, [], repository=self.repository, goal=number,
                     issue_body_hash=comment_store.text_hash(issue['body']))
+                cache_complete(comments, checkpoint, expected)
                 return {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'checkpoint': expected,
                                         'action': 'Hydration checkpoint is durable; resume the goal.'}]}
             if isinstance(checkpoint, dict) and checkpoint.get('goal') == number:
@@ -684,6 +794,7 @@ class Workflow:
         comment_store.hydration_checkpoint_view(
             rows, [], repository=self.repository, goal=number,
             issue_body_hash=comment_store.text_hash(issue['body']))
+        cache_complete(confirmed, checkpoint, identity)
         self.invalidate()
         return {'next_steps': [{'kind': 'checkpoint', 'goal': number, 'checkpoint': identity,
                                 'action': 'Hydration checkpoint is durable; resume the goal.'}]}
@@ -4895,6 +5006,85 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         if freshness['stale']:
             return {'next_steps': [{'kind': 'policy_review', 'assignment': 'root', 'action': 'Review policy tier mappings for newly discovered model/effort pairs before proceeding.', 'added': freshness['added'], 'submission': {'operation': 'policy_propose', 'plan': '<updated reviewed policy plan>'}}]}
     engine = Workflow(api, repo, project, runtime)
+    if payload is not None and operation not in {'read', 'heartbeat', 'renew'}:
+        original_issue = engine._mutation_adapter.get_issue
+        original_comments = engine._mutation_adapter.get_issue_comments
+        read_cache = {'issues': {}, 'comments': {}}
+        def cached_issue(target):
+            if target not in read_cache['issues']:
+                read_cache['issues'][target] = original_issue(target)
+            return copy.deepcopy(read_cache['issues'][target])
+        def cached_comments(target):
+            if target not in read_cache['comments']:
+                read_cache['comments'][target] = original_comments(target)
+            return copy.deepcopy(read_cache['comments'][target])
+        engine._mutation_adapter.get_issue = cached_issue
+        engine._mutation_adapter.get_issue_comments = cached_comments
+        # Derived and invocation-local observations accelerate reads only.  A
+        # write gets a complete, ordered authority boundary immediately before
+        # every provider mutation, including a second write in one transaction.
+        def fresh_mutation_boundary(target):
+            current_package = api._package.package_status()
+            if not current_package.get('ok'):
+                raise ValueError('Repair or reinstall the invalid ZzzOps package')
+            current_gate = api.workflow_context_step(
+                repo, current_package, skip_installation_validation=skip_installation_validation)
+            if current_gate:
+                raise ValueError('Repository context changed before provider mutation')
+            current_provenance = {field: current_package.get(field) for field in ('version', 'revision')}
+            current_installation = (api._installation.validation_status(repo, current_provenance)
+                                    if all(isinstance(value, str) for value in current_provenance.values())
+                                    else {'required': False})
+            if current_installation.get('required') and not skip_installation_validation:
+                raise ValueError('Installation validation changed before provider mutation')
+            current_project = api.reviewed_project_state(repo)
+            if digest(current_project) != digest(project):
+                raise ValueError('Reviewed policy changed before provider mutation')
+            reservation = getattr(engine, '_storage_reservation', None)
+            if not isinstance(reservation, dict) or not reservation.get('valid'):
+                raise ValueError('A current workflow storage reservation is required before provider mutation')
+            resource_reader = getattr(reservation['adapter'], 'get_label', None)
+            if not callable(resource_reader):
+                if reservation.get('expires_at', 0) <= time.time():
+                    reservation['valid'] = False
+                    raise ValueError('Provider did not confirm targeted storage ownership before mutation')
+                resource = None
+                ownership = {'repository_key': api.reservation_repository_key(engine.repository),
+                             'key': 'workflow', 'owner': reservation['owner'],
+                             'run_id': reservation['run'], 'expires_at': reservation['expires_at']}
+            else:
+                resource = resource_reader(api.storage_lock_label_name('workflow'))
+                try:
+                    ownership = api.parse_storage_lock_description((resource or {}).get('description'))
+                except (ValueError, TypeError):
+                    reservation['valid'] = False
+                    raise ValueError('Provider did not confirm targeted storage ownership before mutation')
+            if (ownership.get('repository_key') != api.reservation_repository_key(engine.repository)
+                    or ownership.get('key') != 'workflow'
+                    or ownership.get('owner') != reservation['owner']
+                    or ownership.get('run_id') != reservation['run']
+                    or ownership.get('expires_at', 0) <= time.time()):
+                reservation['valid'] = False
+                raise ValueError('Provider did not confirm targeted storage ownership before mutation')
+            reservation['expires_at'] = ownership['expires_at']
+            if hasattr(api, 'invalidate_provider_reads'):
+                api.invalidate_provider_reads(repo, engine.repository)
+            api.provider_issue_snapshot(repo, engine.repository, target)
+            # A complete history read preserves provider uncertainty semantics;
+            # cached materialization never authorizes a write.
+            original_comments(target)
+        originals = {'get_issue': original_issue, 'get_issue_comments': original_comments}
+        for method_name in ('create_issue_comment', 'update_issue'):
+            original = getattr(engine._mutation_adapter, method_name)
+            originals[method_name] = original
+            def guarded(*args, _original=original, **kwargs):
+                target = args[0] if args else kwargs.get('number')
+                fresh_mutation_boundary(target)
+                result = _original(*args, **kwargs)
+                read_cache['issues'].clear(); read_cache['comments'].clear()
+                return result
+            setattr(engine._mutation_adapter, method_name, guarded)
+        api._guarded_mutations = getattr(api, '_guarded_mutations', []) + [(engine._mutation_adapter, originals)]
     if payload is None or operation in {'read', 'heartbeat'}: engine.read_only()
     if operation == 'migration_batch':
         return api._migration_batch.run(engine, payload)
@@ -5074,6 +5264,10 @@ def public_run(api, repo, intent, source, runtime, payload, number, *, skip_inst
                                     skip_installation_validation=skip_installation_validation,
                                     payload_supplied=payload_supplied)
     finally:
+        for adapter, originals in reversed(getattr(api, '_guarded_mutations', [])):
+            for method_name, original in originals.items():
+                setattr(adapter, method_name, original)
+        api._guarded_mutations = []
         if previous is None: del api.operation_budget
         else: api.operation_budget = previous
 

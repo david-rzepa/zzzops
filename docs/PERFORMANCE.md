@@ -16,6 +16,29 @@ Deterministic fixtures require a valid initialized checkpoint's reported decisio
 
 Agents still perform one targeted concurrency re-read before mutating the selected goal.
 
+## Materialized goal-state cache
+
+After a successful authoritative history read, ZzzOps may retain private derived
+state in the user's platform cache directory. The entry is partitioned by
+repository, goal, and issue-body hash, and records explicit schema and reducer
+versions. A resumed invocation still obtains one compact comment-head
+observation. An exact head reuses the materialized state without replaying
+deltas; a strict overlapping append fetches and folds the exact suffix once,
+even when the checkpoint has moved beyond the provider's 100-comment tail. Edits, deletions,
+duplicate or unordered identities, issue-body changes, version drift, corrupt
+storage, and failed or partial reads force a complete provider read. Cache
+writes are atomic and best-effort, and cache contents never authorize a remote
+mutation. Each entry retains the time of its last successful complete provider
+history audit. Tail and suffix reads preserve that time. Once the shared
+checkpoint-age bound expires, ZzzOps completes another full read before reuse
+and refreshes the audit time only after that read succeeds.
+
+Deterministic provider ledgers cover cold, warm, resumed, advancing, failure,
+retry, and write paths. Every provider write retains fresh ordered checks for
+installation, repository context, reviewed policy, targeted storage ownership, current target,
+complete history, and provider uncertainty. These checks deliberately occur
+again between two writes in the same transaction.
+
 ## Opt-in timing diagnostics
 
 ### Verification-suite efficiency
