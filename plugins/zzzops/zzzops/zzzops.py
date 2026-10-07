@@ -66,6 +66,11 @@ assert _COMMENT_STORE_SPEC and _COMMENT_STORE_SPEC.loader
 _comment_store = importlib.util.module_from_spec(_COMMENT_STORE_SPEC)
 sys.modules[_COMMENT_STORE_SPEC.name] = _comment_store
 _COMMENT_STORE_SPEC.loader.exec_module(_comment_store)
+_STATE_CACHE_SPEC = importlib.util.spec_from_file_location("zzzops_state_cache", Path(__file__).with_name("state_cache.py"))
+assert _STATE_CACHE_SPEC and _STATE_CACHE_SPEC.loader
+_state_cache = importlib.util.module_from_spec(_STATE_CACHE_SPEC)
+sys.modules[_STATE_CACHE_SPEC.name] = _state_cache
+_STATE_CACHE_SPEC.loader.exec_module(_state_cache)
 
 _PACKAGE_MODULE_PATH = Path(__file__).with_name("package.py")
 _PACKAGE_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_package", _PACKAGE_MODULE_PATH)
