@@ -74,8 +74,9 @@ class RestartedMaterializedStateTests(DagFixture):
 
         other = self.restart()
         other.project["repository"] = "other/repo"
-        with self.assertRaises(ValueError):
-            other.call(100)
+        rejected = other.call(100, expected=2)
+        self.assertEqual("repair", rejected["next_steps"][0]["kind"])
+        self.assertRegex(str(rejected["next_steps"][0]), "(?i)repository|identity")
 
     def test_edit_and_delete_invalidate_before_reuse(self):
         self.publish_checkpoint()

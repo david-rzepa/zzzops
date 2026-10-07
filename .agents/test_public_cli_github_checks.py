@@ -107,6 +107,44 @@ class PublicCliGithubCheckTests(DagFixture):
             complete, _ = self.observe(self.restart())
         self.assertEqual(complete["next_steps"], incremental["next_steps"])
 
+    def test_append_with_checkpoint_outside_tail_uses_overlap_and_suffix_only(self):
+        self.publish_checkpoint()
+        stamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        next_id = max(row["id"] for row in self.provider.comments[100]) + 1
+        # Cache a head with comments after the checkpoint. A later 85-comment
+        # append pushes the checkpoint outside a 100-comment tail while leaving
+        # fifteen exact cached provider identities as append proof.
+        self.provider.comments[100].extend(
+            {"id": next_id + offset, "body": f"pre-overlap {offset}",
+             "created_at": stamp, "updated_at": stamp}
+            for offset in range(20))
+        self.observe(self.restart())
+        cached_last = max(row["id"] for row in self.provider.comments[100])
+        self.provider.comments[100].extend(
+            {"id": cached_last + offset + 1, "body": f"strict append {offset}",
+             "created_at": stamp, "updated_at": stamp}
+            for offset in range(85))
+        tail = self.provider.get_issue_comment_tail(100)
+        self.assertEqual(100, len(tail))
+        self.assertFalse(any("hydration_checkpoint" in row["body"] for row in tail))
+        self.assertTrue(any(row["id"] <= cached_last for row in tail), "tail retains cached overlap")
+
+        suffix = mock.Mock(side_effect=lambda number, since: [
+            copy.deepcopy(row) for row in self.provider.comments[number]
+            if row["id"] > cached_last])
+        self.provider.get_issue_comments_since = suffix
+        with mock.patch.object(self.provider, "get_issue_comments",
+                               wraps=self.provider.get_issue_comments) as full:
+            incremental = self.restart().call(100)
+        self.assertEqual(1, suffix.call_count)
+        self.assertEqual(0, full.call_count)
+        self.assertTrue(incremental["next_steps"])
+
+        with tempfile.TemporaryDirectory() as empty, mock.patch.dict(
+                os.environ, {"XDG_CACHE_HOME": empty}):
+            complete, _ = self.observe(self.restart())
+        self.assertEqual(complete["next_steps"], incremental["next_steps"])
+
     def direct_public_mutation(self, payload, ledger):
         """Call the production public dispatcher with observable external gates."""
         session = self.session
