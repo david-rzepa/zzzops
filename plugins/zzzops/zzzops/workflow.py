@@ -4883,6 +4883,16 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
         if blocked:
             waiting_steps.append({'kind': 'dependency', 'assignment': 'root', 'goal': goal['key'], 'action': 'Complete or repair the prerequisite goals.', 'dependencies': [g['key'] for g in blocked]})
             continue
+        if goal.get('schema_version') != 2:
+            # Broad routing may convert the one goal it actually selected, but
+            # must never turn schema conversion into a repository-wide sweep.
+            result = api._migration_batch.run(engine, {'action': 'migrate', 'goals': [goal['key']]})
+            member = result['next_steps'][0]['members'][str(goal['key'])]
+            if member['status'] in {'migrated', 'already_current'}:
+                return {'next_steps': member['next_steps']}
+            return {'next_steps': [{'kind': 'blocker', 'goal': goal['key'],
+                'reason': member.get('reason', member['status']),
+                'remediation': member.get('remediation')}]}
         partition(engine.step(goal['key']), runnable_steps, waiting_steps)
         if len(runnable_steps) >= limit:
             break
@@ -5111,10 +5121,6 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 raise
             except (ValueError, KeyError, OSError) as exc:
                 return {'next_steps': [{'kind': 'blocker', 'goal': number, 'reason': str(exc), 'remediation': api._migration_batch.remediation(number, str(exc))}]}
-        elif payload is None:
-            discovered = api._migration_batch.run(engine, {'action': 'discover'})['next_steps'][0]
-            if discovered['goals'] or discovered.get('remaining'):
-                return api._migration_batch.run(engine, {'action': 'migrate', 'limit': api._migration_batch.MAX_MEMBERS})
     if operation not in {'read', 'renew'}: engine.portfolio(allow_invalid=True)
     if operation == 'read' and number is not None:
         artifact = payload.get('artifact')

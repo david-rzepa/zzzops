@@ -1,6 +1,7 @@
 """Automatic lossless migration through public dispatch; external boundaries only."""
 import copy
 import json
+import sys
 from pathlib import Path
 from unittest import mock
 
@@ -47,6 +48,14 @@ class BatchConversionTests(dag.DagFixture):
     def batch(self, action, *, expected=0, **fields):
         response = self.session.call(100, {'operation': 'migration_batch', 'action': action, **fields}, expected=expected)
         return response['next_steps'][0]
+
+    def broad(self):
+        main = dag.z.main
+        def without_goal():
+            args = list(sys.argv); offset = args.index('--goal'); del args[offset:offset + 2]
+            with mock.patch.object(sys, 'argv', args): return main()
+        with mock.patch.object(dag.z, 'main', side_effect=without_goal):
+            return self.session.call(100)
 
     def migrate(self, numbers=(100, 101)):
         return self.batch('migrate', goals=list(numbers))
@@ -350,7 +359,7 @@ class BatchConversionTests(dag.DagFixture):
         response = self.session.call(100)
         self.assert_preserved(100)
         steps = response['next_steps']
-        self.assertTrue(any(s.get('kind') == 'execute' and s.get('node', {}).get('node') == 'understand' for s in steps))
+        self.assertTrue(any(s.get('kind') == 'execute' and s.get('node', {}).get('node') == 'requirements' for s in steps))
         self.assertFalse(any('conversion_approval' in str(s.get('node')) for s in steps))
         self.assertEqual(self.originals[101], self.provider.issues[101])
 
@@ -668,21 +677,72 @@ class BatchConversionTests(dag.DagFixture):
         self.assertNotIn(101, reads); self.assertNotIn(102, reads); self.assertNotIn(103, reads)
         self.assertEqual(self.originals[101], self.provider.issues[101])
 
-    def test_broad_execute_encounters_open_v1_without_hydrating_closed(self):
-        import sys
+    def test_broad_execute_migrates_only_the_selected_v1_goal(self):
         self.add(102, state='closed')
-        main = dag.z.main
-        def without_goal():
-            args = list(sys.argv); offset = args.index('--goal'); del args[offset:offset + 2]
-            with mock.patch.object(sys, 'argv', args): return main()
-        read = self.provider.get_issue
-        def open_only(n):
-            self.assertNotEqual(102, n, 'Broad execute must not hydrate a closed goal')
-            return read(n)
-        with mock.patch.object(dag.z, 'main', side_effect=without_goal), mock.patch.object(self.provider, 'get_issue', side_effect=open_only):
-            self.session.call(100)
-        for n in (100, 101): self.assert_preserved(n)
-        self.assertEqual(self.originals[102], self.provider.issues[102])
+        untouched = copy.deepcopy({n: (self.provider.issues[n], self.provider.comments[n]) for n in (101, 102)})
+        with mock.patch.object(dag.z._migration_batch, 'run', wraps=dag.z._migration_batch.run) as migration, \
+                mock.patch.object(self.provider, 'update_issue', wraps=self.provider.update_issue) as updates:
+            response = self.broad()
+        self.assertEqual(1, migration.call_count)
+        self.assertEqual({'action': 'migrate', 'goals': [100]}, migration.call_args.args[1])
+        self.assertEqual(1, updates.call_count)
+        self.assert_preserved(100)
+        self.assertEqual(untouched, {n: (self.provider.issues[n], self.provider.comments[n]) for n in (101, 102)})
+        self.assertFalse(any(step.get('kind') == 'migration_batch' for step in response['next_steps']))
+
+    def test_broad_execute_selected_v2_skips_all_migration_work(self):
+        self.legacy_fields(100, priority='P0')
+        for label in self.provider.issues[100]['labels']:
+            if label['name'].startswith('zzzops:priority:'):
+                label['name'] = 'zzzops:priority:P0'
+        self.originals[100] = copy.deepcopy(self.provider.issues[100])
+        self.migrate((100,))
+        self.add(101, state='closed')
+        self.legacy_fields(101, status='done')
+        for label in self.provider.issues[101]['labels']:
+            if label['name'].startswith('zzzops:status:'):
+                label['name'] = 'zzzops:status:done'
+        self.originals[101] = copy.deepcopy(self.provider.issues[101])
+        untouched = copy.deepcopy((self.provider.issues[101], self.provider.comments[101]))
+        def current_index(*args, **kwargs):
+            capability, rows, findings, raw_bytes, reads, excluded = self.index(*args, **kwargs)
+            for row in rows:
+                row['schema_version'] = dag.z.parse_managed_goal(
+                    self.provider.issues[row['number']]['body'], row['number'])['schema_version']
+            return capability, rows, findings, raw_bytes, reads, excluded
+        with mock.patch.object(dag.z, 'github_repository_goal_index', side_effect=current_index), \
+                mock.patch.object(dag.z._migration_batch, 'run', wraps=dag.z._migration_batch.run) as migration, \
+                mock.patch.object(self.provider, 'update_issue', wraps=self.provider.update_issue) as updates:
+            response = self.broad()
+        self.assertEqual(0, migration.call_count)
+        self.assertEqual(0, updates.call_count)
+        self.assertEqual(untouched, (self.provider.issues[101], self.provider.comments[101]))
+        self.assertTrue(any(step.get('kind') == 'execute' and step.get('node', {}).get('node') == 'requirements'
+                            for step in response['next_steps']))
+
+    def test_broad_execute_respects_dependency_before_lazy_migration(self):
+        self.add(100, dependencies=(101,))
+        untouched = copy.deepcopy((self.provider.issues[100], self.provider.comments[100]))
+        with mock.patch.object(dag.z._migration_batch, 'run', wraps=dag.z._migration_batch.run) as migration:
+            self.broad()
+        self.assertEqual({'action': 'migrate', 'goals': [101]}, migration.call_args.args[1])
+        self.assert_preserved(101)
+        self.assertEqual(untouched, (self.provider.issues[100], self.provider.comments[100]))
+
+    def test_failed_selected_migration_blocks_and_retries_without_advancing(self):
+        valid = copy.deepcopy(self.provider.issues[100])
+        self.legacy_fields(100, engineering_rigor={'risk_categories': ['unconfigured_risk']})
+        untouched = copy.deepcopy((self.provider.issues[101], self.provider.comments[101]))
+        first = self.broad()
+        self.assertEqual('blocker', first['next_steps'][0]['kind'])
+        self.assertEqual(100, first['next_steps'][0]['goal'])
+        self.assertEqual(untouched, (self.provider.issues[101], self.provider.comments[101]))
+        self.provider.issues[100] = valid
+        self.originals[100] = copy.deepcopy(valid)
+        second = self.broad()
+        self.assert_preserved(100)
+        self.assertEqual(untouched, (self.provider.issues[101], self.provider.comments[101]))
+        self.assertFalse(any(step.get('kind') == 'migration_batch' for step in second['next_steps']))
 
     def test_ambiguous_native_priority_cannot_silently_change_effective_priority(self):
         self.provider.issues[101]['labels'] = [x for x in self.provider.issues[101]['labels'] if not x['name'].startswith('zzzops:priority:')]
