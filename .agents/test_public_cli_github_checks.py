@@ -149,6 +149,17 @@ class PublicCliGithubCheckTests(DagFixture):
         """Call the production public dispatcher with observable external gates."""
         session = self.session
         package = {"ok": True, "version": "test", "revision": "a" * 40}
+        class ReservationAdapter:
+            description = None
+            def get_label(inner, name):
+                ledger.rows.append(("ownership", (name,), {}))
+                return ({"node_id": "targeted-workflow-lock", "description": inner.description}
+                        if inner.description is not None else None)
+        reservation_adapter = ReservationAdapter()
+        def acquire(_adapter, repository, key, owner, run, ttl):
+            reservation_adapter.description = z.storage_lock_description(
+                repository, key, owner, run, int(time.time()) + ttl)
+            return {"acquired": True, "expires_at": time.time() + ttl}
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(z._package, "package_status",
                 side_effect=lambda: (ledger.rows.append(("installation_package", (), {})) or package)))
@@ -159,15 +170,15 @@ class PublicCliGithubCheckTests(DagFixture):
             stack.enter_context(mock.patch.object(z, "reviewed_project_state",
                 side_effect=lambda *_a: (ledger.rows.append(("policy", (), {})) or copy.deepcopy(session.project))))
             stack.enter_context(mock.patch.object(z, "GitHubGoalTransitionAdapter", return_value=self.provider))
-            stack.enter_context(mock.patch.object(z, "GitHubReservationAdapter", return_value=mock.Mock()))
+            stack.enter_context(mock.patch.object(z, "GitHubReservationAdapter",
+                                                  return_value=reservation_adapter))
             stack.enter_context(mock.patch.object(z, "portfolio_snapshot",
-                side_effect=ledger.wrap("ownership", session.portfolio_snapshot)))
+                side_effect=ledger.wrap("portfolio", session.portfolio_snapshot)))
             stack.enter_context(mock.patch.object(z, "provider_issue_snapshot",
                 side_effect=ledger.wrap("current_target", lambda _r, _n, number:
                     copy.deepcopy(self.provider.issues[number]))))
             stack.enter_context(mock.patch.object(z, "acquire_storage_lock",
-                side_effect=lambda *_a, **_k: (ledger.rows.append(("ownership", (), {})) or
-                    {"acquired": True, "expires_at": time.time() + 300})))
+                                                  side_effect=acquire))
             stack.enter_context(mock.patch.object(z, "renew_storage_lock",
                 return_value={"acquired": True, "expires_at": time.time() + 300}))
             stack.enter_context(mock.patch.object(z, "release_storage_lock", return_value={"released": True}))
