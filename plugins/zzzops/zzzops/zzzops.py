@@ -847,6 +847,14 @@ class GitHubGoalTransitionAdapter:
         if not self.executable:
             raise GoalTransitionProviderError("GitHub CLI is unavailable; no goal update was made.")
         self._identity_checked = False
+        self.comment_read_counters = {}
+
+    def _record_comment_read(self, number: int, mode: str, stdout: str, comments: list[dict[str, Any]]) -> None:
+        current = self.comment_read_counters.setdefault(number, {'calls': 0, 'bytes': 0, 'comments': 0, 'modes': {}})
+        current['calls'] += 1
+        current['bytes'] += len(stdout.encode('utf-8'))
+        current['comments'] += len(comments)
+        current['modes'][mode] = current['modes'].get(mode, 0) + 1
 
     def _run(
         self, arguments: list[str], *, input_text: str | None = None, timeout: float | None = 30,
@@ -978,22 +986,10 @@ class GitHubGoalTransitionAdapter:
             )
         return issue
 
-    def get_issue_comments(self, number: int) -> list[dict[str, Any]]:
+    @staticmethod
+    def _comment_pages(stdout: str, number: int) -> list[dict[str, Any]]:
         try:
-            self.ensure_identity()
-            result = self._run([
-                "api", "--paginate", "--slurp",
-                f"repos/{self.repository}/issues/{number}/comments?per_page=100",
-            ], timeout=None)
-            if result.returncode:
-                raise self._provider_error(result)
-        except (ValueError, OSError, RuntimeError) as exc:
-            raise GoalHistoryReadError(
-                f"Complete comment-history read for goal #{number} was not confirmed: {exc} "
-                "Retry the same workflow request and lease; no partial history or ownership takeover is assumed."
-            ) from exc
-        try:
-            pages = json.loads(result.stdout)
+            pages = json.loads(stdout)
             if (not isinstance(pages, list) or not pages or
                     any(not isinstance(page, list) or len(page) > 100 for page in pages) or
                     any(len(page) != 100 for page in pages[:-1])):
@@ -1010,6 +1006,82 @@ class GitHubGoalTransitionAdapter:
             raise GoalHistoryReadError(
                 f"GitHub returned invalid or partial comment history for goal #{number}; retry the same workflow request and lease. No body update was made."
             ) from exc
+
+    def get_issue_comments_full(self, number: int) -> list[dict[str, Any]]:
+        try:
+            self.ensure_identity()
+            result = self._run([
+                "api", "--paginate", "--slurp",
+                f"repos/{self.repository}/issues/{number}/comments?per_page=100",
+            ], timeout=None)
+            if result.returncode:
+                raise self._provider_error(result)
+        except (ValueError, OSError, RuntimeError) as exc:
+            raise GoalHistoryReadError(
+                f"Complete comment-history read for goal #{number} was not confirmed: {exc} "
+                "Retry the same workflow request and lease; no partial history or ownership takeover is assumed."
+            ) from exc
+        comments = self._comment_pages(result.stdout, number)
+        self._record_comment_read(number, 'full', result.stdout, comments)
+        return comments
+
+    def get_issue_comments_since(self, number: int, since: str) -> list[dict[str, Any]]:
+        """Read every comment updated at or after a checkpoint overlap marker."""
+        if not isinstance(since, str) or not since or urlparse(since).scheme:
+            raise GoalHistoryReadError(f"Invalid incremental comment marker for goal #{number}")
+        try:
+            self.ensure_identity()
+            result = self._run([
+                "api", "--paginate", "--slurp",
+                f"repos/{self.repository}/issues/{number}/comments?per_page=100&since={quote(since, safe=':-TZ.')}",
+            ], timeout=None)
+            if result.returncode:
+                raise self._provider_error(result)
+        except (ValueError, OSError, RuntimeError) as exc:
+            raise GoalHistoryReadError(
+                f"Incremental comment-history read for goal #{number} was not confirmed: {exc} "
+                "Fall back to a complete history read; no partial history is authoritative."
+            ) from exc
+        comments = self._comment_pages(result.stdout, number)
+        self._record_comment_read(number, 'since', result.stdout, comments)
+        return comments
+
+    def get_issue_comment_tail(self, number: int, limit: int = 100) -> list[dict[str, Any]]:
+        """Read a bounded newest-first-discoverable tail for checkpoint activation."""
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise GoalHistoryReadError(f"Invalid comment-tail limit for goal #{number}")
+        self.ensure_identity()
+        owner, name = self.repository.split('/', 1)
+        query = ("query($owner:String!,$name:String!,$number:Int!,$limit:Int!){repository(owner:$owner,name:$name){"
+                 "issue(number:$number){comments(last:$limit){nodes{databaseId body createdAt updatedAt}}}}}")
+        result = self._run(["api", "graphql", "-f", "query=" + query, "-F", "owner=" + owner,
+                            "-F", "name=" + name, "-F", "number=" + str(number),
+                            "-F", "limit=" + str(limit)], timeout=None)
+        if result.returncode:
+            raise self._provider_error(result)
+        try:
+            payload = json.loads(result.stdout)
+            issue = payload['data']['repository']['issue']
+            nodes = issue['comments']['nodes']
+            if not isinstance(nodes, list) or len(nodes) > limit:
+                raise TypeError
+            comments = [{'id': row['databaseId'], 'body': row['body'], 'created_at': row['createdAt'],
+                         'updated_at': row['updatedAt']} for row in nodes]
+            if any(type(row['id']) is not int or row['id'] <= 0 or not isinstance(row['body'], str)
+                   for row in comments):
+                raise TypeError
+            identities = [row['id'] for row in comments]
+            if identities != sorted(set(identities)):
+                raise TypeError
+            self._record_comment_read(number, 'tail', result.stdout, comments)
+            return comments
+        except (KeyError, TypeError, json.JSONDecodeError) as exc:
+            raise GoalHistoryReadError(
+                f"GitHub returned an invalid comment tail for goal #{number}; use a complete history read."
+            ) from exc
+
+    def get_issue_comments(self, number: int) -> list[dict[str, Any]]:
+        return self.get_issue_comments_full(number)
 
     def create_issue_comment(self, number: int, body: str) -> dict[str, Any]:
         _comment_store.guard_comment(body)

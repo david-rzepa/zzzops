@@ -445,6 +445,134 @@ def pack_envelopes(common, artifacts, history=None):
     return bodies
 
 
+HYDRATION_CHECKPOINT_SCHEMA = 1
+
+
+def comment_observation(comments):
+    """Canonical identity for one complete, ordered provider observation."""
+    rows = []
+    for comment in comments:
+        if (not isinstance(comment, dict) or type(comment.get('id')) is not int
+                or comment['id'] <= 0 or not isinstance(comment.get('body'), str)):
+            raise ValueError('Checkpoint comments require positive provider identities and bodies')
+        created = comment.get('created_at')
+        updated = comment.get('updated_at')
+        if created is not None and not isinstance(created, str):
+            raise ValueError('Checkpoint comment created_at must be text when present')
+        if updated is not None and not isinstance(updated, str):
+            raise ValueError('Checkpoint comment updated_at must be text when present')
+        rows.append({'id': comment['id'], 'created_at': created, 'updated_at': updated,
+                     'body_hash': text_hash(comment['body'])})
+    identities = [row['id'] for row in rows]
+    if identities != sorted(set(identities)):
+        raise ValueError('Checkpoint comment observation must be unique and ordered')
+    return {
+        'count': len(rows),
+        'last_id': identities[-1] if identities else 0,
+        'updated_through': max((row['updated_at'] or row['created_at'] or '') for row in rows) if rows else '',
+        'digest': digest(rows),
+    }
+
+
+def hydration_checkpoint_bodies(repository, goal, issue_body_hash, comments, required_hashes, *, generation=1):
+    """Materialize a minimal current artifact closure from a complete observation."""
+    if not isinstance(repository, str) or not re.fullmatch(r'[^/\s]+/[^/\s]+', repository):
+        raise ValueError('Hydration checkpoint repository is invalid')
+    if type(goal) is not int or goal <= 0:
+        raise ValueError('Hydration checkpoint goal must be positive')
+    if not isinstance(issue_body_hash, str) or not re.fullmatch(r'sha256:[0-9a-f]{64}', issue_body_hash):
+        raise ValueError('Hydration checkpoint issue body hash is invalid')
+    if type(generation) is not int or generation < 1:
+        raise ValueError('Hydration checkpoint generation must be positive')
+    required = list(required_hashes)
+    if not required or len(required) != len(set(required)) or any(
+            not isinstance(value, str) or not re.fullmatch(r'sha256:[0-9a-f]{64}', value)
+            for value in required):
+        raise ValueError('Hydration checkpoint required artifacts are invalid')
+    source = ArtifactIndex(comments)
+    materialized = ArtifactIndex([])
+    records = []
+    pending = list(required)
+    included = []
+    while pending:
+        identity = pending.pop(0)
+        if identity in included:
+            continue
+        value = source.resolve(identity)[0]
+        included.append(identity)
+        def references(child):
+            if isinstance(child, dict):
+                if (set(child) == {'hash', 'uri'} and isinstance(child.get('hash'), str)
+                        and child['hash'] in source.records):
+                    pending.append(child['hash'])
+                else:
+                    for nested in child.values(): references(nested)
+            elif isinstance(child, list):
+                for nested in child: references(nested)
+        references(value)
+        record = materialized.record(value)
+        if record is not None:
+            records.append(record)
+            materialized.records.setdefault(identity, []).append(record)
+    observation = comment_observation(comments)
+    checkpoint = {
+        'schema_version': HYDRATION_CHECKPOINT_SCHEMA,
+        'generation': generation,
+        'repository': repository,
+        'goal': goal,
+        'issue_body_hash': issue_body_hash,
+        'observation': observation,
+        'required': included,
+        'codec': {'envelope': 2, 'checkpoint': HYDRATION_CHECKPOINT_SCHEMA},
+    }
+    checkpoint_id = digest(checkpoint)
+    common = {
+        'goal': goal,
+        'transaction': checkpoint_id,
+        'anchor': checkpoint_id,
+        'context': {'kind': 'hydration_checkpoint', 'checkpoint': checkpoint},
+    }
+    return pack_envelopes(common, records), checkpoint
+
+
+def hydration_checkpoint_view(checkpoint_comments, later_comments, *, repository, goal, issue_body_hash):
+    """Validate one checkpoint transaction and return its compact reader view."""
+    index = ArtifactIndex(checkpoint_comments)
+    candidates = [envelope for envelope in index.envelopes
+                  if (envelope.get('context') or {}).get('kind') == 'hydration_checkpoint']
+    if not candidates:
+        raise ValueError('Hydration checkpoint is missing')
+    transactions = {envelope.get('transaction') for envelope in candidates}
+    if len(transactions) != 1:
+        raise ValueError('Hydration checkpoint transaction is ambiguous')
+    selected = [envelope for envelope in candidates if envelope.get('transaction') in transactions]
+    verify_manifest(selected)
+    checkpoint = (selected[0].get('context') or {}).get('checkpoint')
+    if (not isinstance(checkpoint, dict) or checkpoint.get('schema_version') != HYDRATION_CHECKPOINT_SCHEMA
+            or type(checkpoint.get('generation')) is not int or checkpoint['generation'] < 1
+            or checkpoint.get('repository') != repository
+            or checkpoint.get('goal') != goal or checkpoint.get('issue_body_hash') != issue_body_hash
+            or checkpoint.get('codec') != {'envelope': 2, 'checkpoint': HYDRATION_CHECKPOINT_SCHEMA}
+            or not isinstance(checkpoint.get('observation'), dict)
+            or checkpoint.get('required') is None):
+        raise ValueError('Hydration checkpoint binding is invalid')
+    expected = digest(checkpoint)
+    if any(envelope.get('transaction') != expected or envelope.get('anchor') != expected for envelope in selected):
+        raise ValueError('Hydration checkpoint identity is invalid')
+    for identity in checkpoint['required']:
+        index.resolve(identity)
+    last_id = checkpoint['observation'].get('last_id')
+    if type(last_id) is not int or last_id < 0:
+        raise ValueError('Hydration checkpoint observation is invalid')
+    later = [dict(comment) for comment in later_comments]
+    identities = [comment.get('id') for comment in later]
+    if (any(type(identity) is not int or identity <= last_id for identity in identities)
+            or identities != sorted(set(identities))
+            or any(not isinstance(comment.get('body'), str) for comment in later)):
+        raise ValueError('Incremental comments must be unique, ordered and later than the checkpoint')
+    return [dict(comment) for comment in checkpoint_comments] + later, checkpoint
+
+
 def preflight_comments(comments, bodies, references=(), *, previous=None):
     """Validate the exact prospective reader view before any provider write."""
     existing = {comment.get('body', '') for comment in comments}
