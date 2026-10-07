@@ -14,7 +14,7 @@ import subprocess
 import time
 import uuid
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
