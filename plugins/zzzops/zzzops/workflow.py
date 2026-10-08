@@ -5381,62 +5381,12 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         for method_name in ('create_issue_comment', 'update_issue'):
             original = getattr(engine._mutation_adapter, method_name)
             originals[method_name] = original
-            def guarded(*args, _original=original, _method=method_name, **kwargs):
+            def guarded(*args, _original=original, **kwargs):
                 target = args[0] if args else kwargs.get('number')
                 fresh_mutation_boundary(target)
-                request_id = payload.get('request_id')
-                if not isinstance(request_id, str):
-                    return _original(*args, **kwargs)
-                invocation = {'method': _method, 'target': target,
-                              'arguments': list(args[1:]), 'keywords': kwargs}
-                exact = json.dumps(invocation, ensure_ascii=False, sort_keys=True,
-                                   separators=(',', ':')).encode()
-                suffix = hashlib.sha256(exact).hexdigest()[:24]
-                transaction_id = (request_id[:96] + '-' + suffix)[:128]
-                owner = (runtime or {}).get('root_id', 'root')
-                working = api._working_inputs.WorkingInputStore(
-                    repo, repository=engine.repository, owner=owner)
-                subject = f'provider:{engine.repository}:{target}:{_method}'
-                working.write(subject, 'provider-mutation', invocation)
-                action = {'operation': _method, 'target': {'repository': engine.repository,
-                                                           'issue': target}}
-                working.freeze(subject, 'provider-mutation', transaction_id, action)
-                def postcondition(check_id, check_digest):
-                    if _method == 'create_issue_comment':
-                        wanted = invocation['arguments'][0]
-                        match = next((row for row in original_comments(target)
-                                      if row.get('body') == wanted), None)
-                    else:
-                        wanted = invocation['arguments'][0]
-                        observed = original_issue(target)
-                        match = observed if all(observed.get(key) == value
-                                                for key, value in wanted.items()
-                                                if key not in {'labels'}) else None
-                        if match is not None and 'labels' in wanted:
-                            labels = [row.get('name') if isinstance(row, dict) else row
-                                      for row in observed.get('labels', [])]
-                            if labels != wanted['labels']: match = None
-                    if match is None:
-                        return None
-                    receipt = {'request_id': check_id, 'digest': check_digest,
-                               'action': action, 'authenticated': True,
-                               'provider_result': digest(match)}
-                    return {'applied': True, 'receipt': receipt, 'result': match}
-                working.provider_check = postcondition
-                def apply_exact(_request_id, body):
-                    frozen = json.loads(body)
-                    result = _original(target, *frozen['arguments'], **frozen['keywords'])
-                    receipt = {'request_id': _request_id,
-                               'digest': hashlib.sha256(body).hexdigest(),
-                               'action': action, 'authenticated': True,
-                               'provider_result': digest(result)}
-                    return {'receipt': receipt, 'result': result}
                 try:
-                    return working.dispatch(transaction_id, apply_exact)['result']
+                    return _original(*args, **kwargs)
                 finally:
-                    # A provider may commit and then lose its response. Any
-                    # recovery read must observe the provider, not the
-                    # pre-mutation snapshot used by the write fence.
                     read_cache['issues'].clear(); read_cache['comments'].clear()
             setattr(engine._mutation_adapter, method_name, guarded)
         api._guarded_mutations = getattr(api, '_guarded_mutations', []) + [(engine._mutation_adapter, originals)]
@@ -5628,10 +5578,18 @@ def _public_response(api, repo, intent, source, runtime, payload, number, *, ski
     options = {'skip_installation_validation': True} if skip_installation_validation else {}
     if payload_supplied:
         options['payload_supplied'] = True
-    result = _public_run(
-        api, repo, intent, source, runtime, payload, number,
-        policy_snapshot=snapshot, **options,
-    )
+    transaction = None
+    if isinstance(payload, dict) and isinstance(payload.get('request_id'), str):
+        transaction = api._WORKING_INPUT_TRANSACTION.set({
+            'request_id': payload['request_id'], 'owner': (runtime or {}).get('root_id', 'root')})
+    try:
+        result = _public_run(
+            api, repo, intent, source, runtime, payload, number,
+            policy_snapshot=snapshot, **options,
+        )
+    finally:
+        if transaction is not None:
+            api._WORKING_INPUT_TRANSACTION.reset(transaction)
     purposes = {
         '$add-zzzops-goal': 'capture', '$execute-zzzops': 'execute',
         '$migrate-to-zzzops': 'migration', '$review-zzzops-policy': 'policy-review',

@@ -31,6 +31,12 @@ from urllib.parse import quote, urlparse
 
 
 _PR_CORRECTION_CACHE: dict[tuple, list[dict[str, Any]]] = {}
+_WORKING_INPUT_TRANSACTION: ContextVar[dict[str, Any] | None] = ContextVar(
+    "zzzops_working_input_transaction", default=None)
+
+def _working_result_digest(value: Any) -> str:
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 def read_pull_request_correction_sources(repo: Path, repository: str, number: int, *, marker: dict) -> list[dict[str, Any]]:
@@ -967,6 +973,13 @@ class GitHubGoalTransitionAdapter:
             raise GoalTransitionProviderError("GitHub relationship coverage is unknown: " + str(exc)) from exc
 
     def update_issue(self, number: int, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._transactional_write(
+            "update_issue", {"issue": number}, {"payload": payload},
+            lambda: self._update_issue(number, payload),
+            lambda: self._issue_postcondition(number, payload),
+        )
+
+    def _update_issue(self, number: int, payload: dict[str, Any]) -> dict[str, Any]:
         result = self._run(
             ["api", "--method", "PATCH", f"repos/{self.repository}/issues/{number}", "--input", "-"],
             input_text=json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
@@ -986,6 +999,12 @@ class GitHubGoalTransitionAdapter:
         return issue
 
     def create_issue(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._transactional_write(
+            "create_issue", {"repository": self.repository}, {"payload": payload},
+            lambda: self._create_issue(payload), lambda: None,
+        )
+
+    def _create_issue(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.ensure_identity()
         result = self._run(
             ["api", "--method", "POST", f"repos/{self.repository}/issues", "--input", "-"],
@@ -1104,6 +1123,16 @@ class GitHubGoalTransitionAdapter:
 
     def create_issue_comment(self, number: int, body: str) -> dict[str, Any]:
         _comment_store.guard_comment(body)
+        prior = ({row.get("id") for row in self.get_issue_comments(number)}
+                 if _WORKING_INPUT_TRANSACTION.get() else set())
+        return self._transactional_write(
+            "create_issue_comment", {"issue": number}, {"body": body, "prior_ids": sorted(prior)},
+            lambda: self._create_issue_comment(number, body),
+            lambda: next((row for row in self.get_issue_comments(number)
+                          if row.get("id") not in prior and row.get("body") == body), None),
+        )
+
+    def _create_issue_comment(self, number: int, body: str) -> dict[str, Any]:
         result = self._run(
             ["api", "--method", "POST", f"repos/{self.repository}/issues/{number}/comments", "--input", "-"],
             input_text=json.dumps({"body": body}, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
@@ -1121,6 +1150,46 @@ class GitHubGoalTransitionAdapter:
                 "GitHub returned an incomplete history response; body replacement was not attempted."
             )
         return comment
+
+    def _issue_postcondition(self, number: int, payload: dict[str, Any]):
+        issue = self.get_issue(number)
+        for key, value in payload.items():
+            observed = issue.get(key)
+            if key == "labels":
+                observed = [row.get("name") if isinstance(row, dict) else row for row in observed or []]
+            if observed != value:
+                return None
+        return issue
+
+    def _transactional_write(self, operation, target, arguments, call, postcondition):
+        context = _WORKING_INPUT_TRANSACTION.get()
+        if not context:
+            return call()
+        envelope = {"operation": operation, "target": target, "arguments": arguments}
+        encoded = json.dumps(envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        suffix = hashlib.sha256(encoded).hexdigest()[:24]
+        request_id = (context["request_id"][:96] + "-" + suffix)[:128]
+        store = _working_inputs.WorkingInputStore(
+            self.repo, repository=self.repository, owner=context["owner"])
+        subject = "provider:" + request_id
+        store.write(subject, "provider-mutation", envelope)
+        action = {"operation": operation, "target": target}
+        store.freeze(subject, "provider-mutation", request_id, action)
+        def check(_request, digest):
+            result = postcondition()
+            if result is None: return None
+            receipt = {"request_id": request_id, "digest": digest, "action": action,
+                       "authenticated": True, "provider_result": _working_result_digest(result)}
+            return {"applied": True, "receipt": receipt, "result": result}
+        store.provider_check = check
+        def apply(_request, body):
+            if json.loads(body) != envelope: raise ValueError("Frozen provider envelope mismatch")
+            result = call()
+            receipt = {"request_id": request_id, "digest": hashlib.sha256(body).hexdigest(),
+                       "action": action, "authenticated": True,
+                       "provider_result": _working_result_digest(result)}
+            return {"receipt": receipt, "result": result}
+        return store.dispatch(request_id, apply)["result"]
 
 
 _validate_reservation_goal = _reservation._validate_reservation_goal

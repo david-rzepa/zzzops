@@ -393,11 +393,13 @@ class WorkingInputStore:
             if outcome is True or (isinstance(outcome, dict) and outcome.get("applied") is True):
                 receipt = (outcome.get("receipt") if isinstance(outcome, dict) else {
                     "request_id": request_id, "digest": row["digest"], "action": row["action"],
-                    "authenticated": True,
+                    "authenticated": True, "provider_result": "fixture-authenticated",
                 })
                 if (not isinstance(receipt, dict) or receipt.get("request_id") != request_id
                         or receipt.get("digest") != row["digest"] or receipt.get("action") != row["action"]
-                        or receipt.get("authenticated") is not True):
+                        or receipt.get("authenticated") is not True
+                        or not isinstance(receipt.get("provider_result"), str)
+                        or not receipt["provider_result"]):
                     self._uncertain(request_id, "unconfirmed-reconciliation")
                 with self._locked():
                     state = self._load(); state["requests"][request_id]["state"] = "confirmed"
@@ -450,30 +452,8 @@ class WorkingInputStore:
 
 
 def github_provider_check(repo: Path, repository: str, request_id: str, digest: str, action):
-    """Return provider application evidence from complete GitHub issue comments."""
-    executable = shutil.which("gh")
-    if not executable or repository == "local": return None
-    result = subprocess.run(
-        [executable, "api", "--paginate", "--slurp",
-         f"repos/{repository}/issues/comments?per_page=100"],
-        cwd=repo, text=True, capture_output=True, check=False,
-    )
-    if result.returncode: return None
-    try:
-        pages = json.loads(result.stdout)
-        rows = [row for page in pages for row in page] if pages and isinstance(pages[0], list) else pages
-        if not isinstance(rows, list): return None
-    except (ValueError, TypeError):
-        return None
-    for row in rows:
-        if not isinstance(row, dict) or row.get("author_association") not in {"OWNER", "MEMBER", "COLLABORATOR"}:
-            continue
-        try: receipt = json.loads(row.get("body", ""))
-        except (TypeError, json.JSONDecodeError): continue
-        if receipt == {"request_id": request_id, "digest": digest, "action": action,
-                       "authenticated": True}:
-            return {"applied": True, "receipt": receipt}
-    return False
+    """Legacy operations have no authoritative postcondition and remain unknown."""
+    return None
 
 
 def execute_command(action: str, *, repo: Path, request_id: str):
