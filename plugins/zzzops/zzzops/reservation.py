@@ -176,6 +176,9 @@ class GitHubReservationAdapter:
             label = json.loads(result.stdout)
         except json.JSONDecodeError as exc:
             raise ReservationProviderError("GitHub returned invalid reservation metadata; no ownership assumed.") from exc
+        if not isinstance(label, dict) or label.get("name") != name or not label.get("node_id"):
+            raise ReservationProviderError("GitHub returned incomplete reservation metadata; no ownership assumed.")
+        return label
 
     def get_label_node(self, node_id: str) -> dict[str, Any] | None:
         query = "query($id:ID!){node(id:$id){... on Label{id name description}}}"
@@ -196,9 +199,6 @@ class GitHubReservationAdapter:
         if _provider_write is None:
             return call()
         return _provider_write(self, operation, target, arguments, call, postcondition)
-        if not isinstance(label, dict) or not label.get("node_id"):
-            raise ReservationProviderError("GitHub returned incomplete reservation metadata; no ownership assumed.")
-        return label
 
     def list_resource_labels(self) -> list[dict[str, Any]]:
         result = self._run([
