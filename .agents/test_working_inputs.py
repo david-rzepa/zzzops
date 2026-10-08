@@ -310,7 +310,7 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         with self.assertRaises(AppliedThenLost):
             uncertain.dispatch("request-lost", self.provider.apply_then_lose)
         self.assertEqual("uncertain", uncertain.status("request-lost")["state"])
-        self.assertEqual("reconciled", uncertain.reconcile("request-lost")["state"])
+        self.assertEqual("confirmed", uncertain.reconcile("request-lost")["state"])
         self.assertEqual(1, self.provider.checks)
 
         bounded = self.store()
@@ -558,6 +558,19 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         self.assertEqual("retired", recovered["state"])
         self.assertFalse(Path(frozen["snapshot"]).exists())
 
+    def test_request_ids_are_contained_and_failed_index_save_leaves_no_orphan(self):
+        self.require_behavior('bounded request identity and failed-index snapshot cleanup')
+        store = self.store(); store.write("goal:554", "contained", {"value": 1})
+        for invalid in ("../escape", "/absolute", "space value", "", "x" * 129):
+            with self.subTest(request_id=invalid), self.assertRaisesRegex(ValueError, "request_id"):
+                store.freeze("goal:554", "contained", invalid, "goal-submit")
+        original = store._save
+        store._save = lambda state: (_ for _ in ()).throw(OSError("index fsync failed"))
+        with self.assertRaisesRegex(OSError, "index fsync failed"):
+            store.freeze("goal:554", "contained", "save-failure", "goal-submit")
+        store._save = original
+        self.assertFalse((self.repo / ".zzzops/work/inputs/v1/snapshots/save-failure.json").exists())
+
     @unittest.skipIf(sys.platform == "win32", "linked-worktree process fixture uses POSIX signalling")
     def test_linked_worktree_process_reference_uses_common_git_lock(self):
         self.require_behavior('linked-worktree and process durable reference coordination')
@@ -605,16 +618,19 @@ with s.reference('process-reference', 'reader'):
             store.dispatch("request-cli", self.provider.missing_receipt)
         binary = Path(self.temporary.name) / "bin"; binary.mkdir()
         gh = binary / "gh"
-        response = json.dumps([[{"body": f"request-cli {frozen['digest']}"}]])
-        gh.write_text("#!/bin/sh\nprintf '%s' " + repr(response) + "\n")
+        receipt = {"request_id": "request-cli", "digest": frozen["digest"],
+                   "action": "goal-submit", "authenticated": True}
+        response = json.dumps([[{"body": json.dumps(receipt), "author_association": "OWNER"}]])
+        gh.write_text("#!" + sys.executable + "\nprint(" + repr(response) + ")\n")
         gh.chmod(0o700)
         environment = dict(os.environ, PATH=str(binary) + os.pathsep + os.environ.get("PATH", ""))
         result = subprocess.run(
             [sys.executable, str(ROOT / "plugins/zzzops/zzzops/zzzops.py"),
              "working-input", "reconcile", "--repo", str(self.repo),
              "--request-id", "request-cli"],
-            text=True, capture_output=True, env=environment, check=True)
-        self.assertEqual("reconciled", json.loads(result.stdout)["state"])
+            text=True, capture_output=True, env=environment, check=False)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("confirmed", json.loads(result.stdout)["state"])
 
     def test_process_reference_blocks_deletion_on_supported_platform(self):
         self.require_behavior('real cross-process reference lock')
@@ -639,6 +655,31 @@ with s.reference('process-lock', 'reader'):
                 store.abandon("process-lock", approved_by="user")
         finally:
             release.touch(); child.wait(5)
+
+    def test_public_mutation_runs_from_frozen_bytes_after_dispatch_barrier(self):
+        self.require_behavior('real public mutation consumes frozen bytes after durable barrier')
+        sys.path.insert(0, str(ROOT / ".agents"))
+        try:
+            import test_zzzops as fixtures
+            public_cli = fixtures.zzzops
+        finally:
+            sys.path.pop(0)
+        payload = {"operation": "submit", "request_id": "barrier-request", "value": "exact"}
+        observed = []
+        def provider_boundary(api, repo, intent, source, runtime, exact, number, **options):
+            row = api._working_inputs.WorkingInputStore(
+                repo, repository="local", owner="root").status("barrier-request")
+            observed.append((row["state"], exact, Path(row["snapshot"]).read_bytes()))
+            return {"next_steps": [{"kind": "checkpoint"}]}
+        with mock.patch.object(public_cli._workflow, "_public_run", side_effect=provider_boundary):
+            result = public_cli._workflow.public_run(
+                public_cli, self.repo, "execute", "$execute-zzzops",
+                {"root_id": "root"}, payload, 554)
+        self.assertEqual("checkpoint", result["next_steps"][0]["kind"])
+        self.assertEqual("dispatching", observed[0][0])
+        self.assertEqual(payload, observed[0][1])
+        self.assertEqual(payload, json.loads(observed[0][2]))
+        self.assertEqual("confirmed", self.store().status("barrier-request")["state"])
 
     @staticmethod
     def _capture(errors, function, *args):
@@ -744,6 +785,17 @@ with s.reference('process-lock', 'reader'):
                 commands = guidance["commands"]
                 self.assertTrue(commands)
                 self.assertNotIn("<", " ".join(commands[0]))
+            first_draft = public_cli._workflow.public_run(
+                public_cli, self.repo, "capture", "$add-zzzops-goal", {"root_id": "root"}, None, None)
+            concurrent = public_cli._workflow.public_run(
+                public_cli, self.repo, "capture", "$add-zzzops-goal", {"root_id": "root"}, None, None)
+            self.assertNotEqual(first_draft["working_input"]["draft_id"],
+                                concurrent["working_input"]["draft_id"])
+            resumed = public_cli._workflow.public_run(
+                public_cli, self.repo, "capture", "$add-zzzops-goal",
+                {"root_id": "root", "working_input_draft": first_draft["working_input"]["draft_id"]},
+                None, None)
+            self.assertEqual(first_draft["working_input"]["path"], resumed["working_input"]["path"])
         self.assertEqual('{"operation":"submit"}\n', legacy.read_text())
 
         descriptor = store.write("goal:554", "execute", {"z": 1, "a": [2, 3]})
