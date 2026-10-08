@@ -169,6 +169,57 @@ class WorkflowDispatchTests(unittest.TestCase):
         migrate.assert_called_once_with(engine, {"action": "migrate", "goals": [1]})
         engine.step.assert_not_called()
 
+    def test_runnable_frontier_reports_selected_and_deferred_ordering(self):
+        goals = [self.goal(number, "P1") for number in (2, 4)]
+        blocker = {"kind": "blocker", "goal": 4, "action": "Await human input."}
+        runnable = {"kind": "execute", "goal": 2}
+        decision = {"ordered_goal_keys": [4], "rationale": "Prefer friction removal when eligible."}
+
+        result, engine = self.checkpoint(goals, {4: [blocker], 2: [runnable]}, decision)
+
+        self.assertEqual([runnable], result["next_steps"])
+        engine.step.assert_has_calls([mock.call(4), mock.call(2)], any_order=True)
+        self.assertEqual(2, engine.step.call_count)
+        ordering = result.get("effective_order")
+        self.assertIsInstance(ordering, list, "Dispatch must explain selected and deferred ordering.")
+        self.assertLessEqual(len(ordering), 3)
+        self.assertEqual([
+            (4, "deferred", "portfolio_decision", decision["rationale"]),
+            (2, "selected", "priority_then_key", None),
+        ], [(item["goal"], item["status"], item["reason"], item.get("rationale")) for item in ordering])
+        self.assertEqual([blocker], result.get("deferred_steps"))
+        reversed_result, _engine = self.checkpoint(list(reversed(goals)), {4: [blocker], 2: [runnable]}, decision)
+        self.assertEqual(ordering, reversed_result.get("effective_order"))
+        self.assertEqual(result["deferred_steps"], reversed_result.get("deferred_steps"))
+
+    def test_blocked_preferred_migration_retains_repair_and_selects_independent_work(self):
+        goals = [{**self.goal(1, "P1"), "schema_version": 1}, self.goal(2, "P1")]
+        original = copy.deepcopy(goals)
+        runnable = {"kind": "execute", "goal": 2}
+        decision = {"ordered_goal_keys": [1], "rationale": "Prefer friction removal when eligible."}
+        remediation = {"action": "Observe predecessor ownership before retrying.",
+                       "retry": {"operation": "migration_batch", "action": "migrate", "goals": [1]}}
+        migration_result = {"next_steps": [{"members": {"1": {
+            "status": "blocked", "reason": "predecessor_owner_unresolved", "remediation": remediation,
+        }}}]}
+        with mock.patch.object(z._migration_batch, "run", return_value=migration_result) as migrate:
+            result, engine = self.checkpoint(goals, {2: [runnable]}, decision)
+
+        migrate.assert_called_once_with(engine, {"action": "migrate", "goals": [1]})
+        self.assertEqual([runnable], result["next_steps"],
+                         "A blocked predecessor migration must not starve independent valid work.")
+        engine.step.assert_called_once_with(2)
+        self.assertEqual([{"kind": "blocker", "goal": 1, "reason": "predecessor_owner_unresolved",
+                           "remediation": remediation}], result.get("deferred_steps"))
+        ordering = result.get("effective_order")
+        self.assertIsInstance(ordering, list)
+        self.assertLessEqual(len(ordering), 3)
+        self.assertEqual([
+            (1, "deferred", "portfolio_decision", decision["rationale"]),
+            (2, "selected", "priority_then_key", None),
+        ], [(item["goal"], item["status"], item["reason"], item.get("rationale")) for item in ordering])
+        self.assertEqual(original, goals)
+
 
 if __name__ == "__main__":
     unittest.main()
