@@ -5849,10 +5849,16 @@ def public_run(api, repo, intent, source, runtime, payload, number, *, skip_inst
     # execution commands against a provider-only deadline.
     budget = getattr(api, 'renewal_budget', None)
     if budget is None and operation == 'renew':
-        budget = RenewalBudget(float(os.environ.get('ZZZOPS_RENEWAL_TIMEOUT_SECONDS', '30')),
+        configured = getattr(api, 'workflow_timeout_seconds', None)
+        budget = RenewalBudget(configured if configured is not None
+                               else float(os.environ.get('ZZZOPS_RENEWAL_TIMEOUT_SECONDS', '30')),
                                float(os.environ.get('ZZZOPS_RENEWAL_CLEANUP_SECONDS', '10')))
     elif budget is None and operation in {'checkpoint', 'read'}:
-        budget = RenewalBudget(float(os.environ.get('ZZZOPS_WORKFLOW_TIMEOUT_SECONDS', '90')))
+        configured = getattr(api, 'workflow_timeout_seconds', None)
+        budget = RenewalBudget(
+            configured if configured is not None
+            else float(os.environ.get('ZZZOPS_WORKFLOW_TIMEOUT_SECONDS', '90'))
+        )
     previous = getattr(api, 'operation_budget', None)
     api.operation_budget = budget
     try:

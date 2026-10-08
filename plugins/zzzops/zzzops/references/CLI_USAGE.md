@@ -3,6 +3,12 @@
 Run package-local [`zzzops.py`](../zzzops.py), never globally. Use the skill's
 semantic `--intent` with `workflow --intent INTENT`; copy returned `--goal`, runtime and input.
 
+Workflow checkpoints and reads have a 90-second provider budget by default.
+Use `workflow --timeout SECONDS` for a slower repository; the override applies
+to the provider deadline for that invocation and must be
+a positive finite number and applies only to that invocation. Renewal keeps its
+separate work and cleanup budgets.
+
 Stdout is compact; `--response full` preserves full JSON. For minimal inputs and selective reads, use [response references](CLI_BOUNDARY.md).
 
 Follow `next_steps`, `instruction`, policy.path and evidence fields. Read policy;
