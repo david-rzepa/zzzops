@@ -42,6 +42,10 @@ class CommentReadDeadlineTests(DagFixture):
                                          'ZZZOPS_WORKFLOW_TIMEOUT_SECONDS': str(budget)}), \
              mock.patch.object(z._workflow.time, 'monotonic', side_effect=lambda: elapsed[0]), \
              mock.patch.object(self.provider, 'get_issue_comments', side_effect=lambda n: ADAPTER.get_issue_comments(self.provider, n)), \
+             mock.patch.object(self.provider, 'get_issue_comments_full', side_effect=lambda n: ADAPTER.get_issue_comments_full(self.provider, n), create=True), \
+             mock.patch.object(self.provider, '_comment_pages', ADAPTER._comment_pages, create=True), \
+             mock.patch.object(self.provider, '_record_comment_read', types.MethodType(ADAPTER._record_comment_read, self.provider), create=True), \
+             mock.patch.object(self.provider, 'comment_read_counters', {}, create=True), \
              mock.patch.object(self.provider, 'ensure_identity', create=True), \
              mock.patch.object(self.provider, '_run', types.MethodType(ADAPTER._run, self.provider), create=True), \
              mock.patch.object(self.provider, 'executable', 'gh', create=True), \
