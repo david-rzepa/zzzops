@@ -823,6 +823,14 @@ with s.reference('process-lock', 'reader'):
         self.assertEqual(descriptor, row["action"])
         self.assertEqual(descriptor, self.store().status("typed-reconcile")["action"])
 
+    def test_github_reconciliation_launch_failure_remains_unknown(self):
+        self.require_behavior("resumable provider reconciliation launch failure")
+        action = {"operation": "update_issue", "target": {"issue": 12},
+                  "arguments": {"payload": {"state": "closed"}}}
+        with mock.patch.object(subprocess, "run", side_effect=OSError("missing gh")):
+            self.assertIsNone(self.module.github_provider_check(
+                self.repo, "owner/project", "restart-request", "digest", action))
+
 
 if __name__ == "__main__":
     unittest.main()

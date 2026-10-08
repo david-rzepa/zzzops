@@ -3874,7 +3874,9 @@ class GoalCreateTests(unittest.TestCase):
             self.assertEqual("Exact body", result["body"])
             store = zzzops._working_inputs.WorkingInputStore(repo, repository="owner/repo", owner="root")
             requests = json.loads(store.index_path.read_text())["requests"]
-            self.assertEqual(["confirmed"], [row["state"] for row in requests.values()])
+            self.assertEqual(["confirmed", "confirmed"], sorted(row["state"] for row in requests.values()))
+            operations = {row["action"]["operation"] for row in requests.values()}
+            self.assertEqual({"create_issue", "cleanup_created_issue"}, operations)
 
     def request(self):
         return {
