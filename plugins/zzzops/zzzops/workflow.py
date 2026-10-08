@@ -4233,7 +4233,7 @@ class Workflow:
             if any(row.get('body') == encoded for row in comments): continue
             try:
                 actual = self.adapter.create_issue_comment(number, encoded)
-            except (RuntimeError, OSError) as exc:
+            except self.api.GoalTransitionProviderError as exc:
                 actual = next((row for row in self.adapter.get_issue_comments(number) if row.get('body') == encoded), None)
                 if actual is None: raise ValueError('Unconfirmed checkpoint comment append; retry exact request') from exc
             if actual.get('body') != encoded: raise ValueError('Provider did not confirm exact source backup/artifact content')
@@ -4252,7 +4252,7 @@ class Workflow:
         if snapshot.get('archive'): update['state'] = 'closed'
         try:
             updated = self.adapter.update_issue(number, update)
-        except (RuntimeError, OSError) as exc:
+        except self.api.GoalTransitionProviderError as exc:
             updated = self.adapter.get_issue(number)
             if updated.get('body') != body: raise ValueError('Unconfirmed provider body publication; retry exact request') from exc
         if updated.get('body') != body: raise ValueError('Provider did not confirm exact goal body; retry same request')
