@@ -20,3 +20,7 @@ For monitoring, replay, reconciliation or test corrections, read [recovery](CLI_
 Execution migrates supported open v1 goals automatically, preserving history
 without granting authority. Preview/historical reads never migrate or reopen.
 For bulk/blocked conversion, read [schema migration](SCHEMA_MIGRATION.md).
+
+## Working inputs
+
+Capture, execute, migration, and policy-review checkpoints return a `working_input` object containing a stable ignored path and runnable commands. Ambiguous provider dispatches return an exact `working-input reconcile` command; active references return `working-input status`. See [WORKING_INPUTS.md](WORKING_INPUTS.md) for lifecycle and recovery rules.

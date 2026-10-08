@@ -31,6 +31,54 @@ from urllib.parse import quote, urlparse
 
 
 _PR_CORRECTION_CACHE: dict[tuple, list[dict[str, Any]]] = {}
+_WORKING_INPUT_TRANSACTION: ContextVar[dict[str, Any] | None] = ContextVar(
+    "zzzops_working_input_transaction", default=None)
+
+def _working_result_digest(value: Any) -> str:
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _transactional_provider_write(adapter, operation, target, arguments, call, postcondition):
+    context = _WORKING_INPUT_TRANSACTION.get()
+    if not context:
+        return call()
+    envelope = {"operation": operation, "target": target, "arguments": arguments}
+    encoded = json.dumps(envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    suffix = hashlib.sha256(encoded).hexdigest()[:24]
+    request_id = (context["request_id"][:96] + "-" + suffix)[:128]
+    store = _working_inputs.WorkingInputStore(
+        adapter.repo, repository=adapter.repository, owner=context["owner"])
+    subject = "provider:" + request_id
+    store.write(subject, "provider-mutation", envelope)
+    action = copy.deepcopy(envelope)
+    store.freeze(subject, "provider-mutation", request_id, action)
+    def check(_request, digest):
+        result = postcondition()
+        if result is None: return None
+        receipt = {"request_id": request_id, "digest": digest, "action": action,
+                   "authenticated": True, "provider_result": _working_result_digest(result)}
+        return {"applied": True, "receipt": receipt, "result": result}
+    store.provider_check = check
+    def apply(_request, body):
+        if json.loads(body) != envelope: raise ValueError("Frozen provider envelope mismatch")
+        call()
+        result = postcondition()
+        if result is None: raise ValueError("Provider mutation postcondition was not confirmed")
+        receipt = {"request_id": request_id, "digest": hashlib.sha256(body).hexdigest(),
+                   "action": action, "authenticated": True,
+                   "provider_result": _working_result_digest(result)}
+        return {"receipt": receipt, "result": result}
+    confirmed = store.dispatch(request_id, apply)
+    if isinstance(confirmed, dict) and "result" in confirmed:
+        return confirmed["result"]
+    # Compatibility with confirmations written before reconciled results used
+    # the normal dispatch envelope. Re-observe and bind the exact result.
+    if isinstance(confirmed, dict) and confirmed.get("authenticated") is True:
+        result = postcondition()
+        if result is not None and confirmed.get("provider_result") == _working_result_digest(result):
+            return result
+    raise ValueError("Confirmed provider mutation has no authenticated replay result")
 
 
 def read_pull_request_correction_sources(repo: Path, repository: str, number: int, *, marker: dict) -> list[dict[str, Any]]:
@@ -78,6 +126,13 @@ assert _PACKAGE_MODULE_SPEC and _PACKAGE_MODULE_SPEC.loader
 _package = importlib.util.module_from_spec(_PACKAGE_MODULE_SPEC)
 sys.modules[_PACKAGE_MODULE_SPEC.name] = _package
 _PACKAGE_MODULE_SPEC.loader.exec_module(_package)
+
+_WORKING_INPUTS_MODULE_PATH = Path(__file__).with_name("working_inputs.py")
+_WORKING_INPUTS_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_working_inputs", _WORKING_INPUTS_MODULE_PATH)
+assert _WORKING_INPUTS_MODULE_SPEC and _WORKING_INPUTS_MODULE_SPEC.loader
+_working_inputs = importlib.util.module_from_spec(_WORKING_INPUTS_MODULE_SPEC)
+sys.modules[_WORKING_INPUTS_MODULE_SPEC.name] = _working_inputs
+_WORKING_INPUTS_MODULE_SPEC.loader.exec_module(_working_inputs)
 
 _INSTALLATION_MODULE_PATH = Path(__file__).with_name("installation.py")
 _INSTALLATION_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_installation", _INSTALLATION_MODULE_PATH)
@@ -960,6 +1015,13 @@ class GitHubGoalTransitionAdapter:
             raise GoalTransitionProviderError("GitHub relationship coverage is unknown: " + str(exc)) from exc
 
     def update_issue(self, number: int, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._transactional_write(
+            "update_issue", {"issue": number}, {"payload": payload},
+            lambda: self._update_issue(number, payload),
+            lambda: self._issue_postcondition(number, payload),
+        )
+
+    def _update_issue(self, number: int, payload: dict[str, Any]) -> dict[str, Any]:
         result = self._run(
             ["api", "--method", "PATCH", f"repos/{self.repository}/issues/{number}", "--input", "-"],
             input_text=json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
@@ -979,6 +1041,33 @@ class GitHubGoalTransitionAdapter:
         return issue
 
     def create_issue(self, payload: dict[str, Any]) -> dict[str, Any]:
+        created = []
+        context = _WORKING_INPUT_TRANSACTION.get()
+        marker = ("<!-- zzzops-request:" + hashlib.sha256(context["request_id"].encode()).hexdigest() + " -->") if context else None
+        wire = copy.deepcopy(payload)
+        if marker:
+            wire["body"] = wire.get("body", "") + "\n" + marker
+        def create():
+            issue = self._create_issue(wire)
+            created.append(issue); return issue
+        issue = self._transactional_write(
+            "create_issue", {"repository": self.repository}, {"payload": payload, "marker": marker},
+            create, lambda: created[0] if created else None,
+        )
+        if not marker:
+            return issue
+        cleaned = []
+        def cleanup():
+            value = self._update_issue(issue["number"], {"body": payload.get("body", "")})
+            cleaned.append(value); return value
+        def clean_postcondition():
+            value = cleaned[0] if cleaned else self.get_issue(issue["number"])
+            return value if isinstance(value, dict) and value.get("number") == issue["number"] and value.get("body") == payload.get("body", "") else None
+        return self._transactional_write(
+            "cleanup_created_issue", {"issue": issue["number"]},
+            {"payload": payload, "marker": marker}, cleanup, clean_postcondition)
+
+    def _create_issue(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.ensure_identity()
         result = self._run(
             ["api", "--method", "POST", f"repos/{self.repository}/issues", "--input", "-"],
@@ -1097,6 +1186,16 @@ class GitHubGoalTransitionAdapter:
 
     def create_issue_comment(self, number: int, body: str) -> dict[str, Any]:
         _comment_store.guard_comment(body)
+        prior = ({row.get("id") for row in self.get_issue_comments(number)}
+                 if _WORKING_INPUT_TRANSACTION.get() else set())
+        return self._transactional_write(
+            "create_issue_comment", {"issue": number}, {"body": body, "prior_ids": sorted(prior)},
+            lambda: self._create_issue_comment(number, body),
+            lambda: next((row for row in self.get_issue_comments(number)
+                          if row.get("id") not in prior and row.get("body") == body), None),
+        )
+
+    def _create_issue_comment(self, number: int, body: str) -> dict[str, Any]:
         result = self._run(
             ["api", "--method", "POST", f"repos/{self.repository}/issues/{number}/comments", "--input", "-"],
             input_text=json.dumps({"body": body}, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
@@ -1114,6 +1213,19 @@ class GitHubGoalTransitionAdapter:
                 "GitHub returned an incomplete history response; body replacement was not attempted."
             )
         return comment
+
+    def _issue_postcondition(self, number: int, payload: dict[str, Any]):
+        issue = self.get_issue(number)
+        for key, value in payload.items():
+            observed = issue.get(key)
+            if key == "labels":
+                observed = [row.get("name") if isinstance(row, dict) else row for row in observed or []]
+            if observed != value:
+                return None
+        return issue
+
+    def _transactional_write(self, operation, target, arguments, call, postcondition):
+        return _transactional_provider_write(self, operation, target, arguments, call, postcondition)
 
 
 _validate_reservation_goal = _reservation._validate_reservation_goal
@@ -2468,7 +2580,7 @@ def sanitize_output(value: str) -> str:
     return re.sub(r"(https?://)[^/@\s]+@", r"\1***@", value)
 
 
-_reservation.configure_entrypoint(parse_managed_goal, sanitize_output)
+_reservation.configure_entrypoint(parse_managed_goal, sanitize_output, _transactional_provider_write)
 
 
 def github_repository_probe(repo: Path) -> dict[str, Any]:
@@ -3889,6 +4001,18 @@ def main() -> int:
     """Only the intent checkpoint is public; legacy parsers are internal adapters."""
     configure_cli_stdout()
     argv = list(sys.argv)
+    if len(argv) > 1 and argv[1] == 'working-input':
+        parser = argparse.ArgumentParser(description='Manage one durable local working input')
+        commands = parser.add_subparsers(dest='action', required=True)
+        for action in ('status', 'reconcile'):
+            command = commands.add_parser(action)
+            command.add_argument('--repo', type=Path, required=True)
+            command.add_argument('--request-id', required=True)
+        args = parser.parse_args(argv[2:])
+        result = _working_inputs.execute_command(
+            args.action, repo=args.repo.resolve(), request_id=args.request_id)
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(',', ':')))
+        return 0
     command_index = 3 if len(argv) > 2 and argv[1] == '--repo' else 1
     if len(argv) > command_index and argv[command_index] == 'workflow':
         argv.pop(command_index)

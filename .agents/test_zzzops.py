@@ -2415,6 +2415,18 @@ class DiagnosticsModuleTests(unittest.TestCase):
 
 
 class ReservationModuleTests(unittest.TestCase):
+    def test_real_adapter_decodes_and_validates_label_response(self):
+        reservation = zzzops._reservation
+        adapter = object.__new__(reservation.GitHubReservationAdapter)
+        adapter.repository = "owner/repo"
+        adapter._run = lambda _args: subprocess.CompletedProcess(
+            _args, 0, stdout=json.dumps({"name": "lease", "description": "held", "node_id": "L1"}), stderr="")
+        self.assertEqual("L1", adapter.get_label("lease")["node_id"])
+        adapter._run = lambda _args: subprocess.CompletedProcess(
+            _args, 0, stdout=json.dumps({"name": "wrong", "node_id": "L1"}), stderr="")
+        with self.assertRaises(reservation.ReservationProviderError):
+            adapter.get_label("lease")
+
     def test_entry_point_reexports_reservation_contract(self):
         reservation = zzzops._reservation
         for name in (
@@ -2423,6 +2435,46 @@ class ReservationModuleTests(unittest.TestCase):
             "reservation_cli_message",
         ):
             self.assertIs(getattr(zzzops, name), getattr(reservation, name))
+
+    def test_github_label_mutations_use_exact_transaction_gateway(self):
+        reservation = zzzops._reservation
+        calls = []
+        adapter = object.__new__(reservation.GitHubReservationAdapter)
+        adapter.repo = Path("/tmp/repo")
+        adapter.repository = "owner/repo"
+        adapter.executable = "gh"
+        adapter._identity_checked = True
+        labels = {}
+        adapter._run = lambda arguments, timeout=30: subprocess.CompletedProcess(
+            arguments, 0,
+            stdout=json.dumps({"name": "lease", "description": "held", "node_id": "L1"})
+            if "POST" in arguments else "{}", stderr="")
+        adapter.get_label = lambda name: copy.deepcopy(labels.get(name))
+        adapter.get_label_node = lambda node: next(
+            (copy.deepcopy(value) for value in labels.values() if value["node_id"] == node), None)
+        def gateway(subject, operation, target, arguments, call, postcondition):
+            calls.append((operation, target, arguments))
+            result = call()
+            if operation == "create_label":
+                labels[target["name"]] = {"name": target["name"], "description": arguments["description"], "node_id": "L1"}
+            elif operation == "update_label":
+                labels["lease"]["description"] = arguments["description"]
+            elif operation == "delete_label":
+                labels.clear()
+            confirmed = postcondition()
+            self.assertIsNotNone(confirmed)
+            return confirmed if result is None else result
+        old = reservation._provider_write
+        reservation._provider_write = gateway
+        self.addCleanup(setattr, reservation, "_provider_write", old)
+        adapter.create_label("lease", "held")
+        adapter.update_label("L1", "renewed")
+        adapter.delete_label("L1")
+        self.assertEqual([
+            ("create_label", {"name": "lease"}, {"color": reservation.RESERVATION_COLOR, "description": "held"}),
+            ("update_label", {"node_id": "L1"}, {"description": "renewed"}),
+            ("delete_label", {"node_id": "L1"}, {}),
+        ], calls)
 
 
 class FeedbackModuleTests(unittest.TestCase):
@@ -3800,6 +3852,32 @@ class FakeGoalTransitionAdapter:
 
 
 class GoalCreateTests(unittest.TestCase):
+    def test_public_adapter_goal_create_transaction_confirms_exact_result(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory); subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            adapter = object.__new__(zzzops.GitHubGoalTransitionAdapter)
+            adapter.repo, adapter.repository, adapter.executable = repo, "owner/repo", "gh"
+            adapter._identity_checked = True
+            payload = {"title": "Durable", "body": "Exact body", "labels": ["zzzops"]}
+            def run(arguments, **_kwargs):
+                if "POST" in arguments:
+                    body = payload["body"] + "\n<!-- zzzops-request:" + hashlib.sha256(b"goal-create-public").hexdigest() + " -->"
+                else:
+                    body = payload["body"]
+                issue = {"number": 42, "title": payload["title"], "body": body, "state": "open",
+                         "html_url": "https://github.com/owner/repo/issues/42", "labels": [{"name": "zzzops"}]}
+                return SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(issue))
+            adapter._run = run
+            token = zzzops._WORKING_INPUT_TRANSACTION.set({"request_id": "goal-create-public", "owner": "root"})
+            try: result = adapter.create_issue(payload)
+            finally: zzzops._WORKING_INPUT_TRANSACTION.reset(token)
+            self.assertEqual("Exact body", result["body"])
+            store = zzzops._working_inputs.WorkingInputStore(repo, repository="owner/repo", owner="root")
+            requests = json.loads(store.index_path.read_text())["requests"]
+            self.assertEqual(["confirmed", "confirmed"], sorted(row["state"] for row in requests.values()))
+            operations = {row["action"]["operation"] for row in requests.values()}
+            self.assertEqual({"create_issue", "cleanup_created_issue"}, operations)
+
     def request(self):
         return {
             "schema_version": 1,

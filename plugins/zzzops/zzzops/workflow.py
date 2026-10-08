@@ -5310,7 +5310,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         if freshness['stale']:
             return {'next_steps': [{'kind': 'policy_review', 'assignment': 'root', 'action': 'Review policy tier mappings for newly discovered model/effort pairs before proceeding.', 'added': freshness['added'], 'submission': {'operation': 'policy_propose', 'plan': '<updated reviewed policy plan>'}}]}
     engine = Workflow(api, repo, project, runtime)
-    if payload is not None and operation not in {'read', 'heartbeat', 'renew'}:
+    if payload is not None and operation not in {'read', 'heartbeat'}:
         original_issue = engine._mutation_adapter.get_issue
         original_comments = engine._mutation_adapter.get_issue_comments
         read_cache = {'issues': {}, 'comments': {}}
@@ -5387,9 +5387,6 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 try:
                     return _original(*args, **kwargs)
                 finally:
-                    # A provider may commit and then lose its response. Any
-                    # recovery read must observe the provider, not the
-                    # pre-mutation snapshot used by the write fence.
                     read_cache['issues'].clear(); read_cache['comments'].clear()
             setattr(engine._mutation_adapter, method_name, guarded)
         api._guarded_mutations = getattr(api, '_guarded_mutations', []) + [(engine._mutation_adapter, originals)]
@@ -5581,10 +5578,46 @@ def _public_response(api, repo, intent, source, runtime, payload, number, *, ski
     options = {'skip_installation_validation': True} if skip_installation_validation else {}
     if payload_supplied:
         options['payload_supplied'] = True
-    result = _public_run(
-        api, repo, intent, source, runtime, payload, number,
-        policy_snapshot=snapshot, **options,
-    )
+    transaction = None
+    if isinstance(payload, dict):
+        request_id = payload.get('request_id')
+        if not isinstance(request_id, str):
+            encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
+            request_id = 'workflow-' + hashlib.sha256(encoded).hexdigest()[:48]
+        transaction = api._WORKING_INPUT_TRANSACTION.set({
+            'request_id': request_id, 'owner': (runtime or {}).get('root_id', 'root')})
+    try:
+        result = _public_run(
+            api, repo, intent, source, runtime, payload, number,
+            policy_snapshot=snapshot, **options,
+        )
+    finally:
+        if transaction is not None:
+            api._WORKING_INPUT_TRANSACTION.reset(transaction)
+    purposes = {
+        '$add-zzzops-goal': 'capture', '$execute-zzzops': 'execute',
+        '$migrate-to-zzzops': 'migration', '$review-zzzops-policy': 'policy-review',
+    }
+    purpose = purposes.get(source)
+    if purpose is not None:
+        repository = ((snapshot.get('project') or {}).get('repository') or {}).get('identity', 'local')
+        owner = (runtime or {}).get('root_id', 'root')
+        carried_draft = (runtime or {}).get('working_input_draft')
+        logical_session = os.environ.get('CODEX_THREAD_ID')
+        if isinstance(carried_draft, str):
+            draft_identity = carried_draft
+        elif number is None and isinstance(logical_session, str) and logical_session:
+            draft_identity = api._working_inputs.WorkingInputStore(
+                repo, repository=repository, owner=owner,
+            ).draft_session(purpose, logical_session)
+        else:
+            draft_identity = str(uuid.uuid4())
+        subject = f'goal:{number}' if number is not None else f'draft:{draft_identity}'
+        result['working_input'] = api._working_inputs.WorkingInputStore(
+            repo, repository=repository, owner=owner,
+        ).guidance(subject, purpose)
+        if number is None:
+            result['working_input']['draft_id'] = draft_identity
     if payload is None and number is not None and source == '$execute-zzzops':
         for step in result.get('next_steps', []):
             if isinstance(step, dict):
