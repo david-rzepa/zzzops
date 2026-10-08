@@ -762,10 +762,12 @@ with s.reference('process-lock', 'reader'):
                 commands = guidance["commands"]
                 self.assertTrue(commands)
                 self.assertNotIn("<", " ".join(commands[0]))
-            first_draft = public_cli._workflow.public_run(
-                public_cli, self.repo, "capture", "$add-zzzops-goal", {"root_id": "root"}, None, None)
-            concurrent = public_cli._workflow.public_run(
-                public_cli, self.repo, "capture", "$add-zzzops-goal", {"root_id": "root"}, None, None)
+            with mock.patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("CODEX_THREAD_ID", None)
+                first_draft = public_cli._workflow.public_run(
+                    public_cli, self.repo, "capture", "$add-zzzops-goal", {"root_id": "root"}, None, None)
+                concurrent = public_cli._workflow.public_run(
+                    public_cli, self.repo, "capture", "$add-zzzops-goal", {"root_id": "root"}, None, None)
             self.assertNotEqual(first_draft["working_input"]["draft_id"],
                                 concurrent["working_input"]["draft_id"])
             resumed = public_cli._workflow.public_run(
@@ -773,6 +775,16 @@ with s.reference('process-lock', 'reader'):
                 {"root_id": "root", "working_input_draft": first_draft["working_input"]["draft_id"]},
                 None, None)
             self.assertEqual(first_draft["working_input"]["path"], resumed["working_input"]["path"])
+            with mock.patch.dict(os.environ, {"CODEX_THREAD_ID": "logical-a"}):
+                automatic = public_cli._workflow.public_run(
+                    public_cli, self.repo, "capture", "$add-zzzops-goal", {"root_id": "root"}, None, None)
+                restarted = public_cli._workflow.public_run(
+                    public_cli, self.repo, "capture", "$add-zzzops-goal", {"root_id": "root"}, None, None)
+            with mock.patch.dict(os.environ, {"CODEX_THREAD_ID": "logical-b"}):
+                parallel = public_cli._workflow.public_run(
+                    public_cli, self.repo, "capture", "$add-zzzops-goal", {"root_id": "root"}, None, None)
+            self.assertEqual(automatic["working_input"]["path"], restarted["working_input"]["path"])
+            self.assertNotEqual(automatic["working_input"]["path"], parallel["working_input"]["path"])
         self.assertEqual('{"operation":"submit"}\n', legacy.read_text())
 
         descriptor = store.write("goal:554", "execute", {"z": 1, "a": [2, 3]})
@@ -783,6 +795,24 @@ with s.reference('process-lock', 'reader'):
         command = store.guidance("goal:554", "execute")["commands"][0]
         rendered = subprocess.run(command, cwd=self.repo, text=True, capture_output=True, check=True)
         self.assertEqual(json.loads(Path(descriptor["path"]).read_text()), json.loads(rendered.stdout))
+
+    def test_draft_session_survives_new_process_and_separates_logical_sessions(self):
+        self.require_behavior("automatic durable draft-session identity")
+        script = (
+            "import importlib.util,pathlib,sys;"
+            "s=importlib.util.spec_from_file_location('wi',sys.argv[1]);"
+            "m=importlib.util.module_from_spec(s);s.loader.exec_module(m);"
+            "x=m.WorkingInputStore(pathlib.Path(sys.argv[2]),repository='owner/project',owner='root');"
+            "print(x.draft_session('capture',sys.argv[3]))"
+        )
+        def invoke(session):
+            return subprocess.run(
+                [sys.executable, "-c", script, str(MODULE), str(self.repo), session],
+                text=True, capture_output=True, check=True,
+            ).stdout.strip()
+        first = invoke("codex-thread-a")
+        self.assertEqual(first, invoke("codex-thread-a"))
+        self.assertNotEqual(first, invoke("codex-thread-b"))
 
 
 if __name__ == "__main__":

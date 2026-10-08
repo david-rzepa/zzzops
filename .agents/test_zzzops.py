@@ -2424,6 +2424,46 @@ class ReservationModuleTests(unittest.TestCase):
         ):
             self.assertIs(getattr(zzzops, name), getattr(reservation, name))
 
+    def test_github_label_mutations_use_exact_transaction_gateway(self):
+        reservation = zzzops._reservation
+        calls = []
+        adapter = object.__new__(reservation.GitHubReservationAdapter)
+        adapter.repo = Path("/tmp/repo")
+        adapter.repository = "owner/repo"
+        adapter.executable = "gh"
+        adapter._identity_checked = True
+        labels = {}
+        adapter._run = lambda arguments, timeout=30: subprocess.CompletedProcess(
+            arguments, 0,
+            stdout=json.dumps({"name": "lease", "description": "held", "node_id": "L1"})
+            if "POST" in arguments else "{}", stderr="")
+        adapter.get_label = lambda name: copy.deepcopy(labels.get(name))
+        adapter.get_label_node = lambda node: next(
+            (copy.deepcopy(value) for value in labels.values() if value["node_id"] == node), None)
+        def gateway(subject, operation, target, arguments, call, postcondition):
+            calls.append((operation, target, arguments))
+            result = call()
+            if operation == "create_label":
+                labels[target["name"]] = {"name": target["name"], "description": arguments["description"], "node_id": "L1"}
+            elif operation == "update_label":
+                labels["lease"]["description"] = arguments["description"]
+            elif operation == "delete_label":
+                labels.clear()
+            confirmed = postcondition()
+            self.assertIsNotNone(confirmed)
+            return confirmed if result is None else result
+        old = reservation._provider_write
+        reservation._provider_write = gateway
+        self.addCleanup(setattr, reservation, "_provider_write", old)
+        adapter.create_label("lease", "held")
+        adapter.update_label("L1", "renewed")
+        adapter.delete_label("L1")
+        self.assertEqual([
+            ("create_label", {"name": "lease"}, {"color": reservation.RESERVATION_COLOR, "description": "held"}),
+            ("update_label", {"node_id": "L1"}, {"description": "renewed"}),
+            ("delete_label", {"node_id": "L1"}, {}),
+        ], calls)
+
 
 class FeedbackModuleTests(unittest.TestCase):
     def test_entry_point_reexports_feedback_contract(self):
