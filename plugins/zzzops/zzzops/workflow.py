@@ -2418,10 +2418,28 @@ class Workflow:
                 continue
             context = row.get('context') or {}
             request_id = context.get('request_id')
-            fingerprint = context.get('fingerprint')
-            if (request_id and fingerprint is not None and request_id not in committed
+            response_only = False
+            if set(context) == {'request_id', 'response'} and isinstance(request_id, str) and request_id:
+                response_ref = context.get('response')
+                if (isinstance(response_ref, dict) and set(response_ref) == {'hash', 'uri'}
+                        and isinstance(response_ref.get('hash'), str)
+                        and re.fullmatch(r'sha256:[0-9a-f]{64}', response_ref['hash'])
+                        and response_ref == self.node_ref(response_ref.get('hash'), snapshot['number'])):
+                    transaction_rows = [item for item, _ in index.decoded.values()
+                                        if item is not None and item.get('transaction') == row.get('transaction')]
+                    carried = any(record.get('hash') == response_ref['hash']
+                                  for item in transaction_rows for record in item.get('artifacts', []))
+                    try:
+                        response = index.resolve(response_ref['hash'])[0] if carried else None
+                    except ValueError:
+                        response = None
+                    response_only = (isinstance(response, dict) and isinstance(response.get('next_steps'), list)
+                                     and all(isinstance(step, dict) for step in response['next_steps'])
+                                     and all((item.get('context') or {}) == context for item in transaction_rows))
+            if (request_id and not response_only and request_id not in committed
                     and request_id != pending_request):
                 if historical is None: historical = self.node_committed_legacy_requests(snapshot)
+                fingerprint = context.get('fingerprint')
                 if (row.get('goal') == snapshot['number'] and request_id in historical and
                         fingerprint == historical[request_id]): continue
                 raise ValueError('Uncommitted checkpoint must be resumed before graph repair: '

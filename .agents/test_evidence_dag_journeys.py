@@ -5029,16 +5029,20 @@ class GraphAdoptionPublicTests(DagFixture):
         with mock.patch.dict(os.environ, {"CODEX_THREAD_ID": actor}):
             return self.session.call(100, request, expected=expected)
 
-    def append_request_envelope(self, request_id, fingerprint=None):
+    def append_request_envelope(self, request_id, response_kind="valid"):
         store = z._comment_store
-        content = {"type": "workflow_response", "content": {"next_steps": []},
-                   "producer": None, "provenance": {"actor": "root-thread", "source": None,
-                   "policy": content_hash(self.session.project["policy"])}}
+        content = {"next_steps": [], "request_id": request_id}
         record = store.ArtifactIndex([]).record(content)
-        context = {"request_id": request_id,
-                   "response": {"hash": record["hash"], "uri": "urn:" + record["hash"]}}
-        if fingerprint is not None:
-            context["fingerprint"] = fingerprint
+        response = {"hash": record["hash"],
+                    "uri": f"zzzops:owner/repo:goal:100:{record['hash']}"}
+        if response_kind == "null":
+            response = None
+        elif response_kind == "malformed":
+            response = {"hash": "not-a-hash", "uri": "zzzops:owner/repo:goal:100:not-a-hash"}
+        elif response_kind == "mismatched":
+            identity = "sha256:" + "c" * 64
+            response = {"hash": identity, "uri": f"zzzops:owner/repo:goal:100:{identity}"}
+        context = {"request_id": request_id, "response": response}
         for body in store.pack_envelopes(
                 {"goal": 100, "transaction": "response-" + request_id, "context": context}, [record]):
             self.provider.create_issue_comment(100, body)
@@ -5543,7 +5547,6 @@ class GraphAdoptionPublicTests(DagFixture):
         with mock.patch.object(self.provider, 'update_issue', side_effect=RuntimeError('provider unavailable')):
             self.session.call(100, request, expected=2)
         self.assertFalse(self.payload()[1]['operational']['leases'])
-        self.append_request_envelope('interrupted-before-body', 'sha256:' + 'b' * 64)
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
         resumed_prepare = self.session.call(100, {
             'operation': 'graph_prepare', 'graph': self.graph,
@@ -5557,6 +5560,8 @@ class GraphAdoptionPublicTests(DagFixture):
                                           'request_id': 'unrelated-graph-prepare'}, expected=2)
         self.assertRegex(json.dumps(response), r'(?i)uncommitted|checkpoint')
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        resumed = self.session.call(100, request)
+        self.assertEqual('perform', resumed['next_steps'][0]['kind'])
 
     def test_response_only_envelope_does_not_block_graph_prepare_or_review(self):
         self.append_request_envelope("543-observe-publication-start-20261008")
@@ -5574,13 +5579,17 @@ class GraphAdoptionPublicTests(DagFixture):
         })
         self.assertEqual("human_approval", reviewed["next_steps"][0]["kind"])
 
-        self.append_request_envelope("genuine-interrupted-checkpoint", "sha256:" + "a" * 64)
-        response = self.session.call(100, {
-            "operation": "graph_prepare", "graph": self.graph,
-            "rationale": "A genuine unrelated checkpoint must still block",
-            "request_id": "unrelated-graph-prepare",
-        }, expected=2)
-        self.assertRegex(json.dumps(response), r"(?i)uncommitted|checkpoint")
+        for response_kind in ("null", "malformed", "mismatched"):
+            with self.subTest(response_kind=response_kind):
+                before = copy.deepcopy(self.provider.comments[100])
+                self.append_request_envelope("adversarial-" + response_kind, response_kind)
+                response = self.session.call(100, {
+                    "operation": "graph_prepare", "graph": self.graph,
+                    "rationale": "Malformed response-only claims must not bypass pending checks",
+                    "request_id": "unrelated-" + response_kind,
+                }, expected=2)
+                self.assertRegex(json.dumps(response), r"(?i)uncommitted|checkpoint")
+                self.provider.comments[100] = before
 
     def test_graph_repair_uses_only_exact_committed_migration_cutoff(self):
         engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
