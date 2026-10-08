@@ -3529,6 +3529,12 @@ class Workflow:
             'target_inputs': {'kind': 'array', 'items': binding}, 'authority': copy.deepcopy(ref),
             'applicability': {'kind': 'enum', 'values': ['applicable', 'not_applicable', 'unresolved']},
             'rationale': {'kind': 'string'}}}
+        supersession = {'kind': 'object', 'fields': {
+            'prior': copy.deepcopy(ref), 'replacement': copy.deepcopy(ref),
+            'coverage': {'kind': 'enum', 'values': ['carried', 'narrowed']},
+            'coverage_evidence': copy.deepcopy(ref), 'authority': copy.deepcopy(ref)}}
+        nullable_supersession = {'kind': 'union', 'variants': [
+            {'kind': 'null'}, copy.deepcopy(supersession)]}
         registry = {'kind': 'object', 'fields': {
             'items': {'kind': 'map', 'values': copy.deepcopy(ref)}, 'rationale': {'kind': 'string'}}}
         resolution = {'kind': 'object', 'fields': {'finding': copy.deepcopy(ref),
@@ -3567,19 +3573,23 @@ class Workflow:
              'permits': [{'type': 'finding', 'scope': copy.deepcopy(scope)}]},
             {'id': admit_name,
              'prompt': ('Root classifies the exact typed finding. Applicable correction preserves history and '
-                        'reopens only its exact rejected target.'),
+                        'reopens only its exact rejected target. Submit transfer as null only for the first admitted '
+                        'revision; a replacement must atomically transfer exact prior coverage with explicit root '
+                        'authority and coverage evidence.'),
              'inputs': {
                  'finding': {'producer': {'node': selector(interpret_name)}, 'output': 'value', 'path': [],
                              'mode': 'identity', 'type': copy.deepcopy(finding)},
                  'subject': {'producer': {'node': selector(target_name)}, 'output': target_output, 'path': [],
                              'mode': 'identity', 'type': copy.deepcopy(target_type)},
              },
-             'outputs': {'value': {'type': 'admission', 'schema': admission}},
+             'outputs': {'value': {'type': 'admission', 'schema': admission},
+                         'transfer': {'type': 'supersession', 'schema': nullable_supersession}},
              'requires': [selector(interpret_name), selector(target_name)],
              'executor': {'role': 'root', 'capability': 'bounded', 'resources': [],
                           'authority': {'subject': selector(admit_name), 'output': 'value'}},
              'independent_of': [], 'gates': [], 'resolves': [],
-             'permits': [{'type': 'admission', 'scope': copy.deepcopy(scope)}]},
+             'permits': [{'type': kind, 'scope': copy.deepcopy(scope)}
+                         for kind in ('admission', 'supersession')]},
             {'id': retain_name,
              'prompt': ('After a fresh approved independent review, retain every admitted finding id and exact '
                         'finding reference. Approval alone does not resolve a finding.'),
@@ -3656,7 +3666,13 @@ class Workflow:
             for finding_node in findings:
                 admissions = [node for node in nodes
                     if any(output.get('type') == 'admission' for output in node.get('outputs', {}).values()) and
+                    any(output.get('type') == 'supersession' and
+                        output.get('schema', {}).get('kind') == 'union' and
+                        any(variant.get('kind') == 'null'
+                            for variant in output.get('schema', {}).get('variants', []))
+                        for output in node.get('outputs', {}).values()) and
                     permits_target(node, 'admission', target_name, target_output) and
+                    permits_target(node, 'supersession', target_name, target_output) and
                     input_from(node, finding_node['id'], mode='identity')]
                 registries = [node for node in nodes
                     if any(output.get('type') == 'finding_registry' for output in node.get('outputs', {}).values()) and
@@ -4524,6 +4540,12 @@ class Workflow:
         subject_results = {ref['hash']: result for result in current.values() for ref in result['outputs'].values()}
         history = [(ref, artifacts[ref['hash']]) for item in snapshot['payload']['evidence'] for ref in artifacts[item['hash']]['content']['outputs'].values()]
         proposed = [(state['contract']['outputs'][slot]['type'], value) for slot, value in bundle.items()]
+        def nullable_supersession(contract):
+            schema = contract.get('schema', {})
+            return (contract.get('type') == 'supersession' and schema.get('kind') == 'union' and
+                    any(variant.get('kind') == 'null' for variant in schema.get('variants', [])))
+        transfer_values = [bundle[slot] for slot, contract in state['contract']['outputs'].items()
+                           if nullable_supersession(contract)]
         def read(ref, kind=None):
             ev.validate_ref(ref)
             if ref['hash'] not in artifacts: raise ValueError('Unknown immutable evidence reference' + (': ' + kind if kind else ''))
@@ -4817,7 +4839,21 @@ class Workflow:
                 if not any(subject_results[ref['hash']]['inputs'] == value['target_inputs'] for ref in finding['subjects']): raise ValueError('Admission target inputs mismatch exact subject')
                 if value['applicability'] not in ('applicable', 'not_applicable', 'unresolved'): raise ValueError('Unknown admission applicability')
                 prior = obligation(finding)
-                if prior and prior['finding'] != value['finding'] and not any(k == 'supersession' and v['prior'] == prior['finding'] and v['replacement'] == value['finding'] for k, v in proposed): raise ValueError('Supersession requires atomic exact coverage transfer')
+                if transfer_values:
+                    if len(transfer_values) != 1:
+                        raise ValueError('Correction admission requires one exact atomic supersession transfer')
+                    transfer = transfer_values[0]
+                    if prior is None:
+                        if transfer is not None:
+                            raise ValueError('First admitted revision requires explicit null supersession transfer')
+                    elif (not isinstance(transfer, dict) or transfer.get('prior') != prior['finding'] or
+                          transfer.get('replacement') != value['finding']):
+                        raise ValueError('Replacement admission requires atomic exact coverage transfer')
+                elif prior and prior['finding'] != value['finding'] and not any(
+                        k == 'supersession' and isinstance(v, dict) and
+                        v.get('prior') == prior['finding'] and v.get('replacement') == value['finding']
+                        for k, v in proposed):
+                    raise ValueError('Supersession requires atomic exact coverage transfer')
             elif kind == 'applicability_assessment':
                 finding = read(value['finding'], 'finding'); prior = obligation(finding)
                 permit(kind, finding['target']); authority(value['authority'])
@@ -4841,6 +4877,15 @@ class Workflow:
                 if any(subject_results[ref['hash']]['executor'] == reviewer['executor'] for ref in value['subjects']):
                     raise ValueError('Applicability reviewer must be independent of corrected subjects')
             elif kind == 'supersession':
+                if value is None:
+                    admissions = [candidate for candidate_kind, candidate in proposed
+                                  if candidate_kind == 'admission']
+                    if len(admissions) != 1:
+                        raise ValueError('Null supersession transfer requires one atomic admission')
+                    candidate = read(admissions[0]['finding'], 'finding')
+                    if obligation(candidate) is not None:
+                        raise ValueError('Null supersession transfer is allowed only without a prior admitted revision')
+                    continue
                 prior = read(value['prior'], 'finding'); replacement = read(value['replacement'], 'finding')
                 permit(kind, replacement['target']); authority(value['authority']); authority(value['coverage_evidence'])
                 existing = obligation(prior)
