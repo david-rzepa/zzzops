@@ -692,17 +692,44 @@ def acquire_storage_lock(adapter: Any, repository: str, key: str, owner: str, ru
 
 def renew_storage_lock(adapter: Any, repository: str, key: str, owner: str, run_id: str, ttl_seconds: int = 60, now: datetime | None = None) -> dict[str, Any]:
     now_epoch = int((now or datetime.now(timezone.utc)).timestamp())
-    existing = adapter.get_label(storage_lock_label_name(key))
+    name = storage_lock_label_name(key)
+    repository_key = reservation_repository_key(repository)
+
+    def is_owned(label: dict[str, Any]) -> bool:
+        current = parse_storage_lock_description(label.get("description"))
+        if current["repository_key"] != repository_key or current["key"] != key:
+            raise ReservationProviderError("Storage lock identity is invalid; no ownership assumed.")
+        return current["owner"] == owner and current["run_id"] == run_id
+
+    existing = adapter.get_label(name)
     if existing is None:
         return {"acquired": False, "outcome": "missing", "key": key}
-    current = parse_storage_lock_description(existing.get("description"))
-    if (current["repository_key"] != reservation_repository_key(repository) or current["key"] != key
-            or current["owner"] != owner or current["run_id"] != run_id):
+    if not is_owned(existing):
         return {"acquired": False, "outcome": "not_owned", "key": key}
     expected = storage_lock_description(repository, key, owner, run_id, now_epoch + ttl_seconds)
-    adapter.update_label(existing["node_id"], expected)
-    confirmed = adapter.get_label(storage_lock_label_name(key))
-    if confirmed is None or confirmed.get("node_id") != existing["node_id"] or confirmed.get("description") != expected:
+    try:
+        adapter.update_label(existing["node_id"], expected)
+    except ReservationProviderError:
+        recovered = adapter.get_label(name)
+        if recovered is None:
+            recovered = adapter.create_label(name, expected)
+            if recovered is None:
+                recovered = adapter.get_label(name)
+        if recovered is None:
+            raise ReservationProviderError("GitHub did not confirm storage lock renewal; no ownership assumed.")
+        if not is_owned(recovered):
+            return {"acquired": False, "outcome": "not_owned", "key": key}
+        if recovered.get("description") != expected:
+            try:
+                adapter.update_label(recovered["node_id"], expected)
+            except ReservationProviderError:
+                pass
+    confirmed = adapter.get_label(name)
+    if confirmed is None:
+        raise ReservationProviderError("GitHub did not confirm storage lock renewal; no ownership assumed.")
+    if not is_owned(confirmed):
+        return {"acquired": False, "outcome": "not_owned", "key": key}
+    if confirmed.get("description") != expected:
         raise ReservationProviderError("GitHub did not confirm storage lock renewal; no ownership assumed.")
     return {"acquired": True, "outcome": "renewed", "key": key, "expires_at": now_epoch + ttl_seconds}
 
