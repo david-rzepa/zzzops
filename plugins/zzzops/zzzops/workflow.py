@@ -5448,7 +5448,10 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         if set(payload) - {'operation', 'graph', 'rationale', 'request_id'} or not {'graph', 'rationale'} <= set(payload):
             raise ValueError('Graph preparation accepts only the proposed graph and scoped rationale')
         with engine.locked():
-            proposal = engine.node_graph_proposal(engine.node_snapshot(number), payload['graph'], payload['rationale'])
+            proposal = engine.node_graph_proposal(
+                engine.node_snapshot(number), payload['graph'], payload['rationale'],
+                pending_request=payload.get('request_id'),
+            )
         return {'next_steps': [{'kind': 'review_required', 'assignment': 'root', 'goal': number,
                 'proposal': proposal,
                 'action': ('Give this exact manifest to an independent reviewer. Submit its explicit decision '

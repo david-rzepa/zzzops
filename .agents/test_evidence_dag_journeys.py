@@ -5521,7 +5521,7 @@ class GraphAdoptionPublicTests(DagFixture):
         self.session.call(100, request)
         self.assertIn("new_note", self.names())
 
-    def test_graph_prepare_rejects_an_uncommitted_checkpoint(self):
+    def test_graph_prepare_resumes_its_uncommitted_checkpoint_but_rejects_an_unrelated_one(self):
         self.produce()
         ready = next(step for step in self.session.ready() if step['node']['node'] == 'review_a')
         receipt = json.loads(Path(ready['policy']['path']).read_text())['policy_receipt']
@@ -5530,8 +5530,16 @@ class GraphAdoptionPublicTests(DagFixture):
             self.session.call(100, request, expected=2)
         self.assertFalse(self.payload()[1]['operational']['leases'])
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        resumed_prepare = self.session.call(100, {
+            'operation': 'graph_prepare', 'graph': self.graph,
+            'rationale': 'Resume the exact interrupted graph preparation',
+            'request_id': 'interrupted-before-body',
+        })
+        self.assertEqual('review_required', resumed_prepare['next_steps'][0]['kind'])
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
         response = self.session.call(100, {'operation': 'graph_prepare', 'graph': self.graph,
-                                          'rationale': 'Must not cross an uncommitted transaction'}, expected=2)
+                                          'rationale': 'Must not cross an unrelated uncommitted transaction',
+                                          'request_id': 'unrelated-graph-prepare'}, expected=2)
         self.assertRegex(json.dumps(response), r'(?i)uncommitted|checkpoint')
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
         resumed = self.session.call(100, request)
