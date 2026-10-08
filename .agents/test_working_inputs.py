@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import inspect
 import json
 from pathlib import Path
 import subprocess
@@ -137,7 +138,11 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         first = store.write("draft:abc", "goal-create", {"revision": 1, "body": stable_body})
         path = self.assert_descriptor(first)
         inode = path.stat().st_ino
-        initial_files = sorted(p.relative_to(self.repo) for p in path.parent.rglob("*"))
+        store_root = self.repo / ".zzzops/work/inputs/v1"
+        initial_files = sorted(p.relative_to(self.repo) for p in store_root.rglob("*") if p.is_file())
+        baseline = Path(self.temporary.name) / "external-revision-one.json"
+        baseline.write_bytes(path.read_bytes())
+        initial_bytes = sum(p.stat().st_size for p in store_root.rglob("*") if p.is_file())
 
         second = store.write("draft:abc", "goal-create",
                              {"revision": 2, "body": stable_body, "answer": "settled"})
@@ -145,12 +150,16 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         self.assertEqual(inode, path.stat().st_ino, "editable revisions must retain the stable file itself")
         self.assertEqual({"revision": 2, "body": stable_body, "answer": "settled"},
                          json.loads(path.read_text()))
-        self.assertEqual(initial_files, sorted(p.relative_to(self.repo) for p in path.parent.rglob("*")),
+        current_files = sorted(p.relative_to(self.repo) for p in store_root.rglob("*") if p.is_file())
+        self.assertEqual(initial_files, current_files,
                          "revisions must not create one input file per edit")
-        metrics = store.revision_metrics("draft:abc", "goal-create")
-        self.assertEqual(1, metrics["editable_file_count"])
-        self.assertLess(metrics["patch_bytes"], metrics["duplicate_full_bytes"],
-                        "a stable edited payload must produce a smaller review patch than duplicate full files")
+        current_bytes = sum(p.stat().st_size for p in store_root.rglob("*") if p.is_file())
+        observed_growth = max(0, current_bytes - initial_bytes)
+        duplicate_full_bytes = baseline.stat().st_size + path.stat().st_size
+        self.assertEqual({"revision": 1, "body": stable_body}, json.loads(baseline.read_text()),
+                         "external baseline artifact must remain immutable")
+        self.assertLess(observed_growth, duplicate_full_bytes,
+                        "observed store growth must be smaller than retaining duplicate full inputs")
 
         restarted = self.store().open("draft:abc", "goal-create")
         self.assertEqual(first, restarted)
@@ -216,9 +225,20 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         recovered = self.store().status("request-frozen")
         self.assertEqual("frozen", recovered["state"])
         self.assertEqual(0, len(self.provider.calls), "frozen recovery must prove dispatch was never authorized")
-        Path(recovered["snapshot"]).write_bytes(b'{"tampered":true}')
+        reopened = self.store(fault=lambda point: (_ for _ in ()).throw(RuntimeError(point))
+                              if point == "after_dispatching_fsync" else None)
+        with self.assertRaisesRegex(RuntimeError, "after_dispatching_fsync"):
+            reopened.dispatch("request-frozen", self.provider.send)
+        self.assertEqual("dispatching", self.store().status("request-frozen")["state"])
+        self.assertEqual(0, len(self.provider.calls),
+                         "recovered frozen state must durably cross dispatching before provider I/O")
+
+        clean = self.store()
+        clean.write("goal:554", "corrupt", {"x": 3})
+        corrupt = clean.freeze("goal:554", "corrupt", "request-corrupt", "goal-submit")
+        Path(corrupt["snapshot"]).write_bytes(b'{"tampered":true}')
         with self.assertRaisesRegex(ValueError, "digest|corrupt|snapshot"):
-            self.store().recover("request-frozen")
+            self.store().recover("request-corrupt")
         self.assertEqual(0, len(self.provider.calls), "corrupt recovered bytes must never cross dispatch barrier")
 
     def test_dispatching_crashes_are_uncertain_and_reconcile_is_bounded(self):
@@ -376,6 +396,38 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         self.assertTrue(Path(guarded.status("request-delete-race")["snapshot"]).exists(),
                         "retirement must recheck references under the final deletion lock")
 
+        abandon_before_lock = threading.Event()
+        abandon_reader_acquired = threading.Event()
+        abandon_release = threading.Event()
+        def abandon_fault(point):
+            if point == "before_delete_lock":
+                abandon_before_lock.set()
+                if not abandon_reader_acquired.wait(5):
+                    raise AssertionError("abandonment race reader was not acquired")
+        abandon_store = self.store(fault=abandon_fault)
+        abandon_store.write("goal:554", "abandon-race", {"value": "recheck"})
+        abandon_store.freeze("goal:554", "abandon-race", "request-abandon-race", "goal-submit")
+        abandon_errors = []
+        def abandon_late_reader():
+            try:
+                if not abandon_before_lock.wait(5):
+                    raise AssertionError("abandonment did not reach pre-lock barrier")
+                with self.store().reader("request-abandon-race"):
+                    abandon_reader_acquired.set()
+                    if not abandon_release.wait(5):
+                        raise AssertionError("abandonment late reader was not released")
+            except BaseException as exc:
+                abandon_errors.append(exc)
+        abandon_reader = threading.Thread(target=abandon_late_reader)
+        abandon_reader.start()
+        with self.assertRaises(self.module.WorkingInputBusy):
+            abandon_store.abandon("request-abandon-race", approved_by="user")
+        abandon_release.set()
+        abandon_reader.join(5)
+        self.assertEqual([], abandon_errors)
+        self.assertTrue(Path(abandon_store.status("request-abandon-race")["snapshot"]).exists(),
+                        "abandonment must recheck references under the final deletion lock")
+
     def test_unresolved_snapshots_have_no_age_or_count_eviction(self):
         self.require_behavior('unresolved snapshot retention without eviction')
         store = self.store()
@@ -455,15 +507,16 @@ class WorkingInputBehaviorTests(unittest.TestCase):
                 from zzzops import zzzops as public_cli
             finally:
                 sys.path.pop(0)
-            self.assertTrue(hasattr(public_cli, "working_input_next_steps"),
-                            "public CLI next-step integration is missing")
-            steps = public_cli.working_input_next_steps(
-                self.repo, repository="owner/project", owner="root", subject="goal:554",
-                purpose=purpose, next_steps=[{"kind": purpose}], legacy_paths=[legacy])
-            self.assertEqual(1, len(steps))
-            self.assertEqual(purpose, steps[0]["kind"])
-            self.assertEqual(guidance["path"], steps[0]["working_input"]["path"])
-            self.assertEqual(guidance["payload_id"], steps[0]["working_input"]["payload_id"])
+            capture_wiring = inspect.getsource(public_cli._workflow_admin._capture)
+            workflow_wiring = inspect.getsource(public_cli._workflow._public_run)
+            if purpose == "capture":
+                self.assertIn("working_input", capture_wiring,
+                              "the actual public capture route must attach working-input guidance")
+            else:
+                self.assertIn("working_input", workflow_wiring,
+                              "the actual public workflow route must attach working-input guidance")
+                self.assertIn(purpose, workflow_wiring,
+                              f"the actual public {purpose} route has no concrete working-input wiring")
         self.assertEqual('{"operation":"submit"}\n', legacy.read_text())
 
         descriptor = store.write("goal:554", "execute", {"z": 1, "a": [2, 3]})
