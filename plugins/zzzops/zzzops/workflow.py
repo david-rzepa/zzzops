@@ -4922,12 +4922,23 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     runnable_steps = []
     waiting_steps = []
     ordered_goals = api.effective_goal_order(goals, ordering_policy)
+    candidate_batch = []
+    def flush_candidates():
+        nonlocal candidate_batch
+        if not candidate_batch: return
+        with ThreadPoolExecutor(max_workers=min(limit, len(candidate_batch))) as pool:
+            observed = list(pool.map(engine.step, [goal['key'] for goal in candidate_batch]))
+        for candidate_steps in observed:
+            partition(candidate_steps, runnable_steps, waiting_steps)
+        candidate_batch = []
     for item in ordered_goals:
         goal = next(goal for goal in goals if goal['key'] == item['goal'])
         if goal['status'] in {'done', 'cancelled'}:
             continue
         reconciliation = engine.reconciliation_step(goal)
         if isinstance(reconciliation, dict):
+            flush_candidates()
+            if len(runnable_steps) >= limit: break
             runnable_steps.append(reconciliation)
             if len(runnable_steps) >= limit:
                 break
@@ -4943,6 +4954,8 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
             waiting_steps.append({'kind': 'dependency', 'assignment': 'root', 'goal': goal['key'], 'action': 'Complete or repair the prerequisite goals.', 'dependencies': [g['key'] for g in blocked]})
             continue
         if goal.get('schema_version') != 2:
+            flush_candidates()
+            if len(runnable_steps) >= limit: break
             # Broad routing may convert the one goal it actually selected, but
             # must never turn schema conversion into a repository-wide sweep.
             result = api._migration_batch.run(engine, {'action': 'migrate', 'goals': [goal['key']]})
@@ -4952,9 +4965,11 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
             return {'next_steps': [{'kind': 'blocker', 'goal': goal['key'],
                 'reason': member.get('reason', member['status']),
                 'remediation': member.get('remediation')}]}
-        partition(engine.step(goal['key']), runnable_steps, waiting_steps)
-        if len(runnable_steps) >= limit:
-            break
+        candidate_batch.append(goal)
+        if len(candidate_batch) >= limit:
+            flush_candidates()
+            if len(runnable_steps) >= limit: break
+    flush_candidates()
     if capacity_blocked and len(runnable_steps) < limit:
         runnable_steps.append(capacity_step(active_workers, limit))
     steps = (runnable_steps or waiting_steps)[:limit]
