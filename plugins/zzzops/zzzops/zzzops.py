@@ -51,7 +51,7 @@ def _transactional_provider_write(adapter, operation, target, arguments, call, p
         adapter.repo, repository=adapter.repository, owner=context["owner"])
     subject = "provider:" + request_id
     store.write(subject, "provider-mutation", envelope)
-    action = {"operation": operation, "target": target}
+    action = copy.deepcopy(envelope)
     store.freeze(subject, "provider-mutation", request_id, action)
     def check(_request, digest):
         result = postcondition()
@@ -1033,10 +1033,18 @@ class GitHubGoalTransitionAdapter:
 
     def create_issue(self, payload: dict[str, Any]) -> dict[str, Any]:
         created = []
+        context = _WORKING_INPUT_TRANSACTION.get()
+        marker = ("<!-- zzzops-request:" + hashlib.sha256(context["request_id"].encode()).hexdigest() + " -->") if context else None
+        wire = copy.deepcopy(payload)
+        if marker:
+            wire["body"] = wire.get("body", "") + "\n" + marker
         def create():
-            issue = self._create_issue(payload); created.append(issue); return issue
+            issue = self._create_issue(wire)
+            if marker:
+                issue = self._update_issue(issue["number"], {"body": payload.get("body", "")})
+            created.append(issue); return issue
         return self._transactional_write(
-            "create_issue", {"repository": self.repository}, {"payload": payload},
+            "create_issue", {"repository": self.repository}, {"payload": payload, "marker": marker},
             create, lambda: created[0] if created else None,
         )
 

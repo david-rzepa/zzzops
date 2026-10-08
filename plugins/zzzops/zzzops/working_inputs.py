@@ -13,6 +13,7 @@ import subprocess
 import sys
 import threading
 import uuid
+from urllib.parse import quote
 
 try:
     import fcntl
@@ -470,8 +471,73 @@ class WorkingInputStore:
 
 
 def github_provider_check(repo: Path, repository: str, request_id: str, digest: str, action):
-    """Legacy operations have no authoritative postcondition and remain unknown."""
-    return None
+    """Reconstruct an authoritative provider postcondition from a typed descriptor."""
+    if not isinstance(action, dict) or set(action) != {"operation", "target", "arguments"}:
+        return None
+    operation, target, arguments = action["operation"], action["target"], action["arguments"]
+    def query(args):
+        result = subprocess.run(["gh", *args], cwd=repo, text=True, capture_output=True, check=False)
+        if result.returncode:
+            if "404" in result.stderr or "NOT_FOUND" in result.stderr: return None
+            return ...
+        try: return json.loads(result.stdout)
+        except json.JSONDecodeError: return ...
+    result = None
+    if operation in {"update_issue", "create_issue"}:
+        if operation == "update_issue":
+            result = query(["api", f"repos/{repository}/issues/{target.get('issue')}"])
+            payload = arguments.get("payload", {})
+            if result is ...: return None
+            applied = isinstance(result, dict) and all(
+                ([x.get("name") for x in result.get(k, [])] if k == "labels" else result.get(k)) == v
+                for k, v in payload.items())
+        else:
+            marker = arguments.get("marker")
+            rows = query(["api", "--paginate", "--slurp", f"repos/{repository}/issues?state=all&per_page=100"])
+            if rows is ...: return None
+            flat = [x for page in rows for x in page] if isinstance(rows, list) and all(isinstance(x, list) for x in rows) else []
+            matches = [x for x in flat if isinstance(x, dict) and marker and marker in str(x.get("body", ""))]
+            if len(matches) != 1: return {"applied": False} if not matches else None
+            result, applied = matches[0], True
+            desired = arguments.get("payload", {})
+            cleanup = subprocess.run(
+                ["gh", "api", "--method", "PATCH", f"repos/{repository}/issues/{result.get('number')}",
+                 "--input", "-"], cwd=repo, input=json.dumps({"body": desired.get("body", "")}),
+                text=True, capture_output=True, check=False)
+            if cleanup.returncode: return None
+            try: result = json.loads(cleanup.stdout)
+            except json.JSONDecodeError: return None
+            if not isinstance(result, dict): return None
+            for key, expected in desired.items():
+                observed = ([x.get("name") for x in result.get("labels", [])]
+                            if key == "labels" else result.get(key))
+                if observed != expected: return None
+    elif operation == "create_issue_comment":
+        rows = query(["api", "--paginate", "--slurp", f"repos/{repository}/issues/{target.get('issue')}/comments?per_page=100"])
+        if rows is ...: return None
+        flat = [x for page in rows for x in page] if isinstance(rows, list) and all(isinstance(x, list) for x in rows) else []
+        prior = set(arguments.get("prior_ids", [])); body = arguments.get("body")
+        matches = [x for x in flat if x.get("id") not in prior and x.get("body") == body]
+        if len(matches) != 1: return {"applied": False} if not matches else None
+        result, applied = matches[0], True
+    elif operation == "create_label":
+        result = query(["api", f"repos/{repository}/labels/{quote(str(target.get('name')), safe='')}"])
+        if result is ...: return None
+        applied = isinstance(result, dict) and result.get("name") == target.get("name") and result.get("description") == arguments.get("description")
+    elif operation in {"update_label", "delete_label"}:
+        node = target.get("node_id"); graphql = "query($id:ID!){node(id:$id){... on Label{id name description}}}"
+        payload = query(["api", "graphql", "-F", f"id={node}", "-f", f"query={graphql}"])
+        if payload is ...: return None
+        result = ((payload or {}).get("data") or {}).get("node") if isinstance(payload, dict) else None
+        applied = result is None if operation == "delete_label" else isinstance(result, dict) and result.get("id") == node and result.get("description") == arguments.get("description")
+        if operation == "delete_label" and applied: result = {"deleted": node}
+    else:
+        return None
+    if not applied: return {"applied": False}
+    provider_result = "sha256:" + hashlib.sha256(json.dumps(result, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    receipt = {"request_id": request_id, "digest": digest, "action": action,
+               "authenticated": True, "provider_result": provider_result}
+    return {"applied": True, "receipt": receipt, "result": result}
 
 
 def execute_command(action: str, *, repo: Path, request_id: str):
