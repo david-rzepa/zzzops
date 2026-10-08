@@ -11,11 +11,12 @@ import json
 import math
 import os
 import subprocess
+import threading
 import time
 import uuid
 import re
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
 import zzzops_comment_store as comment_store
@@ -457,6 +458,32 @@ def valid_acquisition(value, *, envelope=False):
     )
 
 
+class ProviderReadFlights:
+    """Share an in-flight observation; failures remain retryable on the next read."""
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._inflight = {}
+
+    def read(self, key, observe):
+        with self._lock:
+            future = self._inflight.get(key)
+            owner = future is None
+            if owner:
+                future = self._inflight[key] = Future()
+        if not owner:
+            return future.result()
+        try:
+            value = observe()
+            future.set_result(value)
+            return value
+        except BaseException as exc:
+            future.set_exception(exc)
+            raise
+        finally:
+            with self._lock:
+                del self._inflight[key]
+
+
 class ProviderReadGateway:
     """Context capability: observations only; no raw issue/PR or write methods."""
     def __init__(self, engine, provider):
@@ -471,13 +498,14 @@ class ProviderReadGateway:
 
     def get_issue(self, number):
         engine = self.engine
-        cache = getattr(engine, '_provider_issue_cache', None)
-        if cache is None:
-            cache = engine._provider_issue_cache = {}
-        if number not in cache:
-            cache[number] = engine.api.provider_issue_snapshot(
-                engine.repo, engine.repository, number)
-        return copy.deepcopy(cache[number])
+        key = (str(engine.repo.resolve()), engine.repository, 'issue', number)
+        def observe():
+            cache = engine._provider_issue_cache
+            if key not in cache:
+                cache[key] = engine.api.provider_issue_snapshot(
+                    engine.repo, engine.repository, number)
+            return cache[key]
+        return copy.deepcopy(engine._provider_read_flights.read(key, observe))
 
 
 class Workflow:
@@ -490,6 +518,9 @@ class Workflow:
         if self.budget:
             self.adapter.timeout_budget = self.budget.timeout
         self._read_cache = {}
+        self._provider_issue_cache = {}
+        self._artifact_indexes = {}
+        self._provider_read_flights = ProviderReadFlights()
         self._portfolio_cache = None
         self._mutation_adapter = self.adapter
 
@@ -588,8 +619,10 @@ class Workflow:
         return comment_store.strict_json(raw.decode('utf-8')), raw
 
     def artifact_index(self, number):
-        if not hasattr(self, '_artifact_indexes'):
-            self._artifact_indexes = {}
+        key = (str(self.repo.resolve()), self.repository, 'history', number)
+        return self._provider_read_flights.read(key, lambda: self._artifact_index(number))
+
+    def _artifact_index(self, number):
         if number not in self._artifact_indexes:
             key = (str(self.repo.resolve()), self.repository, number)
             previous = _OBSERVED_ARTIFACT_INDEXES.get(key)
