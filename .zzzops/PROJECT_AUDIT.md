@@ -1,6 +1,6 @@
 # ZzzOps project policy audit
 
-Status: complete. Reviewer: User explicitly instructed: Ok enable the policy, after disclosure that external591 ownership remains unresolved. Preserve that ownership and refresh authorizations before resuming affected work.. Revision: 60.
+Status: complete. Reviewer: User previously explicitly approved the exact durable #523-first portfolio order and instructed that dependencies/blockers be respected; all other current policy settings are preserved.. Revision: 62.
 
 ## Evidence and decisions
 
@@ -114,11 +114,11 @@ Status: complete. Reviewer: User explicitly instructed: Ok enable the policy, af
   - Unresolved: none
 - [x] `[policy:autonomy_approval_parallelism]` **Autonomy, approvals, and parallelism** (applicable)
   - Instructions: Capture requirements adaptively with the requesting user; during unattended execution persist consequential questions as blockers. Keep human interaction on root, enforce reviewed worker and resource limits, record privacy-safe execution diagnostics, and suggest only bounded valuable work in reviewed categories. Keep worktrees clean, remove or deliberately reuse them after work, and never abandon dirty worktrees. Do not automatically adopt suggested defaults without review.
-  - Rationale: User approved adoption of the installed plugin default on 2026-10-01.
+  - Rationale: User approved adoption of the installed plugin default on 2026-10-01. Record the exact user-directed durable queue preference after verifying existing equal-priority ordering support; retain priority semantics and all legality gates.
   - Sources: E-DEFAULT-RESET-20261001: Current user conversation, 2026-10-01 — User approved resetting all policy to installed defaults except model inventory and removing repository-specific instructions, especially branching from dev.
   - Confidence/default: medium; ZzzOps conservative fallback → changed
   - Provenance: customized from a ZzzOps default
-  - Configuration: `{"execution_reports": {"enabled": true}, "max_workers": 10, "refill": {"allowed_categories": ["documentation", "tests", "code_quality_non_behavioral", "agent_observability", "verification_efficiency"], "enabled": true, "max_suggestions": 3}, "resource_reservations": {"exclusive_prefixes": ["generated", "external"], "exclusive_resources": [], "mode": "conflict_tolerant"}}`
+  - Configuration: `{"execution_reports": {"enabled": true}, "max_workers": 10, "portfolio_order": {"ordered_goal_keys": [523, 540, 563, 562, 503, 527, 507, 554, 515, 543, 504, 557, 566, 564, 550], "rationale": "User explicitly directed goal523 next at P1, then this benefit/cost sequence for regular execute: 540 ->563 ->562 ->503 ->527 ->507 ->554 ->515 ->543 ->504 ->557 ->566 ->564 ->550. Apply preferences within existing priority tiers, respecting blockers, dependencies, ancestors and ownership/active claims; never promote to P0 or rewrite dependencies. 550 remains P3 and562 is P1."}, "refill": {"allowed_categories": ["documentation", "tests", "code_quality_non_behavioral", "agent_observability", "verification_efficiency"], "enabled": true, "max_suggestions": 3}, "resource_reservations": {"exclusive_prefixes": ["generated", "external"], "exclusive_resources": [], "mode": "conflict_tolerant"}}`
   - Exceptions: none
   - Unresolved: none
 
@@ -172,5 +172,7 @@ Status: complete. Reviewer: User explicitly instructed: Ok enable the policy, af
 | 2026-10-02 | User explicitly approved: Raise ZzzOps max_workers from 3 to 10 through policy-review; preserve all other settings. Reuse existing approvals where scope is unchanged. | Reviewed policy revision 58 | Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:1c1ce5481ebeaff7deb20944a49673221f4e40835753ee88cd9c53cb7c90f743. |
 | 2026-10-04 | ZzzOps initialization | Created pending revision 59 | Confirmed agent-generated draft; explicit policy review still required. |
 | 2026-10-04 | User explicitly instructed: Ok enable the policy, after disclosure that external591 ownership remains unresolved. Preserve that ownership and refresh authorizations before resuming affected work. | Reviewed policy revision 60 | Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:092b3a63b350f331d33e7f9f78508a0c1ec501e07bd1e58d62c9e5d99fad900d. |
+| 2026-10-07 | ZzzOps initialization | Created pending revision 61 | Confirmed agent-generated draft; explicit policy review still required. |
+| 2026-10-07 | User previously explicitly approved the exact durable #523-first portfolio order and instructed that dependencies/blockers be respected; all other current policy settings are preserved. | Reviewed policy revision 62 | Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:7fa7180c8282851565006e8c377775e6f66e3fc55dff5c5f450ac8e5aed643f2. |
 
 The machine-readable authority is [POLICY.json](POLICY.json); this file is its human audit view.
