@@ -610,7 +610,7 @@ with s.reference('process-reference', 'reader'):
             release.touch(); child.wait(5)
 
     @unittest.skipIf(sys.platform == "win32", "fake gh executable fixture is POSIX")
-    def test_public_cli_reconcile_uses_provider_evidence(self):
+    def test_public_cli_reconcile_without_operation_checker_remains_unknown(self):
         self.require_behavior('public CLI reconciliation uses real provider evidence')
         store = self.store(); store.write("goal:554", "cli", {"value": "remote"})
         frozen = store.freeze("goal:554", "cli", "request-cli", "goal-submit")
@@ -619,7 +619,8 @@ with s.reference('process-reference', 'reader'):
         binary = Path(self.temporary.name) / "bin"; binary.mkdir()
         gh = binary / "gh"
         receipt = {"request_id": "request-cli", "digest": frozen["digest"],
-                   "action": "goal-submit", "authenticated": True}
+                   "action": "goal-submit", "authenticated": True,
+                   "provider_result": "sha256:" + "a" * 64}
         response = json.dumps([[{"body": json.dumps(receipt), "author_association": "OWNER"}]])
         gh.write_text("#!" + sys.executable + "\nprint(" + repr(response) + ")\n")
         gh.chmod(0o700)
@@ -629,8 +630,8 @@ with s.reference('process-reference', 'reader'):
              "working-input", "reconcile", "--repo", str(self.repo),
              "--request-id", "request-cli"],
             text=True, capture_output=True, env=environment, check=False)
-        self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual("confirmed", json.loads(result.stdout)["state"])
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("unconfirmed-reconciliation", result.stderr)
 
     def test_process_reference_blocks_deletion_on_supported_platform(self):
         self.require_behavior('real cross-process reference lock')
