@@ -207,6 +207,19 @@ class ReverseHistoryTests(unittest.TestCase):
                 self.assertEqual(before, adapter.comments)
                 self.assertEqual(1, len(adapter.updates))
 
+    def test_pending_retry_rejects_tampered_readable_history_wrapper(self):
+        transition = self.fixture.transition(self.issue)
+        body = legacy_history_body(self.issue, transition).replace(
+            "## ZzzOps transition history", "## Misleading transition history", 1,
+        )
+        self.adapter.create_issue_comment(42, body)
+        with self.assertRaisesRegex(
+            z.GoalTransitionProviderError,
+            "Existing transition history does not match",
+        ):
+            z.apply_goal_transition(self.adapter, 'owner/repo', 42, transition)
+        self.assertEqual([], self.adapter.updates)
+
 
     def test_legacy_pending_retry_rechecks_publication_authority(self):
         transition = self.fixture.transition(self.issue)

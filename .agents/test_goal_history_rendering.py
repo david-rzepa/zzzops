@@ -22,14 +22,21 @@ class GoalHistoryRenderingTests(unittest.TestCase):
         self.assertEqual(prior, parsed['prior_body'])
         self.assertEqual(desired, parsed['requested_goal'])
 
-    def test_human_sections_are_readable_and_payload_round_trips(self):
+    def test_prior_body_is_only_stored_in_lossless_payload(self):
         prior = '## Outcome\n\nLine one.\n\nQuoted “text” and Unicode: café 🚀.\n'
         desired = {
             "schema_version": 1, "status": "blocked", "revision": 2,
             "next_action": "First line.\nSecond line with \"quotes\".",
         }
         _, rendered = MODULE.render_goal_history(42, "a" * 64, prior, desired)
-        self.assertIn("### Archived canonical body\n\n## Outcome\n\nLine one.", rendered)
+        self.assertIn(
+            "### Archived canonical body\n\n"
+            "Exact prior canonical state is preserved in the lossless archive below.",
+            rendered,
+        )
+        readable = rendered.split("<details>", 1)[0]
+        self.assertNotIn("Line one.", readable)
+        self.assertNotIn("Quoted “text”", readable)
         self.assertIn("Second line with \"quotes\".", rendered)
         self.assertIn("<details>", rendered)
         self.assertIn("```json", rendered)
