@@ -831,6 +831,25 @@ with s.reference('process-lock', 'reader'):
             self.assertIsNone(self.module.github_provider_check(
                 self.repo, "owner/project", "restart-request", "digest", action))
 
+    def test_reconciled_provider_result_replays_same_envelope_for_create_and_cleanup(self):
+        for operation, result in (("create_issue", {"number": 42, "body": "marked"}),
+                                  ("cleanup_created_issue", {"number": 42, "body": "clean"})):
+            with self.subTest(operation=operation):
+                store = self.store(); request = "lost-" + operation
+                action = {"operation": operation, "target": {"issue": 42}, "arguments": {}}
+                store.write("provider:" + request, "provider-mutation", action)
+                row = store.freeze("provider:" + request, "provider-mutation", request, action)
+                state = store._load(); state["requests"][request]["state"] = "uncertain"; store._save(state)
+                result_hash = "sha256:" + hashlib.sha256(json.dumps(
+                    result, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+                receipt = {"request_id": request, "digest": row["digest"], "action": action,
+                           "authenticated": True, "provider_result": result_hash}
+                store.provider_check = lambda *_args, r=receipt, value=result: {
+                    "applied": True, "receipt": r, "result": value}
+                store.reconcile(request)
+                replay = store.dispatch(request, lambda *_args: self.fail("confirmed replay dispatched"))
+                self.assertEqual({"receipt": receipt, "result": result}, replay)
+
 
 if __name__ == "__main__":
     unittest.main()
