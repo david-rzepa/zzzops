@@ -4233,7 +4233,7 @@ class Workflow:
             if any(row.get('body') == encoded for row in comments): continue
             try:
                 actual = self.adapter.create_issue_comment(number, encoded)
-            except (RuntimeError, OSError) as exc:
+            except (self.api.GoalTransitionProviderError, RuntimeError, OSError) as exc:
                 actual = next((row for row in self.adapter.get_issue_comments(number) if row.get('body') == encoded), None)
                 if actual is None: raise ValueError('Unconfirmed checkpoint comment append; retry exact request') from exc
             if actual.get('body') != encoded: raise ValueError('Provider did not confirm exact source backup/artifact content')
@@ -4252,7 +4252,7 @@ class Workflow:
         if snapshot.get('archive'): update['state'] = 'closed'
         try:
             updated = self.adapter.update_issue(number, update)
-        except (RuntimeError, OSError) as exc:
+        except (self.api.GoalTransitionProviderError, RuntimeError, OSError) as exc:
             updated = self.adapter.get_issue(number)
             if updated.get('body') != body: raise ValueError('Unconfirmed provider body publication; retry exact request') from exc
         if updated.get('body') != body: raise ValueError('Provider did not confirm exact goal body; retry same request')
@@ -5227,9 +5227,13 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             def guarded(*args, _original=original, **kwargs):
                 target = args[0] if args else kwargs.get('number')
                 fresh_mutation_boundary(target)
-                result = _original(*args, **kwargs)
-                read_cache['issues'].clear(); read_cache['comments'].clear()
-                return result
+                try:
+                    return _original(*args, **kwargs)
+                finally:
+                    # A provider may commit and then lose its response. Any
+                    # recovery read must observe the provider, not the
+                    # pre-mutation snapshot used by the write fence.
+                    read_cache['issues'].clear(); read_cache['comments'].clear()
             setattr(engine._mutation_adapter, method_name, guarded)
         api._guarded_mutations = getattr(api, '_guarded_mutations', []) + [(engine._mutation_adapter, originals)]
     if payload is None or operation in {'read', 'heartbeat'}: engine.read_only()

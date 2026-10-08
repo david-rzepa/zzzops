@@ -67,7 +67,7 @@ class SubmitContinuationTests(DagFixture):
         work = self.session.acquire('produce')
         request = self.session.submission(work, {'value': 'candidate'}, 'uncertain-continuation')
         before = copy.deepcopy(self.provider.issues)
-        with mock.patch.object(self.provider, 'update_issue', side_effect=RuntimeError('unavailable')):
+        with mock.patch.object(self.provider, 'update_issue', side_effect=z.GoalTransitionProviderError('unavailable')):
             failed = self.session.call(100, request, expected=2)
         self.assertFalse(self.ready_names(failed))
         self.assertEqual(before, self.provider.issues)
@@ -105,7 +105,7 @@ class SubmitContinuationTests(DagFixture):
         updates = len(self.provider.updates)
         def lost(*args, **kwargs):
             original(*args, **kwargs)
-            raise RuntimeError('committed response lost')
+            raise z.GoalTransitionProviderError('committed response lost')
         with mock.patch.object(self.provider, 'update_issue', side_effect=lost):
             response = self.session.call(100, request)
         self.assertEqual({'review_a', 'review_b'}, self.ready_names(response))
@@ -117,12 +117,16 @@ class SubmitContinuationTests(DagFixture):
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
         fixture.default_decomposition()
-        work = fixture.session.acquire('review_decomposition')
-        response = fixture.session.finish(work, {'value': {'decision': 'changes_requested', 'report': 'Required correction'}})
+        work = fixture.session.acquire('decomposition_review')
+        response = fixture.session.finish(work, {
+            'value': {'decision': 'changes_requested', 'report': 'Required correction',
+                      'outcomes': ['blocked'], 'findings': ['Required correction']},
+            'authorization': None,
+        })
         ready = self.ready_names(response)
-        self.assertIn('interpret_decompose_rejection', ready)
+        self.assertIn('interpret_decomposition_rejection', ready)
         self.assertNotIn('test_design', ready)
-        self.assertNotIn('approve_understanding', ready)
+        self.assertNotIn('approve_spec', ready)
         self.assertFalse(any(step['kind'] in {'integrate', 'complete'} for step in response['next_steps']))
 
     def test_expired_or_stale_submission_cannot_publish_continuation(self):
@@ -150,7 +154,7 @@ class SubmitContinuationTests(DagFixture):
         request = fixture.session.submission(work, {'value': 'verified failing baseline'}, 'proof-continuation')
         command = [sys.executable, '-c', "print('single proof'); raise SystemExit(1)"]
         request['workspace_checks'] = [command]
-        with mock.patch.object(fixture.provider, 'update_issue', side_effect=RuntimeError('unavailable')):
+        with mock.patch.object(fixture.provider, 'update_issue', side_effect=z.GoalTransitionProviderError('unavailable')):
             fixture.session.call(100, request, expected=2)
         comments = copy.deepcopy(fixture.provider.comments)
         logs = {path: path.read_bytes() for path in (fixture.fixture.repo / '.zzzops/diagnostics').glob('node-*.log')}
@@ -549,7 +553,7 @@ class PublicationContinuationTests(DagFixture):
 
     def test_pending_publication_reuses_operational_request_id(self):
         request = self.approval_request()
-        with mock.patch.object(self.provider, 'update_issue', side_effect=RuntimeError('unavailable')):
+        with mock.patch.object(self.provider, 'update_issue', side_effect=z.GoalTransitionProviderError('unavailable')):
             self.session.call(100, request, expected=2)
         comments = copy.deepcopy(self.provider.comments)
         response = self.session.call(100, request)

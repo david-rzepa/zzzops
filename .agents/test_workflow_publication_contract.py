@@ -174,7 +174,7 @@ class GenericPublicationPublicTests(DagFixture):
         self.observation = {"repository": "owner/repo", "head_oid": self.fixture.head_oid,
             "base_oid": self.fixture.base_oid, "base_ref": "dev", "merged": False,
             "merged_at": None, "merge_commit": None, "checks_present": True,
-            "checks_verified": True, "review_verified": False}
+            "checks_verified": True, "review_verified": True}
         def provider_facts(_repo, executable, selected, bodies):
             self.assertEqual("gh", executable)
             selected_numbers = [entry["number"] for entry in selected]
@@ -219,7 +219,8 @@ class GenericPublicationPublicTests(DagFixture):
         permit_type = {"kind": "object", "fields": {"context": REF_TYPE,
             "policy": {"kind": "string"}, "decision": {"kind": "enum", "values": ["approved"]}}}
         published_type = shape({"repository": "owner/repo", "pr": self.context["pr"],
-            "head_oid": "head", "base_oid": "base", "base_ref": "dev", "ci": "verified"})
+            "head_oid": "head", "base_oid": "base", "base_ref": "dev", "ci": "verified",
+            "review_verified": False})
         published_type["fields"]["ci"] = {"kind": "enum", "values": ["verified", "unverified", "absent", "unknown"]}
         approval_type = {"kind": "object", "fields": {"subject": REF_TYPE, "review": REF_TYPE,
             "policy": {"kind": "string"}, "decision": {"kind": "enum", "values": ["approved"]}}}
@@ -269,7 +270,8 @@ class GenericPublicationPublicTests(DagFixture):
               "absent" if self.observation["checks_present"] is False else
               "unverified" if self.observation["checks_present"] is True else "unknown")
         return {**{key: (self.context["pr"] if key == "pr" else self.observation[key])
-                for key in ("repository", "pr", "head_oid", "base_oid", "base_ref")}, "ci": ci}
+                for key in ("repository", "pr", "head_oid", "base_oid", "base_ref")},
+                "ci": ci, "review_verified": self.observation["review_verified"]}
 
     def approve_publication(self):
         self.submit_role("observe", self.observed_value())
@@ -497,7 +499,7 @@ class GenericPublicationPublicTests(DagFixture):
             result = update(number, payload)
             if number == 100 and not lost:
                 lost.append(True)
-                raise RuntimeError("Publication body committed; response lost")
+                raise z.GoalTransitionProviderError("Publication body committed; response lost")
             return result
         with mock.patch.object(self.provider, "update_issue", side_effect=uncertain):
             self.session.call(100, request, expected=None)
@@ -577,7 +579,7 @@ class GenericPublicationPublicTests(DagFixture):
     def test_strict_ci_blocks_integration_and_only_reviewed_disabled_configuration_permits_it(self):
         for mode in ("inspect_exact_pr_head", "disabled"):
             with self.subTest(mode=mode):
-                self.observation.update(checks_verified=True, merged=False, merged_at=None, merge_commit=None, review_verified=False)
+                self.observation.update(checks_verified=True, merged=False, merged_at=None, merge_commit=None, review_verified=True)
                 z._workflow_section(self.session.project, "verification_testing")["configuration"]["required_ci"] = mode
                 self.configure()
                 self.authorize_context()
@@ -599,7 +601,7 @@ class GenericPublicationPublicTests(DagFixture):
     def test_strict_ci_blocks_complete_and_reviewed_disabled_ci_preserves_current_terminal_requirement(self):
         for mode in ("inspect_exact_pr_head", "disabled"):
             with self.subTest(mode=mode):
-                self.observation.update(checks_verified=True, merged=False, merged_at=None, merge_commit=None, review_verified=False)
+                self.observation.update(checks_verified=True, merged=False, merged_at=None, merge_commit=None, review_verified=True)
                 z._workflow_section(self.session.project, "verification_testing")["configuration"]["required_ci"] = mode
                 self.configure()
                 self.authorize_context()
@@ -1009,6 +1011,9 @@ class GenericDeliveryPublicTests(DagFixture):
         self.assertIn(self.produced("observed_merge")["hash"], json.dumps(inspect["lease"]["acquisition"]))
         self.session.finish(inspect, {"value": "Independent review of exact shared delivered merge"}, number=101)
         self.assertFalse(any(step["node"]["node"] == "collect" for step in self.session.ready(99)))
+        checkpoint = self.session.checkpoint(101)
+        if len(checkpoint) == 1 and checkpoint[0]["kind"] == "hydration_checkpoint":
+            self.session.call(101, checkpoint[0]["submission"])
         finish = self.session.acquire(self.ids["finish"], number=101)
         self.session.finish(finish, {"value": "Second child root accepted exact reviewed delivery"}, number=101)
         self.assertTrue(any(step["node"]["node"] == "collect" for step in self.session.ready(99)))
