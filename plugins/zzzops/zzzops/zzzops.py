@@ -1040,13 +1040,23 @@ class GitHubGoalTransitionAdapter:
             wire["body"] = wire.get("body", "") + "\n" + marker
         def create():
             issue = self._create_issue(wire)
-            if marker:
-                issue = self._update_issue(issue["number"], {"body": payload.get("body", "")})
             created.append(issue); return issue
-        return self._transactional_write(
+        issue = self._transactional_write(
             "create_issue", {"repository": self.repository}, {"payload": payload, "marker": marker},
             create, lambda: created[0] if created else None,
         )
+        if not marker:
+            return issue
+        cleaned = []
+        def cleanup():
+            value = self._update_issue(issue["number"], {"body": payload.get("body", "")})
+            cleaned.append(value); return value
+        def clean_postcondition():
+            value = cleaned[0] if cleaned else self.get_issue(issue["number"])
+            return value if isinstance(value, dict) and value.get("number") == issue["number"] and value.get("body") == payload.get("body", "") else None
+        return self._transactional_write(
+            "cleanup_created_issue", {"issue": issue["number"]},
+            {"payload": payload, "marker": marker}, cleanup, clean_postcondition)
 
     def _create_issue(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.ensure_identity()

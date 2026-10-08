@@ -476,7 +476,10 @@ def github_provider_check(repo: Path, repository: str, request_id: str, digest: 
         return None
     operation, target, arguments = action["operation"], action["target"], action["arguments"]
     def query(args):
-        result = subprocess.run(["gh", *args], cwd=repo, text=True, capture_output=True, check=False)
+        try:
+            result = subprocess.run(["gh", *args], cwd=repo, text=True, capture_output=True, check=False)
+        except OSError:
+            return ...
         if result.returncode:
             if "404" in result.stderr or "NOT_FOUND" in result.stderr: return None
             return ...
@@ -499,19 +502,15 @@ def github_provider_check(repo: Path, repository: str, request_id: str, digest: 
             matches = [x for x in flat if isinstance(x, dict) and marker and marker in str(x.get("body", ""))]
             if len(matches) != 1: return {"applied": False} if not matches else None
             result, applied = matches[0], True
-            desired = arguments.get("payload", {})
-            cleanup = subprocess.run(
-                ["gh", "api", "--method", "PATCH", f"repos/{repository}/issues/{result.get('number')}",
-                 "--input", "-"], cwd=repo, input=json.dumps({"body": desired.get("body", "")}),
-                text=True, capture_output=True, check=False)
-            if cleanup.returncode: return None
-            try: result = json.loads(cleanup.stdout)
-            except json.JSONDecodeError: return None
-            if not isinstance(result, dict): return None
-            for key, expected in desired.items():
-                observed = ([x.get("name") for x in result.get("labels", [])]
-                            if key == "labels" else result.get(key))
-                if observed != expected: return None
+    elif operation == "cleanup_created_issue":
+        result = query(["api", f"repos/{repository}/issues/{target.get('issue')}"])
+        if result is ...: return None
+        desired = arguments.get("payload", {})
+        applied = isinstance(result, dict)
+        for key, expected in desired.items():
+            observed = ([x.get("name") for x in result.get("labels", [])]
+                        if applied and key == "labels" else result.get(key) if applied else None)
+            if observed != expected: applied = False; break
     elif operation == "create_issue_comment":
         rows = query(["api", "--paginate", "--slurp", f"repos/{repository}/issues/{target.get('issue')}/comments?per_page=100"])
         if rows is ...: return None
