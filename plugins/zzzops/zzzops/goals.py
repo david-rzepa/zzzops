@@ -303,10 +303,9 @@ def goal_history_id(issue_number: int, expected_digest: str, desired: dict[str, 
     return hashlib.sha256(source.encode("utf-8")).hexdigest()
 
 
-def render_goal_history(
+def _goal_history_payload(
     issue_number: int, expected_digest: str, prior_body: str, desired: dict[str, Any],
-) -> tuple[str, str]:
-    """Render one lossless, deterministic append-only transition record."""
+) -> tuple[str, dict[str, Any]]:
     history_id = goal_history_id(issue_number, expected_digest, desired)
     payload = {
         "schema_version": GOAL_HISTORY_SCHEMA_VERSION,
@@ -321,17 +320,13 @@ def render_goal_history(
     payload["payload_digest"] = hashlib.sha256(json.dumps(
         payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
     ).encode("utf-8")).hexdigest()
-    block = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
-    displayed_prior = prior_body.rstrip()
-    if len(block) + len(displayed_prior) > 60000:
-        # Backend evidence is repetitive. Preserve the exact archive instead of
-        # truncating it or exceeding GitHub's per-comment size limit.
-        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        block = json.dumps({"encoding": "zlib-base64", "payload": base64.b64encode(zlib.compress(raw)).decode("ascii")}, sort_keys=True)
-        displayed_prior = compact_human_goal_text(prior_body).rstrip() + "\n\nThe exact prior machine state is preserved in the lossless archive below."
+    return history_id, payload
+
+
+def _render_goal_history_comment(desired: dict[str, Any], block: str, displayed_prior: str) -> str:
     next_action = desired.get("next_action", "")
     status = desired.get("status", "")
-    return history_id, (
+    return (
         f"## ZzzOps transition history\n\n"
         f"Archived canonical state before revision {desired['revision']}.\n\n"
         f"### Archived canonical body\n\n{displayed_prior}\n\n"
@@ -341,6 +336,35 @@ def render_goal_history(
         f"<details>\n<summary>{GOAL_HISTORY_DETAILS_SUMMARY}</summary>\n\n"
         f"```json\n{block}\n```\n\n</details>\n"
     )
+
+
+def render_goal_history(
+    issue_number: int, expected_digest: str, prior_body: str, desired: dict[str, Any],
+) -> tuple[str, str]:
+    """Render one lossless, deterministic append-only transition record."""
+    history_id, payload = _goal_history_payload(issue_number, expected_digest, prior_body, desired)
+    block = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
+    if len(block) > 60000:
+        # Backend evidence is repetitive. Preserve the exact archive instead of
+        # truncating it or exceeding GitHub's per-comment size limit.
+        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        block = json.dumps({"encoding": "zlib-base64", "payload": base64.b64encode(zlib.compress(raw)).decode("ascii")}, sort_keys=True)
+    displayed_prior = "Exact prior canonical state is preserved in the lossless archive below."
+    return history_id, _render_goal_history_comment(desired, block, displayed_prior)
+
+
+def _render_legacy_goal_history(
+    issue_number: int, expected_digest: str, prior_body: str, desired: dict[str, Any],
+) -> str:
+    """Reconstruct the exact predecessor format for idempotent in-flight retries."""
+    _, payload = _goal_history_payload(issue_number, expected_digest, prior_body, desired)
+    block = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
+    displayed_prior = prior_body.rstrip()
+    if len(block) + len(displayed_prior) > 60000:
+        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        block = json.dumps({"encoding": "zlib-base64", "payload": base64.b64encode(zlib.compress(raw)).decode("ascii")}, sort_keys=True)
+        displayed_prior = compact_human_goal_text(prior_body).rstrip() + "\n\nThe exact prior machine state is preserved in the lossless archive below."
+    return _render_goal_history_comment(desired, block, displayed_prior)
 
 
 def parse_goal_history(body: Any) -> dict[str, Any] | None:
@@ -1099,7 +1123,11 @@ def _apply_legacy_goal_transition(
     if len(history_body) > 65536:
         raise GoalTransitionProviderError("Transition history exceeds GitHub's comment limit; no update was made.")
     if histories:
-        if histories[0][0].get("body") != history_body:
+        accepted_history_bodies = {
+            history_body,
+            _render_legacy_goal_history(issue_number, transition["expected_digest"], issue["body"], requested),
+        }
+        if histories[0][0].get("body") not in accepted_history_bodies:
             raise GoalTransitionProviderError("Existing transition history does not match the requested update.")
     else:
         created = adapter.create_issue_comment(issue_number, history_body)
