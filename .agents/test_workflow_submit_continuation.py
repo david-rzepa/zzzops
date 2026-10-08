@@ -1,6 +1,8 @@
 """Atomic submit continuations through the real public CLI and fake provider."""
 import copy
 import json
+import threading
+import time
 import unittest
 import sys
 from pathlib import Path
@@ -237,6 +239,7 @@ class SchedulingInventoryContinuationTests(DagFixture):
         self.assertEqual({'review_a', 'review_b'}, self.ready_names(response))
 
     def test_broad_checkpoint_hydrates_only_selected_frontier_not_all_owners(self):
+        z._workflow_section(self.session.project, 'autonomy_approval_parallelism')['configuration']['max_workers'] = 10
         for number in range(101, 121):
             self.add_goal(number, self.graph)
         z._heartbeat.initialize_capacity(repo=self.fixture.repo, slots=[])
@@ -246,13 +249,25 @@ class SchedulingInventoryContinuationTests(DagFixture):
                                   side_effect=lambda _repo, _repository, number: copy.deepcopy(self.provider.issues[number])):
             engine = z._workflow.Workflow(z, self.fixture.repo, self.session.project, self.fixture.runtime)
             engine.read_only()
-            with mock.patch.object(engine, 'artifact_index', wraps=engine.artifact_index) as indexes:
+            original_step = engine.step
+            lock = threading.Lock(); active = 0; peak = 0
+            def observed_step(number):
+                nonlocal active, peak
+                with lock: active += 1; peak = max(peak, active)
+                try:
+                    time.sleep(.02)
+                    return original_step(number)
+                finally:
+                    with lock: active -= 1
+            with mock.patch.object(engine, 'artifact_index', wraps=engine.artifact_index) as indexes, \
+                    mock.patch.object(engine, 'step', side_effect=observed_step):
                 response = z._workflow.checkpoint(
                     z, self.fixture.repo, self.session.project, self.fixture.runtime, engine=engine)
         self.assertTrue(self.ready_names(response))
         hydrated = {call.args[0] for call in indexes.call_args_list}
-        self.assertLessEqual(len(hydrated), 1)
+        self.assertLessEqual(len(hydrated), 10)
         self.assertLess(len(hydrated), 21)
+        self.assertGreater(peak, 1)
 
     def test_first_capacity_read_bootstraps_preupgrade_durable_owner(self):
         work = self.session.acquire('produce')
