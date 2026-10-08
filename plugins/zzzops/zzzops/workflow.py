@@ -187,7 +187,7 @@ PUBLIC_OPERATIONS = frozenset({
     'batch', 'bind', 'block', 'migration_batch', 'graph_prepare', 'graph_review', 'graph_adopt', 'graph_review_bootstrap',
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
     'feedback_submit', 'heartbeat', 'hydration_checkpoint', 'installation_record', 'integrate',
-    'policy_approve', 'policy_propose', 'read', 'recover', 'renew',
+    'policy_approve', 'policy_propose', 'read', 'recover', 'release', 'renew',
     'preserve_historical_draft', 'route_choice', 'start', 'reconcile', 'submit',
 })
 
@@ -4583,11 +4583,18 @@ class Workflow:
                 else:
                     if request.get('actor') != lease['worker'] or not lease['worker']: raise ValueError('Exact bound actor required')
                     if state.get('input_hash') != lease['fingerprint'] or state['state'] != 'ready': raise ValueError('Stale substantive input/contract/prerequisite; owner remains bound: ' + state.get('reason', 'workspace or input identity drift'))
-                    if lease['expires_at'] <= time.time() and operation != 'renew':
+                    if lease['expires_at'] <= time.time() and operation not in {'renew', 'release'}:
                         raise ValueError('Lease expired; observe stopped owner before recovery')
                     if operation == 'renew':
                         lease['expires_at'] = pending['response']['next_steps'][0]['lease']['expires_at'] if pending else time.time() + 600
                         response = {'next_steps': [{'kind': 'renewed', 'goal': number, 'node': node, 'lease': lease['token'], 'actor': lease['worker'], 'expires_at': lease['expires_at']}]}
+                    elif operation == 'release':
+                        if set(request) - {'operation', 'node', 'lease', 'actor', 'request_id'}:
+                            raise ValueError('Lease release accepts only the exact owner identity')
+                        leases.remove(lease)
+                        response = {'next_steps': [{'kind': 'released', 'goal': number, 'node': node,
+                            'lease': lease['token'], 'actor': lease['worker'],
+                            'action': 'Exact owner relinquished this lease without producing a Result.'}]}
                     elif operation == 'block':
                         if request.get('category') != 'external-dependency' or not isinstance(request.get('reason'), str) or not request['reason'].strip(): raise ValueError('Infrastructure blocker requires factual external dependency reason')
                         lease['blocker'] = {'category': request['category'], 'reason': request['reason']}
@@ -5396,7 +5403,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             raise ValueError('Hydration checkpoint request_id is required')
         with engine.locked():
             return engine.publish_hydration_checkpoint(number, payload.get('checkpoint'))
-    if intent == 'execute' and source == '$execute-zzzops' and operation not in {'read', 'recover', 'renew', 'heartbeat'}:
+    if intent == 'execute' and source == '$execute-zzzops' and operation not in {'read', 'recover', 'release', 'renew', 'heartbeat'}:
         if number is not None:
             # Schema administration consumes no stale task request or ownership.
             try:
@@ -5412,7 +5419,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 raise
             except (ValueError, KeyError, OSError) as exc:
                 return {'next_steps': [{'kind': 'blocker', 'goal': number, 'reason': str(exc), 'remediation': api._migration_batch.remediation(number, str(exc))}]}
-    if operation not in {'read', 'renew'}: engine.portfolio(allow_invalid=True)
+    if operation not in {'read', 'release', 'renew'}: engine.portfolio(allow_invalid=True)
     if operation == 'read' and number is not None:
         artifact = payload.get('artifact')
         resolved = None
