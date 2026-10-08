@@ -5631,6 +5631,45 @@ class GraphAdoptionPublicTests(DagFixture):
             'request_id': 'graph-after-checkpoint-reconciliation',
         })
         self.assertEqual('review_required', repaired['next_steps'][0]['kind'])
+        graph_proposal = repaired['next_steps'][0]['proposal']
+        graph_review = self.administrative_review({
+            'operation': 'graph_review', 'proposal': graph_proposal,
+            'actor': 'later-independent-reviewer', 'decision': 'approved',
+            'report': 'The post-reconciliation graph remains exact.',
+            'request_id': 'later-committed-graph-review',
+        })['next_steps'][0]
+        graph_adopted = self.session.call(100, {**graph_review['submission'],
+                                               'approved_by': 'user: approved post-reconciliation graph'})
+        self.assertEqual('checkpoint', graph_adopted['next_steps'][0]['kind'])
+
+        engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
+        snapshot = engine.node_snapshot(100); index = engine.artifact_index(100)
+        position, row = next((position, row) for position, row in enumerate(index.envelopes)
+                             if row.get('transaction') == transaction)
+        receipts = snapshot['payload']['operational']['receipts']
+        self.assertTrue(engine.node_checkpoint_reconciled(snapshot, index, row, receipts))
+        gap = copy.deepcopy(snapshot); gap['envelope'] = {**gap['envelope'], 'revision': gap['envelope']['revision'] + 1}
+        self.assertFalse(engine.node_checkpoint_reconciled(gap, index, row, receipts),
+                         'A gap between the committed chain and current envelope must fail closed')
+
+        later_context = next(copy.deepcopy(item['context']) for item in index.envelopes
+                             if (item.get('context') or {}).get('request_id') == 'later-committed-graph-review')
+        later_context['request_id'] = 'forged-committed-fork'
+        later_context['request_hash'] = 'sha256:' + 'a' * 64
+        later_context['target_envelope'] = {**later_context['target_envelope'], 'parent': {'goal': 999}}
+        fork_transaction = 'sha256:' + 'b' * 64
+        fork_record = z._comment_store.ArtifactIndex([]).record(index.resolve(later_context['response']['hash'])[0])
+        fork_body = z._comment_store.pack_envelopes(
+            {'goal': 100, 'transaction': fork_transaction, 'context': later_context}, [fork_record])[0]
+        comments = copy.deepcopy(self.provider.comments[100])
+        comments.append({'id': max(item['id'] for item in comments) + 1, 'body': fork_body})
+        fork_index = z._comment_store.ArtifactIndex(comments)
+        fork_receipt = {'request': later_context['request_id'], 'payload': later_context['request_hash'],
+                        'result': later_context['response']}
+        fork_row = next(item for item in fork_index.envelopes if item.get('transaction') == transaction)
+        self.assertFalse(engine.node_checkpoint_reconciled(
+            snapshot, fork_index, fork_row, receipts + [fork_receipt]),
+            'A second receipt-shaped child from the same source must fail closed')
 
         second_stale = {**ready['start'], 'policy_receipt': receipt, 'request_id': 'second-response-lost-start'}
         with mock.patch.object(self.provider, 'update_issue', side_effect=RuntimeError('provider unavailable')):
@@ -5642,7 +5681,6 @@ class GraphAdoptionPublicTests(DagFixture):
         }, expected=2)
         self.assertRegex(json.dumps(blocked), r'(?i)uncommitted|checkpoint')
 
-        engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
         snapshot = engine.node_snapshot(100); index = engine.artifact_index(100)
         position, row = next((position, row) for position, row in enumerate(index.envelopes)
                              if row.get('transaction') == transaction)
