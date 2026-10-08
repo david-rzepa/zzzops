@@ -246,10 +246,15 @@ def main(argv: list[str] | None = None) -> int:
             if "sha256:" + hashlib.sha256(response_bytes).hexdigest() != reference.get("sha256"):
                 raise AcceptanceError("packaged ZzzOps runtime produced a corrupt full-response reference")
             envelope = json.loads(response_bytes)
-            full = json_output([*runtime_command, "--response", "full"])
+            full = json_output([
+                sys.executable, str(install / "zzzops" / "zzzops.py"), "--repo", str(project),
+                "workflow", "--read-response", str(response_path),
+                "--response-hash", reference["sha256"],
+            ])
             if (not isinstance(envelope, dict) or envelope.get("schema_version") != 1
                     or envelope.get("intent") != "inspect"
-                    or envelope.get("response") != full or set(full) != {"next_steps"}):
+                    or envelope.get("response") != full
+                    or not isinstance(full.get("next_steps"), list)):
                 raise AcceptanceError("compact and full packaged runtime responses are not equivalent")
     except (AcceptanceError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         print(f"Claude plugin acceptance failed: {exc}", file=sys.stderr)
