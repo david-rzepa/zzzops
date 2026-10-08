@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -23,6 +24,7 @@ except ImportError:  # Windows
 _ACTIVE_LOCK = threading.RLock()
 _ACTIVE: dict[tuple[str, str], dict[str, int]] = {}
 _LOCAL_LOCKS: dict[str, threading.RLock] = {}
+REQUEST_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 
 
 def _atomic_json(path: Path, value) -> None:
@@ -127,6 +129,12 @@ class WorkingInputStore:
     def _key(self, subject, purpose, owner=None):
         return "\0".join((owner or self.owner, purpose, subject))
 
+    @staticmethod
+    def _request_id(value):
+        if not isinstance(value, str) or REQUEST_ID.fullmatch(value) is None:
+            raise ValueError("request_id must be 1-128 safe ASCII characters")
+        return value
+
     def _descriptor(self, record):
         return {key: record[key] for key in ("payload_id", "path", "subject", "purpose", "owner")}
 
@@ -186,6 +194,7 @@ class WorkingInputStore:
             self._save(state); return self._descriptor(record)
 
     def freeze(self, subject, purpose, request_id, action):
+        self._request_id(request_id)
         with self._locked():
             state = self._load()
             if request_id in state["requests"]: raise ValueError("request_id already exists")
@@ -214,11 +223,17 @@ class WorkingInputStore:
             state["requests"][request_id] = {"request_id": request_id, "payload_id": descriptor["payload_id"],
                 "snapshot": str(snapshot), "digest": digest, "action": action, "state": "frozen",
                 "repository": self.repository}
-            self._save(state)
+            try:
+                self._save(state)
+            except BaseException:
+                try: snapshot.unlink()
+                except FileNotFoundError: pass
+                raise
         self.fault("after_snapshot_fsync")
         return copy.deepcopy(state["requests"][request_id])
 
     def status(self, request_id):
+        self._request_id(request_id)
         with self._locked():
             state = self._load()
             row = state["requests"].get(request_id)
@@ -255,12 +270,18 @@ class WorkingInputStore:
         active = []
         for path in (self.refs_path / request_id).glob("*.json"):
             try:
-                pid = json.loads(path.read_text())["pid"]
-                os.kill(pid, 0); active.append(path)
-            except (FileNotFoundError, ProcessLookupError, ValueError, KeyError, json.JSONDecodeError):
+                handle = path.open("r+b")
+                try:
+                    if fcntl is not None:
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    else:
+                        handle.seek(0); msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                except (BlockingIOError, OSError):
+                    handle.close(); active.append(path); continue
+                handle.close()
                 try: path.unlink()
                 except FileNotFoundError: pass
-            except (PermissionError, OSError):
+            except (FileNotFoundError, PermissionError, OSError):
                 active.append(path)
         return active
 
@@ -279,6 +300,11 @@ class WorkingInputStore:
         token = self.refs_path / request_id / (kind + "-" + uuid.uuid4().hex + ".json")
         with self._locked():
             _atomic_json(token, {"pid": os.getpid(), "kind": kind, "request_id": request_id})
+            lifetime = token.open("r+b")
+            if fcntl is not None:
+                fcntl.flock(lifetime.fileno(), fcntl.LOCK_EX)
+            else:
+                lifetime.seek(0); msvcrt.locking(lifetime.fileno(), msvcrt.LK_LOCK, 1)
             with _ACTIVE_LOCK:
                 kinds = _ACTIVE.setdefault(key, {}); kinds[kind] = kinds.get(kind, 0) + 1
         try: yield
@@ -288,6 +314,7 @@ class WorkingInputStore:
                     kinds = _ACTIVE[key]; kinds[kind] -= 1
                     if not kinds[kind]: kinds.pop(kind)
                     if not kinds: _ACTIVE.pop(key)
+                lifetime.close()
                 try: token.unlink()
                 except FileNotFoundError: pass
 
@@ -338,11 +365,20 @@ class WorkingInputStore:
         if row["state"] not in {"uncertain", "dispatching"}: return row
         for _ in range(3):
             outcome = self.provider_check(request_id, row["digest"])
-            if outcome is True:
+            if outcome is True or (isinstance(outcome, dict) and outcome.get("applied") is True):
+                receipt = (outcome.get("receipt") if isinstance(outcome, dict) else {
+                    "request_id": request_id, "digest": row["digest"], "action": row["action"],
+                    "authenticated": True,
+                })
+                if (not isinstance(receipt, dict) or receipt.get("request_id") != request_id
+                        or receipt.get("digest") != row["digest"] or receipt.get("action") != row["action"]
+                        or receipt.get("authenticated") is not True):
+                    self._uncertain(request_id, "unconfirmed-reconciliation")
                 with self._locked():
-                    state = self._load(); state["requests"][request_id]["state"] = "reconciled"; self._save(state)
+                    state = self._load(); state["requests"][request_id]["state"] = "confirmed"
+                    state["requests"][request_id]["receipt"] = receipt; self._save(state)
                 return self.status(request_id)
-            if outcome is False:
+            if outcome is False or (isinstance(outcome, dict) and outcome.get("applied") is False):
                 with self._locked():
                     state = self._load(); state["requests"][request_id]["state"] = "frozen"; self._save(state)
                 return self.status(request_id)
@@ -386,7 +422,7 @@ class WorkingInputStore:
                 "legacy": [{"path": str(Path(item).resolve()), "status": "untouched"} for item in legacy_paths]}
 
 
-def github_provider_check(repo: Path, repository: str, request_id: str, digest: str):
+def github_provider_check(repo: Path, repository: str, request_id: str, digest: str, action):
     """Return provider application evidence from complete GitHub issue comments."""
     executable = shutil.which("gh")
     if not executable or repository == "local": return None
@@ -402,8 +438,15 @@ def github_provider_check(repo: Path, repository: str, request_id: str, digest: 
         if not isinstance(rows, list): return None
     except (ValueError, TypeError):
         return None
-    return any(request_id in str(row.get("body", "")) and digest in str(row.get("body", ""))
-               for row in rows if isinstance(row, dict))
+    for row in rows:
+        if not isinstance(row, dict) or row.get("author_association") not in {"OWNER", "MEMBER", "COLLABORATOR"}:
+            continue
+        try: receipt = json.loads(row.get("body", ""))
+        except (TypeError, json.JSONDecodeError): continue
+        if receipt == {"request_id": request_id, "digest": digest, "action": action,
+                       "authenticated": True}:
+            return {"applied": True, "receipt": receipt}
+    return False
 
 
 def execute_command(action: str, *, repo: Path, request_id: str):
@@ -414,7 +457,8 @@ def execute_command(action: str, *, repo: Path, request_id: str):
         repository = "local"
     store = WorkingInputStore(
         repo, repository=repository, owner="root",
-        provider_check=lambda target, digest: github_provider_check(repo, repository, target, digest),
+        provider_check=lambda target, digest: github_provider_check(
+            repo, repository, target, digest, probe.status(target)["action"]),
     )
     if action == "status": return store.status(request_id)
     if action == "reconcile": return store.reconcile(request_id)
