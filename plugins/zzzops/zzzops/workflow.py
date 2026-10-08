@@ -4781,7 +4781,12 @@ class Workflow:
                     self.node_ci_required(publication['observed'])
             elif kind == 'publication_evidence':
                 publication = state.get('publication')
-                if not publication or publication['observed'].get('pr') is None or value != publication['observed']: raise ValueError('Publication evidence differs from current exact provider head/base/CI')
+                evidence_contract = next(
+                    contract for contract in state['contract']['outputs'].values()
+                    if contract.get('type') == 'publication_evidence')
+                declared_fields = evidence_contract['schema']['fields']
+                expected = {name: publication['observed'].get(name) for name in declared_fields} if publication else None
+                if not publication or publication['observed'].get('pr') is None or value != expected: raise ValueError('Publication evidence differs from current exact provider head/base/CI')
             elif kind == 'merge_observation':
                 publication = state.get('publication')
                 if not publication or not publication['provider'].get('merged'): raise ValueError('Provider merge is not observed')
