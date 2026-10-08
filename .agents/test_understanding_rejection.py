@@ -342,6 +342,7 @@ class RepeatedConfiguredMemberCorrectionTests(j.DagFixture):
     requirements = j.ShippedGoal499PublicJourneyTests.requirements
     specification = j.ShippedGoal499PublicJourneyTests.specification
     approved_review = staticmethod(j.ShippedGoal499PublicJourneyTests.approved_review)
+    administrative_review = j.GraphAdoptionPublicTests.administrative_review
     proposal_review = j.GraphAdoptionPublicTests.proposal_review
 
     def setUp(self):
@@ -426,7 +427,7 @@ class RepeatedConfiguredMemberCorrectionTests(j.DagFixture):
         self.assertEqual(1, self.read_blob(revision_one)['content']['revision'])
         self.assertEqual(2, self.read_blob(revision_two)['content']['revision'])
 
-    def test_persisted_legacy_member_route_is_replaced_before_repeated_correction(self):
+    def test_persisted_legacy_member_route_is_shadowed_before_repeated_correction(self):
         legacy = copy.deepcopy(self.shipped)
         legacy_admissions = [item['template'] for item in legacy['task_sets']
                              if item['template']['id'] == 'admit_spec_review_correction']
@@ -447,11 +448,16 @@ class RepeatedConfiguredMemberCorrectionTests(j.DagFixture):
         prospective = repair['submission']['graph']
         admission_templates = [item['template'] for item in prospective['task_sets']
                                if item['template']['id'].startswith('admit_spec_review_correction')]
-        self.assertEqual(1, len(admission_templates),
-                         'Repair must replace the legacy expansion, not leave two runnable admission routes')
-        self.assertEqual({'value', 'transfer'}, set(admission_templates[0]['outputs']))
+        self.assertEqual(2, len(admission_templates),
+                         'Repair retains the legacy contract solely for historical Result interpretation')
+        legacy_template = next(template for template in admission_templates
+                               if template['id'] == 'admit_spec_review_correction')
+        upgraded_template = next(template for template in admission_templates
+                                 if template['id'] == 'admit_spec_review_correction_atomic_transfer')
+        self.assertEqual({'value'}, set(legacy_template['outputs']))
+        self.assertEqual({'value', 'transfer'}, set(upgraded_template['outputs']))
         self.assertEqual({'admission', 'supersession'},
-                         {permit['type'] for permit in admission_templates[0]['permits']})
+                         {permit['type'] for permit in upgraded_template['permits']})
 
         prepared = self.session.call(100, repair['submission'])['next_steps'][0]['proposal']
         self.session.call(100, self.proposal_review(prepared))
@@ -464,15 +470,32 @@ class RepeatedConfiguredMemberCorrectionTests(j.DagFixture):
                 'rationale': 'The configured independent reviewer rejected the exact specification',
                 'supersedes': None}})
         revision_one = self.produced('interpret_spec_review_rejection', item='data_residency')
+        frontier = self.session.checkpoint(100)
+        active = [step for step in frontier if step.get('kind') == 'execute'
+                  and step.get('node', {}).get('item') == 'data_residency'
+                  and step.get('node', {}).get('node', '').startswith('admit_spec_review_correction')]
+        self.assertEqual(['admit_spec_review_correction_atomic_transfer'],
+                         [step['node']['node'] for step in active])
+        self.assertNotIn('admit_spec_review_correction', self.names())
+        legacy_start = copy.deepcopy(active[0]['start'])
+        legacy_start['node']['node'] = 'admit_spec_review_correction'
+        legacy_start['policy_receipt'] = json.loads(
+            j.Path(active[0]['policy']['path']).read_text())['policy_receipt']
+        legacy_start['request_id'] = 'shadowed-legacy-member-start'
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        rejected = self.session.call(100, legacy_start, expected=2)
+        self.assertRegex(json.dumps(rejected), r'(?i)legacy|superseded|atomic transfer|shadow')
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
         first = self.admission(revision_one)
         self.session.finish(self.session.acquire(
-            'admit_spec_review_correction', item='data_residency'),
+            'admit_spec_review_correction_atomic_transfer', item='data_residency'),
             {'value': first, 'transfer': None})
 
         self.corrected_specification(allocation, 1)
         revision_two = self.reject_and_interpret(2, revision_one)
         second = self.admission(revision_two)
-        work = self.session.acquire('admit_spec_review_correction', item='data_residency')
+        work = self.session.acquire('admit_spec_review_correction_atomic_transfer', item='data_residency')
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
         rejected = self.session.call(100, self.session.submission(
             work, {'value': second, 'transfer': None}, 'legacy-member-null-second-transfer'), expected=2)
