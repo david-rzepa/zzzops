@@ -7,6 +7,7 @@ import json
 import sys
 import time
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
@@ -154,6 +155,39 @@ class GenericRenewalTests(DagFixture):
         self.assertEqual(work["node"], step["node"])
         self.assertEqual((work["bound_actor"], saved["token"], saved["expires_at"]),
                          (step["actor"], step["lease"], step["expires_at"]))
+
+    def test_exact_live_owner_can_renew_after_deadline_without_takeover(self):
+        work = self.session.acquire("produce")
+        before = self.payload()[1]
+        lease = next(v for v in before["operational"]["leases"] if v["token"] == work["lease"]["token"])
+        with mock.patch.object(z._workflow.time, "time", return_value=lease["expires_at"] + 1):
+            response = self.session.call(100, self.request(work, request_id="late-exact-renewal"))
+        step = response["next_steps"][0]
+        self.assertEqual("renewed", step["kind"])
+        self.assertEqual(work["lease"]["token"], step["lease"])
+        self.assertGreater(step["expires_at"], lease["expires_at"])
+        saved = next(v for v in self.payload()[1]["operational"]["leases"] if v["token"] == work["lease"]["token"])
+        self.assertEqual(step["expires_at"], saved["expires_at"])
+
+    def test_expired_unbound_lease_cannot_bind_or_be_renewed(self):
+        step = next(v for v in self.session.ready() if v["node"]["node"] == "produce")
+        receipt = json.loads(Path(step["policy"]["path"]).read_text())["policy_receipt"]
+        request = {**step["start"], "policy_receipt": receipt}
+        request.pop("request_id", None)
+        acquired = self.session.call(100, request)["next_steps"][0]
+        lease = acquired["lease"]
+        self.assertIsNone(lease["worker"])
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        bind = {**acquired["bind"], "lease": lease["token"], "actor": "late-worker",
+                "selection": lease["selection"], "policy_receipt": receipt}
+        bind.pop("request_id", None)
+        with mock.patch.object(z._workflow.time, "time", return_value=lease["expires_at"] + 1):
+            denied = self.session.call(100, bind, expected=2)
+            self.assertRegex(json.dumps(denied), r"(?i)expired|recovery")
+            renewal = {"operation": "renew", "node": acquired["node"], "lease": lease["token"],
+                       "actor": "late-worker", "worker_status": "active", "request_id": "late-unbound-renewal"}
+            self.session.call(100, renewal, expected=2)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
     def test_wrong_renewal_actor_and_failed_provider_save_never_acknowledge(self):
         work = self.session.acquire("produce")

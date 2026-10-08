@@ -4574,6 +4574,7 @@ class Workflow:
                 elif operation == 'bind':
                     _, receipt = self.node_policy(state)
                     if request.get('policy_receipt') != receipt or request.get('selection') != lease['selection']: raise ValueError('Exact policy receipt and actual model/effort required')
+                    if lease['expires_at'] <= time.time(): raise ValueError('Lease expired; observe stopped owner before recovery')
                     actor = request.get('actor')
                     if not isinstance(actor, str) or not actor or lease['worker'] not in (None, actor): raise ValueError('Worker identity already bound or invalid')
                     self.node_independence(snapshot, state, actor)
@@ -4582,7 +4583,8 @@ class Workflow:
                 else:
                     if request.get('actor') != lease['worker'] or not lease['worker']: raise ValueError('Exact bound actor required')
                     if state.get('input_hash') != lease['fingerprint'] or state['state'] != 'ready': raise ValueError('Stale substantive input/contract/prerequisite; owner remains bound: ' + state.get('reason', 'workspace or input identity drift'))
-                    if lease['expires_at'] <= time.time(): raise ValueError('Lease expired; observe stopped owner before recovery')
+                    if lease['expires_at'] <= time.time() and operation != 'renew':
+                        raise ValueError('Lease expired; observe stopped owner before recovery')
                     if operation == 'renew':
                         lease['expires_at'] = pending['response']['next_steps'][0]['lease']['expires_at'] if pending else time.time() + 600
                         response = {'next_steps': [{'kind': 'renewed', 'goal': number, 'node': node, 'lease': lease['token'], 'actor': lease['worker'], 'expires_at': lease['expires_at']}]}
