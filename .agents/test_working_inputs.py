@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
-import inspect
 import json
 from pathlib import Path
 import subprocess
@@ -17,6 +16,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -77,6 +77,10 @@ class FixtureProvider:
         self.calls.append((request_id, body))
         return {"next_steps": [{"kind": "checkpoint"}]}
 
+    def fail_before_apply(self, request_id, body):
+        self.calls.append((request_id, body))
+        raise ConnectionError("provider failed before application")
+
     def check(self, request_id, digest):
         self.checks += 1
         if self.check_results:
@@ -131,10 +135,21 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         self.assertEqual("input.json", path.name)
         return path
 
+    def assert_runnable_recovery(self, error, request_id, reason):
+        recovery = error.exception.recovery
+        self.assertEqual(request_id, recovery["request_id"])
+        self.assertEqual(reason, recovery["reason"])
+        command = recovery["command"]
+        self.assertIsInstance(command, list)
+        self.assertTrue(command)
+        self.assertNotIn("<", " ".join(command))
+        self.assertIn(request_id, command)
+        self.assertIn("working-input", command)
+
     def test_stable_revision_restart_and_draft_to_goal_relabel(self):
         self.require_behavior('stable revision, restart, relabel, file-count and patch-size reuse')
         store = self.store()
-        stable_body = "x" * 1024
+        stable_body = "UNIQUE-WORKING-INPUT-BODY-554:" + "x" * 1024
         first = store.write("draft:abc", "goal-create", {"revision": 1, "body": stable_body})
         path = self.assert_descriptor(first)
         inode = path.stat().st_ino
@@ -160,6 +175,10 @@ class WorkingInputBehaviorTests(unittest.TestCase):
                          "external baseline artifact must remain immutable")
         self.assertLess(observed_growth, duplicate_full_bytes,
                         "observed store growth must be smaller than retaining duplicate full inputs")
+        stored_bytes = b"\n".join(
+            candidate.read_bytes() for candidate in store_root.rglob("*") if candidate.is_file())
+        self.assertEqual(1, stored_bytes.count(stable_body.encode()),
+                         "registry metadata must not duplicate the reusable payload body")
 
         restarted = self.store().open("draft:abc", "goal-create")
         self.assertEqual(first, restarted)
@@ -285,13 +304,34 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         self.assertIn("request-bounded", str(caught.exception))
         self.assertIn("reconcile", str(caught.exception).lower())
         self.assertTrue(Path(bounded.status("request-bounded")["snapshot"]).is_file())
+        self.assert_runnable_recovery(caught, "request-bounded", "three-check-limit")
+
+        failed = self.store()
+        failed.write("goal:554", "pre-apply", {"value": "not applied"})
+        failed.freeze("goal:554", "pre-apply", "request-pre-apply", "goal-submit")
+        with self.assertRaises(self.module.WorkingInputUncertain) as caught:
+            failed.dispatch("request-pre-apply", self.provider.fail_before_apply)
+        self.assertNotIn("request-pre-apply", self.provider.applied)
+        self.assert_runnable_recovery(caught, "request-pre-apply", "provider-exception")
+        restarted = self.store()
+        self.assertEqual("uncertain", restarted.status("request-pre-apply")["state"])
+        self.provider.check_results = [False]
+        restarted.reconcile("request-pre-apply")
+        restarted.dispatch("request-pre-apply", self.provider.send)
+        confirmed = self.store()
+        self.assertEqual("confirmed", confirmed.status("request-pre-apply")["state"])
+        receipt = confirmed.status("request-pre-apply")["receipt"]
+        snapshot = Path(confirmed.status("request-pre-apply")["snapshot"])
+        self.assertTrue(snapshot.is_file())
+        confirmed.retire("request-pre-apply", receipt)
+        self.assertFalse(snapshot.exists(), "restart must observe durable confirmation before deletion")
 
     def test_repair_missing_receipt_and_unconfirmed_reconciliation_retain_exact_bytes(self):
         self.require_behavior('distinct repair, missing-receipt and unconfirmed-reconciliation uncertainty')
         store = self.store()
-        cases = (("repair", self.provider.repair_response),
-                 ("missing", self.provider.missing_receipt))
-        for label, sender in cases:
+        cases = (("repair", self.provider.repair_response, "repair-response"),
+                 ("missing", self.provider.missing_receipt, "missing-receipt"))
+        for label, sender, recovery_reason in cases:
             purpose, request = f"uncertain-{label}", f"request-{label}"
             store.write("goal:554", purpose, {"case": label})
             frozen = store.freeze("goal:554", purpose, request, "goal-submit")
@@ -302,14 +342,16 @@ class WorkingInputBehaviorTests(unittest.TestCase):
             status = store.status(request)
             self.assertEqual("uncertain", status["state"])
             self.assertEqual(exact, Path(status["snapshot"]).read_bytes())
+            self.assert_runnable_recovery(caught, request, recovery_reason)
 
         self.provider.check_results = [None, None, None]
         before = Path(store.status("request-missing")["snapshot"]).read_bytes()
-        with self.assertRaises(self.module.WorkingInputUncertain):
+        with self.assertRaises(self.module.WorkingInputUncertain) as caught:
             store.reconcile("request-missing")
         after = store.status("request-missing")
         self.assertEqual("uncertain", after["state"])
         self.assertEqual(before, Path(after["snapshot"]).read_bytes())
+        self.assert_runnable_recovery(caught, "request-missing", "unconfirmed-reconciliation")
 
     def test_active_references_block_handoff_retirement_and_abandonment(self):
         self.require_behavior('lease, reader, provider-dispatch and locked deletion races')
@@ -317,8 +359,9 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         descriptor = store.write("goal:554", "execute", {"value": "protected"})
         store.freeze("goal:554", "execute", "request-ref", "goal-submit")
         with store.reference("request-ref", "lease"):
-            with self.assertRaises(self.module.WorkingInputBusy):
+            with self.assertRaises(self.module.WorkingInputBusy) as caught:
                 store.handoff("goal:554", "execute", "worker")
+            self.assert_runnable_recovery(caught, "request-ref", "active-lease")
         with store.reader("request-ref") as body:
             self.assertIsInstance(body, bytes)
             for operation in (
@@ -326,8 +369,9 @@ class WorkingInputBehaviorTests(unittest.TestCase):
                 lambda: store.retire("request-ref", {"receipt": "request-ref"}),
                 lambda: store.abandon("request-ref", approved_by="user"),
             ):
-                with self.assertRaises(self.module.WorkingInputBusy):
+                with self.assertRaises(self.module.WorkingInputBusy) as caught:
                     operation()
+                self.assert_runnable_recovery(caught, "request-ref", "active-reference")
             self.assertTrue(Path(store.status("request-ref")["snapshot"]).exists())
 
         store.write("goal:554", "provider-race", {"value": "in flight"})
@@ -407,6 +451,13 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         abandon_store = self.store(fault=abandon_fault)
         abandon_store.write("goal:554", "abandon-race", {"value": "recheck"})
         abandon_store.freeze("goal:554", "abandon-race", "request-abandon-race", "goal-submit")
+        protected = self.repo / ".zzzops" / "protected"
+        protected.mkdir(parents=True)
+        protected_files = {}
+        for name in ("published-evidence", "approvals", "receipts", "history", "diagnostics"):
+            target = protected / f"{name}.json"
+            target.write_bytes((json.dumps({"sentinel": name}) + "\n").encode())
+            protected_files[target] = target.read_bytes()
         abandon_errors = []
         def abandon_late_reader():
             try:
@@ -427,6 +478,9 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         self.assertEqual([], abandon_errors)
         self.assertTrue(Path(abandon_store.status("request-abandon-race")["snapshot"]).exists(),
                         "abandonment must recheck references under the final deletion lock")
+        abandon_store.abandon("request-abandon-race", approved_by="user")
+        self.assertEqual(protected_files, {path: path.read_bytes() for path in protected_files},
+                         "abandonment may delete only the working snapshot")
 
     def test_unresolved_snapshots_have_no_age_or_count_eviction(self):
         self.require_behavior('unresolved snapshot retention without eviction')
@@ -502,21 +556,33 @@ class WorkingInputBehaviorTests(unittest.TestCase):
                 self.assertNotIn("<", " ".join(command), "helper commands must be directly runnable")
             self.assertIn(str(legacy.resolve()), json.dumps(guidance["legacy"]))
             self.assertIn("untouched", json.dumps(guidance["legacy"]).lower())
-            sys.path.insert(0, str(ROOT / "plugins/zzzops"))
-            try:
-                from zzzops import zzzops as public_cli
-            finally:
-                sys.path.pop(0)
-            capture_wiring = inspect.getsource(public_cli._workflow_admin._capture)
-            workflow_wiring = inspect.getsource(public_cli._workflow._public_run)
-            if purpose == "capture":
-                self.assertIn("working_input", capture_wiring,
-                              "the actual public capture route must attach working-input guidance")
-            else:
-                self.assertIn("working_input", workflow_wiring,
-                              "the actual public workflow route must attach working-input guidance")
-                self.assertIn(purpose, workflow_wiring,
-                              f"the actual public {purpose} route has no concrete working-input wiring")
+        sys.path.insert(0, str(ROOT / ".agents"))
+        try:
+            import test_zzzops as fixtures
+            public_cli = fixtures.zzzops
+        finally:
+            sys.path.pop(0)
+        sources = {
+            "capture": "$add-zzzops-goal", "execute": "$execute-zzzops",
+            "migration": "$migrate-to-zzzops", "policy-review": "$review-zzzops-policy",
+        }
+        with (mock.patch.object(public_cli._package, "package_status",
+                                return_value={"ok": True, "version": "1", "revision": "abc"}),
+              mock.patch.object(public_cli._installation, "validation_status",
+                                return_value={"required": False}),
+              mock.patch.object(public_cli, "workflow_context_step",
+                                return_value={"id": "policy-review"})):
+            for purpose, source in sources.items():
+                intent = sorted(public_cli.WORKFLOW_SKILL_INTENTS[source])[0]
+                result = public_cli._workflow.public_run(
+                    public_cli, self.repo, intent, source, {"root_id": "root"}, None, None)
+                serialized = json.dumps(result)
+                self.assertIn("working_input", serialized,
+                              f"actual public {purpose} route must return stable-path guidance")
+                self.assertIn(str(self.repo / ".zzzops/work/inputs/v1"), serialized)
+                commands = result["working_input"]["commands"]
+                self.assertTrue(commands)
+                self.assertNotIn("<", " ".join(commands[0]))
         self.assertEqual('{"operation":"submit"}\n', legacy.read_text())
 
         descriptor = store.write("goal:554", "execute", {"z": 1, "a": [2, 3]})
