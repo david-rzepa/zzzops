@@ -5591,6 +5591,73 @@ class GraphAdoptionPublicTests(DagFixture):
                 self.assertRegex(json.dumps(response), r"(?i)uncommitted|checkpoint")
                 self.provider.comments[100] = before
 
+    def test_checkpoint_reconciliation_requires_exact_independent_review_and_approval(self):
+        self.produce()
+        ready = next(step for step in self.session.ready() if step['node']['node'] == 'review_a')
+        receipt = json.loads(Path(ready['policy']['path']).read_text())['policy_receipt']
+        stale = {**ready['start'], 'policy_receipt': receipt, 'request_id': 'response-lost-start'}
+        with mock.patch.object(self.provider, 'update_issue', side_effect=RuntimeError('provider unavailable')):
+            self.session.call(100, stale, expected=2)
+        transaction = next(
+            z._comment_store.decode_envelope(row['body'])['transaction']
+            for row in self.provider.comments[100]
+            if (z._comment_store.decode_envelope(row['body']) or {}).get('context', {}).get('request_id') == stale['request_id'])
+
+        prepared = self.session.call(100, {
+            'operation': 'checkpoint_reconcile_prepare', 'transaction': transaction,
+            'rationale': 'The exact response-lost mutation can no longer be replayed safely.',
+            'request_id': 'prepare-checkpoint-reconciliation',
+        })['next_steps'][0]['proposal']
+        review_request = {
+            'operation': 'checkpoint_reconcile_review', 'proposal': prepared,
+            'actor': 'independent-reviewer', 'decision': 'approved',
+            'report': 'The pinned provider bytes identify only the stale checkpoint.',
+            'request_id': 'review-checkpoint-reconciliation',
+        }
+        before_comments = copy.deepcopy(self.provider.comments[100])
+        self.append_request_envelope('changed-after-reconciliation-prepare')
+        self.administrative_review(review_request, expected=2)
+        self.provider.comments[100] = before_comments
+        self.administrative_review({**review_request, 'actor': self.session.runtime['root_id']},
+                                   observed_actor=self.session.runtime['root_id'], expected=2)
+        reviewed = self.administrative_review(review_request)['next_steps'][0]
+        self.session.call(100, {**reviewed['submission'], 'approved_by': ''}, expected=2)
+        adopted = self.session.call(100, {**reviewed['submission'],
+                                         'approved_by': 'user: approved exact checkpoint reconciliation'})
+        self.assertEqual('checkpoint', adopted['next_steps'][0]['kind'])
+        repaired = self.session.call(100, {
+            'operation': 'graph_prepare', 'graph': self.graph,
+            'rationale': 'Proceed after exact reviewed checkpoint reconciliation.',
+            'request_id': 'graph-after-checkpoint-reconciliation',
+        })
+        self.assertEqual('review_required', repaired['next_steps'][0]['kind'])
+
+        second_stale = {**ready['start'], 'policy_receipt': receipt, 'request_id': 'second-response-lost-start'}
+        with mock.patch.object(self.provider, 'update_issue', side_effect=RuntimeError('provider unavailable')):
+            self.session.call(100, second_stale, expected=2)
+        blocked = self.session.call(100, {
+            'operation': 'graph_prepare', 'graph': self.graph,
+            'rationale': 'An unlisted stale checkpoint must continue to block.',
+            'request_id': 'graph-with-unlisted-stale-checkpoint',
+        }, expected=2)
+        self.assertRegex(json.dumps(blocked), r'(?i)uncommitted|checkpoint')
+
+        engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
+        snapshot = engine.node_snapshot(100); index = engine.artifact_index(100)
+        position, row = next((position, row) for position, row in enumerate(index.envelopes)
+                             if row.get('transaction') == transaction)
+        reconciliation = snapshot['payload']['operational']['receipts'][-1]
+        self.assertFalse(engine.node_checkpoint_reconciled(
+            snapshot, index, row, snapshot['payload']['operational']['receipts'] + [reconciliation]),
+            'Duplicate reconciliation receipts must fail closed regardless of order')
+        for duplicated in ([reconciliation, *snapshot['payload']['operational']['receipts']],
+                           [*snapshot['payload']['operational']['receipts'], reconciliation]):
+            with self.subTest(duplicate_position=duplicated.index(reconciliation)):
+                conflicting = copy.deepcopy(snapshot)
+                conflicting['payload']['operational']['receipts'] = duplicated
+                with self.assertRaisesRegex(ValueError, r'(?i)unique.*receipt'):
+                    engine.node_graph_proposal(conflicting, self.graph, 'Duplicate receipt rejection')
+
     def test_graph_repair_uses_only_exact_committed_migration_cutoff(self):
         engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
         result = {"hash": "sha256:" + "a" * 64, "uri": "urn:sha256:" + "a" * 64}
