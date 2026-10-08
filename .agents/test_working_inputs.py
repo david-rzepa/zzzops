@@ -137,14 +137,17 @@ class WorkingInputBehaviorTests(unittest.TestCase):
 
     def assert_runnable_recovery(self, error, request_id, reason):
         recovery = error.exception.recovery
-        self.assertEqual(request_id, recovery["request_id"])
-        self.assertEqual(reason, recovery["reason"])
-        command = recovery["command"]
-        self.assertIsInstance(command, list)
-        self.assertTrue(command)
-        self.assertNotIn("<", " ".join(command))
-        self.assertIn(request_id, command)
-        self.assertIn("working-input", command)
+        action = "status" if reason in {"active-lease", "active-reference"} else "reconcile"
+        expected = [
+            sys.executable, str(ROOT / "plugins/zzzops/zzzops/zzzops.py"),
+            "working-input", action, "--repo", str(self.repo),
+            "--request-id", request_id,
+        ]
+        self.assertEqual({"request_id": request_id, "reason": reason, "command": expected}, recovery)
+        parsed = subprocess.run(expected[:4] + ["--help"], cwd=self.repo,
+                                text=True, capture_output=True, check=False)
+        self.assertEqual(0, parsed.returncode, parsed.stderr)
+        self.assertIn("usage", parsed.stdout.lower())
 
     def test_stable_revision_restart_and_draft_to_goal_relabel(self):
         self.require_behavior('stable revision, restart, relabel, file-count and patch-size reuse')
@@ -562,9 +565,11 @@ class WorkingInputBehaviorTests(unittest.TestCase):
             public_cli = fixtures.zzzops
         finally:
             sys.path.pop(0)
-        sources = {
-            "capture": "$add-zzzops-goal", "execute": "$execute-zzzops",
-            "migration": "$migrate-to-zzzops", "policy-review": "$review-zzzops-policy",
+        routes = {
+            "capture": ("capture", "$add-zzzops-goal"),
+            "execute": ("execute", "$execute-zzzops"),
+            "migration": ("inspect", "$migrate-to-zzzops"),
+            "policy-review": ("inspect", "$review-zzzops-policy"),
         }
         with (mock.patch.object(public_cli._package, "package_status",
                                 return_value={"ok": True, "version": "1", "revision": "abc"}),
@@ -572,15 +577,20 @@ class WorkingInputBehaviorTests(unittest.TestCase):
                                 return_value={"required": False}),
               mock.patch.object(public_cli, "workflow_context_step",
                                 return_value={"id": "policy-review"})):
-            for purpose, source in sources.items():
-                intent = sorted(public_cli.WORKFLOW_SKILL_INTENTS[source])[0]
+            for purpose, (intent, source) in routes.items():
                 result = public_cli._workflow.public_run(
                     public_cli, self.repo, intent, source, {"root_id": "root"}, None, None)
-                serialized = json.dumps(result)
-                self.assertIn("working_input", serialized,
-                              f"actual public {purpose} route must return stable-path guidance")
-                self.assertIn(str(self.repo / ".zzzops/work/inputs/v1"), serialized)
-                commands = result["working_input"]["commands"]
+                self.assertIsInstance(result, dict)
+                self.assertIsInstance(result.get("next_steps"), list)
+                self.assertEqual("policy-review", result["next_steps"][0]["id"],
+                                 f"controlled {purpose}/{intent} route returned the wrong response")
+                guidance = result.get("working_input")
+                self.assertIsInstance(
+                    guidance, dict,
+                    f"actual public {purpose}/{intent} response must return working-input guidance")
+                self.assertTrue(Path(guidance["path"]).is_relative_to(
+                    self.repo / ".zzzops/work/inputs/v1"))
+                commands = guidance["commands"]
                 self.assertTrue(commands)
                 self.assertNotIn("<", " ".join(commands[0]))
         self.assertEqual('{"operation":"submit"}\n', legacy.read_text())
