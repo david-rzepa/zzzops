@@ -2524,6 +2524,55 @@ class Workflow:
                                     'action': 'Exact stale checkpoint reconciled; immutable history was preserved.'}]}
         return self.node_persist(snapshot, payload, response, request)
 
+    def node_receipt_edge(self, number, index, receipt):
+        """Authenticate one ordinary persisted mutation edge and its provider rows."""
+        if (not isinstance(receipt, dict) or set(receipt) != {'request', 'payload', 'result'}
+                or not isinstance(receipt.get('request'), str) or not receipt['request']
+                or not isinstance(receipt.get('payload'), str)
+                or not re.fullmatch(r'sha256:[0-9a-f]{64}', receipt['payload'])):
+            return None
+        result = receipt.get('result')
+        if (not isinstance(result, dict) or set(result) != {'hash', 'uri'}
+                or result != self.node_ref(result.get('hash'), number)):
+            return None
+        matching = [(comment, item) for comment, item in index.envelope_comments
+                    if (item.get('context') or {}).get('response') == result]
+        if not matching:
+            return None
+        transactions = {item.get('transaction') for _, item in matching}
+        if len(transactions) != 1 or not re.fullmatch(r'sha256:[0-9a-f]{64}', next(iter(transactions)) or ''):
+            return None
+        transaction = next(iter(transactions))
+        selected = [(comment, item) for comment, item in index.envelope_comments
+                    if item.get('transaction') == transaction]
+        try:
+            complete = [comment_store.decode_envelope(comment['body']) for comment, _ in selected]
+            if any(item is None for item in complete): return None
+            comment_store.verify_manifest(complete)
+        except (KeyError, TypeError, ValueError): return None
+        contexts = [item.get('context') or {} for item in complete]
+        if any(context != contexts[0] for context in contexts): return None
+        context = contexts[0]; source = context.get('source_envelope'); target = context.get('target_envelope')
+        required = {'request_id', 'request_hash', 'source_hash', 'human_hash', 'root', 'response',
+                    'ownership', 'acquisition', 'payload', 'proof', 'source_envelope',
+                    'target_envelope', 'entry_payload'}
+        if (required - set(context) or set(context) - required - {'continuation', 'workspace_draft', 'migration'}
+                or context.get('request_id') != receipt['request'] or context.get('request_hash') != receipt['payload']
+                or context.get('response') != result or not isinstance(source, dict) or not isinstance(target, dict)
+                or source.get('repository') != self.repository or target.get('repository') != self.repository
+                or source.get('issue') != number or target.get('issue') != number
+                or type(source.get('revision')) is not int or target.get('revision') != source['revision'] + 1):
+            return None
+        identities = [comment.get('id') for comment, _ in selected]
+        if any(type(identity) is not int or identity <= 0 for identity in identities) or len(identities) != len(set(identities)):
+            return None
+        try: response = index.resolve(result['hash'])[0]
+        except (KeyError, ValueError): return None
+        if not isinstance(response, dict) or not isinstance(response.get('next_steps'), list):
+            return None
+        return {'source': source, 'target': target, 'context': context,
+                'transaction': transaction, 'comment_ids': set(identities), 'response': response}
+
     def node_checkpoint_reconciled(self, snapshot, index, row, receipts):
         """Accept only a current, committed, independently reviewed exact waiver."""
         try:
@@ -2555,12 +2604,11 @@ class Workflow:
                 or review.get('provenance', {}).get('actor') in (None, root)
                 or review.get('content', {}).get('decision') != 'approved'):
             return False
-        contexts = [item.get('context') or {} for item in index.envelopes
-                    if (item.get('context') or {}).get('response') == receipt['result']]
-        contexts = list({digest(context): context for context in contexts}.values())
+        adoption = self.node_receipt_edge(snapshot['number'], index, receipt)
+        if adoption is None:
+            return False
         review_edges = []
-        allowed_comment_ids = {comment['id'] for comment, item in index.envelope_comments
-                               if (item.get('context') or {}).get('response') == receipt['result']}
+        allowed_comment_ids = set(adoption['comment_ids'])
         for candidate in receipts:
             try: reviewed_response = index.resolve(candidate['result']['hash'])[0]
             except (KeyError, ValueError): continue
@@ -2573,17 +2621,30 @@ class Workflow:
                                            if (item.get('context') or {}).get('response') == candidate['result'])
         review_edges = list({digest(edge): edge for edge in review_edges}.values())
         current = proposal_artifact.get('content', {}).get('current', {})
+        chain_edges = []
+        for candidate in receipts:
+            if candidate is receipt or candidate.get('result') == receipt.get('result'):
+                continue
+            edge = self.node_receipt_edge(snapshot['number'], index, candidate)
+            if edge is not None and min(edge['comment_ids']) > max(adoption['comment_ids']):
+                chain_edges.append(edge)
+        cursor = adoption['target']; cursor_id = max(adoption['comment_ids']); used = []
+        while cursor != snapshot['envelope']:
+            candidates = [edge for edge in chain_edges if edge['source'] == cursor and edge not in used
+                          and min(edge['comment_ids']) > cursor_id]
+            if len(candidates) != 1:
+                return False
+            edge = candidates[0]; used.append(edge); cursor = edge['target']; cursor_id = max(edge['comment_ids'])
+        for edge in used: allowed_comment_ids.update(edge['comment_ids'])
         observation = current.get('observation', {})
         comments = self.adapter.get_issue_comments(snapshot['number'])
         prefix = [comment for comment in comments if comment.get('id', 0) <= observation.get('last_id', -1)]
         later_ids = {comment.get('id') for comment in comments if comment.get('id', 0) > observation.get('last_id', -1)}
-        return (len(contexts) == 1 and len(review_edges) == 1
+        return (len(review_edges) == 1
                 and review_edges[0].get('source_envelope') == current.get('envelope')
                 and review_edges[0].get('source_hash') == current.get('issue_body_hash')
-                and review_edges[0].get('target_envelope') == contexts[0].get('source_envelope')
-                and contexts[0].get('request_id') == receipt.get('request')
-                and contexts[0].get('request_hash') == receipt.get('payload')
-                and contexts[0].get('target_envelope') == snapshot['envelope']
+                and review_edges[0].get('target_envelope') == adoption['source']
+                and cursor == snapshot['envelope'] and len(used) == len(chain_edges)
                 and comment_store.comment_observation(prefix) == observation
                 and later_ids == allowed_comment_ids)
 
