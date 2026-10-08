@@ -161,6 +161,131 @@ def _read(path: Path) -> dict[str, Any]:
     return value
 
 
+def capacity_repository_key(repo: Path) -> str:
+    """Stable local checkout identity shared by linked worktrees."""
+    return _default_state_dir(repo.resolve()).name
+
+
+def _capacity_checkout(repo: Path) -> str:
+    repo = repo.resolve()
+    try:
+        observed = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=repo, capture_output=True, text=True, timeout=2, check=False)
+        if observed.returncode == 0 and observed.stdout.strip():
+            return str(Path(observed.stdout.strip()).resolve())
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return str(repo)
+
+
+def _capacity_paths(repo: Path, state_dir: Path | None = None) -> dict[str, Path]:
+    directory = (state_dir or _default_state_dir(repo.resolve())).resolve()
+    return {"directory": directory, "config": directory / "capacity.json",
+            "lock": directory / "capacity.lock"}
+
+
+def _capacity_read(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"schema_version": 1, "repositories": [], "slots": []}
+    if (not isinstance(value, dict) or value.get("schema_version") != 1
+            or not isinstance(value.get("repositories"), list) or not isinstance(value.get("slots"), list)):
+        raise ValueError("local machine capacity inventory is invalid")
+    return value
+
+
+def _capacity_identity(value: Any) -> tuple[str, str, int, str, str]:
+    if (not isinstance(value, dict) or set(value) != {"repository", "checkout", "root_id", "goal", "phase", "token"}
+            or not isinstance(value.get("repository"), str) or not value["repository"]
+            or not isinstance(value.get("checkout"), str) or not value["checkout"]
+            or not isinstance(value.get("root_id"), str) or not value["root_id"]
+            or not isinstance(value.get("goal"), int) or isinstance(value.get("goal"), bool)
+            or value["goal"] < 1):
+        raise ValueError("local machine capacity inventory is invalid")
+    try:
+        return (value["repository"], _identity(value["root_id"], "root_id"), value["goal"],
+                _identity(value.get("phase"), "phase"), _identity(value.get("token"), "token"))
+    except ValueError as exc:
+        raise ValueError("local machine capacity inventory is invalid") from exc
+
+
+def active_lease_count(*, repo: Path, root_id: str, state_dir: Path | None = None) -> int:
+    """Return the repository-and-machine-wide tracked worker count."""
+    _identity(root_id, "root_id")
+    paths = _capacity_paths(repo, state_dir)
+    with _locked(paths["lock"], timeout_seconds=1):
+        config = _capacity_read(paths["config"])
+        retained = [slot for slot in config["slots"]
+                    if isinstance(slot, dict) and Path(slot.get("checkout", "")).exists()]
+        if retained != config["slots"]:
+            config["slots"] = retained; _atomic_write(paths["config"], config)
+    identities = [_capacity_identity(slot) for slot in retained]
+    if len(set(identities)) != len(identities):
+        raise ValueError("local machine capacity inventory is invalid")
+    return len(identities)
+
+
+def capacity_inventory(*, repo: Path, state_dir: Path | None = None) -> dict[str, Any]:
+    """Return this checkout's bounded slots and bootstrap status."""
+    key = capacity_repository_key(repo)
+    paths = _capacity_paths(repo, state_dir)
+    with _locked(paths["lock"], timeout_seconds=1):
+        config = _capacity_read(paths["config"])
+    for slot in config["slots"]: _capacity_identity(slot)
+    return {"initialized": key in config["repositories"],
+            "slots": [dict(slot) for slot in config["slots"] if slot["repository"] == key]}
+
+
+def initialize_capacity(*, repo: Path, slots: list[dict[str, Any]], state_dir: Path | None = None) -> None:
+    """Atomically record the one-time conservative pre-upgrade inventory."""
+    key = capacity_repository_key(repo)
+    normalized = []
+    for slot in slots:
+        candidate = {**slot, "repository": key, "checkout": _capacity_checkout(repo)}
+        _capacity_identity(candidate); normalized.append(candidate)
+    paths = _capacity_paths(repo, state_dir)
+    with _locked(paths["lock"], timeout_seconds=1):
+        config = _capacity_read(paths["config"])
+        if key not in config["repositories"]:
+            config["slots"].extend(normalized)
+            config["repositories"].append(key)
+            _atomic_write(paths["config"], config)
+
+
+def track_capacity(*, repo: Path, root_id: str, goal: int, phase: str, token: str,
+                   state_dir: Path | None = None) -> None:
+    """Idempotently reserve one local worker slot for an exact durable lease."""
+    item = {"repository": capacity_repository_key(repo), "checkout": _capacity_checkout(repo), "root_id": root_id,
+            "goal": goal, "phase": phase, "token": token}
+    _capacity_identity(item)
+    paths = _capacity_paths(repo, state_dir)
+    with _locked(paths["lock"], timeout_seconds=1):
+        config = _capacity_read(paths["config"])
+        matches = [row for row in config["slots"] if isinstance(row, dict)
+                   and (row.get("repository"), row.get("root_id"), row.get("goal"), row.get("phase"))
+                   == (item["repository"], root_id, goal, phase)]
+        if matches and matches != [item]:
+            raise ValueError("local worker slot identity changed")
+        config["slots"] = [row for row in config["slots"] if not isinstance(row, dict)
+                           or (row.get("repository"), row.get("root_id"), row.get("goal"), row.get("phase"))
+                           != (item["repository"], root_id, goal, phase)] + [item]
+        _atomic_write(paths["config"], config)
+
+
+def untrack_capacity(*, repo: Path, root_id: str, goal: int, phase: str, token: str,
+                     state_dir: Path | None = None) -> None:
+    """Idempotently release one exact local worker slot."""
+    item = {"repository": capacity_repository_key(repo), "checkout": _capacity_checkout(repo), "root_id": root_id,
+            "goal": goal, "phase": phase, "token": token}
+    _capacity_identity(item)
+    paths = _capacity_paths(repo, state_dir)
+    with _locked(paths["lock"], timeout_seconds=1):
+        config = _capacity_read(paths["config"])
+        config["slots"] = [row for row in config["slots"] if _capacity_identity(row) != _capacity_identity(item)]
+        _atomic_write(paths["config"], config)
+
+
 def _atomic_write(path: Path, value: dict[str, Any]) -> None:
     _ensure_private_directory(path.parent)
     descriptor, temporary_name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)

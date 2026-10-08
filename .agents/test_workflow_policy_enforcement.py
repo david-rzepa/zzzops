@@ -93,7 +93,7 @@ class GenericWorkerCapacityTests(DagFixture):
 class WorkerLimitEnforcementTests(unittest.TestCase):
     def test_checkpoint_uses_reviewed_max_workers_instead_of_fixed_three(self):
         goals = [
-            {"key": number, "priority": "P1", "status": "ready", "depends_on": []}
+            {"key": number, "priority": "P1", "status": "ready", "depends_on": [], "schema_version": 2}
             for number in range(1, 6)
         ]
         engine = mock.Mock()
@@ -113,8 +113,9 @@ class WorkerLimitEnforcementTests(unittest.TestCase):
     def test_checkpoint_replaces_unstartable_phase_with_capacity_step(self):
         # Supported predecessor ownership still consumes capacity until actual
         # stop/conversion; it is not a runnable second phase engine.
-        active = {"key": 1, "priority": "P0", "status": "ready", "depends_on": [], "workflow": durable({"expires_at": 0, "worker": "synthetic-worker"})}
-        target = {"key": 2, "priority": "P1", "status": "ready", "depends_on": []}
+        active = {"key": 1, "priority": "P0", "status": "ready", "depends_on": [], "schema_version": 2,
+                  "workflow": durable({"expires_at": 0, "worker": "synthetic-worker"})}
+        target = {"key": 2, "priority": "P1", "status": "ready", "depends_on": [], "schema_version": 2}
         proposed = {"kind": "execute", "goal": 2,
                     "node": {"goal": 2, "node": "work", "item": None, "generation": 1},
                     "start": {"operation": "start"}}
@@ -122,8 +123,9 @@ class WorkerLimitEnforcementTests(unittest.TestCase):
         engine.portfolio.return_value = [active, target]
         engine.step.side_effect = {1: [{"kind": "await_worker", "goal": 1}], 2: [proposed]}.__getitem__
 
-        portfolio = z._workflow.checkpoint(z, Path("."), project(max_workers=1), {}, engine=engine)
-        goal_bound = z._workflow.checkpoint(z, Path("."), project(max_workers=1), {}, number=2, engine=engine)
+        with mock.patch.object(z._workflow, 'local_worker_count', return_value=1):
+            portfolio = z._workflow.checkpoint(z, Path("."), project(max_workers=1), {}, engine=engine)
+            goal_bound = z._workflow.checkpoint(z, Path("."), project(max_workers=1), {}, number=2, engine=engine)
 
         for result in (portfolio, goal_bound):
             self.assertEqual("await_worker", result["next_steps"][0]["kind"])
