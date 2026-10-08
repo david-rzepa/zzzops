@@ -117,12 +117,16 @@ class SubmitContinuationTests(DagFixture):
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
         fixture.default_decomposition()
-        work = fixture.session.acquire('review_decomposition')
-        response = fixture.session.finish(work, {'value': {'decision': 'changes_requested', 'report': 'Required correction'}})
+        work = fixture.session.acquire('decomposition_review')
+        response = fixture.session.finish(work, {
+            'value': {'decision': 'changes_requested', 'report': 'Required correction',
+                      'outcomes': ['blocked'], 'findings': ['Required correction']},
+            'authorization': None,
+        })
         ready = self.ready_names(response)
-        self.assertIn('interpret_decompose_rejection', ready)
+        self.assertIn('interpret_decomposition_rejection', ready)
         self.assertNotIn('test_design', ready)
-        self.assertNotIn('approve_understanding', ready)
+        self.assertNotIn('approve_spec', ready)
         self.assertFalse(any(step['kind'] in {'integrate', 'complete'} for step in response['next_steps']))
 
     def test_expired_or_stale_submission_cannot_publish_continuation(self):

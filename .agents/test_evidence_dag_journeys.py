@@ -3020,53 +3020,88 @@ class DefaultCorrectionPublicTests(DagFixture):
         template = json.loads((old.fixtures.PLUGIN_ROOT / "zzzops/templates/project-goals/INIT_PLAN.json").read_text())
         graph = z._workflow_section(template, "workflow_adherence")["configuration"]["phase_dag"]
         self.install(graph)
+        self.session.finish(self.session.acquire("requirements"), {"value": {
+            "statements": ["Deliver one bounded correction fixture."],
+            "questions": [],
+            "investigations": {"items": {}, "rationale": "No technical unknowns remain."},
+        }})
         allocation = {"allocations": {name: {
             "task": {"goal": 100, "node": name, "item": None, "generation": 1},
             "owned": ["behavior_test.py" if name == "test_design" else "source.py"],
             "consumed": ["product.txt"],
         } for name in ("test_design", "implement")}}
-        self.session.finish(self.session.acquire("understand"), {"design": "Atomic bounded fixture", "allocation": allocation})
-        permit = {"manifest": self.produced("understand", "allocation"),
+        self.default_allocation = allocation
+        self.session.finish(self.session.acquire("spec"), {
+            "value": {"specification": "Atomic bounded fixture", "criteria": ["Retain exact corrections"],
+                      "risks": ["evidence integrity"],
+                      "review_members": {"items": {}, "rationale": "No specialist review members."}},
+            "allocation": allocation,
+        })
+        if "retain_spec_review_findings" in self.names():
+            self.session.finish(self.session.acquire("retain_spec_review_findings"), {
+                "value": {"items": {}, "rationale": "No specification findings were admitted"}})
+        permit = {"manifest": self.produced("spec", "allocation"),
                   "tasks": [item["task"] for item in allocation["allocations"].values()],
                   "policy": content_hash(self.session.project["policy"]), "decision": "approved"}
-        self.session.finish(self.session.acquire("review_understanding"), {
-            "review": {"decision": "approved", "report": "Exact scope reviewed"}, "authorization": permit})
-        self.session.finish(self.session.acquire("approve_understanding"), {"authorization": permit})
-        self.session.finish(self.session.acquire("retain_understand_findings"), {
-            "value": {"items": {}, "rationale": "No understanding findings were admitted"}})
-        self.session.finish(self.session.acquire("decompose"), {"value": "First atomic disposition"})
+        self.session.finish(self.session.acquire("approve_spec"), {"authorization": permit})
+        empty_members = {"items": {}, "rationale": "No additional review members."}
+        self.session.finish(self.session.acquire("decompose"), {"value": {
+            "delivery_class": "atomic", "rationale": "One bounded delivery",
+            "children": {"items": {}, "rationale": "Atomic work has no child goals."},
+            "implementation_review_members": empty_members,
+            "integration_review_members": empty_members,
+        }})
+
+    def review(self, decision, report):
+        return {"decision": decision, "report": report, "outcomes": [], "findings": []}
+
+    def decomposition_authorization(self):
+        return {"manifest": self.produced("spec", "allocation"),
+                "tasks": [item["task"] for item in self.default_allocation["allocations"].values()],
+                "policy": content_hash(self.session.project["policy"]), "decision": "approved"}
+
+    def verify_test_design(self, path, nonce):
+        verification = self.session.acquire("test_verification")
+        self.session.finish(verification, {"value": "Observed expected RED proof in " + path.name}, nonce)
 
     def test_default_rejections_reacquire_producer_and_retain_every_finding(self):
         self.default_decomposition()
-        approval = self.result("approve_understanding")[0]
+        approval = self.result("approve_spec")[0]
         originals, findings = [], {}
         for iteration in (1, 2):
             subject = self.produced("decompose")
             originals.append(subject)
-            self.session.finish(self.session.acquire("review_decomposition"), {
-                "value": {"decision": "changes_requested", "report": f"Required correction {iteration}"}})
-            review = self.produced("review_decomposition")
+            self.session.finish(self.session.acquire("decomposition_review"), {
+                "value": self.review("changes_requested", f"Required correction {iteration}"),
+                "authorization": None})
+            review = self.produced("decomposition_review")
             originals.append(review)
-            self.assertIn("interpret_decompose_rejection", self.names(),
+            self.assertIn("interpret_decomposition_rejection", self.names(),
                           "A rejected shipped review must offer correction admission")
             identifier = f"rejection_{iteration}"
             finding = {"id": identifier, "revision": 1, "source": review, "subjects": [subject],
                        "target": scope("decompose"), "request": f"Fix required defect {iteration}",
                        "rationale": "Independent exact-subject rejection", "supersedes": None}
-            self.session.finish(self.session.acquire("interpret_decompose_rejection"), {"value": finding})
-            finding_ref = self.produced("interpret_decompose_rejection")
+            self.session.finish(self.session.acquire("interpret_decomposition_rejection"), {"value": finding})
+            finding_ref = self.produced("interpret_decomposition_rejection")
             findings[identifier] = finding_ref
-            self.session.finish(self.session.acquire("admit_decompose_correction"), {"value": {
+            self.session.finish(self.session.acquire("admit_decomposition_correction"), {"value": {
                 "finding": finding_ref, "target_inputs": self.result("decompose")[1]["inputs"],
-                "authority": self.result("interpret_decompose_rejection")[0],
+                "authority": self.result("interpret_decomposition_rejection")[0],
                 "applicability": "applicable", "rationale": "In the exact previously approved scope"}})
             self.assertIn("decompose", self.names())
             self.assertNotIn("test_design", self.names())
-            self.session.finish(self.session.acquire("decompose"), {"value": f"Corrected disposition {iteration}"})
-            self.assertEqual(approval, self.result("approve_understanding")[0])
-        self.session.finish(self.session.acquire("review_decomposition"), {
-            "value": {"decision": "approved", "report": "Both retained defects verified fixed"}})
-        registry = self.session.acquire("retain_decompose_findings")
+            empty_members = {"items": {}, "rationale": "No additional review members."}
+            self.session.finish(self.session.acquire("decompose"), {"value": {
+                "delivery_class": "atomic", "rationale": f"Corrected disposition {iteration}",
+                "children": {"items": {}, "rationale": "Atomic work has no child goals."},
+                "implementation_review_members": empty_members,
+                "integration_review_members": empty_members}})
+            self.assertEqual(approval, self.result("approve_spec")[0])
+        self.session.finish(self.session.acquire("decomposition_review"), {
+            "value": self.review("approved", "Both retained defects verified fixed"),
+            "authorization": self.decomposition_authorization()})
+        registry = self.session.acquire("retain_decomposition_findings")
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
         incomplete = self.session.submission(registry, {
             "value": {"items": {"rejection_2": findings["rejection_2"]}, "rationale": "Omit an old defect"}},
@@ -3078,22 +3113,23 @@ class DefaultCorrectionPublicTests(DagFixture):
             "value": {"items": findings, "rationale": "All historical admitted findings retained"}})
         for identifier, finding_ref in findings.items():
             self.assertNotIn("test_design", self.names())
-            self.session.finish(self.session.acquire("resolve_decompose_finding", item=identifier), {"value": {
+            self.session.finish(self.session.acquire("resolve_decomposition_finding", item=identifier), {"value": {
                 "finding": finding_ref, "subjects": [self.produced("decompose")],
-                "reviewer_result": self.result("review_decomposition")[0],
+                "reviewer_result": self.result("decomposition_review")[0],
                 "decision": "resolved", "rationale": "Fresh independent approval covers this retained defect"}})
         self.assertIn("test_design", self.names())
         for ref in [*originals, *findings.values()]:
             self.read_blob(ref)
-        self.assertEqual(approval, self.result("approve_understanding")[0])
+        self.assertEqual(approval, self.result("approve_spec")[0])
 
     def test_default_test_design_correction_keeps_workspace_authority_and_red_proof(self):
         self.default_decomposition()
-        self.session.finish(self.session.acquire("review_decomposition"), {
-            "value": {"decision": "approved", "report": "Atomic disposition accepted"}})
-        self.session.finish(self.session.acquire("retain_decompose_findings"), {
+        self.session.finish(self.session.acquire("decomposition_review"), {
+            "value": self.review("approved", "Atomic disposition accepted"),
+            "authorization": self.decomposition_authorization()})
+        self.session.finish(self.session.acquire("retain_decomposition_findings"), {
             "value": {"items": {}, "rationale": "No decomposition findings were admitted"}})
-        approval = self.result("approve_understanding")[0]
+        approval = self.result("approve_spec")[0]
         original = self.session.acquire("test_design")
         path = self.fixture.repo / "behavior_test.py"
         path.write_text("raise AssertionError('expected initial red fixture')\n")
@@ -3103,10 +3139,11 @@ class DefaultCorrectionPublicTests(DagFixture):
         candidate = self.produced("test_design")
         proof = self.read_blob(candidate)["provenance"]["source"]
         self.assertEqual(1, self.read_blob(proof)["commands"][0]["exit_code"])
-        self.session.finish(self.session.acquire("review_test_design"), {
-            "value": {"decision": "changes_requested", "report": "Replace unconditional failure with a meaningful probe"}})
+        self.verify_test_design(path, "default-red-verification")
+        self.session.finish(self.session.acquire("test_design_review"), {
+            "value": self.review("changes_requested", "Replace unconditional failure with a meaningful probe")})
         self.session.finish(self.session.acquire("interpret_test_design_rejection"), {"value": {
-            "id": "bounded_probe", "revision": 1, "source": self.produced("review_test_design"),
+            "id": "bounded_probe", "revision": 1, "source": self.produced("test_design_review"),
             "subjects": [candidate], "target": scope("test_design"), "request": "Probe the fixture behaviour",
             "rationale": "The first candidate does not exercise behaviour", "supersedes": None}})
         finding = self.produced("interpret_test_design_rejection")
@@ -3121,17 +3158,18 @@ class DefaultCorrectionPublicTests(DagFixture):
         request = self.session.submission(corrected, {"value": "Meaningful bounded fixture probe"}, "default-corrected")
         request["workspace_checks"] = [[sys.executable, str(path)]]
         self.session.call(100, request)
+        self.verify_test_design(path, "default-corrected-verification")
         self.assertNotIn("implement", self.names())
-        self.session.finish(self.session.acquire("review_test_design"), {
-            "value": {"decision": "approved", "report": "Current probe covers the required fixture"}})
+        self.session.finish(self.session.acquire("test_design_review"), {
+            "value": self.review("approved", "Current probe covers the required fixture")})
         self.session.finish(self.session.acquire("retain_test_design_findings"), {
             "value": {"items": {"bounded_probe": finding}, "rationale": "Retain the original rejected candidate finding"}})
         self.session.finish(self.session.acquire("resolve_test_design_finding", item="bounded_probe"), {"value": {
             "finding": finding, "subjects": [self.produced("test_design")],
-            "reviewer_result": self.result("review_test_design")[0], "decision": "resolved",
+            "reviewer_result": self.result("test_design_review")[0], "decision": "resolved",
             "rationale": "Fresh independent approval verifies the bounded probe"}})
         self.assertIn("implement", self.names())
-        self.assertEqual(approval, self.result("approve_understanding")[0])
+        self.assertEqual(approval, self.result("approve_spec")[0])
         self.assertEqual(1, self.read_blob(proof)["commands"][0]["exit_code"])
 
 
