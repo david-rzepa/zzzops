@@ -189,6 +189,59 @@ class GenericRenewalTests(DagFixture):
             self.session.call(100, renewal, expected=2)
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
+    def test_exact_bound_owner_can_relinquish_expired_lease_without_result(self):
+        work = self.session.acquire("produce")
+        original_portfolio = self.session.portfolio_snapshot
+        def forbidden(*_args, **_kwargs):
+            raise AssertionError("release hydrated unrelated portfolio")
+        self.session.portfolio_snapshot = forbidden
+        stop = mock.Mock(return_value={})
+        self.session.heartbeat_stop = stop
+        request = {"operation": "release", "node": work["node"], "lease": work["lease"]["token"],
+                   "actor": work["bound_actor"], "request_id": "exact-expired-release"}
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        denied = {**request, "actor": "intruder", "request_id": "wrong-expired-release"}
+        with mock.patch.object(z._workflow.time, "time", return_value=work["lease"]["expires_at"] + 1):
+            self.session.call(100, denied, expected=2)
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+            response = self.session.call(100, request)
+        self.assertEqual("released", response["next_steps"][0]["kind"])
+        self.assertNotIn(work["lease"]["token"],
+                         {v["token"] for v in self.payload()[1]["operational"]["leases"]})
+        self.assertEqual([], self.payload()[1]["evidence"])
+        self.session.portfolio_snapshot = original_portfolio
+        self.assertIn("produce", {v["node"]["node"] for v in self.session.ready()})
+        self.assertEqual(1, stop.call_count)
+
+    def test_release_replay_after_lost_provider_response_does_not_rewrite(self):
+        work = self.session.acquire("produce")
+        request = {"operation": "release", "node": work["node"], "lease": work["lease"]["token"],
+                   "actor": work["bound_actor"], "request_id": "release-lost-response"}
+        original = self.provider.update_issue
+        def uncertain(number, payload):
+            original(number, payload)
+            raise z.GoalTransitionProviderError("lost release response")
+        with mock.patch.object(self.provider, "update_issue", side_effect=uncertain):
+            self.session.call(100, request, expected=None)
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        replay = self.session.call(100, request)
+        self.assertEqual("released", replay["next_steps"][0]["kind"])
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_release_replay_retries_failed_local_cleanup_without_rewriting(self):
+        work = self.session.acquire("produce")
+        request = {"operation": "release", "node": work["node"], "lease": work["lease"]["token"],
+                   "actor": work["bound_actor"], "request_id": "release-cleanup-retry"}
+        stop = mock.Mock(side_effect=[OSError("local cleanup failed"), {}])
+        self.session.heartbeat_stop = stop
+        first = self.session.call(100, request)
+        self.assertRegex(json.dumps(first), r"(?i)durable.*succeed|cleanup|retry")
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        replay = self.session.call(100, request)
+        self.assertEqual("released", replay["next_steps"][0]["kind"])
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.assertEqual(2, stop.call_count)
+
     def test_wrong_renewal_actor_and_failed_provider_save_never_acknowledge(self):
         work = self.session.acquire("produce")
         self.session.call(100, self.request(work))
