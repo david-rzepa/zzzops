@@ -234,6 +234,105 @@ class UnderstandingRejectionTests(j.DagFixture):
         self.admit()
         self.assertIn('understand', self.names())
 
+class RepeatedDefaultCorrectionTests(j.DagFixture):
+    """A shipped correction route can revise one admitted finding repeatedly."""
+
+    default_decomposition = j.DefaultCorrectionPublicTests.default_decomposition
+    review = j.DefaultCorrectionPublicTests.review
+
+    def shipped_graph(self):
+        template = json.loads((j.old.fixtures.PLUGIN_ROOT / 'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
+        return j.z._workflow_section(template, 'workflow_adherence')['configuration']['phase_dag']
+
+    def test_every_shipped_correction_admission_has_one_nullable_atomic_transfer(self):
+        graph = self.shipped_graph()
+        admissions = [node for node in graph['nodes']
+                      if node['id'].startswith('admit_') and node['id'].endswith('_correction')]
+        self.assertTrue(admissions)
+        for node in admissions:
+            with self.subTest(node=node['id']):
+                self.assertEqual({'value', 'transfer'}, set(node['outputs']))
+                self.assertEqual('admission', node['outputs']['value']['type'])
+                self.assertEqual('supersession', node['outputs']['transfer']['type'])
+                transfer = node['outputs']['transfer']['schema']
+                self.assertEqual('union', transfer['kind'])
+                self.assertEqual({'null', 'object'}, {variant['kind'] for variant in transfer['variants']})
+                supersession = next(variant for variant in transfer['variants'] if variant['kind'] == 'object')
+                self.assertEqual({'prior', 'replacement', 'coverage', 'coverage_evidence', 'authority'},
+                                 set(supersession['fields']))
+                self.assertEqual({'admission', 'supersession'},
+                                 {permit['type'] for permit in node['permits']})
+
+    def test_second_rejection_atomically_supersedes_first_admitted_finding(self):
+        self.default_decomposition()
+        finding_id = 'decomposition_defect'
+
+        self.session.finish(self.session.acquire('decomposition_review'), {
+            'value': self.review('changes_requested', 'First correction required'),
+            'authorization': None})
+        self.session.finish(self.session.acquire('interpret_decomposition_rejection'), {'value': {
+            'id': finding_id, 'revision': 1, 'source': self.produced('decomposition_review'),
+            'subjects': [self.produced('decompose')], 'target': j.scope('decompose'),
+            'request': 'Correct the first observed defect',
+            'rationale': 'Independent review rejected the exact decomposition', 'supersedes': None}})
+        revision_one = self.produced('interpret_decomposition_rejection')
+        first_admission = {
+            'finding': revision_one, 'target_inputs': self.result('decompose')[1]['inputs'],
+            'authority': self.result('interpret_decomposition_rejection')[0],
+            'applicability': 'applicable', 'rationale': 'Within the exact approved planning scope'}
+        first_work = self.session.acquire('admit_decomposition_correction')
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        rejected = self.session.call(100, self.session.submission(
+            first_work, {'value': first_admission}, 'missing-first-transfer'), expected=2)
+        self.assertRegex(json.dumps(rejected), r'(?i)transfer|output|missing')
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.finish(first_work, {'value': first_admission, 'transfer': None})
+
+        empty_members = {'items': {}, 'rationale': 'No additional review members.'}
+        self.session.finish(self.session.acquire('decompose'), {'value': {
+            'delivery_class': 'atomic', 'rationale': 'First corrected decomposition',
+            'children': {'items': {}, 'rationale': 'Atomic work has no child goals.'},
+            'implementation_review_members': empty_members,
+            'integration_review_members': empty_members}})
+        self.session.finish(self.session.acquire('decomposition_review'), {
+            'value': self.review('changes_requested', 'The same defect needs refinement'),
+            'authorization': None})
+        self.session.finish(self.session.acquire('interpret_decomposition_rejection'), {'value': {
+            'id': finding_id, 'revision': 2, 'source': self.produced('decomposition_review'),
+            'subjects': [self.produced('decompose')], 'target': j.scope('decompose'),
+            'request': 'Refine the same correction without duplicating its obligation',
+            'rationale': 'Fresh review rejected the corrected exact decomposition',
+            'supersedes': revision_one}})
+        revision_two = self.produced('interpret_decomposition_rejection')
+        authority = self.result('interpret_decomposition_rejection')[0]
+        second_admission = {
+            'finding': revision_two, 'target_inputs': self.result('decompose')[1]['inputs'],
+            'authority': authority, 'applicability': 'applicable',
+            'rationale': 'The revised finding remains within the exact planning scope'}
+        second_work = self.session.acquire('admit_decomposition_correction')
+        for nonce, transfer in (
+                ('null-second-transfer', None),
+                ('malformed-second-transfer', {
+                    'prior': revision_one, 'replacement': revision_one, 'coverage': 'carried',
+                    'coverage_evidence': authority, 'authority': authority})):
+            with self.subTest(nonce=nonce):
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                rejected = self.session.call(100, self.session.submission(
+                    second_work, {'value': second_admission, 'transfer': transfer}, nonce), expected=2)
+                self.assertRegex(json.dumps(rejected), r'(?i)transfer|supersession|replacement|coverage')
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.finish(second_work, {'value': second_admission, 'transfer': {
+            'prior': revision_one, 'replacement': revision_two, 'coverage': 'carried',
+            'coverage_evidence': authority, 'authority': authority}})
+
+        snapshot = j.z.workflow_engine(
+            self.fixture.repo, self.session.project, self.session.runtime).node_snapshot(100)
+        obligation = snapshot['projection']['obligations'][(100, finding_id)]
+        self.assertEqual(revision_two, obligation['finding'])
+        self.assertEqual(2, self.read_blob(revision_two)['content']['revision'])
+        self.assertEqual(1, self.read_blob(revision_one)['content']['revision'])
+
+
 
 if __name__ == '__main__':
     unittest.main()
