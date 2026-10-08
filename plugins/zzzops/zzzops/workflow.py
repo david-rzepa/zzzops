@@ -5310,7 +5310,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         if freshness['stale']:
             return {'next_steps': [{'kind': 'policy_review', 'assignment': 'root', 'action': 'Review policy tier mappings for newly discovered model/effort pairs before proceeding.', 'added': freshness['added'], 'submission': {'operation': 'policy_propose', 'plan': '<updated reviewed policy plan>'}}]}
     engine = Workflow(api, repo, project, runtime)
-    if payload is not None and operation not in {'read', 'heartbeat', 'renew'}:
+    if payload is not None and operation not in {'read', 'heartbeat'}:
         original_issue = engine._mutation_adapter.get_issue
         original_comments = engine._mutation_adapter.get_issue_comments
         read_cache = {'issues': {}, 'comments': {}}
@@ -5381,11 +5381,58 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         for method_name in ('create_issue_comment', 'update_issue'):
             original = getattr(engine._mutation_adapter, method_name)
             originals[method_name] = original
-            def guarded(*args, _original=original, **kwargs):
+            def guarded(*args, _original=original, _method=method_name, **kwargs):
                 target = args[0] if args else kwargs.get('number')
                 fresh_mutation_boundary(target)
-                try:
+                request_id = payload.get('request_id')
+                if not isinstance(request_id, str):
                     return _original(*args, **kwargs)
+                invocation = {'method': _method, 'target': target,
+                              'arguments': list(args[1:]), 'keywords': kwargs}
+                exact = json.dumps(invocation, ensure_ascii=False, sort_keys=True,
+                                   separators=(',', ':')).encode()
+                suffix = hashlib.sha256(exact).hexdigest()[:24]
+                transaction_id = (request_id[:96] + '-' + suffix)[:128]
+                owner = (runtime or {}).get('root_id', 'root')
+                working = api._working_inputs.WorkingInputStore(
+                    repo, repository=engine.repository, owner=owner)
+                subject = f'provider:{engine.repository}:{target}:{_method}'
+                working.write(subject, 'provider-mutation', invocation)
+                action = {'operation': _method, 'target': {'repository': engine.repository,
+                                                           'issue': target}}
+                working.freeze(subject, 'provider-mutation', transaction_id, action)
+                def postcondition(check_id, check_digest):
+                    if _method == 'create_issue_comment':
+                        wanted = invocation['arguments'][0]
+                        match = next((row for row in original_comments(target)
+                                      if row.get('body') == wanted), None)
+                    else:
+                        wanted = invocation['arguments'][0]
+                        observed = original_issue(target)
+                        match = observed if all(observed.get(key) == value
+                                                for key, value in wanted.items()
+                                                if key not in {'labels'}) else None
+                        if match is not None and 'labels' in wanted:
+                            labels = [row.get('name') if isinstance(row, dict) else row
+                                      for row in observed.get('labels', [])]
+                            if labels != wanted['labels']: match = None
+                    if match is None:
+                        return None
+                    receipt = {'request_id': check_id, 'digest': check_digest,
+                               'action': action, 'authenticated': True,
+                               'provider_result': digest(match)}
+                    return {'applied': True, 'receipt': receipt, 'result': match}
+                working.provider_check = postcondition
+                def apply_exact(_request_id, body):
+                    frozen = json.loads(body)
+                    result = _original(target, *frozen['arguments'], **frozen['keywords'])
+                    receipt = {'request_id': _request_id,
+                               'digest': hashlib.sha256(body).hexdigest(),
+                               'action': action, 'authenticated': True,
+                               'provider_result': digest(result)}
+                    return {'receipt': receipt, 'result': result}
+                try:
+                    return working.dispatch(transaction_id, apply_exact)['result']
                 finally:
                     # A provider may commit and then lose its response. Any
                     # recovery read must observe the provider, not the

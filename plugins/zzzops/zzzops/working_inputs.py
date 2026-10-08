@@ -352,6 +352,20 @@ class WorkingInputStore:
                 state = self._load(); state["requests"][request_id]["state"] = "uncertain"
                 state["requests"][request_id]["uncertain_reason"] = "provider-exception"; self._save(state)
             if type(exc).__name__ == "AppliedThenLost": raise
+            outcome = self.provider_check(request_id, row["digest"])
+            if isinstance(outcome, dict) and outcome.get("applied") is True:
+                receipt = outcome.get("receipt")
+                if (isinstance(receipt, dict) and receipt.get("request_id") == request_id
+                        and receipt.get("digest") == row["digest"] and receipt.get("action") == row["action"]
+                        and receipt.get("authenticated") is True):
+                    with self._locked():
+                        state = self._load(); recovered = state["requests"][request_id]
+                        recovered["state"] = "confirmed"; recovered["receipt"] = receipt; self._save(state)
+                    return outcome.get("result", receipt)
+            if outcome is False or (isinstance(outcome, dict) and outcome.get("applied") is False):
+                with self._locked():
+                    state = self._load(); state["requests"][request_id]["state"] = "frozen"; self._save(state)
+                raise
             self._uncertain(request_id, "provider-exception")
         steps = result.get("next_steps") if isinstance(result, dict) else None
         if steps:
