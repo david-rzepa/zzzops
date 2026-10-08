@@ -7,7 +7,6 @@ any lifecycle assertion runs.
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import importlib.util
 import json
@@ -49,6 +48,8 @@ class FixtureProvider:
         self.applied = {}
         self.checks = 0
         self.check_results = []
+        self.dispatch_started = threading.Event()
+        self.dispatch_release = threading.Event()
 
     def send(self, request_id, body):
         if not isinstance(body, bytes):
@@ -61,6 +62,20 @@ class FixtureProvider:
         self.send(request_id, body)
         raise AppliedThenLost(request_id)
 
+    def blocking_send(self, request_id, body):
+        self.dispatch_started.set()
+        if not self.dispatch_release.wait(5):
+            raise AssertionError("provider dispatch fixture was not released")
+        return self.send(request_id, body)
+
+    def repair_response(self, request_id, body):
+        self.calls.append((request_id, body))
+        return {"next_steps": [{"kind": "repair", "reason": "provider state needs reconciliation"}]}
+
+    def missing_receipt(self, request_id, body):
+        self.calls.append((request_id, body))
+        return {"next_steps": [{"kind": "checkpoint"}]}
+
     def check(self, request_id, digest):
         self.checks += 1
         if self.check_results:
@@ -69,22 +84,43 @@ class FixtureProvider:
         return body is not None and hashlib.sha256(body).hexdigest() == digest
 
 
+class WorkingInputFixtureControlTests(unittest.TestCase):
+    def test_fixtures_initialize_without_production_module(self):
+        provider = FixtureProvider()
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory) / "repo"
+            repo.mkdir()
+            subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            self.assertTrue((repo / ".git").is_dir())
+            self.assertEqual([], provider.calls)
+            self.assertFalse(provider.dispatch_started.is_set())
+
+
 class WorkingInputBehaviorTests(unittest.TestCase):
     def setUp(self):
-        self.module = production_module()
+        self.module = None
         self.temporary = tempfile.TemporaryDirectory()
         self.repo = Path(self.temporary.name) / "repo"
         self.repo.mkdir()
-        (self.repo / ".git").mkdir()
+        subprocess.run(["git", "init", "-q", str(self.repo)], check=True)
         self.provider = FixtureProvider()
 
     def tearDown(self):
         self.temporary.cleanup()
 
     def store(self, owner="root", **overrides):
+        if self.module is None:
+            self.require_behavior("working-input store")
         return self.module.WorkingInputStore(
             self.repo, repository="owner/project", owner=owner,
             provider_check=self.provider.check, **overrides)
+
+    def require_behavior(self, criterion):
+        self.assertTrue(MODULE.is_file(),
+                        f"missing production behavior for {criterion}: {MODULE.relative_to(ROOT)}")
+        if self.module is None:
+            self.module = production_module()
+        return self.module
 
     def assert_descriptor(self, value):
         self.assertEqual({"payload_id", "path", "subject", "purpose", "owner"}, set(value))
@@ -95,18 +131,26 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         return path
 
     def test_stable_revision_restart_and_draft_to_goal_relabel(self):
+        self.require_behavior('stable revision, restart, relabel, file-count and patch-size reuse')
         store = self.store()
-        first = store.write("draft:abc", "goal-create", {"revision": 1})
+        stable_body = "x" * 1024
+        first = store.write("draft:abc", "goal-create", {"revision": 1, "body": stable_body})
         path = self.assert_descriptor(first)
         inode = path.stat().st_ino
         initial_files = sorted(p.relative_to(self.repo) for p in path.parent.rglob("*"))
 
-        second = store.write("draft:abc", "goal-create", {"revision": 2, "answer": "settled"})
+        second = store.write("draft:abc", "goal-create",
+                             {"revision": 2, "body": stable_body, "answer": "settled"})
         self.assertEqual(first, second)
         self.assertEqual(inode, path.stat().st_ino, "editable revisions must retain the stable file itself")
-        self.assertEqual({"revision": 2, "answer": "settled"}, json.loads(path.read_text()))
+        self.assertEqual({"revision": 2, "body": stable_body, "answer": "settled"},
+                         json.loads(path.read_text()))
         self.assertEqual(initial_files, sorted(p.relative_to(self.repo) for p in path.parent.rglob("*")),
                          "revisions must not create one input file per edit")
+        metrics = store.revision_metrics("draft:abc", "goal-create")
+        self.assertEqual(1, metrics["editable_file_count"])
+        self.assertLess(metrics["patch_bytes"], metrics["duplicate_full_bytes"],
+                        "a stable edited payload must produce a smaller review patch than duplicate full files")
 
         restarted = self.store().open("draft:abc", "goal-create")
         self.assertEqual(first, restarted)
@@ -114,11 +158,13 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         self.assertEqual(first["payload_id"], relabeled["payload_id"])
         self.assertEqual(path, Path(relabeled["path"]))
         self.assertEqual(inode, path.stat().st_ino)
-        self.assertEqual({"revision": 2, "answer": "settled"}, self.store().read("goal:554", "goal-create"))
+        self.assertEqual({"revision": 2, "body": stable_body, "answer": "settled"},
+                         self.store().read("goal:554", "goal-create"))
         with self.assertRaises(KeyError):
             self.store().open("draft:abc", "goal-create", create=False)
 
     def test_identity_separates_owner_purpose_and_draft_without_implicit_adoption(self):
+        self.require_behavior('owner, purpose, draft identity and refused implicit adoption')
         root = self.store("root")
         identities = [
             root.write("draft:a", "capture", {"value": 1}),
@@ -137,6 +183,7 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         self.assertEqual('{"legacy":true}\n', legacy.read_text(), "legacy input must remain untouched")
 
     def test_freeze_dispatch_exact_retry_and_recovered_state_boundaries(self):
+        self.require_behavior('durable freeze, exact dispatch, retry, recovery and digest verification')
         store = self.store()
         store.write("goal:554", "execute", {"operation": "submit", "value": "one"})
         frozen = store.freeze("goal:554", "execute", "request-1", "goal-submit")
@@ -169,8 +216,13 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         recovered = self.store().status("request-frozen")
         self.assertEqual("frozen", recovered["state"])
         self.assertEqual(0, len(self.provider.calls), "frozen recovery must prove dispatch was never authorized")
+        Path(recovered["snapshot"]).write_bytes(b'{"tampered":true}')
+        with self.assertRaisesRegex(ValueError, "digest|corrupt|snapshot"):
+            self.store().recover("request-frozen")
+        self.assertEqual(0, len(self.provider.calls), "corrupt recovered bytes must never cross dispatch barrier")
 
     def test_dispatching_crashes_are_uncertain_and_reconcile_is_bounded(self):
+        self.require_behavior('durable dispatching barrier and bounded uncertainty reconciliation')
         def crash(point):
             if point == "after_dispatching_fsync":
                 raise RuntimeError(point)
@@ -214,7 +266,33 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         self.assertIn("reconcile", str(caught.exception).lower())
         self.assertTrue(Path(bounded.status("request-bounded")["snapshot"]).is_file())
 
+    def test_repair_missing_receipt_and_unconfirmed_reconciliation_retain_exact_bytes(self):
+        self.require_behavior('distinct repair, missing-receipt and unconfirmed-reconciliation uncertainty')
+        store = self.store()
+        cases = (("repair", self.provider.repair_response),
+                 ("missing", self.provider.missing_receipt))
+        for label, sender in cases:
+            purpose, request = f"uncertain-{label}", f"request-{label}"
+            store.write("goal:554", purpose, {"case": label})
+            frozen = store.freeze("goal:554", purpose, request, "goal-submit")
+            exact = Path(frozen["snapshot"]).read_bytes()
+            with self.assertRaises(self.module.WorkingInputUncertain) as caught:
+                store.dispatch(request, sender)
+            self.assertIn(label if label == "repair" else "receipt", str(caught.exception).lower())
+            status = store.status(request)
+            self.assertEqual("uncertain", status["state"])
+            self.assertEqual(exact, Path(status["snapshot"]).read_bytes())
+
+        self.provider.check_results = [None, None, None]
+        before = Path(store.status("request-missing")["snapshot"]).read_bytes()
+        with self.assertRaises(self.module.WorkingInputUncertain):
+            store.reconcile("request-missing")
+        after = store.status("request-missing")
+        self.assertEqual("uncertain", after["state"])
+        self.assertEqual(before, Path(after["snapshot"]).read_bytes())
+
     def test_active_references_block_handoff_retirement_and_abandonment(self):
+        self.require_behavior('lease, reader, provider-dispatch and locked deletion races')
         store = self.store()
         descriptor = store.write("goal:554", "execute", {"value": "protected"})
         store.freeze("goal:554", "execute", "request-ref", "goal-submit")
@@ -231,6 +309,26 @@ class WorkingInputBehaviorTests(unittest.TestCase):
                 with self.assertRaises(self.module.WorkingInputBusy):
                     operation()
             self.assertTrue(Path(store.status("request-ref")["snapshot"]).exists())
+
+        store.write("goal:554", "provider-race", {"value": "in flight"})
+        store.freeze("goal:554", "provider-race", "request-provider-race", "goal-submit")
+        dispatch_errors = []
+        dispatch = threading.Thread(target=lambda: self._capture(
+            dispatch_errors, store.dispatch, "request-provider-race", self.provider.blocking_send))
+        dispatch.start()
+        self.assertTrue(self.provider.dispatch_started.wait(5), "provider dispatch did not reach synchronized barrier")
+        for operation in (
+            lambda: store.handoff("goal:554", "provider-race", "worker"),
+            lambda: store.retire("request-provider-race", {"receipt": "request-provider-race"}),
+            lambda: store.abandon("request-provider-race", approved_by="user"),
+        ):
+            with self.assertRaises(self.module.WorkingInputBusy):
+                operation()
+        self.provider.dispatch_release.set()
+        dispatch.join(5)
+        self.assertFalse(dispatch.is_alive())
+        self.assertEqual([], dispatch_errors)
+
         store.dispatch("request-ref", self.provider.send)
         with self.assertRaises((PermissionError, ValueError)):
             store.retire("request-ref", {"receipt": "wrong-result"})
@@ -245,7 +343,41 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         store.abandon("request-abandon", approved_by="user")
         self.assertFalse(Path(store.status("request-abandon")["snapshot"]).exists())
 
+        before_delete = threading.Event()
+        reader_acquired = threading.Event()
+        release_reader = threading.Event()
+        def deletion_fault(point):
+            if point == "before_delete_lock":
+                before_delete.set()
+                if not reader_acquired.wait(5):
+                    raise AssertionError("final deletion race reader was not acquired")
+        guarded = self.store(fault=deletion_fault)
+        guarded.write("goal:554", "delete-race", {"value": "recheck"})
+        guarded.freeze("goal:554", "delete-race", "request-delete-race", "goal-submit")
+        guarded.dispatch("request-delete-race", self.provider.send)
+        late_errors = []
+        def late_reader():
+            try:
+                if not before_delete.wait(5):
+                    raise AssertionError("retirement did not reach pre-lock barrier")
+                with self.store().reader("request-delete-race"):
+                    reader_acquired.set()
+                    if not release_reader.wait(5):
+                        raise AssertionError("late reader was not released")
+            except BaseException as exc:
+                late_errors.append(exc)
+        reader = threading.Thread(target=late_reader)
+        reader.start()
+        with self.assertRaises(self.module.WorkingInputBusy):
+            guarded.retire("request-delete-race", {"receipt": "request-delete-race"})
+        release_reader.set()
+        reader.join(5)
+        self.assertEqual([], late_errors)
+        self.assertTrue(Path(guarded.status("request-delete-race")["snapshot"]).exists(),
+                        "retirement must recheck references under the final deletion lock")
+
     def test_unresolved_snapshots_have_no_age_or_count_eviction(self):
+        self.require_behavior('unresolved snapshot retention without eviction')
         store = self.store()
         snapshots = []
         for index in range(25):
@@ -262,7 +394,15 @@ class WorkingInputBehaviorTests(unittest.TestCase):
             self.assertEqual("frozen", restarted.status(f"request-pending-{index}")["state"])
             self.assertTrue(path.is_file())
 
+    @staticmethod
+    def _capture(errors, function, *args):
+        try:
+            function(*args)
+        except BaseException as exc:
+            errors.append(exc)
+
     def test_repository_machine_lock_serializes_writers_and_handoff(self):
+        self.require_behavior('repository-machine lock and explicit handoff')
         first, second = self.store("root"), self.store("root")
         first.write("goal:554", "race", {"revision": 0})
         barrier = threading.Barrier(3)
@@ -295,6 +435,7 @@ class WorkingInputBehaviorTests(unittest.TestCase):
             first.open("goal:554", "race", create=False)
 
     def test_guidance_is_readable_json_and_legacy_migration_is_non_destructive(self):
+        self.require_behavior('public next-step guidance, readable JSON and legacy preservation')
         store = self.store()
         legacy = self.repo / "manual-transition.json"
         legacy.write_text('{"operation":"submit"}\n')
@@ -309,9 +450,27 @@ class WorkingInputBehaviorTests(unittest.TestCase):
                 self.assertNotIn("<", " ".join(command), "helper commands must be directly runnable")
             self.assertIn(str(legacy.resolve()), json.dumps(guidance["legacy"]))
             self.assertIn("untouched", json.dumps(guidance["legacy"]).lower())
+            sys.path.insert(0, str(ROOT / "plugins/zzzops"))
+            try:
+                from zzzops import zzzops as public_cli
+            finally:
+                sys.path.pop(0)
+            self.assertTrue(hasattr(public_cli, "working_input_next_steps"),
+                            "public CLI next-step integration is missing")
+            steps = public_cli.working_input_next_steps(
+                self.repo, repository="owner/project", owner="root", subject="goal:554",
+                purpose=purpose, next_steps=[{"kind": purpose}], legacy_paths=[legacy])
+            self.assertEqual(1, len(steps))
+            self.assertEqual(purpose, steps[0]["kind"])
+            self.assertEqual(guidance["path"], steps[0]["working_input"]["path"])
+            self.assertEqual(guidance["payload_id"], steps[0]["working_input"]["payload_id"])
         self.assertEqual('{"operation":"submit"}\n', legacy.read_text())
 
         descriptor = store.write("goal:554", "execute", {"z": 1, "a": [2, 3]})
+        ignored = subprocess.run(
+            ["git", "check-ignore", "-q", str(Path(descriptor["path"]).relative_to(self.repo))],
+            cwd=self.repo, check=False)
+        self.assertEqual(0, ignored.returncode, ".zzzops working-input state must be ignored by Git")
         command = store.guidance("goal:554", "execute")["commands"][0]
         rendered = subprocess.run(command, cwd=self.repo, text=True, capture_output=True, check=True)
         self.assertEqual(json.loads(Path(descriptor["path"]).read_text()), json.loads(rendered.stdout))
