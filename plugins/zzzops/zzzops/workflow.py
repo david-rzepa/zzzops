@@ -3635,6 +3635,29 @@ class Workflow:
             }})
 
     @staticmethod
+    def node_upgrade_correction_admission(node):
+        """Add the atomic nullable transfer contract to one correction admission."""
+        ref = {'kind': 'object', 'fields': {'hash': {'kind': 'string'}, 'uri': {'kind': 'string'}}}
+        supersession = {'kind': 'object', 'fields': {
+            'prior': copy.deepcopy(ref), 'replacement': copy.deepcopy(ref),
+            'coverage': {'kind': 'enum', 'values': ['carried', 'narrowed']},
+            'coverage_evidence': copy.deepcopy(ref), 'authority': copy.deepcopy(ref)}}
+        node['outputs']['transfer'] = {'type': 'supersession', 'schema': {
+            'kind': 'union', 'variants': [{'kind': 'null'}, supersession]}}
+        if 'Submit transfer as null only for the first admitted revision' not in node['prompt']:
+            node['prompt'] += (' Submit transfer as null only for the first admitted revision; a replacement must '
+                               'atomically transfer exact prior coverage with explicit root authority and coverage '
+                               'evidence.')
+        preserved = [permit for permit in node['permits'] if permit['type'] not in ('admission', 'supersession')]
+        scopes = []
+        for permit in node['permits']:
+            if permit['type'] == 'admission' and permit['scope'] not in scopes:
+                scopes.append(copy.deepcopy(permit['scope']))
+        node['permits'] = preserved + [
+            {'type': kind, 'scope': copy.deepcopy(scope)}
+            for scope in scopes for kind in ('admission', 'supersession')]
+
+    @staticmethod
     def node_local_selector(selector, number):
         return (isinstance(selector, dict) and selector.get('kind') == 'node' and
                 selector.get('goal') in ('#this', number))
@@ -3646,8 +3669,12 @@ class Workflow:
         rejected = []
         def local_node(selector):
             return self.node_local_selector(selector, number)
+        expansion_templates = {item['id']: item['template']['id'] for item in snapshot['graph']['task_sets']}
         def same_node(selector, name):
-            return local_node(selector) and selector.get('node') == name
+            return ((local_node(selector) and selector.get('node') == name) or
+                    (isinstance(selector, dict) and selector.get('kind') in ('member', 'join') and
+                     selector.get('goal') in ('#this', number) and
+                     expansion_templates.get(selector.get('expansion')) == name))
         def permits_target(node, kind, target_name, target_output):
             return any(permit.get('type') == kind and permit.get('scope', {}).get('output') == target_output and
                 same_node(permit.get('scope', {}).get('subject'), target_name)
@@ -3657,8 +3684,12 @@ class Workflow:
                 (path is None or binding.get('path') == path) and
                 (mode is None or binding.get('mode') == mode)
                 for binding in node.get('inputs', {}).values())
+        def input_from_review_approval(node, review_name):
+            return (input_from(node, review_name, path=['decision'], mode='content') or
+                    input_from(node, review_name, path=[], mode='identity'))
         def correction_route_covers(target_name, target_output, review_name):
-            nodes = snapshot['graph']['nodes']
+            nodes = [*snapshot['graph']['nodes'],
+                     *(item['template'] for item in snapshot['graph']['task_sets'])]
             findings = [node for node in nodes
                 if any(output.get('type') == 'finding' for output in node.get('outputs', {}).values()) and
                 permits_target(node, 'finding', target_name, target_output) and
@@ -3677,7 +3708,7 @@ class Workflow:
                 registries = [node for node in nodes
                     if any(output.get('type') == 'finding_registry' for output in node.get('outputs', {}).values()) and
                     permits_target(node, 'finding_registry', target_name, target_output) and
-                    input_from(node, review_name, path=['decision'], mode='content')]
+                    input_from_review_approval(node, review_name)]
                 for registry in registries:
                     for expansion in snapshot['graph']['task_sets']:
                         template = expansion.get('template', {})
@@ -3691,10 +3722,46 @@ class Workflow:
                                 any(same_node(selector, target_name)
                                     for selector in template.get('independent_of', [])) and
                                 input_from(template, registry['id']) and
-                                input_from(template, review_name, path=['decision'], mode='content')):
+                                input_from_review_approval(template, review_name)):
                             if admissions:
                                 return True
             return False
+        def append_member_admission_recovery(graph, target_name, target_output, review_name):
+            """Append an upgraded admission expansion while preserving every persisted task set."""
+            sets = graph['task_sets']
+            template_by_set = {item['id']: item['template']['id'] for item in sets}
+            review_sets = {name for name, template in template_by_set.items() if template == review_name}
+            findings = []
+            for item in sets:
+                node = item['template']
+                if (any(output.get('type') == 'finding' for output in node.get('outputs', {}).values()) and
+                        permits_target(node, 'finding', target_name, target_output) and
+                        any(binding.get('producer', {}).get('node', {}).get('kind') == 'member' and
+                            binding['producer']['node'].get('expansion') in review_sets and
+                            binding.get('path') == ['decision'] and binding.get('mode') == 'content'
+                            for binding in node.get('inputs', {}).values())):
+                    findings.append(item['id'])
+            candidates = []
+            for item in sets:
+                node = item['template']
+                if (any(output.get('type') == 'admission' for output in node.get('outputs', {}).values()) and
+                        permits_target(node, 'admission', target_name, target_output) and
+                        any(binding.get('producer', {}).get('node', {}).get('kind') == 'member' and
+                            binding['producer']['node'].get('expansion') in findings and
+                            binding.get('mode') == 'identity'
+                            for binding in node.get('inputs', {}).values())):
+                    candidates.append(item)
+            if len(candidates) != 1:
+                raise ValueError('Configured-member correction recovery requires one exact admission expansion')
+            recovery = copy.deepcopy(candidates[0])
+            suffix = '_atomic_transfer'
+            recovery['id'] += suffix
+            recovery['template']['id'] += suffix
+            if any(item['id'] == recovery['id'] or item['template']['id'] == recovery['template']['id']
+                   for item in sets):
+                raise ValueError('Configured-member correction recovery identity is occupied')
+            self.node_upgrade_correction_admission(recovery['template'])
+            sets.append(recovery)
         for key, (_, result) in projection['current'].items():
             state = projection['states'].get(key)
             if state is None: continue
@@ -3725,6 +3792,9 @@ class Workflow:
             for target_name, target_output, _, _ in rejected:
                 target_counts[(target_name, target_output)] = target_counts.get((target_name, target_output), 0) + 1
             for route in rejected:
+                if route[2] in expansion_templates.values():
+                    append_member_admission_recovery(graph, *route[:3])
+                    continue
                 base_names = {'interpret_' + route[0] + '_rejection',
                               'admit_' + route[0] + '_correction',
                               'retain_' + route[0] + '_findings'}
