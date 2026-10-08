@@ -2415,6 +2415,18 @@ class DiagnosticsModuleTests(unittest.TestCase):
 
 
 class ReservationModuleTests(unittest.TestCase):
+    def test_real_adapter_decodes_and_validates_label_response(self):
+        reservation = zzzops._reservation
+        adapter = object.__new__(reservation.GitHubReservationAdapter)
+        adapter.repository = "owner/repo"
+        adapter._run = lambda _args: subprocess.CompletedProcess(
+            _args, 0, stdout=json.dumps({"name": "lease", "description": "held", "node_id": "L1"}), stderr="")
+        self.assertEqual("L1", adapter.get_label("lease")["node_id"])
+        adapter._run = lambda _args: subprocess.CompletedProcess(
+            _args, 0, stdout=json.dumps({"name": "wrong", "node_id": "L1"}), stderr="")
+        with self.assertRaises(reservation.ReservationProviderError):
+            adapter.get_label("lease")
+
     def test_entry_point_reexports_reservation_contract(self):
         reservation = zzzops._reservation
         for name in (
