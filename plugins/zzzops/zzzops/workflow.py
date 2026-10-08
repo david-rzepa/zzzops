@@ -5227,9 +5227,13 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             def guarded(*args, _original=original, **kwargs):
                 target = args[0] if args else kwargs.get('number')
                 fresh_mutation_boundary(target)
-                result = _original(*args, **kwargs)
-                read_cache['issues'].clear(); read_cache['comments'].clear()
-                return result
+                try:
+                    return _original(*args, **kwargs)
+                finally:
+                    # A provider may commit and then lose its response. Any
+                    # recovery read must observe the provider, not the
+                    # pre-mutation snapshot used by the write fence.
+                    read_cache['issues'].clear(); read_cache['comments'].clear()
             setattr(engine._mutation_adapter, method_name, guarded)
         api._guarded_mutations = getattr(api, '_guarded_mutations', []) + [(engine._mutation_adapter, originals)]
     if payload is None or operation in {'read', 'heartbeat'}: engine.read_only()
