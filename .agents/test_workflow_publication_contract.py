@@ -499,7 +499,7 @@ class GenericPublicationPublicTests(DagFixture):
             result = update(number, payload)
             if number == 100 and not lost:
                 lost.append(True)
-                raise RuntimeError("Publication body committed; response lost")
+                raise z.GoalTransitionProviderError("Publication body committed; response lost")
             return result
         with mock.patch.object(self.provider, "update_issue", side_effect=uncertain):
             self.session.call(100, request, expected=None)

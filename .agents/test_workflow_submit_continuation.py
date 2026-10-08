@@ -67,7 +67,7 @@ class SubmitContinuationTests(DagFixture):
         work = self.session.acquire('produce')
         request = self.session.submission(work, {'value': 'candidate'}, 'uncertain-continuation')
         before = copy.deepcopy(self.provider.issues)
-        with mock.patch.object(self.provider, 'update_issue', side_effect=RuntimeError('unavailable')):
+        with mock.patch.object(self.provider, 'update_issue', side_effect=z.GoalTransitionProviderError('unavailable')):
             failed = self.session.call(100, request, expected=2)
         self.assertFalse(self.ready_names(failed))
         self.assertEqual(before, self.provider.issues)
@@ -105,7 +105,7 @@ class SubmitContinuationTests(DagFixture):
         updates = len(self.provider.updates)
         def lost(*args, **kwargs):
             original(*args, **kwargs)
-            raise RuntimeError('committed response lost')
+            raise z.GoalTransitionProviderError('committed response lost')
         with mock.patch.object(self.provider, 'update_issue', side_effect=lost):
             response = self.session.call(100, request)
         self.assertEqual({'review_a', 'review_b'}, self.ready_names(response))
@@ -154,7 +154,7 @@ class SubmitContinuationTests(DagFixture):
         request = fixture.session.submission(work, {'value': 'verified failing baseline'}, 'proof-continuation')
         command = [sys.executable, '-c', "print('single proof'); raise SystemExit(1)"]
         request['workspace_checks'] = [command]
-        with mock.patch.object(fixture.provider, 'update_issue', side_effect=RuntimeError('unavailable')):
+        with mock.patch.object(fixture.provider, 'update_issue', side_effect=z.GoalTransitionProviderError('unavailable')):
             fixture.session.call(100, request, expected=2)
         comments = copy.deepcopy(fixture.provider.comments)
         logs = {path: path.read_bytes() for path in (fixture.fixture.repo / '.zzzops/diagnostics').glob('node-*.log')}
@@ -553,7 +553,7 @@ class PublicationContinuationTests(DagFixture):
 
     def test_pending_publication_reuses_operational_request_id(self):
         request = self.approval_request()
-        with mock.patch.object(self.provider, 'update_issue', side_effect=RuntimeError('unavailable')):
+        with mock.patch.object(self.provider, 'update_issue', side_effect=z.GoalTransitionProviderError('unavailable')):
             self.session.call(100, request, expected=2)
         comments = copy.deepcopy(self.provider.comments)
         response = self.session.call(100, request)

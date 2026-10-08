@@ -4266,7 +4266,7 @@ class GenericStoragePublicTests(DagFixture):
         def stop_after_one(number, body):
             calls.append(body)
             if len(calls) > 1:
-                raise RuntimeError("Injected second multipart write failure")
+                raise z.GoalTransitionProviderError("Injected second multipart write failure")
             return original(number, body)
         with mock.patch.object(self.provider, "create_issue_comment", side_effect=stop_after_one):
             self.session.call(100, request, expected=None)
