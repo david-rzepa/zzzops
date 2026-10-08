@@ -814,6 +814,15 @@ with s.reference('process-lock', 'reader'):
         self.assertEqual(first, invoke("codex-thread-a"))
         self.assertNotEqual(first, invoke("codex-thread-b"))
 
+    def test_frozen_provider_descriptor_retains_typed_reconciliation_inputs(self):
+        store = self.store()
+        descriptor = {"operation": "update_issue", "target": {"issue": 12},
+                      "arguments": {"payload": {"state": "closed"}}}
+        store.write("provider:req", "provider-mutation", descriptor)
+        row = store.freeze("provider:req", "provider-mutation", "typed-reconcile", descriptor)
+        self.assertEqual(descriptor, row["action"])
+        self.assertEqual(descriptor, self.store().status("typed-reconcile")["action"])
+
 
 if __name__ == "__main__":
     unittest.main()
