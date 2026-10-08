@@ -248,6 +248,9 @@ class RepeatedDefaultCorrectionTests(j.DagFixture):
         graph = self.shipped_graph()
         admissions = [node for node in graph['nodes']
                       if node['id'].startswith('admit_') and node['id'].endswith('_correction')]
+        admissions.extend(item['template'] for item in graph['task_sets']
+                          if item['template']['id'].startswith('admit_')
+                          and item['template']['id'].endswith('_correction'))
         self.assertTrue(admissions)
         for node in admissions:
             with self.subTest(node=node['id']):
@@ -331,6 +334,96 @@ class RepeatedDefaultCorrectionTests(j.DagFixture):
         self.assertEqual(revision_two, obligation['finding'])
         self.assertEqual(2, self.read_blob(revision_two)['content']['revision'])
         self.assertEqual(1, self.read_blob(revision_one)['content']['revision'])
+
+
+class RepeatedConfiguredMemberCorrectionTests(j.DagFixture):
+    """Configured review members use the same atomic supersession contract."""
+
+    requirements = j.ShippedGoal499PublicJourneyTests.requirements
+    specification = j.ShippedGoal499PublicJourneyTests.specification
+    approved_review = staticmethod(j.ShippedGoal499PublicJourneyTests.approved_review)
+
+    def setUp(self):
+        super().setUp()
+        template = json.loads(
+            (j.old.fixtures.PLUGIN_ROOT / 'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
+        self.shipped = j.z._workflow_section(
+            template, 'workflow_adherence')['configuration']['phase_dag']
+        self.install(self.shipped)
+
+    def reject_and_interpret(self, revision, supersedes):
+        member = 'data_residency'
+        self.session.finish(self.session.acquire('spec_review', item=member), {'value': {
+            'decision': 'changes_requested', 'report': f'Residency correction {revision} is incomplete',
+            'outcomes': ['blocked'], 'findings': ['spec:data-residency-region']}})
+        self.session.finish(self.session.acquire('interpret_spec_review_rejection', item=member), {'value': {
+            'id': 'data-residency-region', 'revision': revision,
+            'source': self.produced('spec_review', item=member),
+            'subjects': [self.produced('spec')], 'target': j.scope('spec'),
+            'request': 'Refine the reviewed residency constraint',
+            'rationale': 'The configured independent reviewer rejected the exact specification',
+            'supersedes': supersedes}})
+        return self.produced('interpret_spec_review_rejection', item=member)
+
+    def admission(self, finding):
+        return {
+            'finding': finding, 'target_inputs': self.result('spec')[1]['inputs'],
+            'authority': self.result('interpret_spec_review_rejection', item='data_residency')[0],
+            'applicability': 'applicable',
+            'rationale': 'Root admits the exact configured-domain correction'}
+
+    def corrected_specification(self, allocation, revision):
+        self.session.finish(self.session.acquire('spec'), {'value': {
+            'specification': f'Residency-constrained behavior revision {revision}',
+            'criteria': ['observable', f'residency revision {revision} is explicit'],
+            'risks': ['correctness', 'data_residency'],
+            'review_members': {'items': {'data_residency': 'configured repository-specific risk'},
+                               'rationale': 'Re-review the configured domain correction'}},
+            'allocation': allocation})
+
+    def test_repeated_configured_member_correction_requires_exact_atomic_transfer(self):
+        self.requirements()
+        _specification, allocation = self.specification(
+            {'data_residency': 'configured repository-specific risk'})
+
+        revision_one = self.reject_and_interpret(1, None)
+        first = self.admission(revision_one)
+        work = self.session.acquire('admit_spec_review_correction', item='data_residency')
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        rejected = self.session.call(100, self.session.submission(
+            work, {'value': first}, 'member-missing-first-transfer'), expected=2)
+        self.assertRegex(json.dumps(rejected), r'(?i)transfer|output|missing')
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.finish(work, {'value': first, 'transfer': None})
+
+        self.corrected_specification(allocation, 1)
+        revision_two = self.reject_and_interpret(2, revision_one)
+        second = self.admission(revision_two)
+        authority = self.result('interpret_spec_review_rejection', item='data_residency')[0]
+        work = self.session.acquire('admit_spec_review_correction', item='data_residency')
+        candidates = (
+            ('member-null-second-transfer', None),
+            ('member-wrong-replacement', {
+                'prior': revision_one, 'replacement': revision_one, 'coverage': 'carried',
+                'coverage_evidence': authority, 'authority': authority}),
+        )
+        for nonce, transfer in candidates:
+            with self.subTest(nonce=nonce):
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                rejected = self.session.call(100, self.session.submission(
+                    work, {'value': second, 'transfer': transfer}, nonce), expected=2)
+                self.assertRegex(json.dumps(rejected), r'(?i)transfer|supersession|replacement|coverage')
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.finish(work, {'value': second, 'transfer': {
+            'prior': revision_one, 'replacement': revision_two, 'coverage': 'carried',
+            'coverage_evidence': authority, 'authority': authority}})
+
+        snapshot = j.z.workflow_engine(
+            self.fixture.repo, self.session.project, self.session.runtime).node_snapshot(100)
+        obligation = snapshot['projection']['obligations'][(100, 'data-residency-region')]
+        self.assertEqual(revision_two, obligation['finding'])
+        self.assertEqual(1, self.read_blob(revision_one)['content']['revision'])
+        self.assertEqual(2, self.read_blob(revision_two)['content']['revision'])
 
 
 
