@@ -5585,6 +5585,18 @@ def _public_response(api, repo, intent, source, runtime, payload, number, *, ski
         api, repo, intent, source, runtime, payload, number,
         policy_snapshot=snapshot, **options,
     )
+    purposes = {
+        '$add-zzzops-goal': 'capture', '$execute-zzzops': 'execute',
+        '$migrate-to-zzzops': 'migration', '$review-zzzops-policy': 'policy-review',
+    }
+    purpose = purposes.get(source)
+    if purpose is not None:
+        repository = ((snapshot.get('project') or {}).get('repository') or {}).get('identity', 'local')
+        owner = (runtime or {}).get('root_id', 'root')
+        subject = f'goal:{number}' if number is not None else f'draft:{purpose}'
+        result['working_input'] = api._working_inputs.WorkingInputStore(
+            repo, repository=repository, owner=owner,
+        ).guidance(subject, purpose)
     if payload is None and number is not None and source == '$execute-zzzops':
         for step in result.get('next_steps', []):
             if isinstance(step, dict):

@@ -23,3 +23,5 @@ Build `available_pairs` from each delegable `slug` and supported `effort` in
 review. Set `root_id` from `CODEX_THREAD_ID`. Inspect the complete tool catalog,
 including deferred tools, and record its delegation tool. Supply only these
 observations in the returned runtime-input contract.
+
+When a response includes `working_input`, reuse its stable ignored file for revisions. Dispatch only frozen exact bytes, and run the returned status or reconciliation command before retrying an uncertain request.

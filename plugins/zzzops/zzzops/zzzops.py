@@ -79,6 +79,13 @@ _package = importlib.util.module_from_spec(_PACKAGE_MODULE_SPEC)
 sys.modules[_PACKAGE_MODULE_SPEC.name] = _package
 _PACKAGE_MODULE_SPEC.loader.exec_module(_package)
 
+_WORKING_INPUTS_MODULE_PATH = Path(__file__).with_name("working_inputs.py")
+_WORKING_INPUTS_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_working_inputs", _WORKING_INPUTS_MODULE_PATH)
+assert _WORKING_INPUTS_MODULE_SPEC and _WORKING_INPUTS_MODULE_SPEC.loader
+_working_inputs = importlib.util.module_from_spec(_WORKING_INPUTS_MODULE_SPEC)
+sys.modules[_WORKING_INPUTS_MODULE_SPEC.name] = _working_inputs
+_WORKING_INPUTS_MODULE_SPEC.loader.exec_module(_working_inputs)
+
 _INSTALLATION_MODULE_PATH = Path(__file__).with_name("installation.py")
 _INSTALLATION_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_installation", _INSTALLATION_MODULE_PATH)
 assert _INSTALLATION_MODULE_SPEC and _INSTALLATION_MODULE_SPEC.loader
@@ -3889,6 +3896,18 @@ def main() -> int:
     """Only the intent checkpoint is public; legacy parsers are internal adapters."""
     configure_cli_stdout()
     argv = list(sys.argv)
+    if len(argv) > 1 and argv[1] == 'working-input':
+        parser = argparse.ArgumentParser(description='Manage one durable local working input')
+        commands = parser.add_subparsers(dest='action', required=True)
+        for action in ('status', 'reconcile'):
+            command = commands.add_parser(action)
+            command.add_argument('--repo', type=Path, required=True)
+            command.add_argument('--request-id', required=True)
+        args = parser.parse_args(argv[2:])
+        result = _working_inputs.execute_command(
+            args.action, repo=args.repo.resolve(), request_id=args.request_id)
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(',', ':')))
+        return 0
     command_index = 3 if len(argv) > 2 and argv[1] == '--repo' else 1
     if len(argv) > command_index and argv[command_index] == 'workflow':
         argv.pop(command_index)
