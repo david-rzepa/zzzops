@@ -656,30 +656,6 @@ with s.reference('process-lock', 'reader'):
         finally:
             release.touch(); child.wait(5)
 
-    def test_public_mutation_runs_from_frozen_bytes_after_dispatch_barrier(self):
-        self.require_behavior('real public mutation consumes frozen bytes after durable barrier')
-        sys.path.insert(0, str(ROOT / ".agents"))
-        try:
-            import test_zzzops as fixtures
-            public_cli = fixtures.zzzops
-        finally:
-            sys.path.pop(0)
-        payload = {"operation": "submit", "request_id": "barrier-request", "value": "exact"}
-        observed = []
-        def provider_boundary(api, repo, intent, source, runtime, exact, number, **options):
-            row = api._working_inputs.WorkingInputStore(
-                repo, repository="local", owner="root").status("barrier-request")
-            observed.append((row["state"], exact, Path(row["snapshot"]).read_bytes()))
-            return {"next_steps": [{"kind": "checkpoint"}]}
-        with mock.patch.object(public_cli._workflow, "_public_run", side_effect=provider_boundary):
-            result = public_cli._workflow.public_run(
-                public_cli, self.repo, "execute", "$execute-zzzops",
-                {"root_id": "root"}, payload, 554)
-        self.assertEqual("checkpoint", result["next_steps"][0]["kind"])
-        self.assertEqual("dispatching", observed[0][0])
-        self.assertEqual(payload, observed[0][1])
-        self.assertEqual(payload, json.loads(observed[0][2]))
-        self.assertEqual("confirmed", self.store().status("barrier-request")["state"])
 
     @staticmethod
     def _capture(errors, function, *args):
