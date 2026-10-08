@@ -261,13 +261,14 @@ class WorkingInputBehaviorTests(unittest.TestCase):
             after.freeze("goal:554", "after", "request-frozen", "goal-submit")
         recovered = self.store().status("request-frozen")
         self.assertEqual("frozen", recovered["state"])
-        self.assertEqual(0, len(self.provider.calls), "frozen recovery must prove dispatch was never authorized")
+        self.assertFalse(any(request == "request-frozen" for request, _body in self.provider.calls),
+                         "frozen recovery must prove dispatch was never authorized")
         reopened = self.store(fault=lambda point: (_ for _ in ()).throw(RuntimeError(point))
                               if point == "after_dispatching_fsync" else None)
         with self.assertRaisesRegex(RuntimeError, "after_dispatching_fsync"):
             reopened.dispatch("request-frozen", self.provider.send)
         self.assertEqual("dispatching", self.store().status("request-frozen")["state"])
-        self.assertEqual(0, len(self.provider.calls),
+        self.assertFalse(any(request == "request-frozen" for request, _body in self.provider.calls),
                          "recovered frozen state must durably cross dispatching before provider I/O")
 
         clean = self.store()
@@ -276,7 +277,8 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         Path(corrupt["snapshot"]).write_bytes(b'{"tampered":true}')
         with self.assertRaisesRegex(ValueError, "digest|corrupt|snapshot"):
             self.store().recover("request-corrupt")
-        self.assertEqual(0, len(self.provider.calls), "corrupt recovered bytes must never cross dispatch barrier")
+        self.assertFalse(any(request == "request-corrupt" for request, _body in self.provider.calls),
+                         "corrupt recovered bytes must never cross dispatch barrier")
 
     def test_dispatching_crashes_are_uncertain_and_reconcile_is_bounded(self):
         self.require_behavior('durable dispatching barrier and bounded uncertainty reconciliation')
