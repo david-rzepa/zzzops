@@ -16,6 +16,7 @@ import importlib.util
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import shutil
@@ -3321,6 +3322,17 @@ class WorkflowArgumentError(Exception):
     """A workflow-only parse error that must preserve the public JSON contract."""
 
 
+def positive_finite_seconds(value: str) -> float:
+    """Parse an explicit provider deadline without accepting hangs or NaN."""
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("timeout must be a positive finite number of seconds") from exc
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise argparse.ArgumentTypeError("timeout must be a positive finite number of seconds")
+    return seconds
+
+
 class WorkflowArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
         if "workflow" in sys.argv:
@@ -4033,6 +4045,8 @@ def main() -> int:
     parser.add_argument("--goal", type=int)
     parser.add_argument("--runtime", type=Path)
     parser.add_argument("--input", type=Path)
+    parser.add_argument("--timeout", type=positive_finite_seconds,
+                        help="Override the provider deadline for this workflow invocation")
     parser.add_argument("--response", choices=("compact", "full"), default="compact")
     parser.add_argument("--read-response", type=Path)
     parser.add_argument("--response-hash")
@@ -4060,11 +4074,7 @@ def main() -> int:
         source = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
         services = SimpleNamespace(**globals())
         services.runtime_path = args.runtime.resolve() if args.runtime else None
-        if isinstance(payload, dict) and payload.get('operation') == 'renew':
-            services.renewal_budget = _workflow.RenewalBudget(
-                float(os.environ.get('ZZZOPS_RENEWAL_TIMEOUT_SECONDS', '30')),
-                float(os.environ.get('ZZZOPS_RENEWAL_CLEANUP_SECONDS', '10')),
-            )
+        services.workflow_timeout_seconds = args.timeout
         if isinstance(payload, dict) and payload.get('operation') == 'submit' and args.goal is not None:
             token = _WORKFLOW_INVOCATION.set((services, source, runtime, args.skip_installation_validation))
             try: result = workflow_submit(args.repo.resolve(), args.goal, args.intent, payload)
