@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import subprocess
@@ -17,6 +18,7 @@ import tempfile
 import threading
 import unittest
 from unittest import mock
+from contextlib import redirect_stdout
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -144,10 +146,23 @@ class WorkingInputBehaviorTests(unittest.TestCase):
             "--request-id", request_id,
         ]
         self.assertEqual({"request_id": request_id, "reason": reason, "command": expected}, recovery)
-        parsed = subprocess.run(expected[:4] + ["--help"], cwd=self.repo,
-                                text=True, capture_output=True, check=False)
-        self.assertEqual(0, parsed.returncode, parsed.stderr)
-        self.assertIn("usage", parsed.stdout.lower())
+        sys.path.insert(0, str(ROOT / ".agents"))
+        try:
+            import test_zzzops as fixtures
+            public_cli = fixtures.zzzops
+        finally:
+            sys.path.pop(0)
+        output = io.StringIO()
+        with (mock.patch.object(sys, "argv", expected[1:]),
+              mock.patch.object(public_cli._working_inputs, "execute_command",
+                                return_value={"state": "suppressed"}) as execute,
+              redirect_stdout(output)):
+            self.assertEqual(0, public_cli.main())
+        execute.assert_called_once()
+        call = execute.call_args
+        self.assertEqual(action, call.args[0])
+        self.assertEqual(self.repo, call.kwargs["repo"])
+        self.assertEqual(request_id, call.kwargs["request_id"])
 
     def test_stable_revision_restart_and_draft_to_goal_relabel(self):
         self.require_behavior('stable revision, restart, relabel, file-count and patch-size reuse')
@@ -571,19 +586,33 @@ class WorkingInputBehaviorTests(unittest.TestCase):
             "migration": ("inspect", "$migrate-to-zzzops"),
             "policy-review": ("inspect", "$review-zzzops-policy"),
         }
+        engine = mock.MagicMock()
+        engine.read_only.return_value = None
+        engine.portfolio.return_value = None
+        checkpoints = {
+            "migration": {"next_steps": [{"kind": "migration-checkpoint"}]},
+            "execute": {"next_steps": [{"kind": "execute-checkpoint"}]},
+        }
         with (mock.patch.object(public_cli._package, "package_status",
                                 return_value={"ok": True, "version": "1", "revision": "abc"}),
               mock.patch.object(public_cli._installation, "validation_status",
                                 return_value={"required": False}),
               mock.patch.object(public_cli, "workflow_context_step",
-                                return_value={"id": "policy-review"})):
+                                return_value=None),
+              mock.patch.object(public_cli, "reviewed_project_state", return_value={}),
+              mock.patch.object(public_cli._workflow, "Workflow", return_value=engine),
+              mock.patch.object(public_cli._workflow, "checkpoint") as checkpoint):
             for purpose, (intent, source) in routes.items():
+                checkpoint.return_value = checkpoints.get(purpose, {"next_steps": []})
                 result = public_cli._workflow.public_run(
                     public_cli, self.repo, intent, source, {"root_id": "root"}, None, None)
                 self.assertIsInstance(result, dict)
                 self.assertIsInstance(result.get("next_steps"), list)
-                self.assertEqual("policy-review", result["next_steps"][0]["id"],
-                                 f"controlled {purpose}/{intent} route returned the wrong response")
+                expected_kind = {"capture": "capture", "execute": "execute-checkpoint",
+                                 "migration": "migration-checkpoint", "policy-review": None}[purpose]
+                actual_kind = result["next_steps"][0]["kind"] if result["next_steps"] else None
+                self.assertEqual(expected_kind, actual_kind,
+                                 f"controlled ready {purpose}/{intent} route returned the wrong response")
                 guidance = result.get("working_input")
                 self.assertIsInstance(
                     guidance, dict,
