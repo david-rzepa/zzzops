@@ -3662,6 +3662,32 @@ class Workflow:
         return (isinstance(selector, dict) and selector.get('kind') == 'node' and
                 selector.get('goal') in ('#this', number))
 
+    @staticmethod
+    def node_shadowed_correction_admission(snapshot, state):
+        """Return true only for a legacy member admission replaced by its exact additive upgrade."""
+        contract = state.get('contract', {})
+        if (not any(output.get('type') == 'admission' for output in contract.get('outputs', {}).values()) or
+                any(output.get('type') == 'supersession' for output in contract.get('outputs', {}).values())):
+            return False
+        sets = snapshot['graph']['task_sets']
+        legacy = next((item for item in sets if item.get('template', {}).get('id') == contract.get('id')), None)
+        if legacy is None:
+            return False
+        suffix = '_atomic_transfer'
+        replacement = next((item for item in sets
+            if item.get('id') == legacy['id'] + suffix and
+               item.get('template', {}).get('id') == contract['id'] + suffix), None)
+        if replacement is None or replacement.get('source') != legacy.get('source'):
+            return False
+        upgraded = replacement['template']
+        transfer = next((output for output in upgraded.get('outputs', {}).values()
+                         if output.get('type') == 'supersession'), None)
+        return (transfer is not None and transfer.get('schema', {}).get('kind') == 'union' and
+                any(variant.get('kind') == 'null'
+                    for variant in transfer.get('schema', {}).get('variants', [])) and
+                upgraded.get('inputs') == legacy['template'].get('inputs') and
+                upgraded.get('requires') == legacy['template'].get('requires'))
+
     def node_frontier(self, snapshot, *, defer_envelope=False):
         """Format the same readiness and authority boundaries for both callers."""
         number = snapshot['number']
@@ -3932,6 +3958,11 @@ class Workflow:
             })
         for state in projection['states'].values():
             if state['node']['goal'] != number: continue
+            # A reviewed additive member-route recovery preserves the legacy
+            # contract and its historical Results, but only the exact upgraded
+            # expansion may accept new work.
+            if self.node_shadowed_correction_admission(snapshot, state):
+                continue
             lease = projection['leases'].get(self.api._phase_evidence.task_key(state['node']))
             if lease:
                 stale = state.get('input_hash') != lease['fingerprint']
@@ -4404,6 +4435,8 @@ class Workflow:
             key = ev.task_key(node)
             state = projection['states'].get(key)
             if state is None: raise ValueError('Unknown or retired task generation')
+            if self.node_shadowed_correction_admission(snapshot, state):
+                raise ValueError('Legacy correction admission is superseded by its reviewed atomic transfer route')
             operation = request['operation']; leases = payload['operational']['leases']
             lease = next((item for item in leases if item['node'] == node), None)
             root = (self.runtime or {}).get('root_id')
