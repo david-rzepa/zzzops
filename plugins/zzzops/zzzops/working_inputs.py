@@ -197,12 +197,19 @@ class WorkingInputStore:
         self._request_id(request_id)
         with self._locked():
             state = self._load()
-            if request_id in state["requests"]: raise ValueError("request_id already exists")
             key = self._key(subject, purpose)
             if key not in state["inputs"]: raise KeyError(key)
             descriptor = self._descriptor(state[state["inputs"][key]])
-            self.fault("before_snapshot")
             exact = Path(descriptor["path"]).read_bytes(); digest = hashlib.sha256(exact).hexdigest()
+            if request_id in state["requests"]:
+                prior = state["requests"][request_id]
+                identity = {"digest": digest, "action": action, "payload_id": descriptor["payload_id"],
+                            "repository": self.repository, "owner": self.owner,
+                            "subject": subject, "purpose": purpose}
+                if all(prior.get(field) == value for field, value in identity.items()):
+                    return copy.deepcopy(prior)
+                raise ValueError("request_id already exists with different frozen identity")
+            self.fault("before_snapshot")
             snapshot = self.root / "snapshots" / (request_id + ".json")
             snapshot.parent.mkdir(parents=True, exist_ok=True)
             try: snapshot.parent.chmod(0o700)
@@ -222,7 +229,8 @@ class WorkingInputStore:
                 raise
             state["requests"][request_id] = {"request_id": request_id, "payload_id": descriptor["payload_id"],
                 "snapshot": str(snapshot), "digest": digest, "action": action, "state": "frozen",
-                "repository": self.repository}
+                "repository": self.repository, "owner": self.owner,
+                "subject": subject, "purpose": purpose}
             try:
                 self._save(state)
             except BaseException:
@@ -296,6 +304,7 @@ class WorkingInputStore:
 
     @contextmanager
     def reference(self, request_id, kind="reader"):
+        self._request_id(request_id)
         key = (str(self.common_dir), request_id)
         token = self.refs_path / request_id / (kind + "-" + uuid.uuid4().hex + ".json")
         with self._locked():
@@ -325,6 +334,7 @@ class WorkingInputStore:
             yield Path(row["snapshot"]).read_bytes()
 
     def dispatch(self, request_id, sender):
+        self._request_id(request_id)
         with self._locked():
             state = self._load(); row = state["requests"][request_id]
             if row["state"] == "confirmed": return copy.deepcopy(row["receipt"])
@@ -361,6 +371,7 @@ class WorkingInputStore:
         return result
 
     def reconcile(self, request_id):
+        self._request_id(request_id)
         row = self.recover(request_id)
         if row["state"] not in {"uncertain", "dispatching"}: return row
         for _ in range(3):
@@ -400,6 +411,7 @@ class WorkingInputStore:
             return copy.deepcopy(row)
 
     def retire(self, request_id, receipt):
+        self._request_id(request_id)
         row = self.status(request_id)
         if self._active(request_id): self._busy(request_id, "active-reference")
         if row["state"] in {"dispatching", "uncertain"}: self._uncertain(request_id, "uncertain-dispatch")
@@ -408,6 +420,7 @@ class WorkingInputStore:
         return self._delete(request_id, "retired")
 
     def abandon(self, request_id, *, approved_by):
+        self._request_id(request_id)
         if not approved_by: raise PermissionError("explicit abandonment approval is required")
         row = self.status(request_id)
         if self._active(request_id): self._busy(request_id, "active-reference")

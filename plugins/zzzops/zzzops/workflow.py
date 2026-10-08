@@ -5581,35 +5581,10 @@ def _public_response(api, repo, intent, source, runtime, payload, number, *, ski
     options = {'skip_installation_validation': True} if skip_installation_validation else {}
     if payload_supplied:
         options['payload_supplied'] = True
-    operation = payload.get('operation') if isinstance(payload, dict) else None
-    transactional = (isinstance(payload, dict) and isinstance(payload.get('request_id'), str)
-                     and operation not in {'read', 'heartbeat', 'renew', 'release'})
-    if transactional:
-        purpose = {'$add-zzzops-goal': 'capture', '$execute-zzzops': 'execute',
-                   '$migrate-to-zzzops': 'migration', '$review-zzzops-policy': 'policy-review'}.get(source, 'execute')
-        owner = (runtime or {}).get('root_id', 'root')
-        subject = f'goal:{number}' if number is not None else f'draft:{payload["request_id"]}'
-        working = api._working_inputs.WorkingInputStore(repo, repository='local', owner=owner)
-        working.write(subject, purpose, payload)
-        frozen_action = {'operation': operation, 'target': {'source': source, 'goal': number}}
-        try:
-            working.freeze(subject, purpose, payload['request_id'], frozen_action)
-        except ValueError as exc:
-            if 'already exists' not in str(exc): raise
-        def apply_frozen(_request_id, body):
-            exact_payload = json.loads(body)
-            response = _public_run(api, repo, intent, source, runtime, exact_payload, number,
-                                   policy_snapshot=snapshot, **options)
-            receipt = {'request_id': _request_id, 'digest': hashlib.sha256(body).hexdigest(),
-                       'action': frozen_action, 'authenticated': True}
-            return {'receipt': receipt, 'response': response}
-        dispatched = working.dispatch(payload['request_id'], apply_frozen)
-        result = dispatched['response']
-    else:
-        result = _public_run(
-            api, repo, intent, source, runtime, payload, number,
-            policy_snapshot=snapshot, **options,
-        )
+    result = _public_run(
+        api, repo, intent, source, runtime, payload, number,
+        policy_snapshot=snapshot, **options,
+    )
     purposes = {
         '$add-zzzops-goal': 'capture', '$execute-zzzops': 'execute',
         '$migrate-to-zzzops': 'migration', '$review-zzzops-policy': 'policy-review',
