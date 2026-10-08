@@ -5,6 +5,8 @@ import threading
 import time
 import unittest
 import sys
+import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest import mock
 
@@ -243,10 +245,18 @@ class SchedulingInventoryContinuationTests(DagFixture):
         for number in range(101, 121):
             self.add_goal(number, self.graph)
         z._heartbeat.initialize_capacity(repo=self.fixture.repo, slots=[])
-        with mock.patch.object(z, 'GitHubGoalTransitionAdapter', return_value=self.provider), \
+        issue_reads = []
+        comment_reads = []
+        issue_snapshot = lambda _repo, _repository, number: (
+            issue_reads.append(number) or copy.deepcopy(self.provider.issues[number]))
+        comments = self.provider.get_issue_comments
+        def observed_comments(number):
+            comment_reads.append(number)
+            return comments(number)
+        with mock.patch.object(self.provider, 'get_issue_comments', side_effect=observed_comments), \
+                mock.patch.object(z, 'GitHubGoalTransitionAdapter', return_value=self.provider), \
                 mock.patch.object(z, 'portfolio_snapshot', side_effect=self.session.portfolio_snapshot), \
-                mock.patch.object(z, 'provider_issue_snapshot',
-                                  side_effect=lambda _repo, _repository, number: copy.deepcopy(self.provider.issues[number])):
+                mock.patch.object(z, 'provider_issue_snapshot', side_effect=issue_snapshot):
             engine = z._workflow.Workflow(z, self.fixture.repo, self.session.project, self.fixture.runtime)
             engine.read_only()
             original_step = engine.step
@@ -268,13 +278,166 @@ class SchedulingInventoryContinuationTests(DagFixture):
         self.assertLessEqual(len(hydrated), 10)
         self.assertLess(len(hydrated), 21)
         self.assertGreater(peak, 1)
+        self.assertEqual(list(range(100, 110)), sorted(issue_reads))
+        self.assertEqual(list(range(100, 110)), sorted(comment_reads))
+
+    def test_concurrent_repository_identity_probe_is_single_flight(self):
+        adapter_type = self.fixture.patches[0].temp_original
+        adapter = adapter_type(self.fixture.repo, 'owner/repo')
+        barrier = threading.Barrier(10)
+        reads = 0
+        lock = threading.Lock()
+        def provider(arguments, **_kwargs):
+            nonlocal reads
+            self.assertEqual(['repo', 'view', 'owner/repo', '--json',
+                              'nameWithOwner,hasIssuesEnabled,viewerPermission'], arguments)
+            with lock:
+                reads += 1
+            time.sleep(.05)
+            return subprocess.CompletedProcess(arguments, 0, json.dumps({
+                'nameWithOwner': 'owner/repo', 'hasIssuesEnabled': True,
+                'viewerPermission': 'ADMIN'}), '')
+        def probe(_number):
+            barrier.wait()
+            adapter.ensure_identity()
+            return adapter._identity_checked
+        with mock.patch.object(adapter, '_run', side_effect=provider):
+            with ThreadPoolExecutor(max_workers=10) as pool:
+                observed = list(pool.map(probe, range(10)))
+        self.assertEqual([True] * 10, observed)
+        self.assertEqual(1, reads)
+
+    def test_concurrent_identical_issue_snapshots_are_single_flight(self):
+        engine = z._workflow.Workflow(z, self.fixture.repo, self.session.project, self.fixture.runtime)
+        engine.read_only()
+        barrier = threading.Barrier(10)
+        reads = 0
+        lock = threading.Lock()
+        def issue_snapshot(_repo, _repository, number):
+            nonlocal reads
+            with lock:
+                reads += 1
+            time.sleep(.05)
+            return copy.deepcopy(self.provider.issues[number])
+        def read_issue(_number):
+            barrier.wait()
+            return engine.adapter.get_issue(100)
+        with mock.patch.object(z, 'provider_issue_snapshot', side_effect=issue_snapshot):
+            with ThreadPoolExecutor(max_workers=10) as pool:
+                observed = list(pool.map(read_issue, range(10)))
+        self.assertTrue(all(issue == observed[0] for issue in observed))
+        self.assertEqual(1, reads)
+
+    def test_concurrent_identical_freshness_reads_are_single_flight(self):
+        engine = z._workflow.Workflow(z, self.fixture.repo, self.session.project, self.fixture.runtime)
+        barrier = threading.Barrier(10)
+        reads = 0
+        full_reads = 0
+        lock = threading.Lock()
+        comments = self.provider.get_issue_comments(100)
+        def tail(number):
+            nonlocal reads
+            with lock:
+                reads += 1
+            time.sleep(.05)
+            return copy.deepcopy(comments)
+        def full(number):
+            nonlocal full_reads
+            with lock:
+                full_reads += 1
+            return copy.deepcopy(comments)
+        self.provider.get_issue_comment_tail = tail
+        with mock.patch.object(self.provider, 'get_issue_comments', side_effect=full):
+            engine.read_only()
+            engine._issue_observations = {100: copy.deepcopy(self.provider.issues[100])}
+            def read_freshness(_number):
+                barrier.wait()
+                return engine.artifact_index(100)
+            with mock.patch.object(z._workflow.state_cache, 'load', return_value=None), \
+                mock.patch.object(z._workflow.state_cache, 'requires_full_read', return_value=False), \
+                mock.patch.object(z._workflow.state_cache, 'store'):
+                with ThreadPoolExecutor(max_workers=10) as pool:
+                    observed = list(pool.map(read_freshness, range(10)))
+        self.assertTrue(all(index.comments == observed[0].comments for index in observed))
+        self.assertEqual(1, reads)
+        self.assertEqual(1, full_reads)
+
+    def test_broad_provider_call_matrix_keeps_history_reads_frontier_bounded(self):
+        z._workflow_section(self.session.project, 'autonomy_approval_parallelism')['configuration']['max_workers'] = 10
+        for number in range(101, 121):
+            self.add_goal(number, self.graph)
+        legacy = self.fixture.issue(120, parent=None, title='Legacy goal outside selected frontier')
+        self.provider.issues[120]['body'] = legacy['body']
+        z._heartbeat.initialize_capacity(repo=self.fixture.repo, slots=[])
+        raw_comments = self.provider.get_issue_comments
+        full_reads = {}
+        tail_reads = {}
+        issue_reads = {}
+        def comments(number):
+            full_reads[scenario].append(number)
+            return raw_comments(number)
+        def tail(number):
+            tail_reads[scenario].append(number)
+            observed = raw_comments(number)
+            if scenario == 'partially_changed' and number == 105:
+                observed[0]['body'] += '\nexternally edited'
+            return observed
+        def issue_snapshot(_repo, _repository, number):
+            issue_reads[scenario].append(number)
+            return copy.deepcopy(self.provider.issues[number])
+        self.provider.get_issue_comment_tail = tail
+        cached = {}
+        def load(_repository, number, _issue_hash, contract):
+            if scenario == 'cold':
+                return None
+            return copy.deepcopy(cached[number])
+        with mock.patch.object(self.provider, 'get_issue_comments', side_effect=comments), \
+                mock.patch.object(z, 'GitHubGoalTransitionAdapter', return_value=self.provider), \
+                mock.patch.object(z, 'portfolio_snapshot', side_effect=self.session.portfolio_snapshot), \
+                mock.patch.object(z, 'provider_issue_snapshot', side_effect=issue_snapshot), \
+                mock.patch.object(z._workflow.state_cache, 'load', side_effect=load), \
+                mock.patch.object(z._workflow.state_cache, 'requires_full_read', return_value=False), \
+                mock.patch.object(z._workflow.state_cache, 'store'):
+            for scenario in ('cold', 'warm', 'partially_changed', 'retry'):
+                full_reads[scenario] = []
+                tail_reads[scenario] = []
+                issue_reads[scenario] = []
+                engine = z._workflow.Workflow(z, self.fixture.repo, self.session.project, self.fixture.runtime)
+                engine.read_only()
+                response = z._workflow.checkpoint(
+                    z, self.fixture.repo, self.session.project, self.fixture.runtime, engine=engine)
+                self.assertTrue(self.ready_names(response))
+                if scenario == 'cold':
+                    now = time.time()
+                    cached = {number: {
+                        'provider_head': z._workflow.state_cache.head(raw_comments(number)),
+                        'materialized_comments': raw_comments(number),
+                        'last_complete_audit': now,
+                    } for number in range(100, 110)}
+        selected = list(range(100, 110))
+        self.assertEqual({'cold': selected, 'warm': [], 'partially_changed': [105], 'retry': []},
+                         {name: sorted(reads) for name, reads in full_reads.items()})
+        self.assertEqual({name: selected for name in ('cold', 'warm', 'partially_changed', 'retry')},
+                         {name: sorted(reads) for name, reads in tail_reads.items()})
+        self.assertEqual({name: selected for name in ('cold', 'warm', 'partially_changed', 'retry')},
+                         {name: sorted(reads) for name, reads in issue_reads.items()})
+        for reads in tail_reads.values():
+            self.assertNotIn(120, reads, 'mixed v1/v2 inventory must not hydrate an unselected legacy goal')
 
     def test_first_capacity_read_bootstraps_preupgrade_durable_owner(self):
         work = self.session.acquire('produce')
         z._heartbeat._capacity_paths(self.fixture.repo)['config'].unlink(missing_ok=True)
         self.add_goal(101, self.graph)
-        response = self.session.call(101)
+        raw_comments = self.provider.get_issue_comments
+        reads = []
+        def comments(number):
+            reads.append(number)
+            return raw_comments(number)
+        with mock.patch.object(self.provider, 'get_issue_comments', side_effect=comments):
+            response = self.session.call(101)
         self.assertFalse(self.ready_names(response))
+        self.assertEqual([100, 101], sorted(set(reads)))
+        self.assertEqual(len(set(reads)), len(reads), reads)
         self.assertEqual(1, next(step['active_leases'] for step in response['next_steps']
                                  if 'active_leases' in step))
         inventory = z._heartbeat.capacity_inventory(repo=self.fixture.repo)
@@ -306,8 +469,15 @@ class SchedulingInventoryContinuationTests(DagFixture):
             value['complete'] = True
             return value
         self.session.portfolio_snapshot = malformed
-        failed = self.session.call(101, expected=2)
+        raw_comments = self.provider.get_issue_comments
+        reads = []
+        def comments(number):
+            reads.append(number)
+            return raw_comments(number)
+        with mock.patch.object(self.provider, 'get_issue_comments', side_effect=comments):
+            failed = self.session.call(101, expected=2)
         self.assertRegex(json.dumps(failed), r'(?i)local worker slot.*malformed|unavailable')
+        self.assertEqual([101], reads)
         self.assertEqual(['uncertain-local'], [slot['token'] for slot in
                          z._heartbeat.capacity_inventory(repo=self.fixture.repo)['slots']])
         z._heartbeat.untrack_capacity(repo=self.fixture.repo, root_id=self.fixture.runtime['root_id'],

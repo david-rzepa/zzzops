@@ -852,6 +852,7 @@ class GitHubGoalTransitionAdapter:
         if not self.executable:
             raise GoalTransitionProviderError("GitHub CLI is unavailable; no goal update was made.")
         self._identity_checked = False
+        self._identity_flights = _workflow.ProviderReadFlights()
         self.comment_read_counters = {}
 
     def _record_comment_read(self, number: int, mode: str, stdout: str, comments: list[dict[str, Any]]) -> None:
@@ -886,6 +887,12 @@ class GitHubGoalTransitionAdapter:
         return GoalTransitionProviderError(f"GitHub did not confirm the goal operation: {detail}")
 
     def ensure_identity(self) -> None:
+        if self._identity_checked:
+            return
+        key = (str(self.repo.resolve()), self.repository, 'identity')
+        self._identity_flights.read(key, self._ensure_identity)
+
+    def _ensure_identity(self) -> None:
         if self._identity_checked:
             return
         result = self._run(["repo", "view", self.repository, "--json", "nameWithOwner,hasIssuesEnabled,viewerPermission"])
