@@ -3852,6 +3852,30 @@ class FakeGoalTransitionAdapter:
 
 
 class GoalCreateTests(unittest.TestCase):
+    def test_public_adapter_goal_create_transaction_confirms_exact_result(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory); subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            adapter = object.__new__(zzzops.GitHubGoalTransitionAdapter)
+            adapter.repo, adapter.repository, adapter.executable = repo, "owner/repo", "gh"
+            adapter._identity_checked = True
+            payload = {"title": "Durable", "body": "Exact body", "labels": ["zzzops"]}
+            def run(arguments, **_kwargs):
+                if "POST" in arguments:
+                    body = payload["body"] + "\n<!-- zzzops-request:" + hashlib.sha256(b"goal-create-public").hexdigest() + " -->"
+                else:
+                    body = payload["body"]
+                issue = {"number": 42, "title": payload["title"], "body": body, "state": "open",
+                         "html_url": "https://github.com/owner/repo/issues/42", "labels": [{"name": "zzzops"}]}
+                return SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(issue))
+            adapter._run = run
+            token = zzzops._WORKING_INPUT_TRANSACTION.set({"request_id": "goal-create-public", "owner": "root"})
+            try: result = adapter.create_issue(payload)
+            finally: zzzops._WORKING_INPUT_TRANSACTION.reset(token)
+            self.assertEqual("Exact body", result["body"])
+            store = zzzops._working_inputs.WorkingInputStore(repo, repository="owner/repo", owner="root")
+            requests = json.loads(store.index_path.read_text())["requests"]
+            self.assertEqual(["confirmed"], [row["state"] for row in requests.values()])
+
     def request(self):
         return {
             "schema_version": 1,
