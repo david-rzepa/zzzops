@@ -5029,6 +5029,24 @@ class GraphAdoptionPublicTests(DagFixture):
         with mock.patch.dict(os.environ, {"CODEX_THREAD_ID": actor}):
             return self.session.call(100, request, expected=expected)
 
+    def append_request_envelope(self, request_id, response_kind="valid"):
+        store = z._comment_store
+        content = {"next_steps": [], "request_id": request_id}
+        record = store.ArtifactIndex([]).record(content)
+        response = {"hash": record["hash"],
+                    "uri": f"zzzops:owner/repo:goal:100:{record['hash']}"}
+        if response_kind == "null":
+            response = None
+        elif response_kind == "malformed":
+            response = {"hash": "not-a-hash", "uri": "zzzops:owner/repo:goal:100:not-a-hash"}
+        elif response_kind == "mismatched":
+            identity = "sha256:" + "c" * 64
+            response = {"hash": identity, "uri": f"zzzops:owner/repo:goal:100:{identity}"}
+        context = {"request_id": request_id, "response": response}
+        for body in store.pack_envelopes(
+                {"goal": 100, "transaction": "response-" + request_id, "context": context}, [record]):
+            self.provider.create_issue_comment(100, body)
+
     def proposal_review(self, proposal):
         reviewed = self.administrative_review({
             "operation": "graph_review", "proposal": proposal,
@@ -5544,6 +5562,34 @@ class GraphAdoptionPublicTests(DagFixture):
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
         resumed = self.session.call(100, request)
         self.assertEqual('perform', resumed['next_steps'][0]['kind'])
+
+    def test_response_only_envelope_does_not_block_graph_prepare_or_review(self):
+        self.append_request_envelope("543-observe-publication-start-20261008")
+        prepared = self.session.call(100, {
+            "operation": "graph_prepare", "graph": self.graph,
+            "rationale": "Response artifacts are not interrupted mutation checkpoints",
+            "request_id": "response-envelope-graph-prepare",
+        })
+        proposal = prepared["next_steps"][0]["proposal"]
+        reviewed = self.administrative_review({
+            "operation": "graph_review", "proposal": proposal,
+            "actor": "independent-reviewer", "decision": "approved",
+            "report": "The exact response-only envelope is non-mutating evidence",
+            "request_id": "response-envelope-graph-review",
+        })
+        self.assertEqual("human_approval", reviewed["next_steps"][0]["kind"])
+
+        for response_kind in ("null", "malformed", "mismatched"):
+            with self.subTest(response_kind=response_kind):
+                before = copy.deepcopy(self.provider.comments[100])
+                self.append_request_envelope("adversarial-" + response_kind, response_kind)
+                response = self.session.call(100, {
+                    "operation": "graph_prepare", "graph": self.graph,
+                    "rationale": "Malformed response-only claims must not bypass pending checks",
+                    "request_id": "unrelated-" + response_kind,
+                }, expected=2)
+                self.assertRegex(json.dumps(response), r"(?i)uncommitted|checkpoint")
+                self.provider.comments[100] = before
 
     def test_graph_repair_uses_only_exact_committed_migration_cutoff(self):
         engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
