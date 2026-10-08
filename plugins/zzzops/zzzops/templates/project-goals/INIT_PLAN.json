@@ -5522,7 +5522,7 @@
               },
               {
                 "id": "admit_decomposition_correction",
-                "prompt": "Root admits the typed finding as applicable, not_applicable with evidence, or unresolved. Applicable correction preserves history and reopens only the exact target; unresolved human questions remain blocking.",
+                "prompt": "Root admits the typed finding as applicable, not_applicable with evidence, or unresolved. Applicable correction preserves history and reopens only the exact target; unresolved human questions remain blocking. Submit transfer as null only for the first admitted revision; a replacement must atomically transfer exact prior coverage with explicit root authority and coverage evidence.",
                 "inputs": {
                   "finding": {
                     "producer": {
@@ -5770,6 +5770,73 @@
                         }
                       }
                     }
+                  },
+                  "transfer": {
+                    "type": "supersession",
+                    "schema": {
+                      "kind": "union",
+                      "variants": [
+                        {
+                          "kind": "null"
+                        },
+                        {
+                          "kind": "object",
+                          "fields": {
+                            "prior": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "replacement": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "coverage": {
+                              "kind": "enum",
+                              "values": [
+                                "carried",
+                                "narrowed"
+                              ]
+                            },
+                            "coverage_evidence": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "authority": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
                   }
                 },
                 "requires": [
@@ -5803,6 +5870,17 @@
                 "permits": [
                   {
                     "type": "admission",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "decompose"
+                      },
+                      "output": "value"
+                    }
+                  },
+                  {
+                    "type": "supersession",
                     "scope": {
                       "subject": {
                         "kind": "node",
@@ -6153,7 +6231,7 @@
               },
               {
                 "id": "admit_test_design_correction",
-                "prompt": "Root admits the typed finding as applicable, not_applicable with evidence, or unresolved. Applicable correction preserves history and reopens only the exact target; unresolved human questions remain blocking.",
+                "prompt": "Root admits the typed finding as applicable, not_applicable with evidence, or unresolved. Applicable correction preserves history and reopens only the exact target; unresolved human questions remain blocking. Submit transfer as null only for the first admitted revision; a replacement must atomically transfer exact prior coverage with explicit root authority and coverage evidence.",
                 "inputs": {
                   "finding": {
                     "producer": {
@@ -6338,6 +6416,73 @@
                         }
                       }
                     }
+                  },
+                  "transfer": {
+                    "type": "supersession",
+                    "schema": {
+                      "kind": "union",
+                      "variants": [
+                        {
+                          "kind": "null"
+                        },
+                        {
+                          "kind": "object",
+                          "fields": {
+                            "prior": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "replacement": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "coverage": {
+                              "kind": "enum",
+                              "values": [
+                                "carried",
+                                "narrowed"
+                              ]
+                            },
+                            "coverage_evidence": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "authority": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
                   }
                 },
                 "requires": [
@@ -6371,6 +6516,17 @@
                 "permits": [
                   {
                     "type": "admission",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "test_design"
+                      },
+                      "output": "value"
+                    }
+                  },
+                  {
+                    "type": "supersession",
                     "scope": {
                       "subject": {
                         "kind": "node",
@@ -6742,7 +6898,7 @@
               },
               {
                 "id": "admit_migration_correction",
-                "prompt": "Root admits the typed finding as applicable, not_applicable with evidence, or unresolved. Applicable correction preserves history and reopens only the exact target; unresolved human questions remain blocking.",
+                "prompt": "Root admits the typed finding as applicable, not_applicable with evidence, or unresolved. Applicable correction preserves history and reopens only the exact target; unresolved human questions remain blocking. Submit transfer as null only for the first admitted revision; a replacement must atomically transfer exact prior coverage with explicit root authority and coverage evidence.",
                 "inputs": {
                   "finding": {
                     "producer": {
@@ -6948,6 +7104,73 @@
                         }
                       }
                     }
+                  },
+                  "transfer": {
+                    "type": "supersession",
+                    "schema": {
+                      "kind": "union",
+                      "variants": [
+                        {
+                          "kind": "null"
+                        },
+                        {
+                          "kind": "object",
+                          "fields": {
+                            "prior": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "replacement": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "coverage": {
+                              "kind": "enum",
+                              "values": [
+                                "carried",
+                                "narrowed"
+                              ]
+                            },
+                            "coverage_evidence": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "authority": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
                   }
                 },
                 "requires": [
@@ -6981,6 +7204,17 @@
                 "permits": [
                   {
                     "type": "admission",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "migration_verification"
+                      },
+                      "output": "value"
+                    }
+                  },
+                  {
+                    "type": "supersession",
                     "scope": {
                       "subject": {
                         "kind": "node",
@@ -7363,7 +7597,7 @@
               },
               {
                 "id": "admit_integration_feedback_correction",
-                "prompt": "Root admits the typed finding as applicable, not_applicable with evidence, or unresolved. Applicable correction preserves history and reopens only the exact target; unresolved human questions remain blocking.",
+                "prompt": "Root admits the typed finding as applicable, not_applicable with evidence, or unresolved. Applicable correction preserves history and reopens only the exact target; unresolved human questions remain blocking. Submit transfer as null only for the first admitted revision; a replacement must atomically transfer exact prior coverage with explicit root authority and coverage evidence.",
                 "inputs": {
                   "finding": {
                     "producer": {
@@ -7580,6 +7814,73 @@
                         }
                       }
                     }
+                  },
+                  "transfer": {
+                    "type": "supersession",
+                    "schema": {
+                      "kind": "union",
+                      "variants": [
+                        {
+                          "kind": "null"
+                        },
+                        {
+                          "kind": "object",
+                          "fields": {
+                            "prior": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "replacement": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "coverage": {
+                              "kind": "enum",
+                              "values": [
+                                "carried",
+                                "narrowed"
+                              ]
+                            },
+                            "coverage_evidence": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            },
+                            "authority": {
+                              "kind": "object",
+                              "fields": {
+                                "hash": {
+                                  "kind": "string"
+                                },
+                                "uri": {
+                                  "kind": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
                   }
                 },
                 "requires": [
@@ -7613,6 +7914,17 @@
                 "permits": [
                   {
                     "type": "admission",
+                    "scope": {
+                      "subject": {
+                        "kind": "node",
+                        "goal": "#this",
+                        "node": "integrate"
+                      },
+                      "output": "value"
+                    }
+                  },
+                  {
+                    "type": "supersession",
                     "scope": {
                       "subject": {
                         "kind": "node",
@@ -9347,7 +9659,7 @@
                 },
                 "template": {
                   "id": "admit_spec_review_correction",
-                  "prompt": "Root admits the exact configured-member finding as applicable, evidenced non-applicable, or unresolved. It reopens only the finding target and preserves unrelated member Results.",
+                  "prompt": "Root admits the exact configured-member finding as applicable, evidenced non-applicable, or unresolved. It reopens only the finding target and preserves unrelated member Results. Submit transfer as null only for the first admitted revision; a replacement must atomically transfer exact prior coverage with explicit root authority and coverage evidence.",
                   "inputs": {
                     "requirements": {
                       "producer": {
@@ -9637,6 +9949,73 @@
                           }
                         }
                       }
+                    },
+                    "transfer": {
+                      "type": "supersession",
+                      "schema": {
+                        "kind": "union",
+                        "variants": [
+                          {
+                            "kind": "null"
+                          },
+                          {
+                            "kind": "object",
+                            "fields": {
+                              "prior": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              },
+                              "replacement": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              },
+                              "coverage": {
+                                "kind": "enum",
+                                "values": [
+                                  "carried",
+                                  "narrowed"
+                                ]
+                              },
+                              "coverage_evidence": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              },
+                              "authority": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      }
                     }
                   },
                   "requires": [
@@ -9677,7 +10056,29 @@
                       }
                     },
                     {
+                      "type": "supersession",
+                      "scope": {
+                        "subject": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "requirements"
+                        },
+                        "output": "value"
+                      }
+                    },
+                    {
                       "type": "admission",
+                      "scope": {
+                        "subject": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "spec"
+                        },
+                        "output": "value"
+                      }
+                    },
+                    {
+                      "type": "supersession",
                       "scope": {
                         "subject": {
                           "kind": "node",
@@ -10390,7 +10791,7 @@
                 },
                 "template": {
                   "id": "admit_implementation_review_correction",
-                  "prompt": "Root admits the exact configured-member finding as applicable, evidenced non-applicable, or unresolved. It reopens only the finding target and preserves unrelated member Results.",
+                  "prompt": "Root admits the exact configured-member finding as applicable, evidenced non-applicable, or unresolved. It reopens only the finding target and preserves unrelated member Results. Submit transfer as null only for the first admitted revision; a replacement must atomically transfer exact prior coverage with explicit root authority and coverage evidence.",
                   "inputs": {
                     "implementation": {
                       "producer": {
@@ -10630,6 +11031,73 @@
                           }
                         }
                       }
+                    },
+                    "transfer": {
+                      "type": "supersession",
+                      "schema": {
+                        "kind": "union",
+                        "variants": [
+                          {
+                            "kind": "null"
+                          },
+                          {
+                            "kind": "object",
+                            "fields": {
+                              "prior": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              },
+                              "replacement": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              },
+                              "coverage": {
+                                "kind": "enum",
+                                "values": [
+                                  "carried",
+                                  "narrowed"
+                                ]
+                              },
+                              "coverage_evidence": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              },
+                              "authority": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      }
                     }
                   },
                   "requires": [
@@ -10670,7 +11138,29 @@
                       }
                     },
                     {
+                      "type": "supersession",
+                      "scope": {
+                        "subject": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "implement"
+                        },
+                        "output": "value"
+                      }
+                    },
+                    {
                       "type": "admission",
+                      "scope": {
+                        "subject": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "migration_verification"
+                        },
+                        "output": "value"
+                      }
+                    },
+                    {
+                      "type": "supersession",
                       "scope": {
                         "subject": {
                           "kind": "node",
@@ -11339,7 +11829,7 @@
                 },
                 "template": {
                   "id": "admit_integration_review_correction",
-                  "prompt": "Root admits the exact configured-member finding as applicable, evidenced non-applicable, or unresolved. It reopens only the finding target and preserves unrelated member Results.",
+                  "prompt": "Root admits the exact configured-member finding as applicable, evidenced non-applicable, or unresolved. It reopens only the finding target and preserves unrelated member Results. Submit transfer as null only for the first admitted revision; a replacement must atomically transfer exact prior coverage with explicit root authority and coverage evidence.",
                   "inputs": {
                     "integration": {
                       "producer": {
@@ -11585,6 +12075,73 @@
                           }
                         }
                       }
+                    },
+                    "transfer": {
+                      "type": "supersession",
+                      "schema": {
+                        "kind": "union",
+                        "variants": [
+                          {
+                            "kind": "null"
+                          },
+                          {
+                            "kind": "object",
+                            "fields": {
+                              "prior": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              },
+                              "replacement": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              },
+                              "coverage": {
+                                "kind": "enum",
+                                "values": [
+                                  "carried",
+                                  "narrowed"
+                                ]
+                              },
+                              "coverage_evidence": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              },
+                              "authority": {
+                                "kind": "object",
+                                "fields": {
+                                  "hash": {
+                                    "kind": "string"
+                                  },
+                                  "uri": {
+                                    "kind": "string"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      }
                     }
                   },
                   "requires": [
@@ -11625,7 +12182,29 @@
                       }
                     },
                     {
+                      "type": "supersession",
+                      "scope": {
+                        "subject": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "integration_verification"
+                        },
+                        "output": "value"
+                      }
+                    },
+                    {
                       "type": "admission",
+                      "scope": {
+                        "subject": {
+                          "kind": "node",
+                          "goal": "#this",
+                          "node": "migration_verification"
+                        },
+                        "output": "value"
+                      }
+                    },
+                    {
+                      "type": "supersession",
                       "scope": {
                         "subject": {
                           "kind": "node",

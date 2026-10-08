@@ -3529,6 +3529,12 @@ class Workflow:
             'target_inputs': {'kind': 'array', 'items': binding}, 'authority': copy.deepcopy(ref),
             'applicability': {'kind': 'enum', 'values': ['applicable', 'not_applicable', 'unresolved']},
             'rationale': {'kind': 'string'}}}
+        supersession = {'kind': 'object', 'fields': {
+            'prior': copy.deepcopy(ref), 'replacement': copy.deepcopy(ref),
+            'coverage': {'kind': 'enum', 'values': ['carried', 'narrowed']},
+            'coverage_evidence': copy.deepcopy(ref), 'authority': copy.deepcopy(ref)}}
+        nullable_supersession = {'kind': 'union', 'variants': [
+            {'kind': 'null'}, copy.deepcopy(supersession)]}
         registry = {'kind': 'object', 'fields': {
             'items': {'kind': 'map', 'values': copy.deepcopy(ref)}, 'rationale': {'kind': 'string'}}}
         resolution = {'kind': 'object', 'fields': {'finding': copy.deepcopy(ref),
@@ -3567,19 +3573,23 @@ class Workflow:
              'permits': [{'type': 'finding', 'scope': copy.deepcopy(scope)}]},
             {'id': admit_name,
              'prompt': ('Root classifies the exact typed finding. Applicable correction preserves history and '
-                        'reopens only its exact rejected target.'),
+                        'reopens only its exact rejected target. Submit transfer as null only for the first admitted '
+                        'revision; a replacement must atomically transfer exact prior coverage with explicit root '
+                        'authority and coverage evidence.'),
              'inputs': {
                  'finding': {'producer': {'node': selector(interpret_name)}, 'output': 'value', 'path': [],
                              'mode': 'identity', 'type': copy.deepcopy(finding)},
                  'subject': {'producer': {'node': selector(target_name)}, 'output': target_output, 'path': [],
                              'mode': 'identity', 'type': copy.deepcopy(target_type)},
              },
-             'outputs': {'value': {'type': 'admission', 'schema': admission}},
+             'outputs': {'value': {'type': 'admission', 'schema': admission},
+                         'transfer': {'type': 'supersession', 'schema': nullable_supersession}},
              'requires': [selector(interpret_name), selector(target_name)],
              'executor': {'role': 'root', 'capability': 'bounded', 'resources': [],
                           'authority': {'subject': selector(admit_name), 'output': 'value'}},
              'independent_of': [], 'gates': [], 'resolves': [],
-             'permits': [{'type': 'admission', 'scope': copy.deepcopy(scope)}]},
+             'permits': [{'type': kind, 'scope': copy.deepcopy(scope)}
+                         for kind in ('admission', 'supersession')]},
             {'id': retain_name,
              'prompt': ('After a fresh approved independent review, retain every admitted finding id and exact '
                         'finding reference. Approval alone does not resolve a finding.'),
@@ -3625,9 +3635,58 @@ class Workflow:
             }})
 
     @staticmethod
+    def node_upgrade_correction_admission(node):
+        """Add the atomic nullable transfer contract to one correction admission."""
+        ref = {'kind': 'object', 'fields': {'hash': {'kind': 'string'}, 'uri': {'kind': 'string'}}}
+        supersession = {'kind': 'object', 'fields': {
+            'prior': copy.deepcopy(ref), 'replacement': copy.deepcopy(ref),
+            'coverage': {'kind': 'enum', 'values': ['carried', 'narrowed']},
+            'coverage_evidence': copy.deepcopy(ref), 'authority': copy.deepcopy(ref)}}
+        node['outputs']['transfer'] = {'type': 'supersession', 'schema': {
+            'kind': 'union', 'variants': [{'kind': 'null'}, supersession]}}
+        if 'Submit transfer as null only for the first admitted revision' not in node['prompt']:
+            node['prompt'] += (' Submit transfer as null only for the first admitted revision; a replacement must '
+                               'atomically transfer exact prior coverage with explicit root authority and coverage '
+                               'evidence.')
+        preserved = [permit for permit in node['permits'] if permit['type'] not in ('admission', 'supersession')]
+        scopes = []
+        for permit in node['permits']:
+            if permit['type'] == 'admission' and permit['scope'] not in scopes:
+                scopes.append(copy.deepcopy(permit['scope']))
+        node['permits'] = preserved + [
+            {'type': kind, 'scope': copy.deepcopy(scope)}
+            for scope in scopes for kind in ('admission', 'supersession')]
+
+    @staticmethod
     def node_local_selector(selector, number):
         return (isinstance(selector, dict) and selector.get('kind') == 'node' and
                 selector.get('goal') in ('#this', number))
+
+    @staticmethod
+    def node_shadowed_correction_admission(snapshot, state):
+        """Return true only for a legacy member admission replaced by its exact additive upgrade."""
+        contract = state.get('contract', {})
+        if (not any(output.get('type') == 'admission' for output in contract.get('outputs', {}).values()) or
+                any(output.get('type') == 'supersession' for output in contract.get('outputs', {}).values())):
+            return False
+        sets = snapshot['graph']['task_sets']
+        legacy = next((item for item in sets if item.get('template', {}).get('id') == contract.get('id')), None)
+        if legacy is None:
+            return False
+        suffix = '_atomic_transfer'
+        replacement = next((item for item in sets
+            if item.get('id') == legacy['id'] + suffix and
+               item.get('template', {}).get('id') == contract['id'] + suffix), None)
+        if replacement is None or replacement.get('source') != legacy.get('source'):
+            return False
+        upgraded = replacement['template']
+        transfer = next((output for output in upgraded.get('outputs', {}).values()
+                         if output.get('type') == 'supersession'), None)
+        return (transfer is not None and transfer.get('schema', {}).get('kind') == 'union' and
+                any(variant.get('kind') == 'null'
+                    for variant in transfer.get('schema', {}).get('variants', [])) and
+                upgraded.get('inputs') == legacy['template'].get('inputs') and
+                upgraded.get('requires') == legacy['template'].get('requires'))
 
     def node_frontier(self, snapshot, *, defer_envelope=False):
         """Format the same readiness and authority boundaries for both callers."""
@@ -3636,8 +3695,12 @@ class Workflow:
         rejected = []
         def local_node(selector):
             return self.node_local_selector(selector, number)
+        expansion_templates = {item['id']: item['template']['id'] for item in snapshot['graph']['task_sets']}
         def same_node(selector, name):
-            return local_node(selector) and selector.get('node') == name
+            return ((local_node(selector) and selector.get('node') == name) or
+                    (isinstance(selector, dict) and selector.get('kind') in ('member', 'join') and
+                     selector.get('goal') in ('#this', number) and
+                     expansion_templates.get(selector.get('expansion')) == name))
         def permits_target(node, kind, target_name, target_output):
             return any(permit.get('type') == kind and permit.get('scope', {}).get('output') == target_output and
                 same_node(permit.get('scope', {}).get('subject'), target_name)
@@ -3647,8 +3710,12 @@ class Workflow:
                 (path is None or binding.get('path') == path) and
                 (mode is None or binding.get('mode') == mode)
                 for binding in node.get('inputs', {}).values())
+        def input_from_review_approval(node, review_name):
+            return (input_from(node, review_name, path=['decision'], mode='content') or
+                    input_from(node, review_name, path=[], mode='identity'))
         def correction_route_covers(target_name, target_output, review_name):
-            nodes = snapshot['graph']['nodes']
+            nodes = [*snapshot['graph']['nodes'],
+                     *(item['template'] for item in snapshot['graph']['task_sets'])]
             findings = [node for node in nodes
                 if any(output.get('type') == 'finding' for output in node.get('outputs', {}).values()) and
                 permits_target(node, 'finding', target_name, target_output) and
@@ -3656,12 +3723,18 @@ class Workflow:
             for finding_node in findings:
                 admissions = [node for node in nodes
                     if any(output.get('type') == 'admission' for output in node.get('outputs', {}).values()) and
+                    any(output.get('type') == 'supersession' and
+                        output.get('schema', {}).get('kind') == 'union' and
+                        any(variant.get('kind') == 'null'
+                            for variant in output.get('schema', {}).get('variants', []))
+                        for output in node.get('outputs', {}).values()) and
                     permits_target(node, 'admission', target_name, target_output) and
+                    permits_target(node, 'supersession', target_name, target_output) and
                     input_from(node, finding_node['id'], mode='identity')]
                 registries = [node for node in nodes
                     if any(output.get('type') == 'finding_registry' for output in node.get('outputs', {}).values()) and
                     permits_target(node, 'finding_registry', target_name, target_output) and
-                    input_from(node, review_name, path=['decision'], mode='content')]
+                    input_from_review_approval(node, review_name)]
                 for registry in registries:
                     for expansion in snapshot['graph']['task_sets']:
                         template = expansion.get('template', {})
@@ -3675,10 +3748,46 @@ class Workflow:
                                 any(same_node(selector, target_name)
                                     for selector in template.get('independent_of', [])) and
                                 input_from(template, registry['id']) and
-                                input_from(template, review_name, path=['decision'], mode='content')):
+                                input_from_review_approval(template, review_name)):
                             if admissions:
                                 return True
             return False
+        def append_member_admission_recovery(graph, target_name, target_output, review_name):
+            """Append an upgraded admission expansion while preserving every persisted task set."""
+            sets = graph['task_sets']
+            template_by_set = {item['id']: item['template']['id'] for item in sets}
+            review_sets = {name for name, template in template_by_set.items() if template == review_name}
+            findings = []
+            for item in sets:
+                node = item['template']
+                if (any(output.get('type') == 'finding' for output in node.get('outputs', {}).values()) and
+                        permits_target(node, 'finding', target_name, target_output) and
+                        any(binding.get('producer', {}).get('node', {}).get('kind') == 'member' and
+                            binding['producer']['node'].get('expansion') in review_sets and
+                            binding.get('path') == ['decision'] and binding.get('mode') == 'content'
+                            for binding in node.get('inputs', {}).values())):
+                    findings.append(item['id'])
+            candidates = []
+            for item in sets:
+                node = item['template']
+                if (any(output.get('type') == 'admission' for output in node.get('outputs', {}).values()) and
+                        permits_target(node, 'admission', target_name, target_output) and
+                        any(binding.get('producer', {}).get('node', {}).get('kind') == 'member' and
+                            binding['producer']['node'].get('expansion') in findings and
+                            binding.get('mode') == 'identity'
+                            for binding in node.get('inputs', {}).values())):
+                    candidates.append(item)
+            if len(candidates) != 1:
+                raise ValueError('Configured-member correction recovery requires one exact admission expansion')
+            recovery = copy.deepcopy(candidates[0])
+            suffix = '_atomic_transfer'
+            recovery['id'] += suffix
+            recovery['template']['id'] += suffix
+            if any(item['id'] == recovery['id'] or item['template']['id'] == recovery['template']['id']
+                   for item in sets):
+                raise ValueError('Configured-member correction recovery identity is occupied')
+            self.node_upgrade_correction_admission(recovery['template'])
+            sets.append(recovery)
         for key, (_, result) in projection['current'].items():
             state = projection['states'].get(key)
             if state is None: continue
@@ -3709,6 +3818,9 @@ class Workflow:
             for target_name, target_output, _, _ in rejected:
                 target_counts[(target_name, target_output)] = target_counts.get((target_name, target_output), 0) + 1
             for route in rejected:
+                if route[2] in expansion_templates.values():
+                    append_member_admission_recovery(graph, *route[:3])
+                    continue
                 base_names = {'interpret_' + route[0] + '_rejection',
                               'admit_' + route[0] + '_correction',
                               'retain_' + route[0] + '_findings'}
@@ -3846,6 +3958,11 @@ class Workflow:
             })
         for state in projection['states'].values():
             if state['node']['goal'] != number: continue
+            # A reviewed additive member-route recovery preserves the legacy
+            # contract and its historical Results, but only the exact upgraded
+            # expansion may accept new work.
+            if self.node_shadowed_correction_admission(snapshot, state):
+                continue
             lease = projection['leases'].get(self.api._phase_evidence.task_key(state['node']))
             if lease:
                 stale = state.get('input_hash') != lease['fingerprint']
@@ -4318,6 +4435,8 @@ class Workflow:
             key = ev.task_key(node)
             state = projection['states'].get(key)
             if state is None: raise ValueError('Unknown or retired task generation')
+            if self.node_shadowed_correction_admission(snapshot, state):
+                raise ValueError('Legacy correction admission is superseded by its reviewed atomic transfer route')
             operation = request['operation']; leases = payload['operational']['leases']
             lease = next((item for item in leases if item['node'] == node), None)
             root = (self.runtime or {}).get('root_id')
@@ -4524,6 +4643,12 @@ class Workflow:
         subject_results = {ref['hash']: result for result in current.values() for ref in result['outputs'].values()}
         history = [(ref, artifacts[ref['hash']]) for item in snapshot['payload']['evidence'] for ref in artifacts[item['hash']]['content']['outputs'].values()]
         proposed = [(state['contract']['outputs'][slot]['type'], value) for slot, value in bundle.items()]
+        def nullable_supersession(contract):
+            schema = contract.get('schema', {})
+            return (contract.get('type') == 'supersession' and schema.get('kind') == 'union' and
+                    any(variant.get('kind') == 'null' for variant in schema.get('variants', [])))
+        transfer_values = [bundle[slot] for slot, contract in state['contract']['outputs'].items()
+                           if nullable_supersession(contract)]
         def read(ref, kind=None):
             ev.validate_ref(ref)
             if ref['hash'] not in artifacts: raise ValueError('Unknown immutable evidence reference' + (': ' + kind if kind else ''))
@@ -4817,7 +4942,21 @@ class Workflow:
                 if not any(subject_results[ref['hash']]['inputs'] == value['target_inputs'] for ref in finding['subjects']): raise ValueError('Admission target inputs mismatch exact subject')
                 if value['applicability'] not in ('applicable', 'not_applicable', 'unresolved'): raise ValueError('Unknown admission applicability')
                 prior = obligation(finding)
-                if prior and prior['finding'] != value['finding'] and not any(k == 'supersession' and v['prior'] == prior['finding'] and v['replacement'] == value['finding'] for k, v in proposed): raise ValueError('Supersession requires atomic exact coverage transfer')
+                if transfer_values:
+                    if len(transfer_values) != 1:
+                        raise ValueError('Correction admission requires one exact atomic supersession transfer')
+                    transfer = transfer_values[0]
+                    if prior is None:
+                        if transfer is not None:
+                            raise ValueError('First admitted revision requires explicit null supersession transfer')
+                    elif (not isinstance(transfer, dict) or transfer.get('prior') != prior['finding'] or
+                          transfer.get('replacement') != value['finding']):
+                        raise ValueError('Replacement admission requires atomic exact coverage transfer')
+                elif prior and prior['finding'] != value['finding'] and not any(
+                        k == 'supersession' and isinstance(v, dict) and
+                        v.get('prior') == prior['finding'] and v.get('replacement') == value['finding']
+                        for k, v in proposed):
+                    raise ValueError('Supersession requires atomic exact coverage transfer')
             elif kind == 'applicability_assessment':
                 finding = read(value['finding'], 'finding'); prior = obligation(finding)
                 permit(kind, finding['target']); authority(value['authority'])
@@ -4841,6 +4980,15 @@ class Workflow:
                 if any(subject_results[ref['hash']]['executor'] == reviewer['executor'] for ref in value['subjects']):
                     raise ValueError('Applicability reviewer must be independent of corrected subjects')
             elif kind == 'supersession':
+                if value is None:
+                    admissions = [candidate for candidate_kind, candidate in proposed
+                                  if candidate_kind == 'admission']
+                    if len(admissions) != 1:
+                        raise ValueError('Null supersession transfer requires one atomic admission')
+                    candidate = read(admissions[0]['finding'], 'finding')
+                    if obligation(candidate) is not None:
+                        raise ValueError('Null supersession transfer is allowed only without a prior admitted revision')
+                    continue
                 prior = read(value['prior'], 'finding'); replacement = read(value['replacement'], 'finding')
                 permit(kind, replacement['target']); authority(value['authority']); authority(value['coverage_evidence'])
                 existing = obligation(prior)
