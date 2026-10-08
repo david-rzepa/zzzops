@@ -735,17 +735,39 @@ def renew_storage_lock(adapter: Any, repository: str, key: str, owner: str, run_
 
 
 def release_storage_lock(adapter: Any, repository: str, key: str, owner: str, run_id: str) -> dict[str, Any]:
-    existing = adapter.get_label(storage_lock_label_name(key))
+    name = storage_lock_label_name(key)
+    repository_key = reservation_repository_key(repository)
+
+    def is_owned(label: dict[str, Any]) -> bool:
+        current = parse_storage_lock_description(label.get("description"))
+        if current["repository_key"] != repository_key or current["key"] != key:
+            raise ReservationProviderError("Storage lock identity is invalid; no ownership assumed.")
+        return current["owner"] == owner and current["run_id"] == run_id
+
+    existing = adapter.get_label(name)
     if existing is None:
         return {"released": True, "outcome": "already_released", "key": key}
-    current = parse_storage_lock_description(existing.get("description"))
-    if (current["repository_key"] != reservation_repository_key(repository) or current["key"] != key
-            or current["owner"] != owner or current["run_id"] != run_id):
+    if not is_owned(existing):
         return {"released": False, "outcome": "not_owned", "key": key}
-    adapter.delete_label(existing["node_id"])
-    if adapter.get_label(storage_lock_label_name(key)) is not None:
-        raise ReservationProviderError("GitHub did not confirm storage lock release; no ownership assumed.")
-    return {"released": True, "outcome": "released", "key": key}
+    try:
+        adapter.delete_label(existing["node_id"])
+    except ReservationProviderError:
+        pass
+    recovered = adapter.get_label(name)
+    if recovered is None:
+        return {"released": True, "outcome": "released", "key": key}
+    if not is_owned(recovered):
+        return {"released": False, "outcome": "not_owned", "key": key}
+    try:
+        adapter.delete_label(recovered["node_id"])
+    except ReservationProviderError:
+        pass
+    confirmed = adapter.get_label(name)
+    if confirmed is None:
+        return {"released": True, "outcome": "released", "key": key}
+    if not is_owned(confirmed):
+        return {"released": False, "outcome": "not_owned", "key": key}
+    raise ReservationProviderError("GitHub did not confirm storage lock release; no ownership assumed.")
 
 
 def apply_independent_batch(items: list[dict[str, Any]], apply: Callable[[dict[str, Any]], dict[str, Any]]) -> dict[str, Any]:

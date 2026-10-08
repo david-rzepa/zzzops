@@ -5819,6 +5819,34 @@ class StorageLockRenewalRaceAdapter(FakeReservationAdapter):
         super().update_label(node_id, description)
 
 
+class StorageLockReleaseRaceAdapter(FakeReservationAdapter):
+    def __init__(self, replacement):
+        super().__init__()
+        self.replacement = replacement
+        self.raced = False
+
+    def delete_label(self, node_id):
+        if not self.raced:
+            self.raced = True
+            name = zzzops.storage_lock_label_name("goal-12")
+            with self.lock:
+                previous = self.labels.pop(name)
+                if self.replacement == "same_owner":
+                    self.labels[name] = {**previous, "node_id": f"L{self.next_id}"}
+                    self.next_id += 1
+                elif self.replacement == "different_owner":
+                    self.labels[name] = {
+                        "name": name,
+                        "description": zzzops.storage_lock_description(
+                            "owner/repo", "goal-12", "agent-b", "run-b", 2_000_000_000,
+                        ),
+                        "node_id": f"L{self.next_id}",
+                    }
+                    self.next_id += 1
+            raise zzzops.ReservationProviderError("stale label node id")
+        super().delete_label(node_id)
+
+
 class ReservationTests(unittest.TestCase):
     def setUp(self):
         self.now = datetime(2026, 7, 19, 21, 0, tzinfo=timezone.utc)
@@ -5926,6 +5954,32 @@ class ReservationTests(unittest.TestCase):
                     self.assertEqual(2_000_000_000, metadata["expires_at"])
                 else:
                     self.assertEqual(int(self.now.timestamp()) + 90, metadata["expires_at"])
+
+    def test_storage_lock_release_recovers_stale_label_id_without_deleting_new_owner(self):
+        for replacement, expected_outcome in (
+            ("missing", "released"),
+            ("same_owner", "released"),
+            ("different_owner", "not_owned"),
+        ):
+            with self.subTest(replacement=replacement):
+                adapter = StorageLockReleaseRaceAdapter(replacement)
+                acquired = zzzops.acquire_storage_lock(
+                    adapter, "owner/repo", "goal-12", "agent-a", "run-a", 60, self.now,
+                )
+                self.assertTrue(acquired["acquired"])
+
+                released = zzzops.release_storage_lock(
+                    adapter, "owner/repo", "goal-12", "agent-a", "run-a",
+                )
+
+                self.assertEqual(expected_outcome, released["outcome"])
+                label = adapter.get_label(zzzops.storage_lock_label_name("goal-12"))
+                if replacement == "different_owner":
+                    metadata = zzzops.parse_storage_lock_description(label["description"])
+                    self.assertEqual(("agent-b", "run-b"), (metadata["owner"], metadata["run_id"]))
+                    self.assertEqual(2_000_000_000, metadata["expires_at"])
+                else:
+                    self.assertIsNone(label)
 
     def test_renew_and_release_require_the_same_owner(self):
         adapter = FakeReservationAdapter()
