@@ -1,17 +1,17 @@
 {
   "approval": {
-    "date": "2026-10-04",
-    "digest": "sha256:556102cc74fd4a1394b3db56086167c016f7c701d32113dc7ef71c4c2307d299",
-    "reviewer": "User explicitly instructed: Ok enable the policy, after disclosure that external591 ownership remains unresolved. Preserve that ownership and refresh authorizations before resuming affected work."
+    "date": "2026-10-07",
+    "digest": "sha256:011b4156d5db4525f1c3d39efe4a34ebbc3bfd752095d6badbc43dcc42d29c02",
+    "reviewer": "User previously explicitly approved the exact durable #523-first portfolio order and instructed that dependencies/blockers be respected; all other current policy settings are preserved."
   },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:e74b15c37fafa3c1f3b2ecfa623591c86170ee22f4a5ec0f757c0bdef2ed4dbb",
+      "digest": "sha256:ad68e4e816cfdc8bdd7d429fd030b975ff64118e8c03283b09d856decd89fbb7",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
-      "digest": "sha256:26ac62c4e0632f7c42d6f2dcb87e0cf1f6474e44ac819fd4c94c368fa232bd5d",
+      "digest": "sha256:cf91342e17c626efb643153d90b445d16f2e1416b01392b53f75074d68243497",
       "path": ".zzzops/PROJECT.md"
     }
   },
@@ -350,6 +350,18 @@
       "change": "Reviewed policy revision 60",
       "date": "2026-10-04",
       "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:092b3a63b350f331d33e7f9f78508a0c1ec501e07bd1e58d62c9e5d99fad900d."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 61",
+      "date": "2026-10-07",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "User previously explicitly approved the exact durable #523-first portfolio order and instructed that dependencies/blockers be respected; all other current policy settings are preserved.",
+      "change": "Reviewed policy revision 62",
+      "date": "2026-10-07",
+      "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:7fa7180c8282851565006e8c377775e6f66e3fc55dff5c5f450ac8e5aed643f2."
     }
   ],
   "initialized": true,
@@ -3786,6 +3798,26 @@
             "enabled": true
           },
           "max_workers": 10,
+          "portfolio_order": {
+            "ordered_goal_keys": [
+              523,
+              540,
+              563,
+              562,
+              503,
+              527,
+              507,
+              554,
+              515,
+              543,
+              504,
+              557,
+              566,
+              564,
+              550
+            ],
+            "rationale": "User explicitly directed goal523 next at P1, then this benefit/cost sequence for regular execute: 540 ->563 ->562 ->503 ->527 ->507 ->554 ->515 ->543 ->504 ->557 ->566 ->564 ->550. Apply preferences within existing priority tiers, respecting blockers, dependencies, ancestors and ownership/active claims; never promote to P0 or rewrite dependencies. 550 remains P3 and562 is P1."
+          },
           "refill": {
             "allowed_categories": [
               "documentation",
@@ -3821,13 +3853,13 @@
         "exceptions": [],
         "id": "autonomy_approval_parallelism",
         "instructions": "Capture requirements adaptively with the requesting user; during unattended execution persist consequential questions as blockers. Keep human interaction on root, enforce reviewed worker and resource limits, record privacy-safe execution diagnostics, and suggest only bounded valuable work in reviewed categories. Keep worktrees clean, remove or deliberately reuse them after work, and never abandon dirty worktrees. Do not automatically adopt suggested defaults without review.",
-        "rationale": "User approved adoption of the installed plugin default on 2026-10-01.",
+        "rationale": "User approved adoption of the installed plugin default on 2026-10-01. Record the exact user-directed durable queue preference after verifying existing equal-priority ordering support; retain priority semantics and all legality gates.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-10-02",
-          "reviewed_digest": "sha256:1c1ce5481ebeaff7deb20944a49673221f4e40835753ee88cd9c53cb7c90f743",
-          "reviewer": "User explicitly approved: Raise ZzzOps max_workers from 3 to 10 through policy-review; preserve all other settings. Reuse existing approvals where scope is unchanged."
+          "date": "2026-10-07",
+          "reviewed_digest": "sha256:7fa7180c8282851565006e8c377775e6f66e3fc55dff5c5f450ac8e5aed643f2",
+          "reviewer": "User previously explicitly approved the exact durable #523-first portfolio order and instructed that dependencies/blockers be respected; all other current policy settings are preserved."
         },
         "source_ids": [
           "E-DEFAULT-RESET-20261001"
@@ -3841,6 +3873,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 60,
+  "revision": 62,
   "schema_version": 1
 }
