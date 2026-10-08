@@ -1032,9 +1032,12 @@ class GitHubGoalTransitionAdapter:
         return issue
 
     def create_issue(self, payload: dict[str, Any]) -> dict[str, Any]:
+        created = []
+        def create():
+            issue = self._create_issue(payload); created.append(issue); return issue
         return self._transactional_write(
             "create_issue", {"repository": self.repository}, {"payload": payload},
-            lambda: self._create_issue(payload), lambda: None,
+            create, lambda: created[0] if created else None,
         )
 
     def _create_issue(self, payload: dict[str, Any]) -> dict[str, Any]:
