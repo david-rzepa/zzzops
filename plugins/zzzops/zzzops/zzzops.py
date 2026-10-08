@@ -39,6 +39,39 @@ def _working_result_digest(value: Any) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+def _transactional_provider_write(adapter, operation, target, arguments, call, postcondition):
+    context = _WORKING_INPUT_TRANSACTION.get()
+    if not context:
+        return call()
+    envelope = {"operation": operation, "target": target, "arguments": arguments}
+    encoded = json.dumps(envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    suffix = hashlib.sha256(encoded).hexdigest()[:24]
+    request_id = (context["request_id"][:96] + "-" + suffix)[:128]
+    store = _working_inputs.WorkingInputStore(
+        adapter.repo, repository=adapter.repository, owner=context["owner"])
+    subject = "provider:" + request_id
+    store.write(subject, "provider-mutation", envelope)
+    action = {"operation": operation, "target": target}
+    store.freeze(subject, "provider-mutation", request_id, action)
+    def check(_request, digest):
+        result = postcondition()
+        if result is None: return None
+        receipt = {"request_id": request_id, "digest": digest, "action": action,
+                   "authenticated": True, "provider_result": _working_result_digest(result)}
+        return {"applied": True, "receipt": receipt, "result": result}
+    store.provider_check = check
+    def apply(_request, body):
+        if json.loads(body) != envelope: raise ValueError("Frozen provider envelope mismatch")
+        call()
+        result = postcondition()
+        if result is None: raise ValueError("Provider mutation postcondition was not confirmed")
+        receipt = {"request_id": request_id, "digest": hashlib.sha256(body).hexdigest(),
+                   "action": action, "authenticated": True,
+                   "provider_result": _working_result_digest(result)}
+        return {"receipt": receipt, "result": result}
+    return store.dispatch(request_id, apply)["result"]
+
+
 def read_pull_request_correction_sources(repo: Path, repository: str, number: int, *, marker: dict) -> list[dict[str, Any]]:
     """Observe raw review comments, keyed by the provider's current PR marker.
 
@@ -1162,34 +1195,7 @@ class GitHubGoalTransitionAdapter:
         return issue
 
     def _transactional_write(self, operation, target, arguments, call, postcondition):
-        context = _WORKING_INPUT_TRANSACTION.get()
-        if not context:
-            return call()
-        envelope = {"operation": operation, "target": target, "arguments": arguments}
-        encoded = json.dumps(envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
-        suffix = hashlib.sha256(encoded).hexdigest()[:24]
-        request_id = (context["request_id"][:96] + "-" + suffix)[:128]
-        store = _working_inputs.WorkingInputStore(
-            self.repo, repository=self.repository, owner=context["owner"])
-        subject = "provider:" + request_id
-        store.write(subject, "provider-mutation", envelope)
-        action = {"operation": operation, "target": target}
-        store.freeze(subject, "provider-mutation", request_id, action)
-        def check(_request, digest):
-            result = postcondition()
-            if result is None: return None
-            receipt = {"request_id": request_id, "digest": digest, "action": action,
-                       "authenticated": True, "provider_result": _working_result_digest(result)}
-            return {"applied": True, "receipt": receipt, "result": result}
-        store.provider_check = check
-        def apply(_request, body):
-            if json.loads(body) != envelope: raise ValueError("Frozen provider envelope mismatch")
-            result = call()
-            receipt = {"request_id": request_id, "digest": hashlib.sha256(body).hexdigest(),
-                       "action": action, "authenticated": True,
-                       "provider_result": _working_result_digest(result)}
-            return {"receipt": receipt, "result": result}
-        return store.dispatch(request_id, apply)["result"]
+        return _transactional_provider_write(self, operation, target, arguments, call, postcondition)
 
 
 _validate_reservation_goal = _reservation._validate_reservation_goal
@@ -2544,7 +2550,7 @@ def sanitize_output(value: str) -> str:
     return re.sub(r"(https?://)[^/@\s]+@", r"\1***@", value)
 
 
-_reservation.configure_entrypoint(parse_managed_goal, sanitize_output)
+_reservation.configure_entrypoint(parse_managed_goal, sanitize_output, _transactional_provider_write)
 
 
 def github_repository_probe(repo: Path) -> dict[str, Any]:

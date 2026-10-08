@@ -5579,9 +5579,13 @@ def _public_response(api, repo, intent, source, runtime, payload, number, *, ski
     if payload_supplied:
         options['payload_supplied'] = True
     transaction = None
-    if isinstance(payload, dict) and isinstance(payload.get('request_id'), str):
+    if isinstance(payload, dict):
+        request_id = payload.get('request_id')
+        if not isinstance(request_id, str):
+            encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
+            request_id = 'workflow-' + hashlib.sha256(encoded).hexdigest()[:48]
         transaction = api._WORKING_INPUT_TRANSACTION.set({
-            'request_id': payload['request_id'], 'owner': (runtime or {}).get('root_id', 'root')})
+            'request_id': request_id, 'owner': (runtime or {}).get('root_id', 'root')})
     try:
         result = _public_run(
             api, repo, intent, source, runtime, payload, number,
@@ -5599,7 +5603,15 @@ def _public_response(api, repo, intent, source, runtime, payload, number, *, ski
         repository = ((snapshot.get('project') or {}).get('repository') or {}).get('identity', 'local')
         owner = (runtime or {}).get('root_id', 'root')
         carried_draft = (runtime or {}).get('working_input_draft')
-        draft_identity = carried_draft if isinstance(carried_draft, str) else str(uuid.uuid4())
+        logical_session = os.environ.get('CODEX_THREAD_ID')
+        if isinstance(carried_draft, str):
+            draft_identity = carried_draft
+        elif number is None and isinstance(logical_session, str) and logical_session:
+            draft_identity = api._working_inputs.WorkingInputStore(
+                repo, repository=repository, owner=owner,
+            ).draft_session(purpose, logical_session)
+        else:
+            draft_identity = str(uuid.uuid4())
         subject = f'goal:{number}' if number is not None else f'draft:{draft_identity}'
         result['working_input'] = api._working_inputs.WorkingInputStore(
             repo, repository=repository, owner=owner,

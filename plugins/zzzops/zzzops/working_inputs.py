@@ -73,6 +73,7 @@ class WorkingInputStore:
         except OSError: pass
         self.lock_path = coordination / ".lock"
         self.refs_path = coordination / "references"
+        self.draft_sessions_path = coordination / "draft-sessions.json"
         self.root.mkdir(parents=True, exist_ok=True)
         for directory in (self.repo / ".zzzops/work", self.repo / ".zzzops/work/inputs", self.root):
             directory.mkdir(parents=True, exist_ok=True)
@@ -125,6 +126,23 @@ class WorkingInputStore:
         except FileNotFoundError: return {"inputs": {}, "requests": {}}
 
     def _save(self, state): _atomic_json(self.index_path, state)
+
+    def draft_session(self, purpose, session):
+        """Return the durable draft identity for one logical local session."""
+        if not isinstance(purpose, str) or not purpose or not isinstance(session, str) or not session:
+            raise ValueError("draft purpose and session must be non-empty strings")
+        key = hashlib.sha256((self.repository + "\0" + self.owner + "\0" + purpose + "\0" + session).encode()).hexdigest()
+        with self._locked():
+            try:
+                state = json.loads(self.draft_sessions_path.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                state = {}
+            value = state.get(key)
+            if not isinstance(value, str):
+                value = str(uuid.uuid4())
+                state[key] = value
+                _atomic_json(self.draft_sessions_path, state)
+            return value
 
     def _key(self, subject, purpose, owner=None):
         return "\0".join((owner or self.owner, purpose, subject))
