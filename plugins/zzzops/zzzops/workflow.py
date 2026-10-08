@@ -4928,6 +4928,8 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
                     if number is None: remaining_starts -= 1
                 else:
                     capacity_blocked = True
+                    waiting.append({**capacity_step(active_workers, limit),
+                                    'goal': step.get('goal', step.get('node', {}).get('goal'))})
             elif step.get('kind') in {'blocker', 'blocked', 'dependency', 'await_worker'}:
                 waiting.append(step)
             else:
@@ -4955,7 +4957,25 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     runnable_steps = []
     waiting_steps = []
     ordered_goals = api.effective_goal_order(goals, ordering_policy)
+    order_rank = {item['goal']: index for index, item in enumerate(ordered_goals)}
+    def response(steps, selected):
+        def goal_key(step):
+            return step.get('goal', step.get('node', {}).get('goal'))
+        deferred = sorted(waiting_steps, key=lambda step: order_rank.get(goal_key(step), len(order_rank)))
+        selected_keys = {goal_key(step) for step in selected}
+        deferred_keys = {goal_key(step) for step in deferred} - selected_keys
+        # Keep selected work visible even when a long preferred prefix waits.
+        # Both projections remain bounded and retain the effective DAG order.
+        visible = selected_keys | set([
+            item['goal'] for item in ordered_goals if item['goal'] in deferred_keys
+        ][:max(0, limit - len(selected_keys & set(order_rank)))])
+        ordering = [{**item, 'status': 'selected' if item['goal'] in selected_keys else 'deferred'}
+                    for item in ordered_goals if item['goal'] in visible][:limit]
+        if not selected and deferred:
+            steps = deferred[:limit]
+        return {'next_steps': steps, 'effective_order': ordering, 'deferred_steps': deferred[:limit]}
     candidate_batch = []
+    migration_attempted = False
     def flush_candidates():
         nonlocal candidate_batch
         if not candidate_batch: return
@@ -4989,15 +5009,25 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
         if goal.get('schema_version') != 2:
             flush_candidates()
             if len(runnable_steps) >= limit: break
+            if migration_attempted:
+                waiting_steps.append({'kind': 'blocker', 'goal': goal['key'],
+                    'reason': 'migration_frontier_deferred',
+                    'remediation': {'action': 'Retry this predecessor on a subsequent checkpoint; only one migration is attempted per checkpoint.',
+                        'retry': {'operation': 'migration_batch', 'action': 'migrate', 'goals': [goal['key']]}}})
+                continue
             # Broad routing may convert the one goal it actually selected, but
             # must never turn schema conversion into a repository-wide sweep.
+            migration_attempted = True
             result = api._migration_batch.run(engine, {'action': 'migrate', 'goals': [goal['key']]})
             member = result['next_steps'][0]['members'][str(goal['key'])]
             if member['status'] in {'migrated', 'already_current'}:
-                return {'next_steps': member['next_steps']}
-            return {'next_steps': [{'kind': 'blocker', 'goal': goal['key'],
+                partition(member['next_steps'], runnable_steps, waiting_steps)
+                steps = (runnable_steps or waiting_steps)[:limit]
+                return response(steps, runnable_steps[:limit])
+            waiting_steps.append({'kind': 'blocker', 'goal': goal['key'],
                 'reason': member.get('reason', member['status']),
-                'remediation': member.get('remediation')}]}
+                'remediation': member.get('remediation')})
+            continue
         candidate_batch.append(goal)
         if len(candidate_batch) >= limit:
             flush_candidates()
@@ -5009,7 +5039,7 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     if not steps:
         steps = [{'kind': 'terminal_report', 'assignment': 'root', 'state': 'complete',
                   'action': 'All goals are complete or the portfolio is empty. Report workflow exhaustion; no CLI command is required.'}]
-    return {'next_steps': steps}
+    return response(steps, runnable_steps[:limit])
 
 
 def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_snapshot=None, skip_installation_validation=False, payload_supplied=False):

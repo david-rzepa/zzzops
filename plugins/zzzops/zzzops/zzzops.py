@@ -3840,6 +3840,9 @@ def compact_workflow_response(repo: Path, goal: int | None, intent: str, respons
         )
     outcome = "blocked" if any(blocked(step) for step in steps) else "success"
     compact = {"outcome": outcome, "next_steps": steps, "full_response": reference}
+    for field in ("effective_order", "deferred_steps"):
+        if field in response:
+            compact[field] = copy.deepcopy(response[field])
     return compact
 
 
