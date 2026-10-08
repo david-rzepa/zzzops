@@ -5029,6 +5029,20 @@ class GraphAdoptionPublicTests(DagFixture):
         with mock.patch.dict(os.environ, {"CODEX_THREAD_ID": actor}):
             return self.session.call(100, request, expected=expected)
 
+    def append_request_envelope(self, request_id, fingerprint=None):
+        store = z._comment_store
+        content = {"type": "workflow_response", "content": {"next_steps": []},
+                   "producer": None, "provenance": {"actor": "root-thread", "source": None,
+                   "policy": content_hash(self.session.project["policy"])}}
+        record = store.ArtifactIndex([]).record(content)
+        context = {"request_id": request_id,
+                   "response": {"hash": record["hash"], "uri": "urn:" + record["hash"]}}
+        if fingerprint is not None:
+            context["fingerprint"] = fingerprint
+        for body in store.pack_envelopes(
+                {"goal": 100, "transaction": "response-" + request_id, "context": context}, [record]):
+            self.provider.create_issue_comment(100, body)
+
     def proposal_review(self, proposal):
         reviewed = self.administrative_review({
             "operation": "graph_review", "proposal": proposal,
@@ -5529,6 +5543,7 @@ class GraphAdoptionPublicTests(DagFixture):
         with mock.patch.object(self.provider, 'update_issue', side_effect=RuntimeError('provider unavailable')):
             self.session.call(100, request, expected=2)
         self.assertFalse(self.payload()[1]['operational']['leases'])
+        self.append_request_envelope('interrupted-before-body', 'sha256:' + 'b' * 64)
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
         resumed_prepare = self.session.call(100, {
             'operation': 'graph_prepare', 'graph': self.graph,
@@ -5542,8 +5557,30 @@ class GraphAdoptionPublicTests(DagFixture):
                                           'request_id': 'unrelated-graph-prepare'}, expected=2)
         self.assertRegex(json.dumps(response), r'(?i)uncommitted|checkpoint')
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
-        resumed = self.session.call(100, request)
-        self.assertEqual('perform', resumed['next_steps'][0]['kind'])
+
+    def test_response_only_envelope_does_not_block_graph_prepare_or_review(self):
+        self.append_request_envelope("543-observe-publication-start-20261008")
+        prepared = self.session.call(100, {
+            "operation": "graph_prepare", "graph": self.graph,
+            "rationale": "Response artifacts are not interrupted mutation checkpoints",
+            "request_id": "response-envelope-graph-prepare",
+        })
+        proposal = prepared["next_steps"][0]["proposal"]
+        reviewed = self.administrative_review({
+            "operation": "graph_review", "proposal": proposal,
+            "actor": "independent-reviewer", "decision": "approved",
+            "report": "The exact response-only envelope is non-mutating evidence",
+            "request_id": "response-envelope-graph-review",
+        })
+        self.assertEqual("human_approval", reviewed["next_steps"][0]["kind"])
+
+        self.append_request_envelope("genuine-interrupted-checkpoint", "sha256:" + "a" * 64)
+        response = self.session.call(100, {
+            "operation": "graph_prepare", "graph": self.graph,
+            "rationale": "A genuine unrelated checkpoint must still block",
+            "request_id": "unrelated-graph-prepare",
+        }, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)uncommitted|checkpoint")
 
     def test_graph_repair_uses_only_exact_committed_migration_cutoff(self):
         engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)

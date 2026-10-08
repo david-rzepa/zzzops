@@ -2418,10 +2418,12 @@ class Workflow:
                 continue
             context = row.get('context') or {}
             request_id = context.get('request_id')
-            if request_id and request_id not in committed and request_id != pending_request:
+            fingerprint = context.get('fingerprint')
+            if (request_id and fingerprint is not None and request_id not in committed
+                    and request_id != pending_request):
                 if historical is None: historical = self.node_committed_legacy_requests(snapshot)
                 if (row.get('goal') == snapshot['number'] and request_id in historical and
-                        context.get('fingerprint') == historical[request_id]): continue
+                        fingerprint == historical[request_id]): continue
                 raise ValueError('Uncommitted checkpoint must be resumed before graph repair: '
                                  'no committed legacy migration proof for exact goal/request/fingerprint')
         if not isinstance(rationale, str) or not rationale.strip():
