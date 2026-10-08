@@ -5593,7 +5593,8 @@ def _public_response(api, repo, intent, source, runtime, payload, number, *, ski
     if purpose is not None:
         repository = ((snapshot.get('project') or {}).get('repository') or {}).get('identity', 'local')
         owner = (runtime or {}).get('root_id', 'root')
-        subject = f'goal:{number}' if number is not None else f'draft:{purpose}'
+        draft_identity = uuid.uuid5(uuid.NAMESPACE_URL, f'{repo.resolve()}:{owner}:{purpose}')
+        subject = f'goal:{number}' if number is not None else f'draft:{draft_identity}'
         result['working_input'] = api._working_inputs.WorkingInputStore(
             repo, repository=repository, owner=owner,
         ).guidance(subject, purpose)
