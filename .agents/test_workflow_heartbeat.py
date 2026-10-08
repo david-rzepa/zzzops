@@ -83,6 +83,36 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
             time.sleep(.02)
         self.fail("timed out waiting for heartbeat process")
 
+    def test_local_capacity_inventory_is_exact_and_independent_of_renewal(self):
+        self.assertEqual(0, heartbeat.active_lease_count(
+            repo=self.repo, root_id="root-a", state_dir=self.state))
+        heartbeat.track_capacity(repo=self.repo, root_id="root-a", goal=40,
+                                 phase="implement", token="capacity-token", state_dir=self.state)
+        heartbeat.track_capacity(repo=self.repo, root_id="root-a", goal=40,
+                                 phase="implement", token="capacity-token", state_dir=self.state)
+        self.assertEqual(1, heartbeat.active_lease_count(
+            repo=self.repo, root_id="root-a", state_dir=self.state))
+        heartbeat.untrack_capacity(repo=self.repo, root_id="root-a", goal=40,
+                                   phase="implement", token="capacity-token", state_dir=self.state)
+        self.assertEqual(0, heartbeat.active_lease_count(
+            repo=self.repo, root_id="root-a", state_dir=self.state))
+
+    def test_malformed_local_capacity_inventory_fails_closed(self):
+        paths = heartbeat._capacity_paths(self.repo, self.state)
+        heartbeat._atomic_write(paths["config"], {"schema_version": 1, "repositories": [], "slots": "unknown"})
+        with self.assertRaisesRegex(ValueError, "capacity inventory is invalid"):
+            heartbeat.active_lease_count(repo=self.repo, root_id="root-a", state_dir=self.state)
+
+    def test_repository_machine_inventory_is_shared_across_roots_but_not_repositories(self):
+        other = self.directory / "other-repo"; other.mkdir()
+        heartbeat.track_capacity(repo=self.repo, root_id="root-a", goal=41,
+                                 phase="implement", token="machine-slot", state_dir=self.state)
+        self.assertEqual(1, heartbeat.active_lease_count(
+            repo=self.repo, root_id="root-b", state_dir=self.state))
+        other_state = self.directory / "other-state"
+        self.assertEqual(0, heartbeat.active_lease_count(
+            repo=other, root_id="root-b", state_dir=other_state))
+
     def _lines(self, path):
         try:
             return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]

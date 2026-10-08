@@ -209,33 +209,94 @@ class SchedulingInventoryContinuationTests(DagFixture):
             self.provider.create_issue_comment(101, row['body'])
         self.put_envelope(101, envelope)
 
-    def test_targeted_checkpoint_loads_unrelated_owner_before_offering_start(self):
+    def test_targeted_checkpoint_counts_local_machine_slot_before_offering_start(self):
         self.session.acquire('produce')
         self.add_goal(101, self.graph)
-        response = self.session.call(101)
+        with mock.patch.object(self.provider, 'get_issue_comments', wraps=self.provider.get_issue_comments) as reads:
+            response = self.session.call(101)
         self.assertEqual(set(), self.ready_names(response))
         self.assertEqual(1, next(step['active_leases'] for step in response['next_steps'] if 'active_leases' in step))
+        self.assertLessEqual({call.args[0] for call in reads.call_args_list}, {100, 101})
 
-    def test_continuation_counts_unrelated_owner_and_released_local_lease(self):
+    def test_continuation_ignores_other_machine_owner_after_releasing_local_slot(self):
         work = self.session.acquire('produce')
         self.add_unrelated_owner(work)
         response = self.session.finish(work, {'value': 'candidate'})
-        self.assertEqual(set(), self.ready_names(response))
-        self.assertEqual(1, next(step['active_leases'] for step in response['next_steps'] if 'active_leases' in step))
+        self.assertEqual({'review_a', 'review_b'}, self.ready_names(response))
         self.assertFalse(self.payload()[1]['operational']['leases'])
 
-    def test_unavailable_inventory_blocks_checkpoint_and_scheduling_submit(self):
+    def test_unavailable_unrelated_history_does_not_define_local_capacity(self):
         work = self.session.acquire('produce')
         self.add_goal(101, self.graph)
         self.add_goal(102, self.graph)
         self.provider.comments[101] = []
-        before = copy.deepcopy((self.provider.issues, self.provider.comments))
-        failed = self.session.call(102, expected=2)
-        self.assertFalse(self.ready_names(failed))
+        blocked = self.session.call(102)
+        self.assertFalse(self.ready_names(blocked))
         request = self.session.submission(work, {'value': 'candidate'}, 'unavailable-inventory')
-        failed = self.session.call(100, request, expected=2)
-        self.assertRegex(json.dumps(failed), 'Ownership inventory unavailable')
-        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        response = self.session.call(100, request)
+        self.assertEqual({'review_a', 'review_b'}, self.ready_names(response))
+
+    def test_broad_checkpoint_hydrates_only_selected_frontier_not_all_owners(self):
+        for number in range(101, 121):
+            self.add_goal(number, self.graph)
+        z._heartbeat.initialize_capacity(repo=self.fixture.repo, slots=[])
+        with mock.patch.object(z, 'GitHubGoalTransitionAdapter', return_value=self.provider), \
+                mock.patch.object(z, 'portfolio_snapshot', side_effect=self.session.portfolio_snapshot), \
+                mock.patch.object(z, 'provider_issue_snapshot',
+                                  side_effect=lambda _repo, _repository, number: copy.deepcopy(self.provider.issues[number])):
+            engine = z._workflow.Workflow(z, self.fixture.repo, self.session.project, self.fixture.runtime)
+            engine.read_only()
+            with mock.patch.object(engine, 'artifact_index', wraps=engine.artifact_index) as indexes:
+                response = z._workflow.checkpoint(
+                    z, self.fixture.repo, self.session.project, self.fixture.runtime, engine=engine)
+        self.assertTrue(self.ready_names(response))
+        hydrated = {call.args[0] for call in indexes.call_args_list}
+        self.assertLessEqual(len(hydrated), 1)
+        self.assertLess(len(hydrated), 21)
+
+    def test_first_capacity_read_bootstraps_preupgrade_durable_owner(self):
+        work = self.session.acquire('produce')
+        z._heartbeat._capacity_paths(self.fixture.repo)['config'].unlink(missing_ok=True)
+        self.add_goal(101, self.graph)
+        response = self.session.call(101)
+        self.assertFalse(self.ready_names(response))
+        self.assertEqual(1, next(step['active_leases'] for step in response['next_steps']
+                                 if 'active_leases' in step))
+        inventory = z._heartbeat.capacity_inventory(repo=self.fixture.repo)
+        self.assertTrue(inventory['initialized'])
+        self.assertEqual([work['lease']['token']], [slot['token'] for slot in inventory['slots']])
+        self.session.finish(work, {'value': 'cleanup'})
+
+    def test_stale_local_slot_is_removed_after_exact_durable_reconciliation(self):
+        z._heartbeat.initialize_capacity(repo=self.fixture.repo, slots=[])
+        node = {'goal': 100, 'node': 'produce', 'item': None, 'generation': 1}
+        z._heartbeat.track_capacity(repo=self.fixture.repo, root_id=self.fixture.runtime['root_id'],
+                                    goal=100, phase=json.dumps(node, sort_keys=True), token='stale-local')
+        response = self.session.call(100)
+        self.assertIn('produce', self.ready_names(response))
+        self.assertEqual([], z._heartbeat.capacity_inventory(repo=self.fixture.repo)['slots'])
+
+    def test_malformed_slot_goal_retains_capacity_and_fails_closed(self):
+        z._heartbeat.initialize_capacity(repo=self.fixture.repo, slots=[])
+        node = {'goal': 100, 'node': 'produce', 'item': None, 'generation': 1}
+        z._heartbeat.track_capacity(repo=self.fixture.repo, root_id=self.fixture.runtime['root_id'],
+                                    goal=100, phase=json.dumps(node, sort_keys=True), token='uncertain-local')
+        self.add_goal(101, self.graph)
+        raw = self.session.portfolio_snapshot
+        def malformed(*args, **kwargs):
+            value = raw(*args, **kwargs)
+            value['goals'] = [goal for goal in value['goals'] if goal['key'] != 100]
+            value['findings'] = value.get('findings', []) + [
+                {'code': 'malformed_record', 'goal': 100, 'detail': 'synthetic corruption'}]
+            value['complete'] = True
+            return value
+        self.session.portfolio_snapshot = malformed
+        failed = self.session.call(101, expected=2)
+        self.assertRegex(json.dumps(failed), r'(?i)local worker slot.*malformed|unavailable')
+        self.assertEqual(['uncertain-local'], [slot['token'] for slot in
+                         z._heartbeat.capacity_inventory(repo=self.fixture.repo)['slots']])
+        z._heartbeat.untrack_capacity(repo=self.fixture.repo, root_id=self.fixture.runtime['root_id'],
+                                      goal=100, phase=json.dumps(node, sort_keys=True), token='uncertain-local')
 
     def test_nonscheduling_continuation_and_owned_checkpoint_skip_unrelated_inventory(self):
         graph = copy.deepcopy(self.graph)

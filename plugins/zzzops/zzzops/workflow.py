@@ -269,6 +269,48 @@ def unresolved_lease_count(goals):
     )
 
 
+def local_worker_count(engine):
+    """Reconcile bounded local slots, then return repository/machine capacity."""
+    root = (engine.runtime or {}).get('root_id')
+    if not isinstance(root, str) or not root:
+        return 0
+    try:
+        inventory = engine.api._heartbeat.capacity_inventory(repo=engine.repo)
+        if not inventory['initialized']:
+            goals = engine.portfolio(allow_invalid=True, include_ownership=True)
+            slots = []
+            for goal in goals:
+                for lease in goal.get('operational_leases', []):
+                    owner, node, token = lease.get('owner'), lease.get('node'), lease.get('token')
+                    if isinstance(owner, str) and owner and isinstance(node, dict) and isinstance(token, str) and token:
+                        slots.append({'root_id': owner, 'goal': goal['key'],
+                                      'phase': json.dumps(node, sort_keys=True), 'token': token})
+            engine.api._heartbeat.initialize_capacity(repo=engine.repo, slots=slots)
+            inventory = engine.api._heartbeat.capacity_inventory(repo=engine.repo)
+        goals = {goal['key']: goal for goal in engine.portfolio(allow_invalid=True)}
+        portfolio = getattr(engine, '_portfolio_cache', {})
+        for slot in inventory['slots']:
+            goal = goals.get(slot['goal'])
+            present = False
+            if goal is None:
+                findings = portfolio.get('findings', []) if isinstance(portfolio, dict) else []
+                if (not isinstance(portfolio, dict) or portfolio.get('complete') is not True
+                        or any(isinstance(item, dict) and item.get('goal') == slot['goal'] for item in findings)):
+                    raise ValueError(f"Local worker slot goal #{slot['goal']} is malformed or unavailable")
+            elif goal.get('schema_version') != 2:
+                raise ValueError(f"Local worker slot goal #{slot['goal']} requires ownership migration or recovery")
+            else:
+                payload = engine.artifact_index(goal['key']).resolve(goal['envelope']['payload']['hash'])[0]
+                present = any(lease.get('token') == slot['token'] for lease in payload['operational']['leases'])
+            if not present:
+                engine.api._heartbeat.untrack_capacity(
+                    repo=engine.repo, root_id=slot['root_id'], goal=slot['goal'],
+                    phase=slot['phase'], token=slot['token'])
+        return engine.api._heartbeat.active_lease_count(repo=engine.repo, root_id=root)
+    except (OSError, ValueError, TypeError) as exc:
+        raise ValueError(f'Local worker capacity inventory unavailable: {exc}') from exc
+
+
 def state(goal):
     result = copy.deepcopy(goal.get('workflow') or {'leases': {}, 'receipts': {}, 'workers': {}, 'assessments': {}, 'artifacts': {}})
     result.setdefault('routing_choices', {})
@@ -1838,10 +1880,21 @@ class Workflow:
             return response
         node = request.get('node')
         lease = next((v for v in durable.get('leases', []) if v['node'] == node), None)
-        if not lease or not lease.get('worker') or lease['owner'] != (self.runtime or {}).get('root_id'):
+        if not lease or lease['owner'] != (self.runtime or {}).get('root_id'):
             return response
         step = next((v for v in response.get('next_steps', []) if v.get('node') == node), None)
         if step is None or (step.get('lease') or {}).get('token') != lease['token']:
+            return response
+        phase = json.dumps(node, sort_keys=True)
+        try:
+            self.api._heartbeat.track_capacity(
+                repo=self.repo, root_id=lease['owner'], goal=number,
+                phase=phase, token=lease['token'])
+        except (OSError, ValueError, TypeError) as exc:
+            step['monitoring'] = {'status': 'unavailable', 'reason': str(exc),
+                'action': 'Ownership remains held. Repair the local capacity inventory and replay this exact acquisition before starting more work.'}
+            return response
+        if not lease.get('worker'):
             return response
         settings = (self.runtime or {}).get('heartbeat') or {}
         probes = settings.get('probes', {}) if isinstance(settings, dict) else {}
@@ -1859,7 +1912,7 @@ class Workflow:
             result = self.api._heartbeat.start_heartbeat(
                 repo=self.repo, root_id=lease['owner'], runtime_path=Path(runtime_path),
                 cli_path=Path(__file__).with_name('zzzops.py'), goal=number, node=node,
-                phase=json.dumps(node, sort_keys=True), token=lease['token'], actor=lease['worker'],
+                phase=phase, token=lease['token'], actor=lease['worker'],
                 probe_argv=probe, grace_seconds=min(grace, remaining - 60), interval_seconds=interval)
             step['monitoring'] = {'status': 'automatic', 'pid': result['pid']}
         except (OSError, ValueError, TypeError) as exc:
@@ -1875,6 +1928,8 @@ class Workflow:
         if not token or any(v['token'] == token for v in leases):
             return response
         try:
+            self.api._heartbeat.untrack_capacity(repo=self.repo, root_id=(self.runtime or {}).get('root_id'),
+                goal=number, phase=json.dumps(payload.get('node'), sort_keys=True), token=token)
             self.api._heartbeat.stop_heartbeat(repo=self.repo, root_id=(self.runtime or {}).get('root_id'),
                 goal=number, phase=json.dumps(payload.get('node'), sort_keys=True), token=token)
         except (OSError, ValueError) as exc:
@@ -4257,7 +4312,7 @@ class Workflow:
                 if draft_acquisition.get('stopped_draft') and draft_acquisition.get('input_hash') != state['input_hash']:
                     raise ValueError('Stopped workspace draft full input identity changed; reconcile current authority before acquisition')
                 if any(set(state['contract']['executor']['resources']).intersection(projection['states'][other]['contract']['executor']['resources']) for other in projection['leases'] if other in projection['states']): raise ValueError('Declared resource is already owned')
-                if unresolved_lease_count(self.portfolio(include_ownership=True)) >= worker_limit(self.project): raise ValueError('Reviewed max_workers capacity occupied by unresolved owner')
+                if local_worker_count(self) >= worker_limit(self.project): raise ValueError('Reviewed max_workers capacity occupied on this machine')
                 step = self.node_step(state, snapshot)
                 if step['kind'] != 'execute': raise ValueError('Capability choice must be resolved before acquisition')
                 _, receipt = self.node_policy(state)
@@ -4279,6 +4334,13 @@ class Workflow:
                 lease['acquisition'].update(inputs=copy.deepcopy(state['inputs']), resolutions=copy.deepcopy(state['resolutions']), contract=state['contract_hash'])
                 if pending: lease.update(copy.deepcopy(pending['response']['next_steps'][0]['lease']))
                 leases.append(lease)
+                # Reserve local capacity before the durable provider write. A
+                # crash can leave only a conservative local slot, which the
+                # next exact reconciliation removes; the inverse ordering could
+                # publish ownership while leaving capacity apparently free.
+                self.api._heartbeat.track_capacity(
+                    repo=self.repo, root_id=root, goal=number,
+                    phase=json.dumps(node, sort_keys=True), token=lease['token'])
                 response = {'next_steps': [{**step, 'kind': 'perform', 'lease': lease, 'acquisition': lease['acquisition'],
                     'bind': {'operation': 'bind', 'node': node, 'lease': lease['token'], 'actor': '<actual worker>', 'selection': lease['selection'], 'policy_receipt': '<read policy.path>'},
                     'submission': {'operation': 'submit', 'node': node}}]}
@@ -4785,14 +4847,15 @@ def capacity_step(active_leases, limit):
 
 
 def scoped_frontier(steps, engine, limit, number, *, prospective_leases=None):
-    """Observe complete ownership only when the addressed frontier offers starts."""
+    """Apply this machine's worker ceiling to the addressed frontier."""
     active = 0
     if any(step.get('kind') in {'execute', 'review', 'human_approval'} and isinstance(step.get('start'), dict) for step in steps):
-        goals = engine.portfolio(allow_invalid=True, include_ownership=True)
+        active = local_worker_count(engine)
+        # A submission continuation is computed before its post-commit local
+        # cleanup. The submitting durable lease is absent from the prospective
+        # payload, so reserve its just-freed slot for the returned frontier.
         if prospective_leases is not None:
-            for goal in goals:
-                if goal['key'] == number: goal['operational_leases'] = prospective_leases
-        active = unresolved_lease_count(goals)
+            active = max(0, active - 1)
     runnable, waiting, capacity_blocked = [], [], False
     for step in steps:
         if step.get('kind') in {'execute', 'review', 'human_approval'} and isinstance(step.get('start'), dict):
@@ -4809,7 +4872,7 @@ def scoped_frontier(steps, engine, limit, number, *, prospective_leases=None):
 
 def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     engine = engine or Workflow(api, repo, project, runtime)
-    goals = engine.portfolio(allow_invalid=True, include_ownership=number is None)
+    goals = engine.portfolio(allow_invalid=True)
     ordering_policy = next(
         (
             section.get('configuration', {}).get('portfolio_order')
@@ -4819,18 +4882,14 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
         None,
     )
     limit = worker_limit(project)
-    remaining_starts = max(0, limit - unresolved_lease_count(goals))
+    active_workers = local_worker_count(engine)
+    remaining_starts = max(0, limit - active_workers)
     capacity_blocked = False
-    inventory_observed = number is None
     def partition(steps, runnable, waiting):
-        nonlocal remaining_starts, capacity_blocked, inventory_observed, goals
+        nonlocal remaining_starts, capacity_blocked
         for step in steps:
             starts_worker = step.get('kind') in {'execute', 'review', 'human_approval'} and isinstance(step.get('start'), dict)
             if starts_worker:
-                if not inventory_observed:
-                    goals = engine.portfolio(allow_invalid=True, include_ownership=True)
-                    remaining_starts = max(0, limit - unresolved_lease_count(goals))
-                    inventory_observed = True
                 if remaining_starts:
                     runnable.append(step)
                     if number is None: remaining_starts -= 1
@@ -4897,7 +4956,7 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
         if len(runnable_steps) >= limit:
             break
     if capacity_blocked and len(runnable_steps) < limit:
-        runnable_steps.append(capacity_step(unresolved_lease_count(goals), limit))
+        runnable_steps.append(capacity_step(active_workers, limit))
     steps = (runnable_steps or waiting_steps)[:limit]
     if not steps:
         steps = [{'kind': 'terminal_report', 'assignment': 'root', 'state': 'complete',
