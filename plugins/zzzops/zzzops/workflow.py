@@ -2535,15 +2535,23 @@ class Workflow:
         if (not isinstance(result, dict) or set(result) != {'hash', 'uri'}
                 or result != self.node_ref(result.get('hash'), number)):
             return None
-        selected = [(comment, item) for comment, item in index.envelope_comments
+        matching = [(comment, item) for comment, item in index.envelope_comments
                     if (item.get('context') or {}).get('response') == result]
-        if not selected:
+        if not matching:
             return None
-        contexts = [item.get('context') or {} for _, item in selected]
-        transactions = {item.get('transaction') for _, item in selected}
-        if (any(context != contexts[0] for context in contexts) or len(transactions) != 1
-                or not re.fullmatch(r'sha256:[0-9a-f]{64}', next(iter(transactions)) or '')):
+        transactions = {item.get('transaction') for _, item in matching}
+        if len(transactions) != 1 or not re.fullmatch(r'sha256:[0-9a-f]{64}', next(iter(transactions)) or ''):
             return None
+        transaction = next(iter(transactions))
+        selected = [(comment, item) for comment, item in index.envelope_comments
+                    if item.get('transaction') == transaction]
+        try:
+            complete = [comment_store.decode_envelope(comment['body']) for comment, _ in selected]
+            if any(item is None for item in complete): return None
+            comment_store.verify_manifest(complete)
+        except (KeyError, TypeError, ValueError): return None
+        contexts = [item.get('context') or {} for item in complete]
+        if any(context != contexts[0] for context in contexts): return None
         context = contexts[0]; source = context.get('source_envelope'); target = context.get('target_envelope')
         required = {'request_id', 'request_hash', 'source_hash', 'human_hash', 'root', 'response',
                     'ownership', 'acquisition', 'payload', 'proof', 'source_envelope',
@@ -2563,7 +2571,7 @@ class Workflow:
         if not isinstance(response, dict) or not isinstance(response.get('next_steps'), list):
             return None
         return {'source': source, 'target': target, 'context': context,
-                'transaction': next(iter(transactions)), 'comment_ids': set(identities), 'response': response}
+                'transaction': transaction, 'comment_ids': set(identities), 'response': response}
 
     def node_checkpoint_reconciled(self, snapshot, index, row, receipts):
         """Accept only a current, committed, independently reviewed exact waiver."""

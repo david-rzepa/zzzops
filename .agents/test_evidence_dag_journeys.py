@@ -5654,6 +5654,43 @@ class GraphAdoptionPublicTests(DagFixture):
 
         later_context = next(copy.deepcopy(item['context']) for item in index.envelopes
                              if (item.get('context') or {}).get('request_id') == 'later-committed-graph-review')
+        manifest_response = {'next_steps': [], 'kind': 'manifest-regression'}
+        manifest_ref = {'hash': content_hash(manifest_response),
+                        'uri': f"zzzops:owner/repo:goal:100:{content_hash(manifest_response)}"}
+        manifest_context = {**later_context, 'request_id': 'multipart-edge',
+                            'request_hash': content_hash({'request': 'multipart-edge'}),
+                            'response': manifest_ref}
+        noise = [''.join(content_hash({'part': part, 'item': item}) for item in range(1800))
+                 for part in range(3)]
+        materializer = z._comment_store.ArtifactIndex([])
+        records = [materializer.record(value) for value in [manifest_response, *noise]]
+        multipart_transaction = 'sha256:' + 'c' * 64
+        multipart = z._comment_store.pack_envelopes(
+            {'goal': 100, 'transaction': multipart_transaction, 'context': manifest_context}, records)
+        self.assertGreater(len(multipart), 1, 'Regression requires a real multipart transaction')
+        multipart_receipt = {'request': manifest_context['request_id'],
+                             'payload': manifest_context['request_hash'], 'result': manifest_ref}
+
+        def multipart_index(bodies):
+            return z._comment_store.ArtifactIndex(
+                [{'id': 1000 + offset, 'body': body} for offset, body in enumerate(bodies)])
+
+        self.assertIsNotNone(engine.node_receipt_edge(100, multipart_index(multipart), multipart_receipt))
+        self.assertIsNone(engine.node_receipt_edge(100, multipart_index(multipart[:-1]), multipart_receipt),
+                          'A missing transaction part must fail closed')
+        self.assertIsNone(engine.node_receipt_edge(100, multipart_index([*multipart, multipart[0]]), multipart_receipt),
+                          'A duplicate transaction part must fail closed')
+        mismatched = list(multipart); decoded = z._comment_store.decode_envelope(mismatched[0])
+        decoded['manifest'][0] = 'sha256:' + 'd' * 64
+        mismatched[0] = z._comment_store.encode_envelope(decoded)
+        self.assertIsNone(engine.node_receipt_edge(100, multipart_index(mismatched), multipart_receipt),
+                          'A mismatched manifest member must fail closed')
+        split = list(multipart); decoded = z._comment_store.decode_envelope(split[-1])
+        decoded['context'] = {**decoded['context'], 'response': later_context['response']}
+        split[-1] = z._comment_store.encode_envelope(decoded)
+        self.assertIsNone(engine.node_receipt_edge(100, multipart_index(split), multipart_receipt),
+                          'A response-matching subset cannot stand in for its complete transaction')
+
         later_context['request_id'] = 'forged-committed-fork'
         later_context['request_hash'] = 'sha256:' + 'a' * 64
         later_context['target_envelope'] = {**later_context['target_envelope'], 'parent': {'goal': 999}}
