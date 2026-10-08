@@ -225,7 +225,12 @@ class WorkingInputStore:
                 identity = {"digest": digest, "action": action, "payload_id": descriptor["payload_id"],
                             "repository": self.repository, "owner": self.owner,
                             "subject": subject, "purpose": purpose}
-                if all(prior.get(field) == value for field, value in identity.items()):
+                prior_action = prior.get("action")
+                compatible_action = prior_action == action or (
+                    isinstance(prior_action, dict) and set(prior_action) == {"operation", "target"}
+                    and isinstance(action, dict)
+                    and prior_action == {"operation": action.get("operation"), "target": action.get("target")})
+                if compatible_action and all(prior.get(field) == value for field, value in identity.items() if field != "action"):
                     return copy.deepcopy(prior)
                 raise ValueError("request_id already exists with different frozen identity")
             self.fault("before_snapshot")
@@ -377,10 +382,16 @@ class WorkingInputStore:
                 if (isinstance(receipt, dict) and receipt.get("request_id") == request_id
                         and receipt.get("digest") == row["digest"] and receipt.get("action") == row["action"]
                         and receipt.get("authenticated") is True):
+                    provider_result = outcome.get("result")
+                    expected = "sha256:" + hashlib.sha256(json.dumps(
+                        provider_result, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+                    if receipt.get("provider_result") != expected:
+                        self._uncertain(request_id, "unconfirmed-reconciliation")
+                    envelope = {"receipt": receipt, "result": provider_result}
                     with self._locked():
                         state = self._load(); recovered = state["requests"][request_id]
-                        recovered["state"] = "confirmed"; recovered["receipt"] = receipt; self._save(state)
-                    return outcome.get("result", receipt)
+                        recovered["state"] = "confirmed"; recovered["receipt"] = envelope; self._save(state)
+                    return provider_result
             if outcome is False or (isinstance(outcome, dict) and outcome.get("applied") is False):
                 with self._locked():
                     state = self._load(); state["requests"][request_id]["state"] = "frozen"; self._save(state)
@@ -420,9 +431,18 @@ class WorkingInputStore:
                         or not isinstance(receipt.get("provider_result"), str)
                         or not receipt["provider_result"]):
                     self._uncertain(request_id, "unconfirmed-reconciliation")
+                provider_result = outcome.get("result") if isinstance(outcome, dict) else None
+                if isinstance(outcome, dict):
+                    expected = "sha256:" + hashlib.sha256(json.dumps(
+                        provider_result, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+                    if receipt["provider_result"] != expected:
+                        self._uncertain(request_id, "unconfirmed-reconciliation")
+                    stored_receipt = {"receipt": receipt, "result": provider_result}
+                else:
+                    stored_receipt = receipt
                 with self._locked():
                     state = self._load(); state["requests"][request_id]["state"] = "confirmed"
-                    state["requests"][request_id]["receipt"] = receipt; self._save(state)
+                    state["requests"][request_id]["receipt"] = stored_receipt; self._save(state)
                 return self.status(request_id)
             if outcome is False or (isinstance(outcome, dict) and outcome.get("applied") is False):
                 with self._locked():

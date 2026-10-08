@@ -69,7 +69,16 @@ def _transactional_provider_write(adapter, operation, target, arguments, call, p
                    "action": action, "authenticated": True,
                    "provider_result": _working_result_digest(result)}
         return {"receipt": receipt, "result": result}
-    return store.dispatch(request_id, apply)["result"]
+    confirmed = store.dispatch(request_id, apply)
+    if isinstance(confirmed, dict) and "result" in confirmed:
+        return confirmed["result"]
+    # Compatibility with confirmations written before reconciled results used
+    # the normal dispatch envelope. Re-observe and bind the exact result.
+    if isinstance(confirmed, dict) and confirmed.get("authenticated") is True:
+        result = postcondition()
+        if result is not None and confirmed.get("provider_result") == _working_result_digest(result):
+            return result
+    raise ValueError("Confirmed provider mutation has no authenticated replay result")
 
 
 def read_pull_request_correction_sources(repo: Path, repository: str, number: int, *, marker: dict) -> list[dict[str, Any]]:
