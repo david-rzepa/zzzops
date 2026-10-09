@@ -35,6 +35,8 @@ except ImportError:  # POSIX
 
 _PROCESSES: dict[int, subprocess.Popen[Any]] = {}
 _WAKE = threading.Event()
+# Matches the validated PROJECT max_workers ceiling (policy.validate_policy).
+_MAX_RENEWAL_WORKERS = 20
 _HEALTH_SIGNAL_FIELDS = frozenset({"activity_at", "output_at", "cpu_progress_at", "io_progress_at", "operation_at"})
 _EXPECTED_IDLE_STATUSES = frozenset({"waiting", "awaiting_input", "provider_call", "sleeping"})
 
@@ -496,7 +498,7 @@ def start_heartbeat(
     interval_seconds: float = 300, probe_timeout_seconds: float = 10,
     retry_limit: int = 3, state_dir: Path | None = None,
     node: dict[str, Any] | None = None, grace_seconds: float = 0,
-    expires_at: float | None = None,
+    expires_at: float | None = None, max_workers: int = _MAX_RENEWAL_WORKERS,
 ) -> dict[str, Any]:
     """Upsert a local lease and ensure one detached coordinator for repo/root."""
     repo = repo.resolve()
@@ -514,6 +516,8 @@ def start_heartbeat(
     if expires_at is not None and (isinstance(expires_at, bool)
             or not isinstance(expires_at, (int, float)) or not math.isfinite(expires_at)):
         raise ValueError("lease expiry must be finite seconds")
+    if type(max_workers) is not int or not 1 <= max_workers <= _MAX_RENEWAL_WORKERS:
+        raise ValueError("heartbeat max_workers must match the supported policy range 1 to 20")
     paths = _paths(repo, root_id, state_dir)
     _ensure_private_directory(paths["directory"])
     lease = {
@@ -538,7 +542,13 @@ def start_heartbeat(
             for key in ("repo", "runtime_path", "cli_path", "registration", "expires_at",
                         "interval_seconds", "probe_timeout_seconds", "retry_limit"):
                 if key in previous: lease[key] = previous[key]
+        capacity = max(max_workers, config.get("max_workers", max_workers))
+        other_leases = [current for current in config["leases"]
+                        if (current.get("goal"), current.get("phase")) != (goal, phase)]
+        if len(other_leases) >= capacity:
+            raise ValueError("heartbeat registration capacity is occupied; reconcile existing monitoring")
         config.update({
+            "max_workers": capacity,
             "repo": str(repo), "root_id": root_id, "runtime_path": str(runtime_path),
             "cli_path": str(cli_path), "interval_seconds": float(interval_seconds),
             "probe_timeout_seconds": float(probe_timeout_seconds), "retry_limit": retry_limit,
@@ -729,9 +739,11 @@ def run(config_path: Path) -> int:
         lifetime.__enter__()
     except BlockingIOError:
         return 0
-    # Keep a finite number of subprocess trees alive, with no unbounded queue.
-    # A slow provider for one lease must not delay another lease's due attempt.
-    with ThreadPoolExecutor(max_workers=8, thread_name_prefix="zzzops-renew") as executor:
+    # The pool can accommodate the full validated policy ceiling, while the
+    # recorded reviewed capacity bounds dispatch. Threads are created lazily;
+    # policy changes can raise capacity without restarting the coordinator.
+    # Every supported registration therefore has room in the same renewal wave.
+    with ThreadPoolExecutor(max_workers=_MAX_RENEWAL_WORKERS, thread_name_prefix="zzzops-renew") as executor:
         pending = {}
         failures: dict[tuple, int] = {}
         try:
@@ -752,10 +764,13 @@ def run(config_path: Path) -> int:
                 leases = list(config["leases"])
                 if not leases:
                     return 0
+                capacity = config.get("max_workers", _MAX_RENEWAL_WORKERS)
+                if type(capacity) is not int or not 1 <= capacity <= _MAX_RENEWAL_WORKERS:
+                    raise ValueError("heartbeat registration capacity is invalid")
                 now = time.time()
                 for lease in sorted(leases, key=lambda v: v.get("renew_after", 0)):
                     key = (lease["goal"], lease["phase"], lease["token"], lease.get("registration"))
-                    if key in pending or lease.get("renew_after", 0) > now or len(pending) >= 8:
+                    if key in pending or lease.get("renew_after", 0) > now or len(pending) >= capacity:
                         continue
                     future = executor.submit(_attempt, config_path, config, lease, failures, key)
                     pending[key] = future

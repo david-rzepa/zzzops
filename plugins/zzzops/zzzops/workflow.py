@@ -1948,7 +1948,7 @@ class Workflow:
                 cli_path=Path(__file__).with_name('zzzops.py'), goal=number, node=node,
                 phase=phase, token=lease['token'], actor=lease['worker'],
                 probe_argv=probe, grace_seconds=min(grace, remaining - 60), interval_seconds=interval,
-                expires_at=lease['expires_at'])
+                expires_at=lease['expires_at'], max_workers=worker_limit(self.project))
             step['monitoring'] = {'status': 'automatic', 'pid': result['pid']}
         except (OSError, ValueError, TypeError) as exc:
             step['monitoring'] = {'status': 'unavailable', 'reason': str(exc),
