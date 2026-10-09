@@ -327,6 +327,32 @@ class StoppedDraftRecoveryTests(unittest.TestCase):
         c.session.project["policy"]["reviewed"] = False
         self.assertNotIn("beta", c.names(), "Current authority must still govern draft reacquisition")
 
+    def test_clean_committed_draft_reacquires_under_fresh_reviewed_authority_without_revival(self):
+        c = self.case
+        work, stopped = self.acquire_dirty_beta()
+        receipts = copy.deepcopy(c.payload()[1]["operational"]["receipts"])
+        self.recover(work, request_id="draft-before-reviewed-refresh")
+        _receipt, draft_ref, _draft = self.recovery_draft(receipts)
+        c.session.git("add", "source.py", "behavior_test.py")
+        c.session.git("commit", "-qm", "commit stopped draft bytes")
+
+        c.replace_spec("Refresh the exact workspace authority after the draft was committed")
+        c.session.finish(c.session.acquire("charter"), {"grant": c.allocations})
+        c.permit = {"manifest": c.produced("charter", "grant"),
+                    "tasks": [entry["task"] for entry in c.allocations["allocations"].values()],
+                    "policy": j.content_hash(c.session.project["policy"]), "decision": "approved"}
+        c.session.finish(c.session.acquire("inspect_charter", actor="refreshed-allocation-reviewer"),
+                         {"permit": c.permit})
+        c.session.finish(c.session.acquire("consent"), {"permit": c.permit})
+
+        refreshed_alpha = c.acquire_workspace("alpha")
+        c.candidate(refreshed_alpha, 0)
+        c.review_candidate("alpha", 0)
+        fresh = c.session.acquire("beta", actor="writer-beta-refreshed")
+        self.assertEqual(stopped, (c.fixture.repo / "source.py").read_bytes())
+        self.assertNotIn("stopped_draft", fresh["lease"]["acquisition"])
+        self.assertNotIn(draft_ref["hash"], json.dumps(fresh["lease"]["acquisition"]))
+
     def test_tampered_committed_recovery_receipt_cannot_authorize_reacquisition(self):
         c = self.case
         work, _ = self.acquire_dirty_beta()

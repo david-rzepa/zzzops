@@ -3310,7 +3310,7 @@ class Workflow:
                     raise ValueError('Workspace draft provenance is cyclic or lacks a committed receipt')
                 seen.add(cursor['hash']); consumed_drafts.add(cursor['hash'])
                 cursor = draft_rows[cursor['hash']][1]['acquisition'].get('stopped_draft')
-        valid_drafts = []; valid_continuity = []
+        valid_drafts = []; valid_continuity = []; retired_clean_drafts = set()
         for reference, draft in draft_rows.values():
             key = ev.task_key(draft['node'])
             try:
@@ -3353,8 +3353,18 @@ class Workflow:
                     cursor = previous['acquisition'].get('stopped_draft')
                 edges.append((before, after)); valid_drafts.append(draft)
             except (ValueError, KeyError, subprocess.SubprocessError) as exc:
-                draft_errors[reference['hash']] = str(exc)
-        drafts = {key: row for key, row in drafts.items() if row[0]['hash'] not in consumed_drafts}
+                # A stopped draft is continuity evidence for its exact authority,
+                # never an ownership lock after that authority changes.  Once its
+                # bytes are an ordinary clean commit, retain the immutable draft
+                # in history but reacquire from Git under the new inputs without
+                # importing the stale draft or any of its proof ancestry.
+                if (str(exc) == 'Workspace draft current authority/input/contract changed'
+                        and draft.get('files') == actual and actual == committed):
+                    retired_clean_drafts.add(reference['hash'])
+                else:
+                    draft_errors[reference['hash']] = str(exc)
+        drafts = {key: row for key, row in drafts.items()
+                  if row[0]['hash'] not in consumed_drafts | retired_clean_drafts}
         active_workspace_keys = set()
         for snapshot in snapshots.values():
             for lease in snapshot['payload']['operational']['leases']:
