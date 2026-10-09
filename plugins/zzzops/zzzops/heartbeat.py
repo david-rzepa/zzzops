@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import math
@@ -495,6 +496,7 @@ def start_heartbeat(
     interval_seconds: float = 300, probe_timeout_seconds: float = 10,
     retry_limit: int = 3, state_dir: Path | None = None,
     node: dict[str, Any] | None = None, grace_seconds: float = 0,
+    expires_at: float | None = None,
 ) -> dict[str, Any]:
     """Upsert a local lease and ensure one detached coordinator for repo/root."""
     repo = repo.resolve()
@@ -509,14 +511,23 @@ def start_heartbeat(
         raise ValueError("retry_limit must be a positive integer")
     if node is not None and (not isinstance(node, dict) or set(node) != {"goal", "node", "item", "generation"} or node["goal"] != goal):
         raise ValueError("heartbeat requires an exact qualified node")
+    if expires_at is not None and (isinstance(expires_at, bool)
+            or not isinstance(expires_at, (int, float)) or not math.isfinite(expires_at)):
+        raise ValueError("lease expiry must be finite seconds")
     paths = _paths(repo, root_id, state_dir)
     _ensure_private_directory(paths["directory"])
     lease = {
         "goal": goal, "phase": phase, "token": token, "actor": actor,
         "probe_argv": probe_argv, "renew_after": time.time() + grace_seconds,
+        "registration": uuid.uuid4().hex,
+        "interval_seconds": float(interval_seconds),
+        "probe_timeout_seconds": float(probe_timeout_seconds), "retry_limit": retry_limit,
         "repo": str(repo), "runtime_path": str(runtime_path), "cli_path": str(cli_path),
         **({"node": dict(node)} if node is not None else {}),
     }
+    if expires_at is not None:
+        lease["expires_at"] = expires_at
+        lease["renew_after"] = _renewal_deadline(lease, expires_at, grace_seconds)
     with _locked(paths["update_lock"], timeout_seconds=1):
         config = _read(paths["config"])
         previous = next((v for v in config["leases"] if (v.get("goal"), v.get("phase"), v.get("token")) == (goal, phase, token)), None)
@@ -524,7 +535,8 @@ def start_heartbeat(
             if previous["actor"] != actor or previous.get("node") != node:
                 raise ValueError("heartbeat exact lease identity changed")
             lease["renew_after"] = previous.get("renew_after", lease["renew_after"])
-            for key in ("repo", "runtime_path", "cli_path"):
+            for key in ("repo", "runtime_path", "cli_path", "registration", "expires_at",
+                        "interval_seconds", "probe_timeout_seconds", "retry_limit"):
                 if key in previous: lease[key] = previous[key]
         config.update({
             "repo": str(repo), "root_id": root_id, "runtime_path": str(runtime_path),
@@ -647,9 +659,47 @@ def _renewal_acknowledged(result: subprocess.CompletedProcess[str], lease: dict[
         return False
 
 
+def _same_registration(current: dict[str, Any], lease: dict[str, Any]) -> bool:
+    return all(current.get(key) == lease.get(key)
+               for key in ("goal", "phase", "token", "actor", "node", "registration"))
+
+
 def _tracked(config_path: Path, lease: dict[str, Any]) -> bool:
-    return any(all(current.get(key) == lease.get(key) for key in ("goal", "phase", "token", "actor"))
-               for current in _read(config_path)["leases"])
+    return any(_same_registration(current, lease) for current in _read(config_path)["leases"])
+
+
+def _renewal_deadline(lease: dict[str, Any], expiry: float, grace: float = 0) -> float:
+    """Renew halfway through the remaining lease, reserving a complete attempt.
+
+    The retry interval is not the healthy renewal cadence. The watchdog's work,
+    cleanup and reap margins must fit before expiry, as must the liveness probe.
+    An already short lease is due immediately; local scheduling grants no right
+    to replace its durable owner, even if a provider cannot respond in time.
+    """
+    now = time.time()
+    budget = (float(lease.get("probe_timeout_seconds", 10))
+              + float(lease.get("renewal_timeout_seconds", 30))
+              + float(lease.get("renewal_cleanup_seconds", 10)) + 5)
+    return max(now, min(max(now + grace, now + (expiry - now) / 2), expiry - budget))
+
+
+def _finish_attempt(config_path: Path, lease: dict[str, Any], *,
+                    expiry: float | None = None, remove: bool = False) -> bool:
+    """Persist only into the same registration, never resurrecting stopped work."""
+    with _locked(Path(_read(config_path)["update_lock"]), timeout_seconds=1):
+        config = _read(config_path)
+        current = next((v for v in config["leases"] if _same_registration(v, lease)), None)
+        if current is None:
+            return False
+        if remove:
+            config["leases"].remove(current)
+        elif expiry is not None and "expires_at" in current:
+            current["expires_at"] = expiry
+            current["renew_after"] = _renewal_deadline(current, expiry)
+        else:
+            current["renew_after"] = time.time() + float(current.get("interval_seconds", config["interval_seconds"]))
+        _atomic_write(config_path, config)
+    return True
 
 
 def _wait_for_config_change(config_path: Path, interval: float, observed: int) -> None:
@@ -674,83 +724,105 @@ def run(config_path: Path) -> int:
     config_path = config_path.resolve()
     initial = _read(config_path)
     coordinator_lock = Path(initial["coordinator_lock"])
-    update_lock = Path(initial["update_lock"])
     try:
         lifetime = _locked(coordinator_lock, blocking=False)
         lifetime.__enter__()
     except BlockingIOError:
         return 0
-    failures: dict[str, int] = {}
-    try:
-        if hasattr(signal, "SIGUSR1"):
-            signal.signal(signal.SIGUSR1, lambda _signum, _frame: _WAKE.set())
-        while True:
-            try:
-                observed_config = config_path.stat().st_mtime_ns
-            except FileNotFoundError:
-                return 0
-            config = _read(config_path)
-            leases = list(config["leases"])
-            if not leases:
-                return 0
-            interval = float(config["interval_seconds"])
-            timeout = float(config["probe_timeout_seconds"])
-            limit = int(config["retry_limit"])
-            log_path = Path(config["log_path"])
-            for lease in leases:
-                token = lease["token"]
-                if not _tracked(config_path, lease):
-                    continue
-                if time.time() < lease.get("renew_after", 0):
-                    continue
+    # Keep a finite number of subprocess trees alive, with no unbounded queue.
+    # A slow provider for one lease must not delay another lease's due attempt.
+    with ThreadPoolExecutor(max_workers=8, thread_name_prefix="zzzops-renew") as executor:
+        pending = {}
+        failures: dict[tuple, int] = {}
+        try:
+            if hasattr(signal, "SIGUSR1"):
+                signal.signal(signal.SIGUSR1, lambda _signum, _frame: _WAKE.set())
+            while True:
+                for key, future in list(pending.items()):
+                    if future.done():
+                        future.result()
+                        del pending[key]
+                # Read deadlines after completed attempts have published them.
+                # Otherwise an old snapshot could schedule an immediate duplicate.
                 try:
-                    probe = subprocess.run(
-                        _command(lease["probe_argv"], "probe_argv"), cwd=lease.get("repo", config["repo"]),
-                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                        timeout=timeout, check=False, shell=False,
-                    )
-                    status = "active" if probe.returncode == 0 else "stopped" if probe.returncode == 1 else "unknown"
-                except (OSError, subprocess.TimeoutExpired) as exc:
-                    status = "unknown"
-                    probe = exc
-                if not _tracked(config_path, lease):
-                    failures.pop(token, None)
-                    continue
-                if status == "stopped":
-                    _log(log_path, "worker_stopped", lease)
-                    _remove_lease(config_path, update_lock, lease["goal"], lease["phase"], token)
-                    failures.pop(token, None)
-                    continue
-                if status == "active":
-                    try:
-                        renewed = _renew(config, lease, config_path.parent)
-                    except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
-                        probe = exc
-                    else:
-                        if _renewal_acknowledged(renewed, lease):
-                            _log(log_path, "renewal_succeeded", lease, worker_status="active")
-                            failures.pop(token, None)
-                            continue
-                        probe = renewed
-                if not _tracked(config_path, lease):
-                    failures.pop(token, None)
-                    continue
-                failures[token] = failures.get(token, 0) + 1
-                detail = type(probe).__name__ if not isinstance(probe, subprocess.CompletedProcess) else f"exit_{probe.returncode}"
-                if status == "active" and isinstance(probe, subprocess.CompletedProcess) and probe.returncode == 0:
-                    detail = "invalid_renewal_acknowledgement"
-                _log(log_path, "renewal_failed" if status == "active" else "liveness_unknown", lease,
-                     worker_status=status, attempt=failures[token], detail=detail)
-                if failures[token] >= limit:
-                    _log(log_path, "recovery_required", lease, worker_status=status,
-                         reason="renewal_failed" if status == "active" else "liveness_unknown", attempts=failures[token])
-                    _remove_lease(config_path, update_lock, lease["goal"], lease["phase"], token)
-                    failures.pop(token, None)
-            deadlines = [v.get("renew_after", 0) - time.time() for v in leases]
-            delay = min([interval] + [v for v in deadlines if v > 0])
-            _wait_for_config_change(config_path, delay, observed_config)
-    finally:
-        lifetime.__exit__(None, None, None)
+                    observed_config = config_path.stat().st_mtime_ns
+                except FileNotFoundError:
+                    return 0
+                config = _read(config_path)
+                leases = list(config["leases"])
+                if not leases:
+                    return 0
+                now = time.time()
+                for lease in sorted(leases, key=lambda v: v.get("renew_after", 0)):
+                    key = (lease["goal"], lease["phase"], lease["token"], lease.get("registration"))
+                    if key in pending or lease.get("renew_after", 0) > now or len(pending) >= 8:
+                        continue
+                    future = executor.submit(_attempt, config_path, config, lease, failures, key)
+                    pending[key] = future
+                    future.add_done_callback(lambda _future: _WAKE.set())
+                deadlines = [v.get("renew_after", 0) - time.time() for v in leases
+                             if (v["goal"], v["phase"], v["token"], v.get("registration")) not in pending]
+                # Completion wakes the loop to refill a full pool. Polling also
+                # observes cross-process config updates on platforms without signals.
+                delay = max(.01, min([1.0] + [v for v in deadlines if v > 0]))
+                _wait_for_config_change(config_path, delay, observed_config)
+        finally:
+            # Reap bounded in-flight attempts before another coordinator can run.
+            executor.shutdown(wait=True)
+            lifetime.__exit__(None, None, None)
+
+
+def _attempt(config_path: Path, config: dict[str, Any], lease: dict[str, Any],
+             failures: dict, key: tuple) -> None:
+    config = {**config, **{name: lease[name] for name in (
+        "interval_seconds", "probe_timeout_seconds", "retry_limit",
+        "renewal_timeout_seconds", "renewal_cleanup_seconds") if name in lease}}
+    log_path = Path(config["log_path"])
+    if not _tracked(config_path, lease):
+        return
+    try:
+        probe = subprocess.run(
+            _command(lease["probe_argv"], "probe_argv"), cwd=lease.get("repo", config["repo"]),
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=float(config["probe_timeout_seconds"]), check=False, shell=False)
+        status = "active" if probe.returncode == 0 else "stopped" if probe.returncode == 1 else "unknown"
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        status, probe = "unknown", exc
+    if not _tracked(config_path, lease):
+        failures.pop(key, None)
+        return
+    if status == "stopped":
+        if _finish_attempt(config_path, lease, remove=True):
+            _log(log_path, "worker_stopped", lease)
+        failures.pop(key, None)
+        return
+    if status == "active":
+        try:
+            renewed = _renew(config, lease, config_path.parent)
+        except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
+            probe = exc
+        else:
+            if _renewal_acknowledged(renewed, lease):
+                expiry = json.loads(renewed.stdout)["next_steps"][0]["expires_at"]
+                if _finish_attempt(config_path, lease, expiry=expiry):
+                    _log(log_path, "renewal_succeeded", lease, worker_status="active")
+                failures.pop(key, None)
+                return
+            probe = renewed
+    if not _tracked(config_path, lease):
+        failures.pop(key, None)
+        return
+    failures[key] = failures.get(key, 0) + 1
+    detail = type(probe).__name__ if not isinstance(probe, subprocess.CompletedProcess) else f"exit_{probe.returncode}"
+    if status == "active" and isinstance(probe, subprocess.CompletedProcess) and probe.returncode == 0:
+        detail = "invalid_renewal_acknowledgement"
+    _log(log_path, "renewal_failed" if status == "active" else "liveness_unknown", lease,
+         worker_status=status, attempt=failures[key], detail=detail)
+    exhausted = failures[key] >= int(config["retry_limit"])
+    if _finish_attempt(config_path, lease, remove=exhausted) and exhausted:
+        _log(log_path, "recovery_required", lease, worker_status=status,
+             reason="renewal_failed" if status == "active" else "liveness_unknown", attempts=failures[key])
+        failures.pop(key, None)
 
 
 def main(argv: list[str] | None = None) -> int:
