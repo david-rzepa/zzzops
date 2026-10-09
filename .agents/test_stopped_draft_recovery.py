@@ -335,6 +335,9 @@ class StoppedDraftRecoveryTests(unittest.TestCase):
         _receipt, draft_ref, _draft = self.recovery_draft(receipts)
         c.session.git("add", "source.py", "behavior_test.py")
         c.session.git("commit", "-qm", "commit stopped draft bytes")
+        (c.fixture.repo / "later.txt").write_text("a later legitimate commit\n")
+        c.session.git("add", "later.txt")
+        c.session.git("commit", "-qm", "advance beyond stopped draft snapshot")
 
         c.replace_spec("Refresh the exact workspace authority after the draft was committed")
         c.session.finish(c.session.acquire("charter"), {"grant": c.allocations})

@@ -3359,7 +3359,7 @@ class Workflow:
                 # in history but reacquire from Git under the new inputs without
                 # importing the stale draft or any of its proof ancestry.
                 if (str(exc) == 'Workspace draft current authority/input/contract changed'
-                        and draft.get('files') == actual and actual == committed):
+                        and actual == committed):
                     retired_clean_drafts.add(reference['hash'])
                 else:
                     draft_errors[reference['hash']] = str(exc)
