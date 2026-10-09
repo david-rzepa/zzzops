@@ -418,6 +418,36 @@ print(json.dumps({'next_steps':[{'kind':'renewed','goal':int(args[args.index('--
             case.session.finish(work,{'value':'short success'})
             self.assertEqual(work['lease']['token'],stop.call_args.kwargs['token'])
 
+    def test_public_acquire_bind_finish_runs_and_stops_the_exact_coordinator_process(self):
+        import test_evidence_dag_journeys as dag
+        case=dag.DagFixture();case.setUp();self.addCleanup(case.doCleanups)
+        actor='worker-produce-None'
+        case.session.runtime['heartbeat']={
+            'probes':{actor:[sys.executable,str(self.probe),'active','produce',actor]},
+            'grace_seconds':120,
+        }
+        # The public fixture intercepts the external cleanup hook by default;
+        # route that hook to the real implementation for this process test.
+        case.session.heartbeat_stop=dag.z._heartbeat.stop_heartbeat
+        work=case.session.acquire('produce')
+        root_id=case.session.runtime['root_id']
+        paths=dag.z._heartbeat._paths(case.session.repo,root_id)
+        config=dag.z._heartbeat._read(paths['config'])
+        self.assertEqual([(work['lease']['token'],actor)],[
+            (lease['token'],lease['actor']) for lease in config['leases']])
+        pid=config['pid']
+        self.assertTrue(dag.z._heartbeat._pid_alive(pid))
+        process=dag.z._heartbeat._PROCESSES[pid]
+        self.addCleanup(lambda:process.poll() is None and process.terminate())
+        self.addCleanup(lambda:dag.z._heartbeat.stop_heartbeat(
+            repo=case.session.repo,root_id=root_id,goal=work['node']['goal'],
+            phase=json.dumps(work['node'],sort_keys=True),token=work['lease']['token']))
+
+        case.session.finish(work,{'value':'short success'})
+
+        self.assertEqual([],dag.z._heartbeat._read(paths['config'])['leases'])
+        self._wait(lambda:not dag.z._heartbeat._pid_alive(pid))
+
     def test_missing_probe_does_not_block_public_short_phase(self):
         import test_evidence_dag_journeys as dag
         case=dag.DagFixture();case.setUp();self.addCleanup(case.doCleanups)
