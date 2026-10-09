@@ -3414,12 +3414,22 @@ class Workflow:
                 allocated_paths.update(allocated_entry['consumed'])
             except (ValueError, KeyError):
                 pass
-        def read_connected(start):
+        def allocation_paths(key):
+            try:
+                entry = authority(work[key])['entry']
+                return set(entry['owned']) | set(entry['consumed'])
+            except (KeyError, ValueError):
+                return allocated_paths
+        def owned_paths(key):
+            try: return set(authority(work[key])['entry']['owned'])
+            except (KeyError, ValueError): return allocation_paths(key)
+        def read_connected(start, paths=None):
             # Completed ordinary evidence retains its read identity across
             # unrelated paths. Relevant allocated paths must still be joined by
             # exact whole-snapshot proof/owned-acquisition edges; work itself
             # continues to validate every raw acquisition path above.
-            def selected(files): return {path: value for path, value in files.items() if path in allocated_paths}
+            paths = allocated_paths if paths is None else paths
+            def selected(files): return {path: value for path, value in files.items() if path in paths}
             pending, seen = [selected(read_snapshot(start))], set()
             while pending:
                 value = pending.pop(); identity = digest(value)
@@ -3546,14 +3556,15 @@ class Workflow:
                             raise ValueError('Stopped draft Git baseline changed outside owned scope')
                 elif prior and current_ref == prior['result']:
                     if 'error' in prior: raise ValueError(prior['error'])
-                    if not read_connected(prior['after']): raise ValueError('Completed workspace proof output/consumed drift or disconnected snapshot')
+                    if not read_connected(prior['after'], owned_paths(key)): raise ValueError('Completed workspace proof output/consumed drift or disconnected snapshot')
                     acquisition = prior['data']['acquisition']; baseline = prior['before']
                 else:
                     baseline = actual
                     acquisition = {'git_commit': head, 'workspace_digest': digest(baseline), 'checkout_overrides': {}}
                     try: acquisition['checkout_overrides'] = self.clean_checkout_overrides(head, committed, actual)
                     except ValueError:
-                        anchors = [row for row in candidates if 'error' not in row and row['reviews'] and read_connected(row['after'])]
+                        anchors = [row for row in candidates if 'error' not in row and row['reviews']
+                                   and read_connected(row['after'], owned_paths(row['key']))]
                         continuity = [(reference, draft) for reference, draft in valid_continuity
                                       if draft['files'] == actual]
                         if anchors:
@@ -3567,7 +3578,8 @@ class Workflow:
                                                                  if baseline.get(path) == value}
                         else:
                             raise ValueError('Workspace acquisition requires clean Git or exact reviewed connected output baseline') from None
-                    if prior and 'error' not in prior and prior['reviews'] and read_connected(prior['after']):
+                    if (prior and 'error' not in prior and prior['reviews']
+                            and read_connected(prior['after'], owned_paths(key))):
                         previous = prior['data']['acquisition'].get('predecessor')
                         cursor, seen = previous, set()
                         while cursor is not None:
@@ -3604,7 +3616,9 @@ class Workflow:
                     # predecessor chain rather than expanding every old anchor.
                     selected_anchors = {}
                     for row in candidates:
-                        if 'error' not in row and row['reviews'] and row['proof']['hash'] in reachable and read_connected(row['after']): selected_anchors[row['key']] = row
+                        if ('error' not in row and row['reviews'] and row['proof']['hash'] in reachable
+                                and read_connected(row['after'], owned_paths(row['key']))):
+                            selected_anchors[row['key']] = row
                     acquisition['baseline_proofs'] = [{'result': row['result'], 'proof': row['proof'], 'reviews': [ref for ref, _ in row['reviews']]}
                         for row in selected_anchors.values()]
                 binding = remember({'type': 'workspace_snapshot', 'content': {'files': baseline, **{k: grant[k] for k in ('allocation', 'authorization', 'approval')}, **({'migration': migration} if migration is not None else {})}, 'producer': None, 'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})

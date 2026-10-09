@@ -1609,6 +1609,24 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.assertEqual(expected, (self.result("alpha")[0], self.result("beta")[0],
                                     self.result("accept_beta")[0]))
 
+    def test_descendant_owned_drift_stales_only_the_descendant(self):
+        self.setup_workspace()
+        _alpha, (_red_ref, _red) = self.red_candidate()
+        beta = self.acquire_workspace("beta")
+        (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
+        self.candidate(beta, 0)
+        self.review_candidate("beta", 0)
+        accepted_alpha = self.result("alpha")[0]
+
+        (self.fixture.repo / "source.py").write_text("def value():\n    return 3\n")
+        response = self.session.call(100)
+
+        self.assertTrue(any(step.get("node", {}).get("node") == "beta"
+                            and step.get("kind") == "blocked" for step in response["next_steps"]), response)
+        self.assertFalse(any(step.get("node", {}).get("node") == "alpha"
+                             and step.get("kind") == "blocked" for step in response["next_steps"]))
+        self.assertEqual(accepted_alpha, self.result("alpha")[0])
+
     def test_acquired_owned_path_cannot_be_replaced_by_escaping_symlink(self):
         self.setup_workspace()
         work = self.acquire_workspace("alpha")
