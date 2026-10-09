@@ -1546,6 +1546,10 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.assertEqual("missing", red["consumed"]["behavior_test.py"], "Pin pre-edit absence despite owned test creation")
         beta = self.acquire_workspace("beta")
         pinned = copy.deepcopy(beta["lease"]["acquisition"])
+        baseline = pinned.get("baseline_proofs", [])
+        self.assertTrue(any(row["result"] == self.result("alpha")[0]
+                            and row["proof"] == red_ref for row in baseline),
+                        "Descendant acquisition must pin the exact reviewed ancestor Result/proof")
         self.session.call(100, {"operation": "renew", "node": beta["node"],
             "lease": beta["lease"]["token"], "actor": beta["bound_actor"], "worker_status": "active"})
         renewed = next(lease for lease in self.payload()[1]["operational"]["leases"]
@@ -1574,6 +1578,19 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.assertEqual(before, (self.result("alpha")[0], self.result("beta")[0]))
         self.assertEqual(red, self.read_blob(red_ref), "Later green work cannot rewrite red baseline proof")
         self.session.finish(gamma, {"value": "Consumed accepted test and implementation output identities"})
+
+    def test_changed_reviewed_ancestor_bytes_do_not_gain_descendant_connectivity(self):
+        self.setup_workspace()
+        _alpha, (_red_ref, red) = self.red_candidate()
+        reviewed = (self.result("alpha")[0], self.result("accept_alpha")[0])
+        (self.fixture.repo / "behavior_test.py").write_text(
+            "from source import value\nassert value() == 999  # unreviewed ancestor drift\n")
+        response = self.session.call(100)
+        self.assertFalse(any(step.get("node", {}).get("node") == "beta"
+                             and step.get("kind") == "execute" for step in response["next_steps"]))
+        self.assert_workspace_blocker(response, r"(?i)workspace|proof|drift|snapshot|baseline|connected")
+        self.assertEqual(reviewed, (self.result("alpha")[0], self.result("accept_alpha")[0]))
+        self.assertEqual(red, self.read_blob(self.read_blob(self.produced("alpha"))["provenance"]["source"]))
 
     def test_acquired_owned_path_cannot_be_replaced_by_escaping_symlink(self):
         self.setup_workspace()

@@ -3228,10 +3228,69 @@ class Workflow:
                 except (ValueError, KeyError, subprocess.SubprocessError):
                     candidates.append({'key': key, 'result': result_ref, 'error': 'Workspace proof/acquisition snapshot is invalid'})
                 break
-        # Only complete before/after edges connect versions. A bag of previously
-        # seen file hashes cannot authorize a disconnected mixed checkout.
-        edges = [(row['before'], row['after']) for row in candidates if 'error' not in row]
-        accepted_edges = [(row['before'], row['after']) for row in candidates if 'error' not in row and row['reviews']]
+        # A later completed proof can retain an accepted ancestor only when its
+        # acquisition explicitly authenticates that exact Result/proof/review
+        # and the ancestor's whole output snapshot is its whole input snapshot.
+        # Coincidentally equal or partially overlapping repository bytes are
+        # not a provenance edge.
+        complete = [row for row in candidates if 'error' not in row]
+        accepted = [row for row in complete if row['reviews']]
+        def review_refs(row): return [reference for reference, _result in row['reviews']]
+        def valid_review_pins(references):
+            try:
+                for reference in references: ev.validate_ref(reference)
+                return bool(references) and len(references) == len({reference['hash'] for reference in references})
+            except (KeyError, TypeError, ValueError):
+                return False
+        def pinned_ancestors(row):
+            acquisition = row['data']['acquisition']; pins = []
+            baseline_proofs = acquisition.get('baseline_proofs', [])
+            if not isinstance(baseline_proofs, list): return []
+            for pin in baseline_proofs:
+                if (not isinstance(pin, dict) or set(pin) != {'result', 'proof', 'reviews'}
+                        or not isinstance(pin.get('reviews'), list)):
+                    return []
+                matches = [ancestor for ancestor in accepted
+                           if ancestor is not row and ancestor['result'] == pin['result']
+                           and ancestor['proof'] == pin['proof']
+                           and valid_review_pins(pin['reviews'])
+                           and all(reference in review_refs(ancestor) for reference in pin['reviews'])
+                           and ancestor['after'] == row['before']]
+                if len(matches) != 1: return []
+                pins.extend(matches)
+            predecessor = acquisition.get('predecessor')
+            if predecessor is not None:
+                try: value = content(predecessor)
+                except (KeyError, ValueError): return []
+                if (not isinstance(value, dict)
+                        or set(value) != {'node', 'allocation', 'authorization', 'approval',
+                                         'result', 'proof', 'reviews', 'prior'}):
+                    return []
+                matches = [ancestor for ancestor in accepted
+                           if ancestor is not row and ancestor['result'] == value['result']
+                           and ancestor['proof'] == value['proof']
+                           and valid_review_pins(value['reviews'])
+                           and all(reference in review_refs(ancestor) for reference in value['reviews'])
+                           and ancestor['after'] == row['before']]
+                if len(matches) != 1: return []
+                pins.extend(matches)
+            return pins
+        edges = []
+        accepted_edges = []
+        for row in complete:
+            ancestors = [ancestor for ancestor in accepted
+                         if ancestor is not row and ancestor['after'] == row['before']]
+            authenticated = pinned_ancestors(row)
+            # Initial transitions have no accepted predecessor. Descendant
+            # transitions must pin at least one of the exact matching accepted
+            # ancestors; malformed pins never fall back to byte equality.
+            cross_task = [ancestor for ancestor in ancestors if ancestor['key'] != row['key']]
+            if cross_task and not any(ancestor in authenticated for ancestor in cross_task):
+                continue
+            edges.append((row['before'], row['after']))
+            for ancestor in authenticated:
+                edges.append((ancestor['after'], row['after']))
+            if row['reviews']: accepted_edges.append((row['before'], row['after']))
         drafts = {}; draft_rows = {}; draft_errors = {}; consumed_drafts = set()
         for snapshot in snapshots.values():
             for reference, draft in snapshot.get('workspace_drafts', []):
