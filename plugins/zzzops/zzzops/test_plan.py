@@ -69,6 +69,11 @@ def historical_graph(root:Path,path:Path,provider:dict,*,run=subprocess.run)->tu
     if not isinstance(revision,str) or not revision or valid.returncode: raise ValueError('Previous Graft revision is missing')
     graph=record['graph']
     if not isinstance(graph,dict) or set(graph)<{'meta','nodes','edges'} or graph['meta'].get('version')!=1: raise ValueError('Previous Graft content is corrupt')
+    authenticate_revision_graph(root,graph,revision,provider,run=run)
+    return graph,{'hash':digest(record),'path':str(path),'revision':revision}
+
+def authenticate_revision_graph(root:Path,graph:dict,revision:str,provider:dict,*,run=subprocess.run)->None:
+    """Rebuild a pinned revision in isolation and require identical graph bytes."""
     with tempfile.TemporaryDirectory(prefix='zzzops-graft-revision-') as temporary:
         checkout=Path(temporary)/'repo'
         added=run(['git','worktree','add','--detach',str(checkout),revision],cwd=root,capture_output=True,text=True,check=False)
@@ -79,10 +84,9 @@ def historical_graph(root:Path,path:Path,provider:dict,*,run=subprocess.run)->tu
             built=run(['graft','build'],cwd=checkout,capture_output=True,text=True,check=False,env={**os.environ,'DO_NOT_TRACK':'1'})
             if built.returncode: raise ValueError('Previous Graft revision rebuild failed')
             rebuilt=json.loads((checkout/'graft'/'.graph'/'wiring.json').read_text(encoding='utf-8'))
-            if digest(rebuilt)!=digest(graph): raise ValueError('Previous Graft graph does not match pinned revision')
+            if digest(rebuilt)!=digest(graph): raise ValueError('Graft graph does not match pinned revision')
         finally:
             run(['git','worktree','remove','--force',str(checkout)],cwd=root,capture_output=True,text=True,check=False)
-    return graph,{'hash':digest(record),'path':str(path),'revision':revision}
 
 def canonical(value: Any) -> bytes:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()

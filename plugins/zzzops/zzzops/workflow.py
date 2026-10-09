@@ -3708,6 +3708,7 @@ class Workflow:
             if dirty: raise ValueError('Current Graft relevant workspace inputs are uncommitted')
             current=test_plan.graft_snapshot(self.repo,plan['graph_provider'])
             revision=subprocess.run(['git','rev-parse','HEAD'],cwd=self.repo,capture_output=True,text=True,check=True).stdout.strip()
+            test_plan.authenticate_revision_graph(self.repo,current,revision,plan['graph_provider'])
             current_pin=test_plan.pin_graph(self.repo,current,plan['graph_provider'],revision)
             current_edges=test_plan.graph_unit_edges(plan,current)
             # A changed-mode proof needs both sides. The previous graph is an

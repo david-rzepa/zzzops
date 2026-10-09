@@ -42,6 +42,20 @@ class TestPlanTests(unittest.TestCase):
   owner=SimpleNamespace()
   with self.assertRaisesRegex(ValueError,'resource authority'):
    journeys.z._workflow.Workflow.node_workspace_proof(owner,{}, {'workspace':{'readonly':True}}, {}, {'verification_plan':{'mode':'full'}})
+ def test_current_graph_requires_clean_detached_head_identity_and_widens(self):
+  graph={'meta':{'version':1},'nodes':[],'edges':[]};p=self.plan()
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);subprocess.run(['git','init','-q'],cwd=root,check=True);[(root/f'{x}.py').write_text(x) for x in 'abc'];(root/'transitive.py').write_text('old');(root/'zzzops-test-plan.json').write_text(json.dumps(p));subprocess.run(['git','add','.'],cwd=root,check=True);subprocess.run(['git','-c','user.name=t','-c','user.email=t@t','commit','-qm','x'],cwd=root,check=True);owner=SimpleNamespace(repo=root);(root/'transitive.py').write_text('changed');(root/'untracked-reachable.py').write_text('new')
+   with mock.patch.object(m,'graft_snapshot',return_value=graph),mock.patch.object(m,'authenticate_revision_graph',side_effect=ValueError('Graft graph does not match pinned revision')):
+    _,evidence=journeys.z._workflow.Workflow.node_test_plan_commands(owner,{'verification_plan':{'mode':'changed','changed':['untracked-reachable.py']}})
+   self.assertFalse(evidence['graph']['validated']);self.assertIn('does not match pinned revision',evidence['graph']['fallback_reason']);self.assertNotIn('current',evidence['graph'])
+   with mock.patch.object(m,'graft_snapshot',return_value=graph),mock.patch.object(m,'authenticate_revision_graph',side_effect=OSError('graft missing')):
+    _,missing=journeys.z._workflow.Workflow.node_test_plan_commands(owner,{'verification_plan':{'mode':'changed','changed':['a.py']}})
+   self.assertEqual('graft missing',missing['graph']['fallback_reason'])
+   (root/'transitive.py').write_text('old');(root/'untracked-reachable.py').unlink();before=set(Path(tempfile.gettempdir()).glob('zzzops-graft-revision-*'))
+   with mock.patch.object(m,'graft_snapshot',return_value=graph),mock.patch.object(m,'authenticate_revision_graph',return_value=None):
+    _,clean=journeys.z._workflow.Workflow.node_test_plan_commands(owner,{'verification_plan':{'mode':'full'}})
+   self.assertIn('current',clean['graph']);self.assertEqual(before,set(Path(tempfile.gettempdir()).glob('zzzops-graft-revision-*')))
  def test_successful_partition_fact_reuses_across_lease_without_rerun(self):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d);subprocess.run(['git','init','-q'],cwd=root,check=True);count=root/'count'
