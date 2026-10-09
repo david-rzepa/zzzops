@@ -2592,9 +2592,13 @@ class Workflow:
             if (isinstance(response, dict) and response.get('type') == 'checkpoint_reconciliation'
                     and response.get('version') == 1 and response.get('checkpoint') == descriptor):
                 matches.append((receipt, response))
-        if len(matches) != 1:
+        if not matches:
             return False
-        receipt, response = matches[0]
+        # Reconciliation is a current-chain proof, so a later independently
+        # reviewed reconciliation for the same immutable checkpoint supersedes
+        # the older boundary without deleting either record.  Only the newest
+        # candidate can connect its adoption edge to the current envelope.
+        receipt, response = matches[-1]
         try:
             proposal_artifact = index.resolve(response['proposal']['hash'])[0]
             review = index.resolve(response['review']['hash'])[0]
