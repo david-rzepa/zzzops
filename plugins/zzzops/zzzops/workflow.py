@@ -4954,18 +4954,22 @@ class Workflow:
                         if record.get('status')=='running' and record.get('lease')==lease['token']: journal_path.unlink()
                     step = {'kind': 'checkpoint', 'goal': number}
                     if 'repository_workspace' in state['contract']['executor']['resources']:
-                        if state['state'] != 'ready' or state.get('input_hash') != lease['fingerprint']:
-                            raise ValueError('Stale workspace authority/input prevents draft recovery: ' + state.get('reason', 'workspace drift'))
                         workspace = state.get('workspace')
-                        if not workspace or 'error' in workspace: raise ValueError('Current workspace authority is required for draft recovery')
+                        current_authority=(state['state']=='ready' and state.get('input_hash')==lease['fingerprint']
+                                           and workspace and 'error' not in workspace)
                         acquisition = lease['acquisition']; actual = self.workspace_files()
-                        delta = {p: actual.get(p, 'missing') for p in acquisition['files'].keys() | actual.keys()
-                                 if acquisition['files'].get(p, 'missing') != actual.get(p, 'missing')}
-                        if set(delta) - set(workspace['entry']['owned']): raise ValueError('Workspace draft changed unowned/consumed files')
+                        if not current_authority:
+                            step['stopped_unaccepted']={'lease':lease['token'],'actor':lease['worker'],
+                                'workspace':digest(actual),'reason':state.get('reason','workspace authority/input is stale'),
+                                'evidence':request['evidence']}
+                        else:
+                            delta = {p: actual.get(p, 'missing') for p in acquisition['files'].keys() | actual.keys()
+                                     if acquisition['files'].get(p, 'missing') != actual.get(p, 'missing')}
+                            if set(delta) - set(workspace['entry']['owned']): raise ValueError('Workspace draft changed unowned/consumed files')
                         # A resumed owner can intentionally restore the original
                         # bytes. Record that successor instead of reviving the
                         # previous dirty draft as the latest stopped snapshot.
-                        if delta or acquisition.get('stopped_draft'):
+                        if current_authority and (delta or acquisition.get('stopped_draft')):
                             reference = snapshot['acquisition_receipts'].get(lease['token'])
                             if reference is None: raise ValueError('Workspace draft lacks immutable acquisition receipt')
                             draft = {'type': 'workspace_draft', 'node': node,

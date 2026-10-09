@@ -102,6 +102,18 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
         with mock.patch.object(subprocess,'run',side_effect=no_repeat):response=self.session.call(100,request)
         self.assertTrue(response['verification']['passed'])
 
+    def test_stale_workspace_observed_stop_clears_only_exact_lease_without_accepting_bytes(self):
+        (self.fixture.repo/'behavior_test.py').write_text('stale worker bytes\n')
+        self.replace_spec('upstream prerequisite changed after worker stopped')
+        actor=self.payload()[1]['operational']['leases'][0]['worker']
+        request={'operation':'recover','node':self.work['node'],'lease':self.work['lease']['token'],'actor':actor,'request_id':'stale-workspace-recover','worker_status':'stopped','evidence':'Observed exact bound worker and verifier stopped'}
+        before=copy.deepcopy((self.provider.issues,self.provider.comments));evidence_before=copy.deepcopy(self.payload()[1]['evidence'])
+        self.session.call(100,{**request,'actor':'wrong'},expected=2);self.session.call(100,{**request,'lease':'wrong'},expected=2);self.session.call(100,{**request,'worker_status':'unknown'},expected=2)
+        self.assertEqual(before,(self.provider.issues,self.provider.comments))
+        response=self.session.call(100,request);checkpoint=response['next_steps'][0]
+        self.assertEqual(self.work['lease']['token'],checkpoint['stopped_unaccepted']['lease']);self.assertIn('prerequisite',checkpoint['stopped_unaccepted']['reason'])
+        self.assertFalse(self.payload()[1]['operational']['leases']);self.assertNotIn('workspace_draft',checkpoint);self.assertEqual(evidence_before,self.payload()[1]['evidence'])
+
     def test_native_red_to_green_checks_execute_once_per_phase_request(self):
         (self.fixture.repo / 'behavior_test.py').write_text('from source import value\nassert value() == 2\n')
         command = [sys.executable, '-B', '-c', "from pathlib import Path; import runpy; p=Path(%r); p.write_text(p.read_text()+'run\\n' if p.exists() else 'run\\n'); runpy.run_path('behavior_test.py')" % str(self.counter)]
