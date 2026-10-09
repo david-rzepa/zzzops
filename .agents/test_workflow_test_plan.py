@@ -59,10 +59,11 @@ class TestPlanTests(unittest.TestCase):
    self.assertFalse((root/'partition-marker').exists());self.assertEqual(before,set(Path(tempfile.gettempdir()).glob('zzzops-test-partitions-*')))
  def test_graph_promotion_is_atomic_and_requires_exact_pin(self):
   with tempfile.TemporaryDirectory() as d:
-   root=Path(d);subprocess.run(['git','init','-q'],cwd=root,check=True);subprocess.run(['git','-c','user.name=t','-c','user.email=t@t','commit','--allow-empty','-qm','x'],cwd=root,check=True);graph={'meta':{'version':1},'nodes':[],'edges':[]};provider=self.plan()['graph_provider'];pin=m.pin_graph(root,graph,provider);target=m.promote_graph(root,pin);loaded,evidence=m.historical_graph(root,target,provider);self.assertEqual(graph,loaded);self.assertEqual(pin['hash'],evidence['hash'])
+   root=Path(d);subprocess.run(['git','init','-q'],cwd=root,check=True);subprocess.run(['git','-c','user.name=t','-c','user.email=t@t','commit','--allow-empty','-qm','x'],cwd=root,check=True);graph={'meta':{'version':1},'nodes':[],'edges':[]};provider=self.plan()['graph_provider'];pin=m.pin_graph(root,graph,provider);target=m.promote_graph(root,pin)
+   with self.assertRaisesRegex(ValueError,'rebuild failed|does not match pinned revision'):m.historical_graph(root,target,provider)
    Path(pin['path']).write_text('{}')
    with self.assertRaisesRegex(ValueError,'changed before promotion'):m.promote_graph(root,pin)
-   self.assertEqual(graph,m.historical_graph(root,target,provider)[0])
+   self.assertEqual(pin['hash'],m.digest(json.loads(target.read_text())))
  def test_parallel_failure_cleans_isolated_filesystems(self):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d);subprocess.run(['git','init','-q'],cwd=root,check=True);owner=SimpleNamespace(repo=root,repository='owner/repo');before=set(Path(tempfile.gettempdir()).glob('zzzops-test-partitions-*'))

@@ -1,6 +1,6 @@
 """Deterministic repository test plans and resumable partition facts."""
 from __future__ import annotations
-import hashlib, json, os, subprocess, uuid
+import hashlib, json, os, subprocess, tempfile, uuid
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -60,15 +60,28 @@ def promote_graph(root:Path,pin:dict)->Path:
     temporary=target.with_name(target.name+'.'+uuid.uuid4().hex+'.tmp');temporary.write_bytes(canonical(record)+b'\n');os.replace(temporary,target)
     return target
 
-def historical_graph(root:Path,path:Path,provider:dict)->tuple[dict,dict]:
+def historical_graph(root:Path,path:Path,provider:dict,*,run=subprocess.run)->tuple[dict,dict]:
     record=json.loads(path.read_text(encoding='utf-8'))
     if not isinstance(record,dict) or set(record)!= {'schema_version','provider','revision','graph'} or record['schema_version']!=1 or record['provider']!=provider:
         raise ValueError('Previous Graft metadata/provider changed')
     revision=record['revision']
-    valid=subprocess.run(['git','cat-file','-e',f'{revision}^{{commit}}'],cwd=root,capture_output=True,check=False)
+    valid=run(['git','cat-file','-e',f'{revision}^{{commit}}'],cwd=root,capture_output=True,check=False)
     if not isinstance(revision,str) or not revision or valid.returncode: raise ValueError('Previous Graft revision is missing')
     graph=record['graph']
     if not isinstance(graph,dict) or set(graph)<{'meta','nodes','edges'} or graph['meta'].get('version')!=1: raise ValueError('Previous Graft content is corrupt')
+    with tempfile.TemporaryDirectory(prefix='zzzops-graft-revision-') as temporary:
+        checkout=Path(temporary)/'repo'
+        added=run(['git','worktree','add','--detach',str(checkout),revision],cwd=root,capture_output=True,text=True,check=False)
+        if added.returncode: raise ValueError('Previous Graft revision checkout failed')
+        try:
+            version=run(['graft','--version'],cwd=checkout,capture_output=True,text=True,check=False)
+            if version.returncode or provider['version'] not in version.stdout: raise ValueError('Previous Graft tool/version unavailable')
+            built=run(['graft','build'],cwd=checkout,capture_output=True,text=True,check=False,env={**os.environ,'DO_NOT_TRACK':'1'})
+            if built.returncode: raise ValueError('Previous Graft revision rebuild failed')
+            rebuilt=json.loads((checkout/'graft'/'.graph'/'wiring.json').read_text(encoding='utf-8'))
+            if digest(rebuilt)!=digest(graph): raise ValueError('Previous Graft graph does not match pinned revision')
+        finally:
+            run(['git','worktree','remove','--force',str(checkout)],cwd=root,capture_output=True,text=True,check=False)
     return graph,{'hash':digest(record),'path':str(path),'revision':revision}
 
 def canonical(value: Any) -> bytes:

@@ -68,9 +68,10 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
         original=subprocess.run;calls={'behavior_test':0,'second_test':0}
         def interrupted(argv,*args,**kwargs):
             text=json.dumps(argv)
+            is_test=argv and argv[0]==sys.executable and '-c' in argv
             for name in calls:
-                if name in text:calls[name]+=1
-            if 'second_test' in text:raise KeyboardInterrupt('after first durable partition fact')
+                if is_test and name in text:calls[name]+=1
+            if is_test and 'second_test' in text:raise KeyboardInterrupt('after first durable partition fact')
             return original(argv,*args,**kwargs)
         with mock.patch.object(subprocess,'run',side_effect=interrupted),self.assertRaises(KeyboardInterrupt):self.session.call(100,request)
         self.assertEqual({'behavior_test':1,'second_test':1},calls)
@@ -82,7 +83,7 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
         def counted(argv,*args,**kwargs):
             text=json.dumps(argv)
             for name in calls:
-                if name in text:calls[name]+=1
+                if argv and argv[0]==sys.executable and '-c' in argv and name in text:calls[name]+=1
             return original(argv,*args,**kwargs)
         with mock.patch.object(subprocess,'run',side_effect=counted):result=self.session.call(100,fresh)
         self.assertIn('verification',result,result)
@@ -96,7 +97,8 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
         with mock.patch.object(self.provider,'create_issue_comment',side_effect=RuntimeError('lost after durable facts')):self.session.call(100,request,expected=2)
         original=subprocess.run
         def no_repeat(argv,*args,**kwargs):
-            self.assertNotIn('behavior_test',json.dumps(argv));self.assertNotIn('second_test',json.dumps(argv));return original(argv,*args,**kwargs)
+            if argv and argv[0]==sys.executable and '-c' in argv:self.assertNotIn('behavior_test',json.dumps(argv));self.assertNotIn('second_test',json.dumps(argv))
+            return original(argv,*args,**kwargs)
         with mock.patch.object(subprocess,'run',side_effect=no_repeat):response=self.session.call(100,request)
         self.assertTrue(response['verification']['passed'])
 

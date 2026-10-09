@@ -3703,6 +3703,9 @@ class Workflow:
         previous_edges=current_edges=None; graph_ok=False
         reason='current and previous validated Graft graphs were not supplied by the host adapter'
         try:
+            relevant={path for unit in plan['tests'].values() for path in unit['dependencies']}
+            dirty=subprocess.run(['git','status','--porcelain','--',*sorted(relevant)],cwd=self.repo,capture_output=True,text=True,check=True).stdout.strip()
+            if dirty: raise ValueError('Current Graft relevant workspace inputs are uncommitted')
             current=test_plan.graft_snapshot(self.repo,plan['graph_provider'])
             revision=subprocess.run(['git','rev-parse','HEAD'],cwd=self.repo,capture_output=True,text=True,check=True).stdout.strip()
             current_pin=test_plan.pin_graph(self.repo,current,plan['graph_provider'],revision)
