@@ -3406,6 +3406,14 @@ class Workflow:
         def read_snapshot(files):
             return {path: clean_pairs.get((path, value), value) for path, value in files.items()}
         read_actual = read_snapshot(actual)
+        allocated_paths = set()
+        for allocated_state in work.values():
+            try:
+                allocated_entry = authority(allocated_state)['entry']
+                allocated_paths.update(allocated_entry['owned'])
+                allocated_paths.update(allocated_entry['consumed'])
+            except (ValueError, KeyError):
+                pass
         def read_connected(start):
             # Completed ordinary evidence retains its read identity across
             # unrelated paths. Relevant allocated paths must still be joined by
@@ -3538,14 +3546,14 @@ class Workflow:
                             raise ValueError('Stopped draft Git baseline changed outside owned scope')
                 elif prior and current_ref == prior['result']:
                     if 'error' in prior: raise ValueError(prior['error'])
-                    if not connected(prior['after']): raise ValueError('Completed workspace proof output/consumed drift or disconnected snapshot')
+                    if not read_connected(prior['after']): raise ValueError('Completed workspace proof output/consumed drift or disconnected snapshot')
                     acquisition = prior['data']['acquisition']; baseline = prior['before']
                 else:
                     baseline = actual
                     acquisition = {'git_commit': head, 'workspace_digest': digest(baseline), 'checkout_overrides': {}}
                     try: acquisition['checkout_overrides'] = self.clean_checkout_overrides(head, committed, actual)
                     except ValueError:
-                        anchors = [row for row in candidates if 'error' not in row and row['reviews'] and connected(row['after'], accepted_only=True)]
+                        anchors = [row for row in candidates if 'error' not in row and row['reviews'] and read_connected(row['after'])]
                         continuity = [(reference, draft) for reference, draft in valid_continuity
                                       if draft['files'] == actual]
                         if anchors:
@@ -3559,7 +3567,7 @@ class Workflow:
                                                                  if baseline.get(path) == value}
                         else:
                             raise ValueError('Workspace acquisition requires clean Git or exact reviewed connected output baseline') from None
-                    if prior and 'error' not in prior and prior['reviews'] and connected(prior['after']):
+                    if prior and 'error' not in prior and prior['reviews'] and read_connected(prior['after']):
                         previous = prior['data']['acquisition'].get('predecessor')
                         cursor, seen = previous, set()
                         while cursor is not None:
@@ -3596,7 +3604,7 @@ class Workflow:
                     # predecessor chain rather than expanding every old anchor.
                     selected_anchors = {}
                     for row in candidates:
-                        if 'error' not in row and row['reviews'] and row['proof']['hash'] in reachable and connected(row['after']): selected_anchors[row['key']] = row
+                        if 'error' not in row and row['reviews'] and row['proof']['hash'] in reachable and read_connected(row['after']): selected_anchors[row['key']] = row
                     acquisition['baseline_proofs'] = [{'result': row['result'], 'proof': row['proof'], 'reviews': [ref for ref, _ in row['reviews']]}
                         for row in selected_anchors.values()]
                 binding = remember({'type': 'workspace_snapshot', 'content': {'files': baseline, **{k: grant[k] for k in ('allocation', 'authorization', 'approval')}, **({'migration': migration} if migration is not None else {})}, 'producer': None, 'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
@@ -3610,11 +3618,6 @@ class Workflow:
                         continue
                 contexts[key] = {'error': 'Workspace authority/acquisition: ' + str(exc),
                                  **({'historical_recovery': recovery} if recovery else {})}
-        allocated_paths = set()
-        for state in work.values():
-            try:
-                entry = authority(state)['entry']; allocated_paths.update(entry['owned']); allocated_paths.update(entry['consumed'])
-            except (ValueError, KeyError): pass
         for key, state in states.items():
             if key in work or state['state'] == 'blocked': continue
             lease = next((item for item in snapshots[key[0]]['payload']['operational']['leases'] if ev.task_key(item['node']) == key), None)

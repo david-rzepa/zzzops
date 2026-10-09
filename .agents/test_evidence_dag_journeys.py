@@ -1592,6 +1592,23 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.assertEqual(reviewed, (self.result("alpha")[0], self.result("accept_alpha")[0]))
         self.assertEqual(red, self.read_blob(self.read_blob(self.produced("alpha"))["provenance"]["source"]))
 
+    def test_complementary_results_ignore_unallocated_later_bytes(self):
+        self.setup_workspace()
+        _alpha, (_red_ref, _red) = self.red_candidate()
+        beta = self.acquire_workspace("beta")
+        (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
+        self.candidate(beta, 0)
+        self.review_candidate("beta", 0)
+        expected = self.result("alpha")[0], self.result("beta")[0], self.result("accept_beta")[0]
+
+        unrelated = self.fixture.repo / "outside_allocation.txt"
+        unrelated.write_text("A later host-only byte outside every workspace allocation.\n")
+        response = self.session.call(100)
+        self.assertTrue(any(step.get("node", {}).get("node") == "gamma"
+                            and step.get("kind") == "execute" for step in response["next_steps"]))
+        self.assertEqual(expected, (self.result("alpha")[0], self.result("beta")[0],
+                                    self.result("accept_beta")[0]))
+
     def test_acquired_owned_path_cannot_be_replaced_by_escaping_symlink(self):
         self.setup_workspace()
         work = self.acquire_workspace("alpha")
