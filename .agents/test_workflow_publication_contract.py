@@ -61,6 +61,11 @@ class PublicationAPI:
 
 
 class WorkflowPublicationContractTests(unittest.TestCase):
+    def test_test_plan_proof_does_not_relax_exact_head_publication_gate(self):
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_authoritative_verification.AuthoritativeVerificationTests.test_public_changed_mode_widens_and_persists_partition_fact',
+            'test_workflow_publication_contract.WorkflowPublicationContractTests.test_exact_provider_identity_drives_publication_topology')
     def legacy_project(self):
         dag = json.loads((Path(__file__).parent / 'fixtures/legacy_phase_dag.json').read_text())
         return {'policy': {'sections': [{'id': 'workflow_adherence', 'configuration': {'phase_dag': dag}}]}}

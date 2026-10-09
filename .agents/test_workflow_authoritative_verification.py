@@ -22,6 +22,9 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
     def setUp(self):
         super().setUp()
         self.setup_workspace()
+        self.install_plan()
+        self.session.git('add','zzzops-test-plan.json')
+        self.session.git('commit','-qm','test plan fixture')
         self.work = self.acquire_workspace('alpha')
         self.counter = Path(self.session.control) / 'verification-count'
 
@@ -35,6 +38,26 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
 
     def count(self):
         return len(self.counter.read_text().splitlines()) if self.counter.exists() else 0
+
+    def install_plan(self):
+        unit={'purpose':'public regression','behavior':'observable','runner':'r','selection':'behavior_test','goals':['557'],'specifications':[],'dependencies':['behavior_test.py'],'completeness':'complete','fallback':'full','order_group':None}
+        plan={'schema_version':1,'graph_provider':{'name':'graft','version':'0.17.0','format':'graft-graph-v1','configuration':{}},'runners':{'r':{'adapter':'unittest','start':'.'}},'tests':{'behavior_test':unit},'latest_success':{}}
+        (self.fixture.repo/'zzzops-test-plan.json').write_text(json.dumps(plan))
+
+    def test_public_changed_mode_widens_and_persists_partition_fact(self):
+        (self.fixture.repo/'behavior_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
+        request=self.session.submission(self.work,{'value':'planned candidate'},'plan-changed')
+        request.update(verification_plan={'mode':'changed','changed':['unmapped.py'],'maximum_seconds':10,'durations':{'behavior_test':1}},verification_expectation='passed')
+        response=self.session.call(100,request);self.assertIn('verification',response,response);proof=self.read_blob(response['verification']['proof'])
+        self.assertTrue(proof['passed']);self.assertEqual(['behavior_test'],proof['test_plan']['preview']['selected']);self.assertIn('fallback_reason',proof['test_plan']['graph'])
+        git_dir=Path(subprocess.check_output(['git','rev-parse','--absolute-git-dir'],cwd=self.fixture.repo,text=True).strip())
+        self.assertTrue((git_dir/'zzzops/verification/100/partition-facts.json').exists())
+
+    def test_public_expected_red_mode_requires_signature_and_replays_response(self):
+        (self.fixture.repo/'behavior_test.py').write_text("import unittest\nclass T(unittest.TestCase):\n def test_red(self): self.fail('missing-557-behavior')\n")
+        request=self.session.submission(self.work,{'value':'observed red'},'plan-red')
+        request.update(verification_plan={'mode':'expected-red','changed':['behavior_test.py'],'expected_red':'FAILED'},verification_expectation='observed')
+        response=self.session.call(100,request);self.assertTrue(response['verification']['passed'],response);self.assertEqual(response,self.session.call(100,request))
 
     def test_native_red_to_green_checks_execute_once_per_phase_request(self):
         (self.fixture.repo / 'behavior_test.py').write_text('from source import value\nassert value() == 2\n')

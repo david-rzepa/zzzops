@@ -267,6 +267,11 @@ class PublicSession:
 
 
 class OwnedOutputPublicTests(unittest.TestCase):
+    def test_test_plan_legacy_workspace_proofs_and_new_schema_both_remain_public(self):
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_authoritative_verification.AuthoritativeVerificationTests.test_public_expected_red_mode_requires_signature_and_replays_response',
+            'test_workflow_authoritative_verification.AuthoritativeVerificationTests.test_explicit_red_observation_records_failed_proof_without_rerun')
     def test_publication_changes_requested_with_unfinished_ci_reaches_correction(self):
         # Exact publication safeguards now consume ordinary current generic evidence.
         from test_evidence_dag_journeys import run_generic_regressions

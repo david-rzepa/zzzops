@@ -3721,8 +3721,11 @@ class Workflow:
         durations=specification.get('durations',{}); maximum=specification.get('maximum_seconds',300)
         if not isinstance(durations,dict) or any(k not in plan['tests'] or not isinstance(v,(int,float)) or v<0 for k,v in durations.items()): raise ValueError('Partition durations are invalid')
         groups=test_plan.partitions(preview['selected'],durations,maximum)
-        code="import json,sys,unittest;s=unittest.TestSuite();l=unittest.defaultTestLoader;[s.addTests(l.discover('.agents',pattern=u+'.py')) for u in json.loads(sys.argv[1])];r=unittest.TextTestRunner(verbosity=2).run(s);raise SystemExit(not r.wasSuccessful())"
-        commands=[[sys.executable,'-c',code,json.dumps(group['units'],separators=(',',':'))] for group in groups]
+        code="import json,sys,unittest;s=unittest.TestSuite();l=unittest.defaultTestLoader;[(s.addTests(l.discover(x[0],pattern=x[1]+'.py'))) for x in json.loads(sys.argv[1])];r=unittest.TextTestRunner(verbosity=2).run(s);raise SystemExit(not r.wasSuccessful())"
+        commands=[]
+        for group in groups:
+            inventory=[(plan['runners'][plan['tests'][unit]['runner']].get('start','.agents'),unit) for unit in group['units']]
+            commands.append([sys.executable,'-B','-c',code,json.dumps(inventory,separators=(',',':'))])
         fingerprints={identity:test_plan.input_fingerprint(plan,identity,self.repo,inventory=plan['tests'],environment={'python':sys.version},tooling={'graft':plan['graph_provider']['version']}) for identity in preview['selected']}
         graph_evidence={'validated':graph_ok,'fallback_reason':reason,**({'current':current_pin} if 'current_pin' in locals() else {}),**({'previous':previous_pin} if 'previous_pin' in locals() else {})}
         return commands, {'request': specification, 'preview': preview, 'partitions':groups, 'semantic_plan': test_plan.digest(test_plan.semantic_plan(plan)), 'fingerprints':fingerprints, 'graph':graph_evidence}

@@ -37,7 +37,7 @@ class TestPlanTests(unittest.TestCase):
    owner=SimpleNamespace(repo=root)
    with mock.patch.object(m,'graft_snapshot',side_effect=ValueError('stale graph')):
     commands,evidence=journeys.z._workflow.Workflow.node_test_plan_commands(owner,{'verification_plan':{'mode':'explicit','selected':['b']}})
-   self.assertEqual(['b'],evidence['preview']['selected']);self.assertEqual(['b'],list(evidence['fingerprints']));self.assertEqual(['b'],json.loads(commands[0][-1]));self.assertEqual(['b'],evidence['partitions'][0]['units'])
+   self.assertEqual(['b'],evidence['preview']['selected']);self.assertEqual(['b'],list(evidence['fingerprints']));self.assertEqual([['.agents','b']],json.loads(commands[0][-1]));self.assertEqual(['b'],evidence['partitions'][0]['units'])
  def test_readonly_public_workflow_rejects_plan_execution(self):
   owner=SimpleNamespace()
   with self.assertRaisesRegex(ValueError,'resource authority'):
