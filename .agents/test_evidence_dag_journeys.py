@@ -5793,6 +5793,23 @@ class GraphAdoptionPublicTests(DagFixture):
         self.assertEqual(comments_after_b, self.provider.comments[100])
         self.assertEqual(names_before, self.names(), 'Reconciliation must not grant task authority')
 
+        repaired = self.session.call(100, {
+            'operation': 'graph_prepare', 'graph': self.graph,
+            'rationale': 'Use the newest exact reconciliation for this stale descriptor.',
+            'request_id': 'graph-after-refreshed-reconciliation-b',
+        })
+        self.assertEqual('review_required', repaired['next_steps'][0]['kind'])
+
+        engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
+        snapshot = engine.node_snapshot(100)
+        tampered = copy.deepcopy(engine.artifact_index(100))
+        tampered.records.pop(adopt_b['review']['hash'])
+        with mock.patch.object(engine, 'artifact_index', return_value=tampered):
+            with self.assertRaisesRegex(ValueError, r'(?i)uncommitted|checkpoint'):
+                engine.node_graph_proposal(
+                    snapshot, self.graph,
+                    'A malformed newest reconciliation must not fall back to observation A.')
+
     def test_graph_repair_uses_only_exact_committed_migration_cutoff(self):
         engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
         result = {"hash": "sha256:" + "a" * 64, "uri": "urn:sha256:" + "a" * 64}
