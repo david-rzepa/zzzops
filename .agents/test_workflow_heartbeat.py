@@ -480,6 +480,83 @@ with h._locked(Path(sys.argv[2])):
         finally:
             process.terminate();process.wait(timeout=3)
 
+    def _start_scheduled(self, *, goal, token, expires_at, cli=None, actor='worker-a'):
+        node={'goal':goal,'node':'review','item':None,'generation':1}
+        result=heartbeat.start_heartbeat(
+            repo=self.repo,root_id='root-a',runtime_path=self.runtime,cli_path=cli or self.cli,
+            goal=goal,phase=json.dumps(node,sort_keys=True),node=node,token=token,actor=actor,
+            probe_argv=[sys.executable,str(self.probe),'active','review',actor],
+            expires_at=expires_at,grace_seconds=0,interval_seconds=.02,
+            probe_timeout_seconds=.5,state_dir=self.state)
+        self.pids.add(result['pid'])
+        return node,result
+
+    def test_acknowledged_expiry_replaces_the_due_deadline_and_suppresses_extra_calls(self):
+        """The provider acknowledgement, rather than a global interval, owns the next deadline."""
+        acknowledged=self.directory/'acknowledged'
+        self.cli.write_text('''import json,sys,time
+from pathlib import Path
+args=sys.argv[1:];p=json.loads(Path(args[args.index('--input')+1]).read_text())
+with Path(%r).open('a') as h:h.write(json.dumps({'called_at':time.time(),'lease':p['lease']})+'\\n')
+expiry=time.time()+600
+Path(%r).write_text(str(expiry))
+print(json.dumps({'next_steps':[{'kind':'renewed','goal':int(args[args.index('--goal')+1]),'node':p['node'],'actor':p['actor'],'lease':p['lease'],'expires_at':expiry}]}))
+''' % (str(self.cli_records),str(acknowledged)))
+        now=time.time()
+        node,result=self._start_scheduled(goal=81,token='long-extension',expires_at=now+.4)
+        self._wait(acknowledged.exists)
+        returned_expiry=float(acknowledged.read_text())
+        self._wait(lambda:heartbeat._read(Path(result['config']))['leases'][0].get('expires_at')==returned_expiry)
+        lease=heartbeat._read(Path(result['config']))['leases'][0]
+        self.assertGreater(lease['renew_after'],now+30)
+        self.assertLess(lease['renew_after'],returned_expiry)
+        baseline=len(self._lines(self.cli_records))
+        time.sleep(.12)
+        self.assertEqual(baseline,len(self._lines(self.cli_records)))
+        heartbeat.stop_heartbeat(repo=self.repo,root_id='root-a',goal=81,
+            phase=json.dumps(node,sort_keys=True),token='long-extension',state_dir=self.state)
+
+    def test_initial_deadlines_are_derived_independently_from_each_lease_expiry(self):
+        now=time.time()
+        _,first=self._start_scheduled(goal=82,token='short-lease',expires_at=now+180)
+        _,second=self._start_scheduled(goal=83,token='long-lease',expires_at=now+600,actor='worker-b')
+        self.assertEqual(first['pid'],second['pid'])
+        leases={item['token']:item for item in heartbeat._read(Path(first['config']))['leases']}
+        self.assertLess(leases['short-lease']['renew_after'],leases['long-lease']['renew_after'])
+        for lease in leases.values():
+            self.assertLess(lease['renew_after'],lease['expires_at'])
+
+    def test_simultaneously_due_leases_renew_concurrently_within_the_expiry_margin(self):
+        self.cli.write_text('''import json,sys,time
+from pathlib import Path
+args=sys.argv[1:];p=json.loads(Path(args[args.index('--input')+1]).read_text());records=Path(%r)
+with records.open('a') as h:h.write(json.dumps({'event':'start','lease':p['lease'],'at':time.time()})+'\\n')
+time.sleep(.2)
+with records.open('a') as h:h.write(json.dumps({'event':'end','lease':p['lease'],'at':time.time()})+'\\n')
+print(json.dumps({'next_steps':[{'kind':'renewed','goal':int(args[args.index('--goal')+1]),'node':p['node'],'actor':p['actor'],'lease':p['lease'],'expires_at':time.time()+600}]}))
+''' % str(self.cli_records))
+        due=time.time()+.35
+        self._start_scheduled(goal=84,token='due-a',expires_at=due)
+        self._start_scheduled(goal=85,token='due-b',expires_at=due,actor='worker-b')
+        self._wait(lambda:len([r for r in self._lines(self.cli_records) if r['event']=='end'])==2)
+        rows=self._lines(self.cli_records)
+        starts={r['lease']:r['at'] for r in rows if r['event']=='start'}
+        ends={r['lease']:r['at'] for r in rows if r['event']=='end'}
+        self.assertLess(max(starts.values()),min(ends.values()),'renewals did not overlap')
+
+    @unittest.skipUnless(os.name == 'posix', 'real coordinator termination uses POSIX signals')
+    def test_coordinator_death_relaunch_preserves_the_per_lease_deadline(self):
+        node,first=self._start_scheduled(goal=86,token='restart-token',expires_at=time.time()+600)
+        deadline=heartbeat._read(Path(first['config']))['leases'][0]['renew_after']
+        os.kill(first['pid'],15)
+        self._wait(lambda:not heartbeat._pid_alive(first['pid']))
+        _,second=self._start_scheduled(goal=86,token='restart-token',expires_at=time.time()+600)
+        self.assertNotEqual(first['pid'],second['pid'])
+        lease=heartbeat._read(Path(second['config']))['leases'][0]
+        self.assertEqual(deadline,lease['renew_after'])
+        heartbeat.stop_heartbeat(repo=self.repo,root_id='root-a',goal=86,
+            phase=json.dumps(node,sort_keys=True),token='restart-token',state_dir=self.state)
+
 
 if __name__ == "__main__":
     unittest.main()
