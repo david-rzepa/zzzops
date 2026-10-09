@@ -1622,7 +1622,7 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         response = self.session.call(100)
 
         self.assertTrue(any(step.get("node", {}).get("node") == "beta"
-                            and step.get("kind") == "blocked" for step in response["next_steps"]), response)
+                            and step.get("kind") == "execute" for step in response["next_steps"]), response)
         self.assertFalse(any(step.get("node", {}).get("node") == "alpha"
                              and step.get("kind") == "blocked" for step in response["next_steps"]))
         self.assertEqual(accepted_alpha, self.result("alpha")[0])

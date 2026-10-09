@@ -3554,9 +3554,10 @@ class Workflow:
                         if any(original_git.get(p, 'missing') != committed.get(p, 'missing')
                                for p in original_git.keys() | committed.keys() if p not in grant['entry']['owned']):
                             raise ValueError('Stopped draft Git baseline changed outside owned scope')
-                elif prior and current_ref == prior['result']:
-                    if 'error' in prior: raise ValueError(prior['error'])
-                    if not read_connected(prior['after'], owned_paths(key)): raise ValueError('Completed workspace proof output/consumed drift or disconnected snapshot')
+                elif prior and current_ref == prior['result'] and 'error' in prior:
+                    raise ValueError(prior['error'])
+                elif (prior and current_ref == prior['result']
+                        and read_connected(prior['after'], owned_paths(key))):
                     acquisition = prior['data']['acquisition']; baseline = prior['before']
                 else:
                     baseline = actual
