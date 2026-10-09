@@ -98,3 +98,15 @@ Before human review or completion, the agent reviews the actual goal diff, crite
 ### Reusable local request files
 
 Public ZzzOps workflow responses for capture, execution, migration, and policy review expose a stable `working_input` path under `.zzzops/work/inputs/v1/`. Edit that file across revisions. ZzzOps freezes exact bytes for provider dispatch, preserves ambiguous snapshots, and returns directly runnable status or reconciliation commands. The store is Git-ignored and abandonment never removes published evidence, approvals, receipts, history, or diagnostics.
+
+## Repository test plan
+
+`zzzops-test-plan.json` is the single tracked authority for test definitions and the latest matching successful input identities. Definitions name stable test-file or runner groups, their purpose, provenance when known, explicit runtime inputs, and conservative fallback. Result metadata does not hash itself; all semantic definition, discovery, runner, dependency, toolchain, environment, fixture, generated, subprocess, and dynamic-input bytes do.
+
+The product-validation adapter can preview selection without executing tests:
+
+```sh
+python .github/scripts/run_product_validation.py --platform linux --test-plan-preview --changed plugins/zzzops/zzzops/workflow.py
+```
+
+A preview without current validated Graft evidence widens to the full declared suite and reports the reason. Graft graphs are disposable caches. Selection must use both previous and current relationships, and any missing, stale, unsupported, or unresolved relationship widens conservatively. Execution remains serial unless exact current reviewed resource authority, sufficient capacity, and safe isolation are all present.
