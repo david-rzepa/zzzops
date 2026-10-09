@@ -6,6 +6,7 @@ The module receives the existing command services to keep provider I/O injectabl
 from __future__ import annotations
 
 import copy
+import concurrent.futures
 import hashlib
 import json
 import math
@@ -3578,7 +3579,7 @@ class Workflow:
                              'acquisition': {'read_files': copy.deepcopy(actual)}, 'readonly': True}
         return contexts
 
-    def node_verification_commands(self, snapshot, lease, request, commands, before, reusable_identity=None):
+    def node_verification_commands(self, snapshot, lease, request, commands, before, reusable_identity=None, parallelism=1):
         """Reuse host-observed command outcomes across pre-publication failures."""
         if not commands: return []
         git_dir = Path(subprocess.run(['git', 'rev-parse', '--absolute-git-dir'], cwd=self.repo,
@@ -3628,6 +3629,24 @@ class Workflow:
         if journal['status'] == 'complete':
             journal={'identity':identity,'status':'prepared','results':[]}; results=[]
         logs = self.repo / '.zzzops' / 'diagnostics'; logs.mkdir(parents=True, exist_ok=True)
+        def execute(i, command):
+            log = logs / f'node-{lease["token"]}-{path.stem}-{i}.log'; started=time.monotonic()
+            timed_out=False; execution_error=None
+            with log.open('w') as output:
+                try: exit_code=subprocess.run(command,cwd=self.repo,stdout=output,stderr=subprocess.STDOUT,timeout=300,check=False).returncode
+                except subprocess.TimeoutExpired: timed_out=True; exit_code=None
+                except OSError as exc: execution_error=str(exc); exit_code=None
+                output.flush(); os.fsync(output.fileno())
+            return {'command':command,'exit_code':exit_code,'log':str(log),'log_hash':hashlib.sha256(log.read_bytes()).hexdigest(),
+                    'duration_seconds':time.monotonic()-started,**({'timed_out':True} if timed_out else {}),**({'execution_error':execution_error} if execution_error else {})}
+        if parallelism > 1 and not results:
+            journal['status']='running'; journal['active_commands']=[{'index':i,'command':c} for i,c in enumerate(commands)]; write(journal)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=parallelism) as pool:
+                futures={pool.submit(execute,i,c):i for i,c in enumerate(commands)}
+                indexed={futures[f]:f.result() for f in futures}
+            results=[indexed[i] for i in range(len(commands))]
+            journal.pop('active_commands',None); journal['results']=results; journal['status']='complete'; write(journal)
+            return results
         for i in range(len(results), len(commands)):
             command = commands[i]
             log = logs / f'node-{lease["token"]}-{path.stem}-{i}.log'
@@ -3658,11 +3677,11 @@ class Workflow:
             if timed_out or execution_error: break
         return results
 
-    def node_test_plan_commands(self, request):
+    def node_test_plan_commands(self, request, lease=None):
         specification = request.get('verification_plan')
         if specification is None: return request.get('workspace_checks', []), None
         if request.get('workspace_checks'): raise ValueError('Use either verification_plan or exact workspace_checks')
-        if not isinstance(specification, dict) or set(specification) - {'mode', 'changed', 'selected', 'expected_red'}:
+        if not isinstance(specification, dict) or set(specification) - {'mode', 'changed', 'selected', 'expected_red', 'durations', 'maximum_seconds', 'parallel'}:
             raise ValueError('Verification plan request is invalid')
         path = self.repo / 'zzzops-test-plan.json'
         plan = test_plan.validate_plan(json.loads(path.read_text(encoding='utf-8')))
@@ -3675,6 +3694,7 @@ class Workflow:
         reason='current and previous validated Graft graphs were not supplied by the host adapter'
         try:
             current=test_plan.graft_snapshot(self.repo,plan['graph_provider'])
+            current_pin=test_plan.pin_graph(self.repo,current)
             current_edges=test_plan.graph_unit_edges(plan,current)
             # A changed-mode proof needs both sides. The previous graph is an
             # exact host artifact; its absence widens instead of trusting Git
@@ -3682,17 +3702,20 @@ class Workflow:
             previous_path=self.repo/'.zzzops'/'test-plan'/'previous-graft.json'
             if previous_path.exists():
                 previous=test_plan.graft_snapshot(self.repo,plan['graph_provider'],graph_path=previous_path)
+                previous_pin=test_plan.pin_graph(self.repo,previous)
                 previous_edges=test_plan.graph_unit_edges(plan,previous); graph_ok=True; reason=None
             else: reason='validated previous Graft graph is unavailable'
         except (ValueError,OSError,subprocess.SubprocessError,json.JSONDecodeError) as exc:
             reason=str(exc)
         preview = test_plan.preview(plan, mode=mode, changed=changed, explicit=selected, previous_edges=previous_edges, current_edges=current_edges, graph_ok=graph_ok, fallback_reason=reason)
-        commands = []
-        for identity in preview['selected']:
-            unit = plan['tests'][identity]
-            commands.append([sys.executable, '-m', 'unittest', 'discover', '-s', '.agents', '-p', identity + '.py'])
+        durations=specification.get('durations',{}); maximum=specification.get('maximum_seconds',300)
+        if not isinstance(durations,dict) or any(k not in plan['tests'] or not isinstance(v,(int,float)) or v<0 for k,v in durations.items()): raise ValueError('Partition durations are invalid')
+        groups=test_plan.partitions(preview['selected'],durations,maximum)
+        code="import json,sys,unittest;s=unittest.TestSuite();l=unittest.defaultTestLoader;[s.addTests(l.discover('.agents',pattern=u+'.py')) for u in json.loads(sys.argv[1])];r=unittest.TextTestRunner(verbosity=2).run(s);raise SystemExit(not r.wasSuccessful())"
+        commands=[[sys.executable,'-c',code,json.dumps(group['units'],separators=(',',':'))] for group in groups]
         fingerprints={identity:test_plan.input_fingerprint(plan,identity,self.repo,inventory=plan['tests'],environment={'python':sys.version},tooling={'graft':plan['graph_provider']['version']}) for identity in preview['selected']}
-        return commands, {'request': specification, 'preview': preview, 'semantic_plan': test_plan.digest(test_plan.semantic_plan(plan)), 'fingerprints':fingerprints, 'graph':{'validated':graph_ok,'fallback_reason':reason}}
+        graph_evidence={'validated':graph_ok,'fallback_reason':reason,**({'current':current_pin} if 'current_pin' in locals() else {}),**({'previous':previous_pin} if 'previous_pin' in locals() else {})}
+        return commands, {'request': specification, 'preview': preview, 'partitions':groups, 'semantic_plan': test_plan.digest(test_plan.semantic_plan(plan)), 'fingerprints':fingerprints, 'graph':graph_evidence}
 
     def node_workspace_proof(self, snapshot, state, lease, request):
         workspace = state.get('workspace')
@@ -3707,7 +3730,7 @@ class Workflow:
                 if hashlib.sha256(Path(record['log']).read_bytes()).hexdigest() != record['log_hash']: raise ValueError('Pending verification log changed')
             snapshot['artifacts'][ref['hash']] = proof; snapshot['workspace_proof'] = ref
             return ref
-        commands, plan_evidence = self.node_test_plan_commands(request)
+        commands, plan_evidence = self.node_test_plan_commands(request,lease)
         if not isinstance(commands, list) or any(not isinstance(c, list) or not c or any(not isinstance(a, str) or not a for a in c) for c in commands): raise ValueError('Workspace checks require nonempty argument arrays')
         before = self.workspace_files(); results = []
         if before != lease['acquisition']['files'] and not commands: raise ValueError('Changed workspace outputs require observed verification checks before publishing a candidate proof')
@@ -3717,7 +3740,16 @@ class Workflow:
                 'directory':str(self.repo.resolve()),'environment':digest(dict(os.environ)),
                 'semantic_plan':plan_evidence['semantic_plan'],'mode':plan_evidence['request'].get('mode'),
                 'selected':plan_evidence['preview']['selected'],'fingerprints':plan_evidence['fingerprints'],'commands':commands}
-        results = self.node_verification_commands(snapshot, lease, request, commands, before, reusable_identity)
+        parallelism=1
+        if plan_evidence and plan_evidence['request'].get('parallel') is not None:
+            parallel=plan_evidence['request']['parallel']
+            if not isinstance(parallel,dict) or set(parallel)!= {'workers','authority','capacity','isolation'}: raise ValueError('Parallel verification contract is invalid')
+            authority=parallel['authority']
+            policy_hash=digest(policy_section(self.project,'autonomy_approval_parallelism'))
+            if lease is None or not isinstance(authority,dict) or authority.get('lease')!=lease['token'] or authority.get('acquisition')!=digest(lease['acquisition']) or authority.get('policy')!=policy_hash: raise ValueError('Parallel authority is not current for this lease')
+            reviewed={'decision':authority.get('decision'),'maximum':min(authority.get('maximum',0),worker_limit(self.project))}
+            parallelism=test_plan.parallel_contract(requested=parallel['workers'],authority=reviewed,capacity=parallel['capacity'],isolation=parallel['isolation'])
+        results = self.node_verification_commands(snapshot, lease, request, commands, before, reusable_identity,parallelism)
         if self.workspace_files() != before: raise ValueError('Workspace checks changed source/output bytes; inspect before retry')
         passed = len(results) == len(commands) and all(r['exit_code'] == 0 for r in results)
         if plan_evidence and plan_evidence['request'].get('mode') == 'expected-red':

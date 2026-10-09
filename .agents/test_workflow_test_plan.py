@@ -28,6 +28,7 @@ class TestPlanTests(unittest.TestCase):
    root=Path(d);path=root/'graph.json';path.write_text(json.dumps(graph));calls=[]
    def run(command,**kwargs):calls.append(command);return R('graft 0.17.0' if '--version' in command else '{}')
    observed=m.graft_snapshot(root,p['graph_provider'],graph_path=path,run=run)
+   pin=m.pin_graph(root,observed);self.assertEqual(observed,json.loads(Path(pin['path']).read_text()))
   edges=m.graph_unit_edges(p,observed);self.assertIn('old.py',edges['a']);self.assertEqual([['graft','--version'],['graft','check','--json']],calls)
  def test_public_workflow_plan_adapter_emits_exact_units_and_fingerprints(self):
   p=self.plan()
@@ -36,7 +37,7 @@ class TestPlanTests(unittest.TestCase):
    owner=SimpleNamespace(repo=root)
    with mock.patch.object(m,'graft_snapshot',side_effect=ValueError('stale graph')):
     commands,evidence=journeys.z._workflow.Workflow.node_test_plan_commands(owner,{'verification_plan':{'mode':'explicit','selected':['b']}})
-   self.assertEqual(['b'],evidence['preview']['selected']);self.assertEqual(['b'],list(evidence['fingerprints']));self.assertEqual('b.py',commands[0][-1])
+   self.assertEqual(['b'],evidence['preview']['selected']);self.assertEqual(['b'],list(evidence['fingerprints']));self.assertEqual(['b'],json.loads(commands[0][-1]));self.assertEqual(['b'],evidence['partitions'][0]['units'])
  def test_readonly_public_workflow_rejects_plan_execution(self):
   owner=SimpleNamespace()
   with self.assertRaisesRegex(ValueError,'resource authority'):
@@ -49,3 +50,9 @@ class TestPlanTests(unittest.TestCase):
    first=journeys.z._workflow.Workflow.node_verification_commands(owner,{'number':1},{'token':'a','worker':'one','acquisition':{}},request,[command],before,identity)
    second=journeys.z._workflow.Workflow.node_verification_commands(owner,{'number':1},{'token':'b','worker':'two','acquisition':{}},{'request_id':'two'},[command],before,identity)
    self.assertEqual(first,second);self.assertEqual('x',count.read_text())
+ def test_parallel_public_runner_preserves_inventory_order_and_cleans_up(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);subprocess.run(['git','init','-q'],cwd=root,check=True);owner=SimpleNamespace(repo=root,repository='owner/repo')
+   commands=[[sys.executable,'-c',f"import time;time.sleep(.05);print({i})"] for i in range(3)]
+   results=journeys.z._workflow.Workflow.node_verification_commands(owner,{'number':1},{'token':'p','worker':'w','acquisition':{}},{'request_id':'p'},commands,{}, {'inventory':'three'},3)
+   self.assertEqual(commands,[r['command'] for r in results]);self.assertEqual(3,len(results));self.assertTrue(all(r['exit_code']==0 for r in results))

@@ -41,6 +41,15 @@ def graph_unit_edges(plan: dict, snapshot: dict) -> dict[str,list[str]]:
     validate_plan(plan)
     return {identity:sorted(graph_dependencies(snapshot,unit['dependencies'])) for identity,unit in plan['tests'].items()}
 
+def pin_graph(root:Path,snapshot:dict)->dict:
+    """Materialise an immutable content-addressed host observation."""
+    identity=digest(snapshot); directory=root/'.zzzops'/'test-plan'/'graphs';directory.mkdir(parents=True,exist_ok=True)
+    path=directory/(identity[7:]+'.json')
+    if path.exists() and json.loads(path.read_text(encoding='utf-8'))!=snapshot: raise ValueError('Pinned Graft graph identity collision')
+    if not path.exists():
+        temporary=path.with_suffix('.tmp');temporary.write_bytes(canonical(snapshot)+b'\n');os.replace(temporary,path)
+    return {'hash':identity,'path':str(path)}
+
 def canonical(value: Any) -> bytes:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
 
