@@ -53,7 +53,7 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
         response=self.session.call(100,request);self.assertIn('verification',response,response);proof=self.read_blob(response['verification']['proof'])
         self.assertTrue(proof['passed']);self.assertEqual(['behavior_test','second_test'],proof['test_plan']['preview']['selected']);self.assertIn('fallback_reason',proof['test_plan']['graph'])
         git_dir=Path(subprocess.check_output(['git','rev-parse','--absolute-git-dir'],cwd=self.fixture.repo,text=True).strip())
-        self.assertTrue((git_dir/'zzzops/verification/100/partition-facts.json').exists())
+        self.assertTrue(list((git_dir/'zzzops/verification/100').glob('partition-facts-*.json')))
 
     def test_public_expected_red_mode_requires_signature_and_replays_response(self):
         (self.fixture.repo/'behavior_test.py').write_text("import unittest\nclass T(unittest.TestCase):\n def test_red(self): self.fail('missing-557-behavior')\n")

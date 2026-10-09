@@ -268,10 +268,16 @@ class PublicSession:
 
 class OwnedOutputPublicTests(unittest.TestCase):
     def test_test_plan_legacy_workspace_proofs_and_new_schema_both_remain_public(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_authoritative_verification.AuthoritativeVerificationTests.test_public_expected_red_mode_requires_signature_and_replays_response',
-            'test_workflow_authoritative_verification.AuthoritativeVerificationTests.test_explicit_red_observation_records_failed_proof_without_rerun')
+        import test_evidence_dag_journeys as journeys
+        fixture = journeys.WorkspaceAuthorityPublicTests(); fixture.setUp(); self.addCleanup(fixture.doCleanups)
+        fixture.setup_workspace(); work=fixture.acquire_workspace('alpha')
+        (fixture.fixture.repo/'behavior_test.py').write_text('assert True\n')
+        request=fixture.session.submission(work,{'value':'legacy schema-less candidate'},'legacy-proof-current-reader')
+        request['workspace_checks']=[[sys.executable,'-B','behavior_test.py']]
+        response=fixture.session.call(100,request);proof=fixture.read_blob(response['verification']['proof'])
+        self.assertTrue(proof['passed']);self.assertNotIn('schema_version',proof);self.assertNotIn('test_plan',proof)
+        fixture.review_candidate('alpha',0)
+        self.assertIn('beta',{step['node']['node'] for step in fixture.session.ready() if step['kind']=='execute'})
     def test_publication_changes_requested_with_unfinished_ci_reaches_correction(self):
         # Exact publication safeguards now consume ordinary current generic evidence.
         from test_evidence_dag_journeys import run_generic_regressions

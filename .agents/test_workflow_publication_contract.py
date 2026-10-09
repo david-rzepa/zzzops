@@ -62,10 +62,10 @@ class PublicationAPI:
 
 class WorkflowPublicationContractTests(unittest.TestCase):
     def test_test_plan_proof_does_not_relax_exact_head_publication_gate(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_authoritative_verification.AuthoritativeVerificationTests.test_public_changed_mode_widens_and_persists_partition_fact',
-            'test_workflow_publication_contract.WorkflowPublicationContractTests.test_exact_provider_identity_drives_publication_topology')
+        delivery=GenericDeliveryPublicTests();delivery.setUp();self.addCleanup(delivery.doCleanups)
+        delivery.connected_delivery(test_plan=True, challenge_publication=True)
+        beta=delivery.read_blob(delivery.produced('beta'));proof=delivery.read_blob(beta['provenance']['source'])
+        self.assertTrue(proof['passed']);self.assertEqual('full',proof['test_plan']['request']['mode'])
     def legacy_project(self):
         dag = json.loads((Path(__file__).parent / 'fixtures/legacy_phase_dag.json').read_text())
         return {'policy': {'sections': [{'id': 'workflow_adherence', 'configuration': {'phase_dag': dag}}]}}
@@ -743,10 +743,14 @@ class GenericDeliveryPublicTests(DagFixture):
     def test_reviewed_red_green_proofs_commit_and_exact_publication_form_one_delivery_graph(self):
         self.connected_delivery()
 
-    def connected_delivery(self, parent=False, allocation_mutator=None, observer=None):
+    def connected_delivery(self, parent=False, allocation_mutator=None, observer=None, test_plan=False, challenge_publication=False):
         self.configure(renamed=True)
         publication = self.with_merge_observation(copy.deepcopy(self.graph))
         self.session.git("checkout", "-q", "goal-child")
+        if test_plan:
+            unit={'purpose':'delivery','behavior':'red green','runner':'r','selection':'behavior_test','goals':['557'],'specifications':[],'dependencies':['behavior_test.py','source.py'],'completeness':'complete','fallback':'full','order_group':None}
+            plan={'schema_version':1,'graph_provider':{'name':'graft','version':'0.17.0','format':'graft-graph-v1','configuration':{}},'runners':{'r':{'adapter':'unittest','start':'.'}},'tests':{'behavior_test':unit},'latest_success':{}}
+            (self.fixture.repo/'zzzops-test-plan.json').write_text(json.dumps(plan));self.session.git('add','zzzops-test-plan.json');self.session.git('commit','-qm','delivery test plan')
         def composed(graph, _allocations):
             if allocation_mutator:
                 allocation_mutator(graph, _allocations)
@@ -798,7 +802,9 @@ class GenericDeliveryPublicTests(DagFixture):
         response = self.session.call(100, fabricated, expected=2)
         self.assertRegex(json.dumps(response), r"(?i)proof|verification|check|baseline")
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
-        red_reference, red = self.candidate(alpha, 1)
+        if test_plan:
+            request=self.session.submission(alpha,{'value':'Exact workspace candidate alpha'},'plan-red-delivery');request.update(verification_plan={'mode':'expected-red','selected':['behavior_test'],'expected_red':'AssertionError'},verification_expectation='observed');response=self.session.call(100,request);red_reference=response['verification']['proof'];red=self.read_blob(red_reference)
+        else: red_reference, red = self.candidate(alpha, 1)
         self.review_candidate("alpha", 1)
         self.assertEqual(1, red["commands"][0]["exit_code"])
         beta = self.acquire_workspace("beta")
@@ -808,7 +814,9 @@ class GenericDeliveryPublicTests(DagFixture):
         response = self.session.call(100, self.session.submission(beta, {"value": "Claimed passing implementation without observed checks"}, "unobserved-green"), expected=2)
         self.assertRegex(json.dumps(response), r"(?i)proof|verification|check")
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
-        green_reference, green = self.candidate(beta, 0)
+        if test_plan:
+            request=self.session.submission(beta,{'value':'Exact workspace candidate beta'},'plan-green-delivery');request.update(verification_plan={'mode':'full'},verification_expectation='passed');response=self.session.call(100,request);green_reference=response['verification']['proof'];green=self.read_blob(green_reference)
+        else: green_reference, green = self.candidate(beta, 0)
         if observer:
             observer("candidate")
         self.assertNotIn(self.ids["observe"], self.names(), "Candidate must receive its separate verification and review")
@@ -821,6 +829,11 @@ class GenericDeliveryPublicTests(DagFixture):
         self.assertEqual(self.fixture.base_oid, self.session.git("rev-parse", "dev"))
         observer = self.session.acquire(self.ids["observe"])
         self.assertIn(self.produced("beta")["hash"], json.dumps(observer["lease"]["acquisition"]))
+        if challenge_publication:
+            for field,value in [('head_oid','0'*40),('base_oid','1'*40),('checks_verified',False)]:
+                original=self.observation[field];self.observation[field]=value
+                bad=self.session.submission(observer,{'value':self.observed_value()},'reject-'+field)
+                self.session.call(100,bad,expected=2);self.observation[field]=original
         self.session.finish(observer, {"value": self.observed_value()})
         self.assertEqual(red, self.read_blob(red_reference))
         self.assertEqual(green, self.read_blob(green_reference))
@@ -834,6 +847,9 @@ class GenericDeliveryPublicTests(DagFixture):
         self.assertEqual(1, len(self.merge_calls))
         self.assertTrue(self.observation["merged"])
         post_effect = self.session.acquire("observed_merge")
+        if challenge_publication:
+            invalid=self.merge_value();invalid['merge_commit']='0'*40
+            self.session.call(100,self.session.submission(post_effect,{'value':invalid},'reject-merge-topology'),expected=2)
         self.session.finish(post_effect, {"value": self.merge_value()})
         self.submit_role("finish", "Current connected delivery and observed merge evidence")
         self.assertEqual(red, self.read_blob(red_reference))

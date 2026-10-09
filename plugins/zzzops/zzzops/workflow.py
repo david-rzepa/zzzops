@@ -3768,7 +3768,7 @@ class Workflow:
         if plan_evidence:
             git_dir=Path(subprocess.run(['git','rev-parse','--absolute-git-dir'],cwd=self.repo,capture_output=True,text=True,check=True).stdout.strip())
             fact_identity={'repository':self.repository,'goal':snapshot['number'],'workspace':digest(before),'environment':digest(dict(os.environ)),'semantic_plan':plan_evidence['semantic_plan']}
-            fact_journal=test_plan.PartitionJournal(git_dir/'zzzops'/'verification'/str(snapshot['number'])/'partition-facts.json',fact_identity)
+            fact_journal=test_plan.PartitionJournal(git_dir/'zzzops'/'verification'/str(snapshot['number'])/('partition-facts-'+digest(fact_identity)[7:]+'.json'),fact_identity)
             facts=fact_journal.facts(); results=[None]*len(commands); missing=[]; fingerprints=[]
             for i,(command,partition) in enumerate(zip(commands,plan_evidence['partitions'])):
                 fingerprint=test_plan.digest({'units':{u:plan_evidence['fingerprints'][u] for u in partition['units']},'command':command,'workspace':digest(before),'environment':digest(dict(os.environ))})
