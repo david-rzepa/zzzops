@@ -574,6 +574,50 @@ print(json.dumps({'next_steps':[{'kind':'renewed','goal':int(args[args.index('--
         ends={r['lease']:r['at'] for r in rows if r['event']=='end'}
         self.assertLess(max(starts.values()),min(ends.values()),'renewals did not overlap')
 
+    @unittest.skipUnless(os.name == 'posix' and hasattr(__import__('signal'),'SIGUSR1'),
+                         'deterministic coordinator wake requires SIGUSR1')
+    def test_ninth_simultaneously_due_lease_finishes_before_its_safety_boundary(self):
+        """A saturated renewal pool must reserve capacity for every due lease."""
+        self.cli.write_text('''import json,sys,time
+from pathlib import Path
+args=sys.argv[1:];p=json.loads(Path(args[args.index('--input')+1]).read_text());records=Path(%r)
+with records.open('a') as h:h.write(json.dumps({'event':'start','lease':p['lease'],'at':time.time()})+'\\n')
+time.sleep(1.1)
+with records.open('a') as h:h.write(json.dumps({'event':'ack','lease':p['lease'],'at':time.time()})+'\\n')
+print(json.dumps({'next_steps':[{'kind':'renewed','goal':int(args[args.index('--goal')+1]),'node':p['node'],'actor':p['actor'],'lease':p['lease'],'expires_at':time.time()+600}]}))
+''' % str(self.cli_records))
+        registrations=[]
+        for offset in range(9):
+            node,result=self._start_scheduled(
+                goal=100+offset,token='saturated-%d' % offset,
+                actor='worker-%d' % offset,expires_at=time.time()+600)
+            registrations.append((node,result))
+        config_path=Path(registrations[0][1]['config'])
+        paths=heartbeat._paths(self.repo,'root-a',self.state)
+        boundary=time.time()+2.0
+        with heartbeat._locked(paths['update_lock'],timeout_seconds=1):
+            config=heartbeat._read(config_path)
+            for lease in config['leases']:
+                lease['renew_after']=0
+                lease['expires_at']=boundary
+            heartbeat._atomic_write(config_path,config)
+        os.kill(config['pid'],__import__('signal').SIGUSR1)
+
+        self._wait(lambda:len([r for r in self._lines(self.cli_records) if r['event']=='ack'])==9,timeout=5)
+        acknowledgements=self._lines(self.cli_records)
+        starts=[r for r in acknowledgements if r['event']=='start']
+        acks=[r for r in acknowledgements if r['event']=='ack']
+        self.assertEqual(8,len([r for r in starts if r['at'] < min(a['at'] for a in acks)]),
+                         'fixture did not saturate the eight-worker first wave')
+        self.assertTrue(all(row['at'] < boundary for row in acks),
+                        'a saturated renewal acknowledgement crossed its lease safety boundary')
+
+        for node,_ in registrations:
+            heartbeat.stop_heartbeat(
+                repo=self.repo,root_id='root-a',goal=node['goal'],
+                phase=json.dumps(node,sort_keys=True),token='saturated-%d' % (node['goal']-100),
+                state_dir=self.state)
+
     @unittest.skipUnless(os.name == 'posix', 'real coordinator termination uses POSIX signals')
     def test_coordinator_death_relaunch_preserves_the_per_lease_deadline(self):
         node,first=self._start_scheduled(goal=86,token='restart-token',expires_at=time.time()+600)
