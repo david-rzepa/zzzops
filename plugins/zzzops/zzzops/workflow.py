@@ -3704,15 +3704,15 @@ class Workflow:
         reason='current and previous validated Graft graphs were not supplied by the host adapter'
         try:
             current=test_plan.graft_snapshot(self.repo,plan['graph_provider'])
-            current_pin=test_plan.pin_graph(self.repo,current)
+            revision=subprocess.run(['git','rev-parse','HEAD'],cwd=self.repo,capture_output=True,text=True,check=True).stdout.strip()
+            current_pin=test_plan.pin_graph(self.repo,current,plan['graph_provider'],revision)
             current_edges=test_plan.graph_unit_edges(plan,current)
             # A changed-mode proof needs both sides. The previous graph is an
             # exact host artifact; its absence widens instead of trusting Git
             # path heuristics or a caller assertion.
             previous_path=self.repo/'.zzzops'/'test-plan'/'previous-graft.json'
             if previous_path.exists():
-                previous=test_plan.graft_snapshot(self.repo,plan['graph_provider'],graph_path=previous_path)
-                previous_pin=test_plan.pin_graph(self.repo,previous)
+                previous,previous_pin=test_plan.historical_graph(self.repo,previous_path,plan['graph_provider'])
                 previous_edges=test_plan.graph_unit_edges(plan,previous); graph_ok=True; reason=None
             else: reason='validated previous Graft graph is unavailable'
         except (ValueError,OSError,subprocess.SubprocessError,json.JSONDecodeError) as exc:
@@ -3759,7 +3759,27 @@ class Workflow:
             if lease is None or not isinstance(authority,dict) or authority.get('lease')!=lease['token'] or authority.get('acquisition')!=digest(lease['acquisition']) or authority.get('policy')!=policy_hash: raise ValueError('Parallel authority is not current for this lease')
             reviewed={'decision':authority.get('decision'),'maximum':min(authority.get('maximum',0),worker_limit(self.project))}
             parallelism=test_plan.parallel_contract(requested=parallel['workers'],authority=reviewed,capacity=parallel['capacity'],isolation=True)
-        results = self.node_verification_commands(snapshot, lease, request, commands, before, reusable_identity,parallelism,parallelism>1)
+        if plan_evidence:
+            git_dir=Path(subprocess.run(['git','rev-parse','--absolute-git-dir'],cwd=self.repo,capture_output=True,text=True,check=True).stdout.strip())
+            fact_identity={'repository':self.repository,'goal':snapshot['number'],'workspace':digest(before),'environment':digest(dict(os.environ)),'semantic_plan':plan_evidence['semantic_plan']}
+            fact_journal=test_plan.PartitionJournal(git_dir/'zzzops'/'verification'/str(snapshot['number'])/'partition-facts.json',fact_identity)
+            facts=fact_journal.facts(); results=[None]*len(commands); missing=[]; fingerprints=[]
+            for i,(command,partition) in enumerate(zip(commands,plan_evidence['partitions'])):
+                fingerprint=test_plan.digest({'units':{u:plan_evidence['fingerprints'][u] for u in partition['units']},'command':command,'workspace':digest(before),'environment':digest(dict(os.environ))})
+                fingerprints.append(fingerprint); reusable=test_plan.reusable_success(facts,fingerprint)
+                record=(reusable or {}).get('result')
+                if record and hashlib.sha256(Path(record['log']).read_bytes()).hexdigest()==record['log_hash']: results[i]=record
+                else: missing.append(i)
+            if missing:
+                subset=[commands[i] for i in missing]
+                subset_identity={**reusable_identity,'partitions':[plan_evidence['partitions'][i]['id'] for i in missing]}
+                observed=self.node_verification_commands(snapshot,lease,request,subset,before,subset_identity,min(parallelism,len(subset)),parallelism>1 and len(subset)>1)
+                for i,record in zip(missing,observed):
+                    results[i]=record; outcome=test_plan.classify_outcome(exit_code=record.get('exit_code'),timed_out=record.get('timed_out',False),execution_error=record.get('execution_error'))
+                    fact_journal.append({'partition':plan_evidence['partitions'][i]['id'],'fingerprint':fingerprints[i],'outcome':outcome,'result':record})
+            results=[row for row in results if row is not None]
+        else:
+            results = self.node_verification_commands(snapshot, lease, request, commands, before, reusable_identity,parallelism,parallelism>1)
         if self.workspace_files() != before: raise ValueError('Workspace checks changed source/output bytes; inspect before retry')
         passed = len(results) == len(commands) and all(r['exit_code'] == 0 for r in results)
         if plan_evidence and plan_evidence['request'].get('mode') == 'expected-red':

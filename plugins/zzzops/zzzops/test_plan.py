@@ -41,21 +41,35 @@ def graph_unit_edges(plan: dict, snapshot: dict) -> dict[str,list[str]]:
     validate_plan(plan)
     return {identity:sorted(graph_dependencies(snapshot,unit['dependencies'])) for identity,unit in plan['tests'].items()}
 
-def pin_graph(root:Path,snapshot:dict)->dict:
+def pin_graph(root:Path,snapshot:dict,provider:dict|None=None,revision:str|None=None)->dict:
     """Materialise an immutable content-addressed host observation."""
-    identity=digest(snapshot); directory=root/'.zzzops'/'test-plan'/'graphs';directory.mkdir(parents=True,exist_ok=True)
+    provider=provider or {'name':'graft','version':'test','format':'v1','configuration':{}}
+    if revision is None:
+        revision=subprocess.run(['git','rev-parse','HEAD'],cwd=root,capture_output=True,text=True,check=False).stdout.strip() or 'test'
+    record={'schema_version':1,'provider':provider,'revision':revision,'graph':snapshot};identity=digest(record); directory=root/'.zzzops'/'test-plan'/'graphs';directory.mkdir(parents=True,exist_ok=True)
     path=directory/(identity[7:]+'.json')
-    if path.exists() and json.loads(path.read_text(encoding='utf-8'))!=snapshot: raise ValueError('Pinned Graft graph identity collision')
+    if path.exists() and json.loads(path.read_text(encoding='utf-8'))!=record: raise ValueError('Pinned Graft graph identity collision')
     if not path.exists():
-        temporary=path.with_suffix('.tmp');temporary.write_bytes(canonical(snapshot)+b'\n');os.replace(temporary,path)
-    return {'hash':identity,'path':str(path)}
+        temporary=path.with_suffix('.tmp');temporary.write_bytes(canonical(record)+b'\n');os.replace(temporary,path)
+    return {'hash':identity,'path':str(path),'revision':revision}
 
 def promote_graph(root:Path,pin:dict)->Path:
-    source=Path(pin['path']); snapshot=json.loads(source.read_text(encoding='utf-8'))
-    if digest(snapshot)!=pin['hash']: raise ValueError('Current Graft pin changed before promotion')
+    source=Path(pin['path']); record=json.loads(source.read_text(encoding='utf-8'))
+    if digest(record)!=pin['hash']: raise ValueError('Current Graft pin changed before promotion')
     target=root/'.zzzops'/'test-plan'/'previous-graft.json';target.parent.mkdir(parents=True,exist_ok=True)
-    temporary=target.with_name(target.name+'.'+uuid.uuid4().hex+'.tmp');temporary.write_bytes(canonical(snapshot)+b'\n');os.replace(temporary,target)
+    temporary=target.with_name(target.name+'.'+uuid.uuid4().hex+'.tmp');temporary.write_bytes(canonical(record)+b'\n');os.replace(temporary,target)
     return target
+
+def historical_graph(root:Path,path:Path,provider:dict)->tuple[dict,dict]:
+    record=json.loads(path.read_text(encoding='utf-8'))
+    if not isinstance(record,dict) or set(record)!= {'schema_version','provider','revision','graph'} or record['schema_version']!=1 or record['provider']!=provider:
+        raise ValueError('Previous Graft metadata/provider changed')
+    revision=record['revision']
+    valid=subprocess.run(['git','cat-file','-e',f'{revision}^{{commit}}'],cwd=root,capture_output=True,check=False)
+    if not isinstance(revision,str) or not revision or valid.returncode: raise ValueError('Previous Graft revision is missing')
+    graph=record['graph']
+    if not isinstance(graph,dict) or set(graph)<{'meta','nodes','edges'} or graph['meta'].get('version')!=1: raise ValueError('Previous Graft content is corrupt')
+    return graph,{'hash':digest(record),'path':str(path),'revision':revision}
 
 def canonical(value: Any) -> bytes:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()

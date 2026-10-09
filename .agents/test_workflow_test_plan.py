@@ -28,7 +28,7 @@ class TestPlanTests(unittest.TestCase):
    root=Path(d);path=root/'graph.json';path.write_text(json.dumps(graph));calls=[]
    def run(command,**kwargs):calls.append(command);return R('graft 0.17.0' if '--version' in command else '{}')
    observed=m.graft_snapshot(root,p['graph_provider'],graph_path=path,run=run)
-   pin=m.pin_graph(root,observed);self.assertEqual(observed,json.loads(Path(pin['path']).read_text()))
+   pin=m.pin_graph(root,observed);self.assertEqual(observed,json.loads(Path(pin['path']).read_text())['graph'])
   edges=m.graph_unit_edges(p,observed);self.assertIn('old.py',edges['a']);self.assertEqual([['graft','--version'],['graft','check','--json']],calls)
  def test_public_workflow_plan_adapter_emits_exact_units_and_fingerprints(self):
   p=self.plan()
@@ -59,10 +59,10 @@ class TestPlanTests(unittest.TestCase):
    self.assertFalse((root/'partition-marker').exists());self.assertEqual(before,set(Path(tempfile.gettempdir()).glob('zzzops-test-partitions-*')))
  def test_graph_promotion_is_atomic_and_requires_exact_pin(self):
   with tempfile.TemporaryDirectory() as d:
-   root=Path(d);graph={'meta':{'version':1},'nodes':[],'edges':[]};pin=m.pin_graph(root,graph);target=m.promote_graph(root,pin);self.assertEqual(graph,json.loads(target.read_text()))
+   root=Path(d);subprocess.run(['git','init','-q'],cwd=root,check=True);subprocess.run(['git','-c','user.name=t','-c','user.email=t@t','commit','--allow-empty','-qm','x'],cwd=root,check=True);graph={'meta':{'version':1},'nodes':[],'edges':[]};provider=self.plan()['graph_provider'];pin=m.pin_graph(root,graph,provider);target=m.promote_graph(root,pin);loaded,evidence=m.historical_graph(root,target,provider);self.assertEqual(graph,loaded);self.assertEqual(pin['hash'],evidence['hash'])
    Path(pin['path']).write_text('{}')
    with self.assertRaisesRegex(ValueError,'changed before promotion'):m.promote_graph(root,pin)
-   self.assertEqual(graph,json.loads(target.read_text()))
+   self.assertEqual(graph,m.historical_graph(root,target,provider)[0])
  def test_parallel_failure_cleans_isolated_filesystems(self):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d);subprocess.run(['git','init','-q'],cwd=root,check=True);owner=SimpleNamespace(repo=root,repository='owner/repo');before=set(Path(tempfile.gettempdir()).glob('zzzops-test-partitions-*'))
