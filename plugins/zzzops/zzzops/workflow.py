@@ -2445,13 +2445,6 @@ class Workflow:
                             'observation': comment_store.comment_observation(comments)},
                 'rationale': rationale}
 
-    @staticmethod
-    def node_checkpoint_reconciliation_request_id(kind, proposal):
-        """Bind reconciliation requests to one exact current observation."""
-        transaction = proposal['checkpoint']['transaction'][7:23]
-        observation = digest(proposal['current']['observation'])[7:23]
-        return f'checkpoint-reconcile-{kind}-{transaction}-{observation}'
-
     def node_checkpoint_reconcile_review(self, snapshot, payload, request):
         allowed = {'operation', 'request_id', 'proposal', 'actor', 'decision', 'report'}
         if set(request) != allowed:
@@ -2480,7 +2473,7 @@ class Workflow:
                     'action': 'Show the exact stale checkpoint reconciliation to the user and adopt only after explicit approval.',
                     'submission': {'operation': 'checkpoint_reconcile_adopt', 'proposal': artifact_ref,
                                    'review': review_ref, 'approved_by': None,
-                                   'request_id': self.node_checkpoint_reconciliation_request_id('adopt', proposal)}}
+                                   'request_id': 'checkpoint-reconcile-' + proposal['checkpoint']['transaction'][7:23]}}
         else:
             step = {'kind': 'changes_requested', 'assignment': 'root', 'goal': snapshot['number'],
                     'proposal': artifact_ref, 'review': review_ref, 'report': request['report']}
@@ -2599,37 +2592,26 @@ class Workflow:
             if (isinstance(response, dict) and response.get('type') == 'checkpoint_reconciliation'
                     and response.get('version') == 1 and response.get('checkpoint') == descriptor):
                 matches.append((receipt, response))
-        if not matches:
+        if len(matches) != 1:
+            return False
+        receipt, response = matches[0]
+        try:
+            proposal_artifact = index.resolve(response['proposal']['hash'])[0]
+            review = index.resolve(response['review']['hash'])[0]
+        except (KeyError, ValueError):
             return False
         root = (self.runtime or {}).get('root_id')
-        ranked = []
-        for receipt, response in matches:
-            try:
-                proposal_artifact = index.resolve(response['proposal']['hash'])[0]
-                adoption = self.node_receipt_edge(snapshot['number'], index, receipt)
-                observation = proposal_artifact['content']['current']['observation']
-                order = (observation['last_id'], max(adoption['comment_ids']))
-            except (KeyError, TypeError, ValueError):
-                return False
-            if (proposal_artifact.get('type') != 'checkpoint_reconciliation_proposal'
-                    or proposal_artifact.get('content', {}).get('checkpoint') != descriptor
-                    or proposal_artifact.get('provenance', {}).get('actor') != root
-                    or type(observation.get('count')) is not int
-                    or type(observation.get('last_id')) is not int
-                    or not isinstance(observation.get('digest'), str)):
-                return False
-            ranked.append((order, receipt, response, proposal_artifact, adoption))
-        ranked.sort(key=lambda candidate: candidate[0])
-        if len(ranked) > 1 and ranked[-2][0] == ranked[-1][0]:
-            return False
-        _, receipt, response, proposal_artifact, adoption = ranked[-1]
-        try: review = index.resolve(response['review']['hash'])[0]
-        except (KeyError, ValueError): return False
         if (not explicit_approval(response.get('approved_by'))
+                or proposal_artifact.get('type') != 'checkpoint_reconciliation_proposal'
+                or proposal_artifact.get('content', {}).get('checkpoint') != descriptor
+                or proposal_artifact.get('provenance', {}).get('actor') != root
                 or review.get('type') != 'checkpoint_reconciliation_review'
                 or review.get('provenance', {}).get('source') != response['proposal']
                 or review.get('provenance', {}).get('actor') in (None, root)
                 or review.get('content', {}).get('decision') != 'approved'):
+            return False
+        adoption = self.node_receipt_edge(snapshot['number'], index, receipt)
+        if adoption is None:
             return False
         review_edges = []
         allowed_comment_ids = set(adoption['comment_ids'])
@@ -5903,7 +5885,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 'action': 'Give this exact stale-checkpoint manifest to an independent reviewer.',
                 'submission': {'operation': 'checkpoint_reconcile_review', 'proposal': proposal,
                                'actor': None, 'decision': None, 'report': None,
-                               'request_id': engine.node_checkpoint_reconciliation_request_id('review', proposal)}}]}
+                               'request_id': 'checkpoint-reconcile-review-' + payload['transaction'][7:23]}}]}
     administrative = api._workflow_admin.handle(api, repo, project, source, runtime, payload) if operation not in {'capture_propose', 'capture'} else None
     if administrative is not None:
         return administrative
