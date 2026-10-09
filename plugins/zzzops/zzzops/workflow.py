@@ -3355,14 +3355,33 @@ class Workflow:
             except (ValueError, KeyError, subprocess.SubprocessError) as exc:
                 draft_errors[reference['hash']] = str(exc)
         drafts = {key: row for key, row in drafts.items() if row[0]['hash'] not in consumed_drafts}
+        active_workspace_keys = set()
         for snapshot in snapshots.values():
             for lease in snapshot['payload']['operational']['leases']:
                 key = ev.task_key(lease['node'])
                 if key not in work: continue
                 try:
-                    grant = authority(work[key]); before = raw(lease['acquisition'])
+                    state = work[key]; grant = authority(state); acquisition = lease['acquisition']
+                    reference = snapshot['acquisition_receipts'].get(lease['token'])
+                    if reference is None: continue
+                    receipt = content(reference)
+                    pins = [step['lease']['acquisition'] for step in receipt.get('next_steps', [])
+                            if step.get('lease', {}).get('token') == lease['token']
+                            and step['lease'].get('acquisition')]
+                    acquisition_inputs = {binding.get('name'): binding.get('source')
+                                          for binding in acquisition.get('inputs', [])
+                                          if isinstance(binding, dict)}
+                    if (len(pins) != 1 or acquisition != pins[0]
+                            or acquisition['input_hash'] != lease['fingerprint']
+                            or acquisition.get('contract') != state.get('contract_hash')
+                            or acquisition_inputs.get('allocation') != grant['allocation']
+                            or acquisition_inputs.get('authorization') != grant['authorization']
+                            or acquisition_inputs.get('approval') != grant['approval']):
+                        continue
+                    before = raw(acquisition)
                     changed = {p for p in before.keys() | actual.keys() if before.get(p, 'missing') != actual.get(p, 'missing')}
-                    if not changed - set(grant['entry']['owned']): edges.append((before, actual))
+                    if not changed - set(grant['entry']['owned']):
+                        edges.append((before, actual)); active_workspace_keys.add(key)
                 except (ValueError, KeyError, subprocess.SubprocessError): pass
         def connected(start, *, accepted_only=False):
             pending, seen = [start], set()
@@ -3447,12 +3466,12 @@ class Workflow:
         def retained_paths(key):
             """Paths whose current bytes still determine this completed task."""
             paths = allocation_paths(key)
+            descendants = set(active_workspace_keys)
             for row in complete:
-                descendant = row['key']
-                projected = projection['current'].get(descendant, (None,))[0]
-                if (descendant == key or descendant not in work or projected != row['result']
-                        or not descendant_of(descendant, key)):
-                    continue
+                projected = projection['current'].get(row['key'], (None,))[0]
+                if projected == row['result']: descendants.add(row['key'])
+            for descendant in descendants:
+                if descendant == key or descendant not in work or not descendant_of(descendant, key): continue
                 # An authenticated descendant proof transfers current-byte
                 # responsibility for exactly the paths it owns. Its review is
                 # downstream of that proof, so requiring acceptance here would
