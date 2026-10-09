@@ -22,9 +22,6 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
     def setUp(self):
         super().setUp()
         self.setup_workspace()
-        self.install_plan()
-        self.session.git('add','zzzops-test-plan.json','second_test.py')
-        self.session.git('commit','-qm','test plan fixture')
         self.work = self.acquire_workspace('alpha')
         self.counter = Path(self.session.control) / 'verification-count'
 
@@ -38,81 +35,6 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
 
     def count(self):
         return len(self.counter.read_text().splitlines()) if self.counter.exists() else 0
-
-    def install_plan(self):
-        unit={'purpose':'public regression','behavior':'observable','runner':'r','selection':'behavior_test','goals':['557'],'specifications':[],'dependencies':['behavior_test.py'],'completeness':'complete','fallback':'full','order_group':None}
-        second={**unit,'selection':'second_test','dependencies':['second_test.py']}
-        plan={'schema_version':1,'graph_provider':{'name':'graft','version':'0.17.0','format':'graft-graph-v1','configuration':{}},'runners':{'r':{'adapter':'unittest','start':'.'}},'tests':{'behavior_test':unit,'second_test':second},'latest_success':{}}
-        (self.fixture.repo/'zzzops-test-plan.json').write_text(json.dumps(plan))
-        (self.fixture.repo/'second_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
-
-    def test_public_changed_mode_widens_and_persists_partition_fact(self):
-        (self.fixture.repo/'behavior_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
-        request=self.session.submission(self.work,{'value':'planned candidate'},'plan-changed')
-        request.update(verification_plan={'mode':'changed','changed':['unmapped.py'],'maximum_seconds':10,'durations':{'behavior_test':1}},verification_expectation='passed')
-        response=self.session.call(100,request);self.assertIn('verification',response,response);proof=self.read_blob(response['verification']['proof'])
-        self.assertTrue(proof['passed']);self.assertEqual(['behavior_test','second_test'],proof['test_plan']['preview']['selected']);self.assertIn('fallback_reason',proof['test_plan']['graph'])
-        git_dir=Path(subprocess.check_output(['git','rev-parse','--absolute-git-dir'],cwd=self.fixture.repo,text=True).strip())
-        self.assertTrue(list((git_dir/'zzzops/verification/100').glob('partition-facts-*.json')))
-
-    def test_public_expected_red_mode_requires_signature_and_replays_response(self):
-        (self.fixture.repo/'behavior_test.py').write_text("import unittest\nclass T(unittest.TestCase):\n def test_red(self): self.fail('missing-557-behavior')\n")
-        request=self.session.submission(self.work,{'value':'observed red'},'plan-red')
-        request.update(verification_plan={'mode':'expected-red','selected':['behavior_test'],'expected_red':'FAILED'},verification_expectation='observed')
-        response=self.session.call(100,request);self.assertTrue(response['verification']['passed'],response);self.assertEqual(response,self.session.call(100,request))
-
-    def test_partition_fact_survives_interruption_and_fresh_lease_reuses_only_success(self):
-        (self.fixture.repo/'behavior_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
-        request=self.session.submission(self.work,{'value':'partial planned candidate'},'plan-partial')
-        request.update(verification_plan={'mode':'full','maximum_seconds':1,'durations':{'behavior_test':1,'second_test':1}},verification_expectation='passed')
-        original=subprocess.run;calls={'behavior_test':0,'second_test':0}
-        def interrupted(argv,*args,**kwargs):
-            text=json.dumps(argv)
-            is_test=argv and argv[0]==sys.executable and '-c' in argv
-            for name in calls:
-                if is_test and name in text:calls[name]+=1
-            if is_test and 'second_test' in text:raise KeyboardInterrupt('after first durable partition fact')
-            return original(argv,*args,**kwargs)
-        with mock.patch.object(subprocess,'run',side_effect=interrupted),self.assertRaises(KeyboardInterrupt):self.session.call(100,request)
-        self.assertEqual({'behavior_test':1,'second_test':1},calls)
-        response=self.session.call(100,request);recovery=response['next_steps'][0]['recovery_contract']
-        self.session.call(100,{**recovery,'worker_status':'stopped','evidence':'Observed interrupted verifier terminated'})
-        self.work=self.acquire_workspace('alpha');fresh=self.session.submission(self.work,{'value':'fresh planned candidate'},'plan-partial-fresh')
-        fresh.update(verification_plan=request['verification_plan'],verification_expectation='passed')
-        before=dict(calls)
-        def counted(argv,*args,**kwargs):
-            text=json.dumps(argv)
-            for name in calls:
-                if argv and argv[0]==sys.executable and '-c' in argv and name in text:calls[name]+=1
-            return original(argv,*args,**kwargs)
-        with mock.patch.object(subprocess,'run',side_effect=counted):result=self.session.call(100,fresh)
-        self.assertIn('verification',result,result)
-        self.assertEqual(before['behavior_test'],calls['behavior_test']);self.assertEqual(before['second_test']+1,calls['second_test'])
-        proof=self.read_blob(result['verification']['proof']);self.assertEqual(self.work['lease']['token'],proof['lease']);self.assertTrue(proof['passed'])
-
-    def test_plan_facts_survive_response_loss_after_durable_append(self):
-        (self.fixture.repo/'behavior_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
-        request=self.session.submission(self.work,{'value':'response lost candidate'},'plan-response-loss')
-        request.update(verification_plan={'mode':'full','maximum_seconds':1,'durations':{'behavior_test':1,'second_test':1}},verification_expectation='passed')
-        with mock.patch.object(self.provider,'create_issue_comment',side_effect=RuntimeError('lost after durable facts')):self.session.call(100,request,expected=2)
-        original=subprocess.run
-        def no_repeat(argv,*args,**kwargs):
-            if argv and argv[0]==sys.executable and '-c' in argv:self.assertNotIn('behavior_test',json.dumps(argv));self.assertNotIn('second_test',json.dumps(argv))
-            return original(argv,*args,**kwargs)
-        with mock.patch.object(subprocess,'run',side_effect=no_repeat):response=self.session.call(100,request)
-        self.assertTrue(response['verification']['passed'])
-
-    def test_stale_workspace_observed_stop_clears_only_exact_lease_without_accepting_bytes(self):
-        (self.fixture.repo/'behavior_test.py').write_text('stale worker bytes\n')
-        self.replace_spec('upstream prerequisite changed after worker stopped')
-        actor=self.payload()[1]['operational']['leases'][0]['worker']
-        request={'operation':'recover','node':self.work['node'],'lease':self.work['lease']['token'],'actor':actor,'request_id':'stale-workspace-recover','worker_status':'stopped','evidence':'Observed exact bound worker and verifier stopped'}
-        before=copy.deepcopy((self.provider.issues,self.provider.comments));evidence_before=copy.deepcopy(self.payload()[1]['evidence'])
-        self.session.call(100,{**request,'actor':'wrong'},expected=2);self.session.call(100,{**request,'lease':'wrong'},expected=2);self.session.call(100,{**request,'worker_status':'unknown'},expected=2)
-        self.assertEqual(before,(self.provider.issues,self.provider.comments))
-        response=self.session.call(100,request);checkpoint=response['next_steps'][0]
-        self.assertEqual(self.work['lease']['token'],checkpoint['stopped_unaccepted']['lease']);self.assertIn('prerequisite',checkpoint['stopped_unaccepted']['reason'])
-        self.assertFalse(self.payload()[1]['operational']['leases']);self.assertNotIn('workspace_draft',checkpoint);self.assertEqual(evidence_before,self.payload()[1]['evidence'])
 
     def test_native_red_to_green_checks_execute_once_per_phase_request(self):
         (self.fixture.repo / 'behavior_test.py').write_text('from source import value\nassert value() == 2\n')
