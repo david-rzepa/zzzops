@@ -2473,7 +2473,7 @@ class Workflow:
                     'action': 'Show the exact stale checkpoint reconciliation to the user and adopt only after explicit approval.',
                     'submission': {'operation': 'checkpoint_reconcile_adopt', 'proposal': artifact_ref,
                                    'review': review_ref, 'approved_by': None,
-                                   'request_id': 'checkpoint-reconcile-' + proposal['checkpoint']['transaction'][7:23]}}
+                                   'request_id': 'checkpoint-reconcile-' + digest(proposal)[7:23]}}
         else:
             step = {'kind': 'changes_requested', 'assignment': 'root', 'goal': snapshot['number'],
                     'proposal': artifact_ref, 'review': review_ref, 'report': request['report']}
@@ -6041,7 +6041,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 'action': 'Give this exact stale-checkpoint manifest to an independent reviewer.',
                 'submission': {'operation': 'checkpoint_reconcile_review', 'proposal': proposal,
                                'actor': None, 'decision': None, 'report': None,
-                               'request_id': 'checkpoint-reconcile-review-' + payload['transaction'][7:23]}}]}
+                               'request_id': 'checkpoint-reconcile-review-' + digest(proposal)[7:23]}}]}
     administrative = api._workflow_admin.handle(api, repo, project, source, runtime, payload) if operation not in {'capture_propose', 'capture'} else None
     if administrative is not None:
         return administrative
