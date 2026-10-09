@@ -11,6 +11,7 @@ import json
 import math
 import os
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -21,6 +22,7 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 import zzzops_comment_store as comment_store
 import zzzops_state_cache as state_cache
+import zzzops_test_plan as test_plan
 
 
 _OBSERVED_ARTIFACT_INDEXES = {}
@@ -3576,19 +3578,18 @@ class Workflow:
                              'acquisition': {'read_files': copy.deepcopy(actual)}, 'readonly': True}
         return contexts
 
-    def node_verification_commands(self, snapshot, lease, request, commands, before):
+    def node_verification_commands(self, snapshot, lease, request, commands, before, reusable_identity=None):
         """Reuse host-observed command outcomes across pre-publication failures."""
         if not commands: return []
         git_dir = Path(subprocess.run(['git', 'rev-parse', '--absolute-git-dir'], cwd=self.repo,
                                       capture_output=True, text=True, check=True).stdout.strip())
         directory = git_dir / 'zzzops' / 'verification' / str(snapshot['number'])
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-        path = directory / (digest(request['request_id'])[7:] + '.json')
-        identity = {'repository': self.repository, 'goal': snapshot['number'], 'request': digest(request),
-                    'lease': lease['token'], 'actor': lease['worker'],
-                    'acquisition': digest(lease['acquisition']), 'workspace': digest(before),
-                    'directory': str(self.repo.resolve()), 'environment': digest(dict(os.environ)),
-                    'commands': commands}
+        identity = reusable_identity or {'repository': self.repository, 'goal': snapshot['number'], 'request': digest(request),
+                    'lease': lease['token'], 'actor': lease['worker'], 'acquisition': digest(lease['acquisition']),
+                    'workspace': digest(before), 'directory': str(self.repo.resolve()),
+                    'environment': digest(dict(os.environ)), 'commands': commands}
+        path = directory / ((digest(identity) if reusable_identity else digest(request['request_id']))[7:] + '.json')
         def read(candidate):
             value = json.loads(candidate.read_text(encoding='utf-8'))
             if set(value) != {'hash', 'record'} or digest(value['record']) != value['hash']:
@@ -3614,7 +3615,8 @@ class Workflow:
         # Unknown command liveness cannot be bypassed with another request ID.
         for candidate in directory.glob('*.json'):
             existing = read(candidate)
-            if existing['identity']['lease'] == lease['token'] and existing['status'] == 'running':
+            same_execution = existing['identity'] == identity if reusable_identity else existing['identity'].get('lease') == lease['token']
+            if same_execution and existing['status'] == 'running':
                 raise VerificationUncertain('Verification completion is unknown; inspect the exact worker and verifier before observed-stop recovery. Journal: ' + str(candidate))
         results = journal['results']
         if journal['status'] not in {'prepared', 'complete'} or [row['command'] for row in results] != commands[:len(results)] or len(results) > len(commands):
@@ -3622,7 +3624,9 @@ class Workflow:
         for record in results:
             if hashlib.sha256(Path(record['log']).read_bytes()).hexdigest() != record['log_hash']:
                 raise ValueError('Recorded verification log changed')
-        if journal['status'] == 'complete': return results
+        if journal['status'] == 'complete' and all(row.get('exit_code') == 0 for row in results): return results
+        if journal['status'] == 'complete':
+            journal={'identity':identity,'status':'prepared','results':[]}; results=[]
         logs = self.repo / '.zzzops' / 'diagnostics'; logs.mkdir(parents=True, exist_ok=True)
         for i in range(len(results), len(commands)):
             command = commands[i]
@@ -3654,10 +3658,46 @@ class Workflow:
             if timed_out or execution_error: break
         return results
 
+    def node_test_plan_commands(self, request):
+        specification = request.get('verification_plan')
+        if specification is None: return request.get('workspace_checks', []), None
+        if request.get('workspace_checks'): raise ValueError('Use either verification_plan or exact workspace_checks')
+        if not isinstance(specification, dict) or set(specification) - {'mode', 'changed', 'selected', 'expected_red'}:
+            raise ValueError('Verification plan request is invalid')
+        path = self.repo / 'zzzops-test-plan.json'
+        plan = test_plan.validate_plan(json.loads(path.read_text(encoding='utf-8')))
+        mode = specification.get('mode')
+        selected = specification.get('selected', [])
+        changed = specification.get('changed', [])
+        if not isinstance(selected, list) or not isinstance(changed, list) or any(not isinstance(v, str) or not v for v in selected + changed):
+            raise ValueError('Verification plan selections must be path/test strings')
+        previous_edges=current_edges=None; graph_ok=False
+        reason='current and previous validated Graft graphs were not supplied by the host adapter'
+        try:
+            current=test_plan.graft_snapshot(self.repo,plan['graph_provider'])
+            current_edges=test_plan.graph_unit_edges(plan,current)
+            # A changed-mode proof needs both sides. The previous graph is an
+            # exact host artifact; its absence widens instead of trusting Git
+            # path heuristics or a caller assertion.
+            previous_path=self.repo/'.zzzops'/'test-plan'/'previous-graft.json'
+            if previous_path.exists():
+                previous=test_plan.graft_snapshot(self.repo,plan['graph_provider'],graph_path=previous_path)
+                previous_edges=test_plan.graph_unit_edges(plan,previous); graph_ok=True; reason=None
+            else: reason='validated previous Graft graph is unavailable'
+        except (ValueError,OSError,subprocess.SubprocessError,json.JSONDecodeError) as exc:
+            reason=str(exc)
+        preview = test_plan.preview(plan, mode=mode, changed=changed, explicit=selected, previous_edges=previous_edges, current_edges=current_edges, graph_ok=graph_ok, fallback_reason=reason)
+        commands = []
+        for identity in preview['selected']:
+            unit = plan['tests'][identity]
+            commands.append([sys.executable, '-m', 'unittest', 'discover', '-s', '.agents', '-p', identity + '.py'])
+        fingerprints={identity:test_plan.input_fingerprint(plan,identity,self.repo,inventory=plan['tests'],environment={'python':sys.version},tooling={'graft':plan['graph_provider']['version']}) for identity in preview['selected']}
+        return commands, {'request': specification, 'preview': preview, 'semantic_plan': test_plan.digest(test_plan.semantic_plan(plan)), 'fingerprints':fingerprints, 'graph':{'validated':graph_ok,'fallback_reason':reason}}
+
     def node_workspace_proof(self, snapshot, state, lease, request):
         workspace = state.get('workspace')
         if workspace is None or workspace.get('readonly'):
-            if request.get('workspace_checks'): raise ValueError('Workspace commands require explicit reviewed resource authority')
+            if request.get('workspace_checks') or request.get('verification_plan'): raise ValueError('Workspace commands require explicit reviewed resource authority')
             return None
         pending = snapshot.get('pending')
         if pending and pending.get('proof'):
@@ -3667,17 +3707,31 @@ class Workflow:
                 if hashlib.sha256(Path(record['log']).read_bytes()).hexdigest() != record['log_hash']: raise ValueError('Pending verification log changed')
             snapshot['artifacts'][ref['hash']] = proof; snapshot['workspace_proof'] = ref
             return ref
-        commands = request.get('workspace_checks', [])
+        commands, plan_evidence = self.node_test_plan_commands(request)
         if not isinstance(commands, list) or any(not isinstance(c, list) or not c or any(not isinstance(a, str) or not a for a in c) for c in commands): raise ValueError('Workspace checks require nonempty argument arrays')
         before = self.workspace_files(); results = []
         if before != lease['acquisition']['files'] and not commands: raise ValueError('Changed workspace outputs require observed verification checks before publishing a candidate proof')
-        results = self.node_verification_commands(snapshot, lease, request, commands, before)
+        reusable_identity=None
+        if plan_evidence:
+            reusable_identity={'repository':self.repository,'goal':snapshot['number'],'workspace':digest(before),
+                'directory':str(self.repo.resolve()),'environment':digest(dict(os.environ)),
+                'semantic_plan':plan_evidence['semantic_plan'],'mode':plan_evidence['request'].get('mode'),
+                'selected':plan_evidence['preview']['selected'],'fingerprints':plan_evidence['fingerprints'],'commands':commands}
+        results = self.node_verification_commands(snapshot, lease, request, commands, before, reusable_identity)
         if self.workspace_files() != before: raise ValueError('Workspace checks changed source/output bytes; inspect before retry')
+        passed = len(results) == len(commands) and all(r['exit_code'] == 0 for r in results)
+        if plan_evidence and plan_evidence['request'].get('mode') == 'expected-red':
+            signature = plan_evidence['request'].get('expected_red')
+            if not isinstance(signature, str) or not signature:
+                raise ValueError('Expected-red verification requires an exact output signature')
+            passed = (len(results) == len(commands) and bool(results)
+                      and all(r['exit_code'] not in (None, 0) and not r.get('timed_out') and not r.get('execution_error')
+                              and signature in Path(r['log']).read_text(encoding='utf-8', errors='replace') for r in results))
         proof = {'node': state['node'], 'acquisition': lease['acquisition'], 'acquisition_hash': digest(lease['acquisition']),
                  'input_hash': lease['fingerprint'], 'actor': lease['worker'], 'lease': lease['token'],
                  'outputs': self.node_workspace_paths(workspace['entry']['owned']),
                  'consumed': {p: workspace['files'].get(p, 'missing') for p in workspace['entry']['consumed']},
-                 'workspace': digest(before), 'commands': results, 'passed': len(results) == len(commands) and all(r['exit_code'] == 0 for r in results)}
+                 'workspace': digest(before), 'commands': results, 'passed': passed, **({'test_plan': plan_evidence} if plan_evidence else {})}
         identity = digest(proof); snapshot['artifacts'][identity] = proof
         snapshot['workspace_proof'] = self.node_ref(identity, snapshot['number'])
         return snapshot['workspace_proof']
@@ -4878,10 +4932,10 @@ class Workflow:
                         lease['blocker'] = {'category': request['category'], 'reason': request['reason']}
                         response = {'next_steps': [{'kind': 'await_worker', 'goal': number, 'node': node, 'reason': request['reason'], 'lease': lease}]}
                     elif operation == 'submit':
-                        if set(request) - {'operation', 'node', 'lease', 'actor', 'request_id', 'outputs', 'workspace_checks', 'verification_expectation'}: raise ValueError('Unknown submission fields; host acquisition cannot be replaced')
+                        if set(request) - {'operation', 'node', 'lease', 'actor', 'request_id', 'outputs', 'workspace_checks', 'verification_plan', 'verification_expectation'}: raise ValueError('Unknown submission fields; host acquisition cannot be replaced')
                         expectation = request.get('verification_expectation', 'observed')
                         if expectation not in {'passed', 'observed'}: raise ValueError('Verification expectation must be passed or observed')
-                        if 'verification_expectation' in request and not request.get('workspace_checks'): raise ValueError('Explicit verification expectation requires exact workspace_checks')
+                        if 'verification_expectation' in request and not (request.get('workspace_checks') or request.get('verification_plan')): raise ValueError('Explicit verification expectation requires exact workspace_checks')
                         self.node_independence(snapshot, state, lease['worker'])
                         bundle = request.get('outputs'); contracts = state['contract']['outputs']
                         if not isinstance(bundle, dict) or set(bundle) != set(contracts): raise ValueError('Submission must supply exactly declared output slots')

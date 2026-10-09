@@ -1,12 +1,45 @@
 """Deterministic repository test plans and resumable partition facts."""
 from __future__ import annotations
-import hashlib, json, os
+import hashlib, json, os, subprocess
 from pathlib import Path
 from typing import Any, Iterable
 
 SCHEMA_VERSION = 1
 RESULT_FIELDS = frozenset({'latest_success'})
 OUTCOMES = frozenset({'passed','assertion_failed','timed_out','cancelled','infrastructure_error'})
+
+def graft_snapshot(root: Path, provider: dict, *, graph_path: Path|None=None, run=subprocess.run) -> dict:
+    """Read a fresh, pinned Graft graph or fail with a reportable reason."""
+    if provider.get('name') not in {'graft','@nanonets/graft'}: raise ValueError('Unsupported graph provider')
+    observed=run(['graft','--version'],cwd=root,capture_output=True,text=True,check=True).stdout.strip()
+    if provider['version'] not in observed: raise ValueError(f'Graft version mismatch: expected {provider["version"]}, observed {observed}')
+    checked=run(['graft','check','--json'],cwd=root,capture_output=True,text=True,check=False,env={**os.environ,'DO_NOT_TRACK':'1'})
+    if checked.returncode: raise ValueError('Graft graph is missing or stale: '+(checked.stderr.strip() or checked.stdout.strip()))
+    path=graph_path or root/'graft'/'.graph'/'wiring.json'
+    value=json.loads(path.read_text(encoding='utf-8'))
+    if not isinstance(value,dict) or set(value)<{'meta','nodes','edges'} or value['meta'].get('version')!=1:
+        raise ValueError('Graft graph format is invalid')
+    if not isinstance(value['nodes'],list) or not isinstance(value['edges'],list): raise ValueError('Graft graph inventory is invalid')
+    return value
+
+def graph_dependencies(snapshot: dict, roots: Iterable[str]) -> set[str]:
+    """Return file dependencies reachable in a validated Graft snapshot."""
+    edges=snapshot['edges']; outgoing={}
+    for edge in edges:
+        if not isinstance(edge,dict) or not isinstance(edge.get('source'),str) or not isinstance(edge.get('target'),str):
+            raise ValueError('Graft graph edge is invalid')
+        outgoing.setdefault(edge['source'],set()).add(edge['target'])
+    pending=list(roots); seen=set(); files=set()
+    while pending:
+        node=pending.pop()
+        if node in seen: continue
+        seen.add(node); files.add(node.split('#',1)[0])
+        pending.extend(outgoing.get(node,()))
+    return files
+
+def graph_unit_edges(plan: dict, snapshot: dict) -> dict[str,list[str]]:
+    validate_plan(plan)
+    return {identity:sorted(graph_dependencies(snapshot,unit['dependencies'])) for identity,unit in plan['tests'].items()}
 
 def canonical(value: Any) -> bytes:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
@@ -51,7 +84,7 @@ def file_identity(root: Path, relative: str) -> str:
 def input_fingerprint(plan: dict, unit_id: str, root: Path, *, inventory: Iterable[str], environment: dict[str,str], tooling: dict[str,str]) -> str:
     validate_plan(plan); unit=plan['tests'][unit_id]
     inputs={p:file_identity(root,p) for p in sorted(unit['dependencies'])}
-    return digest({'plan':semantic_plan(plan),'unit':unit_id,'inventory':sorted(inventory),'inputs':inputs,'environment':environment,'tooling':tooling})
+    return digest({'semantics':unit_semantics(plan,unit_id),'inventory':sorted(inventory),'inputs':inputs,'environment':environment,'tooling':tooling})
 
 def affected_units(plan: dict, changed: Iterable[str], *, previous_edges: dict[str,list[str]]|None, current_edges: dict[str,list[str]]|None, graph_ok: bool, fallback_reason: str|None=None) -> dict:
     validate_plan(plan); changed=set(changed); selected=set(); reasons={}
@@ -124,3 +157,19 @@ def classify_outcome(*,exit_code:int|None,timed_out=False,cancelled=False,execut
     if exit_code==0:return 'passed'
     if expected_red is not None and expected_red not in output:return 'infrastructure_error'
     return 'assertion_failed'
+
+def unit_semantics(plan: dict, unit_id: str) -> dict:
+    validate_plan(plan); unit=plan['tests'][unit_id]
+    return {'schema_version':plan['schema_version'],'graph_provider':plan['graph_provider'],'runner':plan['runners'][unit['runner']],'unit':unit}
+
+def preview(plan:dict, *, mode:str, changed=(), explicit=(), previous_edges=None, current_edges=None, graph_ok=False, fallback_reason=None)->dict:
+    validate_plan(plan)
+    if mode=='full': selected=sorted(plan['tests']); reasons={u:'full-suite obligation' for u in selected}
+    elif mode=='explicit':
+        selected=sorted(set(explicit)); unknown=set(selected)-set(plan['tests'])
+        if unknown: raise ValueError('Explicit selection names unknown tests: '+', '.join(sorted(unknown)))
+        reasons={u:'explicit selection' for u in selected}
+    elif mode in {'changed','expected-red'}:
+        result=affected_units(plan,changed,previous_edges=previous_edges,current_edges=current_edges,graph_ok=graph_ok,fallback_reason=fallback_reason);selected=result['selected'];reasons=result['reasons']
+    else: raise ValueError('Verification mode must be changed, explicit, expected-red, or full')
+    return {'mode':mode,'selected':selected,'reasons':reasons}
