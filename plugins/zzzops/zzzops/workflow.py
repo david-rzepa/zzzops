@@ -11,8 +11,10 @@ import hashlib
 import json
 import math
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -3579,7 +3581,7 @@ class Workflow:
                              'acquisition': {'read_files': copy.deepcopy(actual)}, 'readonly': True}
         return contexts
 
-    def node_verification_commands(self, snapshot, lease, request, commands, before, reusable_identity=None, parallelism=1):
+    def node_verification_commands(self, snapshot, lease, request, commands, before, reusable_identity=None, parallelism=1, isolate=False):
         """Reuse host-observed command outcomes across pre-publication failures."""
         if not commands: return []
         git_dir = Path(subprocess.run(['git', 'rev-parse', '--absolute-git-dir'], cwd=self.repo,
@@ -3629,21 +3631,29 @@ class Workflow:
         if journal['status'] == 'complete':
             journal={'identity':identity,'status':'prepared','results':[]}; results=[]
         logs = self.repo / '.zzzops' / 'diagnostics'; logs.mkdir(parents=True, exist_ok=True)
-        def execute(i, command):
+        def execute(i, command, cwd):
             log = logs / f'node-{lease["token"]}-{path.stem}-{i}.log'; started=time.monotonic()
             timed_out=False; execution_error=None
             with log.open('w') as output:
-                try: exit_code=subprocess.run(command,cwd=self.repo,stdout=output,stderr=subprocess.STDOUT,timeout=300,check=False).returncode
+                try: exit_code=subprocess.run(command,cwd=cwd,stdout=output,stderr=subprocess.STDOUT,timeout=300,check=False).returncode
                 except subprocess.TimeoutExpired: timed_out=True; exit_code=None
                 except OSError as exc: execution_error=str(exc); exit_code=None
                 output.flush(); os.fsync(output.fileno())
             return {'command':command,'exit_code':exit_code,'log':str(log),'log_hash':hashlib.sha256(log.read_bytes()).hexdigest(),
-                    'duration_seconds':time.monotonic()-started,**({'timed_out':True} if timed_out else {}),**({'execution_error':execution_error} if execution_error else {})}
+                    'duration_seconds':time.monotonic()-started,'isolated':cwd!=self.repo,**({'timed_out':True} if timed_out else {}),**({'execution_error':execution_error} if execution_error else {})}
         if parallelism > 1 and not results:
-            journal['status']='running'; journal['active_commands']=[{'index':i,'command':c} for i,c in enumerate(commands)]; write(journal)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=parallelism) as pool:
-                futures={pool.submit(execute,i,c):i for i,c in enumerate(commands)}
-                indexed={futures[f]:f.result() for f in futures}
+            if not isolate: raise ValueError('Parallel verification requires host-created filesystem isolation')
+            with tempfile.TemporaryDirectory(prefix='zzzops-test-partitions-') as temporary:
+                roots=[]
+                def ignored(path,names):
+                    return {name for name in names if name=='.git' or (Path(path).name=='.zzzops' and name in {'diagnostics','test-plan','work'})}
+                for i in range(len(commands)):
+                    root=Path(temporary)/str(i);shutil.copytree(self.repo,root,symlinks=True,ignore=ignored);roots.append(root)
+                if len({str(r.resolve()) for r in roots})!=len(commands): raise ValueError('Parallel partition isolation inventory changed')
+                journal['status']='running'; journal['active_commands']=[{'index':i,'command':c} for i,c in enumerate(commands)]; write(journal)
+                with concurrent.futures.ThreadPoolExecutor(max_workers=parallelism) as pool:
+                    futures={pool.submit(execute,i,c,roots[i]):i for i,c in enumerate(commands)}
+                    indexed={futures[f]:f.result() for f in futures}
             results=[indexed[i] for i in range(len(commands))]
             journal.pop('active_commands',None); journal['results']=results; journal['status']='complete'; write(journal)
             return results
@@ -3743,13 +3753,13 @@ class Workflow:
         parallelism=1
         if plan_evidence and plan_evidence['request'].get('parallel') is not None:
             parallel=plan_evidence['request']['parallel']
-            if not isinstance(parallel,dict) or set(parallel)!= {'workers','authority','capacity','isolation'}: raise ValueError('Parallel verification contract is invalid')
+            if not isinstance(parallel,dict) or set(parallel)!= {'workers','authority','capacity','isolation'} or parallel['isolation']!='copy': raise ValueError('Parallel verification contract requires host copy isolation')
             authority=parallel['authority']
             policy_hash=digest(policy_section(self.project,'autonomy_approval_parallelism'))
             if lease is None or not isinstance(authority,dict) or authority.get('lease')!=lease['token'] or authority.get('acquisition')!=digest(lease['acquisition']) or authority.get('policy')!=policy_hash: raise ValueError('Parallel authority is not current for this lease')
             reviewed={'decision':authority.get('decision'),'maximum':min(authority.get('maximum',0),worker_limit(self.project))}
-            parallelism=test_plan.parallel_contract(requested=parallel['workers'],authority=reviewed,capacity=parallel['capacity'],isolation=parallel['isolation'])
-        results = self.node_verification_commands(snapshot, lease, request, commands, before, reusable_identity,parallelism)
+            parallelism=test_plan.parallel_contract(requested=parallel['workers'],authority=reviewed,capacity=parallel['capacity'],isolation=True)
+        results = self.node_verification_commands(snapshot, lease, request, commands, before, reusable_identity,parallelism,parallelism>1)
         if self.workspace_files() != before: raise ValueError('Workspace checks changed source/output bytes; inspect before retry')
         passed = len(results) == len(commands) and all(r['exit_code'] == 0 for r in results)
         if plan_evidence and plan_evidence['request'].get('mode') == 'expected-red':
@@ -3759,6 +3769,8 @@ class Workflow:
             passed = (len(results) == len(commands) and bool(results)
                       and all(r['exit_code'] not in (None, 0) and not r.get('timed_out') and not r.get('execution_error')
                               and signature in Path(r['log']).read_text(encoding='utf-8', errors='replace') for r in results))
+        if passed and plan_evidence and plan_evidence['graph'].get('current'):
+            test_plan.promote_graph(self.repo,plan_evidence['graph']['current'])
         proof = {'node': state['node'], 'acquisition': lease['acquisition'], 'acquisition_hash': digest(lease['acquisition']),
                  'input_hash': lease['fingerprint'], 'actor': lease['worker'], 'lease': lease['token'],
                  'outputs': self.node_workspace_paths(workspace['entry']['owned']),

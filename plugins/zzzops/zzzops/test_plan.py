@@ -1,6 +1,6 @@
 """Deterministic repository test plans and resumable partition facts."""
 from __future__ import annotations
-import hashlib, json, os, subprocess
+import hashlib, json, os, subprocess, uuid
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -49,6 +49,13 @@ def pin_graph(root:Path,snapshot:dict)->dict:
     if not path.exists():
         temporary=path.with_suffix('.tmp');temporary.write_bytes(canonical(snapshot)+b'\n');os.replace(temporary,path)
     return {'hash':identity,'path':str(path)}
+
+def promote_graph(root:Path,pin:dict)->Path:
+    source=Path(pin['path']); snapshot=json.loads(source.read_text(encoding='utf-8'))
+    if digest(snapshot)!=pin['hash']: raise ValueError('Current Graft pin changed before promotion')
+    target=root/'.zzzops'/'test-plan'/'previous-graft.json';target.parent.mkdir(parents=True,exist_ok=True)
+    temporary=target.with_name(target.name+'.'+uuid.uuid4().hex+'.tmp');temporary.write_bytes(canonical(snapshot)+b'\n');os.replace(temporary,target)
+    return target
 
 def canonical(value: Any) -> bytes:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()

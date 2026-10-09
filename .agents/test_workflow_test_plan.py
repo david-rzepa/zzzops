@@ -53,6 +53,19 @@ class TestPlanTests(unittest.TestCase):
  def test_parallel_public_runner_preserves_inventory_order_and_cleans_up(self):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d);subprocess.run(['git','init','-q'],cwd=root,check=True);owner=SimpleNamespace(repo=root,repository='owner/repo')
-   commands=[[sys.executable,'-c',f"import time;time.sleep(.05);print({i})"] for i in range(3)]
-   results=journeys.z._workflow.Workflow.node_verification_commands(owner,{'number':1},{'token':'p','worker':'w','acquisition':{}},{'request_id':'p'},commands,{}, {'inventory':'three'},3)
-   self.assertEqual(commands,[r['command'] for r in results]);self.assertEqual(3,len(results));self.assertTrue(all(r['exit_code']==0 for r in results))
+   commands=[[sys.executable,'-c',"from pathlib import Path;import time;time.sleep(.05);Path('partition-marker').write_text('x');print(Path.cwd())"] for i in range(3)]
+   before=set(Path(tempfile.gettempdir()).glob('zzzops-test-partitions-*'));results=journeys.z._workflow.Workflow.node_verification_commands(owner,{'number':1},{'token':'p','worker':'w','acquisition':{}},{'request_id':'p'},commands,{}, {'inventory':'three'},3,True)
+   self.assertEqual(commands,[r['command'] for r in results]);self.assertEqual(3,len(results));self.assertTrue(all(r['exit_code']==0 and r['isolated'] for r in results));self.assertEqual(3,len({Path(r['log']).read_text().strip().splitlines()[-1] for r in results}))
+   self.assertFalse((root/'partition-marker').exists());self.assertEqual(before,set(Path(tempfile.gettempdir()).glob('zzzops-test-partitions-*')))
+ def test_graph_promotion_is_atomic_and_requires_exact_pin(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);graph={'meta':{'version':1},'nodes':[],'edges':[]};pin=m.pin_graph(root,graph);target=m.promote_graph(root,pin);self.assertEqual(graph,json.loads(target.read_text()))
+   Path(pin['path']).write_text('{}')
+   with self.assertRaisesRegex(ValueError,'changed before promotion'):m.promote_graph(root,pin)
+   self.assertEqual(graph,json.loads(target.read_text()))
+ def test_parallel_failure_cleans_isolated_filesystems(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);subprocess.run(['git','init','-q'],cwd=root,check=True);owner=SimpleNamespace(repo=root,repository='owner/repo');before=set(Path(tempfile.gettempdir()).glob('zzzops-test-partitions-*'))
+   commands=[[sys.executable,'-c',"from pathlib import Path;Path('failed-marker').write_text('x');raise SystemExit(1)"],[sys.executable,'-c','pass']]
+   results=journeys.z._workflow.Workflow.node_verification_commands(owner,{'number':2},{'token':'f','worker':'w','acquisition':{}},{'request_id':'f'},commands,{}, {'inventory':'failure'},2,True)
+   self.assertEqual([1,0],[r['exit_code'] for r in results]);self.assertFalse((root/'failed-marker').exists());self.assertEqual(before,set(Path(tempfile.gettempdir()).glob('zzzops-test-partitions-*')))
