@@ -1,4 +1,4 @@
-import json,subprocess,sys,tempfile,unittest
+import json,shutil,subprocess,sys,tempfile,unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -56,6 +56,23 @@ class TestPlanTests(unittest.TestCase):
    with mock.patch.object(m,'graft_snapshot',return_value=graph),mock.patch.object(m,'authenticate_revision_graph',return_value=None):
     _,clean=journeys.z._workflow.Workflow.node_test_plan_commands(owner,{'verification_plan':{'mode':'full'}})
    self.assertIn('current',clean['graph']);self.assertEqual(before,set(Path(tempfile.gettempdir()).glob('zzzops-graft-revision-*')))
+ def test_revision_build_cache_seed_is_untrusted_and_safe(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d)/'source';checkout=Path(d)/'checkout';(root/'graft/.cache').mkdir(parents=True);checkout.mkdir();(root/'graft/.cache/extract.json').write_text('poisoned-stale-seed')
+   self.assertTrue(m.seed_graft_cache(root,checkout));self.assertEqual('poisoned-stale-seed',(checkout/'graft/.cache/extract.json').read_text())
+   shutil.rmtree(checkout/'graft/.cache');(root/'graft/.cache/link').symlink_to('/etc/passwd')
+   self.assertFalse(m.seed_graft_cache(root,checkout));self.assertFalse((checkout/'graft/.cache').exists())
+ def test_seeded_authentication_still_rebuilds_and_matches_clean_identity(self):
+  graph={'meta':{'version':1},'nodes':[],'edges':[]}
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);subprocess.run(['git','init','-q'],cwd=root,check=True);subprocess.run(['git','-c','user.name=t','-c','user.email=t@t','commit','--allow-empty','-qm','x'],cwd=root,check=True);(root/'graft/.cache').mkdir(parents=True);(root/'graft/.cache/poison').write_text('stale');revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip();builds=[]
+   def run(command,**kwargs):
+    if command[:2]==['graft','--version']:return SimpleNamespace(returncode=0,stdout='0.17.0',stderr='')
+    if command[:2]==['graft','build']:
+     builds.append((kwargs['cwd']/'graft/.cache/poison').exists());path=kwargs['cwd']/'graft/.graph/wiring.json';path.parent.mkdir(parents=True,exist_ok=True);path.write_text(json.dumps(graph));return SimpleNamespace(returncode=0,stdout='',stderr='')
+    return subprocess.run(command,**kwargs)
+   m.authenticate_revision_graph(root,graph,revision,self.plan()['graph_provider'],run=run);self.assertEqual([True],builds)
+   shutil.rmtree(root/'graft/.cache');m.authenticate_revision_graph(root,graph,revision,self.plan()['graph_provider'],run=run);self.assertEqual([True,False],builds);self.assertEqual(m.digest(graph),m.digest(graph))
  def test_successful_partition_fact_reuses_across_lease_without_rerun(self):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d);subprocess.run(['git','init','-q'],cwd=root,check=True);count=root/'count'

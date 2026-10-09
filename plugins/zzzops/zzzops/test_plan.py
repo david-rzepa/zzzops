@@ -1,6 +1,7 @@
 """Deterministic repository test plans and resumable partition facts."""
 from __future__ import annotations
 import hashlib, json, os, subprocess, tempfile, uuid
+import shutil, stat
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -72,6 +73,22 @@ def historical_graph(root:Path,path:Path,provider:dict,*,run=subprocess.run)->tu
     authenticate_revision_graph(root,graph,revision,provider,run=run)
     return graph,{'hash':digest(record),'path':str(path),'revision':revision}
 
+def seed_graft_cache(source_root:Path,checkout:Path)->bool:
+    """Copy only regular extraction-cache bytes; any anomaly falls back clean."""
+    source=source_root/'graft'/'.cache'; target=checkout/'graft'/'.cache'
+    if not source.is_dir() or source.is_symlink(): return False
+    try:
+        target.mkdir(parents=True,exist_ok=False)
+        for path in source.rglob('*'):
+            relative=path.relative_to(source); mode=path.lstat().st_mode; destination=target/relative
+            if stat.S_ISLNK(mode) or not (stat.S_ISDIR(mode) or stat.S_ISREG(mode)): raise ValueError('unsafe Graft cache entry')
+            if stat.S_ISDIR(mode): destination.mkdir(exist_ok=True)
+            else:
+                destination.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(path,destination,follow_symlinks=False)
+        return True
+    except (OSError,ValueError):
+        shutil.rmtree(target,ignore_errors=True);return False
+
 def authenticate_revision_graph(root:Path,graph:dict,revision:str,provider:dict,*,run=subprocess.run)->None:
     """Rebuild a pinned revision in isolation and require identical graph bytes."""
     with tempfile.TemporaryDirectory(prefix='zzzops-graft-revision-') as temporary:
@@ -79,6 +96,7 @@ def authenticate_revision_graph(root:Path,graph:dict,revision:str,provider:dict,
         added=run(['git','worktree','add','--detach',str(checkout),revision],cwd=root,capture_output=True,text=True,check=False)
         if added.returncode: raise ValueError('Previous Graft revision checkout failed')
         try:
+            seed_graft_cache(root,checkout)
             version=run(['graft','--version'],cwd=checkout,capture_output=True,text=True,check=False)
             if version.returncode or provider['version'] not in version.stdout: raise ValueError('Previous Graft tool/version unavailable')
             built=run(['graft','build'],cwd=checkout,capture_output=True,text=True,check=False,env={**os.environ,'DO_NOT_TRACK':'1'})
