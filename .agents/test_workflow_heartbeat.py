@@ -607,8 +607,8 @@ print(json.dumps({'next_steps':[{'kind':'renewed','goal':int(args[args.index('--
         acknowledgements=self._lines(self.cli_records)
         starts=[r for r in acknowledgements if r['event']=='start']
         acks=[r for r in acknowledgements if r['event']=='ack']
-        self.assertEqual(8,len([r for r in starts if r['at'] < min(a['at'] for a in acks)]),
-                         'fixture did not saturate the eight-worker first wave')
+        self.assertEqual(9,len([r for r in starts if r['at'] < min(a['at'] for a in acks)]),
+                         'a supported due lease was queued behind the first renewal wave')
         self.assertTrue(all(row['at'] < boundary for row in acks),
                         'a saturated renewal acknowledgement crossed its lease safety boundary')
 
