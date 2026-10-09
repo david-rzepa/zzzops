@@ -225,12 +225,6 @@ _phase_evidence = importlib.util.module_from_spec(_PHASE_EVIDENCE_MODULE_SPEC)
 sys.modules[_PHASE_EVIDENCE_MODULE_SPEC.name] = _phase_evidence
 _PHASE_EVIDENCE_MODULE_SPEC.loader.exec_module(_phase_evidence)
 
-_TEST_PLAN_SPEC = importlib.util.spec_from_file_location("zzzops_test_plan", Path(__file__).with_name("test_plan.py"))
-assert _TEST_PLAN_SPEC and _TEST_PLAN_SPEC.loader
-_test_plan = importlib.util.module_from_spec(_TEST_PLAN_SPEC)
-sys.modules[_TEST_PLAN_SPEC.name] = _test_plan
-_TEST_PLAN_SPEC.loader.exec_module(_test_plan)
-
 _WORKFLOW_SPEC = importlib.util.spec_from_file_location("zzzops_workflow", Path(__file__).with_name("workflow.py"))
 _workflow = importlib.util.module_from_spec(_WORKFLOW_SPEC)
 _WORKFLOW_SPEC.loader.exec_module(_workflow)

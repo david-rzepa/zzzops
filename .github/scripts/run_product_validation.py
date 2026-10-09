@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import os
 import subprocess
@@ -209,18 +208,6 @@ def write_step_summary(report: Mapping, path: Path) -> None:
         handle.write("\n".join(lines) + "\n")
 
 
-
-def test_plan_preview(root: Path, *, changed: Iterable[str] = (), previous_edges=None, current_edges=None, graph_ok=False, fallback_reason=None) -> dict:
-    """Return a deterministic conservative preview; this function never executes tests."""
-    module_path = Path(root) / "plugins/zzzops/zzzops/test_plan.py"
-    spec = importlib.util.spec_from_file_location("zzzops_test_plan", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("test-plan support is unavailable")
-    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-    plan = json.loads((Path(root) / "zzzops-test-plan.json").read_text(encoding="utf-8"))
-    selected = module.affected_units(plan, changed, previous_edges=previous_edges, current_edges=current_edges, graph_ok=graph_ok, fallback_reason=fallback_reason)
-    return {"schema_version": 1, "plan": module.digest(module.semantic_plan(plan)), **selected}
-
 def linux_validation() -> None:
     run(sys.executable, "-m", "unittest", "discover", "-s", ".agents", "-p", "test_*.py")
     run(sys.executable, "-m", "unittest", "discover", "-s", "plugins/zzzops/skills/migrate-to-zzzops/scripts", "-p", "test_*.py")
@@ -243,12 +230,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--platform", choices=("linux", "windows", "macos"), required=True)
     parser.add_argument("--discover-native", action="store_true")
-    parser.add_argument("--test-plan-preview", action="store_true")
-    parser.add_argument("--changed", action="append", default=[])
     args = parser.parse_args()
-    if args.test_plan_preview:
-        print(json.dumps(test_plan_preview(ROOT, changed=args.changed, graph_ok=False, fallback_reason="Graft evidence was not supplied"), sort_keys=True))
-        return 0
     if args.discover_native:
         if args.platform == "linux":
             parser.error("--discover-native is for native Windows/macOS validation")
