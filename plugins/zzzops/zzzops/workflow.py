@@ -3612,7 +3612,7 @@ class Workflow:
                     finally: os.close(directory_fd)
             finally:
                 temporary.unlink(missing_ok=True)
-        journal = read(path) if path.exists() else {'identity': identity, 'status': 'prepared', 'results': []}
+        journal = read(path) if path.exists() else {'identity': identity, 'lease':lease['token'], 'status': 'prepared', 'results': []}
         if journal['identity'] != identity:
             raise ValueError('Verification request/workspace/acquisition/environment identity changed; use original bytes or a corrected new request')
         # Unknown command liveness cannot be bypassed with another request ID.
@@ -3629,7 +3629,7 @@ class Workflow:
                 raise ValueError('Recorded verification log changed')
         if journal['status'] == 'complete' and all(row.get('exit_code') == 0 for row in results): return results
         if journal['status'] == 'complete':
-            journal={'identity':identity,'status':'prepared','results':[]}; results=[]
+            journal={'identity':identity,'lease':lease['token'],'status':'prepared','results':[]}; results=[]
         logs = self.repo / '.zzzops' / 'diagnostics'; logs.mkdir(parents=True, exist_ok=True)
         def execute(i, command, cwd):
             log = logs / f'node-{lease["token"]}-{path.stem}-{i}.log'; started=time.monotonic()
@@ -3774,12 +3774,14 @@ class Workflow:
                 if record and hashlib.sha256(Path(record['log']).read_bytes()).hexdigest()==record['log_hash']: results[i]=record
                 else: missing.append(i)
             if missing:
-                subset=[commands[i] for i in missing]
-                subset_identity={**reusable_identity,'partitions':[plan_evidence['partitions'][i]['id'] for i in missing]}
-                observed=self.node_verification_commands(snapshot,lease,request,subset,before,subset_identity,min(parallelism,len(subset)),parallelism>1 and len(subset)>1)
-                for i,record in zip(missing,observed):
-                    results[i]=record; outcome=test_plan.classify_outcome(exit_code=record.get('exit_code'),timed_out=record.get('timed_out',False),execution_error=record.get('execution_error'))
-                    fact_journal.append({'partition':plan_evidence['partitions'][i]['id'],'fingerprint':fingerprints[i],'outcome':outcome,'result':record})
+                batches=[missing] if parallelism>1 else [[i] for i in missing]
+                for batch in batches:
+                    subset=[commands[i] for i in batch]
+                    subset_identity={**reusable_identity,'partitions':[plan_evidence['partitions'][i]['id'] for i in batch]}
+                    observed=self.node_verification_commands(snapshot,lease,request,subset,before,subset_identity,min(parallelism,len(subset)),parallelism>1 and len(subset)>1)
+                    for i,record in zip(batch,observed):
+                        results[i]=record; outcome=test_plan.classify_outcome(exit_code=record.get('exit_code'),timed_out=record.get('timed_out',False),execution_error=record.get('execution_error'))
+                        fact_journal.append({'partition':plan_evidence['partitions'][i]['id'],'fingerprint':fingerprints[i],'outcome':outcome,'result':record})
             results=[row for row in results if row is not None]
         else:
             results = self.node_verification_commands(snapshot, lease, request, commands, before, reusable_identity,parallelism,parallelism>1)
@@ -4941,6 +4943,11 @@ class Workflow:
                 if operation == 'recover':
                     if request.get('worker_status') != 'stopped' or not isinstance(request.get('evidence'), str) or not request['evidence'].strip(): raise ValueError('Observed stopped worker evidence required; unknown liveness cannot recover')
                     if request.get('actor') != lease['worker']: raise ValueError('Exact bound actor required for observed-stop recovery')
+                    git_dir=Path(subprocess.run(['git','rev-parse','--absolute-git-dir'],cwd=self.repo,capture_output=True,text=True,check=True).stdout.strip())
+                    for journal_path in (git_dir/'zzzops'/'verification'/str(number)).glob('*.json'):
+                        envelope=json.loads(journal_path.read_text(encoding='utf-8')); record=envelope.get('record')
+                        if envelope.get('hash')!=digest(record): raise ValueError('Verification journal integrity changed during recovery')
+                        if record.get('status')=='running' and record.get('lease')==lease['token']: journal_path.unlink()
                     step = {'kind': 'checkpoint', 'goal': number}
                     if 'repository_workspace' in state['contract']['executor']['resources']:
                         if state['state'] != 'ready' or state.get('input_hash') != lease['fingerprint']:

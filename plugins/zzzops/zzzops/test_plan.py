@@ -199,6 +199,10 @@ def preview(plan:dict, *, mode:str, changed=(), explicit=(), previous_edges=None
         selected=sorted(set(explicit)); unknown=set(selected)-set(plan['tests'])
         if unknown: raise ValueError('Explicit selection names unknown tests: '+', '.join(sorted(unknown)))
         reasons={u:'explicit selection' for u in selected}
+    elif mode=='expected-red' and explicit:
+        selected=sorted(set(explicit)); unknown=set(selected)-set(plan['tests'])
+        if unknown: raise ValueError('Expected-red selection names unknown tests: '+', '.join(sorted(unknown)))
+        reasons={u:'explicit expected-red selection' for u in selected}
     elif mode in {'changed','expected-red'}:
         result=affected_units(plan,changed,previous_edges=previous_edges,current_edges=current_edges,graph_ok=graph_ok,fallback_reason=fallback_reason);selected=result['selected'];reasons=result['reasons']
     else: raise ValueError('Verification mode must be changed, explicit, expected-red, or full')
