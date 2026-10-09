@@ -5733,6 +5733,66 @@ class GraphAdoptionPublicTests(DagFixture):
                 with self.assertRaisesRegex(ValueError, r'(?i)unique.*receipt'):
                     engine.node_graph_proposal(conflicting, self.graph, 'Duplicate receipt rejection')
 
+    def test_checkpoint_reconciliation_refreshes_request_identity_with_observation(self):
+        self.produce()
+        ready = next(step for step in self.session.ready() if step['node']['node'] == 'review_a')
+        receipt = json.loads(Path(ready['policy']['path']).read_text())['policy_receipt']
+        stale = {**ready['start'], 'policy_receipt': receipt, 'request_id': 'refreshable-response-lost-start'}
+        with mock.patch.object(self.provider, 'update_issue', side_effect=RuntimeError('provider unavailable')):
+            self.session.call(100, stale, expected=2)
+        transaction = next(
+            z._comment_store.decode_envelope(row['body'])['transaction']
+            for row in self.provider.comments[100]
+            if (z._comment_store.decode_envelope(row['body']) or {}).get('context', {}).get('request_id') == stale['request_id'])
+
+        def prepare(request_id):
+            step = self.session.call(100, {
+                'operation': 'checkpoint_reconcile_prepare', 'transaction': transaction,
+                'rationale': 'Reconcile the same exact response-lost checkpoint.',
+                'request_id': request_id,
+            })['next_steps'][0]
+            return step['proposal'], step['submission']
+
+        proposal_a, review_a = prepare('prepare-reconciliation-observation-a')
+        reviewed_a = self.administrative_review({
+            **review_a, 'actor': 'independent-reviewer-a', 'decision': 'approved',
+            'report': 'Observation A pins the stale checkpoint and current provider prefix.',
+        })['next_steps'][0]
+        adopt_a = {**reviewed_a['submission'], 'approved_by': 'user: approved observation A'}
+        self.assertEqual('checkpoint', self.session.call(100, adopt_a)['next_steps'][0]['kind'])
+
+        graph = self.session.call(100, {
+            'operation': 'graph_prepare', 'graph': self.graph,
+            'rationale': 'Append later authorised comments after observation A.',
+            'request_id': 'graph-after-reconciliation-observation-a',
+        })['next_steps'][0]['proposal']
+        graph_review = self.administrative_review({
+            'operation': 'graph_review', 'proposal': graph, 'actor': 'later-independent-reviewer',
+            'decision': 'approved', 'report': 'The later graph transaction is exact.',
+            'request_id': 'review-after-reconciliation-observation-a',
+        })['next_steps'][0]
+        self.session.call(100, {**graph_review['submission'],
+                               'approved_by': 'user: approved later graph transaction'})
+
+        self.administrative_review({**review_a, 'actor': 'independent-reviewer-a',
+                                    'decision': 'approved', 'report': 'Observation A is now stale.'}, expected=2)
+        names_before = self.names()
+        proposal_b, review_b = prepare('prepare-reconciliation-observation-b')
+        self.assertEqual(proposal_a['checkpoint'], proposal_b['checkpoint'])
+        self.assertNotEqual(proposal_a['current']['observation'], proposal_b['current']['observation'])
+        self.assertNotEqual(review_a['request_id'], review_b['request_id'])
+        reviewed_b = self.administrative_review({
+            **review_b, 'actor': 'independent-reviewer-b', 'decision': 'approved',
+            'report': 'Observation B independently recomputes the unchanged stale provider bytes.',
+        })['next_steps'][0]
+        self.assertNotEqual(adopt_a['request_id'], reviewed_b['submission']['request_id'])
+        adopt_b = {**reviewed_b['submission'], 'approved_by': 'user: approved observation B'}
+        adopted_b = self.session.call(100, adopt_b)
+        comments_after_b = copy.deepcopy(self.provider.comments[100])
+        self.assertEqual(adopted_b, self.session.call(100, adopt_b))
+        self.assertEqual(comments_after_b, self.provider.comments[100])
+        self.assertEqual(names_before, self.names(), 'Reconciliation must not grant task authority')
+
     def test_graph_repair_uses_only_exact_committed_migration_cutoff(self):
         engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
         result = {"hash": "sha256:" + "a" * 64, "uri": "urn:sha256:" + "a" * 64}

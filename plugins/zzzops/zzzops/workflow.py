@@ -2445,6 +2445,13 @@ class Workflow:
                             'observation': comment_store.comment_observation(comments)},
                 'rationale': rationale}
 
+    @staticmethod
+    def node_checkpoint_reconciliation_request_id(kind, proposal):
+        """Bind reconciliation requests to one exact current observation."""
+        transaction = proposal['checkpoint']['transaction'][7:23]
+        observation = digest(proposal['current']['observation'])[7:23]
+        return f'checkpoint-reconcile-{kind}-{transaction}-{observation}'
+
     def node_checkpoint_reconcile_review(self, snapshot, payload, request):
         allowed = {'operation', 'request_id', 'proposal', 'actor', 'decision', 'report'}
         if set(request) != allowed:
@@ -2473,7 +2480,7 @@ class Workflow:
                     'action': 'Show the exact stale checkpoint reconciliation to the user and adopt only after explicit approval.',
                     'submission': {'operation': 'checkpoint_reconcile_adopt', 'proposal': artifact_ref,
                                    'review': review_ref, 'approved_by': None,
-                                   'request_id': 'checkpoint-reconcile-' + proposal['checkpoint']['transaction'][7:23]}}
+                                   'request_id': self.node_checkpoint_reconciliation_request_id('adopt', proposal)}}
         else:
             step = {'kind': 'changes_requested', 'assignment': 'root', 'goal': snapshot['number'],
                     'proposal': artifact_ref, 'review': review_ref, 'report': request['report']}
@@ -5885,7 +5892,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 'action': 'Give this exact stale-checkpoint manifest to an independent reviewer.',
                 'submission': {'operation': 'checkpoint_reconcile_review', 'proposal': proposal,
                                'actor': None, 'decision': None, 'report': None,
-                               'request_id': 'checkpoint-reconcile-review-' + payload['transaction'][7:23]}}]}
+                               'request_id': engine.node_checkpoint_reconciliation_request_id('review', proposal)}}]}
     administrative = api._workflow_admin.handle(api, repo, project, source, runtime, payload) if operation not in {'capture_propose', 'capture'} else None
     if administrative is not None:
         return administrative
