@@ -3235,6 +3235,9 @@ class Workflow:
         # not a provenance edge.
         complete = [row for row in candidates if 'error' not in row]
         accepted = [row for row in complete if row['reviews']]
+        latest_candidates = {}
+        for row in candidates:
+            latest_candidates[row['key']] = row
         def review_refs(row): return [reference for reference, _result in row['reviews']]
         def valid_review_pins(references):
             try:
@@ -3430,7 +3433,13 @@ class Workflow:
                 state = states.get(current)
                 if state is None: raise ValueError('Workspace prerequisite references an unknown task')
                 prerequisites = state.get('prerequisites')
-                if not isinstance(prerequisites, list):
+                if prerequisites is None:
+                    declared = state.get('required_dependencies', []) + state.get('required_parent_gates', [])
+                    if not isinstance(declared, list): raise ValueError('Workspace prerequisite graph is malformed')
+                    try: prerequisites = [ev.task_key(node) for node in declared]
+                    except (KeyError, TypeError, ValueError):
+                        raise ValueError('Workspace prerequisite graph is malformed') from None
+                elif not isinstance(prerequisites, (list, tuple)):
                     raise ValueError('Workspace prerequisite graph is malformed')
                 if ancestor in prerequisites: return True
                 pending.extend(prerequisites)
@@ -3440,7 +3449,9 @@ class Workflow:
             paths = allocation_paths(key)
             for row in complete:
                 descendant = row['key']
-                if descendant == key or descendant not in work or not descendant_of(descendant, key):
+                projected = projection['current'].get(descendant, (None,))[0]
+                if (descendant == key or descendant not in work or projected != row['result']
+                        or not descendant_of(descendant, key)):
                     continue
                 # An authenticated descendant proof transfers current-byte
                 # responsibility for exactly the paths it owns. Its review is
@@ -3558,6 +3569,15 @@ class Workflow:
                 matches = [row for row in candidates if row['key'] == key]
                 prior = matches[-1] if matches else None
                 current_ref = projection['current'].get(key, (None,))[0]
+                # A correction proof with predecessor provenance must either
+                # be the projected current candidate or have an independent
+                # review which explains why a later projection superseded it.
+                # Otherwise a mismatched review subject could make the old
+                # accepted proof look like the latest usable bundle.
+                if any(row['data']['acquisition'].get('predecessor') is not None
+                       and not row['reviews'] and row['result'] != current_ref
+                       for row in matches if 'error' not in row):
+                    raise ValueError('Workspace correction proof lacks its exact immediate review subject')
                 if lease:
                     acquisition = lease.get('acquisition'); baseline = raw(acquisition)
                     receipts = [content(reference) for token, reference in snapshots[key[0]]['acquisition_receipts'].items() if token == lease['token']]
@@ -3590,7 +3610,7 @@ class Workflow:
                     acquisition = {'git_commit': head, 'workspace_digest': digest(baseline), 'checkout_overrides': {}}
                     try: acquisition['checkout_overrides'] = self.clean_checkout_overrides(head, committed, actual)
                     except ValueError:
-                        anchors = [row for row in candidates if 'error' not in row and row['reviews']
+                        anchors = [row for row in latest_candidates.values() if 'error' not in row and row['reviews']
                                    and read_connected(row['after'], retained_paths(row['key']))]
                         continuity = [(reference, draft) for reference, draft in valid_continuity
                                       if draft['files'] == actual]
@@ -3642,7 +3662,7 @@ class Workflow:
                     # older transitions remain addressed through each proof's
                     # predecessor chain rather than expanding every old anchor.
                     selected_anchors = {}
-                    for row in candidates:
+                    for row in latest_candidates.values():
                         if ('error' not in row and row['reviews'] and row['proof']['hash'] in reachable
                                 and read_connected(row['after'], retained_paths(row['key']))):
                             selected_anchors[row['key']] = row
