@@ -99,6 +99,26 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
         self.assertEqual(z._test_plan.canonical(plan)+b'\n',path.read_bytes())
         with mock.patch.object(subprocess,'run',side_effect=no_repeat):self.assertEqual(response,self.session.call(100,request))
 
+    def test_older_receipt_replay_does_not_replace_newer_success_records(self):
+        (self.fixture.repo/'behavior_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
+        request=self.session.submission(self.work,{'value':'older successful candidate'},'plan-older-success')
+        request.update(verification_plan={'mode':'full'},verification_expectation='passed')
+        response=self.session.call(100,request)
+        path=self.fixture.repo/'zzzops-test-plan.json';plan=json.loads(path.read_text())
+        newer_hash='sha256:'+'b'*64
+        newer={identity:{'fingerprint':'sha256:'+'c'*64,'outcome':'passed',
+            'proof':{'hash':newer_hash,'uri':'zzzops:owner/repo:goal:100:'+newer_hash}}
+            for identity in plan['tests']}
+        plan['latest_success']=copy.deepcopy(newer);z._test_plan.write_plan(path,plan)
+        original=subprocess.run
+        def no_repeat(argv,*args,**kwargs):
+            if argv and argv[0]==sys.executable and '-c' in argv:
+                self.fail('Stored receipt replay reran verification commands')
+            return original(argv,*args,**kwargs)
+        with mock.patch.object(subprocess,'run',side_effect=no_repeat):
+            self.assertEqual(response,self.session.call(100,request))
+        self.assertEqual(newer,json.loads(path.read_text())['latest_success'])
+
     def test_public_expected_red_mode_requires_signature_and_replays_response(self):
         (self.fixture.repo/'behavior_test.py').write_text("import unittest\nclass T(unittest.TestCase):\n def test_red(self): self.fail('missing-557-behavior')\n")
         request=self.session.submission(self.work,{'value':'observed red'},'plan-red')
