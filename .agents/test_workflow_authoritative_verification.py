@@ -76,6 +76,29 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
         self.session.git('checkout','-q',older);self.assertEqual(older_plan,path.read_bytes())
         self.session.git('checkout','-q','newer-plan-result');self.assertEqual(newer_plan,path.read_bytes())
 
+    def test_receipt_replay_repairs_success_record_after_plan_write_failure(self):
+        (self.fixture.repo/'behavior_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
+        request=self.session.submission(self.work,{'value':'replay repaired candidate'},'plan-replay-repair')
+        request.update(verification_plan={'mode':'full'},verification_expectation='passed')
+        with mock.patch.object(z._test_plan,'write_plan',side_effect=OSError('interrupted before tracked plan write')):
+            self.session.call(100,request,expected=2)
+        path=self.fixture.repo/'zzzops-test-plan.json'
+        self.assertEqual({},json.loads(path.read_text())['latest_success'])
+        original=subprocess.run
+        def no_repeat(argv,*args,**kwargs):
+            if argv and argv[0]==sys.executable and '-c' in argv:
+                self.assertNotIn('behavior_test',json.dumps(argv));self.assertNotIn('second_test',json.dumps(argv))
+            return original(argv,*args,**kwargs)
+        with mock.patch.object(subprocess,'run',side_effect=no_repeat):response=self.session.call(100,request)
+        proof=self.read_blob(response['verification']['proof'])
+        plan=json.loads(path.read_text())
+        self.assertEqual({'behavior_test','second_test'},set(plan['latest_success']))
+        for identity in sorted(plan['tests']):
+            self.assertEqual({'fingerprint':proof['test_plan']['fingerprints'][identity],
+                'outcome':'passed','proof':response['verification']['proof']},plan['latest_success'][identity])
+        self.assertEqual(z._test_plan.canonical(plan)+b'\n',path.read_bytes())
+        with mock.patch.object(subprocess,'run',side_effect=no_repeat):self.assertEqual(response,self.session.call(100,request))
+
     def test_public_expected_red_mode_requires_signature_and_replays_response(self):
         (self.fixture.repo/'behavior_test.py').write_text("import unittest\nclass T(unittest.TestCase):\n def test_red(self): self.fail('missing-557-behavior')\n")
         request=self.session.submission(self.work,{'value':'observed red'},'plan-red')
