@@ -3967,6 +3967,19 @@ class Workflow:
         snapshot['workspace_proof'] = self.node_ref(identity, snapshot['number'])
         return snapshot['workspace_proof']
 
+    def node_record_test_plan_success(self, proof_ref, proof):
+        """Materialize a committed green proof in the branch-local tracked plan."""
+        evidence=proof.get('test_plan') if isinstance(proof,dict) else None
+        if (not evidence or not proof.get('passed') or evidence['request'].get('mode')=='expected-red'
+                or not proof['commands'] or any(record.get('exit_code') != 0 for record in proof['commands'])):
+            return
+        path=self.repo/'zzzops-test-plan.json'
+        plan=test_plan.validate_plan(json.loads(path.read_text(encoding='utf-8')))
+        for unit in evidence['preview']['selected']:
+            plan['latest_success'][unit]={'fingerprint':evidence['fingerprints'][unit],
+                'outcome':'passed','proof':proof_ref}
+        test_plan.write_plan(path,plan)
+
     def node_policy(self, state):
         receipt = digest({'policy': self.project['policy'], 'contract': state['contract_hash']})
         raw = json.dumps({'policy_receipt': receipt, 'sections': self.project['policy']['sections']}, sort_keys=True).encode()
@@ -5215,7 +5228,11 @@ class Workflow:
                         ref = self.node_ref(identity, number); payload['evidence'].append(ref); leases.remove(lease)
                         response = self.node_continuation(snapshot, payload, node, ref)
                     else: raise ValueError('Unsupported generic operation; semantic evidence uses submit')
-            return self.node_persist(snapshot, payload, response, request)
+            persisted=self.node_persist(snapshot, payload, response, request)
+            proof_ref=snapshot.get('workspace_proof')
+            if proof_ref:
+                self.node_record_test_plan_success(proof_ref,snapshot['artifacts'][proof_ref['hash']])
+            return persisted
 
     def node_validate_bundle(self, snapshot, state, bundle, actor):
         """Validate semantic evidence as one candidate before appending any output."""

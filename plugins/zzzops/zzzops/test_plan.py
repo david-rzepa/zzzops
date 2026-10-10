@@ -1,6 +1,6 @@
 """Deterministic repository test plans and resumable partition facts."""
 from __future__ import annotations
-import hashlib, json, os, subprocess, tempfile, uuid
+import hashlib, json, os, re, subprocess, tempfile, uuid
 import shutil, stat
 from pathlib import Path
 from typing import Any, Iterable
@@ -138,7 +138,22 @@ def validate_plan(plan: Any) -> dict:
         for k in ('goals','specifications','dependencies'):
             if not isinstance(unit[k],list) or len(unit[k])!=len(set(unit[k])) or any(not isinstance(x,str) or not x for x in unit[k]): raise ValueError('Test unit list is invalid')
         if unit['order_group'] is not None and (not isinstance(unit['order_group'],str) or not unit['order_group']): raise ValueError('Order group is invalid')
-    if not isinstance(plan['latest_success'],dict) or any(k not in tests for k in plan['latest_success']): raise ValueError('Latest success references unknown test')
+    successes=plan['latest_success']
+    if not isinstance(successes,dict) or any(k not in tests for k in successes): raise ValueError('Latest success references unknown test')
+    artifact_uri=re.compile(r'zzzops:[^:]+:goal:[1-9][0-9]*:(sha256:[0-9a-f]{64})')
+    digest_pattern=re.compile(r'sha256:[0-9a-f]{64}')
+    for record in successes.values():
+        if not isinstance(record,dict) or set(record)!= {'fingerprint','outcome','proof'}:
+            raise ValueError('Latest success record is invalid')
+        proof=record['proof']
+        if (not isinstance(record['fingerprint'],str) or not digest_pattern.fullmatch(record['fingerprint'])
+                or record['outcome']!='passed' or not isinstance(proof,dict) or set(proof)!= {'hash','uri'}
+                or not isinstance(proof['hash'],str) or not digest_pattern.fullmatch(proof['hash'])
+                or not isinstance(proof['uri'],str)):
+            raise ValueError('Latest success record is invalid')
+        match=artifact_uri.fullmatch(proof['uri'])
+        if match is None or match.group(1)!=proof['hash']:
+            raise ValueError('Latest success proof integrity is invalid')
     return plan
 
 def file_identity(root: Path, relative: str) -> str:
