@@ -3967,7 +3967,7 @@ class Workflow:
         snapshot['workspace_proof'] = self.node_ref(identity, snapshot['number'])
         return snapshot['workspace_proof']
 
-    def node_record_test_plan_success(self, proof_ref, proof):
+    def node_record_test_plan_success(self, proof_ref, proof, *, missing_only=False):
         """Materialize a committed green proof in the branch-local tracked plan."""
         evidence=proof.get('test_plan') if isinstance(proof,dict) else None
         if (not evidence or not proof.get('passed') or evidence['request'].get('mode')=='expected-red'
@@ -3978,6 +3978,8 @@ class Workflow:
         changed=False
         for unit in evidence['preview']['selected']:
             record={'fingerprint':evidence['fingerprints'][unit], 'outcome':'passed','proof':proof_ref}
+            if missing_only and unit in plan['latest_success']:
+                continue
             if plan['latest_success'].get(unit) != record:
                 plan['latest_success'][unit]=record; changed=True
         if changed: test_plan.write_plan(path,plan)
@@ -4990,7 +4992,7 @@ class Workflow:
                         proof_ref=(response.get('verification') or {}).get('proof')
                         if proof_ref:
                             proof=self.artifact_index(number).resolve(proof_ref['hash'])[0]
-                            self.node_record_test_plan_success(proof_ref,proof)
+                            self.node_record_test_plan_success(proof_ref,proof,missing_only=True)
                         return self.stop_completed_heartbeat(number, request, durable['operational'], response)
             snapshot = self.node_snapshot(number)
             if snapshot['envelope']['state'] != 'open' or str(snapshot['issue'].get('state', '')).lower() == 'closed': raise ValueError('Archived goal cannot execute or mutate')
