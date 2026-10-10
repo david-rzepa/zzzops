@@ -55,6 +55,27 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
         git_dir=Path(subprocess.check_output(['git','rev-parse','--absolute-git-dir'],cwd=self.fixture.repo,text=True).strip())
         self.assertTrue(list((git_dir/'zzzops/verification/100').glob('partition-facts-*.json')))
 
+    def test_success_updates_tracked_plan_and_older_checkout_restores_branch_local_result(self):
+        (self.fixture.repo/'behavior_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
+        request=self.session.submission(self.work,{'value':'persisted planned candidate'},'plan-persisted-success')
+        request.update(verification_plan={'mode':'full'},verification_expectation='passed')
+        response=self.session.call(100,request);proof=self.read_blob(response['verification']['proof'])
+        path=self.fixture.repo/'zzzops-test-plan.json';plan=json.loads(path.read_text())
+        self.assertEqual({'behavior_test','second_test'},set(plan['latest_success']))
+        for identity in sorted(plan['tests']):
+            self.assertEqual({'fingerprint','outcome','proof'},set(plan['latest_success'][identity]))
+            self.assertEqual(proof['test_plan']['fingerprints'][identity],plan['latest_success'][identity]['fingerprint'])
+            self.assertEqual('passed',plan['latest_success'][identity]['outcome'])
+            self.assertEqual(response['verification']['proof'],plan['latest_success'][identity]['proof'])
+        self.assertEqual(z._test_plan.canonical(plan)+b'\n',path.read_bytes())
+        self.session.git('add','zzzops-test-plan.json','behavior_test.py');self.session.git('commit','-qm','record branch-local verification success')
+        older=self.session.git('rev-parse','HEAD');older_plan=path.read_bytes()
+        self.session.git('checkout','-qb','newer-plan-result')
+        newer=json.loads(path.read_text());newer['latest_success']['behavior_test']['fingerprint']='sha256:'+'c'*64;z._test_plan.write_plan(path,newer)
+        self.session.git('add','zzzops-test-plan.json');self.session.git('commit','-qm','record newer branch result');newer_plan=path.read_bytes()
+        self.session.git('checkout','-q',older);self.assertEqual(older_plan,path.read_bytes())
+        self.session.git('checkout','-q','newer-plan-result');self.assertEqual(newer_plan,path.read_bytes())
+
     def test_public_expected_red_mode_requires_signature_and_replays_response(self):
         (self.fixture.repo/'behavior_test.py').write_text("import unittest\nclass T(unittest.TestCase):\n def test_red(self): self.fail('missing-557-behavior')\n")
         request=self.session.submission(self.work,{'value':'observed red'},'plan-red')

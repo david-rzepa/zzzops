@@ -10,7 +10,18 @@ class TestPlanTests(unittest.TestCase):
   return {'schema_version':1,'graph_provider':{'name':'graft','version':'0.17.0','format':'v1','configuration':{}},'runners':{'r':{'adapter':'unittest'}},'tests':{'a':unit('a.py'),'b':unit('b.py'),'c':unit('c.py')},'latest_success':{}}
  def test_semantic_fingerprints_are_per_unit_and_results_exclude_themselves(self):
   with tempfile.TemporaryDirectory() as d:
-   root=Path(d);[(root/f'{x}.py').write_text(x) for x in 'abc'];p=self.plan();kw={'inventory':p['tests'],'environment':{'py':'x'},'tooling':{'runner':'x'}};a=m.input_fingerprint(p,'a',root,**kw);b=m.input_fingerprint(p,'b',root,**kw);p['latest_success']['a']={'fingerprint':a};self.assertEqual(a,m.input_fingerprint(p,'a',root,**kw));p['tests']['a']['purpose']='changed';self.assertNotEqual(a,m.input_fingerprint(p,'a',root,**kw));self.assertEqual(b,m.input_fingerprint(p,'b',root,**kw))
+   root=Path(d);[(root/f'{x}.py').write_text(x) for x in 'abc'];p=self.plan();kw={'inventory':p['tests'],'environment':{'py':'x'},'tooling':{'runner':'x'}};a=m.input_fingerprint(p,'a',root,**kw);b=m.input_fingerprint(p,'b',root,**kw);h='sha256:'+'a'*64;p['latest_success']['a']={'fingerprint':a,'outcome':'passed','proof':{'hash':h,'uri':'zzzops:owner/repo:goal:557:'+h}};self.assertEqual(a,m.input_fingerprint(p,'a',root,**kw));p['tests']['a']['purpose']='changed';self.assertNotEqual(a,m.input_fingerprint(p,'a',root,**kw));self.assertEqual(b,m.input_fingerprint(p,'b',root,**kw))
+ def test_latest_success_schema_rejects_malformed_or_unverifiable_records(self):
+  p=self.plan();valid={'fingerprint':'sha256:'+'a'*64,'outcome':'passed','proof':{'hash':'sha256:'+'b'*64,'uri':'zzzops:owner/repo:goal:557:sha256:'+'b'*64}}
+  p['latest_success']['a']=valid;m.validate_plan(p)
+  malformed=[None,'not-a-record',{}, {'fingerprint':valid['fingerprint'],'outcome':'passed'}, {**valid,'unexpected':True}, {**valid,'fingerprint':'not-a-digest'}, {**valid,'outcome':'assertion_failed'}, {**valid,'proof':{'hash':valid['proof']['hash']}}, {**valid,'proof':{'hash':'sha256:'+'c'*64,'uri':valid['proof']['uri']}}]
+  for value in malformed:
+   candidate=json.loads(json.dumps(p));candidate['latest_success']['a']=value
+   with self.subTest(value=value),self.assertRaises(ValueError):m.validate_plan(candidate)
+ def test_repository_plan_attributes_new_verification_contract_to_goal_557(self):
+  plan=json.loads((Path(__file__).parents[1]/'zzzops-test-plan.json').read_text())
+  for identity in ('test_workflow_test_plan','test_workflow_authoritative_verification'):
+   self.assertIn('557',plan['tests'][identity]['goals'])
  def test_edges_missing_graph_resume_and_newer_failure(self):
   p=self.plan();self.assertEqual(['a'],m.affected_units(p,['old.py'],previous_edges={'a':['old.py']},current_edges={'a':[]},graph_ok=True)['selected']);r=m.affected_units(p,['unmapped'],previous_edges=None,current_edges=None,graph_ok=False,fallback_reason='missing Graft');self.assertEqual(['a','b','c'],r['selected']);self.assertEqual({'missing Graft'},set(r['reasons'].values()));parts=m.partitions(['a','b','c'],{'a':2,'b':2,'c':8},5);self.assertEqual(['a','b','c'],[u for q in parts for u in q['units']]);self.assertIsNone(m.reusable_success([{'fingerprint':'f','outcome':'passed','sequence':1},{'fingerprint':'f','outcome':'assertion_failed','sequence':2}],'f'))
  def test_journal_modes_red_and_parallel_authority(self):
