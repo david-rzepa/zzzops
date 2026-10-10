@@ -3375,7 +3375,9 @@ class Workflow:
                 key = ev.task_key(lease['node'])
                 if key not in work: continue
                 try:
-                    state = work[key]; grant = authority(state); acquisition = lease['acquisition']
+                    state = work[key]; grant = authority(state); acquisition = lease.get('acquisition')
+                    if not isinstance(acquisition, dict):
+                        continue
                     reference = snapshot['acquisition_receipts'].get(lease['token'])
                     if reference is None: continue
                     receipt = content(reference)

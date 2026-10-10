@@ -97,7 +97,10 @@ def authenticate_revision_graph(root:Path,graph:dict,revision:str,provider:dict,
         if added.returncode: raise ValueError('Previous Graft revision checkout failed')
         try:
             seed_graft_cache(root,checkout)
-            version=run(['graft','--version'],cwd=checkout,capture_output=True,text=True,check=False)
+            try:
+                version=run(['graft','--version'],cwd=checkout,capture_output=True,text=True,check=False)
+            except OSError as exc:
+                raise ValueError('Previous Graft tool/version unavailable') from exc
             if version.returncode or provider['version'] not in version.stdout: raise ValueError('Previous Graft tool/version unavailable')
             built=run(['graft','build'],cwd=checkout,capture_output=True,text=True,check=False,env={**os.environ,'DO_NOT_TRACK':'1'})
             if built.returncode: raise ValueError('Previous Graft revision rebuild failed')
