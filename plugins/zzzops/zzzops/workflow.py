@@ -3975,10 +3975,12 @@ class Workflow:
             return
         path=self.repo/'zzzops-test-plan.json'
         plan=test_plan.validate_plan(json.loads(path.read_text(encoding='utf-8')))
+        changed=False
         for unit in evidence['preview']['selected']:
-            plan['latest_success'][unit]={'fingerprint':evidence['fingerprints'][unit],
-                'outcome':'passed','proof':proof_ref}
-        test_plan.write_plan(path,plan)
+            record={'fingerprint':evidence['fingerprints'][unit], 'outcome':'passed','proof':proof_ref}
+            if plan['latest_success'].get(unit) != record:
+                plan['latest_success'][unit]=record; changed=True
+        if changed: test_plan.write_plan(path,plan)
 
     def node_policy(self, state):
         receipt = digest({'policy': self.project['policy'], 'contract': state['contract_hash']})
@@ -4985,6 +4987,10 @@ class Workflow:
                         if any(step.get('provider_state') == 'closed' for step in response['next_steps']) and str(issue.get('state', '')).lower() != 'closed': raise ValueError('Stored closure receipt conflicts with partial provider state; repair required')
                         if str(issue.get('state', '')).lower() == 'closed' and not any(step.get('provider_state') == 'closed' for step in response['next_steps']):
                             raise ValueError('Closed goal cannot resume an execution receipt without explicit reopening')
+                        proof_ref=(response.get('verification') or {}).get('proof')
+                        if proof_ref:
+                            proof=self.artifact_index(number).resolve(proof_ref['hash'])[0]
+                            self.node_record_test_plan_success(proof_ref,proof)
                         return self.stop_completed_heartbeat(number, request, durable['operational'], response)
             snapshot = self.node_snapshot(number)
             if snapshot['envelope']['state'] != 'open' or str(snapshot['issue'].get('state', '')).lower() == 'closed': raise ValueError('Archived goal cannot execute or mutate')
