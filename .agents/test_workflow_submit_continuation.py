@@ -178,11 +178,29 @@ class SubmitContinuationTests(DagFixture):
         request = {'operation': 'submit', 'request_id': 'legacy-literal'}
         literal = {'next_steps': [{'kind': 'checkpoint', 'goal': 100}]}
         envelope, payload = self.payload()
-        payload['operational']['receipts'].append({'request': request['request_id'],
-            'payload': content_hash(request), 'result': self.blob(literal)})
+        receipt = {'request': request['request_id'], 'payload': content_hash(request),
+                   'result': self.blob(literal)}
+        payload['operational']['receipts'].append(receipt)
         envelope['payload'] = self.blob(payload)
         self.provider.issues[100]['body'] = '<!-- zzzops-goal\n' + json.dumps(envelope) + '\nzzzops-goal -->'
-        self.assertEqual(literal, self.session.call(100, request))
+        before = copy.deepcopy((self.provider.issues, self.provider.comments, self.provider.updates))
+        first = self.session.call(100, request)
+        second = self.session.call(100, request)
+        self.assertEqual(literal['next_steps'], first['next_steps'])
+        self.assertEqual({'next_steps', 'working_input'}, set(first))
+        self.assertEqual(first, second, 'Exact retry must replay identical response metadata')
+        guidance = first['working_input']
+        self.assertEqual({'path', 'payload_id', 'commands', 'legacy'}, set(guidance))
+        path = Path(guidance['path'])
+        self.assertTrue(path.is_relative_to(self.fixture.repo / '.zzzops/work/inputs/v1'))
+        self.assertEqual({}, json.loads(path.read_text()),
+                         'Replay guidance must retain the empty next-input draft')
+        self.assertRegex(guidance['payload_id'], r'^[0-9a-f]{32}$')
+        self.assertEqual([], guidance['legacy'])
+        self.assertEqual(1, len(guidance['commands']))
+        self.assertEqual(str(path), guidance['commands'][0][-1])
+        self.assertEqual(before, (self.provider.issues, self.provider.comments, self.provider.updates))
+        self.assertIn(receipt, self.payload()[1]['operational']['receipts'])
 
 
 class SchedulingInventoryContinuationTests(DagFixture):
