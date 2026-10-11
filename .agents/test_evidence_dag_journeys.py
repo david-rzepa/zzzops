@@ -3088,7 +3088,7 @@ class DefaultCorrectionPublicTests(DagFixture):
             self.session.finish(self.session.acquire("admit_decomposition_correction"), {"value": {
                 "finding": finding_ref, "target_inputs": self.result("decompose")[1]["inputs"],
                 "authority": self.result("interpret_decomposition_rejection")[0],
-                "applicability": "applicable", "rationale": "In the exact previously approved scope"}})
+                "applicability": "applicable", "rationale": "In the exact previously approved scope"}, "transfer": None})
             self.assertIn("decompose", self.names())
             self.assertNotIn("test_design", self.names())
             empty_members = {"items": {}, "rationale": "No additional review members."}
@@ -3150,7 +3150,7 @@ class DefaultCorrectionPublicTests(DagFixture):
         self.session.finish(self.session.acquire("admit_test_design_correction"), {"value": {
             "finding": finding, "target_inputs": self.result("test_design")[1]["inputs"],
             "authority": self.result("interpret_test_design_rejection")[0],
-            "applicability": "applicable", "rationale": "Same exact reviewed test allocation"}})
+            "applicability": "applicable", "rationale": "Same exact reviewed test allocation"}, "transfer": None})
         self.session.git("add", path.name)
         self.session.git("commit", "-qm", "preserve rejected test candidate")
         corrected = self.session.acquire("test_design")
