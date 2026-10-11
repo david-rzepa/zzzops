@@ -2798,13 +2798,15 @@ class Workflow:
             raise ValueError('Graph repair requires unique committed receipt identities')
         committed = {row['request'] for row in receipts}
         index = self.artifact_index(snapshot['number'])
+        historical = self.node_committed_legacy_requests(snapshot)
         migration_cutoff = self.node_committed_migration_cutoff(snapshot, index)
-        historical = None
         for position, row in enumerate(index.envelopes):
-            if position <= migration_cutoff:
-                continue
             context = row.get('context') or {}
             request_id = context.get('request_id')
+            fingerprint = context.get('fingerprint')
+            if (position <= migration_cutoff and row.get('goal') == snapshot['number'] and
+                    request_id in historical and fingerprint == historical[request_id]):
+                continue
             response_only = False
             if set(context) == {'request_id', 'response'} and isinstance(request_id, str) and request_id:
                 response_ref = context.get('response')
@@ -2825,8 +2827,6 @@ class Workflow:
                                      and all((item.get('context') or {}) == context for item in transaction_rows))
             if (request_id and not response_only and request_id not in committed
                     and request_id != pending_request):
-                if historical is None: historical = self.node_committed_legacy_requests(snapshot)
-                fingerprint = context.get('fingerprint')
                 if (row.get('goal') == snapshot['number'] and request_id in historical and
                         fingerprint == historical[request_id]): continue
                 if self.node_checkpoint_reconciled(snapshot, index, row, receipts): continue
