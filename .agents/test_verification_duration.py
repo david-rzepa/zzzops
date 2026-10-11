@@ -253,6 +253,13 @@ class VerificationDurationTests(journeys.DagFixture):
                 original_project = copy.deepcopy(self.session.project)
                 original_provider = copy.deepcopy((self.provider.issues, self.provider.comments))
                 before_count = self.counter
+                before_updates = len(self.provider.updates)
+                before_alpha_results = sum(
+                    1 for ref in self.payload()[1]["evidence"]
+                    if (artifact := self.read_blob(ref)).get("type") == "result"
+                    and artifact.get("content", {}).get("node", {}).get("node") == "alpha"
+                )
+                drift_evidence = {}
 
                 def drift():
                     if name == "policy":
@@ -263,26 +270,58 @@ class VerificationDurationTests(journeys.DagFixture):
                         positions = [position for position, ref in enumerate(payload["evidence"])
                                      if ref == charter_ref]
                         self.assertEqual(1, len(positions))
-                        grant = copy.deepcopy(self.read_blob(self.produced("charter", "grant")))
+                        original_grant = self.read_blob(self.produced("charter", "grant"))
+                        grant = copy.deepcopy(original_grant)
                         grant["content"]["allocations"]["alpha"]["owned"].append(
                             "reviewed-allocation-drift.py"
                         )
                         changed_grant = self.blob(grant)
                         charter_result = copy.deepcopy(self.read_blob(charter_ref))
                         charter_result["content"]["outputs"]["grant"] = changed_grant
-                        payload["evidence"][positions[0]] = self.blob(charter_result)
+                        changed_charter = self.blob(charter_result)
+                        payload["evidence"][positions[0]] = changed_charter
                         envelope["payload"] = self.blob(payload)
                         envelope["revision"] += 1
                         prefix = self.provider.issues[100]["body"].split("<!-- zzzops-goal", 1)[0]
                         self.provider.issues[100]["body"] = (
                             prefix + "<!-- zzzops-goal\n" + json.dumps(envelope) + "\nzzzops-goal -->"
                         )
+                        drift_evidence.update(
+                            original_grant=original_grant, changed_grant=changed_grant,
+                            changed_charter=changed_charter, old_charter=charter_ref,
+                            replacement_count=len(positions),
+                        )
 
                 with mock.patch.object(
                     subprocess, "run", side_effect=self.fake_run(4, callback=drift)
                 ):
                     response = self.session.call(100, request, expected=2)
-                self.assertRegex(json.dumps(response), r"(?i)policy|review|allocation|authority|drift")
+                if name == "policy":
+                    self.assertRegex(json.dumps(response), r"(?i)policy|review|allocation|authority|drift")
+                else:
+                    step = response["next_steps"][0]
+                    self.assertIn("Stale substantive input/contract/prerequisite", step["reason"])
+                    self.assertRegex(step["reason"], r"inspect_charter|consent")
+                    self.assertEqual("generic_provenance", step["diagnostic"]["failed_invariant"])
+                    self.assertEqual(1, drift_evidence["replacement_count"])
+                    changed_grant = self.read_blob(drift_evidence["changed_grant"])
+                    expected_grant = copy.deepcopy(drift_evidence["original_grant"])
+                    expected_grant["content"]["allocations"]["alpha"]["owned"].append(
+                        "reviewed-allocation-drift.py"
+                    )
+                    self.assertEqual(expected_grant, changed_grant)
+                    changed_charter = self.read_blob(drift_evidence["changed_charter"])
+                    self.assertEqual(drift_evidence["changed_grant"],
+                                     changed_charter["content"]["outputs"]["grant"])
+                    self.assertNotEqual(drift_evidence["old_charter"],
+                                        drift_evidence["changed_charter"])
+                    after_alpha_results = sum(
+                        1 for ref in self.payload()[1]["evidence"]
+                        if (artifact := self.read_blob(ref)).get("type") == "result"
+                        and artifact.get("content", {}).get("node", {}).get("node") == "alpha"
+                    )
+                    self.assertEqual(before_alpha_results, after_alpha_results)
+                    self.assertEqual(before_updates, len(self.provider.updates))
                 self.assertEqual(before_count + 1, self.counter)
                 self.session.project = original_project
                 self.provider.issues, self.provider.comments = copy.deepcopy(original_provider)
@@ -332,6 +371,7 @@ class VerificationDurationTests(journeys.DagFixture):
     def test_finalize_reservation_failure_preserves_completed_journal_for_exact_retry(self):
         request = self.request("finalize-reacquire-failures", timeout_marker=7)
         self.session.reservation_adapter = object()
+        real_run = subprocess.run
         acquisition_count = 0
         clock = [0.0]
 
@@ -346,6 +386,11 @@ class VerificationDurationTests(journeys.DagFixture):
 
         def advance_clock(_seconds):
             clock[0] = 11.0
+
+        def reject_workspace_rerun(argv, *args, **kwargs):
+            if argv and argv[0] == "git":
+                return real_run(argv, *args, **kwargs)
+            raise AssertionError("completed workspace command reran")
 
         patches = lambda: (
             mock.patch.object(z, "acquire_storage_lock", side_effect=acquire),
@@ -375,7 +420,7 @@ class VerificationDurationTests(journeys.DagFixture):
 
         acquisition, renewal, release = patches()
         with acquisition, renewal, release, \
-             mock.patch.object(subprocess, "run", side_effect=AssertionError("completed command reran")):
+             mock.patch.object(subprocess, "run", side_effect=reject_workspace_rerun):
             provider_timeout = self.session.call(100, request, expected=2)
         self.assertRegex(json.dumps(provider_timeout), r"(?i)provider|timeout|reservation|retry")
         self.assertEqual(before_commands + 1, self.counter)
@@ -383,7 +428,7 @@ class VerificationDurationTests(journeys.DagFixture):
 
         acquisition, renewal, release = patches()
         with acquisition, renewal, release, \
-             mock.patch.object(subprocess, "run", side_effect=AssertionError("completed command reran")):
+             mock.patch.object(subprocess, "run", side_effect=reject_workspace_rerun):
             replay = self.session.call(100, request)
         self.assertTrue(replay["verification"]["passed"])
         self.assertEqual(before_commands + 1, self.counter)
