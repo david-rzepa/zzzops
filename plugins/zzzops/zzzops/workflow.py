@@ -195,7 +195,7 @@ PUBLIC_OPERATIONS = frozenset({
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
     'feedback_submit', 'heartbeat', 'hydration_checkpoint', 'installation_record', 'integrate',
     'policy_approve', 'policy_propose', 'read', 'recover', 'release', 'renew',
-    'preserve_historical_draft', 'route_choice', 'start', 'reconcile', 'submit',
+    'preserve_historical_draft', 'retire_stale_draft', 'route_choice', 'start', 'reconcile', 'submit',
 })
 
 
@@ -2150,6 +2150,63 @@ class Workflow:
                 draft_responses[reference['hash']] = (draft_ref, draft)
             snapshot['workspace_drafts'] = [draft_responses[row['result']['hash']]
                 for row in payload['operational']['receipts'] if row['result']['hash'] in draft_responses]
+            # Retirement changes operational selection only. Its exact committed
+            # transaction remains reachable alongside every original draft.
+            snapshot['retired_workspace_drafts'] = set()
+            known_drafts = {ref['hash']: (ref, draft) for ref, draft in snapshot['workspace_drafts']}
+            retired_responses = set()
+            for record in self.artifact_index(n).envelopes:
+                context = record.get('context') or {}; reference = context.get('response', {})
+                if (not context.get('workspace_draft_retirement') or reference.get('hash') not in receipt_refs
+                        or reference['hash'] in retired_responses): continue
+                retired_responses.add(reference['hash'])
+                receipt = next(row for row in payload['operational']['receipts'] if row['result'] == reference)
+                response = resolve(reference)
+                edge = self.node_receipt_edge(n, self.artifact_index(n), receipt)
+                fields = {'type', 'version', 'node', 'draft', 'source_payload', 'recovery_request',
+                          'subject', 'root', 'next_steps'}
+                if (not edge or set(response) != fields or response.get('type') != 'workspace_draft_retirement'
+                        or context.get('workspace_draft_retirement') != response.get('draft')
+                        or type(response.get('version')) is not int
+                        or response['version'] != 1 or not isinstance(response.get('draft'), dict)
+                        or response['draft'].get('hash') not in known_drafts
+                        or not isinstance(response.get('recovery_request'), dict)
+                        or not isinstance(response.get('subject'), str)
+                        or not re.fullmatch(r'sha256:[0-9a-f]{64}', response['subject'])
+                        or not isinstance(response.get('root'), str) or not response['root']
+                        or response['source_payload'] != edge['source']['payload']
+                        or response['root'] != edge['context']['root']):
+                    raise ValueError('Workspace draft retirement lacks an exact committed transaction')
+                reference, draft = known_drafts[response['draft']['hash']]
+                source_payload = resolve(response['source_payload'])
+                original_request = {'operation': 'retire_stale_draft', 'request_id': receipt['request'],
+                                    'node': response['node'], 'draft': reference,
+                                    'subject': response['subject'], 'recovery_request': response['recovery_request']}
+                if (reference != response['draft'] or draft['node'] != response['node']
+                        or receipt['payload'] != digest(original_request)
+                        or source_payload['operational']['leases']
+                        or response['recovery_request'].get('operation') != 'recover'
+                        or not isinstance(response['recovery_request'].get('evidence'), str)
+                        or not response['recovery_request']['evidence'].strip()
+                        or response['recovery_request'].get('worker_status') != 'stopped'
+                        or response['recovery_request'].get('node') != draft['node']
+                        or response['recovery_request'].get('lease') != draft['lease']['token']
+                        or response['recovery_request'].get('actor') != draft['lease']['worker']):
+                    raise ValueError('Workspace draft retirement changed stopped owner identity')
+                recovery = [row for row in source_payload['operational']['receipts']
+                            if row['request'] == response['recovery_request'].get('request_id')
+                            and row['payload'] == digest(response['recovery_request'])]
+                steps = response.get('next_steps')
+                recovered = resolve(recovery[0]['result']).get('next_steps') if len(recovery) == 1 else None
+                if (not isinstance(steps, list) or len(steps) != 1 or not isinstance(steps[0], dict)
+                        or set(steps[0]) != {'kind', 'goal', 'action'} or steps[0]['kind'] != 'checkpoint'
+                        or type(steps[0]['goal']) is not int or steps[0]['goal'] != n
+                        or not isinstance(steps[0]['action'], str) or not steps[0]['action'].strip()
+                        or not isinstance(recovered, list) or len(recovered) != 1
+                        or not isinstance(recovered[0], dict) or recovered[0].get('workspace_draft') != reference
+                        or recovered[0].get('kind') != 'checkpoint' or recovered[0].get('goal') != n):
+                    raise ValueError('Workspace draft retirement lacks original observed-stop receipt')
+                snapshot['retired_workspace_drafts'].update(self.node_workspace_draft_chain(reference, known_drafts))
             pending = [(ref, n) for ref in [payload['spec'], *payload['evidence'], *acquisition_receipts.values(), *(ref for ref, _ in snapshot['workspace_drafts'])]]
             visited = set()
             def references(value):
@@ -2574,7 +2631,7 @@ class Workflow:
         required = {'request_id', 'request_hash', 'source_hash', 'human_hash', 'root', 'response',
                     'ownership', 'acquisition', 'payload', 'proof', 'source_envelope',
                     'target_envelope', 'entry_payload'}
-        if (required - set(context) or set(context) - required - {'continuation', 'workspace_draft', 'migration'}
+        if (required - set(context) or set(context) - required - {'continuation', 'workspace_draft', 'workspace_draft_retirement', 'migration'}
                 or context.get('request_id') != receipt['request'] or context.get('request_hash') != receipt['payload']
                 or context.get('response') != result or not isinstance(source, dict) or not isinstance(target, dict)
                 or source.get('repository') != self.repository or target.get('repository') != self.repository
@@ -3173,6 +3230,24 @@ class Workflow:
                 if artifacts[binding['source']['hash']].get('type') in
                 {'workspace_allocation', 'workspace_authorization'}]
 
+    def node_workspace_draft_chain(self, reference, rows):
+        """Authenticate the same qualified task and original raw baseline at every edge."""
+        self.api._phase_evidence.validate_ref(reference)
+        if reference['hash'] not in rows or rows[reference['hash']][0] != reference:
+            raise ValueError('Workspace draft chain lacks an exact committed reference')
+        draft = rows[reference['hash']][1]
+        node, before = draft['node'], draft['acquisition']['files']
+        cursor, seen = reference, set()
+        while cursor:
+            self.api._phase_evidence.validate_ref(cursor)
+            if cursor['hash'] in seen or cursor['hash'] not in rows or rows[cursor['hash']][0] != cursor:
+                raise ValueError('Workspace draft chain is cyclic or lacks an exact committed receipt')
+            previous = rows[cursor['hash']][1]
+            if previous['node'] != node or previous['acquisition']['files'] != before:
+                raise ValueError('Workspace draft chain changed task or original baseline')
+            seen.add(cursor['hash']); cursor = previous['acquisition'].get('stopped_draft')
+        return seen
+
     def node_workspace_context(self, snapshots, projection, artifacts):
         """Observe repository facts and bind the explicit workspace adapter.
 
@@ -3364,7 +3439,8 @@ class Workflow:
                 edges.append((before, after)); valid_drafts.append(draft)
             except (ValueError, KeyError, subprocess.SubprocessError) as exc:
                 draft_errors[reference['hash']] = str(exc)
-        drafts = {key: row for key, row in drafts.items() if row[0]['hash'] not in consumed_drafts}
+        retired_drafts = set().union(*(snapshot.get('retired_workspace_drafts', set()) for snapshot in snapshots.values()))
+        drafts = {key: row for key, row in drafts.items() if row[0]['hash'] not in consumed_drafts | retired_drafts}
         for snapshot in snapshots.values():
             for lease in snapshot['payload']['operational']['leases']:
                 key = ev.task_key(lease['node'])
@@ -3615,6 +3691,29 @@ class Workflow:
                 binding = remember({'type': 'workspace_snapshot', 'content': {'files': baseline, **{k: grant[k] for k in ('allocation', 'authorization', 'approval')}, **({'migration': migration} if migration is not None else {})}, 'producer': None, 'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
                 contexts[key] = {'binding': binding, 'files': baseline, 'acquisition': acquisition, **grant}
             except (ValueError, KeyError, subprocess.SubprocessError) as exc:
+                retirement = None
+                if key in drafts and not any(snapshot['payload']['operational']['leases'] for snapshot in snapshots.values()):
+                    reference, draft = drafts[key]
+                    try:
+                        grant = authority(state)
+                        expected_authority = {**{name: grant[name] for name in ('allocation', 'authorization', 'approval')},
+                            'inputs': self.node_workspace_authority_inputs(state['inputs'], artifacts)}
+                        # This route discards operational selection, never adopts
+                        # the old delta. Material authority changes need their
+                        # normal review; unchanged authority must still be current.
+                        if (not draft.get('continuity_only') and draft['policy'] == self.node_evidence_policy()
+                                and draft['authority'] == expected_authority
+                                and draft_errors.get(reference['hash']) == 'Workspace draft current authority/input/contract changed'):
+                            self.node_workspace_draft_chain(reference, draft_rows)
+                            overrides = self.clean_checkout_overrides(head, committed, actual)
+                            subject = {'policy': self.node_evidence_policy(), 'authority': expected_authority,
+                                       'contract': state['contract_hash'],
+                                       'inputs': [row for row in state['inputs'] if row['name'] != '__workspace'],
+                                       'resolutions': [{name: row[name] for name in ('location', 'selector', 'targets')}
+                                                       for row in state['resolutions']],
+                                       'git_commit': head, 'workspace': digest(actual), 'checkout_overrides': overrides}
+                            retirement = {'draft': reference, 'subject': digest(subject)}
+                    except (ValueError, KeyError, subprocess.SubprocessError): pass
                 recovery = None
                 if str(exc) == 'Workspace acquisition requires clean Git or exact reviewed connected output baseline':
                     try: recovery = historical_draft_recovery(state)
@@ -3622,6 +3721,7 @@ class Workflow:
                         contexts[key] = {'error': 'Workspace authority/acquisition: ' + str(recovery_exc)}
                         continue
                 contexts[key] = {'error': 'Workspace authority/acquisition: ' + str(exc),
+                                 **({'stale_draft_retirement': retirement} if retirement else {}),
                                  **({'historical_recovery': recovery} if recovery else {})}
         allocated_paths = set()
         for state in work.values():
@@ -4403,6 +4503,14 @@ class Workflow:
             elif state['state'] == 'blocked' and 'repair' in snapshot['publications'].get(self.api._phase_evidence.task_key(state['node']), {}):
                 steps.append({**snapshot['publications'][self.api._phase_evidence.task_key(state['node'])]['repair'], 'goal': number, 'node': state['node']})
             elif state['state'] == 'blocked' and snapshot['workspaces'].get(
+                    self.api._phase_evidence.task_key(state['node']), {}).get('stale_draft_retirement'):
+                retirement = snapshot['workspaces'][self.api._phase_evidence.task_key(state['node'])]['stale_draft_retirement']
+                steps.append({'kind': 'retire_draft', 'assignment': 'root', 'goal': number, 'node': state['node'],
+                    'reason': 'A committed stopped draft binds obsolete task inputs; current authority and a clean Git checkout are verified.',
+                    'action': 'Supply the exact original observed-stop recover request. Preserve the draft and all history, retire its operational selection, then acquire fresh work normally.',
+                    'submission': {'operation': 'retire_stale_draft', 'node': state['node'],
+                                   **retirement, 'recovery_request': '<exact original recover request>'}})
+            elif state['state'] == 'blocked' and snapshot['workspaces'].get(
                     self.api._phase_evidence.task_key(state['node']), {}).get('historical_recovery'):
                 recovery = snapshot['workspaces'][self.api._phase_evidence.task_key(state['node'])]['historical_recovery']
                 steps.append({'kind': 'recover_draft', 'assignment': 'root', 'goal': number, 'node': state['node'],
@@ -4762,6 +4870,7 @@ class Workflow:
             response_lease = next((lease for lease in payload['operational']['leases'] if lease['token'] == response_lease), {})
         context = {'request_id': request['request_id'], 'request_hash': digest(request), 'source_hash': digest(issue['body']), 'human_hash': digest(prefix + suffix), 'root': None if snapshot.get('migration') else (self.runtime or {}).get('root_id'), 'response': self.node_ref(digest(response), number), 'ownership': {key: value for key, value in response_lease.items() if key != 'acquisition'}, 'acquisition': bool(public_response['next_steps'][0].get('bind')), 'payload': envelope['payload'], 'proof': proof, 'source_envelope': snapshot['envelope'], 'target_envelope': envelope, 'entry_payload': entry_payload}
         if response.get('type') == 'submission_continuation': context['continuation'] = response
+        if response.get('type') == 'workspace_draft_retirement': context['workspace_draft_retirement'] = response['draft']
         if public_response['next_steps'][0].get('workspace_draft'): context['workspace_draft'] = public_response['next_steps'][0]['workspace_draft']
         if snapshot.get('migration'): context['migration'] = snapshot['migration']
         if pending and pending != context: raise ValueError('Pending checkpoint exact response/payload/proof identity changed')
@@ -4963,6 +5072,34 @@ class Workflow:
                 response = {'next_steps': [{**step, 'kind': 'perform', 'lease': lease, 'acquisition': lease['acquisition'],
                     'bind': {'operation': 'bind', 'node': node, 'lease': lease['token'], 'actor': '<actual worker>', 'selection': lease['selection'], 'policy_receipt': '<read policy.path>'},
                     'submission': {'operation': 'submit', 'node': node}}]}
+            elif operation == 'retire_stale_draft':
+                allowed = {'operation', 'request_id', 'node', 'draft', 'subject', 'recovery_request'}
+                retirement = snapshot['workspaces'].get(key, {}).get('stale_draft_retirement')
+                if (set(request) != allowed or not root or payload['operational']['leases']
+                        or not retirement or any(request.get(name) != retirement[name] for name in ('draft', 'subject'))):
+                    raise ValueError('Stale draft retirement requires its exact current clean workspace/authority contract and no owner')
+                historical = request['recovery_request']
+                matches = [row for row in payload['operational']['receipts']
+                           if isinstance(historical, dict) and row['request'] == historical.get('request_id')
+                           and row['payload'] == digest(historical)]
+                drafts = [(ref, value) for ref, value in snapshot['workspace_drafts'] if ref == request['draft']]
+                if len(matches) != 1 or len(drafts) != 1:
+                    raise ValueError('Exact committed draft and original observed-stop recovery request required')
+                draft = drafts[0][1]
+                original = snapshot['artifacts'][matches[0]['result']['hash']]
+                if (historical.get('operation') != 'recover' or historical.get('node') != node
+                        or historical.get('lease') != draft['lease']['token']
+                        or historical.get('actor') != draft['lease']['worker']
+                        or historical.get('worker_status') != 'stopped'
+                        or not isinstance(historical.get('evidence'), str) or not historical['evidence'].strip()
+                        or original['next_steps'][0].get('workspace_draft') != request['draft']):
+                    raise ValueError('Retirement requires immutable observed stopped-owner evidence for this exact draft')
+                response = {'type': 'workspace_draft_retirement', 'version': 1, 'node': node,
+                            'draft': request['draft'], 'subject': request['subject'],
+                            'source_payload': snapshot['envelope']['payload'], 'root': root,
+                            'recovery_request': copy.deepcopy(historical),
+                            'next_steps': [{'kind': 'checkpoint', 'goal': number,
+                                           'action': 'Stale draft selection retired; original unaccepted bytes and history retained. Acquire fresh work through current review and verification gates.'}]}
             elif operation == 'preserve_historical_draft':
                 allowed = {'operation', 'request_id', 'node', 'recovery_request', 'recovery_request_hash',
                            'recovery_result', 'expected_workspace', 'expected_delta'}

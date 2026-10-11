@@ -53,6 +53,29 @@ bytes with `read_files`, while the semantic `files` identity remains available
 for legitimate proof-chain reuse. Any post-acquisition raw drift still rejects
 the submission, and neither pin grants write authority.
 
+### Stale committed workspace draft
+
+After accepted tests or other declared inputs change, an already committed
+stopped draft may bind obsolete inputs. With current independent and root
+workspace approvals, unchanged material authority, no unrecovered owners, and
+an exact clean Git checkout, execute returns `kind: retire_draft`.
+
+Copy its `submission`, supply the exact original observed-stop `recover`
+request as `recovery_request`, and add a unique `request_id`. Keep the qualified
+node, `draft` Ref and `subject` digest exact. `retire_stale_draft` recomputes the
+current policy, allocation, approvals, task contract, declared inputs,
+resolutions, Git head, raw workspace and checkout overrides before writing.
+Dirty files, altered stop evidence, stale requests, unknown or unrecovered
+owners, and disconnected draft ancestry reject without retiring anything.
+
+This operation appends an immutable retirement receipt. It preserves the
+original draft, its authenticated same-task baseline chain, all Results and
+approvals; it adopts no draft bytes and creates no semantic Result. Reinvoke
+execute and acquire the current task normally from the clean checkout. Fresh
+verification and independent review remain required. Exact retries replay the
+original receipt without another write. An unchanged draft still requires its
+exact stopped snapshot and ordinary recovery; it is not offered retirement.
+
 ### Historical applicability assessment
 
 When an unresolved historical admission blocks its target and the current graph
