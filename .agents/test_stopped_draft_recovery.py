@@ -70,7 +70,8 @@ class StoppedDraftRecoveryTests(unittest.TestCase):
         self.assertEqual(j.content_hash(acquisition), draft["acquisition_hash"])
         self.assertEqual(work["input_hash"], draft["input_hash"])
         self.assertEqual(acquisition["contract"], draft["contract"])
-        self.assertEqual(j.content_hash(c.session.project["policy"]), draft["policy"])
+        engine = j.z.workflow_engine(c.fixture.repo, c.session.project, c.session.runtime)
+        self.assertEqual(engine.node_evidence_policy(), draft["policy"])
         authority_names = {"allocation", "authorization", "approval",
                            "parent_allocation", "parent_authorization", "parent_approval"}
         authority_inputs = [row for row in acquisition["inputs"] if row["name"] in authority_names]
