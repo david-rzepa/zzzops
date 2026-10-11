@@ -1129,7 +1129,25 @@ class GitHubGoalTransitionAdapter:
 
     def get_issue_comments_since(self, number: int, since: str) -> list[dict[str, Any]]:
         """Read every comment updated at or after a checkpoint overlap marker."""
-        if not isinstance(since, str) or not since or urlparse(since).scheme:
+        marker = re.fullmatch(
+            r'(?P<base>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})'
+            r'(?:\.(?P<fraction>[0-9]+))?(?P<zone>Z|[+-][0-9]{2}:[0-9]{2})',
+            since,
+        ) if isinstance(since, str) else None
+        try:
+            if marker is None:
+                raise ValueError('marker grammar')
+            fraction = marker.group('fraction')
+            normalized = marker.group('base')
+            if fraction is not None:
+                normalized += '.' + fraction[:6]
+            normalized += marker.group('zone')
+            datetime.strptime(
+                normalized,
+                '%Y-%m-%dT%H:%M:%S.%f%z' if fraction is not None
+                else '%Y-%m-%dT%H:%M:%S%z',
+            )
+        except ValueError:
             raise GoalHistoryReadError(f"Invalid incremental comment marker for goal #{number}")
         try:
             self.ensure_identity()
