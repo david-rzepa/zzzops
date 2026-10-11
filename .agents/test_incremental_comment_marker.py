@@ -6,7 +6,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-import zzzops
+import test_zzzops as fixtures
+
+zzzops = fixtures.zzzops
 
 
 IDENTITY = SimpleNamespace(
