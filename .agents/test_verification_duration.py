@@ -253,16 +253,29 @@ class VerificationDurationTests(journeys.DagFixture):
                 original_project = copy.deepcopy(self.session.project)
                 original_provider = copy.deepcopy((self.provider.issues, self.provider.comments))
                 before_count = self.counter
-                allocation_hash = self.produced("charter", "grant")["hash"]
 
                 def drift():
                     if name == "policy":
                         self.session.project["policy"]["reviewed"] = False
                     else:
-                        comment = next(row for row in self.provider.comments[100]
-                                       if allocation_hash in row["body"])
-                        comment["body"] = comment["body"].replace(
-                            allocation_hash, "sha256:" + "f" * 64
+                        envelope, payload = self.payload()
+                        charter_ref, _charter = self.result("charter")
+                        positions = [position for position, ref in enumerate(payload["evidence"])
+                                     if ref == charter_ref]
+                        self.assertEqual(1, len(positions))
+                        grant = copy.deepcopy(self.read_blob(self.produced("charter", "grant")))
+                        grant["content"]["allocations"]["alpha"]["owned"].append(
+                            "reviewed-allocation-drift.py"
+                        )
+                        changed_grant = self.blob(grant)
+                        charter_result = copy.deepcopy(self.read_blob(charter_ref))
+                        charter_result["content"]["outputs"]["grant"] = changed_grant
+                        payload["evidence"][positions[0]] = self.blob(charter_result)
+                        envelope["payload"] = self.blob(payload)
+                        envelope["revision"] += 1
+                        prefix = self.provider.issues[100]["body"].split("<!-- zzzops-goal", 1)[0]
+                        self.provider.issues[100]["body"] = (
+                            prefix + "<!-- zzzops-goal\n" + json.dumps(envelope) + "\nzzzops-goal -->"
                         )
 
                 with mock.patch.object(
@@ -318,6 +331,7 @@ class VerificationDurationTests(journeys.DagFixture):
 
     def test_finalize_reservation_failure_preserves_completed_journal_for_exact_retry(self):
         request = self.request("finalize-reacquire-failures", timeout_marker=7)
+        self.session.reservation_adapter = object()
         acquisition_count = 0
         clock = [0.0]
 
