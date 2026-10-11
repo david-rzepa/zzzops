@@ -2586,10 +2586,70 @@ class Workflow:
             return None
         try: response = index.resolve(result['hash'])[0]
         except (KeyError, ValueError): return None
-        if not isinstance(response, dict) or not isinstance(response.get('next_steps'), list):
+        edge_response = response
+        if isinstance(response, dict) and response.get('type') == 'submission_continuation':
+            # Keep this in sync with node_receipt_response's immutable continuation
+            # schema, but authenticate only: reconciliation must never materialize
+            # deferred bindings while reading historical receipt edges.
+            if (set(response) != {'type', 'version', 'source_envelope', 'target_metadata',
+                                  'candidate_payload', 'entry_candidate_payload', 'response', 'bindings'}
+                    or type(response.get('version')) is not int or response['version'] != 1
+                    or context.get('continuation') != response
+                    or not isinstance(response.get('target_metadata'), dict)
+                    or response.get('source_envelope') != source
+                    or not isinstance(response.get('candidate_payload'), dict)
+                    or response.get('candidate_payload') != self.node_ref(
+                        (response.get('candidate_payload') or {}).get('hash'), number)
+                    or not isinstance(response.get('entry_candidate_payload'), dict)
+                    or response.get('entry_candidate_payload') != self.node_ref(
+                        (response.get('entry_candidate_payload') or {}).get('hash'), number)
+                    or not isinstance(response.get('response'), dict)
+                    or not isinstance(response['response'].get('next_steps'), list)
+                    or any(not isinstance(step, dict) for step in response['response']['next_steps'])
+                    or not isinstance(response.get('bindings'), list)
+                    or any(not isinstance(binding, dict)
+                           or set(binding) != {'kind', 'step'}
+                           or binding.get('kind') != 'target_envelope_digest'
+                           or type(binding.get('step')) is not int
+                           for binding in response['bindings'])):
+                return None
+            try:
+                candidate = copy.deepcopy(index.resolve(response['candidate_payload']['hash'])[0])
+                entry = copy.deepcopy(index.resolve(response['entry_candidate_payload']['hash'])[0])
+                if (not isinstance(candidate.get('operational'), dict)
+                        or not isinstance(candidate['operational'].get('receipts'), list)
+                        or not isinstance(entry.get('operational'), dict)
+                        or not isinstance(entry['operational'].get('receipts'), list)):
+                    return None
+                candidate['operational']['receipts'].append(receipt)
+                entry['operational']['receipts'].append(receipt)
+                continuation_target = {**response['target_metadata'],
+                                       'payload': self.node_ref(digest(candidate), number)}
+                expected = [{'kind': 'target_envelope_digest', 'step': position}
+                            for position, step in enumerate(response['response']['next_steps'])
+                            if step.get('kind') == 'reconcile']
+                valid_bindings = response['bindings'] == expected
+                for binding in expected:
+                    step = response['response']['next_steps'][binding['step']]
+                    valid_bindings = (valid_bindings and type(step.get('goal')) is int
+                                      and step['goal'] == number
+                                      and isinstance(step.get('submission'), dict)
+                                      and step['submission'].get('operation') == 'reconcile'
+                                      and step['submission'].get('expected_digest', 'missing') is None)
+            except (AttributeError, KeyError, TypeError, ValueError):
+                return None
+            try: published_candidate = index.resolve(target['payload']['hash'])[0]
+            except (KeyError, TypeError, ValueError): return None
+            if (not valid_bindings or continuation_target != target
+                    or context.get('payload') != target.get('payload')
+                    or context.get('entry_payload') != self.node_ref(digest(entry), number)
+                    or published_candidate != candidate):
+                return None
+            edge_response = copy.deepcopy(response['response'])
+        elif not isinstance(response, dict) or not isinstance(response.get('next_steps'), list):
             return None
         return {'source': source, 'target': target, 'context': context,
-                'transaction': transaction, 'comment_ids': set(identities), 'response': response}
+                'transaction': transaction, 'comment_ids': set(identities), 'response': edge_response}
 
     def node_checkpoint_reconciled(self, snapshot, index, row, receipts):
         """Accept only a current, committed, independently reviewed exact waiver."""
