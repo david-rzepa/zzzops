@@ -280,7 +280,8 @@ class AssessContractTests(unittest.TestCase):
         self.assertEqual(100, step["goal"])
         self.assertEqual(step["node"], step["input_envelope"]["node"])
         contract = next(node for node in case.graph["nodes"] if node["id"] == "produce")
-        self.assertEqual(dag_fixtures.content_hash({"node": contract, "policy": dag_fixtures.content_hash(case.session.project["policy"])}),
+        self.assertEqual(dag_fixtures.content_hash({"node": contract, "policy": z.workflow_engine(
+            case.fixture.repo, case.session.project, case.session.runtime).node_evidence_policy()}),
                          step["input_envelope"]["contract"])
         self.assertEqual(contract["prompt"], step["instruction"])
         _, payload = case.payload()
