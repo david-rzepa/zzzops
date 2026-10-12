@@ -573,7 +573,8 @@ class MigrationEntryPublicTests(dag.DagFixture):
         source_ref = self.migration_result("analyze")[1]["source"]
         mapping = {"source": source_ref, "source_phase": "understand",
                    "source_record_hash": digest(record), "target": {"goal": 100, "node": "produce", "item": None, "generation": 1},
-                   "contract": {"node": self.graph["nodes"][0], "policy": digest(self.session.project["policy"])}, "inputs": [],
+                   "contract": {"node": self.graph["nodes"][0], "policy": z.workflow_engine(
+                       self.fixture.repo, self.session.project, self.session.runtime).node_evidence_policy()}, "inputs": [],
                    "outputs": {"value": historical_output},
                    "rationale": "Exact historical output satisfies this unchanged task; no review or approval is mapped"}
         mapping_ref = self.blob(mapping)
