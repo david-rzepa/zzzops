@@ -226,8 +226,14 @@ class WorkflowOverheadTests(unittest.TestCase):
         self.assertLessEqual(direct["public_invocations"], 29)
         self.assertEqual(6, baseline["public_invocations"] - direct["public_invocations"])
         self.assertEqual({"checkpoint": 1, "start": 6, "bind": 6, "submit": 6, "read": 10}, direct["operations"])
+        ordinary_transactions = 18
+        # Each authoritative workspace check uses locked prepare and fresh
+        # locked finalize, adding one reservation cycle without semantic writes.
+        reservation_cycles = ordinary_transactions + direct["authoritative_check_count"]
+        self.assertEqual(2, direct["authoritative_check_count"])
         for method in ("update_issue", "create_issue_comment", "create_label", "delete_label"):
-            self.assertEqual(18, direct["provider_calls"][method])
+            expected = reservation_cycles if method in ("create_label", "delete_label") else ordinary_transactions
+            self.assertEqual(expected, direct["provider_calls"][method])
             self.assertEqual(direct["provider_calls"][method], baseline["provider_calls"][method])
         # Headroom tolerates compression/UUID/path differences, not an extra
         # history round-trip on every phase. Wall time is diagnostic only.
