@@ -4619,7 +4619,7 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
             "authority": self.result(interpret, item="acceptance_contracts")[0], "applicability": "applicable",
             "rationale": "Root admits the exact independently reviewed question",
         }
-        self.session.finish(self.session.acquire(admit, item="acceptance_contracts"), {"value": admission})
+        self.session.finish(self.session.acquire(admit, item="acceptance_contracts"), {"value": admission, "transfer": None})
         self.assertIn("requirements", self.names(),
                       "An admitted typed question must return human interaction to root")
         acquired = self.session.acquire("requirements")
@@ -4923,7 +4923,7 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
                                                          item="data_residency")[0],
                                 "applicability": "applicable",
                                 "rationale": "Root admits the configured-domain finding",
-                            }})
+                            }, "transfer": None})
         corrected = {"specification": "Behavior constrained to the reviewed residency region",
                      "criteria": ["observable", "region is explicit"],
                      "risks": ["correctness", "data_residency"],
@@ -5262,7 +5262,7 @@ class GraphAdoptionPublicTests(DagFixture):
         self.session.finish(self.session.acquire("admit_produce_correction"), {"value": {
             "finding": finding_ref, "target_inputs": self.result("produce")[1]["inputs"],
             "authority": self.result("interpret_produce_rejection")[0],
-            "applicability": "applicable", "rationale": "Same exact approved scope"}})
+            "applicability": "applicable", "rationale": "Same exact approved scope"}, "transfer": None})
         self.assertIn("produce", self.names())
         self.assertNotIn("finish", self.names())
 
