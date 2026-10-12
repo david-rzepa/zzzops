@@ -7,10 +7,23 @@ import test_evidence_dag_journeys as j
 
 
 class UnderstandingRejectionTests(j.DagFixture):
+    LEGACY_GRAPH_DIGEST = '1fe19e2953d33a0a46183f42518f0c9620709b5c95a35226e66ffa18ce896f8d'
+
+    def legacy_graph(self):
+        path = j.Path(__file__).parent / 'fixtures' / 'legacy_evidence_dag.json'
+        graph = json.loads(path.read_text(encoding='utf-8'))
+        canonical = json.dumps(graph, sort_keys=True, separators=(',', ':')).encode()
+        self.assertEqual(self.LEGACY_GRAPH_DIGEST, j.hashlib.sha256(canonical).hexdigest())
+        return graph
+
+    def test_historical_evidence_dag_matches_shipped_55b05ec_checkpoint(self):
+        graph = self.legacy_graph()
+        self.assertEqual(36, len(graph['nodes']))
+        self.assertIn('review_understanding', {node['id'] for node in graph['nodes']})
+
     def setup_design(self, graph=None):
         if graph is None:
-            template = json.loads((j.old.fixtures.PLUGIN_ROOT / 'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
-            graph = j.z._workflow_section(template, 'workflow_adherence')['configuration']['phase_dag']
+            graph = self.legacy_graph()
         self.install(graph)
         self.allocation = {'allocations': {name: {
             'task': {'goal': 100, 'node': name, 'item': None, 'generation': 1},
@@ -100,8 +113,7 @@ class UnderstandingRejectionTests(j.DagFixture):
         self.assertNotIn('approve_understanding', self.names())
 
     def test_legacy_review_contract_accepts_rejection_without_granting_authority(self):
-        template = json.loads((j.old.fixtures.PLUGIN_ROOT / 'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
-        graph = j.z._workflow_section(template, 'workflow_adherence')['configuration']['phase_dag']
+        graph = self.legacy_graph()
         review_contract = next(node for node in graph['nodes'] if node['id'] == 'review_understanding')
         review_contract['outputs']['authorization']['schema'] = \
             review_contract['outputs']['authorization']['schema']['variants'][0]
@@ -123,8 +135,7 @@ class UnderstandingRejectionTests(j.DagFixture):
         self.assertRegex(json.dumps(response), r'(?i)authorization')
 
     def test_design_revision_invalidates_prior_human_approval_and_downstream_results(self):
-        template = json.loads((j.old.fixtures.PLUGIN_ROOT / 'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
-        graph = j.z._workflow_section(template, 'workflow_adherence')['configuration']['phase_dag']
+        graph = self.legacy_graph()
         # A later scoped audit demonstrates invalidation after an earlier human approval.
         audit = copy.deepcopy(next(n for n in graph['nodes'] if n['id'] == 'interpret_understand_rejection'))
         audit['id'] = 'audit_understanding'
@@ -194,11 +205,11 @@ class UnderstandingRejectionTests(j.DagFixture):
     envelope_for = j.GraphAdoptionPublicTests.envelope_for
     read_at = j.GraphAdoptionPublicTests.read_at
     result_at = j.GraphAdoptionPublicTests.result_at
+    administrative_review = j.GraphAdoptionPublicTests.administrative_review
     proposal_review = j.GraphAdoptionPublicTests.proposal_review
 
     def test_existing_goal_adopts_repaired_graph_without_rewriting_design_or_policy(self):
-        template = json.loads((j.old.fixtures.PLUGIN_ROOT / 'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
-        repaired = j.z._workflow_section(template, 'workflow_adherence')['configuration']['phase_dag']
+        repaired = self.legacy_graph()
         # Origen's persisted graph predates the other default correction paths:
         # preserve its original sixteen nodes and append only this repair.
         repair_ids = {'interpret_understand_rejection', 'admit_understand_correction',

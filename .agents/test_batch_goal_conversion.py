@@ -11,9 +11,9 @@ import test_evidence_dag_journeys as dag
 class BatchConversionTests(dag.DagFixture):
     def setUp(self):
         super().setUp()
-        template = json.loads((dag.old.fixtures.PLUGIN_ROOT / 'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
         config = dag.z._workflow_section(self.session.project, 'workflow_adherence')['configuration']
-        config['phase_dag'] = next(s for s in template['policy']['sections'] if s['id'] == 'workflow_adherence')['configuration']['phase_dag']
+        config['phase_dag'] = json.loads(
+            (Path(__file__).parent / 'fixtures' / 'legacy_evidence_dag.json').read_text())
         config.pop('migration_entries', None)
         self.policy = copy.deepcopy(self.session.project)
         configuration_dir = self.fixture.repo / '.zzzops'
@@ -134,7 +134,8 @@ class BatchConversionTests(dag.DagFixture):
         self.replace_legacy_payload(envelope, payload)
         self.session.project['policy']['sections'][0]['rationale'] = 'Later reviewed policy rationale'
         result = self.prepare_legacy_graph()
-        self.assertEqual(dag.content_hash(self.session.project['policy']), result['next_steps'][0]['proposal']['policy'])
+        engine = dag.z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
+        self.assertEqual(engine.node_evidence_policy(), result['next_steps'][0]['proposal']['policy'])
 
     def test_graph_prepare_pending_legacy_history_still_blocks(self):
         self.legacy_checkpoint(committed=False)
@@ -359,7 +360,8 @@ class BatchConversionTests(dag.DagFixture):
         response = self.session.call(100)
         self.assert_preserved(100)
         steps = response['next_steps']
-        self.assertTrue(any(s.get('kind') == 'execute' and s.get('node', {}).get('node') == 'requirements' for s in steps))
+        self.assertTrue(any(s.get('kind') == 'execute' and s.get('node', {}).get('node') == 'understand'
+                            for s in steps), 'Migrated historical graph must begin at understand')
         self.assertFalse(any('conversion_approval' in str(s.get('node')) for s in steps))
         self.assertEqual(self.originals[101], self.provider.issues[101])
 
@@ -717,7 +719,7 @@ class BatchConversionTests(dag.DagFixture):
         self.assertEqual(0, migration.call_count)
         self.assertEqual(0, updates.call_count)
         self.assertEqual(untouched, (self.provider.issues[101], self.provider.comments[101]))
-        self.assertTrue(any(step.get('kind') == 'execute' and step.get('node', {}).get('node') == 'requirements'
+        self.assertTrue(any(step.get('kind') == 'execute' and step.get('node', {}).get('node') == 'understand'
                             for step in response['next_steps']))
 
     def test_broad_execute_respects_dependency_before_lazy_migration(self):

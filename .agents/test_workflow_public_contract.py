@@ -108,10 +108,17 @@ class PublicWorkflowContractTests(unittest.TestCase):
                          "Recovery guidance must not leave the target graph as a prose placeholder")
 
     def public_batch(self, items, records):
+        mutation_adapter = SimpleNamespace(
+            get_issue=lambda number: {"number": number, **records.get(number, {})},
+            get_issue_comments=lambda _number: [],
+            create_issue_comment=mock.Mock(),
+            update_issue=mock.Mock(),
+        )
         engine = SimpleNamespace(
             portfolio=mock.Mock(return_value=[]),
             read=mock.Mock(side_effect=lambda number: ({"number": number}, records[number])),
             mutate=mock.Mock(),
+            _mutation_adapter=mutation_adapter,
         )
         project = {"backend": "github_issues", "repository": {"identity": "owner/repo"}}
         with (
