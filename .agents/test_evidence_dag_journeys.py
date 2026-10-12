@@ -1161,15 +1161,43 @@ class EvidenceDagPublicTests(DagFixture):
         self.session.finish(work, {"value": "value"})
 
     def test_generic_completed_result_without_lease_detects_consumed_file_drift(self):
+        workspace = WorkspaceAuthorityPublicTests.workspace_graph(self)
+        producer = copy.deepcopy(workspace["nodes"][3])
+        producer["id"] = "produce"
+        producer["inputs"]["allocation"]["path"] = ["allocations", "produce"]
+        identity = {"goal": 100, "node": "produce", "item": None, "generation": 1}
+        allocation = {"allocations": {"produce": {
+            "task": identity, "owned": [], "consumed": ["product.txt"]}}}
+        graph = review_graph()
+        graph["nodes"][0] = producer
+        graph["nodes"] = workspace["nodes"][:3] + graph["nodes"]
+        self.install(graph)
+        self.session.finish(self.session.acquire("charter"), {"grant": allocation})
+        permit = {"manifest": self.produced("charter", "grant"), "tasks": [identity],
+                  "policy": z.workflow_engine(self.fixture.repo, self.session.project,
+                                              self.session.runtime).node_evidence_policy(),
+                  "decision": "approved"}
+        self.session.finish(self.session.acquire("inspect_charter", actor="allocation-reviewer"),
+                            {"permit": permit})
+        self.session.finish(self.session.acquire("consent"), {"permit": permit})
         self.produce()
         before = self.result("produce")[0]
         self.assertFalse(self.payload()[1]["operational"]["leases"])
         self.assertEqual({"review_a", "review_b"}, self.names())
         path = self.fixture.repo / "product.txt"
         original = path.read_bytes()
+        artifact = self.read_blob(self.produced("produce"))
+        proof = self.read_blob(artifact["provenance"]["source"])
+        self.assertEqual("sha256:" + hashlib.sha256(original).hexdigest(),
+                         proof["consumed"]["product.txt"])
+        unchanged = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.assertEqual({"review_a", "review_b"}, self.names())
+        self.assertEqual(unchanged, (self.provider.issues, self.provider.comments))
         try:
             path.write_text("changed read input after completed result\n")
+            provider_before = copy.deepcopy((self.provider.issues, self.provider.comments))
             steps = self.session.checkpoint(100)
+            self.assertEqual(provider_before, (self.provider.issues, self.provider.comments))
             self.assertFalse(any(s.get("kind") == "execute" and s.get("node", {}).get("node") in
                                  {"review_a", "review_b", "finish"} for s in steps))
             self.assertEqual(before, self.result("produce")[0], "Drift must not overwrite historical evidence")
