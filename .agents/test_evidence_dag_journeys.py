@@ -516,7 +516,12 @@ class EvidenceDagPublicTests(DagFixture):
         }
         assessment["outputs"] = {"assessment": output("applicability_assessment", APPLICABILITY_ASSESSMENT_TYPE)}
         assessment["permits"] = [{"type": "applicability_assessment", "scope": scope("produce")}]
-        graph["nodes"].append(assessment)
+        second_assessment = copy.deepcopy(assessment)
+        second_assessment["id"] = "assess_applicability_second"
+        second_assessment["inputs"]["obligation"]["path"] = ["second"]
+        second_assessment["executor"]["authority"]["subject"]["node"] = "assess_applicability_second"
+        second_assessment["executor"]["authority"]["output"] = "assessment"
+        graph["nodes"].extend([assessment, second_assessment])
         findings, admissions = self.findings(graph=graph, applicability="unresolved")
         self.session.finish(self.session.acquire("review", actor="independent-reviewer"), {"value": "Inspected exact corrected subject"})
         historical_admission = self.produced("admit", "first")
@@ -541,6 +546,10 @@ class EvidenceDagPublicTests(DagFixture):
         self.assertEqual(historical_admission, obligation["admission"])
         self.assertEqual(historical_finding, obligation["finding"])
         self.assertIn("assessment", obligation)
+        second_obligation = snapshot["projection"]["obligations"][(100, findings["second"]["id"])]
+        self.assertEqual("unresolved", second_obligation["applicability"])
+        self.assertEqual(self.produced("admit", "second"), second_obligation["admission"])
+        self.assertEqual(admissions["second"]["finding"], second_obligation["finding"])
         self.assertFalse(any(step.get("diagnostic") == "Finding applicability unresolved"
                              for step in self.session.checkpoint(100)))
 
