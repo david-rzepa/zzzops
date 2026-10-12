@@ -4825,7 +4825,10 @@ class ReleaseInvocationSnapshotTests(unittest.TestCase):
     def test_separate_repositories_never_share_release_snapshots(self):
         from types import SimpleNamespace
         calls = []
+        real_run = zzzops.subprocess.run
         def transport(command, **_kwargs):
+            if not (command and command[0] == "synthetic-gh"):
+                return real_run(command, **_kwargs)
             endpoint = next(value for value in command if value.startswith("repos/"))
             calls.append(endpoint)
             identity = endpoint.split("/releases", 1)[0].split("/commits", 1)[0]
@@ -6961,7 +6964,9 @@ class WorkflowContractTests(unittest.TestCase):
         root = PLUGIN_ROOT
         plan = json.loads((root / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         section = next(item for item in plan["policy"]["sections"] if item["id"] == "model_routing")
-        self.assertEqual({"tiers", "assessment_tree", "model_inventory"}, set(section["configuration"]))
+        self.assertEqual({"tiers", "assessment_tree", "model_inventory", "allow_above_root_delegation"},
+                         set(section["configuration"]))
+        self.assertIs(False, section["configuration"]["allow_above_root_delegation"])
         self.assertEqual({"reviewed_pairs"}, set(section["configuration"]["model_inventory"]))
         self.assertIn("keep human interaction on root", section["instructions"])
         self.assertEqual(["routine", "bounded", "reasoning", "architectural"], [tier["id"] for tier in section["configuration"]["tiers"]])
