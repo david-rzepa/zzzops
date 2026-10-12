@@ -15,11 +15,6 @@ import threading
 import time
 import uuid
 import re
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - exercised on Windows hosts
-    fcntl = None
-    import msvcrt
 from datetime import datetime
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
@@ -30,7 +25,6 @@ import zzzops_state_cache as state_cache
 
 _OBSERVED_ARTIFACT_INDEXES = {}
 _GIT_ARTIFACT_SNAPSHOTS = {}
-_VERIFICATION_LOCKS = {}
 HYDRATION_CHECKPOINT_MIN_COMMENTS = 32
 HYDRATION_CHECKPOINT_MIN_BYTES = 262144
 HYDRATION_CHECKPOINT_MAX_AGE_SECONDS = 86400
@@ -208,7 +202,6 @@ class RenewalBudget:
     def __init__(self, work_seconds=30, cleanup_seconds=10):
         if any(not math.isfinite(v) or v <= 0 for v in (work_seconds, cleanup_seconds)):
             raise ValueError('Renewal work and cleanup budgets must be finite and positive')
-        self.work_seconds = work_seconds
         self.deadline = time.monotonic() + work_seconds
         self.cleanup_seconds = cleanup_seconds
 
@@ -222,16 +215,6 @@ class RenewalBudget:
     def cleanup(self):
         previous = self.deadline
         self.deadline = time.monotonic() + self.cleanup_seconds
-        try:
-            yield
-        finally:
-            self.deadline = previous
-
-    @contextmanager
-    def phase(self):
-        """Give one provider phase its full budget, excluding local command time."""
-        previous = self.deadline
-        self.deadline = time.monotonic() + self.work_seconds
         try:
             yield
         finally:
@@ -3593,49 +3576,7 @@ class Workflow:
                              'acquisition': {'read_files': copy.deepcopy(actual)}, 'readonly': True}
         return contexts
 
-    @contextmanager
-    def node_verification_claim(self, snapshot, lease):
-        git_dir = Path(subprocess.run(['git', 'rev-parse', '--absolute-git-dir'], cwd=self.repo,
-                                      capture_output=True, text=True, check=True).stdout.strip())
-        directory = git_dir / 'zzzops' / 'verification' / str(snapshot['number'])
-        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-        path = directory / ('lease-' + lease['token'] + '.lock')
-        local = _VERIFICATION_LOCKS.setdefault(str(path), threading.Lock())
-        if not local.acquire(blocking=False):
-            raise VerificationUncertain('Another verification invocation owns this lease journal')
-        handle = None
-        try:
-            handle = path.open('a+b')
-            if fcntl is not None:
-                try: fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except BlockingIOError as exc:
-                    raise VerificationUncertain('Another verification process owns this lease journal') from exc
-            else:  # pragma: no cover - exercised on Windows hosts
-                if not handle.read(1):
-                    handle.write(b'0'); handle.flush()
-                handle.seek(0)
-                try: msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-                except OSError as exc:
-                    raise VerificationUncertain('Another verification process owns this lease journal') from exc
-            yield
-        finally:
-            if handle is not None and fcntl is not None:
-                try: fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-                except OSError: pass
-            elif handle is not None:  # pragma: no cover - exercised on Windows hosts
-                try:
-                    handle.seek(0); msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-                except OSError: pass
-            if handle is not None:
-                handle.close()
-            local.release()
-
-    def node_verification_commands(self, snapshot, lease, request, commands, before, *, reuse_only=False):
-        with self.node_verification_claim(snapshot, lease):
-            return self.node_verification_commands_claimed(
-                snapshot, lease, request, commands, before, reuse_only=reuse_only)
-
-    def node_verification_commands_claimed(self, snapshot, lease, request, commands, before, *, reuse_only=False):
+    def node_verification_commands(self, snapshot, lease, request, commands, before):
         """Reuse host-observed command outcomes across pre-publication failures."""
         if not commands: return []
         git_dir = Path(subprocess.run(['git', 'rev-parse', '--absolute-git-dir'], cwd=self.repo,
@@ -3682,8 +3623,6 @@ class Workflow:
             if hashlib.sha256(Path(record['log']).read_bytes()).hexdigest() != record['log_hash']:
                 raise ValueError('Recorded verification log changed')
         if journal['status'] == 'complete': return results
-        if reuse_only:
-            raise ValueError('Completed verification journal disappeared before finalize; commands were not rerun')
         logs = self.repo / '.zzzops' / 'diagnostics'; logs.mkdir(parents=True, exist_ok=True)
         for i in range(len(results), len(commands)):
             command = commands[i]
@@ -3696,8 +3635,7 @@ class Workflow:
             execution_error = None
             with log.open('w') as output:
                 try:
-                    process = subprocess.run(command, cwd=self.repo, stdout=output, stderr=subprocess.STDOUT,
-                                             timeout=request.get('verification_timeout_seconds', 300), check=False)
+                    process = subprocess.run(command, cwd=self.repo, stdout=output, stderr=subprocess.STDOUT, timeout=300, check=False)
                     exit_code = process.returncode
                 except subprocess.TimeoutExpired:
                     # subprocess.run has killed and waited for the direct child.
@@ -3716,7 +3654,7 @@ class Workflow:
             if timed_out or execution_error: break
         return results
 
-    def node_workspace_proof(self, snapshot, state, lease, request, *, reuse_only=False):
+    def node_workspace_proof(self, snapshot, state, lease, request):
         workspace = state.get('workspace')
         if workspace is None or workspace.get('readonly'):
             if request.get('workspace_checks'): raise ValueError('Workspace commands require explicit reviewed resource authority')
@@ -3733,8 +3671,7 @@ class Workflow:
         if not isinstance(commands, list) or any(not isinstance(c, list) or not c or any(not isinstance(a, str) or not a for a in c) for c in commands): raise ValueError('Workspace checks require nonempty argument arrays')
         before = self.workspace_files(); results = []
         if before != lease['acquisition']['files'] and not commands: raise ValueError('Changed workspace outputs require observed verification checks before publishing a candidate proof')
-        results = self.node_verification_commands(
-            snapshot, lease, request, commands, before, reuse_only=reuse_only)
+        results = self.node_verification_commands(snapshot, lease, request, commands, before)
         if self.workspace_files() != before: raise ValueError('Workspace checks changed source/output bytes; inspect before retry')
         proof = {'node': state['node'], 'acquisition': lease['acquisition'], 'acquisition_hash': digest(lease['acquisition']),
                  'input_hash': lease['fingerprint'], 'actor': lease['worker'], 'lease': lease['token'],
@@ -3744,30 +3681,6 @@ class Workflow:
         identity = digest(proof); snapshot['artifacts'][identity] = proof
         snapshot['workspace_proof'] = self.node_ref(identity, snapshot['number'])
         return snapshot['workspace_proof']
-
-    def node_verification_prepare(self, snapshot, state, lease, request):
-        """Freeze the authority checked before unlocked local verification."""
-        workspace = state.get('workspace')
-        if workspace is None or workspace.get('readonly'):
-            raise ValueError('Workspace commands require explicit reviewed resource authority')
-        commands = request.get('workspace_checks', [])
-        if not isinstance(commands, list) or any(
-                not isinstance(command, list) or not command or
-                any(not isinstance(argument, str) or not argument for argument in command)
-                for command in commands):
-            raise ValueError('Workspace checks require nonempty argument arrays')
-        before = self.workspace_files()
-        identity = {
-            'request': digest(request), 'node': state['node'],
-            'lease': {key: copy.deepcopy(lease[key]) for key in
-                      ('token', 'attempt', 'owner', 'worker', 'fingerprint', 'acquisition')},
-            'contract': state['contract_hash'], 'input_hash': state.get('input_hash'),
-            'workspace_authority': digest(workspace), 'workspace': digest(before),
-            'policy': digest(self.project['policy']),
-        }
-        return {'identity': identity, 'snapshot': snapshot, 'state': state, 'lease': lease,
-                'commands': commands, 'before': before,
-                'pending_proof': bool(snapshot.get('pending') and snapshot['pending'].get('proof'))}
 
     def node_policy(self, state):
         receipt = digest({'policy': self.project['policy'], 'contract': state['contract_hash']})
@@ -4742,48 +4655,6 @@ class Workflow:
         return self.stop_completed_heartbeat(number, request, payload['operational'], response)
 
     def node_mutate(self, number, request):
-        if not isinstance(request.get('request_id'), str) or not request['request_id']:
-            raise ValueError('Exact request_id is required')
-        if 'verification_timeout_seconds' in request:
-            timeout = request['verification_timeout_seconds']
-            if (not isinstance(timeout, (int, float)) or isinstance(timeout, bool)
-                    or not math.isfinite(timeout) or timeout <= 0):
-                raise ValueError('verification_timeout_seconds must be finite and positive')
-            if not request.get('workspace_checks'):
-                raise ValueError('verification_timeout_seconds requires exact workspace_checks')
-        split = request.get('operation') == 'submit' and bool(request.get('workspace_checks'))
-        if not split:
-            return self.node_mutate_phase(number, request)
-        phase = getattr(self.budget, 'phase', None) or nullcontext
-        with phase():
-            prepared = self.node_mutate_phase(number, request, prepare_verification=True)
-        context = prepared.get('_verification_prepare') if isinstance(prepared, dict) else None
-        if context is None:
-            return prepared
-        if not context['pending_proof']:
-            try:
-                suspend = getattr(self, '_suspend_mutation_guard', None) or nullcontext
-                with suspend():
-                    self.node_verification_commands(
-                        context['snapshot'], context['lease'], request,
-                        context['commands'], context['before'])
-            except VerificationUncertain as exc:
-                lease = context['lease']; node = context['state']['node']
-                return {'next_steps': [{'kind': 'await_worker', 'goal': number, 'node': node,
-                    'lease': lease['token'], 'actor': lease['worker'], 'reason': str(exc),
-                    'action': 'Observe this exact owner and verifier stopped, recover this lease, then reacquire before running a new request. Never infer completion from timeout or a log alone.',
-                    'recovery_contract': {'operation': 'recover', 'node': node, 'lease': lease['token'],
-                        'actor': lease['worker'], 'worker_status': '<observed status>',
-                        'evidence': '<terminal observation>'}}]}
-        clear_reads = getattr(self, '_clear_invocation_reads', None)
-        if clear_reads:
-            clear_reads()
-        with phase():
-            return self.node_mutate_phase(
-                number, request, prepared_verification=context['identity'])
-
-    def node_mutate_phase(self, number, request, *, prepare_verification=False,
-                          prepared_verification=None):
         ev = self.api._phase_evidence
         if not isinstance(request.get('request_id'), str) or not request['request_id']: raise ValueError('Exact request_id is required')
         with self.locked():
@@ -5007,7 +4878,7 @@ class Workflow:
                         lease['blocker'] = {'category': request['category'], 'reason': request['reason']}
                         response = {'next_steps': [{'kind': 'await_worker', 'goal': number, 'node': node, 'reason': request['reason'], 'lease': lease}]}
                     elif operation == 'submit':
-                        if set(request) - {'operation', 'node', 'lease', 'actor', 'request_id', 'outputs', 'workspace_checks', 'verification_expectation', 'verification_timeout_seconds'}: raise ValueError('Unknown submission fields; host acquisition cannot be replaced')
+                        if set(request) - {'operation', 'node', 'lease', 'actor', 'request_id', 'outputs', 'workspace_checks', 'verification_expectation'}: raise ValueError('Unknown submission fields; host acquisition cannot be replaced')
                         expectation = request.get('verification_expectation', 'observed')
                         if expectation not in {'passed', 'observed'}: raise ValueError('Verification expectation must be passed or observed')
                         if 'verification_expectation' in request and not request.get('workspace_checks'): raise ValueError('Explicit verification expectation requires exact workspace_checks')
@@ -5024,18 +4895,8 @@ class Workflow:
                             if not legacy_rejected_authorization and not ev.value_matches(contracts[slot]['schema'], content):
                                 raise ValueError('Output type contract rejected slot ' + slot)
                         self.node_validate_bundle(snapshot, state, bundle, lease['worker'])
-                        verification = None
-                        if request.get('workspace_checks'):
-                            verification = self.node_verification_prepare(snapshot, state, lease, request)
-                            if prepare_verification:
-                                return {'_verification_prepare': verification}
-                            if (prepared_verification is not None
-                                    and verification['identity'] != prepared_verification):
-                                raise ValueError('Verification authority, inputs, allocation, policy or workspace changed before finalize')
                         try:
-                            proof_ref = self.node_workspace_proof(
-                                snapshot, state, lease, request,
-                                reuse_only=prepared_verification is not None)
+                            proof_ref = self.node_workspace_proof(snapshot, state, lease, request)
                         except VerificationUncertain as exc:
                             return {'next_steps': [{'kind': 'await_worker', 'goal': number, 'node': node,
                                 'lease': lease['token'], 'actor': lease['worker'], 'reason': str(exc),
@@ -5733,14 +5594,8 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             return {'next_steps': [{'kind': 'policy_review', 'assignment': 'root', 'action': 'Review policy tier mappings for newly discovered model/effort pairs before proceeding.', 'added': freshness['added'], 'submission': {'operation': 'policy_propose', 'plan': '<updated reviewed policy plan>'}}]}
     engine = Workflow(api, repo, project, runtime)
     if payload is not None and operation not in {'read', 'heartbeat'}:
-        guard_stack = getattr(api, '_guarded_mutations', [])
-        active = [record for record in guard_stack
-                  if record['adapter'] is engine._mutation_adapter]
-        restore = {name: getattr(engine._mutation_adapter, name) for name in
-                   ('get_issue', 'get_issue_comments', 'create_issue_comment', 'update_issue')}
-        base = (active[0]['base'] if active else restore)
-        original_issue = base['get_issue']
-        original_comments = base['get_issue_comments']
+        original_issue = engine._mutation_adapter.get_issue
+        original_comments = engine._mutation_adapter.get_issue_comments
         read_cache = {'issues': {}, 'comments': {}}
         def cached_issue(target):
             if target not in read_cache['issues']:
@@ -5752,10 +5607,6 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             return copy.deepcopy(read_cache['comments'][target])
         engine._mutation_adapter.get_issue = cached_issue
         engine._mutation_adapter.get_issue_comments = cached_comments
-        def clear_invocation_reads():
-            read_cache['issues'].clear(); read_cache['comments'].clear()
-            engine.invalidate()
-        engine._clear_invocation_reads = clear_invocation_reads
         # Derived and invocation-local observations accelerate reads only.  A
         # write gets a complete, ordered authority boundary immediately before
         # every provider mutation, including a second write in one transaction.
@@ -5809,9 +5660,10 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             # A complete history read preserves provider uncertainty semantics;
             # cached materialization never authorizes a write.
             original_comments(target)
-        wrappers = {'get_issue': cached_issue, 'get_issue_comments': cached_comments}
+        originals = {'get_issue': original_issue, 'get_issue_comments': original_comments}
         for method_name in ('create_issue_comment', 'update_issue'):
-            original = base[method_name]
+            original = getattr(engine._mutation_adapter, method_name)
+            originals[method_name] = original
             def guarded(*args, _original=original, **kwargs):
                 target = args[0] if args else kwargs.get('number')
                 fresh_mutation_boundary(target)
@@ -5820,20 +5672,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 finally:
                     read_cache['issues'].clear(); read_cache['comments'].clear()
             setattr(engine._mutation_adapter, method_name, guarded)
-            wrappers[method_name] = guarded
-        record = {'adapter': engine._mutation_adapter, 'restore': restore,
-                  'base': base, 'wrappers': wrappers}
-        api._guarded_mutations = guard_stack + [record]
-        @contextmanager
-        def suspend_mutation_guard():
-            for method_name, original in base.items():
-                setattr(engine._mutation_adapter, method_name, original)
-            try:
-                yield
-            finally:
-                for method_name, wrapper in wrappers.items():
-                    setattr(engine._mutation_adapter, method_name, wrapper)
-        engine._suspend_mutation_guard = suspend_mutation_guard
+        api._guarded_mutations = getattr(api, '_guarded_mutations', []) + [(engine._mutation_adapter, originals)]
     if payload is None or operation in {'read', 'heartbeat'}: engine.read_only()
     if operation == 'migration_batch':
         return api._migration_batch.run(engine, payload)
@@ -6022,7 +5861,6 @@ def public_run(api, repo, intent, source, runtime, payload, number, *, skip_inst
             else float(os.environ.get('ZZZOPS_WORKFLOW_TIMEOUT_SECONDS', '90'))
         )
     previous = getattr(api, 'operation_budget', None)
-    guard_mark = len(getattr(api, '_guarded_mutations', []))
     api.operation_budget = budget
     try:
         with (api.provider_operation_budget(budget) if hasattr(api, 'provider_operation_budget') else nullcontext()), \
@@ -6031,11 +5869,10 @@ def public_run(api, repo, intent, source, runtime, payload, number, *, skip_inst
                                     skip_installation_validation=skip_installation_validation,
                                     payload_supplied=payload_supplied)
     finally:
-        guards = getattr(api, '_guarded_mutations', [])
-        for record in reversed(guards[guard_mark:]):
-            for method_name, original in record['restore'].items():
-                setattr(record['adapter'], method_name, original)
-        api._guarded_mutations = guards[:guard_mark]
+        for adapter, originals in reversed(getattr(api, '_guarded_mutations', [])):
+            for method_name, original in originals.items():
+                setattr(adapter, method_name, original)
+        api._guarded_mutations = []
         if previous is None: del api.operation_budget
         else: api.operation_budget = previous
 
