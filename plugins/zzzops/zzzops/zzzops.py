@@ -1166,6 +1166,67 @@ class GitHubGoalTransitionAdapter:
         self._record_comment_read(number, 'since', result.stdout, comments)
         return comments
 
+    def get_issue_comment_tails(self, numbers: list[int], limit: int = 100) -> dict[int, list[dict[str, Any]]]:
+        """Observe at most four tails atomically; never return partial provider data."""
+        if (not isinstance(numbers, list) or not 1 <= len(numbers) <= 4
+                or any(type(number) is not int or number <= 0 for number in numbers)
+                or len(set(numbers)) != len(numbers) or type(limit) is not int or not 1 <= limit <= 100):
+            raise GoalHistoryReadError("Invalid bounded comment-tail batch")
+        try:
+            self.ensure_identity()
+            owner, name = self.repository.split('/', 1)
+            fields = ''.join(f"goal_{number}:issue(number:{number}){{number comments(last:$limit){{"
+                             "nodes{databaseId body createdAt updatedAt}}}" for number in numbers)
+            query = ("query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){"
+                     "nameWithOwner " + fields + "}}")
+            result = self._run(["api", "graphql", "-f", "query=" + query, "-F", "owner=" + owner,
+                                "-F", "name=" + name, "-F", "limit=" + str(limit)], timeout=None)
+            if result.returncode:
+                raise self._provider_error(result)
+            payload = json.loads(result.stdout)
+            if not isinstance(payload, dict) or payload.get('errors'):
+                raise ValueError('GraphQL errors')
+            repository = payload['data']['repository']
+            aliases = {'goal_' + str(number) for number in numbers}
+            if (not isinstance(repository, dict) or set(repository) != aliases | {'nameWithOwner'}
+                    or not isinstance(repository['nameWithOwner'], str)
+                    or repository['nameWithOwner'].casefold() != self.repository.casefold()):
+                raise ValueError('Repository or batch aliases differ')
+            tails = {}
+            for number in numbers:
+                issue = repository['goal_' + str(number)]
+                if type(issue['number']) is not int or issue['number'] != number:
+                    raise ValueError('Goal identity differs')
+                nodes = issue['comments']['nodes']
+                if not isinstance(nodes, list) or len(nodes) > limit:
+                    raise ValueError('Tail length differs')
+                rows = [{'id': row['databaseId'], 'body': row['body'],
+                         'created_at': row['createdAt'], 'updated_at': row['updatedAt']} for row in nodes]
+                if any(type(row['id']) is not int or row['id'] <= 0
+                       or not isinstance(row['body'], str)
+                       or any(not isinstance(row[field], str) or not row[field]
+                              for field in ('created_at', 'updated_at')) for row in rows):
+                    raise ValueError('Invalid comment fields')
+                for row in rows:
+                    for field in ('created_at', 'updated_at'):
+                        timestamp = row[field]
+                        if re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})', timestamp) is None:
+                            raise ValueError('Invalid comment timestamp')
+                        normalized = re.sub(r'(\.\d{6})\d+', r'\1', timestamp).replace('Z', '+00:00')
+                        datetime.fromisoformat(normalized)
+                identities = [row['id'] for row in rows]
+                if identities != sorted(set(identities)):
+                    raise ValueError('Comment order differs')
+                tails[number] = rows
+        except (ValueError, KeyError, TypeError, GoalTransitionProviderError) as exc:
+            raise GoalHistoryReadError(
+                "GitHub did not confirm the complete comment-tail batch; use complete history reads."
+            ) from exc
+        # Logical per-goal observations, with transport bytes charged once.
+        for index, number in enumerate(numbers):
+            self._record_comment_read(number, 'tail', result.stdout if index == 0 else '', tails[number])
+        return tails
+
     def get_issue_comment_tail(self, number: int, limit: int = 100) -> list[dict[str, Any]]:
         """Read a bounded newest-first-discoverable tail for checkpoint activation."""
         if type(limit) is not int or not 1 <= limit <= 100:

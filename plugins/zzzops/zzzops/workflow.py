@@ -507,7 +507,7 @@ class ProviderReadGateway:
     def __init__(self, engine, provider):
         self.engine = engine
         self.get_issue_comments = provider.get_issue_comments
-        for name in ('get_issue_comments_full', 'get_issue_comments_since', 'get_issue_comment_tail'):
+        for name in ('get_issue_comments_full', 'get_issue_comments_since', 'get_issue_comment_tail', 'get_issue_comment_tails'):
             if hasattr(provider, name):
                 setattr(self, name, getattr(provider, name))
         for name in ('list_issue_metadata', 'get_parent_issue', 'get_sub_issues'):
@@ -572,6 +572,7 @@ class Workflow:
         self._portfolio_cache = None
         self._artifact_indexes = {}
         self._provider_issue_cache = {}
+        getattr(self, '_publication_tails', {}).clear()
 
     def read(self, number):
         if number not in self._read_cache:
@@ -657,7 +658,10 @@ class Workflow:
                 try:
                     envelope = self.api.parse_managed_goal(issue.get('body', ''), number)
                     issue_hash = comment_store.text_hash(issue['body'])
-                    tail = tail_reader(number)
+                    prefetched = getattr(self, '_publication_tails', {}).pop((number, issue_hash), None)
+                    if isinstance(prefetched, Exception):
+                        raise prefetched
+                    tail = prefetched if prefetched is not None else tail_reader(number)
                     contract = materialized_state_contract()
                     cached = state_cache.load(self.repository, number, issue_hash, contract)
                     if cached is None and state_cache.requires_full_read(
@@ -3188,44 +3192,65 @@ class Workflow:
         goals.sort(key=lambda goal: not state_cache.has_entry(
             self.repository, goal['key'], comment_store.text_hash(
                 issues[goal['key']]['body'])))
-        for goal in goals:
-            number = goal['key']
-            def read(ref):
-                value = self.read_artifact(number, ref)
-                return json.loads(value) if isinstance(value, str) else value
-            envelope = self.api.parse_managed_goal(issues[number]['body'], number)
-            payload = read(envelope['payload']); graph = read(payload['graph'])
-            # Locate possible context outputs without evaluating unrelated
-            # workspace/relationship consumers. This filter grants no authority.
-            declarations = [*graph['nodes'], *(row['template'] for row in graph['task_sets'])]
-            slots = {node['id']: {name for name, contract in node['outputs'].items()
-                                 if contract.get('type') == 'repository_context'}
-                     for node in declarations}
-            if not any(slots.values()): continue
-            candidate = False
-            for ref in payload['evidence']:
-                result = read(ref)
-                if result.get('type') != 'result': continue
-                result = result['content']
-                for name in slots.get(result['node']['node'], set()):
-                    if name not in result['outputs']: continue
-                    context = read(result['outputs'][name])
-                    if context.get('type') == 'repository_context' and context['content'].get('branch') in heads: candidate = True
-            if not candidate: continue
-            snapshot = self.node_snapshot(number, publication_probe=True)
-            projection = snapshot['projection']; artifacts = snapshot['artifacts']
-            owners = {ref['hash']: (key, result) for key, (_, result) in projection['current'].items() for ref in result['outputs'].values()}
-            for identity, (key, result) in owners.items():
-                artifact = artifacts[identity]
-                if artifact.get('type') != 'repository_authorization': continue
-                if result['executor'] != root or projection['states'][key]['contract']['executor']['role'] != 'root': continue
-                value = artifact['content']; reference = value.get('context', {})
-                if value.get('decision') != 'approved' or not self.node_authorization_policy_matches(value, artifact, result, artifacts): continue
-                owner = owners.get(reference.get('hash'))
-                if not owner or owner[1]['executor'] != root or projection['states'][owner[0]]['contract']['executor']['role'] != 'root': continue
-                if not any(row['source'] == reference and row['mode'] == 'identity' and not row['path'] for row in result['inputs']): continue
-                context = artifacts[reference['hash']]
-                if context.get('type') == 'repository_context' and isinstance(context['content'].get('branch'), str): branches.add(context['content']['branch'])
+        # Optional capability is explicit on the provider type: arbitrary Mock
+        # attributes must not accidentally enable batching on older adapters.
+        provider = self._mutation_adapter if isinstance(self.adapter, ProviderReadGateway) else self.adapter
+        batch_reader = (getattr(self.adapter, 'get_issue_comment_tails', None)
+                        if callable(getattr(type(provider), 'get_issue_comment_tails', None)) else None)
+        self._publication_tails = {}
+        for offset in range(0, len(goals), 4):
+            window = goals[offset:offset + 4]
+            try:
+                if callable(batch_reader):
+                    numbers = [goal['key'] for goal in window]
+                    try:
+                        tails = batch_reader(numbers)
+                    except self.api.GoalHistoryReadError as exc:
+                        tails = {number: exc for number in numbers}
+                    self._publication_tails = {
+                        (number, comment_store.text_hash(issues[number]['body'])): tails[number]
+                        for number in numbers}
+                for goal in window:
+                    number = goal['key']
+                    def read(ref):
+                        value = self.read_artifact(number, ref)
+                        return json.loads(value) if isinstance(value, str) else value
+                    envelope = self.api.parse_managed_goal(issues[number]['body'], number)
+                    payload = read(envelope['payload']); graph = read(payload['graph'])
+                    # Locate possible context outputs without evaluating unrelated
+                    # workspace/relationship consumers. This filter grants no authority.
+                    declarations = [*graph['nodes'], *(row['template'] for row in graph['task_sets'])]
+                    slots = {node['id']: {name for name, contract in node['outputs'].items()
+                                         if contract.get('type') == 'repository_context'}
+                             for node in declarations}
+                    if not any(slots.values()): continue
+                    candidate = False
+                    for ref in payload['evidence']:
+                        result = read(ref)
+                        if result.get('type') != 'result': continue
+                        result = result['content']
+                        for name in slots.get(result['node']['node'], set()):
+                            if name not in result['outputs']: continue
+                            context = read(result['outputs'][name])
+                            if context.get('type') == 'repository_context' and context['content'].get('branch') in heads: candidate = True
+                    if not candidate: continue
+                    snapshot = self.node_snapshot(number, publication_probe=True)
+                    projection = snapshot['projection']; artifacts = snapshot['artifacts']
+                    owners = {ref['hash']: (key, result) for key, (_, result) in projection['current'].items() for ref in result['outputs'].values()}
+                    for identity, (key, result) in owners.items():
+                        artifact = artifacts[identity]
+                        if artifact.get('type') != 'repository_authorization': continue
+                        if result['executor'] != root or projection['states'][key]['contract']['executor']['role'] != 'root': continue
+                        value = artifact['content']; reference = value.get('context', {})
+                        if value.get('decision') != 'approved' or not self.node_authorization_policy_matches(value, artifact, result, artifacts): continue
+                        owner = owners.get(reference.get('hash'))
+                        if not owner or owner[1]['executor'] != root or projection['states'][owner[0]]['contract']['executor']['role'] != 'root': continue
+                        if not any(row['source'] == reference and row['mode'] == 'identity' and not row['path'] for row in result['inputs']): continue
+                        context = artifacts[reference['hash']]
+                        if context.get('type') == 'repository_context' and isinstance(context['content'].get('branch'), str): branches.add(context['content']['branch'])
+            finally:
+                self._publication_tails.clear()
+                tails = None
         return branches
 
     def node_ci_required(self, observed):
