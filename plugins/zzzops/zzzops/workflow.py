@@ -3710,11 +3710,12 @@ class Workflow:
                         grant = authority(state)
                         expected_authority = {**{name: grant[name] for name in ('allocation', 'authorization', 'approval')},
                             'inputs': self.node_workspace_authority_inputs(state['inputs'], artifacts)}
-                        # This route discards operational selection, never adopts
-                        # the old delta. Material authority changes need their
-                        # normal review; unchanged authority must still be current.
+                        # Retirement discards operational selection, never adopts
+                        # the old delta or its authority. authority(state) above
+                        # requires independent review and root approval of the
+                        # exact current grant, including any replacement scope.
+                        # Fresh acquisition remains fenced by that current grant.
                         if (not draft.get('continuity_only') and draft['policy'] == self.node_evidence_policy()
-                                and draft['authority'] == expected_authority
                                 and draft_errors.get(reference['hash']) == 'Workspace draft current authority/input/contract changed'):
                             self.node_workspace_draft_chain(reference, draft_rows)
                             overrides = self.clean_checkout_overrides(head, committed, actual)
