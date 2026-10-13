@@ -1,4 +1,4 @@
-"""A publication scan can be reused only within its unchanged read epoch."""
+"""Provider discovery can be reused; host authorization is always rechecked."""
 import copy
 import unittest
 from unittest import mock
@@ -82,6 +82,25 @@ class BranchProjectionMemoTests(unittest.TestCase):
         self.assertEqual({'managed'}, self.scan())
         self.assertEqual(48, len(self.batch_calls))
 
+    def test_host_currentness_rechecked_after_positive_provider_discovery(self):
+        self.assertEqual({'managed'}, self.scan())
+        saved = self.projection['projection']['current']
+        self.projection['projection']['current'] = {}
+        self.assertEqual(set(), self.scan(), 'unchanged provider bytes cannot preserve stale host authority')
+        self.projection['projection']['current'] = saved
+        self.assertEqual({'managed'}, self.scan())
+        self.assertEqual(24, len(self.batch_calls))
+        self.assertEqual(3, self.engine.node_snapshot.call_count)
+
+    def test_previously_noncurrent_candidate_reauthenticated_without_provider_rescan(self):
+        saved = self.projection['projection']['current']
+        self.projection['projection']['current'] = {}
+        self.assertEqual(set(), self.scan())
+        self.projection['projection']['current'] = saved
+        self.assertEqual({'managed'}, self.scan())
+        self.assertEqual(24, len(self.batch_calls), 'negative host result still retains provider discovery')
+        self.assertEqual(2, self.engine.node_snapshot.call_count)
+
     def test_fresh_topology_body_status_root_and_policy_change_force_new_scan(self):
         changes = [lambda: self.observed[0].update(headRefOid='b' * 40),
                    lambda: self.observed[0].update(baseRefName='other'),
@@ -100,7 +119,8 @@ class BranchProjectionMemoTests(unittest.TestCase):
         self.engine.runtime['root_id'] = 'not-the-authenticated-root'
         self.assertEqual(set(), self.scan())
         self.assertEqual(set(), self.scan())
-        self.assertEqual(48, len(self.batch_calls))
+        self.assertEqual(24, len(self.batch_calls))
+        self.assertEqual(2, self.engine.node_snapshot.call_count)
         self.engine.runtime['root_id'] = 'root'
         self.assertEqual({'managed'}, self.scan())
         self.fixture.bodies[2] += ' '
@@ -108,17 +128,68 @@ class BranchProjectionMemoTests(unittest.TestCase):
         self.engine.read_artifact = lambda number, ref: (_ for _ in ()).throw(
             ValueError('required evidence unavailable')) if number == 2 else original(number, ref)
         with self.assertRaisesRegex(ValueError, 'required evidence unavailable'): self.scan()
-        self.assertIsNone(self.engine._managed_publication_projection)
+        self.assertIsNone(self.engine._publication_candidate_discovery)
         self.engine.read_artifact = original
         before = len(self.batch_calls)
         self.assertEqual({'managed'}, self.scan())
         self.assertEqual(before + 24, len(self.batch_calls))
 
+    def test_all_94_potential_candidates_reauthenticate_including_previous_negatives(self):
+        projections = {n: self.make_candidate(n, 'managed' if n == 1 else 'potential')
+                       for n in range(1, 95)}
+        original_current = {n: value['projection']['current'] for n, value in projections.items()}
+        for n in range(2, 95): projections[n]['projection']['current'] = {}
+        self.observed.append(dict(self.observed[0], number=11, headRefName='potential'))
+        self.engine.node_snapshot.side_effect = lambda number, **kwargs: projections[number]
+        self.assertEqual({'managed'}, self.scan())
+        projections[1]['projection']['current'] = {}
+        projections[94]['projection']['current'] = original_current[94]
+        self.assertEqual({'potential'}, self.scan())
+        self.assertEqual(24, len(self.batch_calls))
+        calls = self.engine.node_snapshot.call_args_list
+        self.assertEqual(188, len(calls), 'every potential candidate must reauthenticate on reuse')
+        self.assertEqual(list(range(1, 95)) * 2, [call.args[0] for call in calls])
+        self.assertTrue(all(call.kwargs == {'publication_probe': True} for call in calls))
+
+    def test_runtime_and_relationship_currentness_are_not_memoized(self):
+        projection = self.projection
+        self.engine.node_snapshot.side_effect = lambda *_a, **_k: (
+            {'projection': {'current': {}, 'states': {}}, 'artifacts': {}}
+            if self.engine.runtime.get('host_unavailable') else projection)
+        self.assertEqual({'managed'}, self.scan())
+        self.engine.runtime['host_unavailable'] = True
+        self.assertEqual(set(), self.scan())
+        self.engine.runtime['host_unavailable'] = False
+        projection['projection']['states']['auth']['contract']['executor']['role'] = 'worker'
+        self.assertEqual(set(), self.scan())
+        projection['projection']['states']['auth']['contract']['executor']['role'] = 'root'
+        self.assertEqual({'managed'}, self.scan())
+        self.assertEqual(24, len(self.batch_calls))
+        self.assertEqual(4, self.engine.node_snapshot.call_count)
+
+    def test_host_authentication_exception_discards_provider_discovery_memo(self):
+        self.scan()
+        self.engine.node_snapshot.side_effect = ValueError('workspace relationship unavailable')
+        with self.assertRaisesRegex(ValueError, 'workspace relationship unavailable'): self.scan()
+        self.assertIsNone(self.engine._publication_candidate_discovery)
+        self.engine.node_snapshot.side_effect = lambda *_a, **_k: self.projection
+        self.assertEqual({'managed'}, self.scan())
+        self.assertEqual(48, len(self.batch_calls))
+
+    def test_failed_batch_provider_discovery_is_not_reused_after_fallback(self):
+        self.engine.adapter.get_issue_comment_tails = mock.Mock(
+            side_effect=z.GoalHistoryReadError('batch unavailable; normal history fallback required'))
+        self.assertEqual({'managed'}, self.scan())
+        self.assertIsNone(self.engine._publication_candidate_discovery)
+        self.assertEqual({'managed'}, self.scan())
+        self.assertEqual(48, self.engine.adapter.get_issue_comment_tails.call_count)
+        self.assertIsNone(self.engine._publication_candidate_discovery)
+
     def test_read_epoch_reset_drops_projection_and_tail_window(self):
         self.scan()
         self.engine._publication_tails = {(1, 'old-hash'): ['unused']}
         self.engine.clear_publication_projection()
-        self.assertIsNone(self.engine._managed_publication_projection)
+        self.assertIsNone(self.engine._publication_candidate_discovery)
         self.assertEqual({}, self.engine._publication_tails)
         self.scan()
         self.assertEqual(48, len(self.batch_calls))
@@ -139,7 +210,7 @@ class GuardedMutationProjectionResetTests(unittest.TestCase):
         original_init, original_clear = cls.__init__, cls.clear_publication_projection
         def initialize(engine, *args, **kwargs):
             original_init(engine, *args, **kwargs)
-            engine._managed_publication_projection = ('seed', frozenset({'stale'}))
+            engine._publication_candidate_discovery = ('seed', frozenset({'stale'}))
             engines.append(engine)
         def clear(engine):
             resets.append(engine)
@@ -149,11 +220,11 @@ class GuardedMutationProjectionResetTests(unittest.TestCase):
         original_write = fixture.provider.create_issue_comment
         def write(*args, **kwargs):
             engine = engines[-1]
-            self.assertIsNone(engine._managed_publication_projection,
+            self.assertIsNone(engine._publication_candidate_discovery,
                               'memo must be gone before fresh boundary/provider write')
             self.assertEqual({}, getattr(engine, '_publication_tails', {}))
             writes.append(engine)
-            engine._managed_publication_projection = ('during-write', frozenset({'residue'}))
+            engine._publication_candidate_discovery = ('during-write', frozenset({'residue'}))
             if fail_write:
                 raise z.GoalTransitionProviderError('provider write unconfirmed')
             return original_write(*args, **kwargs)
@@ -167,7 +238,7 @@ class GuardedMutationProjectionResetTests(unittest.TestCase):
                 response = fixture.direct_public_mutation(payload, public_tests.Ledger())
                 self.assertEqual('produce', response['submitted']['node']['node'])
         self.assertTrue(resets)
-        self.assertIsNone(engines[-1]._managed_publication_projection)
+        self.assertIsNone(engines[-1]._publication_candidate_discovery)
         if fail_boundary:
             self.assertFalse(writes)
         else:

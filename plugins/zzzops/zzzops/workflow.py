@@ -575,8 +575,8 @@ class Workflow:
         self.clear_publication_projection()
 
     def clear_publication_projection(self):
-        """Discard the invocation's derived projection and unused tail window."""
-        self._managed_publication_projection = None
+        """Discard the invocation's provider discovery and unused tail window."""
+        self._publication_candidate_discovery = None
         getattr(self, '_publication_tails', {}).clear()
 
     def read(self, number):
@@ -3180,7 +3180,7 @@ class Workflow:
 
     def node_managed_publication_branches(self, observed):
         """Discover managed heads from current authenticated generic root evidence."""
-        branches = set()
+        candidates = []
         heads = {row['headRefName'] for row in observed if isinstance(row, dict) and isinstance(row.get('headRefName'), str)}
         root = (self.runtime or {}).get('root_id')
         goals = [goal for goal in self.portfolio()
@@ -3192,17 +3192,17 @@ class Workflow:
         if not hasattr(self, '_issue_observations'):
             self._issue_observations = {}
         self._issue_observations.update(copy.deepcopy(issues))
-        # Retain one authenticated projection for this read epoch only. Fresh
+        # Retain provider discovery for this read epoch only. Fresh
         # PR observations and broadphase body identities still precede reuse.
         projection_identity = digest({'pull_requests': observed, 'root': root,
                            'policy': getattr(self, 'project', {}).get('policy'),
                            'goals': [[goal['key'], goal.get('status'),
                                       comment_store.text_hash(issues[goal['key']]['body'])]
                                      for goal in goals]})
-        memo = getattr(self, '_managed_publication_projection', None)
+        memo = getattr(self, '_publication_candidate_discovery', None)
         if memo is not None and memo[0] == projection_identity:
-            return set(memo[1])
-        self._managed_publication_projection = None
+            return self.node_authenticate_publication_candidates(memo[1])
+        self._publication_candidate_discovery = None
         # Consume retained entries before misses can evict them during a scan
         # larger than the bounded cache. This hint changes no validation or scope.
         goals.sort(key=lambda goal: not state_cache.has_entry(
@@ -3214,6 +3214,7 @@ class Workflow:
         batch_reader = (getattr(self.adapter, 'get_issue_comment_tails', None)
                         if callable(getattr(type(provider), 'get_issue_comment_tails', None)) else None)
         self._publication_tails = {}
+        discovery_confirmed = True
         for offset in range(0, len(goals), 4):
             window = goals[offset:offset + 4]
             try:
@@ -3222,6 +3223,7 @@ class Workflow:
                     try:
                         tails = batch_reader(numbers)
                     except self.api.GoalHistoryReadError as exc:
+                        discovery_confirmed = False
                         tails = {number: exc for number in numbers}
                     self._publication_tails = {
                         (number, comment_store.text_hash(issues[number]['body'])): tails[number]
@@ -3250,25 +3252,37 @@ class Workflow:
                             context = read(result['outputs'][name])
                             if context.get('type') == 'repository_context' and context['content'].get('branch') in heads: candidate = True
                     if not candidate: continue
-                    snapshot = self.node_snapshot(number, publication_probe=True)
-                    projection = snapshot['projection']; artifacts = snapshot['artifacts']
-                    owners = {ref['hash']: (key, result) for key, (_, result) in projection['current'].items() for ref in result['outputs'].values()}
-                    for identity, (key, result) in owners.items():
-                        artifact = artifacts[identity]
-                        if artifact.get('type') != 'repository_authorization': continue
-                        if result['executor'] != root or projection['states'][key]['contract']['executor']['role'] != 'root': continue
-                        value = artifact['content']; reference = value.get('context', {})
-                        if value.get('decision') != 'approved' or not self.node_authorization_policy_matches(value, artifact, result, artifacts): continue
-                        owner = owners.get(reference.get('hash'))
-                        if not owner or owner[1]['executor'] != root or projection['states'][owner[0]]['contract']['executor']['role'] != 'root': continue
-                        if not any(row['source'] == reference and row['mode'] == 'identity' and not row['path'] for row in result['inputs']): continue
-                        context = artifacts[reference['hash']]
-                        if context.get('type') == 'repository_context' and isinstance(context['content'].get('branch'), str): branches.add(context['content']['branch'])
+                    candidates.append(number)
             finally:
                 self._publication_tails.clear()
                 tails = None
-        if branches:
-            self._managed_publication_projection = (projection_identity, frozenset(branches))
+        if discovery_confirmed:
+            self._publication_candidate_discovery = (projection_identity, tuple(candidates))
+        return self.node_authenticate_publication_candidates(candidates)
+
+    def node_authenticate_publication_candidates(self, candidates):
+        """Recheck mutable host/relationship/runtime currentness on every read."""
+        root = (self.runtime or {}).get('root_id')
+        branches = set()
+        try:
+            for number in candidates:
+                snapshot = self.node_snapshot(number, publication_probe=True)
+                projection = snapshot['projection']; artifacts = snapshot['artifacts']
+                owners = {ref['hash']: (key, result) for key, (_, result) in projection['current'].items() for ref in result['outputs'].values()}
+                for identity, (key, result) in owners.items():
+                    artifact = artifacts[identity]
+                    if artifact.get('type') != 'repository_authorization': continue
+                    if result['executor'] != root or projection['states'][key]['contract']['executor']['role'] != 'root': continue
+                    value = artifact['content']; reference = value.get('context', {})
+                    if value.get('decision') != 'approved' or not self.node_authorization_policy_matches(value, artifact, result, artifacts): continue
+                    owner = owners.get(reference.get('hash'))
+                    if not owner or owner[1]['executor'] != root or projection['states'][owner[0]]['contract']['executor']['role'] != 'root': continue
+                    if not any(row['source'] == reference and row['mode'] == 'identity' and not row['path'] for row in result['inputs']): continue
+                    context = artifacts[reference['hash']]
+                    if context.get('type') == 'repository_context' and isinstance(context['content'].get('branch'), str): branches.add(context['content']['branch'])
+        except Exception:
+            self._publication_candidate_discovery = None
+            raise
         return branches
 
     def node_ci_required(self, observed):
