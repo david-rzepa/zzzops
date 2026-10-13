@@ -572,6 +572,11 @@ class Workflow:
         self._portfolio_cache = None
         self._artifact_indexes = {}
         self._provider_issue_cache = {}
+        self.clear_publication_projection()
+
+    def clear_publication_projection(self):
+        """Discard the invocation's derived projection and unused tail window."""
+        self._managed_publication_projection = None
         getattr(self, '_publication_tails', {}).clear()
 
     def read(self, number):
@@ -3187,6 +3192,17 @@ class Workflow:
         if not hasattr(self, '_issue_observations'):
             self._issue_observations = {}
         self._issue_observations.update(copy.deepcopy(issues))
+        # Retain one authenticated projection for this read epoch only. Fresh
+        # PR observations and broadphase body identities still precede reuse.
+        projection_identity = digest({'pull_requests': observed, 'root': root,
+                           'policy': getattr(self, 'project', {}).get('policy'),
+                           'goals': [[goal['key'], goal.get('status'),
+                                      comment_store.text_hash(issues[goal['key']]['body'])]
+                                     for goal in goals]})
+        memo = getattr(self, '_managed_publication_projection', None)
+        if memo is not None and memo[0] == projection_identity:
+            return set(memo[1])
+        self._managed_publication_projection = None
         # Consume retained entries before misses can evict them during a scan
         # larger than the bounded cache. This hint changes no validation or scope.
         goals.sort(key=lambda goal: not state_cache.has_entry(
@@ -3251,6 +3267,8 @@ class Workflow:
             finally:
                 self._publication_tails.clear()
                 tails = None
+        if branches:
+            self._managed_publication_projection = (projection_identity, frozenset(branches))
         return branches
 
     def node_ci_required(self, observed):
@@ -6056,10 +6074,12 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             original = base[method_name]
             def guarded(*args, _original=original, **kwargs):
                 target = args[0] if args else kwargs.get('number')
-                fresh_mutation_boundary(target)
+                engine.clear_publication_projection()
                 try:
+                    fresh_mutation_boundary(target)
                     return _original(*args, **kwargs)
                 finally:
+                    engine.clear_publication_projection()
                     read_cache['issues'].clear(); read_cache['comments'].clear()
             setattr(engine._mutation_adapter, method_name, guarded)
             wrappers[method_name] = guarded
