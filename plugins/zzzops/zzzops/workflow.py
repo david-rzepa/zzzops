@@ -778,6 +778,11 @@ class Workflow:
         size = sum(len(row.get('body', '').encode('utf-8')) for row in index.comments)
         if len(index.comments) < HYDRATION_CHECKPOINT_MIN_COMMENTS and size < HYDRATION_CHECKPOINT_MIN_BYTES:
             return None
+        # The observed index validates individual envelopes with bounded reads.
+        # Optional checkpoint generation also needs an eager aggregate index.
+        decoded = sum(index.decode_sizes[row.get('body', '')] for row in index.comments)
+        if decoded > comment_store.MAX_RECONSTRUCTION_WORK_BYTES:
+            return None
         issue = self.adapter.get_issue(number)
         envelope = self.api.parse_managed_goal(issue.get('body', ''), number)
         if not envelope or envelope.get('schema_version') != 2:
@@ -817,6 +822,7 @@ class Workflow:
             if str(exc) in {
                 'Transaction artifact record limit exceeded',
                 'Transaction reconstruction work limit exceeded',
+                'Artifact reconstruction work limit exceeded',
                 'Artifact cannot be split within the provider comment contract; use a published Git content reference',
             }:
                 return None
