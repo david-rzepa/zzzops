@@ -48,9 +48,10 @@ class PublicationCacheScanTests(unittest.TestCase):
         self.cache.store(self.repository, number, self.issue_hash(number),
                          self.comments, self.comments, {}, time.time())
 
-    def scan(self):
+    def scan(self, *, require_broadphase=False):
         engine = z._workflow.Workflow.__new__(z._workflow.Workflow)
         engine.repository, engine.runtime, engine.api = self.repository, {'root_id': 'root'}, z
+        engine.repo = Path('/unused-test-repository')
         engine.portfolio = lambda: self.goals
         engine.adapter = mock.Mock()
         engine.adapter.get_issue.side_effect = lambda number: {'body': self.bodies[number]}
@@ -63,9 +64,21 @@ class PublicationCacheScanTests(unittest.TestCase):
                 self.store(number)
             return self.blobs[ref['hash']]
         engine.read_artifact = read
-        self.assertEqual(set(), engine.node_managed_publication_branches([]))
+        with mock.patch.object(z, 'provider_issue_snapshot',
+                               side_effect=lambda repo, repository, number: {'body': self.bodies[number]}):
+            self.assertEqual(set(), engine.node_managed_publication_branches([]))
+        if require_broadphase:
+            engine.adapter.get_issue.assert_not_called()
+            self.assertEqual(set(range(1, 95)), set(engine._issue_observations))
         self.assertEqual(set(range(1, 95)), set(visited), 'every eligible goal is still read')
         return hits, misses
+
+    def test_discovery_reuses_current_broadphase_bodies_without_rest_issue_reads(self):
+        for number in range(1, 95):
+            self.store(number)
+        hits, misses = self.scan(require_broadphase=True)
+        self.assertEqual(64, len(hits))
+        self.assertEqual(30, len(misses))
 
     def test_repeated_scan_larger_than_cache_preserves_hits_without_expanding_capacity(self):
         for number in range(1, 95):

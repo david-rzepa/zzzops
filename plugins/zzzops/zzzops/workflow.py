@@ -3176,17 +3176,24 @@ class Workflow:
         root = (self.runtime or {}).get('root_id')
         goals = [goal for goal in self.portfolio()
                  if goal.get('schema_version') == 2 and goal.get('status') not in {'done', 'cancelled'}]
+        # Discovery reuses this invocation's fresh broadphase bodies. Candidate
+        # authentication and mutation boundaries still perform their own reads.
+        issues = {goal['key']: self.api.provider_issue_snapshot(
+            self.repo, self.repository, goal['key']) for goal in goals}
+        if not hasattr(self, '_issue_observations'):
+            self._issue_observations = {}
+        self._issue_observations.update(copy.deepcopy(issues))
         # Consume retained entries before misses can evict them during a scan
         # larger than the bounded cache. This hint changes no validation or scope.
         goals.sort(key=lambda goal: not state_cache.has_entry(
             self.repository, goal['key'], comment_store.text_hash(
-                self.adapter.get_issue(goal['key'])['body'])))
+                issues[goal['key']]['body'])))
         for goal in goals:
             number = goal['key']
             def read(ref):
                 value = self.read_artifact(number, ref)
                 return json.loads(value) if isinstance(value, str) else value
-            envelope = self.api.parse_managed_goal(self.adapter.get_issue(number)['body'], number)
+            envelope = self.api.parse_managed_goal(issues[number]['body'], number)
             payload = read(envelope['payload']); graph = read(payload['graph'])
             # Locate possible context outputs without evaluating unrelated
             # workspace/relationship consumers. This filter grants no authority.
