@@ -3174,8 +3174,14 @@ class Workflow:
         branches = set()
         heads = {row['headRefName'] for row in observed if isinstance(row, dict) and isinstance(row.get('headRefName'), str)}
         root = (self.runtime or {}).get('root_id')
-        for goal in self.portfolio():
-            if goal.get('schema_version') != 2 or goal.get('status') in {'done', 'cancelled'}: continue
+        goals = [goal for goal in self.portfolio()
+                 if goal.get('schema_version') == 2 and goal.get('status') not in {'done', 'cancelled'}]
+        # Consume retained entries before misses can evict them during a scan
+        # larger than the bounded cache. This hint changes no validation or scope.
+        goals.sort(key=lambda goal: not state_cache.has_entry(
+            self.repository, goal['key'], comment_store.text_hash(
+                self.adapter.get_issue(goal['key'])['body'])))
+        for goal in goals:
             number = goal['key']
             def read(ref):
                 value = self.read_artifact(number, ref)
