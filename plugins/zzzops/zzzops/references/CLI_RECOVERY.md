@@ -225,3 +225,21 @@ Capability is the pair's reviewed tier, not its name, price or an inferred
 reasoning-effort ordering. Pairs assigned the same tier remain equivalent for
 capability selection; enabling delegation does not resolve that separate
 policy-mapping limitation. Existing leases retain their exact selected pair.
+
+## Refresh an obsolete checkpoint retirement
+
+If a retained retirement no longer authenticates the current provider history,
+run `checkpoint_reconcile_prepare` again for the same exact transaction. Give
+the returned proposal to an independent reviewer, submit the returned
+`checkpoint_reconcile_review` contract, then adopt its exact proposal/review
+Refs with explicit approval. Preparation and adoption require stopped ownership.
+A refresh appends evidence; it never removes the original retirement, approvals,
+comments or artifacts. Only a uniquely latest valid retirement on authenticated
+receipt ancestry can permit graph preparation to continue.
+
+Use the request IDs returned by each fresh contract. They bind the complete
+proposal or proposal/review pair, so the same checkpoint or graph can receive a
+fresh review without colliding with its earlier receipt. After a failed provider
+confirmation, retry the frozen exact request, including its original ID and
+bytes. Changed bytes under that ID remain a conflict. A retirement creates no
+semantic Result, worker lease, workspace approval or CI/integration authority.

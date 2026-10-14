@@ -2521,6 +2521,8 @@ class Workflow:
             raise ValueError('Checkpoint reconciliation requires authenticated root')
         if not isinstance(rationale, str) or not rationale.strip():
             raise ValueError('Checkpoint reconciliation requires a scoped rationale')
+        if snapshot['payload']['operational']['leases']:
+            raise ValueError('Checkpoint reconciliation requires observed stopped ownership; leases remain')
         comments = self.adapter.get_issue_comments(snapshot['number'])
         return {'kind': 'checkpoint_reconciliation', 'repository': self.repository,
                 'goal': snapshot['number'], 'policy': self.node_evidence_policy(),
@@ -2557,7 +2559,7 @@ class Workflow:
                     'action': 'Show the exact stale checkpoint reconciliation to the user and adopt only after explicit approval.',
                     'submission': {'operation': 'checkpoint_reconcile_adopt', 'proposal': artifact_ref,
                                    'review': review_ref, 'approved_by': None,
-                                   'request_id': 'checkpoint-reconcile-' + proposal['checkpoint']['transaction'][7:23]}}
+                                   'request_id': 'checkpoint-reconcile-' + digest({'proposal': artifact_ref, 'review': review_ref})[7:]}}
         else:
             step = {'kind': 'changes_requested', 'assignment': 'root', 'goal': snapshot['number'],
                     'proposal': artifact_ref, 'review': review_ref, 'report': request['report']}
@@ -2573,6 +2575,17 @@ class Workflow:
                 raise ValueError('Checkpoint reconciliation evidence belongs to another goal')
         proposal_artifact, review = snapshot['resolve'](request['proposal']), snapshot['resolve'](request['review'])
         root = (self.runtime or {}).get('root_id')
+        if snapshot['payload']['operational']['leases']:
+            raise ValueError('Checkpoint reconciliation requires observed stopped ownership; leases remain')
+        policy = self.node_evidence_policy()
+        proposal = proposal_artifact.get('content', {})
+        if (not root or proposal.get('kind') != 'checkpoint_reconciliation'
+                or proposal.get('repository') != self.repository
+                or proposal.get('goal') != snapshot['number']
+                or proposal.get('policy') != policy
+                or proposal_artifact.get('provenance', {}).get('policy') != policy
+                or review.get('provenance', {}).get('policy') != policy):
+            raise ValueError('Checkpoint reconciliation evidence repository, goal or policy changed')
         if (proposal_artifact.get('type') != 'checkpoint_reconciliation_proposal'
                 or proposal_artifact.get('provenance', {}).get('actor') != root
                 or review.get('type') != 'checkpoint_reconciliation_review'
@@ -2592,11 +2605,32 @@ class Workflow:
             except (KeyError, ValueError): continue
             steps = reviewed_response.get('next_steps', []) if isinstance(reviewed_response, dict) else []
             if any(step.get('proposal') == request['proposal'] and step.get('review') == request['review'] for step in steps):
-                review_edges.extend((item.get('context') or {}) for item in index.envelopes
-                                    if (item.get('context') or {}).get('response') == receipt['result'])
-                review_comment_ids.update(comment['id'] for comment, item in index.envelope_comments
-                                          if (item.get('context') or {}).get('response') == receipt['result'])
+                edge = self.node_receipt_edge(snapshot['number'], index, receipt)
+                if edge is None or edge['context'].get('root') != root:
+                    raise ValueError('Checkpoint reconciliation requires an authenticated review edge owned by current root')
+                review_edges.append(edge['context'])
+                review_comment_ids.update(edge['comment_ids'])
         review_edges = list({digest(edge): edge for edge in review_edges}.values())
+        # A provider may publish immutable adoption rows before its issue-body
+        # update fails. Only the frozen exact request may account for those rows
+        # on retry; unrelated or conflicting pending bytes remain blockers.
+        for item in index.envelopes:
+            context = item.get('context') or {}
+            if context.get('request_id') != request['request_id']:
+                continue
+            pending = {'request': request['request_id'], 'payload': digest(request),
+                       'result': context.get('response')}
+            edge = self.node_receipt_edge(snapshot['number'], index, pending)
+            expected_response = {'type': 'checkpoint_reconciliation', 'version': 1,
+                'checkpoint': descriptor, 'proposal': request['proposal'], 'review': request['review'],
+                'approved_by': request['approved_by'],
+                'next_steps': [{'kind': 'checkpoint', 'goal': snapshot['number'],
+                    'action': 'Exact stale checkpoint reconciled; immutable history was preserved.'}]}
+            if (edge is None or edge['source'] != snapshot['envelope']
+                    or edge['context'].get('source_hash') != digest(snapshot['issue']['body'])
+                    or edge['context'].get('root') != root or edge['response'] != expected_response):
+                raise ValueError('Checkpoint reconciliation pending adoption request conflicts with exact retry')
+            review_comment_ids.update(edge['comment_ids'])
         observation = proposal['current']['observation']
         comments = self.adapter.get_issue_comments(snapshot['number'])
         prefix = [comment for comment in comments if comment['id'] <= observation['last_id']]
@@ -2724,27 +2758,57 @@ class Workflow:
                 'transaction': transaction, 'comment_ids': set(identities), 'response': edge_response}
 
     def node_checkpoint_reconciled(self, snapshot, index, row, receipts):
-        """Accept only a current, committed, independently reviewed exact waiver."""
+        """Select the latest fully authenticated retirement on one receipt lineage."""
         try:
             descriptor = self.node_checkpoint_descriptor(snapshot, row.get('transaction'))
         except ValueError:
             return False
-        matches = []
+        request_ids = [receipt.get('request') for receipt in receipts if isinstance(receipt, dict)]
+        if (len(request_ids) != len(receipts) or any(not isinstance(value, str) or not value for value in request_ids)
+                or len(request_ids) != len(set(request_ids))):
+            return False
+        pins = []
         for receipt in receipts:
             try: response = index.resolve(receipt['result']['hash'])[0]
             except (KeyError, ValueError): continue
             if (isinstance(response, dict) and response.get('type') == 'checkpoint_reconciliation'
                     and response.get('version') == 1 and response.get('checkpoint') == descriptor):
-                matches.append((receipt, response))
-        if len(matches) != 1:
-            return False
-        receipt, response = matches[0]
+                try:
+                    pin = self.node_checkpoint_reconciliation_pin(snapshot, index, descriptor, receipts, receipt, response)
+                except (AttributeError, KeyError, TypeError, ValueError):
+                    pin = None
+                if pin is not None:
+                    pins.append(pin)
+        # An earlier pin is dominated only by an exact adoption edge on its
+        # authenticated suffix. Neither array position nor provider IDs alone
+        # establish ancestry. Old invalid pins remain immutable history.
+        maxima = [pin for pin in pins if not any(
+            successor is not pin and successor['adoption'] in pin['suffix']
+            for successor in pins)]
+        return len(maxima) == 1 and all(
+            pin is maxima[0] or maxima[0]['adoption'] in pin['suffix'] for pin in pins)
+
+    def node_checkpoint_reconciliation_pin(self, snapshot, index, descriptor, receipts, receipt, response):
+        """Validate one exact pin and its complete authenticated path to current."""
         try:
             proposal_artifact = index.resolve(response['proposal']['hash'])[0]
             review = index.resolve(response['review']['hash'])[0]
         except (KeyError, ValueError):
-            return False
+            return None
         root = (self.runtime or {}).get('root_id')
+        policy = self.node_evidence_policy()
+        proposal = proposal_artifact.get('content', {})
+        if (not root or any(response.get(name) != self.node_ref(
+                (response.get(name) or {}).get('hash'), snapshot['number'])
+                for name in ('proposal', 'review'))
+                or proposal.get('kind') != 'checkpoint_reconciliation'
+                or proposal.get('repository') != self.repository
+                or proposal.get('goal') != snapshot['number']
+                or proposal.get('policy') != policy
+                or proposal_artifact.get('producer') is not None or review.get('producer') is not None
+                or proposal_artifact.get('provenance', {}).get('policy') != policy
+                or review.get('provenance', {}).get('policy') != policy):
+            return None
         if (not explicit_approval(response.get('approved_by'))
                 or proposal_artifact.get('type') != 'checkpoint_reconciliation_proposal'
                 or proposal_artifact.get('content', {}).get('checkpoint') != descriptor
@@ -2753,10 +2817,10 @@ class Workflow:
                 or review.get('provenance', {}).get('source') != response['proposal']
                 or review.get('provenance', {}).get('actor') in (None, root)
                 or review.get('content', {}).get('decision') != 'approved'):
-            return False
+            return None
         adoption = self.node_receipt_edge(snapshot['number'], index, receipt)
-        if adoption is None:
-            return False
+        if adoption is None or adoption['context'].get('root') != root:
+            return None
         review_edges = []
         allowed_comment_ids = set(adoption['comment_ids'])
         for candidate in receipts:
@@ -2765,10 +2829,11 @@ class Workflow:
             steps = reviewed_response.get('next_steps', []) if isinstance(reviewed_response, dict) else []
             if any(step.get('proposal') == response['proposal'] and step.get('review') == response['review']
                    for step in steps):
-                review_edges.extend((item.get('context') or {}) for item in index.envelopes
-                                    if (item.get('context') or {}).get('response') == candidate['result'])
-                allowed_comment_ids.update(comment['id'] for comment, item in index.envelope_comments
-                                           if (item.get('context') or {}).get('response') == candidate['result'])
+                edge = self.node_receipt_edge(snapshot['number'], index, candidate)
+                if edge is None or edge['context'].get('root') != root:
+                    return None
+                review_edges.append(edge['context'])
+                allowed_comment_ids.update(edge['comment_ids'])
         review_edges = list({digest(edge): edge for edge in review_edges}.values())
         current = proposal_artifact.get('content', {}).get('current', {})
         chain_edges = []
@@ -2783,20 +2848,22 @@ class Workflow:
             candidates = [edge for edge in chain_edges if edge['source'] == cursor and edge not in used
                           and min(edge['comment_ids']) > cursor_id]
             if len(candidates) != 1:
-                return False
+                return None
             edge = candidates[0]; used.append(edge); cursor = edge['target']; cursor_id = max(edge['comment_ids'])
         for edge in used: allowed_comment_ids.update(edge['comment_ids'])
         observation = current.get('observation', {})
         comments = self.adapter.get_issue_comments(snapshot['number'])
         prefix = [comment for comment in comments if comment.get('id', 0) <= observation.get('last_id', -1)]
         later_ids = {comment.get('id') for comment in comments if comment.get('id', 0) > observation.get('last_id', -1)}
-        return (len(review_edges) == 1
+        valid = (len(review_edges) == 1
                 and review_edges[0].get('source_envelope') == current.get('envelope')
                 and review_edges[0].get('source_hash') == current.get('issue_body_hash')
                 and review_edges[0].get('target_envelope') == adoption['source']
                 and cursor == snapshot['envelope'] and len(used) == len(chain_edges)
                 and comment_store.comment_observation(prefix) == observation
                 and later_ids == allowed_comment_ids)
+
+        return {'adoption': adoption, 'suffix': used} if valid else None
 
     def node_graph_proposal(self, snapshot, graph, rationale, *, pending_request=None):
         """Preflight a goal-only graph repair without replacing any evidence."""
@@ -3022,7 +3089,7 @@ class Workflow:
                            'explicit approval; this transaction grants no workspace or publication authority.'),
                 'submission': {'operation': 'graph_adopt', 'proposal': proposal_ref, 'review': review_ref,
                                'approved_by': None,
-                               'request_id': 'graph-adopt-' + proposal['target']['graph'][7:23]}}
+                               'request_id': 'graph-adopt-' + digest({'proposal': proposal_ref, 'review': review_ref})[7:]}}
         else:
             step = {'kind': 'changes_requested', 'assignment': 'root',
                 'goal': snapshot['number'], 'proposal': proposal_ref, 'review': review_ref,
@@ -6174,7 +6241,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                            'Preparation does not mutate the goal or project policy.'),
                 'submission': {'operation': 'graph_review', 'proposal': proposal, 'actor': None,
                                'decision': None, 'report': None,
-                               'request_id': 'graph-review-' + proposal['target']['graph'][7:23]}}]}
+                               'request_id': 'graph-review-' + digest(proposal)[7:]}}]}
     if operation == 'checkpoint_reconcile_prepare' and number is not None:
         if set(payload) != {'operation', 'transaction', 'rationale', 'request_id'}:
             raise ValueError('Checkpoint reconciliation preparation requires exact transaction and rationale')
@@ -6186,7 +6253,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 'action': 'Give this exact stale-checkpoint manifest to an independent reviewer.',
                 'submission': {'operation': 'checkpoint_reconcile_review', 'proposal': proposal,
                                'actor': None, 'decision': None, 'report': None,
-                               'request_id': 'checkpoint-reconcile-review-' + payload['transaction'][7:23]}}]}
+                               'request_id': 'checkpoint-reconcile-review-' + digest(proposal)[7:]}}]}
     administrative = api._workflow_admin.handle(api, repo, project, source, runtime, payload) if operation not in {'capture_propose', 'capture'} else None
     if administrative is not None:
         return administrative
