@@ -17,8 +17,9 @@ Renew the same live owner; expiry permits no takeover. Recover only with
 observed-stop evidence and the exact actor. Owned drafts preserve continuity,
 not acceptance; same-task reacquisition retains verification and review gates.
 Accepted-test defects use the returned interpretation/admission route, bounded
-test ownership and fresh independent review. Existing graphs require reviewed
-graph adoption. Integration cannot mint Results.
+test ownership and fresh independent review. Supported graph maintenance follows
+the deterministic normalization boundary below; arbitrary graph changes require
+reviewed adoption. Integration cannot mint Results.
 
 ### Historical stopped workspace draft
 
@@ -76,10 +77,52 @@ verification and independent review remain required. Exact retries replay the
 original receipt without another write. An unchanged draft still requires its
 exact stopped snapshot and ordinary recovery; it is not offered retirement.
 
-### Historical applicability assessment
+### Deterministic graph maintenance
 
-When an unresolved historical admission blocks its target and the current graph
-has no route that can run before that target, execute returns a `repair` step
+New capture, bootstrap graph attachment and v1 conversion compile supported
+correction routes before the first v2 graph is published. The versioned compiler
+derives route identities from the full review and target selector/output
+identities, including configured review members, before any rejection occurs.
+Frozen structural contract fingerprints determine compiler eligibility.
+
+Execution lazily normalizes only the selected open goal when its graph has a
+supported missing route. The host issues an exact `graph_normalize` transaction
+through the ordinary guarded mutation boundary. It preserves original node and
+task-set prefixes, terminals, Results, history and current approvals, and requires
+zero current Result invalidations. The operational receipt binds the compiler
+version, exact source, policy, current Results, target and delta. It grants no
+workspace, product, CI, integration or completion authority.
+
+Any lease, including an expired unrecovered lease, or an unresolved checkpoint
+defers maintenance to its normal recovery contract. After an interrupted write,
+reconcile or replay the exact returned request. A pending transaction from an
+unsupported compiler or converter version defers with guidance; never rebuild it
+under a new version or change its payload under the same ID. Execution continues
+only after exact committed-state confirmation and a refreshed ordinary frontier.
+An unconfirmed publication cannot expose downstream work.
+
+Preview, historical and artifact reads, node snapshots, closed goals and broad
+portfolio enumeration do not normalize graphs. Broad execution maintains at most
+one actual selected candidate; it does not sweep other goals. V1 conversion is
+also lazy on the encountered execution candidate, or an explicit bounded batch.
+
+Supported unresolved applicability exposes ordinary independent observation,
+root context and root assessment tasks. The read-only `obligation_selections`
+host slot groups unresolved obligations by exact local target node/output as
+`items` and `rationale`, including empty selections. The original `obligations`
+slot retains its meaning. Neither projection classifies or resolves a finding;
+the actual current reviewer, root authority, exact finding revision and corrected
+subjects remain mandatory for an assessment.
+
+Unknown or ambiguous custom routes, unsupported targets and changes that would
+invalidate current Results retain the reviewed adoption path below. Complete
+supported custom routes are preserved; compiler eligibility is not permission
+to infer additional correction targets or bypass capability routing.
+
+### Reviewed custom applicability repair
+
+When an unresolved historical admission blocks its target and deterministic
+normalization cannot supply a supported route, execute returns a `repair` step
 with diagnostic `Finding applicability unresolved`. Its `obligations` carry the
 exact immutable admission, finding and target, and its `submission` contains the
 complete append-only target graph. Save that submission as JSON and run the
@@ -118,14 +161,14 @@ Classification alone never resolves the finding or authorizes implementation.
 Do not use graph adoption for a stale workspace or an unavailable model. A
 workspace invalidation requires normal stopped-owner/workspace recovery. A model
 or reasoning-effort blocker requires an available policy-allowed capability.
-Installation validation confirms package integrity; it does not repair a goal
-whose reviewed graph lacks the required route.
+Installation validation confirms package integrity; it does not replace a
+required custom graph review or provide an unavailable capability.
 
-Use this flow when a goal has a missing graph route or capability.
+Use this reviewed flow only for the custom graph repair returned by the host.
 
 A current independent review with `decision: changes_requested` must have a
 typed correction route before downstream work can proceed. If an older graph
-lacks that route, execute returns `Rejected review lacks correction route` and a
+lacks a supported compilable route, execute returns `Rejected review lacks correction route` and a
 concrete append-only `graph_prepare` submission. The proposed graph adds root
 interpretation and admission, reacquires only the exact rejected producer after
 an applicable admission, requires a fresh independent review, retains every
