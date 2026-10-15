@@ -6179,11 +6179,16 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         original_issue = base['get_issue']
         original_comments = base['get_issue_comments']
         read_cache = {'issues': {}, 'comments': {}}
+        normalization_write_depth = 0
         def cached_issue(target):
+            if normalization_write_depth:
+                return original_issue(target)
             if target not in read_cache['issues']:
                 read_cache['issues'][target] = original_issue(target)
             return copy.deepcopy(read_cache['issues'][target])
         def cached_comments(target):
+            if normalization_write_depth:
+                return original_comments(target)
             if target not in read_cache['comments']:
                 read_cache['comments'][target] = original_comments(target)
             return copy.deepcopy(read_cache['comments'][target])
@@ -6250,10 +6255,20 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         for method_name in ('create_issue_comment', 'update_issue'):
             original = base[method_name]
             def guarded(*args, _original=original, **kwargs):
+                nonlocal normalization_write_depth
                 target = args[0] if args else kwargs.get('number')
                 engine.clear_publication_projection()
                 try:
                     fresh_mutation_boundary(target)
+                    # The transactional adapter observes its prior state and
+                    # confirms its write inside this call. Normalization needs
+                    # fresh reads for that whole interval, not only after it.
+                    if operation == 'graph_normalize':
+                        normalization_write_depth += 1
+                        try:
+                            return _original(*args, **kwargs)
+                        finally:
+                            normalization_write_depth -= 1
                     return _original(*args, **kwargs)
                 finally:
                     engine.clear_publication_projection()

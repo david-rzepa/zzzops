@@ -768,6 +768,214 @@ class CompiledConfiguredMemberApplicabilityTests(member.RepeatedConfiguredMember
         self.assertEqual(1, self.read_blob(first)["content"]["revision"])
         self.assertEqual(2, self.read_blob(second)["content"]["revision"])
 
+_REAL_TRANSPORT_ADAPTER = dag.z.GitHubGoalTransitionAdapter
+
+
+class GraphNormalizationTransportTests(dag.DagFixture):
+    """Exercise actual transactional adapter/journal beneath public guards."""
+    payload_state = GraphNormalizationPublicTests.payload_state
+    normalization_receipts = GraphNormalizationPublicTests.normalization_receipts
+    pending_normalization_requests = GraphNormalizationPublicTests.pending_normalization_requests
+
+    def setUp(self):
+        super().setUp()
+        graph = copy.deepcopy(self.graph)
+        next(node for node in graph['nodes'] if node['id'] == 'review_a')['outputs'] = {
+            'value': dag.output('review_decision', {'kind': 'object', 'fields': {
+                'decision': {'kind': 'enum', 'values': ['approved', 'changes_requested']},
+                'report': {'kind': 'string'}}})}
+        self.install(graph)
+        import types
+        provider = self.provider
+        provider.repo = self.fixture.repo; provider.repository = 'owner/repo'
+        self.raw_append = provider.create_issue_comment
+        self.raw_update = provider.update_issue
+        self.reads = {'issue': 0, 'comments': 0}
+        self.writes = []
+        original_issue, original_comments = provider.get_issue, provider.get_issue_comments
+        def issue(number):
+            self.reads['issue'] += 1
+            return original_issue(number)
+        def comments(number):
+            self.reads['comments'] += 1
+            return original_comments(number)
+        provider.get_issue, provider.get_issue_comments = issue, comments
+        self.base_reads = (issue, comments)
+        def append(number, body):
+            self.writes.append('comment')
+            result = self.raw_append(number, body)
+            self.assertIn(result, provider.get_issue_comments(number))
+            return result
+        def update(number, payload):
+            self.writes.append('body')
+            result = self.raw_update(number, payload)
+            self.assertEqual(payload['body'], provider.get_issue(number)['body'])
+            return result
+        provider._create_issue_comment, provider._update_issue = append, update
+        for name in ('create_issue_comment', 'update_issue', '_transactional_write', '_issue_postcondition'):
+            setattr(provider, name, types.MethodType(getattr(_REAL_TRANSPORT_ADAPTER, name), provider))
+        self.base_writes = (provider.create_issue_comment, provider.update_issue)
+
+    def assert_restored(self):
+        self.assertEqual(self.base_reads, (self.provider.get_issue, self.provider.get_issue_comments))
+        self.assertEqual(self.base_writes, (self.provider.create_issue_comment, self.provider.update_issue))
+        self.assertIsNone(dag.z._WORKING_INPUT_TRANSACTION.get())
+
+    def test_first_automatic_transport_confirms_both_writes_and_restores_read_cache(self):
+        workflow = dag.z._workflow.Workflow
+        persist = workflow.node_persist
+        observed = []
+        def check_cache(engine, *args, **kwargs):
+            for method, key in (('get_issue', 'issue'), ('get_issue_comments', 'comments')):
+                getattr(engine.adapter, method)(100)
+                count = self.reads[key]
+                getattr(engine.adapter, method)(100)
+                self.assertEqual(count, self.reads[key], 'read caching outside write interval changed')
+            result = persist(engine, *args, **kwargs)
+            observed.append(True)
+            return result
+        with mock.patch.object(workflow, 'node_persist', check_cache):
+            first = self.session.checkpoint(100)
+        self.assertTrue(observed)
+        self.assertIn('execute', [row['kind'] for row in first])
+        self.assertEqual(['comment', 'body'], self.writes)
+        self.assertEqual(1, len(self.normalization_receipts()))
+        self.assert_restored()
+        stable = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.checkpoint(100)
+        self.session.call(100, self.normalization_receipts()[0]['content']['request'])
+        self.assertEqual(stable, (self.provider.issues, self.provider.comments))
+        self.assert_restored()
+
+    def test_real_transport_false_body_ack_preserves_uncertain_journal(self):
+        before_body = self.provider.issues[100]['body']
+        def false_ack(number, payload):
+            return {**copy.deepcopy(self.provider.issues[number]), **payload}
+        with mock.patch.object(self.provider, '_update_issue', false_ack):
+            response = self.session.checkpoint(100)
+        self.assertNotIn('execute', [row['kind'] for row in response])
+        self.assertEqual(before_body, self.provider.issues[100]['body'])
+        self.assertEqual([], self.normalization_receipts())
+        self.assert_restored()
+        store = dag.z._working_inputs.WorkingInputStore(
+            self.fixture.repo, repository='owner/repo', owner=self.session.runtime['root_id'])
+        requests = store._load()['requests']
+        uncertain = [row for row in requests.values() if row['state'] == 'uncertain']
+        self.assertEqual(1, len(uncertain))
+        self.assertEqual('update_issue', uncertain[0]['action']['operation'])
+        # The exact local journal must be reconciled against truthful absence;
+        # retry is not permission to erase or rewrite an uncertain transaction.
+        store.provider_check = lambda _request, _digest: False
+        store.reconcile(uncertain[0]['request_id'])
+        request = self.pending_normalization_requests(self.provider.comments[100])[0]
+        self.session.call(100, request)
+        self.assertEqual(1, len(self.normalization_receipts()))
+        self.assert_restored()
+
+    def test_real_transport_before_append_failure_remains_uncertain_and_restores(self):
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        with mock.patch.object(self.provider, '_create_issue_comment', side_effect=OSError('append unavailable')):
+            response = self.session.checkpoint(100)
+        self.assertNotIn('execute', [row['kind'] for row in response])
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.assertEqual([], self.normalization_receipts())
+        self.assert_restored()
+
+    def test_real_transport_before_body_failure_does_not_confirm_or_advance(self):
+        before_body = self.provider.issues[100]['body']
+        with mock.patch.object(self.provider, '_update_issue', side_effect=OSError('body unavailable')):
+            response = self.session.checkpoint(100)
+        self.assertNotIn('execute', [row['kind'] for row in response])
+        self.assertEqual(before_body, self.provider.issues[100]['body'])
+        self.assertEqual([], self.normalization_receipts())
+        self.assert_restored()
+        store = dag.z._working_inputs.WorkingInputStore(
+            self.fixture.repo, repository='owner/repo', owner=self.session.runtime['root_id'])
+        uncertain = [row for row in store._load()['requests'].values() if row['state'] == 'uncertain']
+        self.assertEqual(1, len(uncertain))
+        self.assertEqual('update_issue', uncertain[0]['action']['operation'])
+        store.provider_check = lambda _request, _digest: False
+        store.reconcile(uncertain[0]['request_id'])
+        request = self.pending_normalization_requests(self.provider.comments[100])[0]
+        self.session.call(100, request)
+        self.assertEqual(1, len(self.normalization_receipts()))
+        self.assert_restored()
+
+    def test_real_transport_lost_append_response_replays_without_duplicate(self):
+        append = self.provider._create_issue_comment
+        def lost(number, body):
+            append(number, body)
+            raise OSError('append response lost after durability')
+        with mock.patch.object(self.provider, '_create_issue_comment', lost):
+            self.session.checkpoint(100)
+        self.assert_restored()
+        self.session.checkpoint(100)
+        self.assertEqual(1, len(self.normalization_receipts()))
+        self.assertEqual(1, self.writes.count('comment'))
+        stable = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.checkpoint(100)
+        self.assertEqual(stable, (self.provider.issues, self.provider.comments))
+        self.assert_restored()
+
+    def test_real_transport_lost_body_response_replays_committed_receipt(self):
+        update = self.provider._update_issue
+        def lost(number, payload):
+            update(number, payload)
+            raise OSError('body response lost after durability')
+        with mock.patch.object(self.provider, '_update_issue', lost):
+            self.session.checkpoint(100)
+        self.assertEqual(1, len(self.normalization_receipts()))
+        self.assert_restored()
+        stable = copy.deepcopy((self.provider.issues, self.provider.comments))
+        request = self.normalization_receipts()[0]['content']['request']
+        self.session.call(100, request)
+        self.session.call(100, {**request, 'target_hash': 'sha256:' + 'f' * 64}, expected=2)
+        self.assertEqual(stable, (self.provider.issues, self.provider.comments))
+        self.assert_restored()
+
+    def test_normalization_transport_still_enforces_policy_and_storage_fences(self):
+        workflow = dag.z._workflow.Workflow
+        normalize = workflow.node_graph_normalize
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        def expired(engine, *args):
+            engine._storage_reservation['expires_at'] = 0
+            return normalize(engine, *args)
+        with mock.patch.object(workflow, 'node_graph_normalize', expired):
+            response = self.session.checkpoint(100)
+        self.assertRegex(json.dumps(response), '(?i)ownership|reservation')
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.assertEqual([], self.writes)
+        self.assert_restored()
+        def changed_policy(engine, *args):
+            self.session.project['charter'] = 'Changed during normalization'
+            return normalize(engine, *args)
+        with mock.patch.object(workflow, 'node_graph_normalize', changed_policy):
+            response = self.session.checkpoint(100)
+        self.assertRegex(json.dumps(response), '(?i)policy|context')
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.assertEqual([], self.writes)
+        self.assert_restored()
+
+    def test_real_transport_postcondition_read_failure_stays_uncertain(self):
+        append = self.provider._create_issue_comment
+        fail_reads = {'active': False}
+        real_read = self.provider.get_issue_comments
+        def read(number):
+            if fail_reads['active']:
+                raise OSError('postcondition history unavailable')
+            return real_read(number)
+        def appended(number, body):
+            result = append(number, body)
+            fail_reads['active'] = True
+            return result
+        with mock.patch.object(self.provider, 'get_issue_comments', read), \
+                mock.patch.object(self.provider, '_create_issue_comment', appended):
+            response = self.session.checkpoint(100)
+        fail_reads['active'] = False
+        self.assertNotIn('execute', [row['kind'] for row in response])
+        self.assertEqual([], self.normalization_receipts())
+        self.assert_restored()
+
 
 if __name__ == "__main__":
     unittest.main()
