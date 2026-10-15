@@ -439,9 +439,10 @@ def _route_family(graph, review, review_output, scope, key):
     mapping[added['task_sets'][0]['id']] = _name('findings', key)
     mapping[added['task_sets'][0]['template']['id']] = _name('resolve', key)
     added = _rename(added, mapping)
+    metadata = _graph_metadata(graph)
     expansion = _expansion_for(graph, review['id'])
     if expansion is None:
-        return added
+        return _preserve_metadata(added, metadata)
     # Static target, configured member reviewers: member interpretation/admission,
     # static all-approved join retention, then retained-finding resolver expansion.
     interpreter, admission, retention = added['nodes']
@@ -477,7 +478,7 @@ def _route_family(graph, review, review_output, scope, key):
         {'id': interpretation_set, 'source': copy.deepcopy(expansion['source']), 'template': interpreter},
         {'id': admission_set, 'source': copy.deepcopy(expansion['source']), 'template': admission},
         *added['task_sets']]
-    return added
+    return _preserve_metadata(added, metadata)
 
 
 def _applicability_family(graph, scope, version):
@@ -485,6 +486,9 @@ def _applicability_family(graph, scope, version):
     output = scope['output']
     # Contract-derived identities stay constant across findings, revisions and Results.
     key = [version, 'applicability', scope, target['outputs'][output]]
+    metadata = _graph_metadata(graph)
+    if metadata:
+        key.append(metadata)
     names = {role: _name(role, key) for role in ('observation', 'context', 'assessment')}
     sets = {role: _name(role + '_members', key) for role in names}
     target_shape = {'kind': 'object', 'fields': {
@@ -531,7 +535,7 @@ def _applicability_family(graph, scope, version):
         if role == 'assessment':
             node['permits'] = [{'type': 'applicability_assessment', 'scope': copy.deepcopy(scope)}]
         rows.append({'id': sets[role], 'source': copy.deepcopy(source), 'template': node})
-    return {'nodes': [], 'task_sets': rows}
+    return _preserve_metadata({'nodes': [], 'task_sets': rows}, metadata)
 
 
 def applicability_family_covers(graph, target_name, target_output, local_goal=None,
@@ -579,8 +583,102 @@ def _admission_signature(graph, node):
                    if expansion else None})
 
 
+# Versioned restrictive metadata grammar emitted by the lossless converter.
+# These literals never derive trust from the installed template or user policy.
+_METADATA_TIERS = ('bounded', 'reasoning', 'architectural')
+_METADATA_RISKS = frozenset(('authentication', 'authorization', 'payments', 'secrets',
+    'destructive_data_migrations', 'security_sensitive', 'throwaway_prototypes', 'architecture'))
+_METADATA_PREFIX = '\nPreserved engineering requirement: effective rigor '
+_METADATA_END = '. Apply the reviewed engineering-rigor policy to this work.'
+
+
+def _mapped_metadata(node):
+    prompt = node.get('prompt', '')
+    if prompt.count(_METADATA_PREFIX) != 1 or not prompt.endswith(_METADATA_END):
+        return None
+    original, suffix = prompt.split(_METADATA_PREFIX)
+    fields = suffix[:-len(_METADATA_END)].split('; risks ')
+    if len(fields) != 2 or fields[0] not in ('vibe', 'structured', 'agentic'):
+        return None
+    risks = fields[1].split(', ') if fields[1] else []
+    if len(risks) != len(set(risks)) or any(risk not in _METADATA_RISKS for risk in risks):
+        return None
+    tier = node.get('executor', {}).get('capability')
+    if tier not in _METADATA_TIERS:
+        return None
+    return {'prompt': original, 'suffix': _METADATA_PREFIX + suffix, 'tier': tier}
+
+
+def _trusted_admission(graph, node):
+    if _admission_signature(graph, node) in LEGACY_ADMISSIONS:
+        return True
+    metadata = _mapped_metadata(node)
+    if metadata is None:
+        return False
+    recovered = copy.deepcopy(node)
+    recovered['prompt'] = metadata['prompt']
+    for predecessor in _METADATA_TIERS[:_METADATA_TIERS.index(metadata['tier']) + 1]:
+        recovered['executor']['capability'] = predecessor
+        if _admission_signature(graph, recovered) in LEGACY_ADMISSIONS:
+            return True
+    return False
+
+
+def _graph_metadata(graph):
+    definitions = _definitions(graph)
+    sources = set()
+    def subject(selector):
+        if selector.get('goal') != '#this':
+            return
+        if selector.get('kind') == 'node':
+            sources.add(selector.get('node'))
+        elif selector.get('kind') == 'member':
+            expansion = next((row for row in graph['task_sets']
+                              if row['id'] == selector.get('expansion')), None)
+            if expansion:
+                sources.add(expansion['template']['id'])
+    for node in definitions:
+        rejectable = any(output.get('type') == 'review_decision' and 'changes_requested' in
+            output.get('schema', {}).get('fields', {}).get('decision', {}).get('values', [])
+            for output in node['outputs'].values())
+        if rejectable:
+            sources.add(node['id'])
+            for binding in node['inputs'].values():
+                selector = binding.get('producer', {}).get('node', {})
+                if (selector in node['independent_of'] and binding.get('mode') == 'identity'
+                        and binding.get('path') == []):
+                    subject(selector)
+        for permit in node['permits']:
+            if permit['type'] == 'admission':
+                subject(permit['scope']['subject'])
+        if _trusted_admission(graph, node):
+            sources.add(node['id'])
+    # Source reviews and correction subjects are invariant under compilation:
+    # helpers produce no review_decision and introduce no new correction target.
+    # Frozen legacy admissions also retain the converter's unknown-phase floor.
+    # A generated helper's per-role minimum must never become a source floor.
+    rows = [_mapped_metadata(node) for node in definitions if node['id'] in sources]
+    rows = [row for row in rows if row is not None]
+    if not rows:
+        return None
+    suffixes = {row['suffix'] for row in rows}
+    if len(suffixes) != 1:
+        _fail('inconsistent_mapped_engineering_requirements')
+    return {'suffix': rows[0]['suffix'],
+            'tier': max((row['tier'] for row in rows), key=_METADATA_TIERS.index)}
+
+
+def _preserve_metadata(family, metadata):
+    if metadata:
+        for node in _definitions(family):
+            node['prompt'] += metadata['suffix']
+            node['executor']['capability'] = max(
+                (node['executor']['capability'], metadata['tier']), key=_METADATA_TIERS.index)
+    return family
+
+
 def _admission_adapter(graph, node, version):
-    if _admission_signature(graph, node) not in LEGACY_ADMISSIONS:
+    if not _trusted_admission(graph, node):
         _fail('unsupported_partial_correction_route', admission=node['id'])
     expansion = _expansion_for(graph, node['id'])
     key = [version, 'nullable_atomic_admission', _admission_signature(graph, node)]
@@ -599,10 +697,22 @@ def admission_shadowed(graph, node_name, local_goal=None, compiler_version=SUPPO
     """Runtime may shadow a legacy admission only with its exact v1 counterpart."""
     graph = _localize(graph, local_goal)
     node = next((row for row in _definitions(graph) if row['id'] == node_name), None)
-    if node is None or _admission_signature(graph, node) not in LEGACY_ADMISSIONS:
+    if node is None or not _trusted_admission(graph, node):
         return False
     family = _admission_adapter(graph, node, compiler_version)
-    return all(row in graph[kind] for kind in ('nodes', 'task_sets') for row in family[kind])
+    if all(row in graph[kind] for kind in ('nodes', 'task_sets') for row in family[kind]):
+        return True
+    # Historical reviewed recovery used this literal member identity. Trust is
+    # still the frozen predecessor fingerprint plus the complete exact upgrade,
+    # including its source, predicates, authority and nullable transfer contract.
+    expansion = _expansion_for(graph, node_name)
+    if expansion is None:
+        return False
+    historical = copy.deepcopy(expansion)
+    historical['id'] += '_atomic_transfer'
+    historical['template']['id'] += '_atomic_transfer'
+    _upgrade_admission(historical['template'])
+    return historical in graph['task_sets']
 
 
 def _append_family(graph, family):

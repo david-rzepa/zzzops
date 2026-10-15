@@ -2,16 +2,47 @@
 from __future__ import annotations
 
 import copy
-import base64
 import json
-import re
 import sys
 import unittest
-import zlib
 from unittest import mock
 
 import test_evidence_dag_journeys as dag
 import test_understanding_rejection as member
+
+
+def unsupported_member_retirement_graph():
+    """Historical member-debt graph whose missing unresolved route is unsupported."""
+    graph = dag.selected_graph()
+    member_selector = {"kind": "member", "goal": 100, "expansion": "buckets",
+                       "item": "a", "generation": "current"}
+    target = {"subject": member_selector, "output": "value"}
+    finding_type = copy.deepcopy(dag.FINDING_TYPE)
+    exact_member = {**member_selector, "generation": 1}
+    finding_type["fields"]["target"] = dag.shape({"subject": exact_member, "output": "value"})
+    finder = dag.task("member_finding")
+    finder["requires"] = [member_selector]
+    finder["outputs"] = {"finding": dag.output("finding", finding_type)}
+    finder["permits"] = [{"type": "finding", "scope": target}]
+    admit = dag.task("member_admit", ["member_finding"], role="root")
+    admit["outputs"] = {"admission": dag.output("admission", dag.ADMISSION_TYPE)}
+    admit["permits"] = [{"type": "admission", "scope": target}]
+    resolver = dag.task("member_resolve")
+    resolver["requires"] = [member_selector]
+    resolver["resolves"] = [target]
+    resolver["independent_of"] = [member_selector]
+    resolver["outputs"] = {"resolution": dag.output("resolution", dag.RESOLUTION_TYPE)}
+    resolver["permits"] = [{"type": "resolution", "scope": target}]
+    graph["nodes"][1]["gates"] = [{"subject": {"kind": "join", "goal": 100,
+                                                    "expansion": "buckets"}, "output": "value"}]
+    retirement = dag.task("retire_member", role="root")
+    retirement["outputs"] = {"retirement": dag.output("retirement", dag.shape({
+        "finding": dag.REF, "target": {"subject": exact_member, "output": "value"},
+        "authority": dag.REF, "decision": "retire_member",
+        "rationale": "Retain outstanding debt"}))}
+    retirement["permits"] = [{"type": "retirement", "scope": target}]
+    graph["nodes"] += [finder, admit, resolver, retirement]
+    return graph
 
 
 def compiled_family(case, target):
@@ -34,10 +65,16 @@ def prepare_compiled_assessment(case, target, finding_id, admission, finding, cl
         work = case.session.acquire(row["template"]["id"], item=finding_id, actor=actor)
         case.session.finish(work, {next(iter(row["template"]["outputs"])): text})
     work = case.session.acquire(assessment["template"]["id"], item=finding_id, actor="root-thread")
-    value = {"admission": admission, "finding": finding, "subjects": [case.produced(target)],
+    subject = next(binding["source"] for binding in work["input_envelope"]["inputs"]
+                   if binding["name"] == "subject" and binding["mode"] == "identity"
+                   and binding["path"] == [])
+    case.assertEqual(subject, next(binding["source"] for binding in work["lease"]["acquisition"]["inputs"]
+                                   if binding["name"] == "subject"))
+    value = {"admission": admission, "finding": finding, "subjects": [subject],
         "reviewer_result": case.result(observation["template"]["id"], item=finding_id)[0],
         "authority": case.result(context["template"]["id"], item=finding_id)[0],
         "applicability": classification, "rationale": "Exact revision independently inspected"}
+    case.assertEqual([subject], value["subjects"])
     return work, next(iter(assessment["template"]["outputs"])), value
 
 
@@ -149,6 +186,29 @@ class GraphNormalizationPublicTests(dag.DagFixture):
         request = copy.deepcopy(receipt["content"]["request"])
         self.assertEqual("graph_normalize", request["operation"])
         return request
+
+    def pending_normalization_requests(self, comments):
+        values = []
+        for comment in comments:
+            envelope = dag.z._comment_store.decode_envelope(comment["body"])
+            for record in (envelope or {}).get("artifacts", []):
+                if record.get("type") == "json" and isinstance(record.get("text"), str):
+                    values.append(json.loads(record["text"]))
+                elif "content" in record:
+                    values.append(record["content"])
+        requests = []
+        def visit(value):
+            if isinstance(value, dict):
+                if value.get("operation") == "graph_normalize" and value.get("request_id"):
+                    requests.append(copy.deepcopy(value))
+                for child in value.values():
+                    visit(child)
+            elif isinstance(value, list):
+                for child in value:
+                    visit(child)
+        for value in values:
+            visit(value)
+        return requests
 
     def test_selected_incomplete_goal_normalizes_once_and_preserves_exact_history(self):
         self.arrange_historical_incomplete(settle_result=True)
@@ -290,13 +350,18 @@ class GraphNormalizationPublicTests(dag.DagFixture):
     def test_unresolved_pending_checkpoint_defers_normalization(self):
         compiler = getattr(dag.z, "_graph_compiler", None)
         self.assertIsNotNone(compiler, "graph compiler service is not registered")
-        self.install(compiler.compile_graph(self.graph, local_goal=100)["graph"])
+        incomplete = copy.deepcopy(self.graph)
+        compiled = compiler.compile_graph(incomplete, local_goal=100)["graph"]
+        self.assertNotEqual(dag.content_hash(incomplete), dag.content_hash(compiled))
+        with self.assertRaisesRegex(Exception, r"(?i)recover|incomplete|addition"):
+            compiler.validate_recovery(incomplete, local_goal=100)
+        self.install(compiled)
         step = next(item for item in self.session.ready() if item["node"]["node"] == "produce")
         receipt = json.loads(dag.Path(step["policy"]["path"]).read_text())["policy_receipt"]
         request = {**step["start"], "policy_receipt": receipt, "request_id": "pending-before-body"}
         with mock.patch.object(self.provider, "update_issue", side_effect=RuntimeError("provider unavailable")):
             self.session.call(100, request, expected=2)
-        self.replace_with_incomplete_graph()
+        self.rewrite_payload(lambda payload: payload.update(graph=self.blob(incomplete)))
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
         response = self.session.checkpoint(100)
         self.assertRegex(json.dumps(response), r"(?i)pending|reconcil|checkpoint|uncertain")
@@ -368,6 +433,49 @@ class GraphNormalizationPublicTests(dag.DagFixture):
         self.session.checkpoint(100)
         self.assertEqual(stable, (self.provider.issues, self.provider.comments))
 
+    def test_direct_pending_retry_requires_fresh_durable_provider_confirmation(self):
+        baseline = len(self.normalization_receipts())
+        before_payload = copy.deepcopy(self.payload()[1])
+        before_comments = len(self.provider.comments[100])
+        append = self.provider.create_issue_comment
+        calls = {"count": 0}
+        def interrupt(*args, **kwargs):
+            value = append(*args, **kwargs)
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise OSError("pending normalization artifact response lost")
+            return value
+        with mock.patch.object(self.provider, "create_issue_comment", side_effect=interrupt):
+            self.session.checkpoint(100)
+        requests = self.pending_normalization_requests(
+            self.provider.comments[100][before_comments:])
+        self.assertEqual(1, len(requests), "host must publish one exact pending normalization request")
+        request = requests[0]
+        pending_state = copy.deepcopy((self.provider.issues, self.provider.comments))
+        durable_issue = copy.deepcopy(self.provider.issues[100])
+        def acknowledge_without_durability(number, payload):
+            acknowledged = copy.deepcopy(self.provider.issues[number])
+            acknowledged.update(copy.deepcopy(payload))
+            return acknowledged
+        with mock.patch.object(self.provider, "update_issue", side_effect=acknowledge_without_durability):
+            unconfirmed = self.session.call(100, request, expected=2)
+        self.assertNotRegex(json.dumps(unconfirmed), r'(?i)"kind"\s*:\s*"execute"|"kind"\s*:\s*"complete"|normalization.applied')
+        self.assertEqual(durable_issue, self.provider.issues[100])
+        self.assertEqual(pending_state, (self.provider.issues, self.provider.comments))
+        pending_payload = self.payload()[1]
+        self.assertEqual(before_payload["evidence"], pending_payload["evidence"])
+        self.assertEqual(before_payload["operational"]["leases"],
+                         pending_payload["operational"]["leases"])
+        self.assertEqual(baseline, len(self.normalization_receipts()))
+
+        self.session.call(100, request)
+        receipts = self.normalization_receipts()
+        self.assertEqual(baseline + 1, len(receipts))
+        self.assertEqual(request["target_hash"], receipts[-1]["content"]["target_hash"])
+        stable = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, request)
+        self.assertEqual(stable, (self.provider.issues, self.provider.comments))
+
     def test_interruption_after_artifact_publication_retries_exactly_once(self):
         baseline = len(self.normalization_receipts())
         before_evidence = copy.deepcopy(self.payload()[1]["evidence"])
@@ -424,12 +532,17 @@ class GraphNormalizationPublicTests(dag.DagFixture):
                       "dispatcher must pass the installed compiler version explicitly")
         published = self.provider.comments[100][before_comments:]
         self.assertTrue(published, "interruption must leave a readable pending artifact")
+        envelopes = [dag.z._comment_store.decode_envelope(comment["body"])
+                     for comment in published]
         artifacts = []
-        for comment in published:
-            match = re.search(r"```text\n([^\n]+)\n```", comment["body"])
-            if match:
-                artifacts.append(json.loads(zlib.decompress(
-                    base64.b64decode(match.group(1))).decode())["content"])
+        for envelope in envelopes:
+            for record in (envelope or {}).get("artifacts", []):
+                if not isinstance(record, dict):
+                    continue
+                if "content" in record:
+                    artifacts.append(record["content"])
+                elif record.get("type") == "json" and isinstance(record.get("text"), str):
+                    artifacts.append(json.loads(record["text"]))
         def mappings(value):
             if isinstance(value, dict):
                 yield value
@@ -573,6 +686,39 @@ class GraphNormalizationPublicTests(dag.DagFixture):
                 self.assertRegex(json.dumps(response), r"(?i)foreign|selection|target|path|contract|malform")
                 self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
+    def test_unsupported_historical_member_graph_retains_frontier_without_normalizing(self):
+        graph = unsupported_member_retirement_graph()
+        self.install(graph)
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.checkpoint(100)
+        encoded = json.dumps(response)
+        self.assertRegex(encoded, r'(?i)unsupported|recover|route|graph.prepare|repair')
+        self.assertRegex(encoded, r'(?i)select')
+        self.assertEqual(graph, self.payload_state()[2])
+        self.assertEqual([], self.normalization_receipts())
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.choose({"a": "inspect"})
+        self.session.finish(self.session.acquire("investigate", item="a"), {"value": "initial"})
+        subject = self.produced("investigate", item="a")
+        exact_member = {"kind": "member", "goal": 100, "expansion": "buckets",
+                        "item": "a", "generation": 1}
+        finding = {"id": "member_flaw", "revision": 1, "source": subject,
+            "subjects": [subject], "target": {"subject": exact_member, "output": "value"},
+            "request": "Repair missing evidence", "rationale": "Inspection found a gap",
+            "supersedes": None}
+        self.session.finish(self.session.acquire("member_finding"), {"finding": finding})
+        admission = {"finding": self.produced("member_finding", "finding"),
+            "target_inputs": self.result("investigate", "a")[1]["inputs"],
+            "authority": self.result("select")[0], "applicability": "unresolved",
+            "rationale": "Current configured member scope requires classification"}
+        work = self.session.acquire("member_admit")
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        blocked = self.session.call(100, self.session.submission(
+            work, {"admission": admission}, "unresolved-unsupported-member"), expected=2)
+        self.assertRegex(json.dumps(blocked), r'(?i)unresolved|represent|recover|route|graph.prepare|repair')
+        self.assertEqual([], self.normalization_receipts())
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
 
 class CompiledConfiguredMemberApplicabilityTests(member.RepeatedConfiguredMemberCorrectionTests):
     def setUp(self):
@@ -604,8 +750,11 @@ class CompiledConfiguredMemberApplicabilityTests(member.RepeatedConfiguredMember
             {"value": revised, "transfer": {"prior": first, "replacement": second,
              "coverage": "carried", "coverage_evidence": authority, "authority": authority}})
         self.assertEqual(family_ids, [row["id"] for row in compiled_family(self, "spec")])
+        historical_subject = self.produced("spec")
         work2, slot2, fresh = prepare_compiled_assessment(self, "spec", identity,
             self.produced("admit_spec_review_correction", item="data_residency"), second, "not_applicable")
+        self.assertNotEqual([historical_subject], fresh["subjects"],
+                            "same-ID revision must not reuse historical enumeration")
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
         self.session.call(100, self.session.submission(work2, {slot2: old}, "reject-old-revision"), expected=2)
         self.assertEqual(before, (self.provider.issues, self.provider.comments))

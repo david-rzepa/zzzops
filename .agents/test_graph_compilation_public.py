@@ -9,6 +9,7 @@ from unittest import mock
 
 import test_evidence_dag_journeys as dag
 import test_graph_compiler as compiler_cases
+import test_graph_normalization_public as normalization_cases
 
 
 class GraphCompilationPublicTests(dag.DagFixture):
@@ -38,6 +39,9 @@ class GraphCompilationPublicTests(dag.DagFixture):
         }
 
     def test_public_capture_persists_complete_deterministic_first_graph(self):
+        reviewed = compiler_cases.default_graph()
+        dag.z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = reviewed
         request = self.capture_request()
         def create_issue(payload):
             number = max(self.provider.issues) + 1
@@ -71,7 +75,6 @@ class GraphCompilationPublicTests(dag.DagFixture):
         first_payload = self.session.read(created, first_v2["payload"])
         first_graph = self.session.read(created, first_payload["graph"])
         self.assert_complete(first_graph, local_goal=created)
-        reviewed = dag.z._workflow_section(self.session.project, "workflow_adherence")["configuration"]["phase_dag"]
         expected = self.compiler().compile_graph(reviewed, local_goal=created)["graph"]
         self.assertEqual(expected, first_graph)
         self.assertEqual(expected, actual)
@@ -101,6 +104,43 @@ class GraphCompilationPublicTests(dag.DagFixture):
         self.assertEqual(before_evidence, self.payload()[1]["evidence"])
         self.assertEqual(actual, self.compiler().compile_graph(reviewed_graph, local_goal=100)["graph"])
 
+    def test_policy_approval_never_replaces_existing_goal_with_settled_results(self):
+        self.produce()
+        before_issue = copy.deepcopy(self.provider.issues[100])
+        before_comments = copy.deepcopy(self.provider.comments[100])
+        before_envelope, before_payload = self.payload()
+        before_graph = self.read_blob(before_payload["graph"])
+        self.assertTrue(before_payload["evidence"], "fixture must contain a real settled Result")
+
+        plan = json.loads((Path(__file__).parents[1] /
+            "plugins/zzzops/zzzops/templates/project-goals/INIT_PLAN.json").read_text())
+        plan["base_digest"] = dag.z.initialization_base_digest(self.fixture.repo)
+        plan["repository"] = {"identity": "owner/repo", "remote": "local"}
+        plan["github"] = {"usable": True}
+        backend = dag.z._workflow_section(plan, "backend")
+        backend["instructions"] = "Store canonical goals in GitHub Issues."
+        backend["configuration"]["authority"] = "github_issues"
+        backend["configuration"]["repository_identity"] = "owner/repo"
+        backend["default_disposition"] = "changed"
+        proposed = self.session.call(100, {"operation": "policy_propose", "plan": plan},
+                                     intent="inspect")
+        step = proposed["next_steps"][0]
+        approved = self.session.call(100, {"operation": "policy_approve",
+            "proposal_hash": step["hash"], "approved_by": "approved-user"},
+            intent="inspect", expected=None)
+
+        after_envelope, after_payload = self.payload()
+        self.assertEqual(before_envelope, after_envelope)
+        self.assertEqual(before_graph, self.read_blob(after_payload["graph"]))
+        self.assertEqual(before_payload["evidence"], after_payload["evidence"])
+        self.assertEqual(before_payload["operational"]["receipts"],
+                         after_payload["operational"]["receipts"])
+        self.assertEqual(before_issue, self.provider.issues[100])
+        self.assertEqual(before_comments, self.provider.comments[100])
+        if any(step.get("kind") in {"blocker", "repair"}
+               for step in approved.get("next_steps", [])):
+            self.assertRegex(json.dumps(approved), r"(?i)graph|adopt|settled|result|existing|defer")
+
     def test_unsupported_first_graph_fails_before_provider_write(self):
         source = compiler_cases.default_graph()
         review = next(n for n in source["nodes"] if n["id"] == "review_decomposition")
@@ -121,6 +161,21 @@ class GraphCompilationPublicTests(dag.DagFixture):
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
         response = self.session.call(100, submission, expected=2)
         self.assertRegex(json.dumps(response), r"(?i)ambig|route|recover|contract|target")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_new_capture_of_unsupported_member_graph_fails_before_provider_write(self):
+        graph = normalization_cases.unsupported_member_retirement_graph()
+        dag.z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = graph
+        request = self.capture_request()
+        self.provider.create_issue = lambda _payload: self.fail(
+            "unsupported member graph reached provider issue creation")
+        proposal = self.session.call(100, {"operation": "capture_propose", "request": request})
+        submission = copy.deepcopy(proposal["next_steps"][0]["submission"])
+        submission["approved_by"] = "approved-user"
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, submission, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)unsupported|recover|route|contract|target")
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
 

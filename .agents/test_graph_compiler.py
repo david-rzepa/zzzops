@@ -248,6 +248,85 @@ class GraphCompilerTests(unittest.TestCase):
             self.assertTrue(failed["diagnostics"], (field, value))
             self.assertEqual(changed, failed["graph"])
 
+    def test_legacy_member_shadow_requires_exact_reviewed_atomic_counterpart(self):
+        graph = shipped_graph()
+        legacy = next(row for row in graph['task_sets']
+                      if row['template']['id'] == 'admit_spec_review_correction')
+        legacy['template']['outputs'].pop('transfer')
+        legacy['template']['permits'] = [permit for permit in legacy['template']['permits']
+                                          if permit['type'] != 'supersession']
+        counterpart = copy.deepcopy(legacy)
+        counterpart['id'] += '_atomic_transfer'
+        counterpart['template']['id'] += '_atomic_transfer'
+        compiler()._upgrade_admission(counterpart['template'])
+        graph['task_sets'].append(counterpart)
+        self.assertTrue(compiler().admission_shadowed(graph, legacy['template']['id']))
+        for field in ('source', 'executor', 'inputs', 'outputs'):
+            changed = copy.deepcopy(graph)
+            last = changed['task_sets'][-1]
+            if field == 'source':
+                last['source']['path'] = ['other']
+            elif field == 'executor':
+                last['template']['executor']['resources'] = ['repository']
+            elif field == 'inputs':
+                last['template']['inputs'].pop(next(iter(last['template']['inputs'])))
+            else:
+                last['template']['outputs'].pop('transfer')
+            self.assertFalse(compiler().admission_shadowed(changed, legacy['template']['id']), field)
+
+    def test_mapped_rigor_admission_preserves_restrictions_and_rejects_forgery(self):
+        graph = json.loads((ROOT / '.agents/fixtures/legacy_evidence_dag.json').read_text())
+        suffix = ('\nPreserved engineering requirement: effective rigor agentic; risks authorization. '
+                  'Apply the reviewed engineering-rigor policy to this work.')
+        for node in all_defs(graph):
+            node['executor']['capability'] = 'architectural'
+            node['prompt'] += suffix
+        result = compiler().compile_graph(graph)
+        self.assertEqual([], result['diagnostics'])
+        for node in all_defs(result['graph']):
+            self.assertEqual('architectural', node['executor']['capability'])
+            self.assertIn(suffix, node['prompt'])
+        self.assertEqual(graph['nodes'], result['graph']['nodes'][:len(graph['nodes'])])
+        self.assertEqual(graph['task_sets'], result['graph']['task_sets'][:len(graph['task_sets'])])
+        compiler().validate_recovery(result['graph'])
+        self.assertEqual(result['graph'], compiler().compile_graph(result['graph'])['graph'])
+        for mutation in ('unknown_risk', 'duplicate_suffix', 'unknown_tier', 'resources', 'requires'):
+            changed = copy.deepcopy(graph)
+            node = next(row for row in changed['nodes'] if row['id'] == 'admit_decompose_correction')
+            if mutation == 'unknown_risk': node['prompt'] = node['prompt'].replace('risks authorization', 'risks arbitrary')
+            elif mutation == 'duplicate_suffix': node['prompt'] += suffix
+            elif mutation == 'unknown_tier': node['executor']['capability'] = 'custom'
+            elif mutation == 'resources': node['executor']['resources'] = ['repository']
+            else: node['requires'] = []
+            failed = compiler().compile_graph(changed)
+            self.assertTrue(failed['diagnostics'], mutation)
+            self.assertEqual(changed, failed['graph'])
+
+    def test_mapped_low_floor_cannot_feed_generated_worker_tier_back_into_identity(self):
+        graph = dag.correction_graph()
+        suffix = ('\nPreserved engineering requirement: effective rigor vibe; risks . '
+                  'Apply the reviewed engineering-rigor policy to this work.')
+        for node in all_defs(graph):
+            node['executor']['capability'] = 'bounded'
+            node['prompt'] += suffix
+        first = compiler().compile_graph(graph, local_goal=100)
+        self.assertEqual([], first['diagnostics'])
+        self.assertTrue(first['routes'])
+        families = [row['template'] for row in first['graph']['task_sets']
+                    if row['source'].get('producer') == {'slot': 'obligation_selections'}]
+        self.assertEqual(3, len(families))
+        for node in families:
+            self.assertEqual('reasoning' if node['executor']['role'] == 'worker' else 'bounded',
+                             node['executor']['capability'])
+        compiler().validate_recovery(first['graph'], local_goal=100)
+        second = compiler().compile_graph(first['graph'], local_goal=100)
+        self.assertEqual([], second['diagnostics'])
+        self.assertEqual([], second['routes'])
+        self.assertEqual(first['target_hash'], second['target_hash'])
+        self.assertEqual(first['graph'], second['graph'])
+        self.assertEqual(graph['nodes'], first['graph']['nodes'][:len(graph['nodes'])])
+        self.assertEqual(graph['task_sets'], first['graph']['task_sets'][:len(graph['task_sets'])])
+
     def test_unknown_compiler_version_is_rejected(self):
         with self.assertRaisesRegex(Exception, r"(?i)version|support"):
             self.compile(default_graph(), compiler_version="unsupported-test-version")

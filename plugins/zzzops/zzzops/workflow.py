@@ -190,7 +190,7 @@ class ObservedArtifactIndex(comment_store.ArtifactIndex):
 # being routed through an unrelated installation, policy, lease, or portfolio
 # gate.
 PUBLIC_OPERATIONS = frozenset({
-    'batch', 'bind', 'block', 'migration_batch', 'graph_prepare', 'graph_review', 'graph_adopt', 'graph_review_bootstrap',
+    'batch', 'bind', 'block', 'graph_normalize', 'migration_batch', 'graph_prepare', 'graph_review', 'graph_adopt', 'graph_review_bootstrap',
     'checkpoint_reconcile_prepare', 'checkpoint_reconcile_review', 'checkpoint_reconcile_adopt',
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
     'feedback_submit', 'heartbeat', 'hydration_checkpoint', 'installation_record', 'integrate',
@@ -2366,7 +2366,6 @@ class Workflow:
         number = snapshot['number']
         index = self.artifact_index(number)
         completed = {}
-        converter = self.api._migration_batch.CONVERTER
 
         def require(condition, reason):
             if not condition: raise ValueError('Legacy migration proof: ' + reason)
@@ -2391,7 +2390,9 @@ class Workflow:
             receipt = read(step['receipt'])
             require({'source', 'policy', 'target_intent', 'target_payload'} <= receipt.keys(),
                     'migration receipt is incomplete')
-            require(receipt.get('type') == 'schema_migration' and receipt.get('converter') == converter,
+            converter = receipt.get('converter')
+            require(receipt.get('type') == 'schema_migration' and converter in
+                    ('lossless-v1-v2/1', self.api._migration_batch.CONVERTER),
                     'unsupported migration converter')
             require(receipt.get('repository') == self.repository and receipt.get('goal') == number,
                     'migration repository or goal mismatch')
@@ -2410,9 +2411,7 @@ class Workflow:
             require(legacy and legacy['schema_version'] == 1, 'preserved source is not a managed v1 goal')
             require(not (legacy.get('claim') or {}).get('owner') and not (legacy.get('workflow') or {}).get('leases'),
                     'preserved source has unsettled ownership')
-            request = {'operation': 'migration_batch', 'action': 'migrate', 'goal': number,
-                'request_id': 'migrate-' + digest({'source': receipt['source'], 'policy': receipt['policy'],
-                                                 'converter': converter})[7:]}
+            request = self.api._migration_batch.request_for_receipt(receipt, digest)
             require(committed['request'] == request['request_id'] and committed['payload'] == digest(request),
                     'committed migration request identity or fingerprint mismatch')
             intent = read(receipt['target_intent'])
@@ -2954,6 +2953,114 @@ class Workflow:
                 'policy': self.node_evidence_policy(), 'source': source,
                 'target': {'graph': digest(graph)}, 'graph': copy.deepcopy(graph),
                 'impact': impact, 'rationale': rationale}
+
+    def node_normalization_request(self, snapshot, *, compiler_version=None, pending_request=None):
+        """Authenticate an exact additive installed-compiler transaction."""
+        compiler = self.api._graph_compiler
+        version = compiler.SUPPORTED_VERSION if compiler_version is None else compiler_version
+        compiled = compiler.compile_graph(snapshot['graph'], local_goal=snapshot['number'],
+                                          compiler_version=version)
+        if compiled['diagnostics']:
+            raise ValueError('Graph recovery requires reviewed repair: ' + comment_store.canonical(compiled['diagnostics']))
+        graph = compiled['graph']; previous = snapshot['graph']
+        if graph == previous:
+            return None, compiled
+        if (graph['nodes'][:len(previous['nodes'])] != previous['nodes']
+                or graph['task_sets'][:len(previous['task_sets'])] != previous['task_sets']
+                or graph['terminals'] != previous['terminals']):
+            raise ValueError('Compiler normalization must preserve every existing contract exactly')
+        compiler.validate_recovery(graph, local_goal=snapshot['number'], compiler_version=version)
+        proposal = self.node_graph_proposal(snapshot, graph,
+            'Installed deterministic correction completeness; no semantic decisions.',
+            pending_request=pending_request)
+        if proposal['impact']['invalidated']:
+            raise ValueError('Normalization must preserve every current Result: nonzero invalidations')
+        delta = {'nodes': graph['nodes'][len(previous['nodes']):],
+                 'task_sets': graph['task_sets'][len(previous['task_sets']):]}
+        request = {'operation': 'graph_normalize', 'repository': self.repository,
+            'goal': snapshot['number'], 'root': (self.runtime or {}).get('root_id'),
+            'source': snapshot['envelope']['payload'], 'source_envelope': snapshot['envelope'],
+            'source_body_hash': digest(snapshot['issue']['body']),
+            'policy': self.node_evidence_policy(), 'current': proposal['source']['current'],
+            'compiler_version': version, 'target_hash': compiled['target_hash'],
+            'delta_hash': digest(delta)}
+        request['request_id'] = 'graph-normalize-' + digest(request)[7:]
+        return request, compiled
+
+    def node_normalization_candidate(self, number):
+        issue = self.adapter.get_issue(number)
+        envelope = self.api._goals.parse_managed_goal(issue['body'], number)
+        if envelope.get('schema_version') == 1:
+            # Legacy ownership recovery and conversion retain their own guards.
+            # Normalization only applies after a generic v2 graph is durable.
+            return None
+        snapshot = self.node_snapshot(number)
+        if (snapshot['envelope']['state'] != 'open'
+                or str(snapshot['issue'].get('state', '')).lower() == 'closed'):
+            return None
+        committed = {row['request'] for row in snapshot['payload']['operational']['receipts']}
+        pending = {}
+        index = self.artifact_index(number)
+        for row in index.envelopes:
+            context = row.get('context') or {}
+            if context.get('normalization') and context.get('request_id') not in committed:
+                request = context['normalization']
+                if (not isinstance(request, dict)
+                        or context.get('request_hash') != digest(request)
+                        or context.get('request_id') != request.get('request_id')):
+                    raise ValueError('Pending normalization exact identity is inconsistent')
+                if request['compiler_version'] != self.api._graph_compiler.SUPPORTED_VERSION:
+                    raise ValueError('Pending normalization compiler version requires exact historical retry; deferred')
+                pending[request['request_id']] = request
+        if len(pending) > 1:
+            raise ValueError('Multiple pending normalizations require reconciliation')
+        if pending:
+            return next(iter(pending.values()))
+        compiler = self.api._graph_compiler
+        compiled = compiler.compile_graph(snapshot['graph'], local_goal=number,
+                                          compiler_version=compiler.SUPPORTED_VERSION)
+        if compiled['diagnostics']:
+            # This is already reviewed historical work, not a new construction.
+            # No normalization transaction is attempted for this pure diagnostic.
+            return {'normalization_diagnostics': compiled['diagnostics']}
+        return self.node_normalization_request(snapshot)[0]
+
+    def node_graph_normalize(self, snapshot, payload, request):
+        expected, compiled = self.node_normalization_request(snapshot,
+            compiler_version=request.get('compiler_version'), pending_request=request.get('request_id'))
+        if expected is None or request != expected:
+            raise ValueError('Normalization requires exact current source, policy, compiler, target, delta and request')
+        reference = self.node_ref(compiled['target_hash'], snapshot['number'])
+        snapshot['artifacts'][reference['hash']] = compiled['graph']
+        payload['graph'] = reference
+        snapshot['normalization'] = True
+        response = {'type': 'graph_normalization', 'content': {'request': copy.deepcopy(request),
+            'target_hash': compiled['target_hash'], 'routes': compiled['routes']},
+            'next_steps': [{'kind': 'checkpoint', 'goal': snapshot['number'],
+                            'action': 'Recompute ordinary work from the confirmed graph.'}]}
+        persisted = self.node_persist(snapshot, payload, response, request)
+        # A provider write acknowledgement is not durable confirmation. Direct
+        # retries need the same fresh proof as checkpoint-selected normalization.
+        clear_reads = getattr(self, '_clear_invocation_reads', None)
+        if clear_reads is not None:
+            clear_reads()
+        else:
+            self.invalidate()
+        observed = self.adapter.get_issue(snapshot['number'])
+        expected_envelope = {**snapshot['envelope'],
+            'revision': snapshot['envelope']['revision'] + 1,
+            'payload': self.node_ref(digest(payload), snapshot['number'])}
+        actual_envelope = self.api._goals.parse_managed_goal(observed['body'], snapshot['number'])
+        if (actual_envelope != expected_envelope
+                or str(observed.get('state', '')).lower() == 'closed'
+                or self.api._migration_batch.human_parts(self, observed['body']) !=
+                   self.api._migration_batch.human_parts(self, snapshot['issue']['body'])):
+            raise ValueError('Normalization durable target readback is unconfirmed; retry exact pending request')
+        index = self.artifact_index(snapshot['number'])
+        if (index.resolve(expected_envelope['payload']['hash'])[0] != payload
+                or index.resolve(reference['hash'])[0] != compiled['graph']):
+            raise ValueError('Normalization durable payload/graph readback is unconfirmed')
+        return persisted
 
     def node_graph_adopt(self, snapshot, payload, request):
         direct = {'operation', 'request_id', 'proposal', 'review', 'approved_by'}
@@ -4327,31 +4434,9 @@ class Workflow:
         return (isinstance(selector, dict) and selector.get('kind') == 'node' and
                 selector.get('goal') in ('#this', number))
 
-    @staticmethod
-    def node_shadowed_correction_admission(snapshot, state):
-        """Return true only for a legacy member admission replaced by its exact additive upgrade."""
-        contract = state.get('contract', {})
-        if (not any(output.get('type') == 'admission' for output in contract.get('outputs', {}).values()) or
-                any(output.get('type') == 'supersession' for output in contract.get('outputs', {}).values())):
-            return False
-        sets = snapshot['graph']['task_sets']
-        legacy = next((item for item in sets if item.get('template', {}).get('id') == contract.get('id')), None)
-        if legacy is None:
-            return False
-        suffix = '_atomic_transfer'
-        replacement = next((item for item in sets
-            if item.get('id') == legacy['id'] + suffix and
-               item.get('template', {}).get('id') == contract['id'] + suffix), None)
-        if replacement is None or replacement.get('source') != legacy.get('source'):
-            return False
-        upgraded = replacement['template']
-        transfer = next((output for output in upgraded.get('outputs', {}).values()
-                         if output.get('type') == 'supersession'), None)
-        return (transfer is not None and transfer.get('schema', {}).get('kind') == 'union' and
-                any(variant.get('kind') == 'null'
-                    for variant in transfer.get('schema', {}).get('variants', [])) and
-                upgraded.get('inputs') == legacy['template'].get('inputs') and
-                upgraded.get('requires') == legacy['template'].get('requires'))
+    def node_shadowed_correction_admission(self, snapshot, state):
+        return self.api._graph_compiler.admission_shadowed(
+            snapshot['graph'], state.get('contract', {}).get('id'), snapshot['number'])
 
     def node_frontier(self, snapshot, *, defer_envelope=False):
         """Format the same readiness and authority boundaries for both callers."""
@@ -4378,45 +4463,11 @@ class Workflow:
         def input_from_review_approval(node, review_name):
             return (input_from(node, review_name, path=['decision'], mode='content') or
                     input_from(node, review_name, path=[], mode='identity'))
-        def correction_route_covers(target_name, target_output, review_name):
-            nodes = [*snapshot['graph']['nodes'],
-                     *(item['template'] for item in snapshot['graph']['task_sets'])]
-            findings = [node for node in nodes
-                if any(output.get('type') == 'finding' for output in node.get('outputs', {}).values()) and
-                permits_target(node, 'finding', target_name, target_output) and
-                input_from(node, review_name, path=['decision'], mode='content')]
-            for finding_node in findings:
-                admissions = [node for node in nodes
-                    if any(output.get('type') == 'admission' for output in node.get('outputs', {}).values()) and
-                    any(output.get('type') == 'supersession' and
-                        output.get('schema', {}).get('kind') == 'union' and
-                        any(variant.get('kind') == 'null'
-                            for variant in output.get('schema', {}).get('variants', []))
-                        for output in node.get('outputs', {}).values()) and
-                    permits_target(node, 'admission', target_name, target_output) and
-                    permits_target(node, 'supersession', target_name, target_output) and
-                    input_from(node, finding_node['id'], mode='identity')]
-                registries = [node for node in nodes
-                    if any(output.get('type') == 'finding_registry' for output in node.get('outputs', {}).values()) and
-                    permits_target(node, 'finding_registry', target_name, target_output) and
-                    input_from_review_approval(node, review_name)]
-                for registry in registries:
-                    for expansion in snapshot['graph']['task_sets']:
-                        template = expansion.get('template', {})
-                        if (same_node(expansion.get('source', {}).get('producer', {}).get('node'), registry['id']) and
-                                any(output.get('type') == 'resolution'
-                                    for output in template.get('outputs', {}).values()) and
-                                permits_target(template, 'resolution', target_name, target_output) and
-                                any(scope.get('output') == target_output and
-                                    same_node(scope.get('subject'), target_name)
-                                    for scope in template.get('resolves', [])) and
-                                any(same_node(selector, target_name)
-                                    for selector in template.get('independent_of', [])) and
-                                input_from(template, registry['id']) and
-                                input_from_review_approval(template, review_name)):
-                            if admissions:
-                                return True
-            return False
+        compilation = self.api._graph_compiler.compile_graph(snapshot['graph'], local_goal=number)
+        recovery_complete = not compilation['diagnostics'] and compilation['graph'] == snapshot['graph']
+        def correction_route_covers(target_name, target_output, review_name, review_output):
+            return self.api._graph_compiler.correction_route_covers(
+                snapshot['graph'], target_name, target_output, review_name, review_output, number)
         def append_member_admission_recovery(graph, target_name, target_output, review_name):
             """Append an upgraded admission expansion while preserving every persisted task set."""
             sets = graph['task_sets']
@@ -4473,7 +4524,7 @@ class Workflow:
                                     binding.get('mode') == 'identity' and not binding.get('path')), None)
                     if subject is None or not local_node(target_selector): continue
                     target_name, target_output = target_selector['node'], subject['output']
-                    if not correction_route_covers(target_name, target_output, contract['id']):
+                    if not recovery_complete and not correction_route_covers(target_name, target_output, contract['id'], review_output):
                         route = (target_name, target_output, contract['id'], review_output)
                         if route not in rejected:
                             rejected.append(route)
@@ -4513,8 +4564,14 @@ class Workflow:
                     any(permit.get('type') == 'applicability_assessment' and
                         permit.get('scope') == obligation['content']['target']
                         for permit in node.get('permits', [])))
-        uncovered = [obligation for obligation in unresolved if not any(
-            assessment_covers(node, obligation) for node in snapshot['graph']['nodes'])]
+        def canonical_assessment_covers(obligation):
+            target = obligation['content']['target']; subject = target['subject']
+            return (subject.get('kind') == 'node' and subject.get('goal') == number and
+                    self.api._graph_compiler.applicability_family_covers(
+                        snapshot['graph'], subject['node'], target['output'], number))
+        uncovered = [obligation for obligation in unresolved
+                     if not canonical_assessment_covers(obligation) and not any(
+                         assessment_covers(node, obligation) for node in snapshot['graph']['nodes'])]
         if uncovered:
             graph = copy.deepcopy(snapshot['graph'])
             contracts = {node['id']: node for node in graph['nodes']}
@@ -4971,7 +5028,8 @@ class Workflow:
         retain(envelope['payload'])
         retain(entry_payload)
         proof = snapshot.get('workspace_proof')
-        ordered = sorted(reachable, key=lambda identity: (identity != (proof or {}).get('hash'), identity))
+        first_identity = digest(response) if snapshot.get('normalization') else (proof or {}).get('hash')
+        ordered = sorted(reachable, key=lambda identity: (identity != first_identity, identity))
         payload_identity = envelope['payload']['hash']
         # Prefer a shallow addressed payload base while its encoded delta
         # remains comfortably within one provider comment. Always choosing the
@@ -5017,6 +5075,7 @@ class Workflow:
         if response.get('type') == 'workspace_draft_retirement': context['workspace_draft_retirement'] = response['draft']
         if public_response['next_steps'][0].get('workspace_draft'): context['workspace_draft'] = public_response['next_steps'][0]['workspace_draft']
         if snapshot.get('migration'): context['migration'] = snapshot['migration']
+        if snapshot.get('normalization'): context['normalization'] = copy.deepcopy(request)
         if pending and pending != context: raise ValueError('Pending checkpoint exact response/payload/proof identity changed')
         bodies = comment_store.pack_envelopes({'goal': number, 'transaction': digest({'request': request, 'source': issue['body']}), 'context': context}, records)
         prospective = self.node_preflight(comments, bodies, [envelope['payload']['hash']], index)
@@ -5025,6 +5084,8 @@ class Workflow:
             try:
                 actual = self.adapter.create_issue_comment(number, encoded)
             except (self.api.GoalTransitionProviderError, RuntimeError, OSError) as exc:
+                if snapshot.get('normalization'):
+                    raise ValueError('Normalization artifact publication interrupted; resume exact pending request') from exc
                 actual = next((row for row in self.adapter.get_issue_comments(number) if row.get('body') == encoded), None)
                 if actual is None: raise ValueError('Unconfirmed checkpoint comment append; retry exact request') from exc
             if actual.get('body') != encoded: raise ValueError('Provider did not confirm exact source backup/artifact content')
@@ -5138,6 +5199,8 @@ class Workflow:
                     if receipt['payload'] != digest(request): raise ValueError('Request receipt payload conflict')
                     return copy.deepcopy(snapshot['artifacts'][receipt['result']['hash']])
             pending = self.node_pending(snapshot, request)
+            if request['operation'] == 'graph_normalize':
+                return self.node_graph_normalize(snapshot, payload, request)
             if request['operation'] == 'checkpoint_reconcile_adopt':
                 return self.node_checkpoint_reconcile_adopt(snapshot, payload, request)
             if request['operation'] == 'checkpoint_reconcile_review':
@@ -5731,7 +5794,14 @@ class Workflow:
                     raise ValueError('Supersession requires atomic exact coverage transfer')
             elif kind == 'applicability_assessment':
                 finding = read(value['finding'], 'finding'); prior = obligation(finding)
-                permit(kind, finding['target']); authority(value['authority'])
+                permit(kind, finding['target']); authority_result = authority(value['authority'])
+                expansion = next((row for row in snapshot['graph']['task_sets']
+                                  if row['id'] == state.get('expansion')), None)
+                if (expansion and expansion['source'].get('producer') == {'slot': 'obligation_selections'}
+                        and not any(binding['name'] == 'context' and binding['mode'] == 'identity'
+                                    and not binding['path'] and binding['source'] in authority_result['outputs'].values()
+                                    for binding in state['inputs'])):
+                    raise ValueError('Applicability authority must be the exact bound root context Result')
                 if not prior or prior['finding'] != value['finding'] or prior['admission'] != value['admission'] or prior['applicability'] != 'unresolved':
                     raise ValueError('Applicability assessment requires the exact current unresolved admission and finding')
                 if value['applicability'] not in ('applicable', 'not_applicable') or not value['rationale'].strip():
@@ -5749,6 +5819,13 @@ class Workflow:
                 inspected = {binding['source']['hash'] for binding in reviewer['inputs']}
                 if any(ref['hash'] not in inspected for ref in value['subjects']):
                     raise ValueError('Applicability reviewer did not inspect every corrected subject')
+                reviewer_state = projection['states'][ev.task_key(reviewer['node'])]
+                independent_targets = [target for row in reviewer_state['resolutions']
+                    if row['selector'] in reviewer_state['contract']['independent_of']
+                    for target in row['targets']]
+                if any(subject_results[ref['hash']]['node'] not in independent_targets
+                       for ref in value['subjects']):
+                    raise ValueError('Applicability reviewer requires declared exact subject independence')
                 if any(subject_results[ref['hash']]['executor'] == reviewer['executor'] for ref in value['subjects']):
                     raise ValueError('Applicability reviewer must be independent of corrected subjects')
             elif kind == 'supersession':
@@ -5866,7 +5943,16 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
             return {'next_steps': [{'kind': 'blocker', 'assignment': 'root', 'goal': number,
                 'action': 'Repair this goal or one of its prerequisites before continuing.',
                 'findings': findings}]}
+        maintenance = getattr(engine, '_normalize_selected', lambda selected: None)(number)
+        if maintenance is not None:
+            return {'next_steps': maintenance}
         steps = scoped_frontier(engine.step(number), engine, limit, number)
+        diagnostics = getattr(engine, '_normalization_diagnostics', {}).get(number)
+        if diagnostics:
+            steps.append({'kind': 'repair', 'goal': number,
+                'reason': 'Historical graph recovery is unsupported; existing reviewed work is unchanged.',
+                'diagnostics': diagnostics,
+                'action': 'Use independent graph review and explicit approval for any required recovery extension.'})
         hydration = engine.hydration_checkpoint_candidate(number)
         if hydration is None:
             return {'next_steps': steps}
@@ -5896,12 +5982,27 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
         return {'next_steps': steps, 'effective_order': ordering, 'deferred_steps': deferred[:limit]}
     candidate_batch = []
     migration_attempted = False
+    normalization_attempted = False
     def flush_candidates():
-        nonlocal candidate_batch
+        nonlocal candidate_batch, normalization_attempted
+        if not candidate_batch: return
+        if not normalization_attempted:
+            normalization_attempted = True
+            selected = candidate_batch[0]
+            maintenance = getattr(engine, '_normalize_selected', lambda number: None)(selected['key'])
+            if maintenance is not None:
+                partition(maintenance, runnable_steps, waiting_steps)
+                candidate_batch = candidate_batch[1:]
         if not candidate_batch: return
         with ThreadPoolExecutor(max_workers=min(limit, len(candidate_batch))) as pool:
             observed = list(pool.map(engine.step, [goal['key'] for goal in candidate_batch]))
-        for candidate_steps in observed:
+        for goal, candidate_steps in zip(candidate_batch, observed):
+            diagnostics = getattr(engine, '_normalization_diagnostics', {}).get(goal['key'])
+            if diagnostics:
+                candidate_steps.append({'kind': 'repair', 'goal': goal['key'],
+                    'reason': 'Historical graph recovery is unsupported; existing reviewed work is unchanged.',
+                    'diagnostics': diagnostics,
+                    'action': 'Use independent graph review and explicit approval for any required recovery extension.'})
             partition(candidate_steps, runnable_steps, waiting_steps)
         candidate_batch = []
     for item in ordered_goals:
@@ -6044,22 +6145,17 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         if digest(proposal) != proposal_hash:
             raise ValueError('Policy proposal changed after review')
         prospective = preflight_policy_proposal(api, repo, proposal)
+        reviewed_graph = policy_section(prospective, 'workflow_adherence')['configuration']['phase_dag']
+        compilation = api._graph_compiler.compile_graph(reviewed_graph, local_goal=number)
+        if compilation['diagnostics']:
+            raise ValueError('Reviewed graph recovery is unsupported: ' + comment_store.canonical(compilation['diagnostics']))
+        policy_attachment_graph = compilation['graph']
         applied = api.apply_plan(repo, prospective)
         if not applied.get('initialized'):
             api.confirm_project(repo, applied['policy_digest'], payload['approved_by'], [], True)
-        if number is not None:
-            reviewed = api.read_project_state(repo)[2]
-            graph = policy_section(reviewed, 'workflow_adherence')['configuration']['phase_dag']
-            if isinstance(graph, dict) and set(graph) == {'nodes', 'task_sets', 'terminals'}:
-                engine = Workflow(api, repo, reviewed, runtime)
-                with engine.locked():
-                    snapshot = engine.node_snapshot(number)
-                    if snapshot['graph'] != graph:
-                        updated = copy.deepcopy(snapshot['payload'])
-                        reference = {'hash': digest(graph), 'uri': 'urn:' + digest(graph)}
-                        snapshot['artifacts'][reference['hash']] = graph; updated['graph'] = reference
-                        engine.node_persist(snapshot, updated, {'next_steps': [{'kind': 'checkpoint', 'goal': number}]}, payload)
-        return {'next_steps': [{'kind': 'checkpoint', 'action': 'Reinvoke the original intent against the newly reviewed policy.'}]}
+        # Attachment is a provider transaction and passes the same fresh boundary
+        # as every other public mutation below. The reviewed policy stays exact.
+        gate = None
     if gate and gate.get('id') in {'bootstrap', 'policy-review'}:
         inspection = api.inspect_initialization(repo)
         reference = api._policy_context.write_inspection(repo, inspection)
@@ -6177,7 +6273,55 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 for method_name, wrapper in wrappers.items():
                     setattr(engine._mutation_adapter, method_name, wrapper)
         engine._suspend_mutation_guard = suspend_mutation_guard
+    if operation == 'policy_approve':
+        if number is not None:
+            with engine.locked():
+                snapshot = engine.node_snapshot(number)
+                if snapshot['envelope'].get('state') == 'closed' or snapshot['issue'].get('state') == 'closed':
+                    raise ValueError('Closed goals cannot receive a reviewed graph attachment')
+                if snapshot['projection']['leases']:
+                    raise ValueError('Existing ownership must be released before reviewed graph attachment')
+                if snapshot['graph'] != policy_attachment_graph:
+                    if (snapshot['payload']['evidence']
+                            or snapshot['payload']['operational']['receipts']):
+                        return {'next_steps': [{'kind': 'repair', 'goal': number,
+                            'action': 'Policy is reviewed. Preserve this existing goal graph; prepare an independently reviewed graph adoption with explicit approval.',
+                            'reason': 'Compiled bootstrap attachment requires a fresh goal without semantic or operational history.'}]}
+                    # Reuse exact pending/ownership checks without authorizing
+                    # an arbitrary replacement through the adoption manifest.
+                    engine.node_graph_proposal(snapshot, snapshot['graph'],
+                        'Confirm fresh bootstrap attachment has no pending transaction or ownership.')
+                    updated = copy.deepcopy(snapshot['payload'])
+                    reference = {'hash': digest(policy_attachment_graph), 'uri': 'urn:' + digest(policy_attachment_graph)}
+                    snapshot['artifacts'][reference['hash']] = policy_attachment_graph
+                    updated['graph'] = reference
+                    engine.node_persist(snapshot, updated, {'next_steps': [{'kind': 'checkpoint', 'goal': number}]}, payload)
+        return {'next_steps': [{'kind': 'checkpoint', 'action': 'Reinvoke the original intent against the newly reviewed policy.'}]}
     if payload is None or operation in {'read', 'heartbeat'}: engine.read_only()
+    if payload is None and intent == 'execute' and source == '$execute-zzzops':
+        def normalize_selected(selected):
+            try:
+                request = engine.node_normalization_candidate(selected)
+                if request is None:
+                    return None
+                if 'normalization_diagnostics' in request:
+                    engine._normalization_diagnostics = {selected: request['normalization_diagnostics']}
+                    return None
+                result = public_run(api, repo, intent, source, runtime, request, selected,
+                                    skip_installation_validation=skip_installation_validation,
+                                    payload_supplied=True)
+                if result.get('type') != 'graph_normalization':
+                    return result['next_steps']
+                engine.invalidate()
+                confirmed = engine.node_snapshot(selected)
+                if confirmed['payload']['graph']['hash'] != request['target_hash']:
+                    raise ValueError('Normalization target readback is unconfirmed')
+                return None
+            except (ValueError, OSError, RuntimeError) as exc:
+                return [{'kind': 'blocker', 'goal': selected,
+                         'reason': 'Graph normalization deferred: ' + str(exc)}]
+        engine._normalize_selected = normalize_selected
+
     if operation == 'migration_batch':
         return api._migration_batch.run(engine, payload)
     if operation == 'hydration_checkpoint':
@@ -6279,13 +6423,23 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             raise ValueError('Goal design approval must be coordinated by root')
         if not explicit_approval(payload.get('approved_by')) or payload.get('proposal_hash') != digest(payload['request']):
             raise ValueError('Explicit approval of this exact goal design is required; parent relationships do not confer capture authority')
+        reviewed_graph = policy_section(project, 'workflow_adherence')['configuration']['phase_dag']
+        compilation = api._graph_compiler.compile_graph(reviewed_graph)
+        if compilation['diagnostics']:
+            raise ValueError('Captured graph recovery is unsupported: ' + comment_store.canonical(compilation['diagnostics']))
         with engine.locked():
             created = api.apply_goal_create(engine.adapter, engine.repository, payload['request'], allow_deferred=True)
         engine.invalidate()
-        # Capture occurs while the human who approved the goal is present.
-        # Surface its required understanding work now instead of losing that
-        # review opportunity behind a generic later checkpoint.
-        return checkpoint(api, repo, project, runtime, engine=engine)
+        created_number = created['number']
+        # Convert only this newly created goal. Its first generic graph is
+        # compiled by the versioned converter before any executable frontier.
+        result = api._migration_batch.run(engine, {'action': 'migrate', 'goals': [created_number]})
+        member = result['next_steps'][0]['members'][str(created_number)]
+        if member['status'] != 'migrated':
+            return {'next_steps': [{'kind': 'blocker', 'goal': created_number,
+                                   'reason': member.get('reason', member['status']),
+                                   'remediation': member.get('remediation')}]}
+        return {'next_steps': member['next_steps']}
     if operation == 'batch':
         items = payload.get('items')
         if not isinstance(items, list) or not items or len(items) > 20:
