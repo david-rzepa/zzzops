@@ -106,6 +106,74 @@ class GraphNormalizationPublicTests(dag.DagFixture):
             "report": {"kind": "string"}}})}
         self.install(graph)
 
+    def test_no_write_projection_handoff_is_one_use_and_scoped_to_read_epoch(self):
+        self.install(dag.z._graph_compiler.compile_graph(self.graph, local_goal=100)["graph"])
+        workflow = dag.z._workflow.Workflow
+        candidate = workflow.node_normalization_candidate
+        observations = []
+        for mode in ('one_use', 'invalidate', 'wrong_goal', 'new_epoch', 'terminal', 'read_error', 'candidate_error', 'direct_snapshot'):
+            with self.subTest(mode=mode):
+                def inspect(engine, number):
+                    self.assertIsNone(candidate(engine, number))
+                    self.assertIsNotNone(engine._normalization_snapshot)
+                    with mock.patch.object(engine, 'node_snapshot', wraps=engine.node_snapshot) as snapshot:
+                        if mode == 'one_use':
+                            engine.node_checkpoint(number)
+                            self.assertEqual(0, snapshot.call_count)
+                            engine.node_checkpoint(number)
+                            self.assertEqual(1, snapshot.call_count)
+                        elif mode == 'invalidate':
+                            engine.invalidate()
+                            self.assertIsNone(engine._normalization_snapshot)
+                            engine.node_checkpoint(number)
+                            self.assertEqual(1, snapshot.call_count)
+                        elif mode == 'wrong_goal':
+                            with mock.patch.object(engine, 'read', side_effect=ValueError('unknown goal')):
+                                with self.assertRaisesRegex(ValueError, 'unknown goal'):
+                                    engine.node_checkpoint(number + 1)
+                        elif mode == 'new_epoch':
+                            engine._normalization_read_epoch = object()
+                            engine.node_checkpoint(number)
+                            self.assertEqual(1, snapshot.call_count)
+                        elif mode == 'candidate_error':
+                            with mock.patch.object(engine.adapter, 'get_issue', side_effect=ValueError('candidate failed')):
+                                with self.assertRaisesRegex(ValueError, 'candidate failed'):
+                                    candidate(engine, number)
+                        elif mode == 'direct_snapshot':
+                            # Mutation callers use node_snapshot directly, never the handoff.
+                            engine.node_snapshot(number)
+                            self.assertEqual(1, snapshot.call_count)
+                            engine.node_checkpoint(number)
+                            self.assertEqual(1, snapshot.call_count)
+                        elif mode == 'terminal':
+                            with mock.patch.object(engine, 'read', return_value=(None, {'status': 'done'})):
+                                self.assertEqual([], engine.node_checkpoint(number))
+                        else:
+                            with mock.patch.object(engine, 'read', side_effect=ValueError('read failed')):
+                                with self.assertRaisesRegex(ValueError, 'read failed'):
+                                    engine.node_checkpoint(number)
+                    self.assertIsNone(engine._normalization_snapshot)
+                    observations.append(mode)
+                    return None
+                with mock.patch.object(workflow, 'node_normalization_candidate', inspect):
+                    self.session.checkpoint(100)
+        self.assertEqual(8, len(observations))
+
+    def test_applied_normalization_never_publishes_pre_write_handoff(self):
+        workflow = dag.z._workflow.Workflow
+        candidate = workflow.node_normalization_candidate
+        observed = []
+        def inspect(engine, number):
+            request = candidate(engine, number)
+            self.assertIsNotNone(request)
+            self.assertIsNone(engine._normalization_snapshot)
+            observed.append(request['request_id'])
+            return request
+        with mock.patch.object(workflow, 'node_normalization_candidate', inspect):
+            self.session.checkpoint(100)
+        self.assertEqual(1, len(observed))
+        self.assertEqual(1, len(self.normalization_receipts()))
+
     def arrange_historical_incomplete(self, *, settle_result=False, acquire=False):
         compiler = getattr(dag.z, "_graph_compiler", None)
         self.assertIsNotNone(compiler, "graph compiler service is not registered")

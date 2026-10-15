@@ -565,6 +565,7 @@ class Workflow:
         self.adapter = ProviderReadGateway(self, self._mutation_adapter)
 
     def invalidate(self):
+        self._normalization_snapshot = None
         if hasattr(self.api, 'invalidate_provider_reads'):
             self.api.invalidate_provider_reads(self.repo, self.repository)
         getattr(self, '_read_cache', {}).clear()
@@ -2988,6 +2989,8 @@ class Workflow:
         return request, compiled
 
     def node_normalization_candidate(self, number):
+        self._normalization_snapshot = None
+        epoch = getattr(self, '_normalization_read_epoch', None)
         issue = self.adapter.get_issue(number)
         envelope = self.api._goals.parse_managed_goal(issue['body'], number)
         if envelope.get('schema_version') == 1:
@@ -3022,8 +3025,15 @@ class Workflow:
         if compiled['diagnostics']:
             # This is already reviewed historical work, not a new construction.
             # No normalization transaction is attempted for this pure diagnostic.
+            if epoch is not None:
+                self._normalization_snapshot = (epoch, number, snapshot)
             return {'normalization_diagnostics': compiled['diagnostics']}
-        return self.node_normalization_request(snapshot)[0]
+        request = self.node_normalization_request(snapshot)[0]
+        if request is None and epoch is not None:
+            # Share this complete read projection with the immediately following
+            # frontier, never with a mutation or a later public invocation.
+            self._normalization_snapshot = (epoch, number, snapshot)
+        return request
 
     def node_graph_normalize(self, snapshot, payload, request):
         expected, compiled = self.node_normalization_request(snapshot,
@@ -4259,6 +4269,8 @@ class Workflow:
                 **({name: state['publication'][name] for name in ('base_branch', 'base_commit')} if 'publication' in state else {})}
 
     def node_checkpoint(self, number):
+        handoff = getattr(self, '_normalization_snapshot', None)
+        self._normalization_snapshot = None
         _, goal = self.read(number)
         if goal.get('status') in ('done', 'cancelled') or str(goal.get('state', '')).lower() == 'closed': return []
         issue = self.adapter.get_issue(number)
@@ -4268,7 +4280,14 @@ class Workflow:
                      'lease': lease, 'recovery_contract': {'operation': 'recover', 'request_id': uuid.uuid4().hex, 'predecessor': True,
                          'lease': lease['token'], 'expected_source': digest(issue['body']), 'worker_status': '<observed status>', 'evidence': '<terminal observation>'}}
                     for lease in predecessor['workflow']['leases'].values()]
-        try: snapshot = self.node_snapshot(number)
+        try:
+            if (handoff is not None
+                    and handoff[0] is getattr(self, '_normalization_read_epoch', None)
+                    and handoff[1] == number
+                    and handoff[2]['envelope'] == predecessor):
+                snapshot = handoff[2]
+            else:
+                snapshot = self.node_snapshot(number)
         except (ValueError, KeyError, OSError) as exc: return [{
             'kind': 'blocker', 'goal': number, 'reason': str(exc),
             'action': 'Resolve the exact missing schema, evidence or authority.',
@@ -6314,6 +6333,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         return {'next_steps': [{'kind': 'checkpoint', 'action': 'Reinvoke the original intent against the newly reviewed policy.'}]}
     if payload is None or operation in {'read', 'heartbeat'}: engine.read_only()
     if payload is None and intent == 'execute' and source == '$execute-zzzops':
+        engine._normalization_read_epoch = object()
         def normalize_selected(selected):
             try:
                 request = engine.node_normalization_candidate(selected)
