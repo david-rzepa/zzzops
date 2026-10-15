@@ -43,6 +43,33 @@ class UnderstandingRejectionTests(j.DagFixture):
             'review': {'decision': 'changes_requested', 'report': 'Revise private-access design and allocation'},
             'authorization': None})
 
+    def compiled_understanding_admission(self):
+        graph = self.read_blob(self.payload()[1]['graph'])
+        contracts = list(graph['nodes']) + [row['template'] for row in graph['task_sets']]
+        expected_scope = {'subject': {'kind': 'node', 'goal': '#this', 'node': 'understand'},
+                          'output': 'design'}
+        candidates = []
+        for node in contracts:
+            inputs = node.get('inputs', {})
+            permits = node.get('permits', [])
+            if (str(node.get('id', '')).startswith('gc_atomic_admit_')
+                    and inputs.get('finding', {}).get('producer') == {
+                        'node': {'kind': 'node', 'goal': '#this', 'node': 'interpret_understand_rejection'}}
+                    and inputs.get('finding', {}).get('output') == 'value'
+                    and inputs.get('subject', {}).get('producer') == {
+                        'node': {'kind': 'node', 'goal': '#this', 'node': 'understand'}}
+                    and inputs.get('subject', {}).get('output') == 'design'
+                    and {permit.get('type') for permit in permits} == {'admission', 'supersession'}
+                    and all(permit.get('scope') == expected_scope for permit in permits)):
+                candidates.append(node['id'])
+        self.assertEqual(1, len(candidates), candidates)
+        replay = j.z._graph_compiler.compile_graph(graph, local_goal=100)
+        replay_ids = {node['id'] for node in replay['graph']['nodes']} | {
+            row['template']['id'] for row in replay['graph']['task_sets']}
+        self.assertIn(candidates[0], replay_ids, 'Canonical admission identity must be stable')
+        self.assertNotIn('admit_understand_correction', self.names())
+        return candidates[0]
+
     def admit(self):
         subject = self.produced('understand', 'design')
         self.session.finish(self.session.acquire('interpret_understand_rejection'), {'value': {
@@ -51,10 +78,11 @@ class UnderstandingRejectionTests(j.DagFixture):
             'target': j.scope('understand', 'design'), 'request': 'Revise design and finite allocation',
             'rationale': 'Exact independent review rejected both artifacts', 'supersedes': None}})
         self.finding = self.produced('interpret_understand_rejection')
-        self.session.finish(self.session.acquire('admit_understand_correction'), {'value': {
+        self.session.finish(self.session.acquire(self.compiled_understanding_admission()), {'value': {
             'finding': self.finding, 'target_inputs': self.result('understand')[1]['inputs'],
             'authority': self.result('interpret_understand_rejection')[0],
-            'applicability': 'applicable', 'rationale': 'Planning only; no workspace authority'}})
+            'applicability': 'applicable', 'rationale': 'Planning only; no workspace authority'},
+            'transfer': None})
 
     def resolve(self):
         self.session.finish(self.session.acquire('retain_understand_findings'), {'value': {
