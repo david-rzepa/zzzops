@@ -29,6 +29,17 @@ class BatchConversionTests(dag.DagFixture):
         self.index_patch.start()
         self.addCleanup(self.index_patch.stop)
 
+    def assert_recovery_complete(self, number):
+        compiler = getattr(dag.z, '_graph_compiler', None)
+        self.assertIsNotNone(compiler, 'graph compiler service is not registered')
+        body = self.provider.issues[number]['body']
+        managed = dag.z.parse_managed_goal(body, number)
+        envelope_ref = managed.get('payload')
+        payload = self.session.read(number, envelope_ref)
+        graph = self.session.read(number, payload['graph'])
+        compiler.validate_recovery(graph, local_goal=number)
+        return graph
+
     def add(self, number, *, state='open', parent=None, dependencies=(), blockers=()):
         issue = dag.old.fixtures.PortfolioTests().issue(number, priority='P1', status='new')
         value = dag.z.parse_managed_goal(issue['body'], number)
@@ -378,6 +389,32 @@ class BatchConversionTests(dag.DagFixture):
         self.assertTrue(all(m['status'] == 'already_current' for m in result['members'].values()))
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
+    def test_migration_first_publication_is_recovery_complete_and_retry_exact(self):
+        self.assertTrue(self.migrate((100,))['complete'])
+        graph = self.assert_recovery_complete(100)
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        repeated = self.migrate((100,))
+        self.assertEqual('already_current', repeated['members']['100']['status'])
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.assertEqual(graph, self.assert_recovery_complete(100))
+
+    def test_pending_compiled_migration_never_silently_switches_compiler_version(self):
+        compiler = getattr(dag.z, '_graph_compiler', None)
+        self.assertIsNotNone(compiler, 'graph compiler service is not registered')
+        current = dag.z._migration_batch.CONVERTER
+        with mock.patch.object(dag.z._migration_batch, 'CONVERTER', 'historic-test-version'), \
+                mock.patch.object(self.provider, 'update_issue', side_effect=RuntimeError('provider unavailable')):
+            first = self.migrate((100,))
+        self.assertEqual('blocked', first['members']['100']['status'])
+        receipt = self.prepared_receipt(100)
+        self.assertEqual('historic-test-version', receipt['converter'])
+        self.assertEqual(current, dag.z._migration_batch.CONVERTER)
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        replay = self.migrate((100,))
+        self.assertEqual('blocked', replay['members']['100']['status'])
+        self.assertRegex(replay['members']['100']['reason'], r'(?i)converter|version|pending|exact|defer')
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
     def test_read_preview_and_discovery_are_readonly_and_pages_are_bounded(self):
         for n in (102, 103, 104): self.add(n)
         self.add(105, state='closed')
@@ -689,6 +726,7 @@ class BatchConversionTests(dag.DagFixture):
         self.assertEqual({'action': 'migrate', 'goals': [100]}, migration.call_args.args[1])
         self.assertEqual(1, updates.call_count)
         self.assert_preserved(100)
+        self.assert_recovery_complete(100)
         self.assertEqual(untouched, {n: (self.provider.issues[n], self.provider.comments[n]) for n in (101, 102)})
         self.assertFalse(any(step.get('kind') == 'migration_batch' for step in response['next_steps']))
 
