@@ -225,6 +225,10 @@ _phase_evidence = importlib.util.module_from_spec(_PHASE_EVIDENCE_MODULE_SPEC)
 sys.modules[_PHASE_EVIDENCE_MODULE_SPEC.name] = _phase_evidence
 _PHASE_EVIDENCE_MODULE_SPEC.loader.exec_module(_phase_evidence)
 
+_GRAPH_COMPILER_SPEC = importlib.util.spec_from_file_location("zzzops_graph_compiler", Path(__file__).with_name("graph_compiler.py"))
+_graph_compiler = importlib.util.module_from_spec(_GRAPH_COMPILER_SPEC)
+_GRAPH_COMPILER_SPEC.loader.exec_module(_graph_compiler)
+
 _WORKFLOW_SPEC = importlib.util.spec_from_file_location("zzzops_workflow", Path(__file__).with_name("workflow.py"))
 _workflow = importlib.util.module_from_spec(_WORKFLOW_SPEC)
 _WORKFLOW_SPEC.loader.exec_module(_workflow)

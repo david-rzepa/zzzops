@@ -173,6 +173,81 @@ class GraphCompilerTests(unittest.TestCase):
                 with self.assertRaisesRegex(Exception, r"(?i)recover|route|contract|ambig|target"):
                     compiler().validate_recovery(result["graph"], local_goal=674)
 
+    def test_two_rejectable_outputs_on_one_review_compile_and_validate_idempotently(self):
+        graph = dag.review_graph()
+        review = next(node for node in graph["nodes"] if node["id"] == "review_a")
+        decision = dag.output("review_decision", {"kind": "object", "fields": {
+            "decision": {"kind": "enum", "values": ["approved", "changes_requested"]},
+            "report": {"kind": "string"}}})
+        review["outputs"] = {"first": copy.deepcopy(decision), "second": copy.deepcopy(decision)}
+        initial = compiler().compile_graph(graph, local_goal=100)
+        self.assertEqual([], initial["diagnostics"])
+        correction_routes = [row for row in initial["routes"] if row["kind"] == "correction"]
+        self.assertEqual({"first", "second"}, {row["review_output"] for row in correction_routes})
+        self.assertEqual(2, len({row["key"] for row in correction_routes}))
+        compiler().validate_recovery(initial["graph"], local_goal=100)
+        repeated = compiler().compile_graph(initial["graph"], local_goal=100)
+        self.assertEqual([], repeated["diagnostics"])
+        self.assertEqual([], repeated["routes"])
+        self.assertEqual(initial["graph"], repeated["graph"])
+        self.assertEqual(initial["target_hash"], repeated["target_hash"])
+
+    def test_complete_fixed_member_target_is_preserved_but_mismatched_bindings_fail(self):
+        target = dag.task("produce")
+        review = dag.task("custom_review", ["produce"])
+        review["inputs"] = {"subject": dag.subject_input("produce")}
+        review["independent_of"] = [dag.selector("produce")]
+        review["outputs"] = {"value": dag.output("review_decision", {"kind": "object", "fields": {
+            "decision": {"kind": "enum", "values": ["approved", "changes_requested"]},
+            "report": {"kind": "string"}}})}
+        graph = {"nodes": [target, review], "task_sets": [], "terminals": [dag.selector("custom_review")]}
+        dag.z._workflow.Workflow.node_append_review_correction(None, graph, "produce", "value", "custom_review", "value")
+        # A reviewed existing route can exclude unresolved applicability. Dynamic
+        # assessment synthesis is deliberately outside this preservation case.
+        for node in graph["nodes"]:
+            for out in node["outputs"].values():
+                if out["type"] == "admission":
+                    out["schema"]["fields"]["applicability"]["values"] = ["applicable", "not_applicable"]
+        member = {"kind": "member", "goal": "#this", "expansion": "subjects", "item": "a", "generation": "current"}
+        def replace(value):
+            if isinstance(value, dict):
+                if value.get("kind") == "node" and value.get("node") == "produce":
+                    return copy.deepcopy(member)
+                return {key: replace(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [replace(item) for item in value]
+            return value
+        graph = replace(graph)
+        target = graph["nodes"].pop(0)
+        target["executor"]["authority"]["subject"] = {"kind": "self"}
+        choose = dag.task("choose", role="root")
+        choose["outputs"] = {"value": dag.output("selection", dag.SELECTION_TYPE)}
+        graph["nodes"].insert(0, choose)
+        graph["task_sets"].insert(0, {"id": "subjects", "source": {
+            "producer": {"node": dag.selector("choose")}, "output": "value", "path": [],
+            "mode": "content", "type": dag.SELECTION_TYPE}, "template": target})
+        finding = next(node for node in graph["nodes"] if any(out["type"] == "finding" for out in node["outputs"].values()))
+        finding["outputs"]["value"]["schema"]["fields"]["target"] = dag.shape({
+            "subject": {**member, "goal": 100, "generation": 1}, "output": "value"})
+        admission = next(node for node in graph["nodes"] if any(out["type"] == "admission" for out in node["outputs"].values()))
+        admission["inputs"]["finding"]["type"] = copy.deepcopy(finding["outputs"]["value"]["schema"])
+        dag.z._phase_evidence.validate_graph(graph)
+        result = compiler().compile_graph(graph, local_goal=100)
+        self.assertEqual([], result["diagnostics"])
+        self.assertEqual(graph, result["graph"])
+        self.assertEqual([], result["routes"])
+        compiler().validate_recovery(graph, local_goal=100)
+        for field, value in (("item", "another"), ("generation", 2), ("output", "other")):
+            changed = copy.deepcopy(graph)
+            node = next(row for row in changed["nodes"] if row["id"] == admission["id"])
+            if field == "output":
+                node["inputs"]["subject"]["output"] = value
+            else:
+                node["inputs"]["subject"]["producer"]["node"][field] = value
+            failed = compiler().compile_graph(changed, local_goal=100)
+            self.assertTrue(failed["diagnostics"], (field, value))
+            self.assertEqual(changed, failed["graph"])
+
     def test_unknown_compiler_version_is_rejected(self):
         with self.assertRaisesRegex(Exception, r"(?i)version|support"):
             self.compile(default_graph(), compiler_version="unsupported-test-version")
