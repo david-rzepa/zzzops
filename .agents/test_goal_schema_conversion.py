@@ -478,6 +478,12 @@ class MigrationEntryPublicTests(dag.DagFixture):
         create, read = self.provider.create_issue_comment, self.provider.get_issue_comments
         initial_comments = copy.deepcopy(self.provider.comments[100])
         def unconfirmed_create(number, body):
+            # Interleave a checkpoint while this real acquisition has reserved
+            # local capacity but has not yet published its durable legacy backup.
+            slots = copy.deepcopy(z._heartbeat.capacity_inventory(repo=self.fixture.repo)['slots'])
+            self.assertTrue(slots)
+            self.session.call(100, expected=2)
+            self.assertEqual(slots, z._heartbeat.capacity_inventory(repo=self.fixture.repo)['slots'])
             result = create(number, body)
             return {**result, "body": "Unconfirmed provider response"}
         def unconfirmed_read(number):
@@ -501,6 +507,109 @@ class MigrationEntryPublicTests(dag.DagFixture):
         retry = self.session.call(100, request)["next_steps"][0]
         self.assertEqual(acquired["lease"]["token"], retry["lease"]["token"])
         self.assertEqual(after, (self.provider.issues, self.provider.comments))
+
+    def legacy_capacity_retry(self):
+        source, _graph = self.entry()
+        self.provider.issues[101] = copy.deepcopy(self.provider.issues[100])
+        probe = task('probe')
+        probe['executor']['authority']['subject']['goal'] = 101
+        graph = {'nodes': [probe], 'task_sets': [],
+                 'terminals': [{'kind': 'node', 'goal': 101, 'node': 'probe'}]}
+        payload = {**self.target_payload, 'graph': self.blob(graph)}
+        envelope = {**self.target_envelope, 'issue': 101, 'payload': self.blob(payload)}
+        self.provider.issues[101].update(number=101, body='## Outcome\nSecond goal.\n<!-- zzzops-goal\n'
+            + json.dumps(envelope) + '\nzzzops-goal -->')
+        self.provider.comments[101] = copy.deepcopy(self.provider.comments[100])
+        step = next(s for s in self.session.call(101)['next_steps'] if s.get('kind') == 'execute')
+        receipt = json.loads(Path(step['policy']['path']).read_text())['policy_receipt']
+        request = {**step['start'], 'policy_receipt': receipt, 'request_id': 'legacy-slot-retry'}
+        z._heartbeat.initialize_capacity(repo=self.fixture.repo, slots=[])
+        z._heartbeat.track_capacity(repo=self.fixture.repo, root_id=self.fixture.runtime['root_id'],
+            goal=100, phase=json.dumps({'goal': 100, 'node': 'analyze', 'item': None,
+                                       'generation': 1}, sort_keys=True), token='unpersisted-slot')
+        return source, request
+
+    def assert_legacy_slot_retained(self):
+        slots = z._heartbeat.capacity_inventory(repo=self.fixture.repo)['slots']
+        self.assertIn('unpersisted-slot', [slot['token'] for slot in slots])
+
+    def test_legacy_slot_checkpoint_preserves_inflight_reservation_but_locked_retry_reconciles(self):
+        _source, request = self.legacy_capacity_retry()
+        self.session.call(101, expected=2)
+        self.assert_legacy_slot_retained()
+        before = copy.deepcopy(self.provider.issues[100])
+        work = self.session.call(101, request)['next_steps'][0]
+        self.assertEqual(before, self.provider.issues[100])
+        slots = z._heartbeat.capacity_inventory(repo=self.fixture.repo)['slots']
+        self.assertEqual([work['lease']['token']], [slot['token'] for slot in slots])
+        self.assertEqual(101, slots[0]['goal'])
+
+    def test_legacy_slot_fresh_owner_or_uncertain_observation_blocks_without_removal(self):
+        source, request = self.legacy_capacity_retry()
+        legacy = z.parse_managed_goal(source['body'], 100)
+        claim = copy.deepcopy(legacy); claim['claim'] = {'owner': 'genuine-owner'}
+        owned = copy.deepcopy(legacy)
+        owned['workflow'] = {'leases': {'analyze:execute': {
+            'token': 'other-owner-token', 'owner': 'genuine-owner', 'worker': None,
+            'selection': {'model': 'gpt-5.6-sol', 'effort': 'low'}, 'kind': 'execute',
+            'input_hash': 'sha256:' + '1' * 64, 'expires_at': 1, 'group': 'old-attempt',
+            'record_hash': None, 'review_hash': None}},
+            'receipts': {}, 'workers': {}, 'assessments': {}, 'artifacts': {}}
+        cases = {
+            'claim': {**source, 'body': z.render_managed_goal(claim, '## Outcome\nPreserve owner.', 100)},
+            'expired_different_lease': {**source, 'body': z.render_managed_goal(owned, '## Outcome\nPreserve lease.', 100)},
+            'malformed': {**source, 'body': 'unreadable'},
+            'wrong_identity': {**source, 'number': 999},
+            'closed': {**source, 'state': 'closed'},
+            'changed_schema': copy.deepcopy(self.provider.issues[101]),
+            'provider_error': OSError('unavailable exact observation'),
+        }
+        for name, value in [('empty_claim', {}), ('false_claim', False),
+                            ('ambiguous_claim', {'owner': None, 'token': 'possible-owner'})]:
+            changed = {**legacy, 'claim': value}
+            cases[name] = {**source, 'body': z.render_managed_goal(changed, '## Outcome\nAmbiguous claim.', 100)}
+        missing = copy.deepcopy(legacy); del missing['claim']
+        cases['missing_claim'] = {**source, 'body': z.render_managed_goal(missing, '## Outcome\nMissing claim.', 100)}
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        for name, observed in cases.items():
+            with self.subTest(name=name):
+                def fresh(_repo, _repository, number):
+                    if number != 100: return copy.deepcopy(self.provider.issues[number])
+                    if isinstance(observed, Exception): raise observed
+                    return copy.deepcopy(observed)
+                self.session.provider_issue_snapshot = fresh
+                self.session.call(101, request, expected=2)
+                self.assert_legacy_slot_retained()
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_legacy_slot_incomplete_inventory_retains_reservation(self):
+        _source, request = self.legacy_capacity_retry()
+        raw = self.session.portfolio_snapshot
+        def incomplete(*args, **kwargs):
+            result = raw(*args, **kwargs)
+            result['complete'] = False
+            result['findings'] = [{'goal': 999, 'code': 'unavailable'}]
+            return result
+        self.session.portfolio_snapshot = incomplete
+        self.session.call(101, request, expected=2)
+        self.assert_legacy_slot_retained()
+
+    def test_legacy_slot_lost_storage_reservation_retains_slot_before_or_after_observation(self):
+        _source, request = self.legacy_capacity_retry()
+        self.session.reservation_adapter = SimpleNamespace()
+        for boundary in (1, 2):
+            with self.subTest(boundary=boundary):
+                calls = []
+                def renew(*_args, **_kwargs):
+                    calls.append(True)
+                    return {'acquired': len(calls) != boundary, 'expires_at': 9999999999}
+                with mock.patch.object(z, 'acquire_storage_lock', return_value={
+                        'acquired': True, 'expires_at': 9999999999}), \
+                        mock.patch.object(z, 'release_storage_lock', return_value={'released': True}), \
+                        mock.patch.object(z, 'renew_storage_lock', side_effect=renew):
+                    self.session.call(101, request, expected=2)
+                self.assertEqual(boundary, len(calls))
+                self.assert_legacy_slot_retained()
 
     def test_trusted_entry_review_root_approval_then_activation_without_fabricated_evidence(self):
         source, conversion = self.prepared()

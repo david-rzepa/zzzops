@@ -288,6 +288,44 @@ def unresolved_lease_count(goals):
     )
 
 
+def reconcile_legacy_capacity(engine, slot, portfolio):
+    """Drop an unpersisted legacy slot only behind the acquisition fence."""
+    number = slot['goal']
+    if (not isinstance(portfolio, dict) or portfolio.get('complete') is not True
+            or portfolio.get('error')
+            or any(not isinstance(row, dict) or row.get('goal') in (None, number)
+                   for row in portfolio.get('findings', []))):
+        raise ValueError(f'Local worker slot goal #{number} ownership inventory is unavailable')
+    reservation = getattr(engine, '_storage_reservation', None)
+    def renew():
+        if (not isinstance(reservation, dict) or not reservation.get('valid')
+                or reservation.get('expires_at', 0) <= time.time()):
+            raise ValueError('Legacy capacity reconciliation requires the exact start retry under a live storage reservation')
+        observed = engine.api.renew_storage_lock(
+            reservation['adapter'], engine.repository, 'workflow',
+            reservation['owner'], reservation['run'], 300)
+        expiry = observed.get('expires_at')
+        if (observed.get('acquired') is not True or not isinstance(expiry, (int, float))
+                or isinstance(expiry, bool) or not math.isfinite(expiry) or expiry <= time.time()):
+            reservation['valid'] = False
+            raise ValueError('Legacy capacity reconciliation storage ownership is unconfirmed')
+        reservation['expires_at'] = expiry
+    renew()
+    engine.api.invalidate_provider_reads(engine.repo, engine.repository)
+    issue = engine.api.provider_issue_snapshot(engine.repo, engine.repository, number)
+    if (not isinstance(issue, dict) or type(issue.get('number')) is not int
+            or issue['number'] != number or str(issue.get('state', '')).lower() != 'open'):
+        raise ValueError(f'Local worker slot goal #{number} exact ownership observation changed')
+    legacy = engine.api.parse_managed_goal(issue.get('body'), number)
+    if (not isinstance(legacy, dict) or legacy.get('schema_version') != 1
+            or 'claim' not in legacy or legacy['claim'] not in (None, {'owner': None})
+            or (legacy.get('workflow') or {}).get('leases')):
+        raise ValueError(f'Local worker slot goal #{number} requires ownership migration or recovery')
+    # A live acquisition may have reserved its slot before persisting its lease.
+    # Confirm the same storage owner still excludes that acquisition before removal.
+    renew()
+
+
 def local_worker_count(engine):
     """Reconcile bounded local slots, then return repository/machine capacity."""
     root = (engine.runtime or {}).get('root_id')
@@ -317,7 +355,7 @@ def local_worker_count(engine):
                         or any(isinstance(item, dict) and item.get('goal') == slot['goal'] for item in findings)):
                     raise ValueError(f"Local worker slot goal #{slot['goal']} is malformed or unavailable")
             elif goal.get('schema_version') != 2:
-                raise ValueError(f"Local worker slot goal #{slot['goal']} requires ownership migration or recovery")
+                reconcile_legacy_capacity(engine, slot, portfolio)
             else:
                 payload = engine.artifact_index(goal['key']).resolve(goal['envelope']['payload']['hash'])[0]
                 present = any(lease.get('token') == slot['token'] for lease in payload['operational']['leases'])
