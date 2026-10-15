@@ -240,6 +240,32 @@ class DagFixture(unittest.TestCase):
     def names(self):
         return {step["node"]["node"] for step in self.session.ready()}
 
+    def names_after_confirmed_normalization(self):
+        """Consume at most one confirmed normalization maintenance projection."""
+        def receipts():
+            _envelope, payload = self.payload()
+            return [self.read_blob(row["result"])
+                    for row in payload["operational"]["receipts"]
+                    if self.read_blob(row["result"]).get("type") == "graph_normalization"]
+        before = receipts()
+        steps = self.session.checkpoint(100)
+        self.assertFalse(any(step.get("kind") in {"repair", "blocker", "blocked"} for step in steps), steps)
+        self.assertFalse(any(step.get("kind") == "checkpoint" for step in steps),
+                         "Checkpoint maintenance without a confirmed normalization receipt")
+        after = receipts()
+        if len(after) != len(before):
+            self.assertEqual(len(before) + 1, len(after), "One checkpoint may apply one normalization")
+            maintenance = after[-1]
+            self.assertEqual("graph_normalize", maintenance["content"]["request"]["operation"])
+            self.assertEqual(["checkpoint"], [step.get("kind") for step in maintenance["next_steps"]])
+            self.assertFalse(any(step.get("kind") == "repair" for step in steps), steps)
+            steps = self.session.checkpoint(100)
+            self.assertEqual(len(after), len(receipts()), "Explicit reinvocation must reach ordinary work")
+            self.assertFalse(any(step.get("kind") in {
+                "repair", "blocker", "blocked", "checkpoint"} for step in steps), steps)
+        return {step["node"]["node"] for step in steps
+                if step.get("kind") in {"execute", "review", "human_approval"} and step.get("node")}
+
     def produce(self):
         acquired = self.session.acquire("produce")
         self.session.finish(acquired, {"value": "version one"})
@@ -289,8 +315,11 @@ class DagFixture(unittest.TestCase):
         return {(step["node"]["item"], step["node"]["generation"])
                 for step in self.session.ready() if step["node"].get("item") is not None}
 
-    def findings(self, *, applicability="applicable", admit=True, surface="issue", graph=None):
+    def findings(self, *, applicability="applicable", admit=True, surface="issue", graph=None,
+                 consume_normalization=False):
         self.install(graph or correction_graph())
+        if consume_normalization:
+            self.names_after_confirmed_normalization()
         self.produce()
         subject = self.produced("produce")
         if surface == "pr":
@@ -618,21 +647,48 @@ class EvidenceDagPublicTests(DagFixture):
         extra = task("additional_check", ["produce"])
         extra["inputs"] = {"subject": subject_input("produce")}
         extra["independent_of"] = [selector("produce")]
-        graph["nodes"].insert(-1, extra)
-        graph["nodes"][-1]["requires"].append(selector("additional_check"))
+        graph["nodes"].append(extra)
+        graph["nodes"][-2]["requires"].append(selector("additional_check"))
         self.adopt_graph(graph)
-        self.assertNotIn("finish", self.names(), "Old approvals cannot satisfy a new prerequisite")
+        # Goal repair is additive to the exact compiled historical graph; the
+        # reviewed project policy above supplies the prospective contract.
+        active = self.read_blob(self.payload()[1]["graph"])
+        graph = copy.deepcopy(active)
+        graph["nodes"].append(extra)
+        next(node for node in graph["nodes"] if node["id"] == "finish")["requires"].append(
+            selector("additional_check"))
+        proposal = self.session.call(100, {
+            "operation": "graph_prepare", "graph": graph,
+            "rationale": "Adopt the stronger reviewed policy graph without rewriting settled evidence",
+        })["next_steps"][0]["proposal"]
+        reviewed = GraphAdoptionPublicTests.administrative_review(self, {
+            "operation": "graph_review", "proposal": proposal,
+            "actor": "independent-reviewer", "decision": "approved",
+            "report": "Exact stronger graph preserves settled evidence and adds an independent check",
+            "request_id": "review-stronger-graph-" + proposal["target"]["graph"][7:23],
+        })["next_steps"][0]
+        adoption = {**reviewed["submission"],
+                    "approved_by": "user: approved exact scoped stronger graph"}
+        self.session.call(100, adoption)
+        self.assertNotIn("finish", self.names_after_confirmed_normalization(),
+                         "Old approvals cannot satisfy a new prerequisite")
         self.assertEqual(old_output, self.read_blob(old_result)["content"]["outputs"]["value"])
         # Conservative policy rebinding may require fresh unchanged work when
         # equivalence is unproven. Either route must actually perform the new
         # independent review, never manufacture it from previous approval.
-        if "produce" in self.names():
+        if "produce" in self.names_after_confirmed_normalization():
             self.produce()
-        for name in ("review_a", "review_b", "additional_check"):
-            if name in self.names():
+        for name in ("review_a", "review_b"):
+            if name in self.names_after_confirmed_normalization():
                 self.session.finish(self.session.acquire(name), {"value": "Reviewed exact current policy and subject"})
+        before_additional = self.names_after_confirmed_normalization()
+        self.assertIn("additional_check", before_additional)
+        self.assertNotIn("finish", before_additional,
+                         "The refreshed original work cannot bypass the added independent review")
+        self.session.finish(self.session.acquire("additional_check"), {
+            "value": "Reviewed exact current policy and subject"})
         self.assertIsNotNone(self.result("additional_check")[0])
-        self.assertIn("finish", self.names())
+        self.assertIn("finish", self.names_after_confirmed_normalization())
 
     def adopt_graph(self, graph):
         """Existing reviewed policy gate, never direct active-graph mutation."""
@@ -3939,11 +3995,17 @@ class RelationshipPublicTests(DagFixture):
 
 
     def test_reparenting_preserves_admitted_findings_and_does_not_release_join(self):
-        self.parent_change_fixture()
-        move = copy.deepcopy(self.graph["nodes"][0])
+        move = task("move", role="root")
+        change_type = {"kind": "object", "fields": {
+            "repository": {"kind": "string"}, "subject": {"kind": "integer"},
+            "expected": REF_TYPE,
+            "parent": {"kind": "union", "variants": [{"kind": "integer"}, {"kind": "null"}]}}}
+        move["outputs"] = {"change": output("parent_change", change_type)}
+        move["executor"]["authority"] = scope("move", "change")
+        move["permits"] = [{"type": "parent_change", "scope": scope("move", "change")}]
         graph = correction_graph()
         graph["nodes"].append(move)
-        _findings, admissions = self.findings(graph=graph)
+        _findings, admissions = self.findings(graph=graph, consume_normalization=True)
         self.add_goal(99, graph)
         retained = {slot: self.produced("find", slot) for slot in admissions}
         work = self.session.acquire("move", actor="root-thread")
@@ -3951,8 +4013,9 @@ class RelationshipPublicTests(DagFixture):
                   "expected": self.blob(self.envelope_for(100)), "parent": 99}
         self.session.finish(work, {"change": change})
         self.assertEqual(99, self.envelope_for(100)["parent"])
-        self.assertIn("produce", self.names(), "Admitted correction remains substantive input after reparenting")
-        self.assertNotIn("finish", self.names(), "Parent move cannot resolve an outstanding finding")
+        names = self.names_after_confirmed_normalization()
+        self.assertIn("produce", names, "Admitted correction remains substantive input after reparenting")
+        self.assertNotIn("finish", names, "Parent move cannot resolve an outstanding finding")
         self.assertEqual(retained, {slot: self.produced("find", slot) for slot in admissions})
 
     def test_parent_change_lost_write_response_is_read_back_before_exact_retry(self):

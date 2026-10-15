@@ -97,6 +97,11 @@ class WorkerLimitEnforcementTests(unittest.TestCase):
             for number in range(1, 6)
         ]
         engine = mock.Mock()
+        engine._normalize_selected = mock.Mock(return_value=None)
+        engine.reconciliation_step.return_value = None
+        engine.validation_blockers.return_value = []
+        engine.hydration_checkpoint_candidate.return_value = None
+        engine._normalization_diagnostics = {}
         engine.portfolio.return_value = goals
         engine.step.side_effect = lambda number: [{"kind": "execute", "goal": number,
             "node": {"goal": number, "node": "work", "item": None, "generation": 1}}]
@@ -120,6 +125,11 @@ class WorkerLimitEnforcementTests(unittest.TestCase):
                     "node": {"goal": 2, "node": "work", "item": None, "generation": 1},
                     "start": {"operation": "start"}}
         engine = mock.Mock()
+        engine._normalize_selected = mock.Mock(return_value=None)
+        engine.reconciliation_step.return_value = None
+        engine.validation_blockers.return_value = []
+        engine.hydration_checkpoint_candidate.return_value = None
+        engine._normalization_diagnostics = {}
         engine.portfolio.return_value = [active, target]
         engine.step.side_effect = {1: [{"kind": "await_worker", "goal": 1}], 2: [proposed]}.__getitem__
 
