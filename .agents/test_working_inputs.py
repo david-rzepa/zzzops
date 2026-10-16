@@ -23,6 +23,7 @@ from contextlib import redirect_stdout
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "plugins/zzzops/zzzops/working_inputs.py"
+RESERVATION_MODULE = ROOT / "plugins/zzzops/zzzops/reservation.py"
 
 
 def production_module():
@@ -38,6 +39,16 @@ def production_module():
     missing = sorted(required - set(vars(module)))
     if missing:
         raise AssertionError("working-input production API is incomplete: " + ", ".join(missing))
+    return module
+
+
+def reservation_module():
+    spec = importlib.util.spec_from_file_location("zzzops_reservation_under_test", RESERVATION_MODULE)
+    if spec is None or spec.loader is None:
+        raise AssertionError("reservation production module has no importable loader")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
     return module
 
 
@@ -634,6 +645,166 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         command = store.guidance("goal:554", "execute")["commands"][0]
         rendered = subprocess.run(command, cwd=self.repo, text=True, capture_output=True, check=True)
         self.assertEqual(json.loads(Path(descriptor["path"]).read_text()), json.loads(rendered.stdout))
+
+    def test_provider_exception_recovery_preserves_transaction_envelope(self):
+        store = self.store()
+        request = "request-exception-envelope"
+        action = {"operation": "update_issue", "target": {"issue": 554}}
+        provider_result = {"number": 554, "state": "open"}
+        store.write("provider:" + request, "provider-mutation", {"payload": "exact"})
+        frozen = store.freeze("provider:" + request, "provider-mutation", request, action)
+        result_hash = "sha256:" + hashlib.sha256(json.dumps(
+            provider_result, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        receipt = {"request_id": request, "digest": frozen["digest"], "action": action,
+                   "authenticated": True, "provider_result": result_hash}
+        calls = {"sender": 0, "check": 0}
+
+        def provider_check(_request_id, _digest):
+            calls["check"] += 1
+            return {"applied": True, "receipt": receipt, "result": provider_result}
+
+        def sender(_request_id, _body):
+            calls["sender"] += 1
+            raise RuntimeError("provider response lost after mutation")
+
+        store.provider_check = provider_check
+        expected = {"receipt": receipt, "result": provider_result}
+        self.assertEqual(expected, store.dispatch(request, sender))
+        self.assertEqual(expected, store.dispatch(request, sender))
+        self.assertEqual({"sender": 1, "check": 1}, calls)
+        self.assertEqual(expected, self.store().status(request)["receipt"])
+
+    def test_frozen_provider_descriptor_retains_typed_reconciliation_inputs(self):
+        store = self.store()
+        descriptor = {"operation": "update_issue", "target": {"issue": 12},
+                      "arguments": {"payload": {"state": "closed"}}}
+        store.write("provider:req", "provider-mutation", descriptor)
+        row = store.freeze("provider:req", "provider-mutation", "typed-reconcile", descriptor)
+        self.assertEqual(descriptor, row["action"])
+        self.assertEqual(descriptor, self.store().status("typed-reconcile")["action"])
+
+    def test_github_reconciliation_launch_failure_remains_unknown(self):
+        self.require_behavior("resumable provider reconciliation launch failure")
+        action = {"operation": "update_issue", "target": {"issue": 12},
+                  "arguments": {"payload": {"state": "closed"}}}
+        with mock.patch.object(subprocess, "run", side_effect=OSError("missing gh")):
+            self.assertIsNone(self.module.github_provider_check(
+                self.repo, "owner/project", "restart-request", "digest", action))
+
+    def test_reconciled_provider_result_replays_same_envelope_for_create_and_cleanup(self):
+        for operation, result in (("create_issue", {"number": 42, "body": "marked"}),
+                                  ("cleanup_created_issue", {"number": 42, "body": "clean"})):
+            with self.subTest(operation=operation):
+                store = self.store()
+                request = "lost-" + operation
+                action = {"operation": operation, "target": {"issue": 42}, "arguments": {}}
+                store.write("provider:" + request, "provider-mutation", action)
+                row = store.freeze("provider:" + request, "provider-mutation", request, action)
+                state = store._load()
+                state["requests"][request]["state"] = "uncertain"
+                store._save(state)
+                result_hash = "sha256:" + hashlib.sha256(json.dumps(
+                    result, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+                receipt = {"request_id": request, "digest": row["digest"], "action": action,
+                           "authenticated": True, "provider_result": result_hash}
+                store.provider_check = lambda *_args, r=receipt, value=result: {
+                    "applied": True, "receipt": r, "result": value}
+                store.reconcile(request)
+                replay = store.dispatch(request, lambda *_args: self.fail("confirmed replay dispatched"))
+                self.assertEqual({"receipt": receipt, "result": result}, replay)
+
+    def test_real_reservation_adapter_decodes_and_validates_label_response(self):
+        reservation = reservation_module()
+        adapter = object.__new__(reservation.GitHubReservationAdapter)
+        adapter.repository = "owner/repo"
+        adapter._run = lambda arguments: subprocess.CompletedProcess(
+            arguments, 0,
+            stdout=json.dumps({"name": "lease", "description": "held", "node_id": "L1"}),
+            stderr="")
+        self.assertEqual("L1", adapter.get_label("lease")["node_id"])
+        adapter._run = lambda arguments: subprocess.CompletedProcess(
+            arguments, 0, stdout=json.dumps({"name": "wrong", "node_id": "L1"}), stderr="")
+        with self.assertRaises(reservation.ReservationProviderError):
+            adapter.get_label("lease")
+
+    def test_reservation_label_mutations_use_exact_transaction_gateway(self):
+        reservation = reservation_module()
+        calls = []
+        labels = {}
+        adapter = object.__new__(reservation.GitHubReservationAdapter)
+        adapter.repo = self.repo
+        adapter.repository = "owner/repo"
+        adapter.executable = "gh"
+        adapter._identity_checked = True
+        adapter._run = lambda arguments, timeout=30: subprocess.CompletedProcess(
+            arguments, 0,
+            stdout=json.dumps({"name": "lease", "description": "held", "node_id": "L1"})
+            if "POST" in arguments else "{}", stderr="")
+        adapter.get_label = lambda name: dict(labels[name]) if name in labels else None
+        adapter.get_label_node = lambda node: next(
+            (dict(value) for value in labels.values() if value["node_id"] == node), None)
+
+        def gateway(_adapter, operation, target, arguments, call, postcondition):
+            calls.append((operation, target, arguments))
+            result = call()
+            if operation == "create_label":
+                labels[target["name"]] = {"name": target["name"],
+                                           "description": arguments["description"], "node_id": "L1"}
+            elif operation == "update_label":
+                labels["lease"]["description"] = arguments["description"]
+            elif operation == "delete_label":
+                labels.clear()
+            confirmed = postcondition()
+            self.assertIsNotNone(confirmed)
+            return confirmed if result is None else result
+
+        with mock.patch.object(reservation, "_provider_write", gateway, create=True):
+            adapter.create_label("lease", "held")
+            adapter.update_label("L1", "renewed")
+            adapter.delete_label("L1")
+        self.assertEqual([
+            ("create_label", {"name": "lease"},
+             {"color": reservation.RESERVATION_COLOR, "description": "held"}),
+            ("update_label", {"node_id": "L1"}, {"description": "renewed"}),
+            ("delete_label", {"node_id": "L1"}, {}),
+        ], calls)
+
+    def test_public_adapter_goal_create_transaction_confirms_exact_result(self):
+        sys.path.insert(0, str(ROOT / ".agents"))
+        try:
+            import test_zzzops as fixtures
+            public_cli = fixtures.zzzops
+        finally:
+            sys.path.pop(0)
+        adapter = object.__new__(public_cli.GitHubGoalTransitionAdapter)
+        adapter.repo, adapter.repository, adapter.executable = self.repo, "owner/repo", "gh"
+        adapter._identity_checked = True
+        payload = {"title": "Durable", "body": "Exact body", "labels": ["zzzops"]}
+
+        def run(arguments, **_kwargs):
+            body = payload["body"]
+            if "POST" in arguments:
+                body += "\n<!-- zzzops-request:" + hashlib.sha256(b"goal-create-public").hexdigest() + " -->"
+            issue = {"number": 42, "title": payload["title"], "body": body, "state": "open",
+                     "html_url": "https://github.com/owner/repo/issues/42",
+                     "labels": [{"name": "zzzops"}]}
+            return subprocess.CompletedProcess(arguments, 0, stdout=json.dumps(issue), stderr="")
+
+        adapter._run = run
+        token = public_cli._WORKING_INPUT_TRANSACTION.set(
+            {"request_id": "goal-create-public", "owner": "root"})
+        try:
+            result = adapter.create_issue(payload)
+        finally:
+            public_cli._WORKING_INPUT_TRANSACTION.reset(token)
+        self.assertEqual("Exact body", result["body"])
+        store = public_cli._working_inputs.WorkingInputStore(
+            self.repo, repository="owner/repo", owner="root")
+        requests = json.loads(store.index_path.read_text())["requests"]
+        self.assertEqual(["confirmed", "confirmed"], sorted(
+            row["state"] for row in requests.values()))
+        self.assertEqual({"create_issue", "cleanup_created_issue"}, {
+            row["action"]["operation"] for row in requests.values()})
 
 
 if __name__ == "__main__":
