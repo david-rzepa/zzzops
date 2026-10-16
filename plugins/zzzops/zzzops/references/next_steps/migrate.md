@@ -9,6 +9,15 @@ Mode: `dry run`, `preview`, or `plan` reports candidates and a proposed plan in 
 
 Use `../../templates/project-goals/` for artifact shapes.
 
+Backlog import review is separate from managed-goal schema conversion. The CLI
+automatically converts a supported v1 goal when execution encounters it, or in an
+explicit bounded conversion batch. Conversion preserves legacy data and compiles
+supported recovery routes before first v2 publication. Pending conversion reuses
+its exact supported converter/compiler transaction or defers with guidance; never
+recompute an old intent under a new version. Broad discovery, previews, closed
+goals and historical reads do not trigger a conversion sweep. Existing committed
+converter versions remain readable as history.
+
 1. Run `../../../skills/migrate-to-zzzops/scripts/inventory.py .`. Treat its candidates, types, confidence, and possible-same-outcome groups only as discovery hints. Read each candidate's evidence, enclosing headings, complete surrounding section, and relevant project context yourself; never infer intent, completion, or identity from the script.
 2. Perform one explicit completeness review: inspect relevant source sections (including completed-looking/zero-match sections), disposition every plausible open/conditional outcome, and preserve every source location for possible matches. Compare fingerprints with `.zzzops/migration/STATE.json` and minimal goal discovery; hydrate only plausible duplicate bodies, then material history. Ignore managed/dependency/build/generated areas. Apply PROJECT interview policy to consequential ambiguity and reuse charter answers.
 3. Copy the installed plan and summary templates into `.zzzops/migration/`. Classify completion from full context; summarize skipped completed items and propose only open work. Fill goals, value rationale, source disposition, exclusions, and questions. Present proposed outcomes, consequential questions, and the approval needed; link `SUMMARY.md` for detail.

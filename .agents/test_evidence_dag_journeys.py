@@ -240,6 +240,32 @@ class DagFixture(unittest.TestCase):
     def names(self):
         return {step["node"]["node"] for step in self.session.ready()}
 
+    def names_after_confirmed_normalization(self):
+        """Consume at most one confirmed normalization maintenance projection."""
+        def receipts():
+            _envelope, payload = self.payload()
+            return [self.read_blob(row["result"])
+                    for row in payload["operational"]["receipts"]
+                    if self.read_blob(row["result"]).get("type") == "graph_normalization"]
+        before = receipts()
+        steps = self.session.checkpoint(100)
+        self.assertFalse(any(step.get("kind") in {"repair", "blocker", "blocked"} for step in steps), steps)
+        self.assertFalse(any(step.get("kind") == "checkpoint" for step in steps),
+                         "Checkpoint maintenance without a confirmed normalization receipt")
+        after = receipts()
+        if len(after) != len(before):
+            self.assertEqual(len(before) + 1, len(after), "One checkpoint may apply one normalization")
+            maintenance = after[-1]
+            self.assertEqual("graph_normalize", maintenance["content"]["request"]["operation"])
+            self.assertEqual(["checkpoint"], [step.get("kind") for step in maintenance["next_steps"]])
+            self.assertFalse(any(step.get("kind") == "repair" for step in steps), steps)
+            steps = self.session.checkpoint(100)
+            self.assertEqual(len(after), len(receipts()), "Explicit reinvocation must reach ordinary work")
+            self.assertFalse(any(step.get("kind") in {
+                "repair", "blocker", "blocked", "checkpoint"} for step in steps), steps)
+        return {step["node"]["node"] for step in steps
+                if step.get("kind") in {"execute", "review", "human_approval"} and step.get("node")}
+
     def produce(self):
         acquired = self.session.acquire("produce")
         self.session.finish(acquired, {"value": "version one"})
@@ -289,8 +315,11 @@ class DagFixture(unittest.TestCase):
         return {(step["node"]["item"], step["node"]["generation"])
                 for step in self.session.ready() if step["node"].get("item") is not None}
 
-    def findings(self, *, applicability="applicable", admit=True, surface="issue", graph=None):
+    def findings(self, *, applicability="applicable", admit=True, surface="issue", graph=None,
+                 consume_normalization=False):
         self.install(graph or correction_graph())
+        if consume_normalization:
+            self.names_after_confirmed_normalization()
         self.produce()
         subject = self.produced("produce")
         if surface == "pr":
@@ -516,7 +545,12 @@ class EvidenceDagPublicTests(DagFixture):
         }
         assessment["outputs"] = {"assessment": output("applicability_assessment", APPLICABILITY_ASSESSMENT_TYPE)}
         assessment["permits"] = [{"type": "applicability_assessment", "scope": scope("produce")}]
-        graph["nodes"].append(assessment)
+        second_assessment = copy.deepcopy(assessment)
+        second_assessment["id"] = "assess_applicability_second"
+        second_assessment["inputs"]["obligation"]["path"] = ["second"]
+        second_assessment["executor"]["authority"]["subject"]["node"] = "assess_applicability_second"
+        second_assessment["executor"]["authority"]["output"] = "assessment"
+        graph["nodes"].extend([assessment, second_assessment])
         findings, admissions = self.findings(graph=graph, applicability="unresolved")
         self.session.finish(self.session.acquire("review", actor="independent-reviewer"), {"value": "Inspected exact corrected subject"})
         historical_admission = self.produced("admit", "first")
@@ -541,6 +575,10 @@ class EvidenceDagPublicTests(DagFixture):
         self.assertEqual(historical_admission, obligation["admission"])
         self.assertEqual(historical_finding, obligation["finding"])
         self.assertIn("assessment", obligation)
+        second_obligation = snapshot["projection"]["obligations"][(100, findings["second"]["id"])]
+        self.assertEqual("unresolved", second_obligation["applicability"])
+        self.assertEqual(self.produced("admit", "second"), second_obligation["admission"])
+        self.assertEqual(admissions["second"]["finding"], second_obligation["finding"])
         self.assertFalse(any(step.get("diagnostic") == "Finding applicability unresolved"
                              for step in self.session.checkpoint(100)))
 
@@ -609,21 +647,48 @@ class EvidenceDagPublicTests(DagFixture):
         extra = task("additional_check", ["produce"])
         extra["inputs"] = {"subject": subject_input("produce")}
         extra["independent_of"] = [selector("produce")]
-        graph["nodes"].insert(-1, extra)
-        graph["nodes"][-1]["requires"].append(selector("additional_check"))
+        graph["nodes"].append(extra)
+        graph["nodes"][-2]["requires"].append(selector("additional_check"))
         self.adopt_graph(graph)
-        self.assertNotIn("finish", self.names(), "Old approvals cannot satisfy a new prerequisite")
+        # Goal repair is additive to the exact compiled historical graph; the
+        # reviewed project policy above supplies the prospective contract.
+        active = self.read_blob(self.payload()[1]["graph"])
+        graph = copy.deepcopy(active)
+        graph["nodes"].append(extra)
+        next(node for node in graph["nodes"] if node["id"] == "finish")["requires"].append(
+            selector("additional_check"))
+        proposal = self.session.call(100, {
+            "operation": "graph_prepare", "graph": graph,
+            "rationale": "Adopt the stronger reviewed policy graph without rewriting settled evidence",
+        })["next_steps"][0]["proposal"]
+        reviewed = GraphAdoptionPublicTests.administrative_review(self, {
+            "operation": "graph_review", "proposal": proposal,
+            "actor": "independent-reviewer", "decision": "approved",
+            "report": "Exact stronger graph preserves settled evidence and adds an independent check",
+            "request_id": "review-stronger-graph-" + proposal["target"]["graph"][7:23],
+        })["next_steps"][0]
+        adoption = {**reviewed["submission"],
+                    "approved_by": "user: approved exact scoped stronger graph"}
+        self.session.call(100, adoption)
+        self.assertNotIn("finish", self.names_after_confirmed_normalization(),
+                         "Old approvals cannot satisfy a new prerequisite")
         self.assertEqual(old_output, self.read_blob(old_result)["content"]["outputs"]["value"])
         # Conservative policy rebinding may require fresh unchanged work when
         # equivalence is unproven. Either route must actually perform the new
         # independent review, never manufacture it from previous approval.
-        if "produce" in self.names():
+        if "produce" in self.names_after_confirmed_normalization():
             self.produce()
-        for name in ("review_a", "review_b", "additional_check"):
-            if name in self.names():
+        for name in ("review_a", "review_b"):
+            if name in self.names_after_confirmed_normalization():
                 self.session.finish(self.session.acquire(name), {"value": "Reviewed exact current policy and subject"})
+        before_additional = self.names_after_confirmed_normalization()
+        self.assertIn("additional_check", before_additional)
+        self.assertNotIn("finish", before_additional,
+                         "The refreshed original work cannot bypass the added independent review")
+        self.session.finish(self.session.acquire("additional_check"), {
+            "value": "Reviewed exact current policy and subject"})
         self.assertIsNotNone(self.result("additional_check")[0])
-        self.assertIn("finish", self.names())
+        self.assertIn("finish", self.names_after_confirmed_normalization())
 
     def adopt_graph(self, graph):
         """Existing reviewed policy gate, never direct active-graph mutation."""
@@ -1161,15 +1226,43 @@ class EvidenceDagPublicTests(DagFixture):
         self.session.finish(work, {"value": "value"})
 
     def test_generic_completed_result_without_lease_detects_consumed_file_drift(self):
+        workspace = WorkspaceAuthorityPublicTests.workspace_graph(self)
+        producer = copy.deepcopy(workspace["nodes"][3])
+        producer["id"] = "produce"
+        producer["inputs"]["allocation"]["path"] = ["allocations", "produce"]
+        identity = {"goal": 100, "node": "produce", "item": None, "generation": 1}
+        allocation = {"allocations": {"produce": {
+            "task": identity, "owned": [], "consumed": ["product.txt"]}}}
+        graph = review_graph()
+        graph["nodes"][0] = producer
+        graph["nodes"] = workspace["nodes"][:3] + graph["nodes"]
+        self.install(graph)
+        self.session.finish(self.session.acquire("charter"), {"grant": allocation})
+        permit = {"manifest": self.produced("charter", "grant"), "tasks": [identity],
+                  "policy": z.workflow_engine(self.fixture.repo, self.session.project,
+                                              self.session.runtime).node_evidence_policy(),
+                  "decision": "approved"}
+        self.session.finish(self.session.acquire("inspect_charter", actor="allocation-reviewer"),
+                            {"permit": permit})
+        self.session.finish(self.session.acquire("consent"), {"permit": permit})
         self.produce()
         before = self.result("produce")[0]
         self.assertFalse(self.payload()[1]["operational"]["leases"])
         self.assertEqual({"review_a", "review_b"}, self.names())
         path = self.fixture.repo / "product.txt"
         original = path.read_bytes()
+        artifact = self.read_blob(self.produced("produce"))
+        proof = self.read_blob(artifact["provenance"]["source"])
+        self.assertEqual("sha256:" + hashlib.sha256(original).hexdigest(),
+                         proof["consumed"]["product.txt"])
+        unchanged = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.assertEqual({"review_a", "review_b"}, self.names())
+        self.assertEqual(unchanged, (self.provider.issues, self.provider.comments))
         try:
             path.write_text("changed read input after completed result\n")
+            provider_before = copy.deepcopy((self.provider.issues, self.provider.comments))
             steps = self.session.checkpoint(100)
+            self.assertEqual(provider_before, (self.provider.issues, self.provider.comments))
             self.assertFalse(any(s.get("kind") == "execute" and s.get("node", {}).get("node") in
                                  {"review_a", "review_b", "finish"} for s in steps))
             self.assertEqual(before, self.result("produce")[0], "Drift must not overwrite historical evidence")
@@ -3088,7 +3181,7 @@ class DefaultCorrectionPublicTests(DagFixture):
             self.session.finish(self.session.acquire("admit_decomposition_correction"), {"value": {
                 "finding": finding_ref, "target_inputs": self.result("decompose")[1]["inputs"],
                 "authority": self.result("interpret_decomposition_rejection")[0],
-                "applicability": "applicable", "rationale": "In the exact previously approved scope"}})
+                "applicability": "applicable", "rationale": "In the exact previously approved scope"}, "transfer": None})
             self.assertIn("decompose", self.names())
             self.assertNotIn("test_design", self.names())
             empty_members = {"items": {}, "rationale": "No additional review members."}
@@ -3150,7 +3243,7 @@ class DefaultCorrectionPublicTests(DagFixture):
         self.session.finish(self.session.acquire("admit_test_design_correction"), {"value": {
             "finding": finding, "target_inputs": self.result("test_design")[1]["inputs"],
             "authority": self.result("interpret_test_design_rejection")[0],
-            "applicability": "applicable", "rationale": "Same exact reviewed test allocation"}})
+            "applicability": "applicable", "rationale": "Same exact reviewed test allocation"}, "transfer": None})
         self.session.git("add", path.name)
         self.session.git("commit", "-qm", "preserve rejected test candidate")
         corrected = self.session.acquire("test_design")
@@ -3902,11 +3995,17 @@ class RelationshipPublicTests(DagFixture):
 
 
     def test_reparenting_preserves_admitted_findings_and_does_not_release_join(self):
-        self.parent_change_fixture()
-        move = copy.deepcopy(self.graph["nodes"][0])
+        move = task("move", role="root")
+        change_type = {"kind": "object", "fields": {
+            "repository": {"kind": "string"}, "subject": {"kind": "integer"},
+            "expected": REF_TYPE,
+            "parent": {"kind": "union", "variants": [{"kind": "integer"}, {"kind": "null"}]}}}
+        move["outputs"] = {"change": output("parent_change", change_type)}
+        move["executor"]["authority"] = scope("move", "change")
+        move["permits"] = [{"type": "parent_change", "scope": scope("move", "change")}]
         graph = correction_graph()
         graph["nodes"].append(move)
-        _findings, admissions = self.findings(graph=graph)
+        _findings, admissions = self.findings(graph=graph, consume_normalization=True)
         self.add_goal(99, graph)
         retained = {slot: self.produced("find", slot) for slot in admissions}
         work = self.session.acquire("move", actor="root-thread")
@@ -3914,8 +4013,9 @@ class RelationshipPublicTests(DagFixture):
                   "expected": self.blob(self.envelope_for(100)), "parent": 99}
         self.session.finish(work, {"change": change})
         self.assertEqual(99, self.envelope_for(100)["parent"])
-        self.assertIn("produce", self.names(), "Admitted correction remains substantive input after reparenting")
-        self.assertNotIn("finish", self.names(), "Parent move cannot resolve an outstanding finding")
+        names = self.names_after_confirmed_normalization()
+        self.assertIn("produce", names, "Admitted correction remains substantive input after reparenting")
+        self.assertNotIn("finish", names, "Parent move cannot resolve an outstanding finding")
         self.assertEqual(retained, {slot: self.produced("find", slot) for slot in admissions})
 
     def test_parent_change_lost_write_response_is_read_back_before_exact_retry(self):
@@ -4619,7 +4719,7 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
             "authority": self.result(interpret, item="acceptance_contracts")[0], "applicability": "applicable",
             "rationale": "Root admits the exact independently reviewed question",
         }
-        self.session.finish(self.session.acquire(admit, item="acceptance_contracts"), {"value": admission})
+        self.session.finish(self.session.acquire(admit, item="acceptance_contracts"), {"value": admission, "transfer": None})
         self.assertIn("requirements", self.names(),
                       "An admitted typed question must return human interaction to root")
         acquired = self.session.acquire("requirements")
@@ -4923,7 +5023,7 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
                                                          item="data_residency")[0],
                                 "applicability": "applicable",
                                 "rationale": "Root admits the configured-domain finding",
-                            }})
+                            }, "transfer": None})
         corrected = {"specification": "Behavior constrained to the reviewed residency region",
                      "criteria": ["observable", "region is explicit"],
                      "risks": ["correctness", "data_residency"],
@@ -5076,23 +5176,17 @@ class GraphAdoptionPublicTests(DagFixture):
 
     def test_missing_route_returns_executable_prepare_review_adopt_continuation(self):
         findings, _admissions = self.findings(applicability="unresolved")
-        repair = next(step for step in self.session.checkpoint(100)
-                      if step.get("diagnostic") == "Finding applicability unresolved")
-        submission = repair["submission"]
-        self.assertEqual("graph_prepare", submission["operation"])
-        self.assertIsInstance(submission["graph"], dict,
-                              "Recovery must return a concrete target graph, not prose or a placeholder")
-        z._phase_evidence.validate_graph(submission["graph"])
+        frontier = self.session.checkpoint(100)
+        graph = self.read_blob(self.payload()[1]["graph"])
+        families = [row for row in graph["task_sets"]
+                    if row["source"].get("producer") == {"slot": "obligation_selections"}]
+        self.assertEqual(3, len(families))
         self.assertTrue(any(output.get("type") == "applicability_assessment"
-                            for node in submission["graph"]["nodes"]
-                            for output in node["outputs"].values()))
-        self.assertIn(findings["first"]["id"], json.dumps(repair["obligations"]))
-
-        prepared = self.session.call(100, submission)["next_steps"][0]
-        self.assertEqual("review_required", prepared["kind"])
-        self.assertEqual("graph_review", prepared["submission"]["operation"])
-        self.assertNotIn("<", json.dumps(prepared["submission"]),
-                         "The public continuation must contain the exact prepared proposal")
+                            for row in families for output in row["template"]["outputs"].values()))
+        ready_items = {step["node"]["item"] for step in frontier if step.get("kind") == "execute"
+                       and step.get("node", {}).get("node") in {row["template"]["id"] for row in families}}
+        self.assertEqual(set(findings), ready_items)
+        self.assertNotRegex(json.dumps(frontier), r"(?i)graph_prepare|graph_adopt")
 
     def test_direct_review_is_durable_independent_authority_free_and_replayable(self):
         graph = copy.deepcopy(self.graph)
@@ -5210,17 +5304,23 @@ class GraphAdoptionPublicTests(DagFixture):
 
     def test_existing_assessment_route_does_not_hide_uncovered_obligation(self):
         findings, _admissions = self.findings(applicability="unresolved", graph=self.applicability_graph())
-        repair = next(step for step in self.session.checkpoint(100)
-                      if step.get("diagnostic") == "Finding applicability unresolved")
-        obligation_ids = {row["id"] for row in repair["obligations"]}
-        self.assertEqual({findings["second"]["id"]}, obligation_ids)
-        generated = repair["submission"]["graph"]
-        assessment_paths = {tuple(binding["path"])
-                            for node in generated["nodes"]
-                            for binding in node.get("inputs", {}).values()
-                            if binding.get("producer") == {"slot": "obligations"}}
-        self.assertIn((findings["first"]["id"],), assessment_paths)
-        self.assertIn((findings["second"]["id"],), assessment_paths)
+        original = self.applicability_graph()
+        frontier = self.session.checkpoint(100)
+        generated = self.read_blob(self.payload()[1]["graph"])
+        self.assertEqual(original["nodes"], generated["nodes"][:len(original["nodes"])])
+        self.assertEqual(original["task_sets"], generated["task_sets"][:len(original["task_sets"])])
+        families = [row for row in generated["task_sets"]
+                    if row["source"].get("producer") == {"slot": "obligation_selections"}]
+        self.assertEqual(3, len(families))
+        family_templates = {row["template"]["id"] for row in families}
+        ready_items = {step["node"]["item"] for step in frontier if step.get("kind") == "execute"
+                       and step.get("node", {}).get("node") in family_templates}
+        self.assertEqual({findings["first"]["id"], findings["second"]["id"]}, ready_items)
+        snapshot = z.workflow_engine(self.fixture.repo, self.session.project,
+                                     self.session.runtime).node_snapshot(100)
+        obligations = snapshot["projection"]["obligations"]
+        self.assertEqual("unresolved", obligations[(100, findings["first"]["id"])]["applicability"])
+        self.assertEqual("unresolved", obligations[(100, findings["second"]["id"])]["applicability"])
 
     def test_rejected_review_without_correction_route_returns_executable_recovery(self):
         producer = task("produce")
@@ -5243,26 +5343,25 @@ class GraphAdoptionPublicTests(DagFixture):
         self.session.finish(self.session.acquire("review_produce", actor="independent-reviewer"),
                             {"value": {"decision": "changes_requested", "report": "Correct the value"}})
 
-        repair = next(step for step in self.session.checkpoint(100)
-                      if step.get("diagnostic") == "Rejected review lacks correction route")
-        self.assertEqual("graph_prepare", repair["submission"]["operation"])
-        recovered = repair["submission"]["graph"]
+        self.session.checkpoint(100)
+        recovered = self.read_blob(self.payload()[1]["graph"])
         z._phase_evidence.validate_graph(recovered)
-        prepared = self.session.call(100, repair["submission"])["next_steps"][0]["proposal"]
-        self.session.call(100, self.proposal_review(prepared))
-
-        interpretation = self.session.acquire("interpret_produce_rejection")
+        interpretation_name = next(node["id"] for node in recovered["nodes"]
+            if any(value.get("type") == "finding" for value in node["outputs"].values()))
+        admission_name = next(node["id"] for node in recovered["nodes"]
+            if any(value.get("type") == "admission" for value in node["outputs"].values()))
+        interpretation = self.session.acquire(interpretation_name)
         finding = {"id": "review_produce_rejection", "revision": 1,
                    "source": self.produced("review_produce"),
                    "subjects": [self.produced("produce")], "target": scope("produce"),
                    "request": "Correct the independently rejected value",
                    "rationale": "The exact current review requested changes", "supersedes": None}
         self.session.finish(interpretation, {"value": finding})
-        finding_ref = self.produced("interpret_produce_rejection")
-        self.session.finish(self.session.acquire("admit_produce_correction"), {"value": {
+        finding_ref = self.produced(interpretation_name)
+        self.session.finish(self.session.acquire(admission_name), {"value": {
             "finding": finding_ref, "target_inputs": self.result("produce")[1]["inputs"],
-            "authority": self.result("interpret_produce_rejection")[0],
-            "applicability": "applicable", "rationale": "Same exact approved scope"}})
+            "authority": self.result(interpretation_name)[0],
+            "applicability": "applicable", "rationale": "Same exact approved scope"}, "transfer": None})
         self.assertIn("produce", self.names())
         self.assertNotIn("finish", self.names())
 
@@ -5347,13 +5446,17 @@ class GraphAdoptionPublicTests(DagFixture):
         for name in ("review_a", "review_b"):
             self.session.finish(self.session.acquire(name, actor=name), {"value": {
                 "decision": "changes_requested", "report": name + " correction"}})
-        repair = next(step for step in self.session.checkpoint(100)
-                      if step.get("diagnostic") == "Rejected review lacks correction route")
-        recovered = repair["submission"]["graph"]
+        self.session.checkpoint(100)
+        recovered = self.read_blob(self.payload()[1]["graph"])
         z._phase_evidence.validate_graph(recovered)
-        names = {node["id"] for node in recovered["nodes"]}
-        self.assertIn("interpret_produce_rejection_from_review_a", names)
-        self.assertIn("interpret_produce_rejection_from_review_b", names)
+        routes = [(node["id"], {value.get("producer", {}).get("node", {}).get("node")
+                                for value in node.get("inputs", {}).values()})
+                  for node in recovered["nodes"]
+                  if any(value.get("type") == "finding" for value in node["outputs"].values())]
+        matched = {review: node for node, producers in routes for review in ("review_a", "review_b")
+                   if review in producers}
+        self.assertEqual({"review_a", "review_b"}, set(matched))
+        self.assertNotEqual(matched["review_a"], matched["review_b"])
 
     def test_rejected_review_of_nonlocal_target_does_not_generate_local_route(self):
         engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
@@ -5383,28 +5486,37 @@ class GraphAdoptionPublicTests(DagFixture):
 
     def test_adopted_route_resumes_exact_obligation_and_requires_fresh_review(self):
         findings, admissions = self.findings(applicability="unresolved")
-        self.session.finish(self.session.acquire("review", actor="independent-reviewer"),
-                            {"value": "Inspected the corrected subject"})
-        graph = next(step["submission"]["graph"] for step in self.session.checkpoint(100)
-                     if step.get("diagnostic") == "Finding applicability unresolved")
-        proposal = self.session.call(100, {"operation": "graph_prepare", "graph": graph,
-                                           "rationale": "Classify the retained unresolved obligation"})["next_steps"][0]["proposal"]
-        self.session.call(100, self.proposal_review(proposal))
-        assessment_name = next(node["id"] for node in graph["nodes"]
-                               if any(binding.get("producer") == {"slot": "obligations"} and
-                                      binding.get("path") == ["first"]
-                                      for binding in node.get("inputs", {}).values()))
-        work = self.session.acquire(assessment_name)
-        self.assertNotEqual(self.result("produce")[1]["executor"], self.result("review")[1]["executor"])
-        self.session.finish(work, {"assessment": {
+        graph = self.read_blob(self.payload()[1]["graph"])
+        families = [row for row in graph["task_sets"]
+                    if row["source"].get("producer") == {"slot": "obligation_selections"}]
+        assessment = next(row for row in families if any(
+            output.get("type") == "applicability_assessment"
+            for output in row["template"]["outputs"].values()))
+        observation = next(row for row in families
+                           if row["template"]["executor"]["role"] == "worker")
+        context = next(row for row in families if row not in (assessment, observation))
+        for row, actor, value in ((observation, "fresh-independent-reviewer", "Inspected current subject"),
+                                  (context, "root-thread", "Exact bounded authority context")):
+            acquired = self.session.acquire(row["template"]["id"], item="first", actor=actor)
+            self.session.finish(acquired, {next(iter(row["template"]["outputs"])): value})
+        work = self.session.acquire(assessment["template"]["id"], item="first")
+        subject = next(binding["source"] for binding in work["input_envelope"]["inputs"]
+                       if binding["name"] == "subject")
+        self.assertEqual(self.produced("produce"), subject)
+        self.assertNotEqual(self.result("produce")[1]["executor"],
+                            self.result(observation["template"]["id"], "first")[1]["executor"])
+        self.session.finish(work, {next(iter(assessment["template"]["outputs"])): {
             "admission": self.produced("admit", "first"), "finding": admissions["first"]["finding"],
-            "subjects": [self.produced("produce")], "reviewer_result": self.result("review")[0],
-            "authority": self.result("authorize")[0], "applicability": "applicable",
+            "subjects": [subject],
+            "reviewer_result": self.result(observation["template"]["id"], "first")[0],
+            "authority": self.result(context["template"]["id"], "first")[0],
+            "applicability": "applicable",
             "rationale": "Fresh independent review inspected the exact current corrected subject",
         }})
         snapshot = z.workflow_engine(self.fixture.repo, self.session.project,
                                      self.session.runtime).node_snapshot(100)
         self.assertEqual("applicable", snapshot["projection"]["obligations"][(100, findings["first"]["id"])]["applicability"])
+        self.assertEqual("unresolved", snapshot["projection"]["obligations"][(100, findings["second"]["id"])]["applicability"])
 
     def test_fresh_goal_can_bootstrap_closed_graph_review_without_recursion(self):
         self.add_goal(101, copy.deepcopy(self.graph))

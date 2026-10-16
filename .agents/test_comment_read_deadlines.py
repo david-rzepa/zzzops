@@ -117,7 +117,9 @@ class CommentReadDeadlineTests(DagFixture):
         ack = response['next_steps'][0]
         self.assertEqual(('renewed', work['lease']['token'], work['bound_actor']),
                          (ack['kind'], ack['lease'], ack['actor']))
-        self.assertEqual([120, 20, 20], [c['timeout'] for c in calls])
+        # Initial history, pre-comment authority, comment confirmation,
+        # and pre-body authority all share the same remaining deadline.
+        self.assertEqual([120, 20, 20, 20], [c['timeout'] for c in calls])
         self.assertEqual(100, elapsed[0])
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
         self.assertEqual(response, self.session.call(100, request))

@@ -1196,6 +1196,37 @@ def _derive_task_steps(graph, payload, context):
                          if target_goal == number}
                 ref = remember({'type': 'obligation_context', 'content': value, 'producer': None,
                                 'provenance': {'actor': 'host', 'source': None, 'policy': policy}})
+            elif slot == 'obligation_selections':
+                # Authenticated derived context, folded from immutable admission
+                # and assessment history above. A goal-authored Result cannot
+                # choose, omit, classify or retire these obligations.
+                if (binding['output'] != 'content' or binding['mode'] != 'content'
+                        or len(binding['path']) != 2
+                        or any(not isinstance(token, str) for token in binding['path'])):
+                    raise ValueError('Obligation selection requires an exact local target/output path')
+                local_nodes = {node['id']: node for node in snapshots[number]['graph']['nodes']}
+                target_name, target_output = binding['path']
+                if target_name not in local_nodes or target_output not in local_nodes[target_name]['outputs']:
+                    raise ValueError('Obligation selection target is unknown or foreign')
+                value = {name: {output: {'items': {}, 'rationale':
+                    'Exact unresolved local obligations for this declared target/output.'}
+                    for output in node['outputs']} for name, node in local_nodes.items()}
+                for (target_goal, identifier), obligation in obligations.items():
+                    if target_goal != number or obligation['applicability'] != 'unresolved':
+                        continue
+                    scope = obligation['content']['target']; subject = scope['subject']
+                    # Member-target history remains in the original obligations
+                    # slot; this supported family selects static local targets.
+                    if subject.get('kind') != 'node':
+                        continue
+                    if (subject.get('goal') != number or subject.get('node') not in local_nodes
+                            or scope.get('output') not in local_nodes[subject['node']]['outputs']):
+                        raise ValueError('Malformed or foreign unresolved obligation target')
+                    value[subject['node']][scope['output']]['items'][identifier] = {
+                        'admission': obligation['admission'], 'finding': obligation['finding'],
+                        'target': scope, 'applicability': 'unresolved'}
+                ref = remember({'type': 'obligation_selection_context', 'content': value, 'producer': None,
+                                'provenance': {'actor': 'host', 'source': None, 'policy': policy}})
             else:
                 ref = snapshots[number]['payload'][slot]
                 value = artifact(ref)['content']

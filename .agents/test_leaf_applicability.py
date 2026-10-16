@@ -21,8 +21,31 @@ class LeafApplicabilityTests(unittest.TestCase):
             node = nodes[name]
             self.assertIn("repository_workspace", node["executor"]["resources"])
             self.assertIn("allocation", node["inputs"])
-            self.assertIn("authorization", node["inputs"])
-            self.assertNotIn("applicability", node, "Structure alone grants no workspace authority")
+            for name, producer in (("review_authorization", "decomposition_review"),
+                                   ("root_authorization", "approve_spec")):
+                binding = node["inputs"][name]
+                self.assertEqual({"node": {"kind": "node", "goal": "#this", "node": producer}},
+                                 binding["producer"])
+                self.assertEqual("authorization", binding["output"])
+                self.assertEqual([], binding["path"])
+                self.assertEqual("identity", binding["mode"])
+            applicability = node["applicability"]
+            selector = applicability["input"]
+            self.assertEqual({"node": {"kind": "node", "goal": "#this", "node": "decompose"}},
+                             selector["producer"])
+            self.assertEqual("value", selector["output"])
+            self.assertEqual(["delivery_class"], selector["path"])
+            self.assertEqual("content", selector["mode"])
+            self.assertEqual({"kind": "enum", "values": ["leaf", "composition", "atomic"]},
+                             selector["type"])
+            self.assertEqual(["leaf", "atomic"], applicability["values"])
+            self.assertNotIn("composition", applicability["values"],
+                             "Composition cannot grant a leaf workspace task")
+            self.assertEqual({"value"}, set(applicability["outputs"]))
+            self.assertIn("non-applicability", applicability["outputs"]["value"])
+            self.assertEqual({"subject": {"kind": "node", "goal": "#this", "node": "spec"},
+                              "output": "allocation"}, node["executor"]["authority"],
+                             "Topology alone grants no workspace authority")
         dag_fixtures.run_generic_regressions(self,
             "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_parent_grant_omission_and_mismatch_cannot_expand_child_authority")
 

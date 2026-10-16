@@ -15,6 +15,8 @@ HARNESS_PROMPTS = {
 
 COMMUNICATION_PROMPT = "plugins/zzzops/rules/COMMUNICATION.md"
 CLI_USAGE_PROMPT = "plugins/zzzops/zzzops/references/CLI_USAGE.md"
+POLICY_PREFLIGHT_PROMPT = "plugins/zzzops/zzzops/references/POLICY_PREFLIGHT.md"
+FEEDBACK_OPERATIONS_PROMPT = "plugins/zzzops/zzzops/references/FEEDBACK_OPERATIONS.md"
 DELEGATION_PROMPT = "plugins/zzzops/rules/DELEGATION.md"
 PROACTIVE_DELEGATION_SIGNAL = "Do not decide whether to delegate from this rule"
 PROACTIVE_DELEGATION_WORKFLOWS = {
@@ -68,12 +70,12 @@ WORKFLOW_PROMPTS = {
         "plugins/zzzops/zzzops/references/next_steps/execute.md",
         "plugins/zzzops/skills/execute-zzzops/references/EXECUTE.md",
         "plugins/zzzops/skills/execute-zzzops/references/BRANCH_REVIEW.md",
-        "plugins/zzzops/skills/execute-zzzops/references/SELF_REVIEW.md",
         COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
         "plugins/zzzops/rules/GOAL_SYSTEM.md", "plugins/zzzops/rules/CONTINUATION.md",
         "plugins/zzzops/rules/EXECUTION_STRATEGY.md", DELEGATION_PROMPT, "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "policy-review": (
+        POLICY_PREFLIGHT_PROMPT,
         "plugins/zzzops/skills/review-zzzops-policy/SKILL.md",
         "plugins/zzzops/zzzops/references/next_steps/policy-review.md",
         COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
@@ -100,6 +102,7 @@ WORKFLOW_PROMPTS = {
         "plugins/zzzops/rules/FEEDBACK.md",
     ),
     "feedback": (
+        FEEDBACK_OPERATIONS_PROMPT,
         "plugins/zzzops/skills/send-zzzops-feedback/SKILL.md",
         "plugins/zzzops/zzzops/references/next_steps/send-feedback.md",
         COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
@@ -133,7 +136,7 @@ COLD_WORKFLOW_PROMPTS = {
         "plugins/zzzops/zzzops/references/bootstrap/PLAN.md",
         "plugins/zzzops/zzzops/references/bootstrap/BROWNFIELD.md",
     ),
-    "execution": tuple(
+    "execution": ("plugins/zzzops/skills/execute-zzzops/references/SELF_REVIEW.md",) + tuple(
         f"plugins/zzzops/skills/execute-zzzops/references/phases/{path.name}"
         for path in sorted((Path(__file__).parents[1] / "plugins/zzzops/skills/execute-zzzops/references/phases").glob("*.md"))
     ),
@@ -142,6 +145,16 @@ COLD_WORKFLOW_PROMPTS = {
         "plugins/zzzops/skills/suggest-zzzops-work/references/VERIFICATION_EFFICIENCY.md",
     ),
 }
+
+# Shared rules route these actions conditionally; selected policy/feedback workflows
+# already count their own required reference as hot. Keep every reachable cold path.
+for workflow, hot_paths in WORKFLOW_PROMPTS.items():
+    conditional = []
+    if "plugins/zzzops/rules/INITIALIZATION.md" in hot_paths and POLICY_PREFLIGHT_PROMPT not in hot_paths:
+        conditional.append(POLICY_PREFLIGHT_PROMPT)
+    if "plugins/zzzops/rules/FEEDBACK.md" in hot_paths and FEEDBACK_OPERATIONS_PROMPT not in hot_paths:
+        conditional.append(FEEDBACK_OPERATIONS_PROMPT)
+    COLD_WORKFLOW_PROMPTS[workflow] = (*COLD_WORKFLOW_PROMPTS.get(workflow, ()), *conditional)
 
 WORKFLOW_SIGNALS = {
     "bootstrap-greenfield": ("never silently de-escalate", "adaptive product interview", "exactly one canonical top-level product-outcome goal", "canonical verification", "Continue from harness outcomes into product milestones", "ordered PR review queue", PROACTIVE_DELEGATION_SIGNAL),
@@ -175,7 +188,7 @@ def prompt_files(root: Path) -> list[Path]:
     for skill in product_skills:
         files.extend((skill.parent / "references").glob("*.md"))
     files.extend((root / "plugins" / "zzzops" / "zzzops" / "references" / "next_steps").glob("*.md"))
-    files.append(root / CLI_USAGE_PROMPT)
+    files.extend(root / path for path in (CLI_USAGE_PROMPT, POLICY_PREFLIGHT_PROMPT, FEEDBACK_OPERATIONS_PROMPT))
     files.extend((root / "plugins" / "zzzops" / "zzzops" / "references" / "bootstrap").glob("*.md"))
     files.extend((root / "plugins" / "zzzops" / "zzzops" / "templates" / "project-goals").glob("*.md"))
     files.extend((root / "plugins" / "zzzops" / "concepts").glob("*.md"))

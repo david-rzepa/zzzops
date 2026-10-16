@@ -70,7 +70,8 @@ class StoppedDraftRecoveryTests(unittest.TestCase):
         self.assertEqual(j.content_hash(acquisition), draft["acquisition_hash"])
         self.assertEqual(work["input_hash"], draft["input_hash"])
         self.assertEqual(acquisition["contract"], draft["contract"])
-        self.assertEqual(j.content_hash(c.session.project["policy"]), draft["policy"])
+        engine = j.z.workflow_engine(c.fixture.repo, c.session.project, c.session.runtime)
+        self.assertEqual(engine.node_evidence_policy(), draft["policy"])
         authority_names = {"allocation", "authorization", "approval",
                            "parent_allocation", "parent_authorization", "parent_approval"}
         authority_inputs = [row for row in acquisition["inputs"] if row["name"] in authority_names]
@@ -326,6 +327,58 @@ class StoppedDraftRecoveryTests(unittest.TestCase):
         self.assertIn("beta", c.names(), "Authenticated draft is the positive control before authority drift")
         c.session.project["policy"]["reviewed"] = False
         self.assertNotIn("beta", c.names(), "Current authority must still govern draft reacquisition")
+
+    def test_fresh_reviewed_authority_can_retire_old_selection_without_adopting_draft(self):
+        c = self.case
+        work, stopped = self.acquire_dirty_beta()
+        before = copy.deepcopy(c.payload()[1]["operational"]["receipts"])
+        self.recover(work, request_id="old-scope-stop")
+        _, draft_ref, draft = self.recovery_draft(before)
+        c.session.git("checkout", "--", "source.py")
+        c.session.git("add", "behavior_test.py")
+        c.session.git("commit", "-qm", "retain approved test baseline")
+        c.replace_spec("Fresh finite scope requires fresh independent review and root approval")
+        c.allocations["allocations"]["beta"]["owned"].append("read_dependency.txt")
+        c.session.finish(c.session.acquire("charter"), {"grant": c.allocations})
+        permit = {"manifest": c.produced("charter", "grant"),
+                  "tasks": [row["task"] for row in c.allocations["allocations"].values()],
+                  "policy": j.content_hash(c.session.project["policy"]), "decision": "approved"}
+        self.assertFalse(any(s.get("submission", {}).get("operation") == "retire_stale_draft"
+                             for s in c.session.checkpoint(100)), "Unreviewed replacement scope grants no retirement")
+        c.session.finish(c.session.acquire("inspect_charter", actor="fresh-scope-reviewer"), {"permit": permit})
+        c.session.finish(c.session.acquire("consent"), {"permit": permit})
+        c.red_candidate()
+        self.assertNotIn("beta", c.names(), "Old draft must not acquire under replacement authority")
+        step = next((s for s in c.session.checkpoint(100)
+                     if s.get("submission", {}).get("operation") == "retire_stale_draft"
+                     and s["node"] == work["node"]), None)
+        self.assertIsNotNone(step, "Fresh reviewed authority and clean checkout need an explicit retirement route")
+        test_path = c.fixture.repo / "behavior_test.py"
+        test_bytes = test_path.read_bytes()
+        test_path.write_bytes(test_bytes + b"# unaccepted consumed drift\n")
+        self.assertFalse(any(s.get("submission", {}).get("operation") == "retire_stale_draft"
+                             for s in c.session.checkpoint(100)), "Dirty consumed changes prohibit retirement")
+        test_path.write_bytes(test_bytes)
+        recovery_request = {"operation": "recover", "node": work["node"], "lease": work["lease"]["token"],
+                            "actor": work["bound_actor"], "worker_status": "stopped",
+                            "evidence": "Fixture observed the bound worker stopped after its owned edit",
+                            "request_id": "old-scope-stop"}
+        request = {**step["submission"], "recovery_request": recovery_request,
+                   "request_id": "retire-old-reviewed-scope"}
+        evidence = copy.deepcopy(c.payload()[1]["evidence"])
+        invalid = copy.deepcopy(request)
+        invalid["request_id"] = "invalid-retirement-owner"
+        invalid["recovery_request"]["actor"] = "unobserved-other-owner"
+        c.session.call(100, invalid, expected=2)
+        c.session.call(100, request)
+        self.assertEqual(evidence, c.payload()[1]["evidence"], "Retirement creates no accepted Result")
+        self.assertEqual(draft, c.read_blob(draft_ref), "All historical unaccepted bytes remain addressable")
+        fresh = c.acquire_workspace("beta")
+        self.assertNotIn("stopped_draft", fresh["lease"]["acquisition"])
+        self.assertNotEqual(stopped, (c.fixture.repo / "source.py").read_bytes())
+        self.assertEqual(c.produced("charter", "grant"),
+                         next(row["source"] for row in fresh["lease"]["acquisition"]["inputs"]
+                              if row["name"] == "allocation"))
 
     def test_tampered_committed_recovery_receipt_cannot_authorize_reacquisition(self):
         c = self.case

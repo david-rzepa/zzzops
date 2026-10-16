@@ -765,10 +765,11 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         from test_evidence_dag_journeys import run_generic_regressions
         run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_caller_hash_or_extra_operation_cannot_authorize_inline_outputs')
 
-    def test_full_transaction_oversize_preflight_precedes_first_artifact_write(self):
-        # Generic host issuance preserves transport/reconstruction budgets and atomic preflight.
+    def test_oversized_review_uses_current_multipart_immutable_storage(self):
+        # Current multipart storage preserves the oversized-record journey; the
+        # separate budget and atomic-preflight controls below remain unchanged.
         from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_oversized_single_record_preflight_precedes_every_bundle_write')
+        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_oversized_single_review_record_uses_multipart_immutable_storage')
 
     def test_standalone_artifact_budget_preflight_preserves_usable_existing_comments(self):
         # Generic host issuance preserves transport/reconstruction budgets and atomic preflight.

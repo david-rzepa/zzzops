@@ -4825,7 +4825,10 @@ class ReleaseInvocationSnapshotTests(unittest.TestCase):
     def test_separate_repositories_never_share_release_snapshots(self):
         from types import SimpleNamespace
         calls = []
+        real_run = zzzops.subprocess.run
         def transport(command, **_kwargs):
+            if not (command and command[0] == "synthetic-gh"):
+                return real_run(command, **_kwargs)
             endpoint = next(value for value in command if value.startswith("repos/"))
             calls.append(endpoint)
             identity = endpoint.split("/releases", 1)[0].split("/commits", 1)[0]
@@ -6961,7 +6964,9 @@ class WorkflowContractTests(unittest.TestCase):
         root = PLUGIN_ROOT
         plan = json.loads((root / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         section = next(item for item in plan["policy"]["sections"] if item["id"] == "model_routing")
-        self.assertEqual({"tiers", "assessment_tree", "model_inventory"}, set(section["configuration"]))
+        self.assertEqual({"tiers", "assessment_tree", "model_inventory", "allow_above_root_delegation"},
+                         set(section["configuration"]))
+        self.assertIs(False, section["configuration"]["allow_above_root_delegation"])
         self.assertEqual({"reviewed_pairs"}, set(section["configuration"]["model_inventory"]))
         self.assertIn("keep human interaction on root", section["instructions"])
         self.assertEqual(["routine", "bounded", "reasoning", "architectural"], [tier["id"] for tier in section["configuration"]["tiers"]])
@@ -7369,14 +7374,17 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("Approved policy artifacts may enter ordinary PR review without another conversational gate", review_skill)
         self.assertIn("Never ask to start policy review.", review_skill)
         self.assertIn("ask only for approval or adjustments, never approval to review", review_skill)
-        self.assertIn("present the complete policy proposal without asking whether to review", initialization)
-        for text in (review_skill, initialization):
+        policy_preflight = (root / "zzzops" / "references" / "POLICY_PREFLIGHT.md").read_text(encoding="utf-8")
+        self.assertIn("read [policy preflight](../zzzops/references/POLICY_PREFLIGHT.md) before any proposal or approval action", initialization)
+        self.assertIn("Before any proposal or approval action, read [policy preflight](../POLICY_PREFLIGHT.md)", review_skill)
+        self.assertIn("present the complete policy proposal without asking whether to review", policy_preflight)
+        for text in (review_skill, policy_preflight):
             self.assertIn("The policy is already approved.", text)
             self.assertIn("do not", text.lower())
             self.assertIn("required section", text)
             self.assertIn("Changed/stale", text)
             self.assertIn("privacy-safe execution reports", text)
-        self.assertIn("current approval digest", initialization)
+        self.assertIn("current approval digest", policy_preflight)
         self.assertIn("current digest", review_skill)
         self.assertIn("root-mediated human interaction", review_skill)
         self.assertIn("exact returned input contract", review_skill)
@@ -7537,13 +7545,24 @@ class WorkflowContractTests(unittest.TestCase):
             PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "send-feedback.md"
         ).read_text(encoding="utf-8")
         feedback = (PLUGIN_ROOT / "rules" / "FEEDBACK.md").read_text(encoding="utf-8")
+        operations = (
+            PLUGIN_ROOT / "zzzops" / "references" / "FEEDBACK_OPERATIONS.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "Before sending reports, explicit timing requests, or coaching, read "
+            "[feedback operations](../FEEDBACK_OPERATIONS.md)", send,
+        )
+        self.assertIn(
+            "For sending reports, explicit timing requests, or coaching, first read "
+            "[feedback operations](../zzzops/references/FEEDBACK_OPERATIONS.md)", feedback,
+        )
         privacy = (PLUGIN_ROOT.parent.parent / "PRIVACY.md").read_text(encoding="utf-8")
         for phrase in (
             "available diagnostics", "exactly one user-selected diagnostic ID", "use `unknown`",
             "never selected automatically", "public preview/digest", "digest confirmation",
             "delete only the submitted reports and selected diagnostic",
         ):
-            self.assertIn(phrase, send + feedback)
+            self.assertIn(phrase, send + feedback + operations)
         for phrase in (
             "at most one explicitly selected local timing diagnostic", "fixed phase aggregates",
             "raw output", "deleted locally only after successful submission",

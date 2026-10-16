@@ -30,6 +30,16 @@ def _path(repository: str, goal: int, issue_body_hash: str) -> Path:
     return _root() / (hashlib.sha256(identity.encode()).hexdigest() + ".json")
 
 
+def has_entry(repository: str, goal: int, issue_body_hash: str) -> bool:
+    """Read-order hint only; ordinary load and provider validation still apply."""
+    try:
+        root = _private_root(create=False)
+        path = _path(repository, goal, issue_body_hash)
+        return root is not None and not path.is_symlink() and path.is_file()
+    except OSError:
+        return False
+
+
 def _private_root(*, create: bool) -> Path | None:
     root = _root()
     try:
