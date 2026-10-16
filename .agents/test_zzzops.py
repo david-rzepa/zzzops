@@ -7545,13 +7545,24 @@ class WorkflowContractTests(unittest.TestCase):
             PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "send-feedback.md"
         ).read_text(encoding="utf-8")
         feedback = (PLUGIN_ROOT / "rules" / "FEEDBACK.md").read_text(encoding="utf-8")
+        operations = (
+            PLUGIN_ROOT / "zzzops" / "references" / "FEEDBACK_OPERATIONS.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "Before sending reports, explicit timing requests, or coaching, read "
+            "[feedback operations](../FEEDBACK_OPERATIONS.md)", send,
+        )
+        self.assertIn(
+            "For sending reports, explicit timing requests, or coaching, first read "
+            "[feedback operations](../zzzops/references/FEEDBACK_OPERATIONS.md)", feedback,
+        )
         privacy = (PLUGIN_ROOT.parent.parent / "PRIVACY.md").read_text(encoding="utf-8")
         for phrase in (
             "available diagnostics", "exactly one user-selected diagnostic ID", "use `unknown`",
             "never selected automatically", "public preview/digest", "digest confirmation",
             "delete only the submitted reports and selected diagnostic",
         ):
-            self.assertIn(phrase, send + feedback)
+            self.assertIn(phrase, send + feedback + operations)
         for phrase in (
             "at most one explicitly selected local timing diagnostic", "fixed phase aggregates",
             "raw output", "deleted locally only after successful submission",
