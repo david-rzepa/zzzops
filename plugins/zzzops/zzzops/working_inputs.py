@@ -13,6 +13,7 @@ import subprocess
 import sys
 import threading
 import uuid
+from urllib.parse import quote
 
 try:
     import fcntl
@@ -73,6 +74,7 @@ class WorkingInputStore:
         except OSError: pass
         self.lock_path = coordination / ".lock"
         self.refs_path = coordination / "references"
+        self.draft_sessions_path = coordination / "draft-sessions.json"
         self.root.mkdir(parents=True, exist_ok=True)
         for directory in (self.repo / ".zzzops/work", self.repo / ".zzzops/work/inputs", self.root):
             directory.mkdir(parents=True, exist_ok=True)
@@ -125,6 +127,23 @@ class WorkingInputStore:
         except FileNotFoundError: return {"inputs": {}, "requests": {}}
 
     def _save(self, state): _atomic_json(self.index_path, state)
+
+    def draft_session(self, purpose, session):
+        """Return the durable draft identity for one logical local session."""
+        if not isinstance(purpose, str) or not purpose or not isinstance(session, str) or not session:
+            raise ValueError("draft purpose and session must be non-empty strings")
+        key = hashlib.sha256((self.repository + "\0" + self.owner + "\0" + purpose + "\0" + session).encode()).hexdigest()
+        with self._locked():
+            try:
+                state = json.loads(self.draft_sessions_path.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                state = {}
+            value = state.get(key)
+            if not isinstance(value, str):
+                value = str(uuid.uuid4())
+                state[key] = value
+                _atomic_json(self.draft_sessions_path, state)
+            return value
 
     def _key(self, subject, purpose, owner=None):
         return "\0".join((owner or self.owner, purpose, subject))
@@ -206,7 +225,12 @@ class WorkingInputStore:
                 identity = {"digest": digest, "action": action, "payload_id": descriptor["payload_id"],
                             "repository": self.repository, "owner": self.owner,
                             "subject": subject, "purpose": purpose}
-                if all(prior.get(field) == value for field, value in identity.items()):
+                prior_action = prior.get("action")
+                compatible_action = prior_action == action or (
+                    isinstance(prior_action, dict) and set(prior_action) == {"operation", "target"}
+                    and isinstance(action, dict)
+                    and prior_action == {"operation": action.get("operation"), "target": action.get("target")})
+                if compatible_action and all(prior.get(field) == value for field, value in identity.items() if field != "action"):
                     return copy.deepcopy(prior)
                 raise ValueError("request_id already exists with different frozen identity")
             self.fault("before_snapshot")
@@ -337,10 +361,7 @@ class WorkingInputStore:
         self._request_id(request_id)
         with self._locked():
             state = self._load(); row = state["requests"][request_id]
-            if row["state"] == "confirmed": return copy.deepcopy(row["receipt"])
-            if row["state"] == "reconciled":
-                if "receipt" not in row: raise ValueError("reconciled request has no authenticated result")
-                return copy.deepcopy(row["receipt"])
+            if row["state"] in {"confirmed", "reconciled"}: return copy.deepcopy(row["receipt"])
             if row["state"] in {"dispatching", "uncertain"}: self._uncertain(request_id, "uncertain-dispatch")
             if row["state"] != "frozen": raise ValueError("request is not dispatchable")
             exact = Path(row["snapshot"]).read_bytes()
@@ -361,10 +382,16 @@ class WorkingInputStore:
                 if (isinstance(receipt, dict) and receipt.get("request_id") == request_id
                         and receipt.get("digest") == row["digest"] and receipt.get("action") == row["action"]
                         and receipt.get("authenticated") is True):
+                    provider_result = outcome.get("result")
+                    expected = "sha256:" + hashlib.sha256(json.dumps(
+                        provider_result, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+                    if receipt.get("provider_result") != expected:
+                        self._uncertain(request_id, "unconfirmed-reconciliation")
+                    envelope = {"receipt": receipt, "result": provider_result}
                     with self._locked():
                         state = self._load(); recovered = state["requests"][request_id]
-                        recovered["state"] = "confirmed"; recovered["receipt"] = receipt; self._save(state)
-                    return outcome.get("result", receipt)
+                        recovered["state"] = "confirmed"; recovered["receipt"] = envelope; self._save(state)
+                    return envelope
             if outcome is False or (isinstance(outcome, dict) and outcome.get("applied") is False):
                 with self._locked():
                     state = self._load(); state["requests"][request_id]["state"] = "frozen"; self._save(state)
@@ -404,14 +431,15 @@ class WorkingInputStore:
                         or not isinstance(receipt.get("provider_result"), str)
                         or not receipt["provider_result"]):
                     self._uncertain(request_id, "unconfirmed-reconciliation")
-                stored_receipt = receipt
+                provider_result = outcome.get("result") if isinstance(outcome, dict) else None
                 if isinstance(outcome, dict):
-                    provider_result = outcome.get("result")
                     expected = "sha256:" + hashlib.sha256(json.dumps(
                         provider_result, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
                     if receipt["provider_result"] != expected:
                         self._uncertain(request_id, "unconfirmed-reconciliation")
                     stored_receipt = {"receipt": receipt, "result": provider_result}
+                else:
+                    stored_receipt = receipt
                 with self._locked():
                     state = self._load(); state["requests"][request_id]["state"] = "reconciled"
                     state["requests"][request_id]["receipt"] = stored_receipt; self._save(state)
@@ -442,7 +470,7 @@ class WorkingInputStore:
         row = self.status(request_id)
         if self._active(request_id): self._busy(request_id, "active-reference")
         if row["state"] in {"dispatching", "uncertain"}: self._uncertain(request_id, "uncertain-dispatch")
-        if row["state"] not in {"confirmed", "reconciled"} or row.get("receipt") != receipt:
+        if row["state"] != "confirmed" or row.get("receipt") != receipt:
             raise PermissionError("exact confirmed receipt is required")
         return self._delete(request_id, "retired")
 
@@ -463,8 +491,72 @@ class WorkingInputStore:
 
 
 def github_provider_check(repo: Path, repository: str, request_id: str, digest: str, action):
-    """Legacy operations have no authoritative postcondition and remain unknown."""
-    return None
+    """Reconstruct an authoritative provider postcondition from a typed descriptor."""
+    if not isinstance(action, dict) or set(action) != {"operation", "target", "arguments"}:
+        return None
+    operation, target, arguments = action["operation"], action["target"], action["arguments"]
+    def query(args):
+        try:
+            result = subprocess.run(["gh", *args], cwd=repo, text=True, capture_output=True, check=False)
+        except OSError:
+            return ...
+        if result.returncode:
+            if "404" in result.stderr or "NOT_FOUND" in result.stderr: return None
+            return ...
+        try: return json.loads(result.stdout)
+        except json.JSONDecodeError: return ...
+    result = None
+    if operation in {"update_issue", "create_issue"}:
+        if operation == "update_issue":
+            result = query(["api", f"repos/{repository}/issues/{target.get('issue')}"])
+            payload = arguments.get("payload", {})
+            if result is ...: return None
+            applied = isinstance(result, dict) and all(
+                ([x.get("name") for x in result.get(k, [])] if k == "labels" else result.get(k)) == v
+                for k, v in payload.items())
+        else:
+            marker = arguments.get("marker")
+            rows = query(["api", "--paginate", "--slurp", f"repos/{repository}/issues?state=all&per_page=100"])
+            if rows is ...: return None
+            flat = [x for page in rows for x in page] if isinstance(rows, list) and all(isinstance(x, list) for x in rows) else []
+            matches = [x for x in flat if isinstance(x, dict) and marker and marker in str(x.get("body", ""))]
+            if len(matches) != 1: return {"applied": False} if not matches else None
+            result, applied = matches[0], True
+    elif operation == "cleanup_created_issue":
+        result = query(["api", f"repos/{repository}/issues/{target.get('issue')}"])
+        if result is ...: return None
+        desired = arguments.get("payload", {})
+        applied = isinstance(result, dict)
+        for key, expected in desired.items():
+            observed = ([x.get("name") for x in result.get("labels", [])]
+                        if applied and key == "labels" else result.get(key) if applied else None)
+            if observed != expected: applied = False; break
+    elif operation == "create_issue_comment":
+        rows = query(["api", "--paginate", "--slurp", f"repos/{repository}/issues/{target.get('issue')}/comments?per_page=100"])
+        if rows is ...: return None
+        flat = [x for page in rows for x in page] if isinstance(rows, list) and all(isinstance(x, list) for x in rows) else []
+        prior = set(arguments.get("prior_ids", [])); body = arguments.get("body")
+        matches = [x for x in flat if x.get("id") not in prior and x.get("body") == body]
+        if len(matches) != 1: return {"applied": False} if not matches else None
+        result, applied = matches[0], True
+    elif operation == "create_label":
+        result = query(["api", f"repos/{repository}/labels/{quote(str(target.get('name')), safe='')}"])
+        if result is ...: return None
+        applied = isinstance(result, dict) and result.get("name") == target.get("name") and result.get("description") == arguments.get("description")
+    elif operation in {"update_label", "delete_label"}:
+        node = target.get("node_id"); graphql = "query($id:ID!){node(id:$id){... on Label{id name description}}}"
+        payload = query(["api", "graphql", "-F", f"id={node}", "-f", f"query={graphql}"])
+        if payload is ...: return None
+        result = ((payload or {}).get("data") or {}).get("node") if isinstance(payload, dict) else None
+        applied = result is None if operation == "delete_label" else isinstance(result, dict) and result.get("id") == node and result.get("description") == arguments.get("description")
+        if operation == "delete_label" and applied: result = {"deleted": node}
+    else:
+        return None
+    if not applied: return {"applied": False}
+    provider_result = "sha256:" + hashlib.sha256(json.dumps(result, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    receipt = {"request_id": request_id, "digest": digest, "action": action,
+               "authenticated": True, "provider_result": provider_result}
+    return {"applied": True, "receipt": receipt, "result": result}
 
 
 def execute_command(action: str, *, repo: Path, request_id: str):

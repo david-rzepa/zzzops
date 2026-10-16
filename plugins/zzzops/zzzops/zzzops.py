@@ -39,6 +39,48 @@ def _working_result_digest(value: Any) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+def _transactional_provider_write(adapter, operation, target, arguments, call, postcondition):
+    context = _WORKING_INPUT_TRANSACTION.get()
+    if not context:
+        return call()
+    envelope = {"operation": operation, "target": target, "arguments": arguments}
+    encoded = json.dumps(envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    suffix = hashlib.sha256(encoded).hexdigest()[:24]
+    request_id = (context["request_id"][:96] + "-" + suffix)[:128]
+    store = _working_inputs.WorkingInputStore(
+        adapter.repo, repository=adapter.repository, owner=context["owner"])
+    subject = "provider:" + request_id
+    store.write(subject, "provider-mutation", envelope)
+    action = copy.deepcopy(envelope)
+    store.freeze(subject, "provider-mutation", request_id, action)
+    def check(_request, digest):
+        result = postcondition()
+        if result is None: return None
+        receipt = {"request_id": request_id, "digest": digest, "action": action,
+                   "authenticated": True, "provider_result": _working_result_digest(result)}
+        return {"applied": True, "receipt": receipt, "result": result}
+    store.provider_check = check
+    def apply(_request, body):
+        if json.loads(body) != envelope: raise ValueError("Frozen provider envelope mismatch")
+        call()
+        result = postcondition()
+        if result is None: raise ValueError("Provider mutation postcondition was not confirmed")
+        receipt = {"request_id": request_id, "digest": hashlib.sha256(body).hexdigest(),
+                   "action": action, "authenticated": True,
+                   "provider_result": _working_result_digest(result)}
+        return {"receipt": receipt, "result": result}
+    confirmed = store.dispatch(request_id, apply)
+    if isinstance(confirmed, dict) and "result" in confirmed:
+        return confirmed["result"]
+    # Compatibility with confirmations written before reconciled results used
+    # the normal dispatch envelope. Re-observe and bind the exact result.
+    if isinstance(confirmed, dict) and confirmed.get("authenticated") is True:
+        result = postcondition()
+        if result is not None and confirmed.get("provider_result") == _working_result_digest(result):
+            return result
+    raise ValueError("Confirmed provider mutation has no authenticated replay result")
+
+
 def read_pull_request_correction_sources(repo: Path, repository: str, number: int, *, marker: dict) -> list[dict[str, Any]]:
     """Observe raw review comments, keyed by the provider's current PR marker.
 
@@ -999,10 +1041,45 @@ class GitHubGoalTransitionAdapter:
         return issue
 
     def create_issue(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return self._transactional_write(
-            "create_issue", {"repository": self.repository}, {"payload": payload},
-            lambda: self._create_issue(payload), lambda: None,
+        created = []
+        context = _WORKING_INPUT_TRANSACTION.get()
+        marker = ("<!-- zzzops-request:" + hashlib.sha256(context["request_id"].encode()).hexdigest() + " -->") if context else None
+        wire = copy.deepcopy(payload)
+        def create_postcondition():
+            if created:
+                return created[0]
+            owner, name = self.repository.split("/", 1)
+            query = ("query($owner:String!,$name:String!){repository(owner:$owner,name:$name){"
+                     "issues(first:100,states:[OPEN,CLOSED]){nodes{number title body state html_url labels(first:100){nodes{name}}}}}}")
+            result = self._run(["api", "graphql", "-f", "query=" + query,
+                                "-F", "owner=" + owner, "-F", "name=" + name])
+            if result.returncode:
+                raise self._provider_error(result)
+            try:
+                nodes = json.loads(result.stdout)["data"]["repository"]["issues"]["nodes"]
+            except (KeyError, TypeError, json.JSONDecodeError) as exc:
+                raise GoalTransitionProviderError(
+                    "GitHub returned invalid goal-create recovery data; success was not assumed.") from exc
+            expected_labels = set(wire.get("labels", []))
+            matches = []
+            for issue in nodes if isinstance(nodes, list) else []:
+                labels = issue.get("labels", []) if isinstance(issue, dict) else []
+                if isinstance(labels, dict): labels = labels.get("nodes", [])
+                observed_labels = {row.get("name") for row in labels if isinstance(row, dict)}
+                if (isinstance(issue, dict) and issue.get("body") == wire.get("body", "")
+                        and issue.get("title") == wire.get("title")
+                        and observed_labels == expected_labels):
+                    matches.append(issue)
+            return matches[0] if len(matches) == 1 else None
+        def create():
+            issue = self._create_issue(wire)
+            created.append(issue)
+            return issue
+        issue = self._transactional_write(
+            "create_issue", {"repository": self.repository}, {"payload": payload, "marker": marker},
+            create, create_postcondition,
         )
+        return issue
 
     def _create_issue(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.ensure_identity()
@@ -1162,34 +1239,7 @@ class GitHubGoalTransitionAdapter:
         return issue
 
     def _transactional_write(self, operation, target, arguments, call, postcondition):
-        context = _WORKING_INPUT_TRANSACTION.get()
-        if not context:
-            return call()
-        envelope = {"operation": operation, "target": target, "arguments": arguments}
-        encoded = json.dumps(envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
-        suffix = hashlib.sha256(encoded).hexdigest()[:24]
-        request_id = (context["request_id"][:96] + "-" + suffix)[:128]
-        store = _working_inputs.WorkingInputStore(
-            self.repo, repository=self.repository, owner=context["owner"])
-        subject = "provider:" + request_id
-        store.write(subject, "provider-mutation", envelope)
-        action = {"operation": operation, "target": target}
-        store.freeze(subject, "provider-mutation", request_id, action)
-        def check(_request, digest):
-            result = postcondition()
-            if result is None: return None
-            receipt = {"request_id": request_id, "digest": digest, "action": action,
-                       "authenticated": True, "provider_result": _working_result_digest(result)}
-            return {"applied": True, "receipt": receipt, "result": result}
-        store.provider_check = check
-        def apply(_request, body):
-            if json.loads(body) != envelope: raise ValueError("Frozen provider envelope mismatch")
-            result = call()
-            receipt = {"request_id": request_id, "digest": hashlib.sha256(body).hexdigest(),
-                       "action": action, "authenticated": True,
-                       "provider_result": _working_result_digest(result)}
-            return {"receipt": receipt, "result": result}
-        return store.dispatch(request_id, apply)["result"]
+        return _transactional_provider_write(self, operation, target, arguments, call, postcondition)
 
 
 _validate_reservation_goal = _reservation._validate_reservation_goal
@@ -2544,7 +2594,7 @@ def sanitize_output(value: str) -> str:
     return re.sub(r"(https?://)[^/@\s]+@", r"\1***@", value)
 
 
-_reservation.configure_entrypoint(parse_managed_goal, sanitize_output)
+_reservation.configure_entrypoint(parse_managed_goal, sanitize_output, _transactional_provider_write)
 
 
 def github_repository_probe(repo: Path) -> dict[str, Any]:

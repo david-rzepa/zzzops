@@ -34,14 +34,16 @@ STORAGE_LOCK_LABEL_PREFIX = "zzzops:lock:"
 PHASE_LEASE_VERSION = "z2"
 _parse_goal: Callable[[str, int | None], dict[str, Any] | None] | None = None
 _sanitize_output: Callable[[str], str] = lambda value: value
+_provider_write = None
 
 class ReservationProviderError(ValueError):
     """The provider did not produce a safe, confirmed reservation result."""
 
 
-def configure_entrypoint(parse_goal: Callable[[str, int | None], dict[str, Any] | None], sanitize: Callable[[str], str]) -> None:
-    global _parse_goal, _sanitize_output
+def configure_entrypoint(parse_goal: Callable[[str, int | None], dict[str, Any] | None], sanitize: Callable[[str], str], provider_write=None) -> None:
+    global _parse_goal, _sanitize_output, _provider_write
     _parse_goal, _sanitize_output = parse_goal, sanitize
+    _provider_write = provider_write
 
 def _reservation_actor(value: str, field: str, limit: int) -> str:
     if not isinstance(value, str) or not value or len(value) > limit or not RESERVATION_ID.fullmatch(value):
@@ -174,9 +176,29 @@ class GitHubReservationAdapter:
             label = json.loads(result.stdout)
         except json.JSONDecodeError as exc:
             raise ReservationProviderError("GitHub returned invalid reservation metadata; no ownership assumed.") from exc
-        if not isinstance(label, dict) or not label.get("node_id"):
+        if not isinstance(label, dict) or label.get("name") != name or not label.get("node_id"):
             raise ReservationProviderError("GitHub returned incomplete reservation metadata; no ownership assumed.")
         return label
+
+    def get_label_node(self, node_id: str) -> dict[str, Any] | None:
+        query = "query($id:ID!){node(id:$id){... on Label{id name description}}}"
+        result = self._run(["api", "graphql", "-F", f"id={node_id}", "-f", f"query={query}"])
+        if result.returncode:
+            raise self._provider_error(result)
+        try:
+            value = json.loads(result.stdout)["data"]["node"]
+            if value is None:
+                return None
+            if not isinstance(value, dict) or value.get("id") != node_id or not isinstance(value.get("name"), str):
+                raise TypeError
+            return {"node_id": value["id"], "name": value["name"], "description": value.get("description")}
+        except (KeyError, TypeError, json.JSONDecodeError) as exc:
+            raise ReservationProviderError("GitHub returned invalid reservation label metadata.") from exc
+
+    def _write(self, operation, target, arguments, call, postcondition):
+        if _provider_write is None:
+            return call()
+        return _provider_write(self, operation, target, arguments, call, postcondition)
 
     def list_resource_labels(self) -> list[dict[str, Any]]:
         result = self._run([
@@ -209,36 +231,41 @@ class GitHubReservationAdapter:
         return labels
 
     def create_label(self, name: str, description: str) -> dict[str, Any] | None:
-        result = self._run([
-            "api", "--method", "POST", f"repos/{self.repository}/labels",
-            "-f", f"name={name}", "-f", f"color={RESERVATION_COLOR}", "-f", f"description={description}",
-        ])
-        if result.returncode:
-            existing = self.get_label(name)
-            if existing is not None:
-                return None
-            raise self._provider_error(result)
-        try:
-            return json.loads(result.stdout)
-        except json.JSONDecodeError as exc:
-            confirmed = self.get_label(name)
-            if confirmed and confirmed.get("description") == description:
-                return confirmed
-            raise ReservationProviderError("GitHub did not confirm the created reservation; no ownership assumed.") from exc
+        def call():
+            result = self._run([
+                "api", "--method", "POST", f"repos/{self.repository}/labels",
+                "-f", f"name={name}", "-f", f"color={RESERVATION_COLOR}", "-f", f"description={description}",
+            ])
+            if result.returncode:
+                existing = self.get_label(name)
+                if existing is not None: return None
+                raise self._provider_error(result)
+            try: return json.loads(result.stdout)
+            except json.JSONDecodeError as exc:
+                confirmed = self.get_label(name)
+                if confirmed and confirmed.get("description") == description:
+                    return confirmed
+                raise ReservationProviderError("GitHub did not confirm the created reservation; no ownership assumed.") from exc
+        return self._write("create_label", {"name": name}, {"color": RESERVATION_COLOR, "description": description},
+                           call, lambda: (value if (value := self.get_label(name)) and value.get("description") == description else None))
 
     def delete_label(self, node_id: str) -> None:
-        query = "mutation($id:ID!){deleteLabel(input:{id:$id}){clientMutationId}}"
-        result = self._run(["api", "graphql", "-F", f"id={node_id}", "-f", f"query={query}"])
-        if result.returncode:
-            raise self._provider_error(result)
+        def call():
+            query = "mutation($id:ID!){deleteLabel(input:{id:$id}){clientMutationId}}"
+            result = self._run(["api", "graphql", "-F", f"id={node_id}", "-f", f"query={query}"])
+            if result.returncode: raise self._provider_error(result)
+        return self._write("delete_label", {"node_id": node_id}, {}, call,
+                           lambda: {"deleted": node_id} if self.get_label_node(node_id) is None else None)
 
     def update_label(self, node_id: str, description: str) -> None:
-        query = "mutation($id:ID!,$description:String!){updateLabel(input:{id:$id,description:$description}){label{id description}}}"
-        result = self._run([
-            "api", "graphql", "-F", f"id={node_id}", "-F", f"description={description}", "-f", f"query={query}",
-        ])
-        if result.returncode:
-            raise self._provider_error(result)
+        def call():
+            query = "mutation($id:ID!,$description:String!){updateLabel(input:{id:$id,description:$description}){label{id description}}}"
+            result = self._run([
+                "api", "graphql", "-F", f"id={node_id}", "-F", f"description={description}", "-f", f"query={query}",
+            ])
+            if result.returncode: raise self._provider_error(result)
+        return self._write("update_label", {"node_id": node_id}, {"description": description}, call,
+                           lambda: (value if (value := self.get_label_node(node_id)) and value.get("description") == description else None))
 
 
 def _validate_reservation_goal(
