@@ -32,7 +32,7 @@ Update only for new result, decision, risk, changed assumption, required action,
 
 - On blockers use `../../../rules/BLOCKERS.md`: persist request/continuation, do bounded safe work, then stay active or block/release claim/reservation before switching.
 - Out-of-scope decay: preserve the bounded evidence for the mandatory implementation review as described in [incidental entropy observations](ENTROPY_OBSERVATIONS.md); do not audit.
-- Before `done`, apply effective engineering rigor and observe its required evidence; created-but-unrun machinery is not proof. Cite each criterion, verify children/blockers/checks, and state gaps; build/lint/types/review prove only themselves. Apply `SELF_REVIEW.md` and `BRANCH_REVIEW.md`; pending human review is never `done`.
+- Before `done`, apply effective engineering rigor and observe its required evidence; created-but-unrun machinery is not proof. Cite each criterion, verify children/blockers/checks, and state gaps; build/lint/types/review prove only themselves. Read [completion self-review](SELF_REVIEW.md) before human review, integration, or `done`; its checks remain mandatory. Apply `BRANCH_REVIEW.md`; pending human review is never `done`.
 - Follow PROJECT Git/review/commit policy; stage only authorized implementation/pending local state, never an empty commit for GitHub-only state. After mutation refresh, recheck parents/unlocks, and select again.
 
 ## Exhaustion and handoff

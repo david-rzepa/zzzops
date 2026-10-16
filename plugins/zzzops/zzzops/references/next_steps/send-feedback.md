@@ -5,6 +5,8 @@ description: ZzzOps v0.0.0-dev — development plugin. Preview and send user fee
 
 # Send ZzzOps Feedback
 
+Before sending reports, explicit timing requests, or coaching, read [feedback operations](../FEEDBACK_OPERATIONS.md).
+
 Use the returned readiness evidence only to decide whether this workflow can proceed; detailed inputs are local reports and explicit feedback, never goal bodies/history.
 
 1. Keep user text separate from execution reports. Before public preview, reject credentials, payment cards, health data, government IDs, and other restricted data.
