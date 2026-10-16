@@ -94,3 +94,7 @@ The patterns from Anthropic's [field guide to finding unknowns](https://claude.c
 ## Completion self-review
 
 Before human review or completion, the agent reviews the actual goal diff, criteria, tests, and relevant surroundings. It removes only in-scope dead code proven obsolete by the implementation, retains uncertain dynamic/generated/vendor or unrelated paths, fixes findings in observable chunks, reruns affected and relevant wider checks, and records either findings or a clean review. The pass does not authorize repository-wide cleanup or unrelated bug fixes.
+
+### Reusable local request files
+
+Public ZzzOps workflow responses for capture, execution, migration, and policy review expose a stable `working_input` path under `.zzzops/work/inputs/v1/`. Edit that file across revisions. ZzzOps freezes exact bytes for provider dispatch, preserves ambiguous snapshots, and returns directly runnable status or reconciliation commands. The store is Git-ignored and abandonment never removes published evidence, approvals, receipts, history, or diagnostics.
