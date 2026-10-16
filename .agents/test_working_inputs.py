@@ -824,6 +824,13 @@ class WorkingInputBehaviorTests(unittest.TestCase):
                     "labels": [{"name": name} for name in wire["labels"]],
                 })
                 raise RuntimeError("create applied but response was lost")
+            if "--method PATCH" in joined:
+                update = json.loads(input_text)
+                issue = next(issue for issue in issues
+                             if joined.endswith(f"/issues/{issue['number']}"))
+                issue.update(update)
+                return subprocess.CompletedProcess(
+                    arguments, 0, stdout=json.dumps(issue), stderr="")
             if "graphql" in arguments:
                 return subprocess.CompletedProcess(
                     arguments, 0,
