@@ -727,49 +727,78 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         with self.assertRaises(reservation.ReservationProviderError):
             adapter.get_label("lease")
 
-    def test_reservation_label_mutations_use_exact_transaction_gateway(self):
-        reservation = reservation_module()
-        calls = []
-        labels = {}
+    def test_reservation_label_mutations_recover_exact_remote_results_and_retry_once(self):
+        sys.path.insert(0, str(ROOT / ".agents"))
+        try:
+            import test_zzzops as fixtures
+            public_cli = fixtures.zzzops
+        finally:
+            sys.path.pop(0)
+        reservation = public_cli._reservation
         adapter = object.__new__(reservation.GitHubReservationAdapter)
-        adapter.repo = self.repo
-        adapter.repository = "owner/repo"
-        adapter.executable = "gh"
+        adapter.repo, adapter.repository, adapter.executable = self.repo, "owner/repo", "gh"
         adapter._identity_checked = True
-        adapter._run = lambda arguments, timeout=30: subprocess.CompletedProcess(
-            arguments, 0,
-            stdout=json.dumps({"name": "lease", "description": "held", "node_id": "L1"})
-            if "POST" in arguments else "{}", stderr="")
-        adapter.get_label = lambda name: dict(labels[name]) if name in labels else None
-        adapter.get_label_node = lambda node: next(
-            (dict(value) for value in labels.values() if value["node_id"] == node), None)
+        labels = {}
+        mutations = {"create": 0, "update": 0, "delete": 0}
 
-        def gateway(_adapter, operation, target, arguments, call, postcondition):
-            calls.append((operation, target, arguments))
-            result = call()
-            if operation == "create_label":
-                labels[target["name"]] = {"name": target["name"],
-                                           "description": arguments["description"], "node_id": "L1"}
-            elif operation == "update_label":
-                labels["lease"]["description"] = arguments["description"]
-            elif operation == "delete_label":
+        def run(arguments, timeout=30):
+            joined = " ".join(arguments)
+            if "--method POST" in joined:
+                mutations["create"] += 1
+                description = next(value.split("=", 1)[1] for value in arguments
+                                   if value.startswith("description="))
+                labels["lease"] = {"name": "lease", "description": description, "node_id": "L1"}
+                raise RuntimeError("create applied but response was lost")
+            if "updateLabel" in joined:
+                mutations["update"] += 1
+                description = next(value.split("=", 1)[1] for value in arguments
+                                   if value.startswith("description="))
+                labels["lease"]["description"] = description
+                raise RuntimeError("update applied but response was lost")
+            if "deleteLabel" in joined:
+                mutations["delete"] += 1
                 labels.clear()
-            confirmed = postcondition()
-            self.assertIsNotNone(confirmed)
-            return confirmed if result is None else result
+                raise RuntimeError("delete applied but response was lost")
+            if "node(id:" in joined:
+                label = next(iter(labels.values()), None)
+                node = None if label is None else {
+                    "id": label["node_id"], "name": label["name"],
+                    "description": label["description"]}
+                return subprocess.CompletedProcess(
+                    arguments, 0, stdout=json.dumps({"data": {"node": node}}), stderr="")
+            label = labels.get("lease")
+            if label is None:
+                return subprocess.CompletedProcess(arguments, 1, stdout="", stderr="404 Not Found")
+            return subprocess.CompletedProcess(arguments, 0, stdout=json.dumps(label), stderr="")
 
-        with mock.patch.object(reservation, "_provider_write", gateway, create=True):
-            adapter.create_label("lease", "held")
-            adapter.update_label("L1", "renewed")
-            adapter.delete_label("L1")
-        self.assertEqual([
-            ("create_label", {"name": "lease"},
-             {"color": reservation.RESERVATION_COLOR, "description": "held"}),
-            ("update_label", {"node_id": "L1"}, {"description": "renewed"}),
-            ("delete_label", {"node_id": "L1"}, {}),
-        ], calls)
+        adapter._run = run
+        token = public_cli._WORKING_INPUT_TRANSACTION.set(
+            {"request_id": "reservation-label-lost-response", "owner": "root"})
+        try:
+            created = adapter.create_label("lease", "held")
+            self.assertEqual(created, adapter.create_label("lease", "held"))
+            self.assertEqual("held", labels["lease"]["description"])
+            updated = adapter.update_label("L1", "renewed")
+            self.assertEqual(updated, adapter.update_label("L1", "renewed"))
+            self.assertEqual("renewed", labels["lease"]["description"])
+            deleted = adapter.delete_label("L1")
+            self.assertEqual(deleted, adapter.delete_label("L1"))
+        finally:
+            public_cli._WORKING_INPUT_TRANSACTION.reset(token)
+        self.assertEqual({}, labels)
+        self.assertEqual({"create": 1, "update": 1, "delete": 1}, mutations)
+        store = public_cli._working_inputs.WorkingInputStore(
+            self.repo, repository="owner/repo", owner="root")
+        requests = json.loads(store.index_path.read_text())["requests"]
+        self.assertEqual(3, len(requests))
+        self.assertEqual(3, len(set(requests)))
+        self.assertTrue(all(row["state"] == "confirmed" for row in requests.values()))
+        self.assertTrue(all(row["receipt"]["receipt"]["authenticated"] is True
+                            for row in requests.values()))
+        self.assertEqual({"create_label", "update_label", "delete_label"}, {
+            row["action"]["operation"] for row in requests.values()})
 
-    def test_public_adapter_goal_create_transaction_confirms_exact_result(self):
+    def test_public_goal_create_recovers_exact_remote_result_and_retries_once(self):
         sys.path.insert(0, str(ROOT / ".agents"))
         try:
             import test_zzzops as fixtures
@@ -780,31 +809,53 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         adapter.repo, adapter.repository, adapter.executable = self.repo, "owner/repo", "gh"
         adapter._identity_checked = True
         payload = {"title": "Durable", "body": "Exact body", "labels": ["zzzops"]}
+        issues = []
+        posts = 0
 
-        def run(arguments, **_kwargs):
-            body = payload["body"]
-            if "POST" in arguments:
-                body += "\n<!-- zzzops-request:" + hashlib.sha256(b"goal-create-public").hexdigest() + " -->"
-            issue = {"number": 42, "title": payload["title"], "body": body, "state": "open",
-                     "html_url": "https://github.com/owner/repo/issues/42",
-                     "labels": [{"name": "zzzops"}]}
-            return subprocess.CompletedProcess(arguments, 0, stdout=json.dumps(issue), stderr="")
+        def run(arguments, input_text=None, **_kwargs):
+            nonlocal posts
+            joined = " ".join(arguments)
+            if "--method POST" in joined:
+                posts += 1
+                wire = json.loads(input_text)
+                issues.append({
+                    "number": 42, "title": wire["title"], "body": wire["body"], "state": "open",
+                    "html_url": "https://github.com/owner/repo/issues/42",
+                    "labels": [{"name": name} for name in wire["labels"]],
+                })
+                raise RuntimeError("create applied but response was lost")
+            if "graphql" in arguments:
+                return subprocess.CompletedProcess(
+                    arguments, 0,
+                    stdout=json.dumps({"data": {"repository": {"issues": {"nodes": issues}}}}),
+                    stderr="")
+            if joined.endswith("/issues/42"):
+                return subprocess.CompletedProcess(arguments, 0, stdout=json.dumps(issues[0]), stderr="")
+            return subprocess.CompletedProcess(arguments, 0, stdout=json.dumps(issues), stderr="")
 
         adapter._run = run
         token = public_cli._WORKING_INPUT_TRANSACTION.set(
             {"request_id": "goal-create-public", "owner": "root"})
         try:
-            result = adapter.create_issue(payload)
+            first = adapter.create_issue(payload)
+            before_retry = json.loads((self.repo / ".zzzops/work/inputs/v1/index.json").read_text())
+            replay = adapter.create_issue(payload)
         finally:
             public_cli._WORKING_INPUT_TRANSACTION.reset(token)
-        self.assertEqual("Exact body", result["body"])
+        self.assertEqual(first, replay)
+        self.assertEqual(payload["title"], first["title"])
+        self.assertEqual(payload["body"], first["body"])
+        self.assertEqual(1, posts)
+        self.assertEqual(1, len(issues))
         store = public_cli._working_inputs.WorkingInputStore(
             self.repo, repository="owner/repo", owner="root")
         requests = json.loads(store.index_path.read_text())["requests"]
-        self.assertEqual(["confirmed", "confirmed"], sorted(
-            row["state"] for row in requests.values()))
-        self.assertEqual({"create_issue", "cleanup_created_issue"}, {
-            row["action"]["operation"] for row in requests.values()})
+        self.assertEqual(before_retry["requests"], requests)
+        matching = [row for row in requests.values()
+                    if row.get("receipt", {}).get("result") == first]
+        self.assertTrue(matching, "authenticated create result must be durable")
+        self.assertTrue(all(row["state"] == "confirmed" for row in matching))
+        self.assertTrue(all(row["receipt"]["receipt"]["authenticated"] is True for row in matching))
 
 
 if __name__ == "__main__":
