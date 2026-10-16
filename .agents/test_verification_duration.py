@@ -275,12 +275,21 @@ class VerificationDurationTests(journeys.DagFixture):
                         grant["content"]["allocations"]["alpha"]["owned"].append(
                             "reviewed-allocation-drift.py"
                         )
+                        fixture_comments_before = len(self.provider.comments[100])
                         changed_grant = self.blob(grant)
                         charter_result = copy.deepcopy(self.read_blob(charter_ref))
                         charter_result["content"]["outputs"]["grant"] = changed_grant
                         changed_charter = self.blob(charter_result)
                         payload["evidence"][positions[0]] = changed_charter
-                        envelope["payload"] = self.blob(payload)
+                        changed_payload = self.blob(payload)
+                        envelope["payload"] = changed_payload
+                        fixture_comments = self.provider.comments[100][fixture_comments_before:]
+                        self.assertEqual(3, len(fixture_comments))
+                        self.assertEqual(
+                            [changed_grant["hash"], changed_charter["hash"], changed_payload["hash"]],
+                            [comment["body"].split("<!-- zzzops-artifact ", 1)[1].split(" -->", 1)[0]
+                             for comment in fixture_comments],
+                        )
                         envelope["revision"] += 1
                         prefix = self.provider.issues[100]["body"].split("<!-- zzzops-goal", 1)[0]
                         self.provider.issues[100]["body"] = (
@@ -288,8 +297,10 @@ class VerificationDurationTests(journeys.DagFixture):
                         )
                         drift_evidence.update(
                             original_grant=original_grant, changed_grant=changed_grant,
-                            changed_charter=changed_charter, old_charter=charter_ref,
+                            changed_charter=changed_charter, changed_payload=changed_payload,
+                            old_charter=charter_ref,
                             replacement_count=len(positions),
+                            comments_after_drift=copy.deepcopy(self.provider.comments),
                         )
 
                 with mock.patch.object(
@@ -321,6 +332,7 @@ class VerificationDurationTests(journeys.DagFixture):
                         and artifact.get("content", {}).get("node", {}).get("node") == "alpha"
                     )
                     self.assertEqual(before_alpha_results, after_alpha_results)
+                    self.assertEqual(drift_evidence["comments_after_drift"], self.provider.comments)
                     self.assertEqual(before_updates, len(self.provider.updates))
                 self.assertEqual(before_count + 1, self.counter)
                 self.session.project = original_project
@@ -397,6 +409,7 @@ class VerificationDurationTests(journeys.DagFixture):
             mock.patch.object(z, "renew_storage_lock", return_value={"acquired": True, "expires_at": 1_000_000_000_000}),
             mock.patch.object(z, "release_storage_lock", return_value={"released": True}),
         )
+        before_comments = copy.deepcopy(self.provider.comments)
         before_updates = len(self.provider.updates)
         before_commands = self.counter
         acquisition, renewal, release = patches()
@@ -407,6 +420,7 @@ class VerificationDurationTests(journeys.DagFixture):
             contention = self.session.call(100, request, expected=2)
         self.assertRegex(json.dumps(contention), r"(?i)coordinator|reservation|retry")
         self.assertEqual(before_commands + 1, self.counter)
+        self.assertEqual(before_comments, self.provider.comments)
         self.assertEqual(before_updates, len(self.provider.updates))
 
         journals = list(
@@ -424,6 +438,7 @@ class VerificationDurationTests(journeys.DagFixture):
             provider_timeout = self.session.call(100, request, expected=2)
         self.assertRegex(json.dumps(provider_timeout), r"(?i)provider|timeout|reservation|retry")
         self.assertEqual(before_commands + 1, self.counter)
+        self.assertEqual(before_comments, self.provider.comments)
         self.assertEqual(before_updates, len(self.provider.updates))
 
         acquisition, renewal, release = patches()
