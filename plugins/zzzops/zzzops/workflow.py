@@ -5598,12 +5598,14 @@ def _public_response(api, repo, intent, source, runtime, payload, number, *, ski
     if purpose is not None:
         repository = ((snapshot.get('project') or {}).get('repository') or {}).get('identity', 'local')
         owner = (runtime or {}).get('root_id', 'root')
-        carried_draft = (runtime or {}).get('working_input_draft')
-        draft_identity = carried_draft if isinstance(carried_draft, str) else str(uuid.uuid4())
-        subject = f'goal:{number}' if number is not None else f'draft:{draft_identity}'
-        result['working_input'] = api._working_inputs.WorkingInputStore(
+        store = api._working_inputs.WorkingInputStore(
             repo, repository=repository, owner=owner,
-        ).guidance(subject, purpose)
+        )
+        carried_draft = (runtime or {}).get('working_input_draft')
+        draft_identity = None if number is not None else (
+            carried_draft if isinstance(carried_draft, str) else store.draft_session(purpose, owner))
+        subject = f'goal:{number}' if number is not None else f'draft:{draft_identity}'
+        result['working_input'] = store.guidance(subject, purpose)
         if number is None:
             result['working_input']['draft_id'] = draft_identity
     if payload is None and number is not None and source == '$execute-zzzops':

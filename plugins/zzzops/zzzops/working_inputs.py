@@ -470,8 +470,8 @@ class WorkingInputStore:
         row = self.status(request_id)
         if self._active(request_id): self._busy(request_id, "active-reference")
         if row["state"] in {"dispatching", "uncertain"}: self._uncertain(request_id, "uncertain-dispatch")
-        if row["state"] != "confirmed" or row.get("receipt") != receipt:
-            raise PermissionError("exact confirmed receipt is required")
+        if row["state"] not in {"confirmed", "reconciled"} or row.get("receipt") != receipt:
+            raise PermissionError("exact authenticated receipt is required")
         return self._delete(request_id, "retired")
 
     def abandon(self, request_id, *, approved_by):
@@ -516,10 +516,15 @@ def github_provider_check(repo: Path, repository: str, request_id: str, digest: 
                 for k, v in payload.items())
         else:
             marker = arguments.get("marker")
+            expected = arguments.get("payload", {})
+            expected_body = str(expected.get("body", "")) + "\n" + str(marker)
             rows = query(["api", "--paginate", "--slurp", f"repos/{repository}/issues?state=all&per_page=100"])
             if rows is ...: return None
             flat = [x for page in rows for x in page] if isinstance(rows, list) and all(isinstance(x, list) for x in rows) else []
-            matches = [x for x in flat if isinstance(x, dict) and marker and marker in str(x.get("body", ""))]
+            matches = [x for x in flat if (isinstance(x, dict) and marker
+                       and x.get("title") == expected.get("title") and x.get("body") == expected_body
+                       and [label.get("name") for label in x.get("labels", []) if isinstance(label, dict)]
+                           == expected.get("labels", []))]
             if len(matches) != 1: return {"applied": False} if not matches else None
             result, applied = matches[0], True
     elif operation == "cleanup_created_issue":

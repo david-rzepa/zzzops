@@ -1045,6 +1045,8 @@ class GitHubGoalTransitionAdapter:
         context = _WORKING_INPUT_TRANSACTION.get()
         marker = ("<!-- zzzops-request:" + hashlib.sha256(context["request_id"].encode()).hexdigest() + " -->") if context else None
         wire = copy.deepcopy(payload)
+        if marker:
+            wire["body"] = wire.get("body", "") + "\n" + marker
         def create_postcondition():
             if created:
                 return created[0]
@@ -1066,7 +1068,8 @@ class GitHubGoalTransitionAdapter:
                 labels = issue.get("labels", []) if isinstance(issue, dict) else []
                 if isinstance(labels, dict): labels = labels.get("nodes", [])
                 observed_labels = {row.get("name") for row in labels if isinstance(row, dict)}
-                if (isinstance(issue, dict) and issue.get("body") == wire.get("body", "")
+                if (isinstance(issue, dict) and marker in str(issue.get("body", ""))
+                        and issue.get("body") == wire.get("body", "")
                         and issue.get("title") == wire.get("title")
                         and observed_labels == expected_labels):
                     matches.append(issue)
@@ -1079,7 +1082,35 @@ class GitHubGoalTransitionAdapter:
             "create_issue", {"repository": self.repository}, {"payload": payload, "marker": marker},
             create, create_postcondition,
         )
-        return issue
+        if not marker:
+            return issue
+        cleaned = []
+        def cleanup():
+            result = self._run(
+                ["api", "--method", "PATCH", "--input", "-",
+                 f"repos/{self.repository}/issues/{issue['number']}"],
+                input_text=json.dumps({"body": payload.get("body", "")}, ensure_ascii=False,
+                                      sort_keys=True, separators=(",", ":")),
+            )
+            if result.returncode:
+                raise self._provider_error(result)
+            try:
+                value = json.loads(result.stdout)
+            except json.JSONDecodeError as exc:
+                raise GoalTransitionProviderError(
+                    "GitHub returned an invalid goal-create cleanup response; success was not assumed.") from exc
+            if not isinstance(value, dict):
+                raise GoalTransitionProviderError(
+                    "GitHub returned an incomplete goal-create cleanup response; success was not assumed.")
+            cleaned.append(value)
+            return value
+        def clean_postcondition():
+            value = cleaned[0] if cleaned else self.get_issue(issue["number"])
+            return value if (isinstance(value, dict) and value.get("number") == issue["number"]
+                             and value.get("body") == payload.get("body", "")) else None
+        return self._transactional_write(
+            "cleanup_created_issue", {"issue": issue["number"]},
+            {"payload": payload, "marker": marker}, cleanup, clean_postcondition)
 
     def _create_issue(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.ensure_identity()
