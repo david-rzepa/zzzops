@@ -1,6 +1,7 @@
 """Atomic submit continuations through the real public CLI and fake provider."""
 import copy
 import json
+import random
 import threading
 import time
 import unittest
@@ -17,6 +18,92 @@ from test_workflow_owned_outputs import content_hash
 
 
 class SubmitContinuationTests(DagFixture):
+    def large_continuation(self, size):
+        original = z._workflow.scoped_frontier
+        noise = random.Random(539).randbytes(size).hex()
+        def frontier(*args, **kwargs):
+            return original(*args, **kwargs) + [{'kind': 'dependency', 'reason': noise}]
+        return mock.patch.object(z._workflow, 'scoped_frontier', side_effect=frontier)
+
+    def test_large_continuation_is_referenced_and_exactly_replayed(self):
+        work = self.session.acquire('produce')
+        request = self.session.submission(work, {'value': 'candidate'}, 'large-continuation')
+        with self.large_continuation(30000):
+            response = self.session.call(100, request)
+        rows = [row for row in self.provider.comments[100]
+                if (z._comment_store.decode_envelope(row['body']) or {}).get('context', {}).get('request_id') == request['request_id']]
+        first = z._comment_store.decode_envelope(rows[0]['body'])
+        self.assertEqual(first['context']['response'], first['context']['continuation'])
+        template = z._comment_store.ArtifactIndex([rows[0]]).resolve(first['context']['response']['hash'])[0]
+        self.assertEqual({key: value for key, value in response.items() if key != 'working_input'}, template['response'])
+        self.assertTrue(all(len(row['body']) <= 65536 for row in rows))
+        legacy = copy.deepcopy(first)
+        legacy['context']['continuation'] = template
+        with self.assertRaisesRegex(ValueError, 'Comment has'):
+            z._comment_store.encode_envelope(legacy)
+        self.assertEqual(response, self.session.call(100, request))
+
+    def test_chunked_continuation_fails_before_any_provider_write(self):
+        work = self.session.acquire('produce')
+        request = self.session.submission(work, {'value': 'candidate'}, 'oversized-continuation')
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        with self.large_continuation(60000):
+            failed = self.session.call(100, request, expected=2)
+        self.assertIn('first-envelope recovery budget', str(failed))
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_large_continuation_partial_upload_retains_exact_template(self):
+        _work, _values, request = journeys.GenericStoragePublicTests.multipart_request(
+            self, request_id='partial-large-continuation')
+        append = self.provider.create_issue_comment
+        written = []
+        def interrupted(number, body):
+            if written:
+                raise z.GoalTransitionProviderError('interrupted after first comment')
+            result = append(number, body)
+            written.append(body)
+            return result
+        with self.large_continuation(30000), mock.patch.object(self.provider, 'create_issue_comment', side_effect=interrupted):
+            self.session.call(100, request, expected=2)
+        self.assertEqual(1, len(written))
+        first = z._comment_store.decode_envelope(written[0])
+        template = z._comment_store.ArtifactIndex([{'body': written[0]}]).resolve(first['context']['response']['hash'])[0]
+        with mock.patch.object(z._workflow, 'scoped_frontier', side_effect=AssertionError('Must replay the original frontier')):
+            response = self.session.call(100, request)
+        self.assertEqual(template['response'], {key: value for key, value in response.items() if key != 'working_input'})
+        self.assertEqual(response, self.session.call(100, request))
+
+    def test_legacy_inline_partial_upload_keeps_original_context(self):
+        _work, _values, request = journeys.GenericStoragePublicTests.multipart_request(
+            self, request_id='legacy-inline-continuation')
+        pack = z._comment_store.pack_envelopes
+        legacy_bodies = []
+        def legacy_pack(common, records, history=None):
+            common = copy.deepcopy(common)
+            context = common.get('context', {})
+            if context.get('continuation') == context.get('response') and context.get('response'):
+                record = next(record for record in records if record['hash'] == context['response']['hash'])
+                self.assertEqual('full', record['kind'])
+                context['continuation'] = json.loads(record['text'])
+                records = sorted(records, key=lambda record: record['hash'])
+            legacy_bodies.extend(pack(common, records, history))
+            raise ValueError('Captured legacy transaction before publication')
+        with mock.patch.object(z._comment_store, 'pack_envelopes', side_effect=legacy_pack):
+            self.session.call(100, request, expected=2)
+        self.assertGreater(len(legacy_bodies), 1)
+        # Seed the exact first comment an old writer would have uploaded. The
+        # current writer's first-envelope guard must not alter this fixture.
+        offset = len(self.provider.comments[100])
+        partial = self.provider.create_issue_comment(100, legacy_bodies[0])
+        original = z._comment_store.decode_envelope(partial['body'])['context']
+        self.assertEqual('submission_continuation', original['continuation']['type'])
+        response = self.session.call(100, request)
+        self.assertEqual(response, self.session.call(100, request))
+        rows = [row for row in self.provider.comments[100][offset:]
+                if (z._comment_store.decode_envelope(row['body']) or {}).get('context', {}).get('request_id') == request['request_id']]
+        self.assertTrue(all(z._comment_store.decode_envelope(row['body'])['context'] == original for row in rows))
+        self.assertEqual(1, sum(row['body'] == partial['body'] for row in rows))
+
     def ready_names(self, response):
         return {step['node']['node'] for step in response['next_steps'] if step['kind'] == 'execute'}
 
