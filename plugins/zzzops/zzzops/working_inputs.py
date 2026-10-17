@@ -516,15 +516,39 @@ def github_provider_check(repo: Path, repository: str, request_id: str, digest: 
                 for k, v in payload.items())
         else:
             marker = arguments.get("marker")
-            expected = arguments.get("payload", {})
-            expected_body = str(expected.get("body", "")) + "\n" + str(marker)
+            expected = arguments.get("payload")
+            if not isinstance(marker, str) or not marker or not isinstance(expected, dict): return None
+            expected_labels = expected.get("labels")
+            if (not isinstance(expected_labels, list)
+                    or any(not isinstance(label, str) for label in expected_labels)):
+                return None
+            expected_body = str(expected.get("body", "")) + "\n" + marker
             rows = query(["api", "--paginate", "--slurp", f"repos/{repository}/issues?state=all&per_page=100"])
             if rows is ...: return None
-            flat = [x for page in rows for x in page] if isinstance(rows, list) and all(isinstance(x, list) for x in rows) else []
-            matches = [x for x in flat if (isinstance(x, dict) and marker
-                       and x.get("title") == expected.get("title") and x.get("body") == expected_body
-                       and [label.get("name") for label in x.get("labels", []) if isinstance(label, dict)]
-                           == expected.get("labels", []))]
+            if (not isinstance(rows, list) or not rows
+                    or any(not isinstance(page, list) for page in rows)):
+                return None
+            flat = [item for page in rows for item in page]
+            if any(not isinstance(item, dict) for item in flat): return None
+            if any("body" not in item or item["body"] is not None
+                   and not isinstance(item["body"], str) for item in flat):
+                return None
+            matches = []
+            for item in flat:
+                body = item.get("body")
+                if not isinstance(body, str) or marker not in body:
+                    continue
+                labels = item.get("labels")
+                if (item.get("title") != expected.get("title") or body != expected_body
+                        or type(item.get("number")) is not int or item["number"] < 1
+                        or not isinstance(item.get("html_url"), str)
+                        or item.get("state") not in {"open", "closed"}
+                        or not isinstance(labels, list)
+                        or any(not isinstance(label, dict) or not isinstance(label.get("name"), str)
+                               for label in labels)
+                        or {label["name"] for label in labels} != set(expected_labels)):
+                    return None
+                matches.append(item)
             if len(matches) != 1: return {"applied": False} if not matches else None
             result, applied = matches[0], True
     elif operation == "cleanup_created_issue":

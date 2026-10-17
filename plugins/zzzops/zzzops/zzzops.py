@@ -1050,25 +1050,35 @@ class GitHubGoalTransitionAdapter:
         def create_postcondition():
             if created:
                 return created[0]
-            owner, name = self.repository.split("/", 1)
-            query = ("query($owner:String!,$name:String!){repository(owner:$owner,name:$name){"
-                     "issues(first:100,states:[OPEN,CLOSED]){nodes{number title body state html_url labels(first:100){nodes{name}}}}}}")
-            result = self._run(["api", "graphql", "-f", "query=" + query,
-                                "-F", "owner=" + owner, "-F", "name=" + name])
+            result = self._run([
+                "api", "--paginate", "--slurp",
+                f"repos/{self.repository}/issues?state=all&per_page=100",
+            ], timeout=None)
             if result.returncode:
                 raise self._provider_error(result)
             try:
-                nodes = json.loads(result.stdout)["data"]["repository"]["issues"]["nodes"]
-            except (KeyError, TypeError, json.JSONDecodeError) as exc:
+                pages = json.loads(result.stdout)
+                if (not isinstance(pages, list) or not pages
+                        or any(not isinstance(page, list) for page in pages)):
+                    raise TypeError
+                issues = [issue for page in pages for issue in page]
+                if any(not isinstance(issue, dict) for issue in issues):
+                    raise TypeError
+            except (TypeError, json.JSONDecodeError) as exc:
                 raise GoalTransitionProviderError(
                     "GitHub returned invalid goal-create recovery data; success was not assumed.") from exc
             expected_labels = set(wire.get("labels", []))
             matches = []
-            for issue in nodes if isinstance(nodes, list) else []:
-                labels = issue.get("labels", []) if isinstance(issue, dict) else []
-                if isinstance(labels, dict): labels = labels.get("nodes", [])
-                observed_labels = {row.get("name") for row in labels if isinstance(row, dict)}
-                if (isinstance(issue, dict) and marker in str(issue.get("body", ""))
+            for issue in issues:
+                labels = issue.get("labels")
+                observed_labels = ({row.get("name") for row in labels}
+                                   if isinstance(labels, list)
+                                   and all(isinstance(row, dict) and isinstance(row.get("name"), str)
+                                           for row in labels) else None)
+                if (type(issue.get("number")) is int and issue["number"] > 0
+                        and isinstance(issue.get("html_url"), str)
+                        and issue.get("state") in {"open", "closed"}
+                        and marker in str(issue.get("body", ""))
                         and issue.get("body") == wire.get("body", "")
                         and issue.get("title") == wire.get("title")
                         and observed_labels == expected_labels):
