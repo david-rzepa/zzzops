@@ -2738,7 +2738,7 @@ class Workflow:
             if (set(response) != {'type', 'version', 'source_envelope', 'target_metadata',
                                   'candidate_payload', 'entry_candidate_payload', 'response', 'bindings'}
                     or type(response.get('version')) is not int or response['version'] != 1
-                    or context.get('continuation') != response
+                    or context.get('continuation') not in (response, result)
                     or not isinstance(response.get('target_metadata'), dict)
                     or response.get('source_envelope') != source
                     or not isinstance(response.get('candidate_payload'), dict)
@@ -4901,6 +4901,15 @@ class Workflow:
         pending = snapshot.get('pending')
         if pending and 'continuation' in pending:
             template = copy.deepcopy(pending['continuation'])
+            if isinstance(template, dict) and 'type' not in template:
+                if template != pending['response'] or template != self.node_ref(template.get('hash'), number):
+                    raise ValueError('Pending continuation reference is not an exact same-goal response')
+                try:
+                    template = copy.deepcopy(self.artifact_index(number).resolve(template['hash'])[0])
+                except (KeyError, ValueError) as exc:
+                    raise ValueError('Pending continuation artifact is unavailable; restore the exact first transaction envelope before retrying') from exc
+            if not isinstance(template, dict):
+                raise ValueError('Invalid pending continuation template')
             if digest(template) != pending['response']['hash']:
                 raise ValueError('Pending continuation response identity changed')
             if any(template.get(key) != value for key, value in identity.items()) or template.get('response', {}).get('submitted') != {'goal': number, 'node': node, 'result': result}:
@@ -4933,7 +4942,7 @@ class Workflow:
         if not contexts or any(context != contexts[0] for context in contexts):
             raise ValueError('Missing or conflicting continuation transaction')
         context = contexts[0]
-        if context.get('request_hash') != receipt['payload'] or context.get('response') != receipt['result'] or context.get('continuation') != response:
+        if context.get('request_hash') != receipt['payload'] or context.get('response') != receipt['result'] or context.get('continuation') not in (response, receipt['result']):
             raise ValueError('Continuation transaction receipt mismatch')
         candidate = copy.deepcopy(index.resolve(response['candidate_payload']['hash'])[0])
         candidate['operational']['receipts'].append(receipt)
@@ -5086,6 +5095,10 @@ class Workflow:
         retain(entry_payload)
         proof = snapshot.get('workspace_proof')
         first_identity = digest(response) if snapshot.get('normalization') else (proof or {}).get('hash')
+        referenced_continuation = (response.get('type') == 'submission_continuation'
+                                  and (not pending or pending.get('continuation') == self.node_ref(digest(response), number)))
+        if referenced_continuation:
+            first_identity = digest(response)
         ordered = sorted(reachable, key=lambda identity: (identity != first_identity, identity))
         payload_identity = envelope['payload']['hash']
         # Prefer a shallow addressed payload base while its encoded delta
@@ -5128,13 +5141,27 @@ class Workflow:
         if not isinstance(response_lease, dict):
             response_lease = next((lease for lease in payload['operational']['leases'] if lease['token'] == response_lease), {})
         context = {'request_id': request['request_id'], 'request_hash': digest(request), 'source_hash': digest(issue['body']), 'human_hash': digest(prefix + suffix), 'root': None if snapshot.get('migration') else (self.runtime or {}).get('root_id'), 'response': self.node_ref(digest(response), number), 'ownership': {key: value for key, value in response_lease.items() if key != 'acquisition'}, 'acquisition': bool(public_response['next_steps'][0].get('bind')), 'payload': envelope['payload'], 'proof': proof, 'source_envelope': snapshot['envelope'], 'target_envelope': envelope, 'entry_payload': entry_payload}
-        if response.get('type') == 'submission_continuation': context['continuation'] = response
+        if response.get('type') == 'submission_continuation':
+            context['continuation'] = context['response'] if referenced_continuation else response
         if response.get('type') == 'workspace_draft_retirement': context['workspace_draft_retirement'] = response['draft']
         if public_response['next_steps'][0].get('workspace_draft'): context['workspace_draft'] = public_response['next_steps'][0]['workspace_draft']
         if snapshot.get('migration'): context['migration'] = snapshot['migration']
         if snapshot.get('normalization'): context['normalization'] = copy.deepcopy(request)
         if pending and pending != context: raise ValueError('Pending checkpoint exact response/payload/proof identity changed')
         bodies = comment_store.pack_envelopes({'goal': number, 'transaction': digest({'request': request, 'source': issue['body']}), 'context': context}, records)
+        if referenced_continuation:
+            # The first write must retain the complete immutable retry template.
+            # A reference to a partially uploaded chunk sequence is insufficient.
+            try:
+                if digest(response) in index.records:
+                    retained = index.resolve(digest(response))[0]
+                else:
+                    first = ObservedArtifactIndex([{'body': bodies[0]}])
+                    retained = first.resolve(digest(response))[0]
+            except (IndexError, KeyError, ValueError) as exc:
+                raise ValueError('Continuation exceeds the first-envelope recovery budget; no comments were appended') from exc
+            if retained != response:
+                raise ValueError('First-envelope continuation identity differs; no comments were appended')
         prospective = self.node_preflight(comments, bodies, [envelope['payload']['hash']], index)
         for encoded in bodies:
             if any(row.get('body') == encoded for row in comments): continue

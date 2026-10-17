@@ -116,6 +116,20 @@ class ContinuationReceiptEdgeTests(unittest.TestCase):
         self.assertEqual(first["target"], second["source"])
         self.assertEqual(3, second["target"]["revision"])
 
+    def test_referenced_continuation_authenticates_only_exact_same_goal_response(self):
+        edge, wrapper = self.edge(self.source(), mutate_context=lambda context:
+                                  context.__setitem__('continuation', copy.deepcopy(context['response'])))
+        self.assertEqual(wrapper['response'], edge['response'])
+        for change in (
+            lambda ref: {**ref, 'hash': 'sha256:' + '0' * 64},
+            lambda ref: {**ref, 'uri': ref['uri'].replace('goal:100:', 'goal:101:')},
+            lambda ref: {**ref, 'extra': True},
+        ):
+            with self.subTest(change=change):
+                edge, _ = self.edge(self.source(), mutate_context=lambda context:
+                                    context.__setitem__('continuation', change(context['response'])))
+                self.assertIsNone(edge)
+
     def test_ordinary_receipt_response_is_preserved_and_malformed_shape_rejected(self):
         edge, response = self.ordinary_edge()
         self.assertEqual(response, edge["response"])
