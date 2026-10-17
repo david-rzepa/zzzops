@@ -104,6 +104,12 @@ class SubmitContinuationTests(DagFixture):
         self.assertTrue(all(z._comment_store.decode_envelope(row['body'])['context'] == original for row in rows))
         self.assertEqual(1, sum(row['body'] == partial['body'] for row in rows))
 
+
+    def test_test_plan_response_loss_and_partial_fact_continuation_contract(self):
+        from test_evidence_dag_journeys import run_generic_regressions
+        run_generic_regressions(self,
+            'test_workflow_authoritative_verification.AuthoritativeVerificationTests.test_public_changed_mode_widens_and_persists_partition_fact',
+            'test_workflow_authoritative_verification.AuthoritativeVerificationTests.test_first_append_failure_reuses_command_proof_and_log')
     def ready_names(self, response):
         return {step['node']['node'] for step in response['next_steps'] if step['kind'] == 'execute'}
 

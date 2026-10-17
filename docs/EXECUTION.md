@@ -98,3 +98,19 @@ Before human review or completion, the agent reviews the actual goal diff, crite
 ### Reusable local request files
 
 Public ZzzOps workflow responses for capture, execution, migration, and policy review expose a stable `working_input` path under `.zzzops/work/inputs/v1/`. Edit that file across revisions. ZzzOps freezes exact bytes for provider dispatch, preserves ambiguous snapshots, and returns directly runnable status or reconciliation commands. The store is Git-ignored and abandonment never removes published evidence, approvals, receipts, history, or diagnostics.
+
+## Repository test plan
+
+`zzzops-test-plan.json` is the single tracked authority for test definitions and the latest matching successful input identities. Definitions name stable test-file or runner groups, their purpose, provenance when known, explicit runtime inputs, and conservative fallback. Result metadata does not hash itself; all semantic definition, discovery, runner, dependency, toolchain, environment, fixture, generated, subprocess, and dynamic-input bytes do.
+
+The product-validation adapter can preview selection without executing tests:
+
+```sh
+python .github/scripts/run_product_validation.py --platform linux --test-plan-preview --changed plugins/zzzops/zzzops/workflow.py
+```
+
+A preview without current validated Graft evidence widens to the full declared suite and reports the reason. Graft graphs are disposable caches. Selection must use both previous and current relationships, and any missing, stale, unsupported, or unresolved relationship widens conservatively. Execution remains serial unless exact current reviewed resource authority, sufficient capacity, and safe isolation are all present.
+
+Implementation submissions may use the same plan through the public workflow input with `verification_plan` instead of `workspace_checks`. Supported modes are `changed`, `explicit`, `full`, and `expected-red`; explicit mode names stable test identities, while changed mode supplies changed paths and widens when the host cannot validate both Graft snapshots. The resulting proof records the semantic plan, per-unit content fingerprints, graph fallback reason, exact commands, logs, and outcomes. Successful partition facts can be reused across a new lease only when the workspace, environment, command inventory, and every selected unit fingerprint are identical; a later failed observation is never hidden by an older success.
+
+`durations` and `maximum_seconds` deterministically group the selected inventory into bounded commands. Execution is serial by default. A `parallel` request must bind its approval to the current lease, acquisition digest, and reviewed policy digest and declare sufficient current capacity; otherwise submission fails closed. The host creates a separate filesystem copy for every parallel partition, verifies inventory parity, and removes every copy after success or failure. Parallel results retain declared partition order, and interrupted running journals require observed recovery rather than speculative replay. Current Graft observations are stored as immutable content-addressed host artifacts. Only a successful completed run atomically promotes its validated current graph for use as the next previous graph; failed or incomplete runs leave that boundary unchanged. Changed mode uses both exact snapshots when available and reports a full-suite fallback reason otherwise.

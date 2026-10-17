@@ -22,6 +22,9 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
     def setUp(self):
         super().setUp()
         self.setup_workspace()
+        self.install_plan()
+        self.session.git('add','zzzops-test-plan.json','second_test.py')
+        self.session.git('commit','-qm','test plan fixture')
         self.work = self.acquire_workspace('alpha')
         self.counter = Path(self.session.control) / 'verification-count'
 
@@ -35,6 +38,133 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
 
     def count(self):
         return len(self.counter.read_text().splitlines()) if self.counter.exists() else 0
+
+    def install_plan(self):
+        unit={'purpose':'public regression','behavior':'observable','runner':'r','selection':'behavior_test','goals':['557'],'specifications':[],'dependencies':['behavior_test.py'],'completeness':'complete','fallback':'full','order_group':None}
+        second={**unit,'selection':'second_test','dependencies':['second_test.py']}
+        plan={'schema_version':1,'graph_provider':{'name':'graft','version':'0.17.0','format':'graft-graph-v1','configuration':{}},'runners':{'r':{'adapter':'unittest','start':'.'}},'tests':{'behavior_test':unit,'second_test':second},'latest_success':{}}
+        (self.fixture.repo/'zzzops-test-plan.json').write_text(json.dumps(plan))
+        (self.fixture.repo/'second_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
+
+    def test_public_changed_mode_widens_and_persists_partition_fact(self):
+        (self.fixture.repo/'behavior_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
+        request=self.session.submission(self.work,{'value':'planned candidate'},'plan-changed')
+        request.update(verification_plan={'mode':'changed','changed':['unmapped.py'],'maximum_seconds':10,'durations':{'behavior_test':1}},verification_expectation='passed')
+        response=self.session.call(100,request);self.assertIn('verification',response,response);proof=self.read_blob(response['verification']['proof'])
+        self.assertTrue(proof['passed']);self.assertEqual(['behavior_test','second_test'],proof['test_plan']['preview']['selected']);self.assertIn('fallback_reason',proof['test_plan']['graph'])
+        git_dir=Path(subprocess.check_output(['git','rev-parse','--absolute-git-dir'],cwd=self.fixture.repo,text=True).strip())
+        self.assertTrue(list((git_dir/'zzzops/verification/100').glob('partition-facts-*.json')))
+
+    def test_success_updates_tracked_plan_and_older_checkout_restores_branch_local_result(self):
+        (self.fixture.repo/'behavior_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
+        request=self.session.submission(self.work,{'value':'persisted planned candidate'},'plan-persisted-success')
+        request.update(verification_plan={'mode':'full'},verification_expectation='passed')
+        response=self.session.call(100,request);proof=self.read_blob(response['verification']['proof'])
+        path=self.fixture.repo/'zzzops-test-plan.json';plan=json.loads(path.read_text())
+        self.assertEqual({'behavior_test','second_test'},set(plan['latest_success']))
+        for identity in sorted(plan['tests']):
+            self.assertEqual({'fingerprint','outcome','proof'},set(plan['latest_success'][identity]))
+            self.assertEqual(proof['test_plan']['fingerprints'][identity],plan['latest_success'][identity]['fingerprint'])
+            self.assertEqual('passed',plan['latest_success'][identity]['outcome'])
+            self.assertEqual(response['verification']['proof'],plan['latest_success'][identity]['proof'])
+        self.assertEqual(z._test_plan.canonical(plan)+b'\n',path.read_bytes())
+        self.session.git('add','zzzops-test-plan.json','behavior_test.py');self.session.git('commit','-qm','record branch-local verification success')
+        older=self.session.git('rev-parse','HEAD');older_plan=path.read_bytes()
+        self.session.git('checkout','-qb','newer-plan-result')
+        newer=json.loads(path.read_text());newer['latest_success']['behavior_test']['fingerprint']='sha256:'+'c'*64;z._test_plan.write_plan(path,newer)
+        self.session.git('add','zzzops-test-plan.json');self.session.git('commit','-qm','record newer branch result');newer_plan=path.read_bytes()
+        self.session.git('checkout','-q',older);self.assertEqual(older_plan,path.read_bytes())
+        self.session.git('checkout','-q','newer-plan-result');self.assertEqual(newer_plan,path.read_bytes())
+
+    def test_receipt_replay_repairs_success_record_after_plan_write_failure(self):
+        (self.fixture.repo/'behavior_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
+        request=self.session.submission(self.work,{'value':'replay repaired candidate'},'plan-replay-repair')
+        request.update(verification_plan={'mode':'full'},verification_expectation='passed')
+        with mock.patch.object(z._test_plan,'write_plan',side_effect=OSError('interrupted before tracked plan write')):
+            self.session.call(100,request,expected=2)
+        path=self.fixture.repo/'zzzops-test-plan.json'
+        self.assertEqual({},json.loads(path.read_text())['latest_success'])
+        original=subprocess.run
+        def no_repeat(argv,*args,**kwargs):
+            if argv and argv[0]==sys.executable and '-c' in argv:
+                self.assertNotIn('behavior_test',json.dumps(argv));self.assertNotIn('second_test',json.dumps(argv))
+            return original(argv,*args,**kwargs)
+        with mock.patch.object(subprocess,'run',side_effect=no_repeat):response=self.session.call(100,request)
+        proof=self.read_blob(response['verification']['proof'])
+        plan=json.loads(path.read_text())
+        self.assertEqual({'behavior_test','second_test'},set(plan['latest_success']))
+        for identity in sorted(plan['tests']):
+            self.assertEqual({'fingerprint':proof['test_plan']['fingerprints'][identity],
+                'outcome':'passed','proof':response['verification']['proof']},plan['latest_success'][identity])
+        self.assertEqual(z._test_plan.canonical(plan)+b'\n',path.read_bytes())
+        with mock.patch.object(subprocess,'run',side_effect=no_repeat):self.assertEqual(response,self.session.call(100,request))
+
+    def test_older_receipt_replay_does_not_replace_newer_success_records(self):
+        (self.fixture.repo/'behavior_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
+        request=self.session.submission(self.work,{'value':'older successful candidate'},'plan-older-success')
+        request.update(verification_plan={'mode':'full'},verification_expectation='passed')
+        response=self.session.call(100,request)
+        path=self.fixture.repo/'zzzops-test-plan.json';plan=json.loads(path.read_text())
+        newer_hash='sha256:'+'b'*64
+        newer={identity:{'fingerprint':'sha256:'+'c'*64,'outcome':'passed',
+            'proof':{'hash':newer_hash,'uri':'zzzops:owner/repo:goal:100:'+newer_hash}}
+            for identity in plan['tests']}
+        plan['latest_success']=copy.deepcopy(newer);z._test_plan.write_plan(path,plan)
+        original=subprocess.run
+        def no_repeat(argv,*args,**kwargs):
+            if argv and argv[0]==sys.executable and '-c' in argv:
+                self.fail('Stored receipt replay reran verification commands')
+            return original(argv,*args,**kwargs)
+        with mock.patch.object(subprocess,'run',side_effect=no_repeat):
+            self.assertEqual(response,self.session.call(100,request))
+        self.assertEqual(newer,json.loads(path.read_text())['latest_success'])
+
+    def test_public_expected_red_mode_requires_signature_and_replays_response(self):
+        (self.fixture.repo/'behavior_test.py').write_text("import unittest\nclass T(unittest.TestCase):\n def test_red(self): self.fail('missing-557-behavior')\n")
+        request=self.session.submission(self.work,{'value':'observed red'},'plan-red')
+        request.update(verification_plan={'mode':'expected-red','selected':['behavior_test'],'expected_red':'FAILED'},verification_expectation='observed')
+        response=self.session.call(100,request);self.assertTrue(response['verification']['passed'],response);self.assertEqual(response,self.session.call(100,request))
+
+    def test_partition_fact_survives_interruption_and_fresh_lease_reuses_only_success(self):
+        (self.fixture.repo/'behavior_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
+        request=self.session.submission(self.work,{'value':'partial planned candidate'},'plan-partial')
+        request.update(verification_plan={'mode':'full','maximum_seconds':1,'durations':{'behavior_test':1,'second_test':1}},verification_expectation='passed')
+        original=subprocess.run;calls={'behavior_test':0,'second_test':0}
+        def interrupted(argv,*args,**kwargs):
+            text=json.dumps(argv)
+            is_test=argv and argv[0]==sys.executable and '-c' in argv
+            for name in calls:
+                if is_test and name in text:calls[name]+=1
+            if is_test and 'second_test' in text:raise KeyboardInterrupt('after first durable partition fact')
+            return original(argv,*args,**kwargs)
+        with mock.patch.object(subprocess,'run',side_effect=interrupted),self.assertRaises(KeyboardInterrupt):self.session.call(100,request)
+        self.assertEqual({'behavior_test':1,'second_test':1},calls)
+        response=self.session.call(100,request);recovery=response['next_steps'][0]['recovery_contract']
+        self.session.call(100,{**recovery,'worker_status':'stopped','evidence':'Observed interrupted verifier terminated'})
+        self.work=self.acquire_workspace('alpha');fresh=self.session.submission(self.work,{'value':'fresh planned candidate'},'plan-partial-fresh')
+        fresh.update(verification_plan=request['verification_plan'],verification_expectation='passed')
+        before=dict(calls)
+        def counted(argv,*args,**kwargs):
+            text=json.dumps(argv)
+            for name in calls:
+                if argv and argv[0]==sys.executable and '-c' in argv and name in text:calls[name]+=1
+            return original(argv,*args,**kwargs)
+        with mock.patch.object(subprocess,'run',side_effect=counted):result=self.session.call(100,fresh)
+        self.assertIn('verification',result,result)
+        self.assertEqual(before['behavior_test'],calls['behavior_test']);self.assertEqual(before['second_test']+1,calls['second_test'])
+        proof=self.read_blob(result['verification']['proof']);self.assertEqual(self.work['lease']['token'],proof['lease']);self.assertTrue(proof['passed'])
+
+    def test_plan_facts_survive_response_loss_after_durable_append(self):
+        (self.fixture.repo/'behavior_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
+        request=self.session.submission(self.work,{'value':'response lost candidate'},'plan-response-loss')
+        request.update(verification_plan={'mode':'full','maximum_seconds':1,'durations':{'behavior_test':1,'second_test':1}},verification_expectation='passed')
+        with mock.patch.object(self.provider,'create_issue_comment',side_effect=RuntimeError('lost after durable facts')):self.session.call(100,request,expected=2)
+        original=subprocess.run
+        def no_repeat(argv,*args,**kwargs):
+            if argv and argv[0]==sys.executable and '-c' in argv:self.assertNotIn('behavior_test',json.dumps(argv));self.assertNotIn('second_test',json.dumps(argv))
+            return original(argv,*args,**kwargs)
+        with mock.patch.object(subprocess,'run',side_effect=no_repeat):response=self.session.call(100,request)
+        self.assertTrue(response['verification']['passed'])
 
     def test_native_red_to_green_checks_execute_once_per_phase_request(self):
         (self.fixture.repo / 'behavior_test.py').write_text('from source import value\nassert value() == 2\n')
@@ -173,6 +303,87 @@ class AuthoritativeVerificationTests(journeys.DagFixture):
         self.session.call(100, request, expected=2)
         self.assertEqual(1, self.count())
 
+
+    def test_plan_commands_run_unlocked_with_explicit_timeout_and_owner_renewal(self):
+        (self.fixture.repo/'behavior_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
+        request=self.session.submission(self.work, {'value':'plan under current verification lifecycle'}, 'plan-unlocked-timeout')
+        request.update(verification_plan={'mode':'explicit','selected':['behavior_test']}, verification_expectation='passed', verification_timeout_seconds=7)
+        original=subprocess.run; calls=[]
+        def observed(argv, *args, **kwargs):
+            if argv and argv[0]==sys.executable and '-c' in argv:
+                calls.append(argv); self.assertEqual(7,kwargs['timeout'])
+                engine=getattr(self.session,'engine',None)
+                if engine is not None:self.assertIsNone(engine._storage_reservation)
+                renewal=self.session.call(100,{'operation':'renew','node':self.work['node'],'lease':self.work['lease']['token'],
+                    'actor':self.work['bound_actor'],'worker_status':'active','request_id':'renew-during-plan'})
+                self.assertEqual('renewed',renewal['next_steps'][0]['kind'])
+            return original(argv,*args,**kwargs)
+        with mock.patch.object(subprocess,'run',side_effect=observed):response=self.session.call(100,request)
+        self.assertTrue(response['verification']['passed']);self.assertEqual(1,len(calls))
+
+    def test_plan_finalize_refuses_missing_journal_without_running_commands(self):
+        (self.fixture.repo/'behavior_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
+        request=self.session.submission(self.work,{'value':'missing finalize journal'},'plan-journal-disappeared')
+        request.update(verification_plan={'mode':'explicit','selected':['behavior_test']},verification_expectation='passed')
+        original_phase=z._workflow.Workflow.node_mutate_phase; original_run=subprocess.run;calls=[]
+        def remove_journal(engine, number, payload, **kwargs):
+            if kwargs.get('prepared_verification') is not None:
+                directory=engine.repo/'.git/zzzops/verification'/str(number)
+                journals=list(directory.glob('plan-results-*.json'));self.assertEqual(1,len(journals));journals[0].unlink()
+            return original_phase(engine,number,payload,**kwargs)
+        def observed(argv,*args,**kwargs):
+            if argv and argv[0]==sys.executable and '-c' in argv:calls.append(argv)
+            return original_run(argv,*args,**kwargs)
+        with mock.patch.object(z._workflow.Workflow,'node_mutate_phase',new=remove_journal), mock.patch.object(subprocess,'run',side_effect=observed):
+            response=self.session.call(100,request,expected=2)
+        self.assertIn('journal disappeared before finalize',str(response));self.assertEqual(1,len(calls))
+        self.assertTrue(any(step.get('node')==self.work['node'] and step.get('kind')=='await_worker' for step in self.session.checkpoint(100)))
+
+    def test_graph_baseline_promotes_only_after_publication_and_replay_preserves_newer(self):
+        (self.fixture.repo/'behavior_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
+        request=self.session.submission(self.work,{'value':'durable graph baseline'},'plan-durable-graph')
+        request.update(verification_plan={'mode':'full'},verification_expectation='passed')
+        original=z._workflow.Workflow.node_test_plan_commands
+        def with_graph(engine, *args, **kwargs):
+            commands,evidence=original(engine,*args,**kwargs)
+            evidence['graph']['current']={'hash':'sha256:'+'a'*64}
+            return commands,evidence
+        baseline=self.fixture.repo/'.zzzops/test-plan/previous-graft.json'
+        def promoted(repo, pin):
+            self.assertEqual('alpha',self.result('alpha')[1]['node']['node'])
+            baseline.parent.mkdir(parents=True,exist_ok=True)
+            baseline.write_text('published baseline')
+        with mock.patch.object(z._workflow.Workflow,'node_test_plan_commands',new=with_graph), mock.patch.object(z._test_plan,'promote_graph',side_effect=promoted) as promote:
+            with mock.patch.object(self.provider,'create_issue_comment',side_effect=RuntimeError('provider unavailable')):
+                self.session.call(100,request,expected=2)
+            promote.assert_not_called()
+            response=self.session.call(100,request)
+            self.assertTrue(response['verification']['passed']);promote.assert_called_once()
+            baseline.write_text('newer baseline')
+            self.assertEqual(response,self.session.call(100,request))
+            promote.assert_called_once();self.assertEqual('newer baseline',baseline.read_text())
+
+    def test_unpublished_plan_journal_rejects_changed_graph_evidence(self):
+        (self.fixture.repo/'behavior_test.py').write_text('import unittest\nclass T(unittest.TestCase):\n def test_ok(self): self.assertTrue(True)\n')
+        request=self.session.submission(self.work,{'value':'exact graph evidence'},'plan-exact-graph')
+        request.update(verification_plan={'mode':'full'},verification_expectation='passed')
+        original=z._workflow.Workflow.node_test_plan_commands
+        evidence_version=['first']
+        def changed_evidence(engine,*args,**kwargs):
+            commands,evidence=original(engine,*args,**kwargs)
+            evidence['graph']['fallback_reason']=evidence_version[0]
+            return commands,evidence
+        with mock.patch.object(z._workflow.Workflow,'node_test_plan_commands',new=changed_evidence):
+            with mock.patch.object(self.provider,'create_issue_comment',side_effect=RuntimeError('provider unavailable')):
+                self.session.call(100,request,expected=2)
+            evidence_version[0]='changed'
+            original_run=subprocess.run
+            def no_repeat(argv,*args,**kwargs):
+                if argv and argv[0]==sys.executable and '-c' in argv:self.fail('Changed graph evidence reran commands')
+                return original_run(argv,*args,**kwargs)
+            with mock.patch.object(subprocess,'run',side_effect=no_repeat):
+                response=self.session.call(100,request,expected=2)
+            self.assertIn('plan journal identity or integrity changed',str(response))
 
 if __name__ == '__main__':
     unittest.main()

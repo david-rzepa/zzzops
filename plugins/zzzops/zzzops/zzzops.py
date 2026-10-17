@@ -229,6 +229,12 @@ _GRAPH_COMPILER_SPEC = importlib.util.spec_from_file_location("zzzops_graph_comp
 _graph_compiler = importlib.util.module_from_spec(_GRAPH_COMPILER_SPEC)
 _GRAPH_COMPILER_SPEC.loader.exec_module(_graph_compiler)
 
+_TEST_PLAN_SPEC = importlib.util.spec_from_file_location("zzzops_test_plan", Path(__file__).with_name("test_plan.py"))
+assert _TEST_PLAN_SPEC and _TEST_PLAN_SPEC.loader
+_test_plan = importlib.util.module_from_spec(_TEST_PLAN_SPEC)
+sys.modules[_TEST_PLAN_SPEC.name] = _test_plan
+_TEST_PLAN_SPEC.loader.exec_module(_test_plan)
+
 _WORKFLOW_SPEC = importlib.util.spec_from_file_location("zzzops_workflow", Path(__file__).with_name("workflow.py"))
 _workflow = importlib.util.module_from_spec(_WORKFLOW_SPEC)
 _WORKFLOW_SPEC.loader.exec_module(_workflow)
