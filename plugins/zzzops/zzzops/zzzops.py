@@ -1052,22 +1052,77 @@ class GitHubGoalTransitionAdapter:
         wire = copy.deepcopy(payload)
         if marker:
             wire["body"] = wire.get("body", "") + "\n" + marker
+        def create_postcondition():
+            if created:
+                return created[0]
+            result = self._run([
+                "api", "--paginate", "--slurp",
+                f"repos/{self.repository}/issues?state=all&per_page=100",
+            ], timeout=None)
+            if result.returncode:
+                raise self._provider_error(result)
+            try:
+                pages = json.loads(result.stdout)
+                if (not isinstance(pages, list) or not pages
+                        or any(not isinstance(page, list) for page in pages)):
+                    raise TypeError
+                issues = [issue for page in pages for issue in page]
+                if any(not isinstance(issue, dict) for issue in issues):
+                    raise TypeError
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise GoalTransitionProviderError(
+                    "GitHub returned invalid goal-create recovery data; success was not assumed.") from exc
+            expected_labels = set(wire.get("labels", []))
+            matches = []
+            for issue in issues:
+                labels = issue.get("labels")
+                observed_labels = ({row.get("name") for row in labels}
+                                   if isinstance(labels, list)
+                                   and all(isinstance(row, dict) and isinstance(row.get("name"), str)
+                                           for row in labels) else None)
+                if (type(issue.get("number")) is int and issue["number"] > 0
+                        and isinstance(issue.get("html_url"), str)
+                        and issue.get("state") in {"open", "closed"}
+                        and marker in str(issue.get("body", ""))
+                        and issue.get("body") == wire.get("body", "")
+                        and issue.get("title") == wire.get("title")
+                        and observed_labels == expected_labels):
+                    matches.append(issue)
+            return matches[0] if len(matches) == 1 else None
         def create():
             issue = self._create_issue(wire)
-            created.append(issue); return issue
+            created.append(issue)
+            return issue
         issue = self._transactional_write(
             "create_issue", {"repository": self.repository}, {"payload": payload, "marker": marker},
-            create, lambda: created[0] if created else None,
+            create, create_postcondition,
         )
         if not marker:
             return issue
         cleaned = []
         def cleanup():
-            value = self._update_issue(issue["number"], {"body": payload.get("body", "")})
-            cleaned.append(value); return value
+            result = self._run(
+                ["api", "--method", "PATCH", "--input", "-",
+                 f"repos/{self.repository}/issues/{issue['number']}"],
+                input_text=json.dumps({"body": payload.get("body", "")}, ensure_ascii=False,
+                                      sort_keys=True, separators=(",", ":")),
+            )
+            if result.returncode:
+                raise self._provider_error(result)
+            try:
+                value = json.loads(result.stdout)
+            except json.JSONDecodeError as exc:
+                raise GoalTransitionProviderError(
+                    "GitHub returned an invalid goal-create cleanup response; success was not assumed.") from exc
+            if not isinstance(value, dict):
+                raise GoalTransitionProviderError(
+                    "GitHub returned an incomplete goal-create cleanup response; success was not assumed.")
+            cleaned.append(value)
+            return value
         def clean_postcondition():
             value = cleaned[0] if cleaned else self.get_issue(issue["number"])
-            return value if isinstance(value, dict) and value.get("number") == issue["number"] and value.get("body") == payload.get("body", "") else None
+            return value if (isinstance(value, dict) and value.get("number") == issue["number"]
+                             and value.get("body") == payload.get("body", "")) else None
         return self._transactional_write(
             "cleanup_created_issue", {"issue": issue["number"]},
             {"payload": payload, "marker": marker}, cleanup, clean_postcondition)

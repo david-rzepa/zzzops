@@ -361,9 +361,9 @@ class WorkingInputStore:
         self._request_id(request_id)
         with self._locked():
             state = self._load(); row = state["requests"][request_id]
-            if row["state"] == "confirmed": return copy.deepcopy(row["receipt"])
+            if row["state"] in {"confirmed", "reconciled"}: return copy.deepcopy(row["receipt"])
             if row["state"] in {"dispatching", "uncertain"}: self._uncertain(request_id, "uncertain-dispatch")
-            if row["state"] not in {"frozen", "reconciled"}: raise ValueError("request is not dispatchable")
+            if row["state"] != "frozen": raise ValueError("request is not dispatchable")
             exact = Path(row["snapshot"]).read_bytes()
             if hashlib.sha256(exact).hexdigest() != row["digest"]: raise ValueError("snapshot digest is corrupt")
             row["state"] = "dispatching"; self._save(state)
@@ -391,7 +391,7 @@ class WorkingInputStore:
                     with self._locked():
                         state = self._load(); recovered = state["requests"][request_id]
                         recovered["state"] = "confirmed"; recovered["receipt"] = envelope; self._save(state)
-                    return provider_result
+                    return envelope
             if outcome is False or (isinstance(outcome, dict) and outcome.get("applied") is False):
                 with self._locked():
                     state = self._load(); state["requests"][request_id]["state"] = "frozen"; self._save(state)
@@ -441,7 +441,7 @@ class WorkingInputStore:
                 else:
                     stored_receipt = receipt
                 with self._locked():
-                    state = self._load(); state["requests"][request_id]["state"] = "confirmed"
+                    state = self._load(); state["requests"][request_id]["state"] = "reconciled"
                     state["requests"][request_id]["receipt"] = stored_receipt; self._save(state)
                 return self.status(request_id)
             if outcome is False or (isinstance(outcome, dict) and outcome.get("applied") is False):
@@ -470,8 +470,8 @@ class WorkingInputStore:
         row = self.status(request_id)
         if self._active(request_id): self._busy(request_id, "active-reference")
         if row["state"] in {"dispatching", "uncertain"}: self._uncertain(request_id, "uncertain-dispatch")
-        if row["state"] != "confirmed" or row.get("receipt") != receipt:
-            raise PermissionError("exact confirmed receipt is required")
+        if row["state"] not in {"confirmed", "reconciled"} or row.get("receipt") != receipt:
+            raise PermissionError("exact authenticated receipt is required")
         return self._delete(request_id, "retired")
 
     def abandon(self, request_id, *, approved_by):
@@ -516,10 +516,39 @@ def github_provider_check(repo: Path, repository: str, request_id: str, digest: 
                 for k, v in payload.items())
         else:
             marker = arguments.get("marker")
+            expected = arguments.get("payload")
+            if not isinstance(marker, str) or not marker or not isinstance(expected, dict): return None
+            expected_labels = expected.get("labels")
+            if (not isinstance(expected_labels, list)
+                    or any(not isinstance(label, str) for label in expected_labels)):
+                return None
+            expected_body = str(expected.get("body", "")) + "\n" + marker
             rows = query(["api", "--paginate", "--slurp", f"repos/{repository}/issues?state=all&per_page=100"])
             if rows is ...: return None
-            flat = [x for page in rows for x in page] if isinstance(rows, list) and all(isinstance(x, list) for x in rows) else []
-            matches = [x for x in flat if isinstance(x, dict) and marker and marker in str(x.get("body", ""))]
+            if (not isinstance(rows, list) or not rows
+                    or any(not isinstance(page, list) for page in rows)):
+                return None
+            flat = [item for page in rows for item in page]
+            if any(not isinstance(item, dict) for item in flat): return None
+            if any("body" not in item or item["body"] is not None
+                   and not isinstance(item["body"], str) for item in flat):
+                return None
+            matches = []
+            for item in flat:
+                body = item.get("body")
+                if not isinstance(body, str) or marker not in body:
+                    continue
+                labels = item.get("labels")
+                if (item.get("title") != expected.get("title") or body != expected_body
+                        or type(item.get("number")) is not int or item["number"] < 1
+                        or not isinstance(item.get("html_url"), str)
+                        or item.get("state") not in {"open", "closed"}
+                        or not isinstance(labels, list)
+                        or any(not isinstance(label, dict) or not isinstance(label.get("name"), str)
+                               for label in labels)
+                        or {label["name"] for label in labels} != set(expected_labels)):
+                    return None
+                matches.append(item)
             if len(matches) != 1: return {"applied": False} if not matches else None
             result, applied = matches[0], True
     elif operation == "cleanup_created_issue":

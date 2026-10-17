@@ -6648,7 +6648,9 @@ def _public_response(api, repo, intent, source, runtime, payload, number, *, ski
                 repo, repository=repository, owner=owner,
             ).draft_session(purpose, logical_session)
         else:
-            draft_identity = str(uuid.uuid4())
+            draft_identity = (api._working_inputs.WorkingInputStore(
+                repo, repository=repository, owner=owner,
+            ).draft_session(purpose, owner) if number is None else str(uuid.uuid4()))
         subject = f'goal:{number}' if number is not None else f'draft:{draft_identity}'
         result['working_input'] = api._working_inputs.WorkingInputStore(
             repo, repository=repository, owner=owner,

@@ -25,6 +25,7 @@ from contextlib import redirect_stdout
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "plugins/zzzops/zzzops/working_inputs.py"
+RESERVATION_MODULE = ROOT / "plugins/zzzops/zzzops/reservation.py"
 
 
 def production_module():
@@ -40,6 +41,16 @@ def production_module():
     missing = sorted(required - set(vars(module)))
     if missing:
         raise AssertionError("working-input production API is incomplete: " + ", ".join(missing))
+    return module
+
+
+def reservation_module():
+    spec = importlib.util.spec_from_file_location("zzzops_reservation_under_test", RESERVATION_MODULE)
+    if spec is None or spec.loader is None:
+        raise AssertionError("reservation production module has no importable loader")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
     return module
 
 
@@ -310,7 +321,7 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         with self.assertRaises(AppliedThenLost):
             uncertain.dispatch("request-lost", self.provider.apply_then_lose)
         self.assertEqual("uncertain", uncertain.status("request-lost")["state"])
-        self.assertEqual("confirmed", uncertain.reconcile("request-lost")["state"])
+        self.assertEqual("reconciled", uncertain.reconcile("request-lost")["state"])
         self.assertEqual(1, self.provider.checks)
 
         bounded = self.store()
@@ -768,7 +779,7 @@ with s.reference('process-lock', 'reader'):
                     public_cli, self.repo, "capture", "$add-zzzops-goal", {"root_id": "root"}, None, None)
                 concurrent = public_cli._workflow.public_run(
                     public_cli, self.repo, "capture", "$add-zzzops-goal", {"root_id": "root"}, None, None)
-            self.assertNotEqual(first_draft["working_input"]["draft_id"],
+            self.assertEqual(first_draft["working_input"]["draft_id"],
                                 concurrent["working_input"]["draft_id"])
             resumed = public_cli._workflow.public_run(
                 public_cli, self.repo, "capture", "$add-zzzops-goal",
@@ -814,6 +825,34 @@ with s.reference('process-lock', 'reader'):
         self.assertEqual(first, invoke("codex-thread-a"))
         self.assertNotEqual(first, invoke("codex-thread-b"))
 
+    def test_provider_exception_recovery_preserves_transaction_envelope(self):
+        store = self.store()
+        request = "request-exception-envelope"
+        action = {"operation": "update_issue", "target": {"issue": 554}}
+        provider_result = {"number": 554, "state": "open"}
+        store.write("provider:" + request, "provider-mutation", {"payload": "exact"})
+        frozen = store.freeze("provider:" + request, "provider-mutation", request, action)
+        result_hash = "sha256:" + hashlib.sha256(json.dumps(
+            provider_result, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        receipt = {"request_id": request, "digest": frozen["digest"], "action": action,
+                   "authenticated": True, "provider_result": result_hash}
+        calls = {"sender": 0, "check": 0}
+
+        def provider_check(_request_id, _digest):
+            calls["check"] += 1
+            return {"applied": True, "receipt": receipt, "result": provider_result}
+
+        def sender(_request_id, _body):
+            calls["sender"] += 1
+            raise RuntimeError("provider response lost after mutation")
+
+        store.provider_check = provider_check
+        expected = {"receipt": receipt, "result": provider_result}
+        self.assertEqual(expected, store.dispatch(request, sender))
+        self.assertEqual(expected, store.dispatch(request, sender))
+        self.assertEqual({"sender": 1, "check": 1}, calls)
+        self.assertEqual(expected, self.store().status(request)["receipt"])
+
     def test_frozen_provider_descriptor_retains_typed_reconciliation_inputs(self):
         store = self.store()
         descriptor = {"operation": "update_issue", "target": {"issue": 12},
@@ -835,11 +874,14 @@ with s.reference('process-lock', 'reader'):
         for operation, result in (("create_issue", {"number": 42, "body": "marked"}),
                                   ("cleanup_created_issue", {"number": 42, "body": "clean"})):
             with self.subTest(operation=operation):
-                store = self.store(); request = "lost-" + operation
+                store = self.store()
+                request = "lost-" + operation
                 action = {"operation": operation, "target": {"issue": 42}, "arguments": {}}
                 store.write("provider:" + request, "provider-mutation", action)
                 row = store.freeze("provider:" + request, "provider-mutation", request, action)
-                state = store._load(); state["requests"][request]["state"] = "uncertain"; store._save(state)
+                state = store._load()
+                state["requests"][request]["state"] = "uncertain"
+                store._save(state)
                 result_hash = "sha256:" + hashlib.sha256(json.dumps(
                     result, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
                 receipt = {"request_id": request, "digest": row["digest"], "action": action,
@@ -849,6 +891,551 @@ with s.reference('process-lock', 'reader'):
                 store.reconcile(request)
                 replay = store.dispatch(request, lambda *_args: self.fail("confirmed replay dispatched"))
                 self.assertEqual({"receipt": receipt, "result": result}, replay)
+
+    def test_real_reservation_adapter_decodes_and_validates_label_response(self):
+        reservation = reservation_module()
+        adapter = object.__new__(reservation.GitHubReservationAdapter)
+        adapter.repository = "owner/repo"
+        adapter._run = lambda arguments: subprocess.CompletedProcess(
+            arguments, 0,
+            stdout=json.dumps({"name": "lease", "description": "held", "node_id": "L1"}),
+            stderr="")
+        self.assertEqual("L1", adapter.get_label("lease")["node_id"])
+        adapter._run = lambda arguments: subprocess.CompletedProcess(
+            arguments, 0, stdout=json.dumps({"name": "wrong", "node_id": "L1"}), stderr="")
+        with self.assertRaises(reservation.ReservationProviderError):
+            adapter.get_label("lease")
+
+    def test_reservation_label_mutations_recover_exact_remote_results_and_retry_once(self):
+        sys.path.insert(0, str(ROOT / ".agents"))
+        try:
+            import test_zzzops as fixtures
+            public_cli = fixtures.zzzops
+        finally:
+            sys.path.pop(0)
+        reservation = public_cli._reservation
+        adapter = object.__new__(reservation.GitHubReservationAdapter)
+        adapter.repo, adapter.repository, adapter.executable = self.repo, "owner/repo", "gh"
+        adapter._identity_checked = True
+        labels = {}
+        mutations = {"create": 0, "update": 0, "delete": 0}
+
+        def run(arguments, timeout=30):
+            joined = " ".join(arguments)
+            if "--method POST" in joined:
+                mutations["create"] += 1
+                description = next(value.split("=", 1)[1] for value in arguments
+                                   if value.startswith("description="))
+                labels["lease"] = {"name": "lease", "description": description, "node_id": "L1"}
+                raise RuntimeError("create applied but response was lost")
+            if "updateLabel" in joined:
+                mutations["update"] += 1
+                description = next(value.split("=", 1)[1] for value in arguments
+                                   if value.startswith("description="))
+                labels["lease"]["description"] = description
+                raise RuntimeError("update applied but response was lost")
+            if "deleteLabel" in joined:
+                mutations["delete"] += 1
+                labels.clear()
+                raise RuntimeError("delete applied but response was lost")
+            if "node(id:" in joined:
+                label = next(iter(labels.values()), None)
+                node = None if label is None else {
+                    "id": label["node_id"], "name": label["name"],
+                    "description": label["description"]}
+                return subprocess.CompletedProcess(
+                    arguments, 0, stdout=json.dumps({"data": {"node": node}}), stderr="")
+            label = labels.get("lease")
+            if label is None:
+                return subprocess.CompletedProcess(arguments, 1, stdout="", stderr="404 Not Found")
+            return subprocess.CompletedProcess(arguments, 0, stdout=json.dumps(label), stderr="")
+
+        adapter._run = run
+        token = public_cli._WORKING_INPUT_TRANSACTION.set(
+            {"request_id": "reservation-label-lost-response", "owner": "root"})
+        try:
+            created = adapter.create_label("lease", "held")
+            self.assertEqual(created, adapter.create_label("lease", "held"))
+            self.assertEqual("held", labels["lease"]["description"])
+            updated = adapter.update_label("L1", "renewed")
+            self.assertEqual(updated, adapter.update_label("L1", "renewed"))
+            self.assertEqual("renewed", labels["lease"]["description"])
+            deleted = adapter.delete_label("L1")
+            self.assertEqual(deleted, adapter.delete_label("L1"))
+        finally:
+            public_cli._WORKING_INPUT_TRANSACTION.reset(token)
+        self.assertEqual({}, labels)
+        self.assertEqual({"create": 1, "update": 1, "delete": 1}, mutations)
+        store = public_cli._working_inputs.WorkingInputStore(
+            self.repo, repository="owner/repo", owner="root")
+        requests = json.loads(store.index_path.read_text())["requests"]
+        self.assertEqual(3, len(requests))
+        self.assertEqual(3, len(set(requests)))
+        self.assertTrue(all(row["state"] == "confirmed" for row in requests.values()))
+        self.assertTrue(all(row["receipt"]["receipt"]["authenticated"] is True
+                            for row in requests.values()))
+        self.assertEqual({"create_label", "update_label", "delete_label"}, {
+            row["action"]["operation"] for row in requests.values()})
+
+    def test_public_goal_create_recovers_exact_remote_result_and_retries_once(self):
+        sys.path.insert(0, str(ROOT / ".agents"))
+        try:
+            import test_zzzops as fixtures
+            public_cli = fixtures.zzzops
+        finally:
+            sys.path.pop(0)
+        adapter = object.__new__(public_cli.GitHubGoalTransitionAdapter)
+        adapter.repo, adapter.repository, adapter.executable = self.repo, "owner/repo", "gh"
+        adapter._identity_checked = True
+        payload = {"title": "Durable", "body": "Exact body", "labels": ["zzzops"]}
+        issues = []
+        posts = 0
+
+        def run(arguments, input_text=None, **_kwargs):
+            nonlocal posts
+            joined = " ".join(arguments)
+            if "--method POST" in joined:
+                posts += 1
+                wire = json.loads(input_text)
+                issues.append({
+                    "number": 42, "title": wire["title"], "body": wire["body"], "state": "open",
+                    "html_url": "https://github.com/owner/repo/issues/42",
+                    "labels": [{"name": name} for name in wire["labels"]],
+                })
+                raise RuntimeError("create applied but response was lost")
+            if "--method PATCH" in joined:
+                update = json.loads(input_text)
+                issue = next(issue for issue in issues
+                             if joined.endswith(f"/issues/{issue['number']}"))
+                issue.update(update)
+                return subprocess.CompletedProcess(
+                    arguments, 0, stdout=json.dumps(issue), stderr="")
+            if "issues?state=all" in joined:
+                self.assertIn("repos/owner/repo/issues?state=all&per_page=100", arguments)
+                self.assertIn("--paginate", arguments)
+                self.assertIn("--slurp", arguments)
+                return subprocess.CompletedProcess(
+                    arguments, 0, stdout=json.dumps([issues]), stderr="")
+            if joined.endswith("/issues/42"):
+                return subprocess.CompletedProcess(arguments, 0, stdout=json.dumps(issues[0]), stderr="")
+            raise AssertionError("unexpected provider request: " + joined)
+
+        adapter._run = run
+        token = public_cli._WORKING_INPUT_TRANSACTION.set(
+            {"request_id": "goal-create-public", "owner": "root"})
+        try:
+            first = adapter.create_issue(payload)
+            before_retry = json.loads((self.repo / ".zzzops/work/inputs/v1/index.json").read_text())
+            replay = adapter.create_issue(payload)
+        finally:
+            public_cli._WORKING_INPUT_TRANSACTION.reset(token)
+        self.assertEqual(first, replay)
+        self.assertEqual(payload["title"], first["title"])
+        self.assertEqual(payload["body"], first["body"])
+        self.assertEqual(1, posts)
+        self.assertEqual(1, len(issues))
+        store = public_cli._working_inputs.WorkingInputStore(
+            self.repo, repository="owner/repo", owner="root")
+        requests = json.loads(store.index_path.read_text())["requests"]
+        self.assertEqual(before_retry["requests"], requests)
+        matching = [row for row in requests.values()
+                    if row.get("receipt", {}).get("result") == first]
+        self.assertTrue(matching, "authenticated create result must be durable")
+        self.assertTrue(all(row["state"] == "confirmed" for row in matching))
+        self.assertTrue(all(row["receipt"]["receipt"]["authenticated"] is True for row in matching))
+
+    def test_public_goal_create_restart_reconciles_exact_wire_and_request(self):
+        sys.path.insert(0, str(ROOT / ".agents"))
+        try:
+            import test_zzzops as fixtures
+            public_cli = fixtures.zzzops
+        finally:
+            sys.path.pop(0)
+        adapter = object.__new__(public_cli.GitHubGoalTransitionAdapter)
+        adapter.repo, adapter.repository, adapter.executable = self.repo, "owner/repo", "gh"
+        adapter._identity_checked = True
+        payload = {"title": "Durable", "body": "Exact body", "labels": ["zzzops"]}
+        preexisting = {"number": 41, "title": payload["title"], "body": payload["body"],
+                       "state": "open", "html_url": "https://github.com/owner/repo/issues/41",
+                       "labels": [{"name": "zzzops"}]}
+        issues = [json.loads(json.dumps(preexisting))]
+        posts = 0
+        patches = 0
+        crash_on_read = True
+
+        def run(arguments, input_text=None, **_kwargs):
+            nonlocal posts, patches, crash_on_read
+            joined = " ".join(arguments)
+            if "--method POST" in joined:
+                posts += 1
+                wire = json.loads(input_text)
+                issues.append({
+                    "number": 42, "title": wire["title"], "body": wire["body"], "state": "open",
+                    "html_url": "https://github.com/owner/repo/issues/42",
+                    "labels": [{"name": name} for name in wire["labels"]],
+                })
+                raise RuntimeError("create applied but response was lost")
+            if "--method PATCH" in joined:
+                patches += 1
+                update = json.loads(input_text)
+                issue = next(issue for issue in issues if joined.endswith(f"/issues/{issue['number']}"))
+                issue.update(update)
+                return subprocess.CompletedProcess(
+                    arguments, 0, stdout=json.dumps(issue), stderr="")
+            if crash_on_read:
+                crash_on_read = False
+                raise SystemExit("process stopped before create confirmation")
+            if "graphql" in arguments:
+                nodes = [{**issue, "labels": {"nodes": issue["labels"]}} for issue in issues]
+                return subprocess.CompletedProcess(
+                    arguments, 0,
+                    stdout=json.dumps({"data": {"repository": {"issues": {"nodes": nodes}}}}),
+                    stderr="")
+            return subprocess.CompletedProcess(arguments, 0, stdout=json.dumps([issues]), stderr="")
+
+        adapter._run = run
+        context = {"request_id": "goal-create-restart", "owner": "root"}
+        token = public_cli._WORKING_INPUT_TRANSACTION.set(context)
+        try:
+            with self.assertRaisesRegex(SystemExit, "process stopped"):
+                adapter.create_issue(payload)
+        finally:
+            public_cli._WORKING_INPUT_TRANSACTION.reset(token)
+        store = public_cli._working_inputs.WorkingInputStore(
+            self.repo, repository="owner/repo", owner="root")
+        requests = json.loads(store.index_path.read_text())["requests"]
+        pending = [(request_id, row) for request_id, row in requests.items()
+                   if row["state"] == "uncertain" and row["action"]["operation"] == "create_issue"]
+        self.assertEqual(1, len(pending))
+        request_id, frozen = pending[0]
+
+        def provider_read(arguments, **_kwargs):
+            self.assertIn(f"repos/owner/repo/issues", " ".join(arguments))
+            return subprocess.CompletedProcess(arguments, 0, stdout=json.dumps([issues]), stderr="")
+
+        restarted = public_cli._working_inputs.WorkingInputStore(
+            self.repo, repository="owner/repo", owner="root",
+            provider_check=lambda request, digest: public_cli._working_inputs.github_provider_check(
+                self.repo, "owner/repo", request, digest, frozen["action"]))
+        with mock.patch.object(public_cli._working_inputs.subprocess, "run", side_effect=provider_read):
+            reconciled = restarted.reconcile(request_id)
+        recovered = reconciled["receipt"]
+        self.assertEqual(42, recovered["result"]["number"])
+        self.assertTrue(recovered["receipt"]["authenticated"])
+        token = public_cli._WORKING_INPUT_TRANSACTION.set(context)
+        try:
+            replay = adapter.create_issue(payload)
+        finally:
+            public_cli._WORKING_INPUT_TRANSACTION.reset(token)
+        self.assertEqual(42, replay["number"])
+        self.assertEqual(payload["title"], replay["title"])
+        self.assertEqual(payload["body"], replay["body"])
+        self.assertEqual(1, posts)
+        self.assertLessEqual(patches, 1)
+        self.assertEqual([41, 42], [issue["number"] for issue in issues])
+        self.assertEqual(preexisting, issues[0])
+
+    def test_authenticated_reconciled_request_retires_with_exact_receipt(self):
+        store = self.store()
+        request = "reconciled-retirement"
+        action = {"operation": "update_issue", "target": {"issue": 554}, "arguments": {}}
+        store.write("provider:" + request, "provider-mutation", {"payload": "exact"})
+        row = store.freeze("provider:" + request, "provider-mutation", request, action)
+        with self.assertRaises(AppliedThenLost):
+            store.dispatch(request, self.provider.apply_then_lose)
+        self.assertEqual("uncertain", self.store().status(request)["state"])
+        result = {"number": 554}
+        receipt = {"request_id": request, "digest": row["digest"], "action": action,
+                   "authenticated": True, "provider_result": "sha256:" + hashlib.sha256(
+                       json.dumps(result, sort_keys=True, separators=(",", ":")).encode()).hexdigest()}
+        restarted = self.store()
+        restarted.provider_check = lambda *_args: {
+            "applied": True, "receipt": receipt, "result": result}
+        reconciled = restarted.reconcile(request)
+        snapshot = Path(reconciled["snapshot"])
+        self.assertTrue(snapshot.is_file())
+        retired = restarted.retire(request, reconciled["receipt"])
+        self.assertEqual("retired", retired["state"])
+        self.assertFalse(snapshot.exists())
+
+    def test_public_capture_reuses_same_session_draft_and_separates_distinct_session(self):
+        sys.path.insert(0, str(ROOT / ".agents"))
+        try:
+            import test_zzzops as fixtures
+            public_cli = fixtures.zzzops
+        finally:
+            sys.path.pop(0)
+        engine = mock.MagicMock()
+        engine.read_only.return_value = None
+        engine.portfolio.return_value = None
+        with (mock.patch.object(public_cli._package, "package_status",
+                                return_value={"ok": True, "version": "1", "revision": "abc"}),
+              mock.patch.object(public_cli._installation, "validation_status",
+                                return_value={"required": False}),
+              mock.patch.object(public_cli, "workflow_context_step", return_value=None),
+              mock.patch.object(public_cli, "reviewed_project_state", return_value={}),
+              mock.patch.object(public_cli._workflow, "Workflow", return_value=engine),
+              mock.patch.object(public_cli._workflow, "checkpoint", return_value={"next_steps": []})):
+            same = {"root_id": "same-owner-session"}
+            first = public_cli._workflow.public_run(
+                public_cli, self.repo, "capture", "$add-zzzops-goal", same, None, None)
+            restarted = public_cli._workflow.public_run(
+                public_cli, self.repo, "capture", "$add-zzzops-goal", same, None, None)
+            distinct = public_cli._workflow.public_run(
+                public_cli, self.repo, "capture", "$add-zzzops-goal",
+                {"root_id": "distinct-owner-session"}, None, None)
+        identity = lambda result: tuple(result["working_input"][key]
+                                        for key in ("draft_id", "path", "payload_id"))
+        self.assertEqual(identity(first), identity(restarted))
+        self.assertNotEqual(identity(first), identity(distinct))
+
+
+    def test_public_create_lost_response_finds_correlated_issue_on_second_rest_page(self):
+        sys.path.insert(0, str(ROOT / ".agents"))
+        try:
+            import test_zzzops as fixtures
+            public_cli = fixtures.zzzops
+        finally:
+            sys.path.pop(0)
+        adapter = object.__new__(public_cli.GitHubGoalTransitionAdapter)
+        adapter.repo, adapter.repository, adapter.executable = self.repo, "owner/repo", "gh"
+        adapter._identity_checked = True
+        payload = {"title": "Durable", "body": "Exact body", "labels": ["zzzops"]}
+        remote = []
+        posts = 0
+        reads = 0
+
+        def issue(number, body):
+            return {"number": number, "title": payload["title"], "body": body, "state": "open",
+                    "html_url": f"https://github.com/owner/repo/issues/{number}",
+                    "labels": [{"name": "zzzops"}]}
+
+        first_page = [issue(number, payload["body"]) for number in range(1, 4)]
+        first_page[0]["body"] = None
+
+        def run(arguments, input_text=None, **_kwargs):
+            nonlocal posts, reads
+            joined = " ".join(arguments)
+            if "--method POST" in joined:
+                posts += 1
+                wire = json.loads(input_text)
+                remote.append(issue(150, wire["body"]))
+                raise RuntimeError("create applied but response was lost")
+            if "--method PATCH" in joined:
+                update = json.loads(input_text)
+                remote[0].update(update)
+                return subprocess.CompletedProcess(
+                    arguments, 0, stdout=json.dumps(remote[0]), stderr="")
+            if "issues?state=all" in joined:
+                reads += 1
+                self.assertIn("repos/owner/repo/issues?state=all&per_page=100", arguments)
+                self.assertIn("--paginate", arguments)
+                self.assertIn("--slurp", arguments)
+                return subprocess.CompletedProcess(
+                    arguments, 0, stdout=json.dumps([first_page, remote]), stderr="")
+            if joined.endswith("/issues/150"):
+                return subprocess.CompletedProcess(
+                    arguments, 0, stdout=json.dumps(remote[0]), stderr="")
+            raise AssertionError("unexpected provider request: " + joined)
+
+        adapter._run = run
+        context = {"request_id": "goal-create-paginated-recovery", "owner": "root"}
+        token = public_cli._WORKING_INPUT_TRANSACTION.set(context)
+        try:
+            first = adapter.create_issue(payload)
+            replay = adapter.create_issue(payload)
+        finally:
+            public_cli._WORKING_INPUT_TRANSACTION.reset(token)
+        self.assertEqual(first, replay)
+        self.assertEqual(150, first["number"])
+        self.assertEqual(payload["title"], first["title"])
+        self.assertEqual(payload["body"], first["body"])
+        self.assertEqual(payload["labels"], [label["name"] for label in first["labels"]])
+        self.assertEqual(1, reads)
+        self.assertEqual(1, posts)
+        self.assertEqual(1, len(remote))
+
+    def test_public_create_ambiguous_or_failed_rest_recovery_stays_uncertain_without_duplicate_post(self):
+        sys.path.insert(0, str(ROOT / ".agents"))
+        try:
+            import test_zzzops as fixtures
+            public_cli = fixtures.zzzops
+        finally:
+            sys.path.pop(0)
+        adapter = object.__new__(public_cli.GitHubGoalTransitionAdapter)
+        adapter.repo, adapter.repository, adapter.executable = self.repo, "owner/repo", "gh"
+        adapter._identity_checked = True
+        payload = {"title": "Durable", "body": "Exact body", "labels": ["zzzops"]}
+        posts = 0
+        wires = []
+
+        def candidate(number):
+            wire = wires[-1]
+            return {"number": number, "title": wire["title"], "body": wire["body"],
+                    "state": "open", "html_url": f"https://github.com/owner/repo/issues/{number}",
+                    "labels": [{"name": name} for name in wire["labels"]]}
+
+        def recovery_result():
+            if active_case == "collection":
+                return {"not": "pages"}
+            if active_case == "page":
+                return [{"not": "a page"}]
+            if active_case == "row":
+                return [[None]]
+            if active_case == "empty":
+                return [[]]
+            if active_case == "no_match":
+                unrelated = candidate(200)
+                unrelated["body"] = None
+                return [[unrelated]]
+            if active_case == "duplicate":
+                return [[candidate(201), candidate(202)]]
+            raise AssertionError("provider failure has no JSON result")
+
+        def run(arguments, input_text=None, **_kwargs):
+            nonlocal posts
+            joined = " ".join(arguments)
+            if "--method POST" in joined:
+                posts += 1
+                wires.append(json.loads(input_text))
+                raise RuntimeError("create applied but response was lost")
+            if "issues?state=all" in joined:
+                self.assertIn("repos/owner/repo/issues?state=all&per_page=100", arguments)
+                self.assertIn("--paginate", arguments)
+                self.assertIn("--slurp", arguments)
+                if active_case == "read_failure":
+                    return subprocess.CompletedProcess(
+                        arguments, 1, stdout="", stderr="provider read failed")
+                return subprocess.CompletedProcess(
+                    arguments, 0, stdout=json.dumps(recovery_result()), stderr="")
+            raise AssertionError("unexpected provider request: " + joined)
+
+        cases = ("collection", "page", "row", "empty", "no_match", "duplicate",
+                 "read_failure")
+        for active_case in cases:
+            with self.subTest(case=active_case):
+                posts = 0
+                wires.clear()
+                adapter._run = run
+                context = {"request_id": "goal-create-fail-closed-" + active_case, "owner": "root"}
+                token = public_cli._WORKING_INPUT_TRANSACTION.set(context)
+                try:
+                    with self.assertRaises((public_cli.GoalTransitionProviderError,
+                                            public_cli._working_inputs.WorkingInputUncertain)):
+                        adapter.create_issue(payload)
+                    with self.assertRaises(public_cli._working_inputs.WorkingInputUncertain):
+                        adapter.create_issue(payload)
+                finally:
+                    public_cli._WORKING_INPUT_TRANSACTION.reset(token)
+                self.assertEqual(1, posts)
+                self.assertEqual(1, len(wires))
+
+    def test_generic_create_restart_rejects_malformed_recovery_before_redispatch(self):
+        sys.path.insert(0, str(ROOT / ".agents"))
+        try:
+            import test_zzzops as fixtures
+            public_cli = fixtures.zzzops
+        finally:
+            sys.path.pop(0)
+        adapter = object.__new__(public_cli.GitHubGoalTransitionAdapter)
+        adapter.repo, adapter.repository, adapter.executable = self.repo, "owner/repo", "gh"
+        adapter._identity_checked = True
+        payload = {"title": "Durable", "body": "Exact body",
+                   "labels": ["zzzops", "enhancement"]}
+        cases = ("empty", "no_marker", "nullable_unrelated", "collection", "page", "row",
+                 "missing_body", "numeric_body", "candidate_labels", "candidate_mismatch",
+                 "exact_reordered")
+
+        for active_case in cases:
+            with self.subTest(case=active_case):
+                posts = 0
+                redispatches = 0
+                wires = []
+
+                def run(arguments, input_text=None, **_kwargs):
+                    nonlocal posts
+                    if "--method POST" in " ".join(arguments):
+                        posts += 1
+                        wires.append(json.loads(input_text))
+                        raise RuntimeError("create applied but response was lost")
+                    raise SystemExit("process stopped before create confirmation")
+
+                adapter._run = run
+                index_path = self.repo / ".zzzops/work/inputs/v1/index.json"
+                before = (set(json.loads(index_path.read_text())["requests"])
+                          if index_path.is_file() else set())
+                context = {"request_id": "generic-create-shape-" + active_case,
+                           "owner": "root"}
+                token = public_cli._WORKING_INPUT_TRANSACTION.set(context)
+                try:
+                    with self.assertRaisesRegex(SystemExit, "process stopped"):
+                        adapter.create_issue(payload)
+                finally:
+                    public_cli._WORKING_INPUT_TRANSACTION.reset(token)
+                store = public_cli._working_inputs.WorkingInputStore(
+                    self.repo, repository="owner/repo", owner="root")
+                requests = json.loads(store.index_path.read_text())["requests"]
+                created = [(request_id, row) for request_id, row in requests.items()
+                           if request_id not in before]
+                self.assertEqual(1, len(created))
+                request_id, frozen = created[0]
+                self.assertEqual("uncertain", frozen["state"])
+                self.assertEqual(1, posts)
+                self.assertEqual(1, len(wires))
+
+                wire = wires[0]
+                candidate = {"number": 300, "title": wire["title"], "body": wire["body"],
+                             "state": "open", "html_url": "https://github.com/owner/repo/issues/300",
+                             "labels": [{"name": name} for name in reversed(wire["labels"])]}
+                unrelated = {**candidate, "number": 299, "body": "no transaction marker",
+                             "html_url": "https://github.com/owner/repo/issues/299"}
+                nullable_unrelated = {**unrelated, "body": None}
+                missing_body = dict(unrelated)
+                del missing_body["body"]
+                numeric_body = {**unrelated, "body": 7}
+                malformed_labels = {**candidate, "labels": [{"name": 7}]}
+                mismatched = {**candidate, "title": "different title"}
+                responses = {"empty": [[]], "no_marker": [[unrelated]],
+                             "nullable_unrelated": [[nullable_unrelated]],
+                             "collection": {"not": "pages"},
+                             "page": [{"not": "a page"}], "row": [[None]],
+                             "missing_body": [[missing_body]],
+                             "numeric_body": [[numeric_body]],
+                             "candidate_labels": [[malformed_labels]],
+                             "candidate_mismatch": [[mismatched]],
+                             "exact_reordered": [[candidate]]}
+
+                def provider_read(arguments, **_kwargs):
+                    self.assertIn("--paginate", arguments)
+                    self.assertIn("--slurp", arguments)
+                    return subprocess.CompletedProcess(
+                        arguments, 0, stdout=json.dumps(responses[active_case]), stderr="")
+
+                restarted = public_cli._working_inputs.WorkingInputStore(
+                    self.repo, repository="owner/repo", owner="root",
+                    provider_check=lambda request, digest: public_cli._working_inputs.github_provider_check(
+                        self.repo, "owner/repo", request, digest, frozen["action"]))
+                with mock.patch.object(public_cli._working_inputs.subprocess, "run",
+                                       side_effect=provider_read):
+                    if active_case in {"empty", "no_marker", "nullable_unrelated"}:
+                        self.assertEqual("frozen", restarted.reconcile(request_id)["state"])
+                        continue
+                    if active_case == "exact_reordered":
+                        reconciled = restarted.reconcile(request_id)
+                        self.assertEqual("reconciled", reconciled["state"])
+                        self.assertEqual(300, reconciled["receipt"]["result"]["number"])
+                        continue
+                    with self.assertRaises(public_cli._working_inputs.WorkingInputUncertain):
+                        restarted.reconcile(request_id)
+                self.assertEqual("uncertain", restarted.status(request_id)["state"])
+
+                def duplicate_post(_request, _body):
+                    nonlocal redispatches
+                    redispatches += 1
+
+                with self.assertRaises(public_cli._working_inputs.WorkingInputUncertain):
+                    restarted.dispatch(request_id, duplicate_post)
+                self.assertEqual(0, redispatches)
 
 
 if __name__ == "__main__":
