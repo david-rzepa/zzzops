@@ -242,7 +242,7 @@ class PublicationAncestorChainPublicTests(unittest.TestCase):
         self.assertEqual("start", publication["start"]["operation"])
         self.assertEqual("chain-5", publication["base_branch"])
         self.assertEqual(self.heads["chain-5"], publication["base_commit"])
-        self.assertIn("input_hash", publication)
+        self.assertIn("input_hash", publication["start"])
 
     def assert_safe_repair(self, steps, *identities):
         repair = next(

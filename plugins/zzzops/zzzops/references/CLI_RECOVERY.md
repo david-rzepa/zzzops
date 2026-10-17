@@ -17,8 +17,9 @@ Renew the same live owner; expiry permits no takeover. Recover only with
 observed-stop evidence and the exact actor. Owned drafts preserve continuity,
 not acceptance; same-task reacquisition retains verification and review gates.
 Accepted-test defects use the returned interpretation/admission route, bounded
-test ownership and fresh independent review. Existing graphs require reviewed
-graph adoption. Integration cannot mint Results.
+test ownership and fresh independent review. Supported graph maintenance follows
+the deterministic normalization boundary below; arbitrary graph changes require
+reviewed adoption. Integration cannot mint Results.
 
 ### Historical stopped workspace draft
 
@@ -53,10 +54,75 @@ bytes with `read_files`, while the semantic `files` identity remains available
 for legitimate proof-chain reuse. Any post-acquisition raw drift still rejects
 the submission, and neither pin grants write authority.
 
-### Historical applicability assessment
+### Stale committed workspace draft
 
-When an unresolved historical admission blocks its target and the current graph
-has no route that can run before that target, execute returns a `repair` step
+After accepted tests or other declared inputs change, an already committed
+stopped draft may bind obsolete inputs. With current independent and root
+workspace approvals, unchanged material authority, no unrecovered owners, and
+an exact clean Git checkout, execute returns `kind: retire_draft`.
+
+Copy its `submission`, supply the exact original observed-stop `recover`
+request as `recovery_request`, and add a unique `request_id`. Keep the qualified
+node, `draft` Ref and `subject` digest exact. `retire_stale_draft` recomputes the
+current policy, allocation, approvals, task contract, declared inputs,
+resolutions, Git head, raw workspace and checkout overrides before writing.
+Dirty files, altered stop evidence, stale requests, unknown or unrecovered
+owners, and disconnected draft ancestry reject without retiring anything.
+
+This operation appends an immutable retirement receipt. It preserves the
+original draft, its authenticated same-task baseline chain, all Results and
+approvals; it adopts no draft bytes and creates no semantic Result. Reinvoke
+execute and acquire the current task normally from the clean checkout. Fresh
+verification and independent review remain required. Exact retries replay the
+original receipt without another write. An unchanged draft still requires its
+exact stopped snapshot and ordinary recovery; it is not offered retirement.
+
+### Deterministic graph maintenance
+
+New capture, bootstrap graph attachment and v1 conversion compile supported
+correction routes before the first v2 graph is published. The versioned compiler
+derives route identities from the full review and target selector/output
+identities, including configured review members, before any rejection occurs.
+Frozen structural contract fingerprints determine compiler eligibility.
+
+Execution lazily normalizes only the selected open goal when its graph has a
+supported missing route. The host issues an exact `graph_normalize` transaction
+through the ordinary guarded mutation boundary. It preserves original node and
+task-set prefixes, terminals, Results, history and current approvals, and requires
+zero current Result invalidations. The operational receipt binds the compiler
+version, exact source, policy, current Results, target and delta. It grants no
+workspace, product, CI, integration or completion authority.
+
+Any lease, including an expired unrecovered lease, or an unresolved checkpoint
+defers maintenance to its normal recovery contract. After an interrupted write,
+reconcile or replay the exact returned request. A pending transaction from an
+unsupported compiler or converter version defers with guidance; never rebuild it
+under a new version or change its payload under the same ID. Execution continues
+only after exact committed-state confirmation and a refreshed ordinary frontier.
+An unconfirmed publication cannot expose downstream work.
+
+Preview, historical and artifact reads, node snapshots, closed goals and broad
+portfolio enumeration do not normalize graphs. Broad execution maintains at most
+one actual selected candidate; it does not sweep other goals. V1 conversion is
+also lazy on the encountered execution candidate, or an explicit bounded batch.
+
+Supported unresolved applicability exposes ordinary independent observation,
+root context and root assessment tasks. The read-only `obligation_selections`
+host slot groups unresolved obligations by exact local target node/output as
+`items` and `rationale`, including empty selections. The original `obligations`
+slot retains its meaning. Neither projection classifies or resolves a finding;
+the actual current reviewer, root authority, exact finding revision and corrected
+subjects remain mandatory for an assessment.
+
+Unknown or ambiguous custom routes, unsupported targets and changes that would
+invalidate current Results retain the reviewed adoption path below. Complete
+supported custom routes are preserved; compiler eligibility is not permission
+to infer additional correction targets or bypass capability routing.
+
+### Reviewed custom applicability repair
+
+When an unresolved historical admission blocks its target and deterministic
+normalization cannot supply a supported route, execute returns a `repair` step
 with diagnostic `Finding applicability unresolved`. Its `obligations` carry the
 exact immutable admission, finding and target, and its `submission` contains the
 complete append-only target graph. Save that submission as JSON and run the
@@ -95,14 +161,14 @@ Classification alone never resolves the finding or authorizes implementation.
 Do not use graph adoption for a stale workspace or an unavailable model. A
 workspace invalidation requires normal stopped-owner/workspace recovery. A model
 or reasoning-effort blocker requires an available policy-allowed capability.
-Installation validation confirms package integrity; it does not repair a goal
-whose reviewed graph lacks the required route.
+Installation validation confirms package integrity; it does not replace a
+required custom graph review or provide an unavailable capability.
 
-Use this flow when a goal has a missing graph route or capability.
+Use this reviewed flow only for the custom graph repair returned by the host.
 
 A current independent review with `decision: changes_requested` must have a
 typed correction route before downstream work can proceed. If an older graph
-lacks that route, execute returns `Rejected review lacks correction route` and a
+lacks a supported compilable route, execute returns `Rejected review lacks correction route` and a
 concrete append-only `graph_prepare` submission. The proposed graph adds root
 interpretation and admission, reacquires only the exact rejected producer after
 an applicable admission, requires a fresh independent review, retains every
@@ -202,3 +268,21 @@ Capability is the pair's reviewed tier, not its name, price or an inferred
 reasoning-effort ordering. Pairs assigned the same tier remain equivalent for
 capability selection; enabling delegation does not resolve that separate
 policy-mapping limitation. Existing leases retain their exact selected pair.
+
+## Refresh an obsolete checkpoint retirement
+
+If a retained retirement no longer authenticates the current provider history,
+run `checkpoint_reconcile_prepare` again for the same exact transaction. Give
+the returned proposal to an independent reviewer, submit the returned
+`checkpoint_reconcile_review` contract, then adopt its exact proposal/review
+Refs with explicit approval. Preparation and adoption require stopped ownership.
+A refresh appends evidence; it never removes the original retirement, approvals,
+comments or artifacts. Only a uniquely latest valid retirement on authenticated
+receipt ancestry can permit graph preparation to continue.
+
+Use the request IDs returned by each fresh contract. They bind the complete
+proposal or proposal/review pair, so the same checkpoint or graph can receive a
+fresh review without colliding with its earlier receipt. After a failed provider
+confirmation, retry the frozen exact request, including its original ID and
+bytes. Changed bytes under that ID remain a conflict. A retirement creates no
+semantic Result, worker lease, workspace approval or CI/integration authority.

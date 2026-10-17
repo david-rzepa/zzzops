@@ -16,6 +16,45 @@ ADAPTER = z.GitHubGoalTransitionAdapter
 class CommentReadDeadlineTests(DagFixture):
     request = GenericRenewalTests.request
 
+    def test_explicit_workflow_timeout_overrides_default_budget(self):
+        api = types.SimpleNamespace(**vars(z))
+        api.workflow_timeout_seconds = 240
+        observed = []
+        def response(current, *_args, **_kwargs):
+            observed.append(current.operation_budget.deadline)
+            return {"next_steps": []}
+        with mock.patch.dict(os.environ, {"ZZZOPS_WORKFLOW_TIMEOUT_SECONDS": "90"}), \
+             mock.patch.object(z._workflow.time, "monotonic", return_value=100), \
+             mock.patch.object(z._workflow, "_public_response", side_effect=response):
+            z._workflow.public_run(
+                api, self.fixture.repo, "execute", "$execute-zzzops",
+                self.session.runtime, None, 100,
+            )
+        self.assertEqual([340], observed)
+
+    def test_explicit_workflow_timeout_overrides_renewal_budget(self):
+        api = types.SimpleNamespace(**vars(z))
+        api.workflow_timeout_seconds = 240
+        observed = []
+        def response(current, *_args, **_kwargs):
+            observed.append((current.operation_budget.deadline, current.operation_budget.cleanup_seconds))
+            return {"next_steps": []}
+        with mock.patch.dict(os.environ, {"ZZZOPS_RENEWAL_TIMEOUT_SECONDS": "30",
+                                          "ZZZOPS_RENEWAL_CLEANUP_SECONDS": "10"}), \
+             mock.patch.object(z._workflow.time, "monotonic", return_value=100), \
+             mock.patch.object(z._workflow, "_public_response", side_effect=response):
+            z._workflow.public_run(
+                api, self.fixture.repo, "execute", "$execute-zzzops",
+                self.session.runtime, {"operation": "renew"}, 100,
+            )
+        self.assertEqual([(340, 10)], observed)
+
+    def test_timeout_parser_requires_positive_finite_seconds(self):
+        self.assertEqual(240, z.positive_finite_seconds("240"))
+        for value in ("0", "-1", "nan", "inf", "not-a-number"):
+            with self.subTest(value=value), self.assertRaises(Exception):
+                z.positive_finite_seconds(value)
+
     @contextlib.contextmanager
     def delayed_history(self, *, delay=40, failure=None, budget=90):
         original = self.provider.get_issue_comments
@@ -78,7 +117,9 @@ class CommentReadDeadlineTests(DagFixture):
         ack = response['next_steps'][0]
         self.assertEqual(('renewed', work['lease']['token'], work['bound_actor']),
                          (ack['kind'], ack['lease'], ack['actor']))
-        self.assertEqual([120, 20, 20], [c['timeout'] for c in calls])
+        # Initial history, pre-comment authority, comment confirmation,
+        # and pre-body authority all share the same remaining deadline.
+        self.assertEqual([120, 20, 20, 20], [c['timeout'] for c in calls])
         self.assertEqual(100, elapsed[0])
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
         self.assertEqual(response, self.session.call(100, request))

@@ -5,6 +5,8 @@ description: ZzzOps v0.0.0-dev — development plugin. Review, initialize, summa
 
 # Review ZzzOps Policy
 
+Before any proposal or approval action, read [policy preflight](../POLICY_PREFLIGHT.md).
+
 Only this workflow changes or confirms the reviewed configuration and agent policy. Each category has typed `configuration` consumed by the CLI and natural-language `instructions` followed by agents. Put enforceable controls only in supported configuration keys; put judgment and project-specific constraints in instructions. Do not duplicate a configuration value in separately editable prose.
 
 Before optional tools, reuse capabilities; never invoke an unavailable path—use an alternative or block once.

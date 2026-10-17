@@ -7,6 +7,14 @@ description: ZzzOps v0.0.0-dev — development plugin. Bootstrap an empty, early
 
 Establish a clear product outcome and the proportionate engineering harness agents need, then execute the authorized product DAG. Bootstrap coordinates policy, ordinary goals, execution, verification, and migration rather than duplicating them.
 
+Fresh bootstrap graph attachment after policy approval compiles supported correction and
+applicability routes before publication while preserving the reviewed policy.
+This deterministic construction supplies no semantic Results, implementation
+authority or new approval. Unsupported custom graph changes follow their returned
+review contract. Existing goals retain their graphs and evidence; supported
+append-only maintenance happens lazily when selected for execution, while other
+graph changes require their own reviewed adoption.
+
 1. Read [repository and product analysis](../bootstrap/ANALYZE.md). Before harness commitment, run the adaptive product interview to establish beneficiaries, observable success, scope/non-goals, initial milestone, constraints, and applicable risk/governance facts. This is discovery, not an approval gate. Classify the repository from evidence and use [[bounded commitment]](../../../concepts/bounded-commitment.md) for unknown technical choices.
 2. `$review-zzzops-policy` remains the one mandatory approval before work; persist the brief/resume point and continue after approval. Effective rigor sets discovery and harness depth; never silently de-escalate.
 3. Read [goal-DAG planning](../bootstrap/PLAN.md). Create or reconcile exactly one canonical top-level product-outcome goal before harness goals, then place justified harness outcomes beneath it with only their real dependencies. After tooling/readback and harness-goal creation, persist the post-harness review checkpoint; do not create, claim, branch, or execute product implementation goals until that checkpoint is explicitly approved.

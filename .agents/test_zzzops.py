@@ -2415,6 +2415,18 @@ class DiagnosticsModuleTests(unittest.TestCase):
 
 
 class ReservationModuleTests(unittest.TestCase):
+    def test_real_adapter_decodes_and_validates_label_response(self):
+        reservation = zzzops._reservation
+        adapter = object.__new__(reservation.GitHubReservationAdapter)
+        adapter.repository = "owner/repo"
+        adapter._run = lambda _args: subprocess.CompletedProcess(
+            _args, 0, stdout=json.dumps({"name": "lease", "description": "held", "node_id": "L1"}), stderr="")
+        self.assertEqual("L1", adapter.get_label("lease")["node_id"])
+        adapter._run = lambda _args: subprocess.CompletedProcess(
+            _args, 0, stdout=json.dumps({"name": "wrong", "node_id": "L1"}), stderr="")
+        with self.assertRaises(reservation.ReservationProviderError):
+            adapter.get_label("lease")
+
     def test_entry_point_reexports_reservation_contract(self):
         reservation = zzzops._reservation
         for name in (
@@ -2423,6 +2435,46 @@ class ReservationModuleTests(unittest.TestCase):
             "reservation_cli_message",
         ):
             self.assertIs(getattr(zzzops, name), getattr(reservation, name))
+
+    def test_github_label_mutations_use_exact_transaction_gateway(self):
+        reservation = zzzops._reservation
+        calls = []
+        adapter = object.__new__(reservation.GitHubReservationAdapter)
+        adapter.repo = Path("/tmp/repo")
+        adapter.repository = "owner/repo"
+        adapter.executable = "gh"
+        adapter._identity_checked = True
+        labels = {}
+        adapter._run = lambda arguments, timeout=30: subprocess.CompletedProcess(
+            arguments, 0,
+            stdout=json.dumps({"name": "lease", "description": "held", "node_id": "L1"})
+            if "POST" in arguments else "{}", stderr="")
+        adapter.get_label = lambda name: copy.deepcopy(labels.get(name))
+        adapter.get_label_node = lambda node: next(
+            (copy.deepcopy(value) for value in labels.values() if value["node_id"] == node), None)
+        def gateway(subject, operation, target, arguments, call, postcondition):
+            calls.append((operation, target, arguments))
+            result = call()
+            if operation == "create_label":
+                labels[target["name"]] = {"name": target["name"], "description": arguments["description"], "node_id": "L1"}
+            elif operation == "update_label":
+                labels["lease"]["description"] = arguments["description"]
+            elif operation == "delete_label":
+                labels.clear()
+            confirmed = postcondition()
+            self.assertIsNotNone(confirmed)
+            return confirmed if result is None else result
+        old = reservation._provider_write
+        reservation._provider_write = gateway
+        self.addCleanup(setattr, reservation, "_provider_write", old)
+        adapter.create_label("lease", "held")
+        adapter.update_label("L1", "renewed")
+        adapter.delete_label("L1")
+        self.assertEqual([
+            ("create_label", {"name": "lease"}, {"color": reservation.RESERVATION_COLOR, "description": "held"}),
+            ("update_label", {"node_id": "L1"}, {"description": "renewed"}),
+            ("delete_label", {"node_id": "L1"}, {}),
+        ], calls)
 
 
 class FeedbackModuleTests(unittest.TestCase):
@@ -3800,6 +3852,32 @@ class FakeGoalTransitionAdapter:
 
 
 class GoalCreateTests(unittest.TestCase):
+    def test_public_adapter_goal_create_transaction_confirms_exact_result(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory); subprocess.run(["git", "init", "-q", str(repo)], check=True)
+            adapter = object.__new__(zzzops.GitHubGoalTransitionAdapter)
+            adapter.repo, adapter.repository, adapter.executable = repo, "owner/repo", "gh"
+            adapter._identity_checked = True
+            payload = {"title": "Durable", "body": "Exact body", "labels": ["zzzops"]}
+            def run(arguments, **_kwargs):
+                if "POST" in arguments:
+                    body = payload["body"] + "\n<!-- zzzops-request:" + hashlib.sha256(b"goal-create-public").hexdigest() + " -->"
+                else:
+                    body = payload["body"]
+                issue = {"number": 42, "title": payload["title"], "body": body, "state": "open",
+                         "html_url": "https://github.com/owner/repo/issues/42", "labels": [{"name": "zzzops"}]}
+                return SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(issue))
+            adapter._run = run
+            token = zzzops._WORKING_INPUT_TRANSACTION.set({"request_id": "goal-create-public", "owner": "root"})
+            try: result = adapter.create_issue(payload)
+            finally: zzzops._WORKING_INPUT_TRANSACTION.reset(token)
+            self.assertEqual("Exact body", result["body"])
+            store = zzzops._working_inputs.WorkingInputStore(repo, repository="owner/repo", owner="root")
+            requests = json.loads(store.index_path.read_text())["requests"]
+            self.assertEqual(["confirmed", "confirmed"], sorted(row["state"] for row in requests.values()))
+            operations = {row["action"]["operation"] for row in requests.values()}
+            self.assertEqual({"create_issue", "cleanup_created_issue"}, operations)
+
     def request(self):
         return {
             "schema_version": 1,
@@ -4747,7 +4825,10 @@ class ReleaseInvocationSnapshotTests(unittest.TestCase):
     def test_separate_repositories_never_share_release_snapshots(self):
         from types import SimpleNamespace
         calls = []
+        real_run = zzzops.subprocess.run
         def transport(command, **_kwargs):
+            if not (command and command[0] == "synthetic-gh"):
+                return real_run(command, **_kwargs)
             endpoint = next(value for value in command if value.startswith("repos/"))
             calls.append(endpoint)
             identity = endpoint.split("/releases", 1)[0].split("/commits", 1)[0]
@@ -5710,6 +5791,65 @@ class FakeReservationAdapter:
                 raise zzzops.ReservationProviderError("update response lost")
 
 
+class StorageLockRenewalRaceAdapter(FakeReservationAdapter):
+    def __init__(self, replacement):
+        super().__init__()
+        self.replacement = replacement
+        self.raced = False
+
+    def update_label(self, node_id, description):
+        if not self.raced:
+            self.raced = True
+            name = zzzops.storage_lock_label_name("goal-12")
+            with self.lock:
+                previous = self.labels.pop(name)
+                if self.replacement == "same_owner":
+                    self.labels[name] = {
+                        **previous,
+                        "node_id": f"L{self.next_id}",
+                    }
+                    self.next_id += 1
+                elif self.replacement == "different_owner":
+                    self.labels[name] = {
+                        "name": name,
+                        "description": zzzops.storage_lock_description(
+                            "owner/repo", "goal-12", "agent-b", "run-b", 2_000_000_000,
+                        ),
+                        "node_id": f"L{self.next_id}",
+                    }
+                    self.next_id += 1
+            raise zzzops.ReservationProviderError("stale label node id")
+        super().update_label(node_id, description)
+
+
+class StorageLockReleaseRaceAdapter(FakeReservationAdapter):
+    def __init__(self, replacement):
+        super().__init__()
+        self.replacement = replacement
+        self.raced = False
+
+    def delete_label(self, node_id):
+        if not self.raced:
+            self.raced = True
+            name = zzzops.storage_lock_label_name("goal-12")
+            with self.lock:
+                previous = self.labels.pop(name)
+                if self.replacement == "same_owner":
+                    self.labels[name] = {**previous, "node_id": f"L{self.next_id}"}
+                    self.next_id += 1
+                elif self.replacement == "different_owner":
+                    self.labels[name] = {
+                        "name": name,
+                        "description": zzzops.storage_lock_description(
+                            "owner/repo", "goal-12", "agent-b", "run-b", 2_000_000_000,
+                        ),
+                        "node_id": f"L{self.next_id}",
+                    }
+                    self.next_id += 1
+            raise zzzops.ReservationProviderError("stale label node id")
+        super().delete_label(node_id)
+
+
 class ReservationTests(unittest.TestCase):
     def setUp(self):
         self.now = datetime(2026, 7, 19, 21, 0, tzinfo=timezone.utc)
@@ -5790,6 +5930,59 @@ class ReservationTests(unittest.TestCase):
         )
         self.assertFalse(applied["applied"])
         self.assertEqual(["one", "two"], [item["id"] for item in applied["results"]])
+
+    def test_storage_lock_renewal_recovers_stale_label_id_without_overwriting_new_owner(self):
+        for replacement, expected_outcome in (
+            ("missing", "renewed"),
+            ("same_owner", "renewed"),
+            ("different_owner", "not_owned"),
+        ):
+            with self.subTest(replacement=replacement):
+                adapter = StorageLockRenewalRaceAdapter(replacement)
+                acquired = zzzops.acquire_storage_lock(
+                    adapter, "owner/repo", "goal-12", "agent-a", "run-a", 60, self.now,
+                )
+                self.assertTrue(acquired["acquired"])
+
+                renewed = zzzops.renew_storage_lock(
+                    adapter, "owner/repo", "goal-12", "agent-a", "run-a", 90, self.now,
+                )
+
+                self.assertEqual(expected_outcome, renewed["outcome"])
+                label = adapter.get_label(zzzops.storage_lock_label_name("goal-12"))
+                metadata = zzzops.parse_storage_lock_description(label["description"])
+                expected_owner = "agent-b" if replacement == "different_owner" else "agent-a"
+                self.assertEqual(expected_owner, metadata["owner"])
+                if replacement == "different_owner":
+                    self.assertEqual(2_000_000_000, metadata["expires_at"])
+                else:
+                    self.assertEqual(int(self.now.timestamp()) + 90, metadata["expires_at"])
+
+    def test_storage_lock_release_recovers_stale_label_id_without_deleting_new_owner(self):
+        for replacement, expected_outcome in (
+            ("missing", "released"),
+            ("same_owner", "released"),
+            ("different_owner", "not_owned"),
+        ):
+            with self.subTest(replacement=replacement):
+                adapter = StorageLockReleaseRaceAdapter(replacement)
+                acquired = zzzops.acquire_storage_lock(
+                    adapter, "owner/repo", "goal-12", "agent-a", "run-a", 60, self.now,
+                )
+                self.assertTrue(acquired["acquired"])
+
+                released = zzzops.release_storage_lock(
+                    adapter, "owner/repo", "goal-12", "agent-a", "run-a",
+                )
+
+                self.assertEqual(expected_outcome, released["outcome"])
+                label = adapter.get_label(zzzops.storage_lock_label_name("goal-12"))
+                if replacement == "different_owner":
+                    metadata = zzzops.parse_storage_lock_description(label["description"])
+                    self.assertEqual(("agent-b", "run-b"), (metadata["owner"], metadata["run_id"]))
+                    self.assertEqual(2_000_000_000, metadata["expires_at"])
+                else:
+                    self.assertIsNone(label)
 
     def test_renew_and_release_require_the_same_owner(self):
         adapter = FakeReservationAdapter()
@@ -6771,7 +6964,9 @@ class WorkflowContractTests(unittest.TestCase):
         root = PLUGIN_ROOT
         plan = json.loads((root / "zzzops" / "templates" / "project-goals" / "INIT_PLAN.json").read_text(encoding="utf-8"))
         section = next(item for item in plan["policy"]["sections"] if item["id"] == "model_routing")
-        self.assertEqual({"tiers", "assessment_tree", "model_inventory"}, set(section["configuration"]))
+        self.assertEqual({"tiers", "assessment_tree", "model_inventory", "allow_above_root_delegation"},
+                         set(section["configuration"]))
+        self.assertIs(False, section["configuration"]["allow_above_root_delegation"])
         self.assertEqual({"reviewed_pairs"}, set(section["configuration"]["model_inventory"]))
         self.assertIn("keep human interaction on root", section["instructions"])
         self.assertEqual(["routine", "bounded", "reasoning", "architectural"], [tier["id"] for tier in section["configuration"]["tiers"]])
@@ -7179,14 +7374,17 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("Approved policy artifacts may enter ordinary PR review without another conversational gate", review_skill)
         self.assertIn("Never ask to start policy review.", review_skill)
         self.assertIn("ask only for approval or adjustments, never approval to review", review_skill)
-        self.assertIn("present the complete policy proposal without asking whether to review", initialization)
-        for text in (review_skill, initialization):
+        policy_preflight = (root / "zzzops" / "references" / "POLICY_PREFLIGHT.md").read_text(encoding="utf-8")
+        self.assertIn("read [policy preflight](../zzzops/references/POLICY_PREFLIGHT.md) before any proposal or approval action", initialization)
+        self.assertIn("Before any proposal or approval action, read [policy preflight](../POLICY_PREFLIGHT.md)", review_skill)
+        self.assertIn("present the complete policy proposal without asking whether to review", policy_preflight)
+        for text in (review_skill, policy_preflight):
             self.assertIn("The policy is already approved.", text)
             self.assertIn("do not", text.lower())
             self.assertIn("required section", text)
             self.assertIn("Changed/stale", text)
             self.assertIn("privacy-safe execution reports", text)
-        self.assertIn("current approval digest", initialization)
+        self.assertIn("current approval digest", policy_preflight)
         self.assertIn("current digest", review_skill)
         self.assertIn("root-mediated human interaction", review_skill)
         self.assertIn("exact returned input contract", review_skill)
@@ -7347,13 +7545,24 @@ class WorkflowContractTests(unittest.TestCase):
             PLUGIN_ROOT / "zzzops" / "references" / "next_steps" / "send-feedback.md"
         ).read_text(encoding="utf-8")
         feedback = (PLUGIN_ROOT / "rules" / "FEEDBACK.md").read_text(encoding="utf-8")
+        operations = (
+            PLUGIN_ROOT / "zzzops" / "references" / "FEEDBACK_OPERATIONS.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "Before sending reports, explicit timing requests, or coaching, read "
+            "[feedback operations](../FEEDBACK_OPERATIONS.md)", send,
+        )
+        self.assertIn(
+            "For sending reports, explicit timing requests, or coaching, first read "
+            "[feedback operations](../zzzops/references/FEEDBACK_OPERATIONS.md)", feedback,
+        )
         privacy = (PLUGIN_ROOT.parent.parent / "PRIVACY.md").read_text(encoding="utf-8")
         for phrase in (
             "available diagnostics", "exactly one user-selected diagnostic ID", "use `unknown`",
             "never selected automatically", "public preview/digest", "digest confirmation",
             "delete only the submitted reports and selected diagnostic",
         ):
-            self.assertIn(phrase, send + feedback)
+            self.assertIn(phrase, send + feedback + operations)
         for phrase in (
             "at most one explicitly selected local timing diagnostic", "fixed phase aggregates",
             "raw output", "deleted locally only after successful submission",

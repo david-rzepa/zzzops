@@ -195,8 +195,13 @@ class PolicyContextTests(unittest.TestCase):
     def test_public_boundary_attaches_policy_and_new_call_recovers_deleted_file(self):
         import test_zzzops as fixtures
         workflow = fixtures.zzzops._workflow
-        api = SimpleNamespace(_policy_context=context, reviewed_project_state=mock.Mock(side_effect=AssertionError('Must not reread a newer policy')))
-        with tempfile.TemporaryDirectory() as output:
+        api = SimpleNamespace(
+            _policy_context=context,
+            _working_inputs=fixtures.zzzops._working_inputs,
+            reviewed_project_state=mock.Mock(side_effect=AssertionError('Must not reread a newer policy')),
+        )
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as output:
+            repo = Path(root)
             real_mkdtemp = tempfile.mkdtemp
             def local_temp(**kwargs):
                 return real_mkdtemp(prefix=kwargs['prefix'], dir=output)
@@ -207,9 +212,10 @@ class PolicyContextTests(unittest.TestCase):
                         policy_snapshot['project'] = self.project()
                         return raw
                     with mock.patch.object(workflow, '_public_run', side_effect=evaluate):
-                        result = workflow.public_run(api, Path('.'), 'execute', '$execute-zzzops', {}, None, 1)
+                        result = workflow.public_run(api, repo, 'execute', '$execute-zzzops', {}, None, 1)
                     path = Path(result['next_steps'][0]['policy']['path'])
                     self.assertTrue(path.is_file())
+                    self.assertTrue(Path(result['working_input']['path']).is_relative_to(repo / '.zzzops/work'))
                     path.unlink()
             api.reviewed_project_state.assert_not_called()
 
@@ -260,7 +266,14 @@ class PolicyContextTests(unittest.TestCase):
             path = Path(step['inspection'])
             self.assertEqual(inspection, json.loads(path.read_text()))
             self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), step['inspection_sha256'])
-            self.assertEqual([], list(repo.iterdir()))
+            product_files = [item for item in repo.rglob('*') if item.is_file()]
+            self.assertTrue(product_files)
+            for item in product_files:
+                relative = item.relative_to(repo).as_posix()
+                self.assertTrue(relative.startswith('.zzzops/work/inputs/') or
+                                relative.startswith('.git/zzzops-working-inputs/'), relative)
+                self.assertNotIn('CONFIGURATION_MUST_NOT_LEAK', item.read_text(encoding='utf-8'))
+                self.assertNotIn('obsolete policy', item.read_text(encoding='utf-8'))
 
 if __name__ == '__main__':
     unittest.main()

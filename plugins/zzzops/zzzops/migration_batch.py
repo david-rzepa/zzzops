@@ -8,7 +8,24 @@ from __future__ import annotations
 import copy
 
 MAX_MEMBERS = 20
-CONVERTER = 'lossless-v1-v2/1'
+CONVERTER = 'lossless-v1-v2/2'
+
+
+def request_for_receipt(receipt, digest):
+    """Reconstruct the exact request identity for each supported converter."""
+    converter = receipt.get('converter')
+    if converter == 'lossless-v1-v2/1':
+        manifest = {key: receipt[key] for key in ('source', 'policy', 'converter')}
+    elif converter == CONVERTER:
+        required = {'repository', 'goal', 'converter', 'compiler_version', 'source',
+                    'policy', 'target_intent', 'target_payload'}
+        if not required <= receipt.keys():
+            raise ValueError('Compiled migration receipt has an incomplete request manifest')
+        manifest = {key: receipt[key] for key in sorted(required)}
+    else:
+        raise ValueError('Unsupported migration converter version; exact request is deferred')
+    return {'operation': 'migration_batch', 'action': 'migrate', 'goal': receipt['goal'],
+        'request_id': 'migrate-' + digest(manifest)[7:]}
 
 
 def configuration(engine):
@@ -158,7 +175,7 @@ def remediation(number, reason):
         'retry': {'operation': 'migration_batch', 'action': 'migrate', 'goals': [number]}}
 
 
-def normal_graph(engine, legacy, preserved):
+def normal_graph(engine, number, legacy, preserved):
     graph = copy.deepcopy(configuration(engine)['phase_dag'])
     engine.api._phase_evidence.validate_graph(graph)
     nodes = {node['id']: node for node in graph['nodes']}
@@ -210,7 +227,15 @@ def normal_graph(engine, legacy, preserved):
                 node['requires'].append(selector('legacy_blockers'))
     map_metadata(engine, graph, legacy, preserved)
     engine.api._phase_evidence.validate_graph(graph)
-    return graph
+    compiler = engine.api._graph_compiler
+    compiled = compiler.compile_graph(
+        graph, local_goal=number, compiler_version=compiler.SUPPORTED_VERSION)
+    if compiled['diagnostics']:
+        raise ValueError('Migration graph recovery is unsupported: '
+                         + engine.api._workflow.comment_store.canonical(compiled['diagnostics']))
+    compiler.validate_recovery(
+        compiled['graph'], local_goal=number, compiler_version=compiled['version'])
+    return compiled
 
 
 def prepared_source(engine, number, issue):
@@ -224,24 +249,65 @@ def prepared_source(engine, number, issue):
         if not isinstance(context, dict):
             raise ValueError('Pending migration transaction context must be an object or null')
         if context.get('migration') and context.get('source_hash') == digest(issue['body']):
-            rows.append(context)
+            rows.append((context, row))
     if not rows:
         return issue, None
-    context = rows[-1]
+    context, transaction = rows[-1]
     receipt = load(engine, number, context['migration']['receipt'])
     if (receipt.get('type') != 'schema_migration' or receipt.get('repository') != engine.repository
             or receipt.get('goal') != number or receipt.get('converter') != CONVERTER):
         raise ValueError('Pending migration receipt identity differs')
+    compiler = engine.api._graph_compiler
+    if receipt.get('compiler_version') != compiler.SUPPORTED_VERSION:
+        raise ValueError('Pending migration compiler version is unsupported; exact prepared target is deferred')
     policy = load(engine, number, receipt['policy'])
     if policy != engine.project['policy']:
         raise ValueError('Pending migration policy/graph drift; stale prepared target cannot publish')
     source = load(engine, number, receipt['source'])
     target = load(engine, number, receipt['target_intent'])
+    if (target.get('schema_version') != 2 or target.get('repository') != engine.repository
+            or target.get('issue') != number or receipt.get('target_payload') != target.get('payload')):
+        raise ValueError('Pending migration exact target identity differs')
     payload = load(engine, number, target['payload'])
-    load(engine, number, payload['spec']); load(engine, number, payload['graph'])
+    load(engine, number, payload['spec'])
+    compiler.validate_recovery(load(engine, number, payload['graph']), local_goal=number,
+                               compiler_version=receipt['compiler_version'])
     if source.get('type') != 'migration_source' or source['content']['body'] != issue['body']:
         raise ValueError('Pending migration source identity differs')
-    return source['content'], context
+    response = load(engine, number, context['response'])
+    expected = {'next_steps': [{'kind': 'schema_migration', 'goal': number,
+        'status': 'migrated', 'receipt': context['migration']['receipt']}]}
+    if response != expected:
+        raise ValueError('Pending migration exact response identity differs')
+    # Recreate the original pre-persist artifact set in its canonical insertion
+    # order. The transaction envelope also contains node_persist's response and
+    # entry artifacts; feeding those back would publish a second transaction.
+    ordered = (receipt['policy'], receipt['source'], payload['spec'], payload['graph'],
+               target['payload'], receipt['target_intent'], context['migration']['receipt'])
+    artifacts = {reference['hash']: load(engine, number, reference) for reference in ordered}
+    return source['content'], {'context': context, 'receipt': receipt,
+        'receipt_ref': context['migration']['receipt'], 'target': target,
+        'payload': payload, 'response': response, 'artifacts': artifacts}
+
+
+def resume_pending(engine, number, issue, legacy, pending):
+    """Resume authenticated immutable intent without rebuilding its target."""
+    wf = engine.api._workflow
+    receipt, target = pending['receipt'], pending['target']
+    request = request_for_receipt(receipt, wf.digest)
+    context = pending['context']
+    if (context.get('request_id') != request['request_id']
+            or context.get('request_hash') != wf.digest(request)):
+        raise ValueError('Pending migration exact request identity differs')
+    snapshot = {'number': number, 'issue': issue,
+        'envelope': {**target, 'revision': legacy['revision']},
+        'artifacts': copy.deepcopy(pending['artifacts']),
+        'migration': copy.deepcopy(context['migration']), 'pending': context}
+    engine.node_persist(snapshot, copy.deepcopy(pending['payload']),
+                        copy.deepcopy(pending['response']), request)
+    published = engine.api.parse_managed_goal(engine.adapter.get_issue(number)['body'], number)
+    return {'status': 'migrated', 'receipt': pending['receipt_ref'],
+            'published_target': published}
 
 
 def migrate_one(engine, number):
@@ -254,8 +320,11 @@ def migrate_one(engine, number):
         if priorities != ['zzzops:priority:' + legacy['priority']]:
             raise ValueError('Canonical priority differs from native labels; reconcile priority before lossless migration')
         source_issue, pending = prepared_source(engine, number, issue)
+        if pending:
+            return resume_pending(engine, number, issue, legacy, pending)
         preserved = metadata(engine, legacy)
-        graph = normal_graph(engine, legacy, preserved)
+        compilation = normal_graph(engine, number, legacy, preserved)
+        graph = compilation['graph']
         wf = engine.api._workflow
         artifacts = {}
         def save(value):
@@ -273,18 +342,15 @@ def migrate_one(engine, number):
         payload = {'spec': spec, 'graph': save(graph), 'evidence': [], 'operational': {'leases': [], 'receipts': []}}
         target = {'schema_version': 2, 'repository': engine.repository, 'issue': number,
                   'revision': legacy['revision'] + 1, 'state': 'open', 'parent': legacy['parent'], 'payload': save(payload)}
-        receipt = save({'type': 'schema_migration', 'repository': engine.repository, 'goal': number,
-            'converter': CONVERTER, 'source': source_ref, 'target_intent': save(target), 'target_payload': target['payload'], 'policy': policy_ref,
-            'missing_obligations': ['All current normal workflow evidence, independent reviews and applicable user approvals remain required.']})
-        request = {'operation': 'migration_batch', 'action': 'migrate', 'goal': number,
-            'request_id': 'migrate-' + wf.digest({'source': source_ref, 'policy': policy_ref, 'converter': CONVERTER})[7:]}
+        receipt_value = {'type': 'schema_migration', 'repository': engine.repository, 'goal': number,
+            'converter': CONVERTER, 'compiler_version': compilation['version'],
+            'source': source_ref, 'target_intent': save(target), 'target_payload': target['payload'], 'policy': policy_ref,
+            'missing_obligations': ['All current normal workflow evidence, independent reviews and applicable user approvals remain required.']}
+        receipt = save(receipt_value)
+        request = request_for_receipt(receipt_value, wf.digest)
         response = {'next_steps': [{'kind': 'schema_migration', 'goal': number, 'status': 'migrated', 'receipt': receipt}]}
         snapshot = {'number': number, 'issue': issue, 'envelope': {**target, 'revision': legacy['revision']},
                     'artifacts': artifacts, 'migration': {'receipt': receipt, 'policy': policy_ref['hash']}}
-        if pending:
-            if pending.get('migration') != snapshot['migration'] or pending.get('request_hash') != wf.digest(request):
-                raise ValueError('Prepared migration source/target/request identity changed')
-            snapshot['pending'] = pending
         engine.node_persist(snapshot, copy.deepcopy(payload), response, request)
         # The intent excludes the operational receipt to avoid a circular hash.
         # node_persist's exact durable context binds the committed envelope.

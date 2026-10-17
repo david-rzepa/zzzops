@@ -1,6 +1,8 @@
 """Durable, minimal comment-hydration checkpoint contract for goal #609."""
+import base64
 import copy
 from datetime import datetime, timezone
+import json
 import unittest
 from unittest import mock
 
@@ -197,6 +199,65 @@ class WorkflowHydrationCheckpointTests(DagFixture):
             steps = self.session.call(100)['next_steps']
         self.assertTrue(steps)
         self.assertNotIn('hydration_checkpoint', {step['kind'] for step in steps})
+
+    def retained_envelopes(self):
+        start = max(row['id'] for row in self.provider.comments[100]) + 1
+        for offset in range(40):
+            record = store.ArtifactIndex([]).record({'retained': offset, 'text': 'x' * 8192})
+            bodies = store.pack_envelopes(
+                {'goal': 100, 'transaction': f'retained-{offset}',
+                 'anchor': f'retained-{offset}', 'context': {}}, [record])
+            self.assertEqual(1, len(bodies))
+            self.provider.comments[100].append({'id': start + offset, 'body': bodies[0]})
+
+    def test_valid_history_exceeding_checkpoint_decode_budget_keeps_frontier(self):
+        self.retained_envelopes()
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        with mock.patch.object(store, 'MAX_RECONSTRUCTION_WORK_BYTES', 256 * 1024):
+            # Each envelope is valid within the unchanged per-operation bound;
+            # only the optional eager whole-history checkpoint cannot fit.
+            for row in self.provider.comments[100]:
+                store.decode_envelope(row['body'])
+            with self.assertRaisesRegex(ValueError, 'Decoded content limit'):
+                store.ArtifactIndex(self.provider.comments[100])
+            steps = self.session.call(100)['next_steps']
+        self.assertTrue(any(step['kind'] == 'execute' for step in steps))
+        self.assertNotIn('hydration_checkpoint', {step['kind'] for step in steps})
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_checkpoint_materialization_budget_exhaustion_keeps_frontier(self):
+        self.retained_envelopes()
+        index = store.ArtifactIndex(self.provider.comments[100])
+        budget = sum(index.decode_sizes[row['body']] for row in index.comments)
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        with mock.patch.object(store, 'MAX_RECONSTRUCTION_WORK_BYTES', budget):
+            self.assertEqual(budget, store.ArtifactIndex(self.provider.comments[100]).decode_work)
+            steps = self.session.call(100)['next_steps']
+        self.assertTrue(any(step['kind'] == 'execute' for step in steps))
+        self.assertNotIn('hydration_checkpoint', {step['kind'] for step in steps})
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_overbudget_history_still_rejects_corrupt_envelopes(self):
+        self.retained_envelopes()
+        row = self.provider.comments[100][-1]
+        original = row['body']
+        for damage in ('hash', 'trailing'):
+            with self.subTest(damage=damage):
+                wrapper = json.loads(original[len(store.START):-len(store.END)])
+                if damage == 'hash':
+                    wrapper['hash'] = 'sha256:' + '0' * 64
+                else:
+                    encoded = base64.b64decode(wrapper['payload']) + b'trailing'
+                    wrapper['payload'] = base64.b64encode(encoded).decode('ascii')
+                row['body'] = store.START + json.dumps(wrapper) + store.END
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                with mock.patch.object(store, 'MAX_RECONSTRUCTION_WORK_BYTES', 256 * 1024):
+                    response = self.session.call(100)
+                self.assertTrue(response['next_steps'])
+                self.assertTrue(all(step['kind'] == 'blocker' for step in response['next_steps']))
+                self.assertRegex(json.dumps(response), r'hash mismatch|trailing encoding')
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        row['body'] = original
 
 
 if __name__ == '__main__':

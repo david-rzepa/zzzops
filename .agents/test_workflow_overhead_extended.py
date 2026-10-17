@@ -1,6 +1,7 @@
 """Finite correction, renewal and post-upgrade validation boundary baselines."""
 import argparse
 from contextlib import ExitStack
+from datetime import datetime
 import hashlib
 import io
 import json
@@ -85,7 +86,13 @@ def delegated_renewal():
             meter.phase = "live_renewal_boundary"
             # Simulate elapsed lease time, not transport latency or worker work.
             observed_time = work["lease"]["expires_at"] - 60
-            with mock.patch.object(journeys.z._workflow.time, "time", return_value=observed_time):
+            class ReservationClock(datetime):
+                @classmethod
+                def now(cls, tz=None):
+                    return cls.fromtimestamp(observed_time, tz)
+            # Reservation timestamps must observe the same virtual lease clock.
+            with mock.patch.object(journeys.z._workflow.time, "time", return_value=observed_time), \
+                 mock.patch.object(journeys.z._reservation, "datetime", ReservationClock):
                 renewal = session.call(100, {"operation": "renew", "node": work["node"],
                     "lease": work["lease"]["token"], "actor": actor, "request_id": "long-phase-renewal"})
             renewed = renewal["next_steps"][0]

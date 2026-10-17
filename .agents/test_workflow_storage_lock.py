@@ -16,6 +16,7 @@ class StorageLockWriteTests(unittest.TestCase):
     def engine(self, *, acquired_expiry=500, renewal=None):
         calls = []
         adapter = SimpleNamespace(get_issue_comments=lambda number: [])
+        artifact_index = SimpleNamespace(comments=[])
         renewal = renewal or {"acquired": True, "outcome": "renewed", "expires_at": 800}
         api = SimpleNamespace(
             GitHubReservationAdapter=lambda repo, repository: adapter,
@@ -32,6 +33,7 @@ class StorageLockWriteTests(unittest.TestCase):
         engine.repo = Path("/repo")
         engine.repository = "owner/repo"
         engine.adapter = adapter
+        engine.artifact_index = lambda _number: artifact_index
         return engine, calls
 
     def save(self, engine):

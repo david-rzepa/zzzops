@@ -16,6 +16,7 @@ import importlib.util
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import shutil
@@ -223,6 +224,10 @@ assert _PHASE_EVIDENCE_MODULE_SPEC and _PHASE_EVIDENCE_MODULE_SPEC.loader
 _phase_evidence = importlib.util.module_from_spec(_PHASE_EVIDENCE_MODULE_SPEC)
 sys.modules[_PHASE_EVIDENCE_MODULE_SPEC.name] = _phase_evidence
 _PHASE_EVIDENCE_MODULE_SPEC.loader.exec_module(_phase_evidence)
+
+_GRAPH_COMPILER_SPEC = importlib.util.spec_from_file_location("zzzops_graph_compiler", Path(__file__).with_name("graph_compiler.py"))
+_graph_compiler = importlib.util.module_from_spec(_GRAPH_COMPILER_SPEC)
+_GRAPH_COMPILER_SPEC.loader.exec_module(_graph_compiler)
 
 _WORKFLOW_SPEC = importlib.util.spec_from_file_location("zzzops_workflow", Path(__file__).with_name("workflow.py"))
 _workflow = importlib.util.module_from_spec(_WORKFLOW_SPEC)
@@ -1183,7 +1188,25 @@ class GitHubGoalTransitionAdapter:
 
     def get_issue_comments_since(self, number: int, since: str) -> list[dict[str, Any]]:
         """Read every comment updated at or after a checkpoint overlap marker."""
-        if not isinstance(since, str) or not since or urlparse(since).scheme:
+        marker = re.fullmatch(
+            r'(?P<base>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})'
+            r'(?:\.(?P<fraction>[0-9]+))?(?P<zone>Z|[+-][0-9]{2}:[0-9]{2})',
+            since,
+        ) if isinstance(since, str) else None
+        try:
+            if marker is None:
+                raise ValueError('marker grammar')
+            fraction = marker.group('fraction')
+            normalized = marker.group('base')
+            if fraction is not None:
+                normalized += '.' + fraction[:6]
+            normalized += marker.group('zone')
+            datetime.strptime(
+                normalized,
+                '%Y-%m-%dT%H:%M:%S.%f%z' if fraction is not None
+                else '%Y-%m-%dT%H:%M:%S%z',
+            )
+        except ValueError:
             raise GoalHistoryReadError(f"Invalid incremental comment marker for goal #{number}")
         try:
             self.ensure_identity()
@@ -1201,6 +1224,67 @@ class GitHubGoalTransitionAdapter:
         comments = self._comment_pages(result.stdout, number)
         self._record_comment_read(number, 'since', result.stdout, comments)
         return comments
+
+    def get_issue_comment_tails(self, numbers: list[int], limit: int = 100) -> dict[int, list[dict[str, Any]]]:
+        """Observe at most four tails atomically; never return partial provider data."""
+        if (not isinstance(numbers, list) or not 1 <= len(numbers) <= 4
+                or any(type(number) is not int or number <= 0 for number in numbers)
+                or len(set(numbers)) != len(numbers) or type(limit) is not int or not 1 <= limit <= 100):
+            raise GoalHistoryReadError("Invalid bounded comment-tail batch")
+        try:
+            self.ensure_identity()
+            owner, name = self.repository.split('/', 1)
+            fields = ''.join(f"goal_{number}:issue(number:{number}){{number comments(last:$limit){{"
+                             "nodes{databaseId body createdAt updatedAt}}}" for number in numbers)
+            query = ("query($owner:String!,$name:String!,$limit:Int!){repository(owner:$owner,name:$name){"
+                     "nameWithOwner " + fields + "}}")
+            result = self._run(["api", "graphql", "-f", "query=" + query, "-F", "owner=" + owner,
+                                "-F", "name=" + name, "-F", "limit=" + str(limit)], timeout=None)
+            if result.returncode:
+                raise self._provider_error(result)
+            payload = json.loads(result.stdout)
+            if not isinstance(payload, dict) or payload.get('errors'):
+                raise ValueError('GraphQL errors')
+            repository = payload['data']['repository']
+            aliases = {'goal_' + str(number) for number in numbers}
+            if (not isinstance(repository, dict) or set(repository) != aliases | {'nameWithOwner'}
+                    or not isinstance(repository['nameWithOwner'], str)
+                    or repository['nameWithOwner'].casefold() != self.repository.casefold()):
+                raise ValueError('Repository or batch aliases differ')
+            tails = {}
+            for number in numbers:
+                issue = repository['goal_' + str(number)]
+                if type(issue['number']) is not int or issue['number'] != number:
+                    raise ValueError('Goal identity differs')
+                nodes = issue['comments']['nodes']
+                if not isinstance(nodes, list) or len(nodes) > limit:
+                    raise ValueError('Tail length differs')
+                rows = [{'id': row['databaseId'], 'body': row['body'],
+                         'created_at': row['createdAt'], 'updated_at': row['updatedAt']} for row in nodes]
+                if any(type(row['id']) is not int or row['id'] <= 0
+                       or not isinstance(row['body'], str)
+                       or any(not isinstance(row[field], str) or not row[field]
+                              for field in ('created_at', 'updated_at')) for row in rows):
+                    raise ValueError('Invalid comment fields')
+                for row in rows:
+                    for field in ('created_at', 'updated_at'):
+                        timestamp = row[field]
+                        if re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})', timestamp) is None:
+                            raise ValueError('Invalid comment timestamp')
+                        normalized = re.sub(r'(\.\d{6})\d+', r'\1', timestamp).replace('Z', '+00:00')
+                        datetime.fromisoformat(normalized)
+                identities = [row['id'] for row in rows]
+                if identities != sorted(set(identities)):
+                    raise ValueError('Comment order differs')
+                tails[number] = rows
+        except (ValueError, KeyError, TypeError, GoalTransitionProviderError) as exc:
+            raise GoalHistoryReadError(
+                "GitHub did not confirm the complete comment-tail batch; use complete history reads."
+            ) from exc
+        # Logical per-goal observations, with transport bytes charged once.
+        for index, number in enumerate(numbers):
+            self._record_comment_read(number, 'tail', result.stdout if index == 0 else '', tails[number])
+        return tails
 
     def get_issue_comment_tail(self, number: int, limit: int = 100) -> list[dict[str, Any]]:
         """Read a bounded newest-first-discoverable tail for checkpoint activation."""
@@ -3376,6 +3460,17 @@ class WorkflowArgumentError(Exception):
     """A workflow-only parse error that must preserve the public JSON contract."""
 
 
+def positive_finite_seconds(value: str) -> float:
+    """Parse an explicit provider deadline without accepting hangs or NaN."""
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError("timeout must be a positive finite number of seconds") from exc
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise argparse.ArgumentTypeError("timeout must be a positive finite number of seconds")
+    return seconds
+
+
 class WorkflowArgumentParser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
         if "workflow" in sys.argv:
@@ -4088,6 +4183,8 @@ def main() -> int:
     parser.add_argument("--goal", type=int)
     parser.add_argument("--runtime", type=Path)
     parser.add_argument("--input", type=Path)
+    parser.add_argument("--timeout", type=positive_finite_seconds,
+                        help="Override the provider deadline for this workflow invocation")
     parser.add_argument("--response", choices=("compact", "full"), default="compact")
     parser.add_argument("--read-response", type=Path)
     parser.add_argument("--response-hash")
@@ -4115,11 +4212,7 @@ def main() -> int:
         source = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
         services = SimpleNamespace(**globals())
         services.runtime_path = args.runtime.resolve() if args.runtime else None
-        if isinstance(payload, dict) and payload.get('operation') == 'renew':
-            services.renewal_budget = _workflow.RenewalBudget(
-                float(os.environ.get('ZZZOPS_RENEWAL_TIMEOUT_SECONDS', '30')),
-                float(os.environ.get('ZZZOPS_RENEWAL_CLEANUP_SECONDS', '10')),
-            )
+        services.workflow_timeout_seconds = args.timeout
         if isinstance(payload, dict) and payload.get('operation') == 'submit' and args.goal is not None:
             token = _WORKFLOW_INVOCATION.set((services, source, runtime, args.skip_installation_validation))
             try: result = workflow_submit(args.repo.resolve(), args.goal, args.intent, payload)

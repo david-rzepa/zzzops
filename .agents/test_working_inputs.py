@@ -11,11 +11,13 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from unittest import mock
 from contextlib import redirect_stdout
@@ -531,6 +533,142 @@ class WorkingInputBehaviorTests(unittest.TestCase):
             self.assertEqual("frozen", restarted.status(f"request-pending-{index}")["state"])
             self.assertTrue(path.is_file())
 
+    def test_exclusive_freeze_private_storage_and_deletion_recovery(self):
+        self.require_behavior('exclusive snapshot publication, private storage and durable deletion')
+        store = self.store()
+        first = store.write("draft:one", "execute", {"value": "first"})
+        second = store.write("draft:two", "execute", {"value": "second"})
+        self.assertNotEqual(first["payload_id"], second["payload_id"])
+        self.assertEqual(0o700, (self.repo / ".zzzops/work/inputs/v1").stat().st_mode & 0o777)
+        self.assertEqual(0o600, Path(first["path"]).stat().st_mode & 0o777)
+
+        snapshots = self.repo / ".zzzops/work/inputs/v1/snapshots"
+        snapshots.mkdir(parents=True, exist_ok=True)
+        orphan = snapshots / "exclusive.json"
+        orphan.write_bytes(b"old exact bytes")
+        with self.assertRaises(FileExistsError):
+            store.freeze("draft:one", "execute", "exclusive", "goal-submit")
+        self.assertEqual(b"old exact bytes", orphan.read_bytes())
+        with self.assertRaises(KeyError):
+            store.status("exclusive")
+
+        duplicate = store.freeze("draft:one", "execute", "duplicate", "goal-submit")
+        duplicate_bytes = Path(duplicate["snapshot"]).read_bytes()
+        store.write("draft:one", "execute", {"value": "changed"})
+        with self.assertRaisesRegex(ValueError, "request_id already exists"):
+            store.freeze("draft:one", "execute", "duplicate", "goal-submit")
+        self.assertEqual(duplicate_bytes, Path(duplicate["snapshot"]).read_bytes())
+
+        frozen = store.freeze("draft:one", "execute", "delete-recovery", "goal-submit")
+        store.dispatch("delete-recovery", self.provider.send)
+        crashing = self.store(fault=lambda point: (_ for _ in ()).throw(RuntimeError(point))
+                              if point == "after_delete_transition" else None)
+        with self.assertRaisesRegex(RuntimeError, "after_delete_transition"):
+            crashing.retire("delete-recovery", {"receipt": "delete-recovery"})
+        recovered = self.store().status("delete-recovery")
+        self.assertEqual("retired", recovered["state"])
+        self.assertFalse(Path(frozen["snapshot"]).exists())
+
+    def test_request_ids_are_contained_and_failed_index_save_leaves_no_orphan(self):
+        self.require_behavior('bounded request identity and failed-index snapshot cleanup')
+        store = self.store(); store.write("goal:554", "contained", {"value": 1})
+        for invalid in ("../escape", "/absolute", "space value", "", "x" * 129):
+            with self.subTest(request_id=invalid), self.assertRaisesRegex(ValueError, "request_id"):
+                store.freeze("goal:554", "contained", invalid, "goal-submit")
+        original = store._save
+        store._save = lambda state: (_ for _ in ()).throw(OSError("index fsync failed"))
+        with self.assertRaisesRegex(OSError, "index fsync failed"):
+            store.freeze("goal:554", "contained", "save-failure", "goal-submit")
+        store._save = original
+        self.assertFalse((self.repo / ".zzzops/work/inputs/v1/snapshots/save-failure.json").exists())
+
+    @unittest.skipIf(sys.platform == "win32", "linked-worktree process fixture uses POSIX signalling")
+    def test_linked_worktree_process_reference_uses_common_git_lock(self):
+        self.require_behavior('linked-worktree and process durable reference coordination')
+        subprocess.run(["git", "config", "user.email", "fixture@example.invalid"], cwd=self.repo, check=True)
+        subprocess.run(["git", "config", "user.name", "Fixture"], cwd=self.repo, check=True)
+        marker = self.repo / "tracked"; marker.write_text("x")
+        subprocess.run(["git", "add", "tracked"], cwd=self.repo, check=True)
+        subprocess.run(["git", "commit", "-qm", "fixture"], cwd=self.repo, check=True)
+        linked = Path(self.temporary.name) / "linked"
+        subprocess.run(["git", "worktree", "add", "-q", "--detach", str(linked)], cwd=self.repo, check=True)
+        store = self.store(); store.write("goal:554", "process", {"value": 1})
+        store.freeze("goal:554", "process", "process-reference", "goal-submit")
+        ready, release = Path(self.temporary.name) / "ready", Path(self.temporary.name) / "release"
+        script = """
+import importlib.util, pathlib, sys, time
+spec=importlib.util.spec_from_file_location('child_working_inputs', sys.argv[1]); m=importlib.util.module_from_spec(spec); sys.modules[spec.name]=m; spec.loader.exec_module(m)
+s=m.WorkingInputStore(pathlib.Path(sys.argv[2]), repository='owner/project', owner='worker')
+with s.reference('process-reference', 'reader'):
+ pathlib.Path(sys.argv[3]).write_text('ready')
+ while not pathlib.Path(sys.argv[4]).exists(): time.sleep(.02)
+"""
+        child = subprocess.Popen([sys.executable, "-c", script, str(MODULE), str(linked), str(ready), str(release)])
+        try:
+            for _ in range(100):
+                if ready.exists(): break
+                time.sleep(.02)
+            self.assertTrue(ready.exists())
+            with self.assertRaises(self.module.WorkingInputBusy):
+                store.abandon("process-reference", approved_by="user")
+            common = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=linked,
+                                    text=True, capture_output=True, check=True).stdout.strip()
+            self.assertEqual((self.repo / ".git").resolve(), (linked / common).resolve())
+            self.assertEqual(0, subprocess.run(
+                ["git", "check-ignore", "-q", ".zzzops/work/inputs/v1/input.json"],
+                cwd=linked, check=False).returncode)
+        finally:
+            release.touch(); child.wait(5)
+
+    @unittest.skipIf(sys.platform == "win32", "fake gh executable fixture is POSIX")
+    def test_public_cli_reconcile_without_operation_checker_remains_unknown(self):
+        self.require_behavior('public CLI reconciliation uses real provider evidence')
+        store = self.store(); store.write("goal:554", "cli", {"value": "remote"})
+        frozen = store.freeze("goal:554", "cli", "request-cli", "goal-submit")
+        with self.assertRaises(self.module.WorkingInputUncertain):
+            store.dispatch("request-cli", self.provider.missing_receipt)
+        binary = Path(self.temporary.name) / "bin"; binary.mkdir()
+        gh = binary / "gh"
+        receipt = {"request_id": "request-cli", "digest": frozen["digest"],
+                   "action": "goal-submit", "authenticated": True,
+                   "provider_result": "sha256:" + "a" * 64}
+        response = json.dumps([[{"body": json.dumps(receipt), "author_association": "OWNER"}]])
+        gh.write_text("#!" + sys.executable + "\nprint(" + repr(response) + ")\n")
+        gh.chmod(0o700)
+        environment = dict(os.environ, PATH=str(binary) + os.pathsep + os.environ.get("PATH", ""))
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "plugins/zzzops/zzzops/zzzops.py"),
+             "working-input", "reconcile", "--repo", str(self.repo),
+             "--request-id", "request-cli"],
+            text=True, capture_output=True, env=environment, check=False)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("unconfirmed-reconciliation", result.stderr)
+
+    def test_process_reference_blocks_deletion_on_supported_platform(self):
+        self.require_behavior('real cross-process reference lock')
+        store = self.store(); store.write("goal:554", "process-lock", {"value": 1})
+        store.freeze("goal:554", "process-lock", "process-lock", "goal-submit")
+        ready, release = Path(self.temporary.name) / "process-ready", Path(self.temporary.name) / "process-release"
+        script = """
+import importlib.util, pathlib, sys, time
+spec=importlib.util.spec_from_file_location('process_working_inputs', sys.argv[1]); m=importlib.util.module_from_spec(spec); sys.modules[spec.name]=m; spec.loader.exec_module(m)
+s=m.WorkingInputStore(pathlib.Path(sys.argv[2]), repository='owner/project', owner='worker')
+with s.reference('process-lock', 'reader'):
+ pathlib.Path(sys.argv[3]).write_text('ready')
+ while not pathlib.Path(sys.argv[4]).exists(): time.sleep(.02)
+"""
+        child = subprocess.Popen([sys.executable, "-c", script, str(MODULE), str(self.repo), str(ready), str(release)])
+        try:
+            for _ in range(150):
+                if ready.exists(): break
+                time.sleep(.02)
+            self.assertTrue(ready.exists(), "child process did not acquire its durable reference")
+            with self.assertRaises(self.module.WorkingInputBusy):
+                store.abandon("process-lock", approved_by="user")
+        finally:
+            release.touch(); child.wait(5)
+
+
     @staticmethod
     def _capture(errors, function, *args):
         try:
@@ -635,6 +773,29 @@ class WorkingInputBehaviorTests(unittest.TestCase):
                 commands = guidance["commands"]
                 self.assertTrue(commands)
                 self.assertNotIn("<", " ".join(commands[0]))
+            with mock.patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("CODEX_THREAD_ID", None)
+                first_draft = public_cli._workflow.public_run(
+                    public_cli, self.repo, "capture", "$add-zzzops-goal", {"root_id": "root"}, None, None)
+                concurrent = public_cli._workflow.public_run(
+                    public_cli, self.repo, "capture", "$add-zzzops-goal", {"root_id": "root"}, None, None)
+            self.assertEqual(first_draft["working_input"]["draft_id"],
+                                concurrent["working_input"]["draft_id"])
+            resumed = public_cli._workflow.public_run(
+                public_cli, self.repo, "capture", "$add-zzzops-goal",
+                {"root_id": "root", "working_input_draft": first_draft["working_input"]["draft_id"]},
+                None, None)
+            self.assertEqual(first_draft["working_input"]["path"], resumed["working_input"]["path"])
+            with mock.patch.dict(os.environ, {"CODEX_THREAD_ID": "logical-a"}):
+                automatic = public_cli._workflow.public_run(
+                    public_cli, self.repo, "capture", "$add-zzzops-goal", {"root_id": "root"}, None, None)
+                restarted = public_cli._workflow.public_run(
+                    public_cli, self.repo, "capture", "$add-zzzops-goal", {"root_id": "root"}, None, None)
+            with mock.patch.dict(os.environ, {"CODEX_THREAD_ID": "logical-b"}):
+                parallel = public_cli._workflow.public_run(
+                    public_cli, self.repo, "capture", "$add-zzzops-goal", {"root_id": "root"}, None, None)
+            self.assertEqual(automatic["working_input"]["path"], restarted["working_input"]["path"])
+            self.assertNotEqual(automatic["working_input"]["path"], parallel["working_input"]["path"])
         self.assertEqual('{"operation":"submit"}\n', legacy.read_text())
 
         descriptor = store.write("goal:554", "execute", {"z": 1, "a": [2, 3]})
@@ -645,6 +806,24 @@ class WorkingInputBehaviorTests(unittest.TestCase):
         command = store.guidance("goal:554", "execute")["commands"][0]
         rendered = subprocess.run(command, cwd=self.repo, text=True, capture_output=True, check=True)
         self.assertEqual(json.loads(Path(descriptor["path"]).read_text()), json.loads(rendered.stdout))
+
+    def test_draft_session_survives_new_process_and_separates_logical_sessions(self):
+        self.require_behavior("automatic durable draft-session identity")
+        script = (
+            "import importlib.util,pathlib,sys;"
+            "s=importlib.util.spec_from_file_location('wi',sys.argv[1]);"
+            "m=importlib.util.module_from_spec(s);s.loader.exec_module(m);"
+            "x=m.WorkingInputStore(pathlib.Path(sys.argv[2]),repository='owner/project',owner='root');"
+            "print(x.draft_session('capture',sys.argv[3]))"
+        )
+        def invoke(session):
+            return subprocess.run(
+                [sys.executable, "-c", script, str(MODULE), str(self.repo), session],
+                text=True, capture_output=True, check=True,
+            ).stdout.strip()
+        first = invoke("codex-thread-a")
+        self.assertEqual(first, invoke("codex-thread-a"))
+        self.assertNotEqual(first, invoke("codex-thread-b"))
 
     def test_provider_exception_recovery_preserves_transaction_envelope(self):
         store = self.store()

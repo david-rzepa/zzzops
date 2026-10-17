@@ -418,6 +418,36 @@ print(json.dumps({'next_steps':[{'kind':'renewed','goal':int(args[args.index('--
             case.session.finish(work,{'value':'short success'})
             self.assertEqual(work['lease']['token'],stop.call_args.kwargs['token'])
 
+    def test_public_acquire_bind_finish_runs_and_stops_the_exact_coordinator_process(self):
+        import test_evidence_dag_journeys as dag
+        case=dag.DagFixture();case.setUp();self.addCleanup(case.doCleanups)
+        actor='worker-produce-None'
+        case.session.runtime['heartbeat']={
+            'probes':{actor:[sys.executable,str(self.probe),'active','produce',actor]},
+            'grace_seconds':120,
+        }
+        # The public fixture intercepts the external cleanup hook by default;
+        # route that hook to the real implementation for this process test.
+        case.session.heartbeat_stop=dag.z._heartbeat.stop_heartbeat
+        work=case.session.acquire('produce')
+        root_id=case.session.runtime['root_id']
+        paths=dag.z._heartbeat._paths(case.session.repo,root_id)
+        config=dag.z._heartbeat._read(paths['config'])
+        self.assertEqual([(work['lease']['token'],actor)],[
+            (lease['token'],lease['actor']) for lease in config['leases']])
+        pid=config['pid']
+        self.assertTrue(dag.z._heartbeat._pid_alive(pid))
+        process=dag.z._heartbeat._PROCESSES[pid]
+        self.addCleanup(lambda:process.poll() is None and process.terminate())
+        self.addCleanup(lambda:dag.z._heartbeat.stop_heartbeat(
+            repo=case.session.repo,root_id=root_id,goal=work['node']['goal'],
+            phase=json.dumps(work['node'],sort_keys=True),token=work['lease']['token']))
+
+        case.session.finish(work,{'value':'short success'})
+
+        self.assertEqual([],dag.z._heartbeat._read(paths['config'])['leases'])
+        self._wait(lambda:not dag.z._heartbeat._pid_alive(pid))
+
     def test_missing_probe_does_not_block_public_short_phase(self):
         import test_evidence_dag_journeys as dag
         case=dag.DagFixture();case.setUp();self.addCleanup(case.doCleanups)
@@ -479,6 +509,127 @@ with h._locked(Path(sys.argv[2])):
             self.assertFalse(self.cli_records.exists())
         finally:
             process.terminate();process.wait(timeout=3)
+
+    def _start_scheduled(self, *, goal, token, expires_at, cli=None, actor='worker-a'):
+        node={'goal':goal,'node':'review','item':None,'generation':1}
+        result=heartbeat.start_heartbeat(
+            repo=self.repo,root_id='root-a',runtime_path=self.runtime,cli_path=cli or self.cli,
+            goal=goal,phase=json.dumps(node,sort_keys=True),node=node,token=token,actor=actor,
+            probe_argv=[sys.executable,str(self.probe),'active','review',actor],
+            expires_at=expires_at,grace_seconds=0,interval_seconds=.02,
+            probe_timeout_seconds=.5,state_dir=self.state)
+        self.pids.add(result['pid'])
+        return node,result
+
+    def test_acknowledged_expiry_replaces_the_due_deadline_and_suppresses_extra_calls(self):
+        """The provider acknowledgement, rather than a global interval, owns the next deadline."""
+        acknowledged=self.directory/'acknowledged'
+        self.cli.write_text('''import json,sys,time
+from pathlib import Path
+args=sys.argv[1:];p=json.loads(Path(args[args.index('--input')+1]).read_text())
+with Path(%r).open('a') as h:h.write(json.dumps({'called_at':time.time(),'lease':p['lease']})+'\\n')
+expiry=time.time()+600
+Path(%r).write_text(str(expiry))
+print(json.dumps({'next_steps':[{'kind':'renewed','goal':int(args[args.index('--goal')+1]),'node':p['node'],'actor':p['actor'],'lease':p['lease'],'expires_at':expiry}]}))
+''' % (str(self.cli_records),str(acknowledged)))
+        now=time.time()
+        node,result=self._start_scheduled(goal=81,token='long-extension',expires_at=now+.4)
+        self._wait(acknowledged.exists)
+        returned_expiry=float(acknowledged.read_text())
+        self._wait(lambda:heartbeat._read(Path(result['config']))['leases'][0].get('expires_at')==returned_expiry)
+        lease=heartbeat._read(Path(result['config']))['leases'][0]
+        self.assertGreater(lease['renew_after'],now+30)
+        self.assertLess(lease['renew_after'],returned_expiry)
+        baseline=len(self._lines(self.cli_records))
+        time.sleep(.12)
+        self.assertEqual(baseline,len(self._lines(self.cli_records)))
+        heartbeat.stop_heartbeat(repo=self.repo,root_id='root-a',goal=81,
+            phase=json.dumps(node,sort_keys=True),token='long-extension',state_dir=self.state)
+
+    def test_initial_deadlines_are_derived_independently_from_each_lease_expiry(self):
+        now=time.time()
+        _,first=self._start_scheduled(goal=82,token='short-lease',expires_at=now+180)
+        _,second=self._start_scheduled(goal=83,token='long-lease',expires_at=now+600,actor='worker-b')
+        self.assertEqual(first['pid'],second['pid'])
+        leases={item['token']:item for item in heartbeat._read(Path(first['config']))['leases']}
+        self.assertLess(leases['short-lease']['renew_after'],leases['long-lease']['renew_after'])
+        for lease in leases.values():
+            self.assertLess(lease['renew_after'],lease['expires_at'])
+
+    def test_simultaneously_due_leases_renew_concurrently_within_the_expiry_margin(self):
+        self.cli.write_text('''import json,sys,time
+from pathlib import Path
+args=sys.argv[1:];p=json.loads(Path(args[args.index('--input')+1]).read_text());records=Path(%r)
+with records.open('a') as h:h.write(json.dumps({'event':'start','lease':p['lease'],'at':time.time()})+'\\n')
+time.sleep(.2)
+with records.open('a') as h:h.write(json.dumps({'event':'end','lease':p['lease'],'at':time.time()})+'\\n')
+print(json.dumps({'next_steps':[{'kind':'renewed','goal':int(args[args.index('--goal')+1]),'node':p['node'],'actor':p['actor'],'lease':p['lease'],'expires_at':time.time()+600}]}))
+''' % str(self.cli_records))
+        due=time.time()+.35
+        self._start_scheduled(goal=84,token='due-a',expires_at=due)
+        self._start_scheduled(goal=85,token='due-b',expires_at=due,actor='worker-b')
+        self._wait(lambda:len([r for r in self._lines(self.cli_records) if r['event']=='end'])==2)
+        rows=self._lines(self.cli_records)
+        starts={r['lease']:r['at'] for r in rows if r['event']=='start'}
+        ends={r['lease']:r['at'] for r in rows if r['event']=='end'}
+        self.assertLess(max(starts.values()),min(ends.values()),'renewals did not overlap')
+
+    @unittest.skipUnless(os.name == 'posix' and hasattr(__import__('signal'),'SIGUSR1'),
+                         'deterministic coordinator wake requires SIGUSR1')
+    def test_ninth_simultaneously_due_lease_finishes_before_its_safety_boundary(self):
+        """A saturated renewal pool must reserve capacity for every due lease."""
+        self.cli.write_text('''import json,sys,time
+from pathlib import Path
+args=sys.argv[1:];p=json.loads(Path(args[args.index('--input')+1]).read_text());records=Path(%r)
+with records.open('a') as h:h.write(json.dumps({'event':'start','lease':p['lease'],'at':time.time()})+'\\n')
+time.sleep(1.1)
+with records.open('a') as h:h.write(json.dumps({'event':'ack','lease':p['lease'],'at':time.time()})+'\\n')
+print(json.dumps({'next_steps':[{'kind':'renewed','goal':int(args[args.index('--goal')+1]),'node':p['node'],'actor':p['actor'],'lease':p['lease'],'expires_at':time.time()+600}]}))
+''' % str(self.cli_records))
+        registrations=[]
+        for offset in range(9):
+            node,result=self._start_scheduled(
+                goal=100+offset,token='saturated-%d' % offset,
+                actor='worker-%d' % offset,expires_at=time.time()+600)
+            registrations.append((node,result))
+        config_path=Path(registrations[0][1]['config'])
+        paths=heartbeat._paths(self.repo,'root-a',self.state)
+        boundary=time.time()+2.0
+        with heartbeat._locked(paths['update_lock'],timeout_seconds=1):
+            config=heartbeat._read(config_path)
+            for lease in config['leases']:
+                lease['renew_after']=0
+                lease['expires_at']=boundary
+            heartbeat._atomic_write(config_path,config)
+        os.kill(config['pid'],__import__('signal').SIGUSR1)
+
+        self._wait(lambda:len([r for r in self._lines(self.cli_records) if r['event']=='ack'])==9,timeout=5)
+        acknowledgements=self._lines(self.cli_records)
+        starts=[r for r in acknowledgements if r['event']=='start']
+        acks=[r for r in acknowledgements if r['event']=='ack']
+        self.assertEqual(9,len([r for r in starts if r['at'] < min(a['at'] for a in acks)]),
+                         'a supported due lease was queued behind the first renewal wave')
+        self.assertTrue(all(row['at'] < boundary for row in acks),
+                        'a saturated renewal acknowledgement crossed its lease safety boundary')
+
+        for node,_ in registrations:
+            heartbeat.stop_heartbeat(
+                repo=self.repo,root_id='root-a',goal=node['goal'],
+                phase=json.dumps(node,sort_keys=True),token='saturated-%d' % (node['goal']-100),
+                state_dir=self.state)
+
+    @unittest.skipUnless(os.name == 'posix', 'real coordinator termination uses POSIX signals')
+    def test_coordinator_death_relaunch_preserves_the_per_lease_deadline(self):
+        node,first=self._start_scheduled(goal=86,token='restart-token',expires_at=time.time()+600)
+        deadline=heartbeat._read(Path(first['config']))['leases'][0]['renew_after']
+        os.kill(first['pid'],15)
+        self._wait(lambda:not heartbeat._pid_alive(first['pid']))
+        _,second=self._start_scheduled(goal=86,token='restart-token',expires_at=time.time()+600)
+        self.assertNotEqual(first['pid'],second['pid'])
+        lease=heartbeat._read(Path(second['config']))['leases'][0]
+        self.assertEqual(deadline,lease['renew_after'])
+        heartbeat.stop_heartbeat(repo=self.repo,root_id='root-a',goal=86,
+            phase=json.dumps(node,sort_keys=True),token='restart-token',state_dir=self.state)
 
 
 if __name__ == "__main__":

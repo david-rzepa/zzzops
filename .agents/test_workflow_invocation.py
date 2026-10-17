@@ -254,10 +254,13 @@ class WorkflowInvocationCacheTests(unittest.TestCase):
         ):
             result = z._workflow.public_run(z, Path("."), "execute", "$execute-zzzops", {}, None, None)
 
-        self.assertEqual({"next_steps": [{
+        self.assertEqual([{
             "kind": "terminal_report", "assignment": "root", "state": "complete",
             "action": "All goals are complete or the portfolio is empty. Report workflow exhaustion; no CLI command is required.",
-        }]}, result)
+        }], result["next_steps"])
+        self.assertEqual([], result["effective_order"])
+        self.assertEqual([], result["deferred_steps"])
+        self.assertIn("working_input", result)
         constructor.assert_called_once()
         self.assertEqual(2, engine.portfolio.call_count)
 
@@ -277,7 +280,8 @@ class AssessContractTests(unittest.TestCase):
         self.assertEqual(100, step["goal"])
         self.assertEqual(step["node"], step["input_envelope"]["node"])
         contract = next(node for node in case.graph["nodes"] if node["id"] == "produce")
-        self.assertEqual(dag_fixtures.content_hash({"node": contract, "policy": dag_fixtures.content_hash(case.session.project["policy"])}),
+        self.assertEqual(dag_fixtures.content_hash({"node": contract, "policy": z.workflow_engine(
+            case.fixture.repo, case.session.project, case.session.runtime).node_evidence_policy()}),
                          step["input_envelope"]["contract"])
         self.assertEqual(contract["prompt"], step["instruction"])
         _, payload = case.payload()

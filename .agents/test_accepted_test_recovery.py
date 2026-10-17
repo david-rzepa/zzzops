@@ -64,7 +64,30 @@ class AcceptedTestRecoveryTests(unittest.TestCase):
     def setUp(self):
         self.case = j.DefaultCorrectionPublicTests()
         self.case.setUp()
+        self.case.default_decomposition = types.MethodType(self.historical_default_decomposition, self.case)
         self.addCleanup(self.case.doCleanups)
+
+    def historical_default_decomposition(self, case):
+        """Build the accepted-test compatibility case on its original DAG."""
+        graph = json.loads((Path(__file__).parent / "fixtures" / "legacy_evidence_dag.json").read_text())
+        case.install(graph)
+        allocation = {"allocations": {name: {
+            "task": {"goal": 100, "node": name, "item": None, "generation": 1},
+            "owned": ["behavior_test.py" if name == "test_design" else "source.py"],
+            "consumed": ["product.txt"],
+        } for name in ("test_design", "implement")}}
+        case.session.finish(case.session.acquire("understand"), {
+            "design": "Atomic bounded fixture", "allocation": allocation})
+        permit = {"manifest": case.produced("understand", "allocation"),
+                  "tasks": [item["task"] for item in allocation["allocations"].values()],
+                  "policy": j.content_hash(case.session.project["policy"]), "decision": "approved"}
+        case.session.finish(case.session.acquire("review_understanding"), {
+            "review": {"decision": "approved", "report": "Exact historical scope reviewed"},
+            "authorization": permit})
+        case.session.finish(case.session.acquire("approve_understanding"), {"authorization": permit})
+        case.session.finish(case.session.acquire("retain_understand_findings"), {
+            "value": {"items": {}, "rationale": "No understanding findings were admitted"}})
+        case.session.finish(case.session.acquire("decompose"), {"value": "First atomic disposition"})
 
     def additive_route(self, graph):
         graph = copy.deepcopy(graph)
@@ -148,15 +171,46 @@ class AcceptedTestRecoveryTests(unittest.TestCase):
                 "rationale": case_name + ": " + json.dumps(ORIGEN_CASES[case_name], sort_keys=True),
                 "supersedes": None}
 
+    def compiled_admission(self, finding_node="interpret_accepted_test_defect", subject_node="test_design"):
+        """Return the one canonical admission for the accepted-test contract."""
+        c = self.case
+        graph = c.read_blob(c.payload()[1]["graph"])
+        contracts = list(graph["nodes"]) + [row["template"] for row in graph["task_sets"]]
+        expected_scope = {"subject": {"kind": "node", "goal": "#this", "node": subject_node},
+                          "output": "value"}
+        candidates = []
+        for node in contracts:
+            inputs = node.get("inputs", {})
+            permits = node.get("permits", [])
+            if (str(node.get("id", "")).startswith("gc_atomic_admit_")
+                    and inputs.get("finding", {}).get("producer") == {
+                        "node": {"kind": "node", "goal": "#this", "node": finding_node}}
+                    and inputs.get("finding", {}).get("output") == "value"
+                    and inputs.get("subject", {}).get("producer") == {
+                        "node": {"kind": "node", "goal": "#this", "node": subject_node}}
+                    and inputs.get("subject", {}).get("output") == "value"
+                    and {permit.get("type") for permit in permits} == {"admission", "supersession"}
+                    and all(permit.get("scope") == expected_scope for permit in permits)):
+                candidates.append(node["id"])
+        self.assertEqual(1, len(candidates), candidates)
+        replay = j.z._graph_compiler.compile_graph(graph, local_goal=100)
+        replay_ids = {node["id"] for node in replay["graph"]["nodes"]} | {
+            row["template"]["id"] for row in replay["graph"]["task_sets"]}
+        self.assertIn(candidates[0], replay_ids, "Canonical admission identity must be stable")
+        if finding_node == "interpret_accepted_test_defect":
+            self.assertNotIn("admit_accepted_test_correction", c.names(),
+                             "Historical admission identity must be shadowed after compilation")
+        return candidates[0]
+
     def admit(self, case_name="conditional_iam"):
         c = self.case
         interpretation = c.session.acquire("interpret_accepted_test_defect")
         c.session.finish(interpretation, {"value": self.finding(case_name)})
         finding = c.produced("interpret_accepted_test_defect")
-        c.session.finish(c.session.acquire("admit_accepted_test_correction"), {"value": {
+        c.session.finish(c.session.acquire(self.compiled_admission()), {"value": {
             "finding": finding, "target_inputs": c.result("test_design")[1]["inputs"],
             "authority": c.result("interpret_accepted_test_defect")[0], "applicability": "applicable",
-            "rationale": "Exact accepted subject and finite reviewed test allocation"}})
+            "rationale": "Exact accepted subject and finite reviewed test allocation"}, "transfer": None})
         return finding
 
     def test_additive_graph_feasibility_control_reaches_fresh_implementation(self):
@@ -312,18 +366,33 @@ class AcceptedTestRecoveryTests(unittest.TestCase):
         graph = j.z._workflow_section(template, "workflow_adherence")["configuration"]["phase_dag"]
         ids = [node["id"] for node in graph["nodes"]]
         self.assertEqual(len(ids), len(set(ids)))
+        self.assertNotIn("interpret_accepted_test_defect", ids)
+        self.assertNotIn("admit_accepted_test_correction", ids)
+        self.assertIn("interpret_test_design_rejection", ids)
+        self.assertIn("admit_test_design_correction", ids)
+
+    def test_legacy_graph_declares_acyclic_accepted_test_route(self):
+        graph = json.loads(
+            (Path(__file__).parent / "fixtures" / "legacy_evidence_dag.json").read_text())
+        ids = [node["id"] for node in graph["nodes"]]
+        self.assertEqual(len(ids), len(set(ids)))
         self.assertIn("interpret_accepted_test_defect", ids)
         self.assertIn("admit_accepted_test_correction", ids)
-        self.assertLess(ids.index("interpret_accepted_test_defect"), ids.index("admit_accepted_test_correction"))
-        route = next(node for node in graph["nodes"] if node["id"] == "interpret_accepted_test_defect")
-        self.assertEqual("review_test_design", route["inputs"]["accepted_review"]["producer"]["node"]["node"])
+        self.assertLess(ids.index("interpret_accepted_test_defect"),
+                        ids.index("admit_accepted_test_correction"))
+        route = next(node for node in graph["nodes"]
+                     if node["id"] == "interpret_accepted_test_defect")
+        self.assertEqual("review_test_design",
+                         route["inputs"]["accepted_review"]["producer"]["node"]["node"])
         self.assertEqual("identity", route["inputs"]["accepted_review"]["mode"])
         self.assertEqual(["decision"], route["inputs"]["approved"]["path"])
         self.assertEqual("content", route["inputs"]["approved"]["mode"])
         self.assertEqual(["approved"], route["inputs"]["approved"]["type"]["values"])
-        self.assertEqual("implement", route["inputs"]["implementation"]["producer"]["node"]["node"])
+        self.assertEqual("implement",
+                         route["inputs"]["implementation"]["producer"]["node"]["node"])
         self.assertEqual("identity", route["inputs"]["implementation"]["mode"])
-        self.assertEqual("review_implement", route["inputs"]["review"]["producer"]["node"]["node"])
+        self.assertEqual("review_implement",
+                         route["inputs"]["review"]["producer"]["node"]["node"])
         self.assertEqual("identity", route["inputs"]["review"]["mode"])
 
     def test_reviewed_existing_goal_adoption_preserves_custom_topology_and_history(self):
@@ -355,7 +424,8 @@ class AcceptedTestRecoveryTests(unittest.TestCase):
         proposed = self.additive_route(c.graph)
         prepared = c.session.call(100, {"operation": "graph_prepare", "graph": proposed,
                                        "rationale": "Add only reviewed accepted-test recovery nodes"})
-        for name in ("add_goal", "put_envelope", "envelope_for", "read_at", "result_at", "proposal_review"):
+        for name in ("add_goal", "put_envelope", "envelope_for", "read_at", "result_at",
+                     "administrative_review", "proposal_review"):
             setattr(c, name, types.MethodType(getattr(j.GraphAdoptionPublicTests, name), c))
         request = c.proposal_review(prepared["next_steps"][0]["proposal"])
         with mock.patch.object(c.provider, "update_issue", side_effect=RuntimeError("interrupted adoption checkpoint")):
@@ -381,14 +451,15 @@ class AcceptedTestRecoveryTests(unittest.TestCase):
         interpretation = c.session.acquire("interpret_accepted_test_defect")
         c.session.finish(interpretation, {"value": self.finding()})
         finding = c.produced("interpret_accepted_test_defect")
-        admission = c.session.acquire("admit_accepted_test_correction")
+        admission = c.session.acquire(self.compiled_admission())
         stale_inputs = copy.deepcopy(c.result("test_design")[1]["inputs"])
         stale_inputs[0]["source"] = c.result("implement")[0]
         before = copy.deepcopy((c.provider.issues, c.provider.comments))
         response = c.session.call(100, c.session.submission(admission, {"value": {
             "finding": finding, "target_inputs": stale_inputs,
             "authority": c.result("interpret_accepted_test_defect")[0],
-            "applicability": "applicable", "rationale": "stale subject"}}, "stale-admission"), expected=2)
+            "applicability": "applicable", "rationale": "stale subject"}, "transfer": None},
+            "stale-admission"), expected=2)
         self.assertRegex(json.dumps(response), r"(?i)input|subject|stale|target")
         self.assertEqual(before, (c.provider.issues, c.provider.comments))
 
@@ -446,14 +517,17 @@ class AcceptedTestRecoveryTests(unittest.TestCase):
             "rationale": "Independent implementation rejection", "supersedes": None}
         c.session.finish(implement_interpretation, {"value": implementation_finding})
         implementation_finding = c.produced("interpret_implement_rejection")
-        c.session.finish(c.session.acquire("admit_implement_correction"), {"value": {
+        implement_admission = self.compiled_admission(
+            finding_node="interpret_implement_rejection", subject_node="implement")
+        c.session.finish(c.session.acquire(implement_admission), {"value": {
             "finding": implementation_finding, "target_inputs": c.result("implement")[1]["inputs"],
             "authority": c.result("interpret_implement_rejection")[0], "applicability": "applicable",
-            "rationale": "Exact implementation correction"}})
+            "rationale": "Exact implementation correction"}, "transfer": None})
+        test_admission = self.compiled_admission()
         active = c.session.acquire("implement", actor="active-implementation-owner")
         self.assertFalse(any(step["node"]["node"] == "test_design" for step in c.session.ready()),
                          "Shared repository workspace must remain exclusive")
-        self.assertFalse(any(step["node"]["node"] == "admit_accepted_test_correction" for step in c.session.ready()),
+        self.assertFalse(any(step["node"]["node"] == test_admission for step in c.session.ready()),
                          "Evidence admission cannot take over a live workspace owner")
         self.assertTrue(any(lease["token"] == active["lease"]["token"]
                             for lease in c.payload()[1]["operational"]["leases"]))

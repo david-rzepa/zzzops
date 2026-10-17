@@ -407,6 +407,18 @@ class GenericPublicationPublicTests(DagFixture):
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
         self.session.finish(work, {"value": self.observed_value()})
 
+    def test_publication_submission_compares_only_declared_evidence_fields(self):
+        graph = copy.deepcopy(self.graph)
+        observe = next(node for node in graph["nodes"] if node["id"] == self.ids["observe"])
+        observe["outputs"]["value"]["schema"]["fields"].pop("review_verified")
+        self.install(graph)
+        self.authorize_context()
+        declared = self.observed_value()
+        declared.pop("review_verified")
+
+        self.submit_role("observe", declared)
+        self.assertEqual(declared, self.read_blob(self.produced(self.ids["observe"]))["content"])
+
     def test_negative_ci_observation_is_recordable_and_review_can_admit_correction_without_approval(self):
         graph = copy.deepcopy(self.graph)
         observed = self.ids["observe"]
