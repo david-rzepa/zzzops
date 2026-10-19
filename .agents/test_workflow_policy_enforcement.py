@@ -111,9 +111,6 @@ class WorkerLimitEnforcementTests(unittest.TestCase):
         self.assertEqual([1, 2], [step["goal"] for step in result["next_steps"]])
         self.assertEqual([mock.call(1), mock.call(2)], engine.step.call_args_list)
 
-    def test_start_rejects_capacity_consumed_by_another_unresolved_lease(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_workflow_policy_enforcement.GenericWorkerCapacityTests.test_other_goal_unresolved_owner_consumes_reviewed_capacity_until_observed_stop')
 
     def test_checkpoint_replaces_unstartable_phase_with_capacity_step(self):
         # Supported predecessor ownership still consumes capacity until actual
@@ -219,22 +216,6 @@ class PublishCiPolicyTests(unittest.TestCase):
         engine.portfolio = mock.Mock(return_value=[engine.goal])
         engine.read = mock.Mock(return_value=({"body": "synthetic"}, engine.goal))
         return engine
-
-    def test_integrate_and_complete_enforce_strict_ci_but_honor_disabled_ci(self):
-        # Exact publication safeguards now consume ordinary current generic evidence.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_publication_contract.GenericPublicationPublicTests.test_strict_ci_blocks_integration_and_only_reviewed_disabled_configuration_permits_it',
-            'test_workflow_publication_contract.GenericPublicationPublicTests.test_strict_ci_blocks_complete_and_reviewed_disabled_ci_preserves_current_terminal_requirement',
-        )
-
-    def test_publish_review_enforces_strict_ci_but_honors_disabled_ci(self):
-        # Exact publication safeguards now consume ordinary current generic evidence.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_publication_contract.GenericPublicationPublicTests.test_ci_absent_unknown_unverified_and_disabled_authorization_are_distinct',
-            'test_workflow_publication_contract.GenericPublicationPublicTests.test_negative_ci_observation_is_recordable_and_review_can_admit_correction_without_approval',
-        )
 
 
 if __name__ == "__main__":

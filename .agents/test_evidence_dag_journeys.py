@@ -20,7 +20,6 @@ import re
 import time
 import statistics
 import hashlib
-import importlib
 import os
 import sys
 from types import SimpleNamespace
@@ -33,26 +32,6 @@ from test_evidence_dag import review_graph, selector, scope, subject_input, task
 
 z = old.z
 REAL_PR_STATES = z._github_pull_request_states
-
-
-def run_generic_regressions(owner, *test_ids):
-    """Run explicitly mapped replacement assertions, never a legacy scheduler.
-
-    Old regression IDs remain executable entrypoints. Each names exact current
-    tests preserving its invariant; this helper only manages unittest fixtures.
-    It does not translate operations, synthesize results, or choose readiness.
-    """
-    for test_id in test_ids:
-        module, class_name, method = test_id.rsplit(".", 2)
-        case = getattr(importlib.import_module(module), class_name)(method)
-        with owner.subTest(generic_regression=test_id):
-            try:
-                case.setUp()
-                getattr(case, method)()
-                case.tearDown()
-            finally:
-                case.doCleanups()
-
 
 def shape(value):
     """Construct closed fixture schemas, never validate data or execute work."""
@@ -2855,7 +2834,6 @@ class WorkspaceAuthorityPublicTests(DagFixture):
                 self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
 
-
     def test_clean_crlf_checkout_pins_raw_consumed_bytes_and_allows_owned_red_edit(self):
         self.setup_workspace()
         self.session.git("config", "core.autocrlf", "true")
@@ -3460,7 +3438,6 @@ class GatewayIsolationTests(DagFixture):
         self.assertEqual(before, self.provider.issues)
 
 
-
 class RelationshipPublicTests(DagFixture):
     """Revision16 relationship journeys; raw provider facts, no fake resolver.
 
@@ -4058,7 +4035,6 @@ class RelationshipPublicTests(DagFixture):
         self.assertIn(103, self.relationship_reads)
         self.assertEqual(before, self.provider.issues[103])
         self.assertEqual([], self.provider.comments[103], "Read cannot convert or fabricate archived approval")
-
 
 
 class GenericStoragePublicTests(DagFixture):
@@ -5047,74 +5023,6 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
         self.assertIn("approve_spec", self.names())
 
 
-class Goal499BehaviorMatrixRegressionTests(unittest.TestCase):
-    """Public-dispatch proofs required by the reviewed #499 validation matrix.
-
-    These named regressions use ``z.main`` through ``TaskSession``.  Keeping the
-    reusable fixtures small makes the new shipped graph accountable to existing
-    host guarantees without duplicating an orchestration engine in tests.
-    """
-
-    def mapped(self, *methods):
-        run_generic_regressions(self, *methods)
-
-    def test_questions_are_root_consolidated_stable_and_selectively_reopened(self):
-        self.mapped(
-            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_human_answers_drive_affected_reinvestigation_through_generic_admission",
-            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_approval_or_resolution_stales_when_inspected_subject_changes",
-        )
-
-    def test_delegated_reviews_have_distinct_leases_provenance_and_deterministic_join(self):
-        self.mapped(
-            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_parallel_reviews_independent_leases_and_join",
-            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_same_subject_executor_cannot_review_itself",
-        )
-
-    def test_rejected_review_retains_findings_and_reopens_only_affected_currentness(self):
-        self.mapped(
-            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_two_findings_coalesce_survive_replay_and_release_join_after_review",
-            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_late_pr_feedback_against_old_commit_cannot_invalidate_newer_subject",
-        )
-
-    def test_leaf_red_proof_and_corrected_candidate_require_fresh_review(self):
-        self.mapped(
-            "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_design_correction_retains_exact_observed_red_predecessor",
-            "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance",
-        )
-
-    def test_composition_consumes_every_child_and_preserves_child_parent_direction(self):
-        self.mapped(
-            "test_evidence_dag_journeys.RelationshipPublicTests.test_every_child_required_including_archived_exact_completion",
-            "test_evidence_dag_journeys.RelationshipPublicTests.test_projected_cross_goal_cycle_blocks_acquisition_not_unrelated_work",
-            "test_evidence_dag_journeys.RelationshipPublicTests.test_consumed_child_evidence_drift_rejects_acquired_worker",
-            "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_parent_grant_omission_and_mismatch_cannot_expand_child_authority",
-            "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_unowned_and_consumed_drift_reject_without_partial_candidate_then_allow_owned_edit",
-        )
-
-    def test_feedback_edits_resolution_scoped_reopen_and_final_race_fail_closed(self):
-        self.mapped(
-            "test_evidence_dag_journeys.PRSourceTransportTests.test_real_source_reader_preserves_pr_commit_author_edits_and_deletion",
-            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_comment_delete_edit_and_resolved_text_cannot_retire_admitted_findings",
-            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_late_pr_feedback_against_old_commit_cannot_invalidate_newer_subject",
-            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_stale_subject_admission_does_not_overwrite_newer_work",
-            "test_evidence_dag_journeys.RelationshipPublicTests.test_relevant_parent_change_rejects_acquired_child_result",
-            "test_evidence_dag_journeys.GenericStoragePublicTests.test_checkpoint_preserves_concurrent_labels_and_exact_retry",
-        )
-
-    def test_custom_policy_history_and_closed_goal_exclusions_survive_upgrade_inputs(self):
-        self.mapped(
-            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_lighter_policy_proposal_preserves_findings_and_requires_exact_approval",
-            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_stronger_policy_requires_added_independent_review_and_preserves_history",
-            "test_evidence_dag_journeys.GatewayIsolationTests.test_incompatible_goal_is_local_and_archived_body_is_never_hydrated",
-        )
-
-    def test_configured_new_risk_member_runs_without_engine_branch(self):
-        self.mapped(
-            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_changed_bucket_reruns_only_affected_investigation",
-            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_new_bucket_preserves_unchanged_sibling_but_join_waits",
-        )
-
-
 class GraphAdoptionPublicTests(DagFixture):
     add_goal = RelationshipPublicTests.add_goal
     put_envelope = RelationshipPublicTests.put_envelope
@@ -5202,17 +5110,6 @@ class GraphAdoptionPublicTests(DagFixture):
                 self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
 
-
-
-
-
-
-
-
-
-
-
-
     def test_existing_assessment_route_does_not_hide_uncovered_obligation(self):
         findings, _admissions = self.findings(applicability="unresolved", graph=self.applicability_graph())
         snapshot = z.workflow_engine(self.fixture.repo, self.session.project,
@@ -5259,7 +5156,6 @@ class GraphAdoptionPublicTests(DagFixture):
         self.assertEqual(before, self.payload()[1]["graph"])
 
 
-
     def test_decision_shaped_non_review_output_does_not_trigger_recovery(self):
         producer = task("produce")
         producer["inputs"] = {"request": spec_input()}
@@ -5303,7 +5199,6 @@ class GraphAdoptionPublicTests(DagFixture):
         self.assertEqual(len(task_set_ids), len(set(task_set_ids)))
 
 
-
     def test_rejected_review_of_nonlocal_target_does_not_generate_local_route(self):
         engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
         self.assertFalse(engine.node_local_selector(
@@ -5316,7 +5211,6 @@ class GraphAdoptionPublicTests(DagFixture):
             {"kind": "node", "goal": 100, "node": "produce"}, 100))
 
 
-
     def test_static_route_retains_unresolved_obligation_without_goal_adoption(self):
         findings, _admissions = self.findings(applicability="unresolved")
         before = copy.deepcopy(self.payload()[1]["graph"])
@@ -5326,22 +5220,6 @@ class GraphAdoptionPublicTests(DagFixture):
         self.assertEqual(before, self.payload()[1]["graph"])
         response = self.session.call(100, {"operation": "graph_adopt", "request_id": "retired-obligation-adopt"}, expected=2)
         self.assertRegex(json.dumps(response), r"(?i)topology|project policy|retired|reconciliation")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
     def test_retired_graph_prepare_cannot_claim_an_interrupted_task_checkpoint(self):

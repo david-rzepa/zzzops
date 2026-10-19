@@ -1142,7 +1142,6 @@ def legacy_reviewed_settings_fixture(name):
     return fixture
 
 
-
 TEST_AUTONOMY_CONFIGURATION = {
     "max_workers": 3,
     "execution_reports": {"enabled": True},
@@ -3931,9 +3930,6 @@ class GoalCreateTests(unittest.TestCase):
             payload = zzzops._comment_store.ArtifactIndex(adapter.comments).resolve(persisted["payload"]["hash"])[0]
             self.assertEqual([], payload["evidence"])
             self.assertEqual([], payload["operational"]["leases"])
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_goal_schema_conversion.MigrationEntryPublicTests.test_v1_cutover_rejects_phase_operations_and_uses_only_generic_submission')
 
     def test_child_create_requires_an_independent_implementation_contract(self):
         request = self.request()
@@ -4183,9 +4179,6 @@ class PhaseEvidenceTests(unittest.TestCase):
         self.assertNotIn("plan", changed["reviews"])
         # These v1 records are historical conversion inputs. Graph execution
         # uses only the generic grammar, including its cycle validation.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag.EvidenceGraphGrammarTests.test_cycle_is_rejected_after_valid_control')
         envelope = self.envelope("plan")
         mutable = self.record("plan", envelope)
         mutable["output"]["reference"] = "https://example.test/mutable"
@@ -4276,79 +4269,6 @@ class PhaseEvidenceTests(unittest.TestCase):
         self.assertEqual(record, historical["records"]["decompose"])
         self.assertEqual("atomic_goal", historical["records"]["decompose"]["not_required"]["policy_rule"])
 
-    def test_not_required_phase_still_requires_policy_review_and_human_approval(self):
-        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_phase_review_contract.GenericReviewGateTests.test_empty_selection_still_requires_configured_independent_review_and_root_consent',
-        )
-
-    def test_parallel_frontier_and_restart_are_evidence_derived(self):
-        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_parallel_reviews_independent_leases_and_join',
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_existing_lease_resumes_without_duplicate_dispatch',
-        )
-
-    def test_phase_steps_require_approved_review_before_downstream_execution(self):
-        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_parallel_reviews_independent_leases_and_join',
-        )
-
-    def test_phase_steps_require_current_approved_parent_gate(self):
-        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_parent_grant_omission_and_mismatch_cannot_expand_child_authority',
-            'test_evidence_dag_journeys.RelationshipPublicTests.test_child_requires_current_parent_review_and_blocks_again_after_parent_drift',
-        )
-
-    def test_phase_steps_require_approved_review_before_downstream_execution(self):
-        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_parallel_reviews_independent_leases_and_join',
-        )
-
-    def test_complete_workflow_lifecycle_emits_execution_and_review_steps(self):
-        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_parallel_reviews_independent_leases_and_join',
-        )
-
-    def test_stale_rejection_and_identical_output_preserves_descendant(self):
-        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_phase_review_contract.GenericReviewGateTests.test_identical_output_cannot_bypass_current_ancestor_review_and_reapproval',
-        )
-
-    def test_changed_output_and_withdrawal_stale_declared_descendants(self):
-        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_changed_bucket_reruns_only_affected_investigation',
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_authorized_finding_withdrawal_requires_exact_authority_and_retains_provenance',
-        )
-
-    def test_phase_frontier_reports_stale_ancestor_gate_and_blocked_descendant(self):
-        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_phase_review_contract.GenericReviewGateTests.test_identical_output_cannot_bypass_current_ancestor_review_and_reapproval',
-        )
-
-    def test_parent_gates_unrelated_revisions_and_closed_goals(self):
-        # Superseded phase-slot frontier assertions retain the named dependency/review/freshness protection on generic public nodes.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.RelationshipPublicTests.test_unrelated_and_bookkeeping_changes_preserve_relevant_consumer',
-            'test_evidence_dag_journeys.RelationshipPublicTests.test_every_child_required_including_archived_exact_completion',
-        )
 
     def test_managed_goal_retains_typed_phase_evidence(self):
         goal = GoalTransitionTests().goal()
@@ -4439,14 +4359,6 @@ class GoalTransitionTests(unittest.TestCase):
         self.assertEqual(["Creates the requested result.", "Preserves existing behaviour."], record["acceptance_criteria"])
         self.assertEqual(goal["phase_evidence"], record["phase_evidence"])
 
-    def test_workflow_submission_records_evidence_with_a_guarded_goal_transition(self):
-        # Preserve routing/ownership/provenance through actual generic public submissions.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_parallel_reviews_independent_leases_and_join',
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_wrong_lease_cannot_submit_and_valid_lease_still_can',
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_ordinary_artifact_shaped_content_cannot_issue_a_result',
-        )
 
     def test_transition_replaces_stale_schema_labels_with_current_schema(self):
         issue = self.issue()
@@ -4577,10 +4489,6 @@ class GoalTransitionTests(unittest.TestCase):
         )
         self.assertEqual(transition["goal"], history["submitted_goal"])
         self.assertEqual(before, (adapter.issue, adapter.comments))
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_goal_schema_conversion.MigrationEntryPublicTests.test_entry_backup_confirmation_precedes_body_replacement_and_retries_exactly',
-        )
 
     def test_transition_file_is_bom_tolerant(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -4731,28 +4639,6 @@ class GoalSchemaMigrationTests(unittest.TestCase):
         schema = next((int(label["name"].rsplit("v", 1)[1]) for label in labels if label["name"].startswith("zzzops:schema:v")), None)
         return {key: issue[key] for key in ("number", "title", "state", "labels", "html_url")} | {"schema_version": schema}
 
-    def test_open_migration_is_bounded_open_only_and_idempotent(self):
-        # Retire automatic bulk compaction; retain bounded selected conversion and reviewed activation.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_goal_schema_conversion.MigrationEntryPublicTests.test_selected_open_entry_is_bounded_and_retry_preserves_other_sources',
-            'test_goal_schema_conversion.MigrationEntryPublicTests.test_trusted_entry_review_root_approval_then_activation_without_fabricated_evidence',
-        )
-
-    def test_selected_current_label_repairs_noncompact_body(self):
-        # A schema label never grants compaction or execution authority.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_goal_schema_conversion.MigrationEntryPublicTests.test_schema_label_cannot_authorize_noncompact_source_or_erase_history',
-        )
-
-    def test_selected_closed_legacy_goal_is_compacted_lazily(self):
-        # Retire lazy closed compaction; selected archived reads must preserve provider state.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_goal_schema_conversion.MigrationEntryPublicTests.test_closed_record_is_not_reopened_or_migrated_by_active_entry',
-            'test_goal_schema_conversion.ConversionDurabilityTests.test_closed_goal_is_archived_without_activation',
-        )
 
     def test_workflow_adoption_preserves_closed_and_never_invents_phase_evidence(self):
         # Historical decoder diagnostic only: no provider writes, scheduling or
@@ -7091,35 +6977,6 @@ class WorkflowContractTests(unittest.TestCase):
         missing["sections"] = [item for item in missing["sections"] if item["id"] != "model_routing"]
         self.assertTrue(any("missing sections: model_routing" in error for error in zzzops.validate_policy(missing, True)))
 
-    def test_workflow_step_plan_emits_skill_and_exact_routing_or_discovery_blocker(self):
-        # Preserve routing/ownership/provenance through actual generic public submissions.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_integration.GenericIntegrationFreshnessTests.test_worker_role_remains_delegated_with_same_actual_pair_as_root',
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_unavailable_routing_does_not_downgrade_or_complete',
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_root_approval_rejects_worker_then_accepts_root',
-        )
-
-    def test_workflow_step_plan_delegates_a_non_human_root_equivalent_worker(self):
-        # Preserve routing/ownership/provenance through actual generic public submissions.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_integration.GenericIntegrationFreshnessTests.test_worker_role_remains_delegated_with_same_actual_pair_as_root',
-        )
-
-    def test_workflow_step_plan_routes_required_human_approval_to_root(self):
-        # Root authority is configured on an ordinary exact-subject task, not an extra phase mode.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_phase_review_contract.GenericReviewGateTests.test_review_is_not_human_approval_and_root_binds_current_subject_and_review',
-        )
-
-    def test_workflow_step_plan_reports_each_capability_blocker(self):
-        # Preserve each capability boundary through declared generic public tasks.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_integration.GenericIntegrationFreshnessTests.test_generic_capability_blockers_preserve_reviewed_inventory_and_root_choice',
-        )
 
     def test_workflow_checkpoint_rejects_an_invalid_portfolio_before_goal_execution(self):
         with (
@@ -7184,12 +7041,6 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("multi_agent_v1__spawn_agent", result["matches"])
         self.assertEqual("unavailable", zzzops.discover_delegation_capability([])["state"])
 
-    def test_eligible_worker_assignment_blocks_without_delegation_harness(self):
-        # Preserve delegation availability through generic public dispatch, not a phase whitelist.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_integration.GenericIntegrationFreshnessTests.test_missing_delegation_and_expired_unknown_worker_block_until_exact_stopped_recovery',
-        )
 
     def test_active_stack_guard_blocks_second_stack_and_allows_clean_queue(self):
         policy = {"active_stack": "one_active_stack"}

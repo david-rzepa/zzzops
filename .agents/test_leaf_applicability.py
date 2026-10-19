@@ -46,15 +46,10 @@ class LeafApplicabilityTests(unittest.TestCase):
             self.assertEqual({"subject": {"kind": "node", "goal": "#this", "node": "spec"},
                               "output": "allocation"}, node["executor"]["authority"],
                              "Topology alone grants no workspace authority")
-        dag_fixtures.run_generic_regressions(self,
-            "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_parent_grant_omission_and_mismatch_cannot_expand_child_authority")
 
     def test_review_types_and_consequence_overrides_are_policy_owned(self):
         # Review strength is configured graph evidence, not a hidden risk switch.
         frozen = copy.deepcopy(self.dag)
-        dag_fixtures.run_generic_regressions(self,
-            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_stronger_policy_requires_added_independent_review_and_preserves_history",
-            "test_evidence_dag_journeys.EvidenceDagPublicTests.test_lighter_policy_proposal_preserves_findings_and_requires_exact_approval")
         self.assertEqual(frozen, self.dag)
         invalid = copy.deepcopy(self.dag)
         invalid["nodes"][0]["review"] = {"by_consequence": {"unknown": {"human_approval": True}}}
@@ -112,16 +107,6 @@ class LeafApplicabilityTests(unittest.TestCase):
                         self.assertEqual(graph, case.read_at(100, payload["graph"]))
                     finally:
                         case.doCleanups()
-        dag_fixtures.run_generic_regressions(self,
-            "test_evidence_dag_journeys.RelationshipPublicTests.test_new_missing_child_stales_worker_and_does_not_omit_required_work",
-            "test_evidence_dag_journeys.RelationshipPublicTests.test_every_child_required_including_archived_exact_completion")
-
-    def test_existing_child_only_policy_keeps_its_reviewed_meaning(self):
-        # Historical policy stays evidence until trusted conversion; current
-        # child work still needs exact current parent authority after conversion.
-        dag_fixtures.run_generic_regressions(self,
-            "test_goal_schema_conversion.MigrationEntryPublicTests.test_reviewed_nonempty_historical_mapping_preserves_source_and_missing_reviews",
-            "test_evidence_dag_journeys.RelationshipPublicTests.test_child_requires_current_parent_review_and_blocks_again_after_parent_drift")
 
 
 if __name__ == '__main__':

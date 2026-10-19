@@ -56,32 +56,6 @@ class PhaseReviewContractTests(unittest.TestCase):
         legacy = {"schema_version": 2, "records": {}, "reviews": {}, "withdrawals": []}
         self.assertEqual({}, phase_evidence.normalize_phase_evidence(legacy)["human_approvals"])
 
-    def test_independence_is_policy_controlled(self):
-        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
-        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
-        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_phase_review_contract.GenericReviewGateTests.test_configured_independence_compares_actual_subject_actor',
-        )
-
-    def test_human_approval_is_additional_and_bound_to_review(self):
-        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
-        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
-        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_phase_review_contract.GenericReviewGateTests.test_review_is_not_human_approval_and_root_binds_current_subject_and_review',
-        )
-
-    def test_human_approval_without_independent_review_binds_record_only(self):
-        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
-        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
-        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_phase_review_contract.GenericReviewGateTests.test_root_gate_without_review_binds_exact_producer',
-        )
 
     def test_review_outcomes_are_normalized_and_bound_by_human_approval(self):
         plan_input = self.envelope("plan")
@@ -126,26 +100,6 @@ class PhaseReviewContractTests(unittest.TestCase):
                 phase_evidence.record_phase_review(
                     evidence, "plan", self.artifact(f"invalid outcome {index}"), "reviewer-2", outcomes=outcomes,
                 )
-
-    def test_policy_authorized_not_required_decision_can_be_reviewed(self):
-        # Superseded not_required phase mode becomes explicit current selected membership; unknown is not empty and retirement retains obligations.
-        # Superseded not_required phase mode becomes explicit current selected membership; unknown is not empty and retirement retains obligations.
-        # Superseded not_required phase mode becomes explicit current selected membership; unknown is not empty and retirement retains obligations.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_selection_missing_empty_one_and_many_are_distinct',
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_authorized_member_retirement_retains_historical_debt_on_empty_and_reactivation',
-        )
-
-    def test_current_descendant_blocks_until_identical_ancestor_is_reapproved(self):
-        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
-        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
-        # Replace active phase-slot scheduling with exact generic producer/review/root-gate evidence.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_phase_review_contract.GenericReviewGateTests.test_identical_output_cannot_bypass_current_ancestor_review_and_reapproval',
-        )
-
 
 
 # The helpers above construct/normalize predecessor evidence for conversion.

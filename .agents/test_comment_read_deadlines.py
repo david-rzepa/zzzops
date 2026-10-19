@@ -8,13 +8,13 @@ import types
 from unittest import mock
 
 from test_evidence_dag_journeys import DagFixture, z
-from test_workflow_renewal import GenericRenewalTests
+import test_workflow_renewal as renewal
 
 ADAPTER = z.GitHubGoalTransitionAdapter
 
 
 class CommentReadDeadlineTests(DagFixture):
-    request = GenericRenewalTests.request
+    request = renewal.GenericRenewalTests.request
 
     def test_explicit_workflow_timeout_overrides_default_budget(self):
         api = types.SimpleNamespace(**vars(z))

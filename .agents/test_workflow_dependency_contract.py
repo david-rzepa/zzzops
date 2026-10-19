@@ -8,33 +8,8 @@ import json
 import unittest
 
 from test_evidence_dag import selector, task
-from test_evidence_dag_journeys import DagFixture, RelationshipPublicTests, spec_input
-
-
-class WorkflowDependencyContractTests(unittest.TestCase):
-    def test_dependency_identity_binds_spec_and_semantic_results_only(self):
-        # Generic evidence preserves freshness and explicit empty-set review gates.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_semantic_input_drift_rejects_inflight_result_and_bookkeeping_does_not',
-            'test_evidence_dag_journeys.RelationshipPublicTests.test_consumed_child_evidence_drift_rejects_acquired_worker',
-        )
-
-    def test_parent_aggregate_ignores_provenance_but_binds_results(self):
-        # Generic evidence preserves freshness and explicit empty-set review gates.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.RelationshipPublicTests.test_unrelated_and_bookkeeping_changes_preserve_relevant_consumer',
-            'test_evidence_dag_journeys.RelationshipPublicTests.test_consumed_child_evidence_drift_rejects_acquired_worker',
-        )
-
-    def test_zero_child_parent_requires_current_fully_approved_decompose_skip(self):
-        # Generic evidence preserves freshness and explicit empty-set review gates.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.RelationshipPublicTests.test_known_empty_is_aggregate_not_unknown_and_does_not_manufacture_artifact',
-            'test_phase_review_contract.GenericReviewGateTests.test_empty_selection_still_requires_configured_independent_review_and_root_consent',
-        )
+import test_evidence_dag_journeys as journeys
+from test_evidence_dag_journeys import DagFixture, spec_input
 
 
 class InvalidatedAncestorGatePublicTests(DagFixture):
@@ -154,7 +129,7 @@ class InvalidatedAncestorGatePublicTests(DagFixture):
         self.assert_same_diagnostics(invalid, [])
 
     def test_cross_goal_parent_gate_retains_qualified_relationship_identity(self):
-        RelationshipPublicTests.setup_relationship_transport(self)
+        journeys.RelationshipPublicTests.setup_relationship_transport(self)
         parent = task("parent_source")
         parent["inputs"] = {"request": spec_input()}
         child = task("child")
@@ -166,7 +141,7 @@ class InvalidatedAncestorGatePublicTests(DagFixture):
         graph = {"nodes": [parent, child], "task_sets": [],
                  "terminals": [selector("child")]}
         self.install(graph)
-        RelationshipPublicTests.add_goal(self, 101, graph, 100)
+        journeys.RelationshipPublicTests.add_goal(self, 101, graph, 100)
         parent_work = self.session.acquire("parent_source", number=100)
         self.session.finish(parent_work, {"value": "parent version one"}, number=100)
         child_work = self.session.acquire("child", number=101)

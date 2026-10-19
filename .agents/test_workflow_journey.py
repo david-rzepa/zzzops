@@ -168,20 +168,6 @@ class FullWorkflowJourneyTests(unittest.TestCase):
     def goal(self, number):
         return z.github_goal_record(self.provider.get_issue(number))
 
-    def test_external_merge_reconciliation_is_exact_and_replay_safe(self):
-        # Exact publication safeguards now consume ordinary current generic evidence.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_publication_contract.GenericPublicationPublicTests.test_external_merge_cannot_mint_missing_results_and_exact_replay_preserves_history',
-            'test_workflow_publication_contract.GenericPublicationPublicTests.test_external_merge_preserves_owned_worker_until_exact_observed_stop',
-        )
-
-    def test_external_merge_closes_only_with_current_frontier(self):
-        # Exact publication safeguards now consume ordinary current generic evidence.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_publication_contract.GenericPublicationPublicTests.test_external_merge_closes_only_current_terminal_and_partial_close_replay_repairs',
-        )
 
     def mutate(self, number, **payload):
         self.sequence += 1
@@ -324,32 +310,6 @@ class FullWorkflowJourneyTests(unittest.TestCase):
         node = z._workflow_phase_configuration(self.project, self.goal(number))[1][phase]
         if node["review"]["human_approval"]:
             self.approve(number, phase)
-
-    def test_top_level_leaf_reaches_test_design_before_publication(self):
-        # One connected generic delivery graph retains red/green, review and publication guards.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag.EvidenceGraphGrammarTests.test_shipped_default_is_one_valid_generic_graph',
-            'test_workflow_publication_contract.GenericDeliveryPublicTests.test_reviewed_red_green_proofs_commit_and_exact_publication_form_one_delivery_graph',
-        )
-
-    def test_parent_does_not_become_leaf_when_planned_child_leaves_open_index(self):
-        # Current parent grants and all-child completion use the same generic evidence graph.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_publication_contract.GenericDeliveryPublicTests.test_parent_requires_both_children_current_terminals_and_archived_merge_evidence',
-            'test_evidence_dag_journeys.RelationshipPublicTests.test_native_subissue_omission_cannot_silently_drop_canonical_child',
-        )
-
-    def test_parent_and_child_complete_only_from_reviewed_full_dag_evidence(self):
-        # Current parent grants and all-child completion use the same generic evidence graph.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_publication_contract.GenericDeliveryPublicTests.test_parent_requires_both_children_current_terminals_and_archived_merge_evidence',
-            'test_evidence_dag_journeys.RelationshipPublicTests.test_child_requires_current_parent_review_and_blocks_again_after_parent_drift',
-            'test_workflow_integration.GenericIntegrationFreshnessTests.test_start_bind_receipt_and_actual_pair_are_guarded_before_writes',
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_failed_verification_corrects_missing_regression_without_rerunning_requirements',
-        )
 
 
 if __name__ == "__main__":

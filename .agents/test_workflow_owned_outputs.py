@@ -267,12 +267,6 @@ class PublicSession:
 
 
 class OwnedOutputPublicTests(unittest.TestCase):
-    def test_publication_changes_requested_with_unfinished_ci_reaches_correction(self):
-        # Exact publication safeguards now consume ordinary current generic evidence.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_publication_contract.GenericPublicationPublicTests.test_negative_ci_observation_is_recordable_and_review_can_admit_correction_without_approval',
-        )
 
     def use_shipped_dag(self):
         template = json.loads((fixtures.fixtures.PLUGIN_ROOT / 'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
@@ -280,20 +274,6 @@ class OwnedOutputPublicTests(unittest.TestCase):
         z._workflow_section(self.session.project, 'workflow_adherence')['configuration']['phase_dag'] = dag
         self.assertEqual(['understand', 'decompose', 'test_design', 'implement', 'publish'], [n['id'] for n in dag['phases']])
 
-    def test_five_phase_default_leaf_red_to_green_and_publication(self):
-        # One connected generic delivery graph retains red/green, review and publication guards.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag.EvidenceGraphGrammarTests.test_shipped_default_is_one_valid_generic_graph',
-            'test_workflow_publication_contract.GenericDeliveryPublicTests.test_reviewed_red_green_proofs_commit_and_exact_publication_form_one_delivery_graph',
-        )
-
-    def test_five_phase_parent_allocates_scope_in_decomposition(self):
-        # Current parent grants and all-child completion use the same generic evidence graph.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_publication_contract.GenericDeliveryPublicTests.test_parent_requires_both_children_current_terminals_and_archived_merge_evidence',
-        )
 
     def setUp(self):
         self.fixture = fixtures.FullWorkflowJourneyTests()
@@ -312,170 +292,6 @@ class OwnedOutputPublicTests(unittest.TestCase):
         self.session.git('commit', '-qm', 'fixture: existing source and test')
         self.session.git('checkout', '-q', '-B', 'goal-child')
 
-    def test_pending_entropy_correction_routes_to_same_goal_without_false_approval(self):
-        # Ordinary findings/admissions preserve exact correction and root acceptance guards.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance',
-            'test_zzzops.PhaseEvidenceTests.test_pending_entropy_correction_requires_rejection_and_stays_in_goal',
-        )
-
-    def test_verification_accepts_gateway_rigor_projection_without_scope_drift(self):
-        # Retire active phase-rigor projection requirement; unchanged finite workspace proof and declared generic routing preserve the actual guard without adding retired assessment authority.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_readonly_allocation_accepts_unchanged_workspace_but_rejects_new_file',
-            'test_workflow_integration.GenericIntegrationFreshnessTests.test_generic_goal_routes_declared_task_without_hidden_phase_rigor_assessment',
-        )
-
-    def test_mixed_checkout_raw_drift_and_dirty_acquisition(self):
-        # Exact generic workspace guards; standalone legacy verification grants no authority.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_mixed_clean_checkout_rejects_raw_consumed_drift_and_restores_exact_acquisition',
-        )
-
-    def test_non_equivalent_dirty_checkout_rejects_acquisition(self):
-        # Preserve this concrete guard through the single generic public engine.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_dirty_unreviewed_source_cannot_be_adopted_as_acquisition_baseline',
-        )
-
-    def test_crlf_correction_preserves_frozen_checkout_overrides(self):
-        # Exact generic workspace guards; standalone legacy verification grants no authority.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_crlf_design_correction_retains_frozen_raw_checkout_overrides',
-        )
-
-    def test_crlf_clean_checkout_public_acquisition(self):
-        # Preserve this concrete guard through the single generic public engine.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_clean_crlf_checkout_pins_raw_consumed_bytes_and_allows_owned_red_edit',
-        )
-
-    def test_orphan_verification_proof_does_not_invalidate_new_acquisition(self):
-        # Exact generic workspace guards; standalone legacy verification grants no authority.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_unreferenced_proof_artifact_does_not_change_acquisition_inputs',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_pending_workspace_submission_reuses_exact_observed_proof_and_log',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_workspace_owner_requires_observed_stop_then_fresh_committed_acquisition',
-            'test_evidence_dag_journeys.GenericStoragePublicTests.test_pending_start_retry_retains_generated_identity_and_completed_replay_never_resurrects',
-        )
-
-    def test_existing_consumed_test_and_source_red_to_green(self):
-        # Preserve this concrete guard through the single generic public engine.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_permitted_red_to_green_edits_keep_fingerprints_and_downstream_proof_reuse',
-        )
-
-    def test_no_edit_control_and_wrong_actor_or_lease_reject(self):
-        # Preserve this concrete guard through the single generic public engine.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_wrong_actor_cannot_submit_and_valid_owner_still_can',
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_wrong_lease_cannot_submit_and_valid_lease_still_can',
-        )
-
-    def test_actual_changed_provenance_reuses_identical_plan_and_review_bytes(self):
-        # Identical allocation content gets new provenance after source change and must receive current independent review/root consent; old exact review/root evidence remains historical.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_new_reviewed_allocation_can_restart_clean_prior_worktree_without_reviving_old_proof',
-            'test_phase_review_contract.GenericReviewGateTests.test_identical_output_cannot_bypass_current_ancestor_review_and_reapproval',
-        )
-
-    def test_read_dependency_and_unexpected_output_reject_during_edit(self):
-        # Preserve this concrete guard through the single generic public engine.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_unowned_and_consumed_drift_reject_without_partial_candidate_then_allow_owned_edit',
-        )
-
-    def test_undeclared_deletion_rejects_with_restored_valid_control(self):
-        # Preserve this concrete guard through the single generic public engine.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_unsafe_allocation_paths_and_undeclared_deletion_never_authorize_edits',
-        )
-
-    def test_live_policy_change_invalidates_active_assignment(self):
-        # Preserve this concrete guard through the single generic public engine.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_generic_task_rejects_policy_drift_without_partial_semantic_publication',
-        )
-
-    def test_reviewed_test_edit_and_post_verify_source_edit_reject(self):
-        # Unowned accepted test drift rejects; post-observation owned drift cannot publish pending proof until exact restore; completed owned/consumed drift blocks reuse. Standalone verify/record split is retired.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_unowned_and_consumed_drift_reject_without_partial_candidate_then_allow_owned_edit',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_pending_workspace_submission_reuses_exact_observed_proof_and_log',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_completed_output_and_consumed_drift_block_reuse_after_lease_removal',
-        )
-
-    def test_completed_proof_survives_lease_deletion_and_detects_later_output_drift(self):
-        # Preserve this concrete guard through the single generic public engine.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_completed_output_and_consumed_drift_block_reuse_after_lease_removal',
-        )
-
-    def test_reacquiring_phase_keeps_stale_proof_drift_in_its_frozen_input(self):
-        # Replace mocked legacy input derivation with actual accepted proof drift and immutable host acquisition; no acquired/persisted caller envelope normalizes stale bytes.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_completed_output_and_consumed_drift_block_reuse_after_lease_removal',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_caller_cannot_replace_authenticated_acquisition_with_supplied_envelope',
-        )
-
-    def test_durable_proof_rejects_tampered_acquisition_and_outputs(self):
-        # Generic host alone issues proof; caller acquisition substitution, corrupted stored output proof, disconnected exact predecessor, and wrong actual actor/lease reject with valid controls. Retired submitted verification Ref cannot grant authority.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_host_acquisition_raw_pins_reject_provider_corruption_before_matched_submit',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_pending_workspace_submission_reuses_exact_observed_proof_and_log',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_caller_cannot_replace_authenticated_acquisition_with_supplied_envelope',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_tampered_completed_workspace_proof_blocks_downstream_after_lease_removal',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_host_correction_predecessor_rejects_wrong_identity_disconnected_and_forged_ancestry',
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_wrong_actor_cannot_submit_and_valid_owner_still_can',
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_wrong_lease_cannot_submit_and_valid_lease_still_can',
-        )
-
-    def test_spec_change_and_unapproved_plan_cannot_authorize_source_edits(self):
-        # Current parent source/allocation review and pinned scope remain necessary; root replacement cannot retroactively authorize old attempt edits.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_parent_authority_revision_rejects_acquired_readonly_work_and_needs_current_review',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_replacing_allocation_cannot_reauthorize_an_inflight_out_of_scope_edit',
-        )
-
-    def test_unauthorized_approval_is_rejected_before_valid_matched_control(self):
-        # Actual root-bound task and exact current reviewed subject govern consent; a content actor/placeholder approval token from retired approve operation confers no authority.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_root_approval_rejects_worker_then_accepts_root',
-            'test_phase_review_contract.GenericReviewGateTests.test_review_is_not_human_approval_and_root_binds_current_subject_and_review',
-        )
-
-    def test_duplicate_writer_and_uncertain_recovery_are_rejected(self):
-        # Exact generic workspace guards; standalone legacy verification grants no authority.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_workspace_owner_requires_observed_stop_then_fresh_committed_acquisition',
-        )
-
-    def test_missing_output_scope_cannot_exempt_an_existing_input(self):
-        # Missing/ambiguous selected finite allocation blocks a writer with an allocation diagnostic; legacy plan/output_scope repair field names retire with the engine.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_missing_ambiguous_and_wrong_generation_allocations_never_grant_a_lease',
-        )
 
     def assert_scope_gate(self, s):
         steps = s.checkpoint(101)
@@ -493,131 +309,11 @@ class OwnedOutputPublicTests(unittest.TestCase):
         # This checks the public actionable gate. Direct verification rejection is covered
         # with an acquired valid contract when the reviewed plan is withdrawn.
 
-    def test_valid_acquired_contract_cannot_verify_after_scope_plan_withdrawal(self):
-        # An unchanged-workspace acquired writer still rejects after parent authority revision; new review cannot update frozen pins and exact authority restoration gives a valid matched control.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_parent_authority_revision_rejects_acquired_readonly_work_and_needs_current_review',
-        )
-
-    def test_mismatched_selected_parent_scope_requires_plan_repair(self):
-        # Preserve this concrete guard through the single generic public engine.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_parent_grant_omission_and_mismatch_cannot_expand_child_authority',
-        )
-
-    def test_explicit_empty_scope_rejects_new_file_but_allows_unchanged_proof(self):
-        # Preserve this concrete guard through the single generic public engine.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_readonly_allocation_accepts_unchanged_workspace_but_rejects_new_file',
-        )
-
-    def test_sibling_scopes_connect_completed_first_child_without_rewriting_history(self):
-        # Independently reviewed sibling allocations consume exact connected first-child proof.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_publication_contract.GenericDeliveryPublicTests.test_second_sibling_consumes_reviewed_committed_first_proof_without_rewriting_history',
-        )
-
-    def test_declared_deletion_has_same_proof_identity_after_commit(self):
-        # Preserve the exact workspace guard through the generic public engine.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_permitted_red_to_green_edits_keep_fingerprints_and_downstream_proof_reuse')
-
-    def test_recorded_output_exposes_own_review_and_correction_without_consumer_authority(self):
-        # Current own review/correction remains available while downstream waits; two accepted correction proofs/root decisions retain history and exact predecessor integrity; the bounded synthetic projection test separately owns the provenance-count boundary, drift and withdrawn authority cannot grant reuse.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_host_correction_predecessor_rejects_wrong_identity_disconnected_and_forged_ancestry',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_accepted_correction_chain_preserves_each_round_authority_and_history',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_completed_output_and_consumed_drift_block_reuse_after_lease_removal',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_parent_authority_revision_rejects_acquired_readonly_work_and_needs_current_review',
-        )
-
-    def test_explicit_withdrawal_restarts_from_clean_prior_checkout_without_stale_proof(self):
-        # Explicit root intent replacement plus new independent allocation review/root consent permits clean prior detached worktree; old rejected checkout/proofs remain unchanged and cannot normalize new baseline.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_new_reviewed_allocation_can_restart_clean_prior_worktree_without_reviving_old_proof',
-        )
 
     def require_implementation_human_approval(self):
         configuration = z._workflow_section(self.session.project, 'workflow_adherence')['configuration']
         implementation = next(node for node in configuration['phase_dag']['phases'] if node['id'] == 'implement')
         implementation['review']['human_approval'] = True
-
-    def test_required_human_approval_blocks_sibling_consumption_until_current_approval(self):
-        # Independently reviewed sibling allocations consume exact connected first-child proof.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_publication_contract.GenericDeliveryPublicTests.test_second_sibling_consumes_reviewed_committed_first_proof_without_rewriting_history',
-        )
-
-    def test_composed_correction_requires_current_human_approval_after_record_replacement(self):
-        # Ordinary findings/admissions preserve exact correction and root acceptance guards.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance',
-            'test_phase_review_contract.GenericReviewGateTests.test_identical_output_cannot_bypass_current_ancestor_review_and_reapproval',
-        )
-
-    def test_test_design_correction_retains_baseline_failure_predecessor(self):
-        # Exact generic workspace guards; standalone legacy verification grants no authority.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_design_correction_retains_exact_observed_red_predecessor',
-        )
-
-
-    @unittest.skipUnless(hasattr(os, 'symlink'), 'Platform cannot create symlinks')
-    def test_owned_output_symlink_cannot_escape_the_worktree(self):
-        # Preserve the exact workspace guard through the generic public engine.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_acquired_owned_path_cannot_be_replaced_by_escaping_symlink')
-
-    def test_read_only_checkpoint_preserves_closed_goal_and_has_no_cursor(self):
-        # Archived v2 source/provider closure and exact targeted read remain unchanged; operational payload has leases/receipts and no phase cursor.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.GenericStoragePublicTests.test_archived_checkpoint_and_exact_read_preserve_source_and_have_no_cursor',
-        )
-
-
-    def test_actual_old_dispatch_start_to_repaired_dispatch_same_lease(self):
-        # Predecessor input never authorizes active v1 same-lease dispatch.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_goal_schema_conversion.MigrationEntryPublicTests.test_predecessor_owner_must_be_observed_stopped_before_fresh_generic_entry_lease',
-            'test_goal_schema_conversion.MigrationEntryPublicTests.test_v1_cutover_rejects_phase_operations_and_uses_only_generic_submission',
-        )
-
-    def test_actual_old_dispatch_rejects_wrong_envelope_and_unrelated_output(self):
-        # Predecessor input never authorizes active v1 same-lease dispatch.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_caller_cannot_replace_authenticated_acquisition_with_supplied_envelope',
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_unowned_and_consumed_drift_reject_without_partial_candidate_then_allow_owned_edit',
-        )
-
-    def test_actual_old_dispatch_requires_current_reviewed_baseline(self):
-        # Ordinary findings/admissions preserve exact correction and root acceptance guards.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_admitted_baseline_correction_rejects_already_acquired_consumer_without_takeover',
-        )
-
-    def test_legacy_candidate_git_tree_must_match_reviewed_baseline(self):
-        # Predecessor input never authorizes active v1 same-lease dispatch.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_unrelated_committed_candidate_cannot_replace_acquired_git_baseline',
-        )
-
-
-
 
 
 class CommentCheckpointPublicTests(unittest.TestCase):
@@ -640,9 +336,6 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         encoded = base64.b64encode(compressed if compressed is not None else zlib.compress(raw, level=0)).decode()
         return '<!-- zzzops-artifact ' + identity + ' -->\n<details><summary>Immutable phase artifact</summary>\n\n```text\n' + encoded + '\n```\n</details>'
 
-    def test_legacy_alternate_compression_reuses_complete_content_identity(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_alternate_legacy_compression_preserves_typed_output_identity_and_retry')
 
     def test_public_artifact_reads_reject_duplicate_keys_trailing_and_expansion(self):
         s = self.session
@@ -676,136 +369,6 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         s.call(101, {'operation': 'read', 'artifact': reference}, expected=None)
         self.assertNotEqual(0, s.calls[-1]['code'], 'All definitions of an immutable identity must be checked')
 
-    def test_latest_advances_and_unchanged_revisions_remain_pinnable(self):
-        # Exact storage/ownership guard through public generic host output transactions.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.GenericStoragePublicTests.test_logical_latest_and_exact_historical_revisions_preserve_host_refs',
-        )
-
-    def test_sparse_changed_artifact_is_smaller_and_missing_base_fails_closed(self):
-        # Same storage guard, now using host-issued generic output artifact identities.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_sparse_output_delta_is_smaller_and_missing_base_fails_closed')
-
-    def test_new_envelope_cycles_duplicate_records_and_patch_tampering_fail_closed(self):
-        # Same storage guard, now using host-issued generic output artifact identities.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_output_delta_cycle_missing_base_duplicate_patch_and_version_reject')
-
-    def test_reconstruction_work_limit_is_enforced_even_for_compressible_content(self):
-        # Same storage guard, now using host-issued generic output artifact identities.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_decoded_reconstruction_work_bound_applies_to_compressible_output')
-
-    def test_unfavorable_delta_uses_independent_full_checkpoint(self):
-        # Same storage guard, now using host-issued generic output artifact identities.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_unfavorable_output_delta_is_independent_full_record')
-
-    def test_checkpoint_rollover_breaks_dependency_before_ninth_delta_edge(self):
-        # Same storage guard, now using host-issued generic output artifact identities.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_output_chain_rollover_preserves_latest_without_initial_base')
-
-    def test_cached_immutable_read_does_not_pin_logical_head(self):
-        # Exact storage/ownership guard through public generic host output transactions.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.GenericStoragePublicTests.test_immutable_cache_does_not_freeze_logical_latest_output',
-        )
-
-    def test_partial_multipart_envelope_retry_preserves_one_logical_operation(self):
-        # Exact storage/ownership guard through public generic host output transactions.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.GenericStoragePublicTests.test_multipart_retry_reuses_partial_bytes_and_publishes_one_atomic_output_bundle',
-        )
-
-    def test_partial_upload_cannot_bypass_live_actor_or_stale_input_checks(self):
-        # Exact storage/ownership guard through public generic host output transactions.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.GenericStoragePublicTests.test_partial_upload_still_requires_actual_actor_and_current_input',
-        )
-
-    def test_start_and_bind_remain_separate_durable_checkpoints(self):
-        # Exact storage/ownership guard through public generic host output transactions.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.GenericStoragePublicTests.test_start_and_bind_persist_distinct_unbound_then_actual_worker_checkpoints',
-        )
-
-    def test_historical_semantic_projection_never_restores_live_coordination(self):
-        # Historical predecessor transport is decoded before trusted conversion;
-        # exact immutable refs never restore current leases or receipts.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_goal_schema_conversion.MigrationEntryPublicTests.test_mixed_history_exact_refs_preserve_predecessor_snapshots_and_live_coordination',
-            'test_goal_schema_conversion.MigrationEntryPublicTests.test_approval_bearing_historical_snapshots_remain_data_after_conversion',
-        )
-
-    def test_pending_start_retry_preserves_generated_lease_and_completed_retry_does_not_resurrect(self):
-        # Exact storage/ownership guard through public generic host output transactions.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.GenericStoragePublicTests.test_pending_start_retry_retains_generated_identity_and_completed_replay_never_resurrects',
-        )
-
-
-    def test_inline_multiple_artifacts_result_release_share_one_durable_checkpoint(self):
-        # Exact storage/ownership guard through public generic host output transactions.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.GenericStoragePublicTests.test_inline_outputs_result_receipt_and_lease_release_share_one_checkpoint',
-        )
-
-    def test_inline_request_conflicting_hash_and_actor_fail_before_writes(self):
-        # Generic host issuance preserves transport/reconstruction budgets and atomic preflight.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_caller_hash_or_extra_operation_cannot_authorize_inline_outputs')
-
-    def test_oversized_review_uses_current_multipart_immutable_storage(self):
-        # Current multipart storage preserves the oversized-record journey; the
-        # separate budget and atomic-preflight controls below remain unchanged.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_oversized_single_review_record_uses_multipart_immutable_storage')
-
-    def test_standalone_artifact_budget_preflight_preserves_usable_existing_comments(self):
-        # Generic host issuance preserves transport/reconstruction budgets and atomic preflight.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_existing_storage_budget_rejection_preserves_readable_history_and_usable_lease')
-
-    def test_inline_aggregate_budget_rejection_has_no_provider_mutations(self):
-        # Generic host issuance preserves transport/reconstruction budgets and atomic preflight.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_evidence_dag_journeys.GenericStoragePublicTests.test_aggregate_output_budget_rejects_all_slots_without_mutation_then_accepts_small_bundle')
-
-    def test_latest_historical_and_pinned_reads_exclude_pending_uploads(self):
-        # Exact storage/ownership guard through public generic host output transactions.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.GenericStoragePublicTests.test_pending_multipart_outputs_cannot_replace_latest_historical_or_pinned_reads',
-        )
-
-    def test_inline_review_does_not_imply_human_approval(self):
-        # Exact storage/ownership guard through public generic host output transactions.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_phase_review_contract.GenericReviewGateTests.test_review_is_not_human_approval_and_root_binds_current_subject_and_review',
-        )
-
-    def test_pending_variable_verification_reuses_exact_proof_and_log(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_pending_workspace_submission_reuses_exact_observed_proof_and_log')
-
-    def test_renew_retry_preserves_expiry_before_body_publication(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_workflow_renewal.GenericRenewalTests.test_renewal_retry_before_body_preserves_generated_expiry')
-
-    def test_renew_retry_preserves_expiry_after_body_publication(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_workflow_renewal.GenericRenewalTests.test_renewal_retry_after_body_preserves_generated_expiry')
 
     def check_renew_retry(self, boundary):
         s = self.session
@@ -832,17 +395,6 @@ class CommentCheckpointPublicTests(unittest.TestCase):
         self.assertEqual(persisted, s.goal(101)['workflow']['leases']['understand:execute'])
         self.assertEqual(before_comments + 1, len(s.provider.comments[101]))
         self.assertEqual(before_updates + 1, len(s.provider.updates))
-
-    def test_verification_proof_and_transition_share_one_comment(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_workspace_proof_output_result_and_transition_share_one_checkpoint')
-
-    def test_partial_envelope_and_lost_body_responses_reuse_inline_transaction(self):
-        # Actual inline output bundle append/body lost response retries publish one exact transaction, read each host Ref and preserve completed idempotency.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.GenericStoragePublicTests.test_inline_output_append_and_body_lost_responses_reuse_one_transaction',
-        )
 
 
 if __name__ == '__main__':
