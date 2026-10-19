@@ -93,6 +93,16 @@ class PublicationAncestorChainPublicTests(unittest.TestCase):
         self.fixture = publication_fixtures.GenericPublicationPublicTests()
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
+        # All managed goals share policy topology; local selectors bind each
+        # goal's own context/review/consent evidence.
+        def localize(value):
+            if isinstance(value, dict):
+                return {key: '#this' if key == 'goal' and child == 100 else localize(child)
+                        for key, child in value.items()}
+            if isinstance(value, list):
+                return [localize(child) for child in value]
+            return value
+        self.fixture.install(localize(self.fixture.graph))
         self.repo = self.fixture.fixture.repo
         self.branch_review = (
             Path(__file__).parents[1]
@@ -129,19 +139,6 @@ class PublicationAncestorChainPublicTests(unittest.TestCase):
         """Other managed branches have real generic root/review/consent Results."""
         f = self.fixture
         graph = copy.deepcopy(f.graph)
-        graph["nodes"] = [node for node in graph["nodes"] if node["id"] in {"context", "inspect", "consent"}]
-        graph["terminals"] = [{"kind": "node", "goal": number, "node": "consent"}]
-        def qualify(value):
-            if isinstance(value, dict):
-                for key, child in value.items():
-                    if key == "goal" and child == 100:
-                        value[key] = number
-                    else:
-                        qualify(child)
-            elif isinstance(value, list):
-                for child in value:
-                    qualify(child)
-        qualify(graph)
         payload = f.blob({"spec": f.blob({"type": "specification", "content": "Managed repository context",
             "producer": None, "provenance": {"actor": "root-thread", "source": None,
             "policy": dag_fixtures.content_hash(self.session.project["policy"])}}),
@@ -196,11 +193,15 @@ class PublicationAncestorChainPublicTests(unittest.TestCase):
             # A null PR has no individual PR, checks, review, or merge facts.
             if context.get("pr") is None:
                 continue
-            self.assertEqual(100, number)
-            self.assertEqual("https://github.com/owner/repo/pull/16", context["pr"])
+            branch, base, pr = {
+                100: ('candidate-6', 'chain-5', 16),
+                102: ('chain-5', 'chain-4', 15),
+                103: ('competing', 'dev', 77),
+            }[number]
+            self.assertEqual(f"https://github.com/owner/repo/pull/{pr}", context["pr"])
             facts[number] = {"merged": False, "merged_at": None,
-                "head_oid": self.heads["candidate-6"], "base_oid": self.heads["chain-5"],
-                "base_ref": "chain-5", "merge_commit": None,
+                "head_oid": self.heads[branch], "base_oid": self.session.git('rev-parse', base),
+                "base_ref": base, "merge_commit": None,
                 "repository": "owner/repo", "checks_present": True,
                 "checks_verified": True, "review_verified": False}
         return facts, 512, 1
