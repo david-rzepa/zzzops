@@ -190,7 +190,7 @@ class ObservedArtifactIndex(comment_store.ArtifactIndex):
 # being routed through an unrelated installation, policy, lease, or portfolio
 # gate.
 PUBLIC_OPERATIONS = frozenset({
-    'batch', 'bind', 'block', 'graph_normalize', 'migration_batch', 'graph_prepare', 'graph_review', 'graph_adopt', 'graph_review_bootstrap',
+    'batch', 'bind', 'block', 'phase_finding', 'graph_normalize', 'migration_batch', 'graph_prepare', 'graph_review', 'graph_adopt', 'graph_review_bootstrap',
     'checkpoint_reconcile_prepare', 'checkpoint_reconcile_review', 'checkpoint_reconcile_adopt',
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
     'feedback_submit', 'heartbeat', 'hydration_checkpoint', 'installation_record', 'integrate',
@@ -2097,19 +2097,92 @@ class Workflow:
                     validated.add(ref['hash'])
                 return value
             payload = resolve(envelope['payload'])
-            ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'}, 'Payload')
+            ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'} | (set(payload) & {'phase_data', 'goal_context', 'workflow'}), 'Payload')
             ev.contract_fields(payload['operational'], {'leases', 'receipts'}, 'Operational payload')
             if not isinstance(payload['evidence'], list): raise ValueError('Evidence must be an ordered Ref array')
-            graph = resolve(payload['graph'])
-            if n == number and graph_override is not None:
-                graph = copy.deepcopy(graph_override)
-            ev.validate_graph(graph)
+            historical_graph = resolve(payload['graph'])
+            definition = self.api._static_workflow.definition(
+                policy_section(self.project, 'workflow_adherence')['configuration']['phase_dag'],
+                self.api._graph_compiler)
+            if 'workflow' in payload:
+                ev.contract_fields(payload['workflow'], {'version', 'graph'}, 'Workflow definition')
+                if payload['workflow']['version'] != self.api._static_workflow.VERSION:
+                    raise ValueError('Unsupported stored workflow definition version')
+                ev.validate_graph(resolve(payload['workflow']['graph']))
+            graph = definition['graph'] if envelope['state'] == 'open' else historical_graph
             source_artifact = resolve(payload['spec'])
             if source_artifact.get('type') == 'migration_source':
+                # A reviewed schema-conversion entry is a policy-defined protocol,
+                # not a goal-specific override of the product workflow.
                 entries = policy_section(self.project, 'workflow_adherence')['configuration'].get('migration_entries', [])
-                if not any(row.get('from') == 1 and row.get('to') == 2 and row.get('graph') == graph for row in entries):
+                if not any(row.get('from') == 1 and row.get('to') == 2 and row.get('graph') == historical_graph for row in entries):
                     raise ValueError('Prepared migration graph differs from trusted current policy entry')
-            snapshot = {'envelope': envelope, 'payload': payload, 'graph': graph, 'resolve': resolve}
+                graph, definition = historical_graph, None
+            if n == number and graph_override is not None:
+                graph = copy.deepcopy(graph_override)
+                # Recovery must retain the exact acquired definition, even when
+                # policy has since changed. It grants no new execution authority.
+                definition = None
+            ev.validate_graph(graph)
+            snapshot = {'envelope': envelope, 'payload': payload, 'graph': graph, 'resolve': resolve,
+                        'historical_graph': historical_graph, 'workflow_definition': definition}
+            journal = payload.get('phase_data', {'version': 1, 'events': []})
+            if (not isinstance(journal, dict) or set(journal) != {'version', 'events'}
+                    or journal['version'] != 1 or not isinstance(journal['events'], list)):
+                raise ValueError('Unsupported phase data version or malformed event journal')
+            events = []
+            for reference in journal['events']:
+                event = resolve(reference)
+                provenance = event.get('provenance', {})
+                if (event.get('type') != 'phase_event' or provenance.get('repository') != self.repository
+                        or provenance.get('goal') != n or not provenance.get('actor')
+                        or not provenance.get('request_id')):
+                    raise ValueError('Phase event provenance does not match this goal')
+                event_request = {key: event['content'][key] for key in
+                                 ('id', 'target', 'subject', 'source', 'rationale')}
+                event_request.update(operation='phase_finding', request_id=provenance['request_id'],
+                                     actor=provenance['actor'])
+                receipts = [row for row in payload['operational']['receipts']
+                            if row['request'] == provenance['request_id'] and row['payload'] == digest(event_request)]
+                if len(receipts) != 1:
+                    raise ValueError('Phase event lacks its exact committed intake receipt')
+                receipt_steps = resolve(receipts[0]['result']).get('next_steps', [])
+                if not receipt_steps or receipt_steps[0] != {'kind': 'phase_data_recorded', 'goal': n,
+                        'event': reference, 'revision': event['content']['revision']}:
+                    raise ValueError('Phase event receipt does not authenticate the exact event revision')
+                events.append(event['content'])
+            snapshot['phase_data'] = self.api._static_workflow.phase_data(events, graph, n)
+            lineage = {'number': n, 'payload': payload}
+            if source_artifact.get('type') != 'migration_source':
+                self.node_committed_legacy_requests(lineage, migration_context_only=True)
+            recovered = lineage.get('historical_goal_context')
+            if 'goal_context' in payload:
+                metadata = resolve(payload['goal_context'])
+                if (metadata.get('type') != 'goal_context' or metadata.get('producer') is not None
+                        or metadata.get('content', {}).get('version') != 1 or recovered is None
+                        or metadata['content'] != recovered
+                        or metadata.get('provenance') not in lineage.get('goal_context_provenances', [])):
+                    raise ValueError('Goal context lacks its exact authenticated migration source/policy lineage')
+                snapshot['goal_context'] = metadata['content']
+            elif recovered is not None:
+                snapshot['goal_context'] = recovered
+                snapshot['goal_context_provenance'] = lineage['goal_context_provenances'][-1]
+            elif (source_artifact.get('provenance', {}).get('actor') in
+                    ('lossless-v1-v2/1', self.api._migration_batch.LEGACY_COMPILED_CONVERTER)
+                    or any(row['id'] == 'legacy_blockers'
+                           or any(name.startswith('legacy_dependency_') for name in row['inputs'])
+                           or 'Preserved engineering requirement:' in row['prompt']
+                           for row in historical_graph['nodes'])):
+                raise ValueError('Historical goal constraints require the exact committed migration lineage; restore missing history')
+            retired_nodes = {row['id']: row for row in historical_graph['nodes']} \
+                .keys() - {row['id'] for row in graph['nodes']}
+            # Compiler-generated routes are historical evidence, not additional
+            # product requirements. Unknown custom phases remain explicit debt.
+            mapped_context_nodes = {'legacy_blockers'} if snapshot.get('goal_context') else set()
+            unmapped = sorted(name for name in retired_nodes
+                             if not name.startswith(('gc_', 'sw_')) and name not in mapped_context_nodes)
+            if unmapped:
+                snapshot['workflow_migration_blocker'] = 'Unmapped historical phase contracts require policy/data mapping: ' + ', '.join(unmapped)
             snapshots[n] = snapshot
             # Current ownership needs its exact durable start receipt, not
             # every historical response. Metadata only locates candidates;
@@ -2261,7 +2334,7 @@ class Workflow:
                         or recovered[0].get('kind') != 'checkpoint' or recovered[0].get('goal') != n):
                     raise ValueError('Workspace draft retirement lacks original observed-stop receipt')
                 snapshot['retired_workspace_drafts'].update(self.node_workspace_draft_chain(reference, known_drafts))
-            pending = [(ref, n) for ref in [payload['spec'], *payload['evidence'], *acquisition_receipts.values(), *(ref for ref, _ in snapshot['workspace_drafts'])]]
+            pending = [(ref, n) for ref in [payload['spec'], *payload['evidence'], *journal['events'], *acquisition_receipts.values(), *(ref for ref, _ in snapshot['workspace_drafts'])]]
             visited = set()
             def references(value):
                 if isinstance(value, dict):
@@ -2335,6 +2408,7 @@ class Workflow:
             snapshot['context_ref'] = remember({'type': 'relationship_context', 'content': relation, 'producer': None,
                 'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
             related = {ref['goal'] for ref in refs if type(ref['goal']) is int}
+            related.update(snapshot.get('goal_context', {}).get('depends_on', []))
             if any(ref['goal'] == '#parent' for ref in refs) and envelope['parent'] is not None: related.add(envelope['parent'])
             related.update(int(key) for key in children)
             for target in related:
@@ -2389,6 +2463,10 @@ class Workflow:
         closure = {n: dict(value) for n, value in context['goals'].items()}
         if payload is not None:
             closure[snapshot['number']]['payload'] = payload
+            events = [snapshot['artifacts'][ref['hash']]['content']
+                      for ref in payload.get('phase_data', {}).get('events', [])]
+            closure[snapshot['number']]['phase_data'] = self.api._static_workflow.phase_data(
+                events, closure[snapshot['number']]['graph'], snapshot['number'])
         selected = closure[snapshot['number']]
         context['goals'] = closure
         result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
@@ -2397,10 +2475,12 @@ class Workflow:
         context.update(workspace_probe=False, workspaces=workspaces, artifacts=result['artifacts'])
         if not publication_probe: context['publications'] = publications
         result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
+        for state in result['states'].values():
+            state['goal_context'] = closure.get(state['node']['goal'], {}).get('goal_context', {})
         return {**snapshot, 'payload': selected['payload'], 'projection': result, 'artifacts': result['artifacts'],
                 'workspaces': workspaces, 'publications': publications}
 
-    def node_committed_legacy_requests(self, snapshot):
+    def node_committed_legacy_requests(self, snapshot, *, migration_context_only=False):
         """Read completed v1 requests only through a committed automatic migration."""
         number = snapshot['number']
         index = self.artifact_index(number)
@@ -2417,7 +2497,11 @@ class Workflow:
             require(isinstance(value, dict), 'migration lineage artifact must be an object')
             return value
 
+        migration_responses = {(row.get('context') or {}).get('response', {}).get('hash')
+                               for row in index.envelopes if (row.get('context') or {}).get('migration')}
         for committed in snapshot['payload']['operational']['receipts']:
+            if migration_context_only and committed['result']['hash'] not in migration_responses:
+                continue
             response = read(committed['result'])
             steps = response.get('next_steps', [])
             require(isinstance(steps, list), 'committed response steps are malformed')
@@ -2431,7 +2515,7 @@ class Workflow:
                     'migration receipt is incomplete')
             converter = receipt.get('converter')
             require(receipt.get('type') == 'schema_migration' and converter in
-                    ('lossless-v1-v2/1', self.api._migration_batch.CONVERTER),
+                    ('lossless-v1-v2/1', self.api._migration_batch.LEGACY_COMPILED_CONVERTER, self.api._migration_batch.CONVERTER),
                     'unsupported migration converter')
             require(receipt.get('repository') == self.repository and receipt.get('goal') == number,
                     'migration repository or goal mismatch')
@@ -2458,7 +2542,7 @@ class Workflow:
                     'revision': legacy['revision'] + 1, 'state': 'open', 'parent': legacy['parent'],
                     'payload': receipt['target_payload']}, 'migration target identity mismatch')
             payload = read(receipt['target_payload'])
-            self.api._phase_evidence.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'}, 'Migration payload')
+            self.api._phase_evidence.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'} | (set(payload) & {'goal_context'}), 'Migration payload')
             require(payload['evidence'] == [] and payload['operational'] == {'leases': [], 'receipts': []},
                     'migration intent must not create results or ownership')
             spec = read(payload['spec'])
@@ -2483,6 +2567,14 @@ class Workflow:
             require(transactions and all(row.get('goal') == number and row.get('context') == context and
                     row.get('transaction') == digest({'request': request, 'source': issue['body']})
                     for row in transactions), 'missing or conflicting exact migration transaction')
+            if migration_context_only:
+                recovered = self.api._migration_batch.historical_goal_context(self, receipt, source, policy)
+                if 'historical_goal_context' in snapshot and snapshot['historical_goal_context'] != recovered:
+                    raise ValueError('Conflicting committed historical goal context')
+                snapshot['historical_goal_context'] = recovered
+                snapshot['goal_context_provenances'] = [
+                    {'actor': converter, 'source': receipt['source'], 'policy': receipt['policy']['hash']},
+                    {'actor': 'host', 'source': step['receipt'], 'policy': receipt['policy']['hash']}]
             receipts = (legacy.get('workflow') or {}).get('receipts', {})
             require(isinstance(receipts, dict), 'legacy receipts are malformed')
             for request_id, receipt in receipts.items():
@@ -3027,51 +3119,9 @@ class Workflow:
         return request, compiled
 
     def node_normalization_candidate(self, number):
-        self._normalization_snapshot = None
-        epoch = getattr(self, '_normalization_read_epoch', None)
-        issue = self.adapter.get_issue(number)
-        envelope = self.api._goals.parse_managed_goal(issue['body'], number)
-        if envelope.get('schema_version') == 1:
-            # Legacy ownership recovery and conversion retain their own guards.
-            # Normalization only applies after a generic v2 graph is durable.
-            return None
-        snapshot = self.node_snapshot(number)
-        if (snapshot['envelope']['state'] != 'open'
-                or str(snapshot['issue'].get('state', '')).lower() == 'closed'):
-            return None
-        committed = {row['request'] for row in snapshot['payload']['operational']['receipts']}
-        pending = {}
-        index = self.artifact_index(number)
-        for row in index.envelopes:
-            context = row.get('context') or {}
-            if context.get('normalization') and context.get('request_id') not in committed:
-                request = context['normalization']
-                if (not isinstance(request, dict)
-                        or context.get('request_hash') != digest(request)
-                        or context.get('request_id') != request.get('request_id')):
-                    raise ValueError('Pending normalization exact identity is inconsistent')
-                if request['compiler_version'] != self.api._graph_compiler.SUPPORTED_VERSION:
-                    raise ValueError('Pending normalization compiler version requires exact historical retry; deferred')
-                pending[request['request_id']] = request
-        if len(pending) > 1:
-            raise ValueError('Multiple pending normalizations require reconciliation')
-        if pending:
-            return next(iter(pending.values()))
-        compiler = self.api._graph_compiler
-        compiled = compiler.compile_graph(snapshot['graph'], local_goal=number,
-                                          compiler_version=compiler.SUPPORTED_VERSION)
-        if compiled['diagnostics']:
-            # This is already reviewed historical work, not a new construction.
-            # No normalization transaction is attempted for this pure diagnostic.
-            if epoch is not None:
-                self._normalization_snapshot = (epoch, number, snapshot)
-            return {'normalization_diagnostics': compiled['diagnostics']}
-        request = self.node_normalization_request(snapshot)[0]
-        if request is None and epoch is not None:
-            # Share this complete read projection with the immediately following
-            # frontier, never with a mutation or a later public invocation.
-            self._normalization_snapshot = (epoch, number, snapshot)
-        return request
+        # Executable topology is projected from reviewed policy, never repaired
+        # independently on a goal. Older normalization receipts remain readable.
+        return None
 
     def node_graph_normalize(self, snapshot, payload, request):
         expected, compiled = self.node_normalization_request(snapshot,
@@ -4239,7 +4289,8 @@ class Workflow:
         config = policy_section(self.project, 'model_routing')['configuration']
         pairs = config['model_inventory']['reviewed_pairs']
         tiers = [item['id'] for item in config['tiers']]
-        required = executor['capability']
+        required = self.api._migration_batch.capability_floor(
+            self.api, self.project, state.get('goal_context', {}).get('metadata', {}), state['contract'])
         if required not in tiers: raise ValueError('Unknown reviewed capability tier')
         available = runtime.get('available_pairs', [])
         root = runtime.get('root_pair', {})
@@ -4282,11 +4333,13 @@ class Workflow:
         root = runtime.get('root_pair', {})
         root_record = next((row for row in config['model_inventory']['reviewed_pairs'] if all(row.get(k) == root.get(k) for k in ('model', 'effort'))), None)
         if root_record is None: raise ValueError('Actual root pair requires current model policy review')
-        if executor['capability'] not in tiers: raise ValueError('Unknown reviewed capability tier')
+        required = self.api._migration_batch.capability_floor(
+            self.api, self.project, state.get('goal_context', {}).get('metadata', {}), state['contract'])
+        if required not in tiers: raise ValueError('Unknown reviewed capability tier')
         reviewed_choice = self.node_routing_choice(snapshot, state)
-        if (executor['role'] == 'root' and tiers.index(root_record['tier']) < tiers.index(executor['capability']) and
+        if (executor['role'] == 'root' and tiers.index(root_record['tier']) < tiers.index(required) and
                 not (reviewed_choice and reviewed_choice.get('choice') == 'downgrade_to_root')):
-            choices = [row for row in config['model_inventory']['reviewed_pairs'] if tiers.index(row['tier']) >= tiers.index(executor['capability']) and any(all(pair.get(k) == row.get(k) for k in ('model', 'effort')) for pair in runtime.get('available_pairs', []))]
+            choices = [row for row in config['model_inventory']['reviewed_pairs'] if tiers.index(row['tier']) >= tiers.index(required) and any(all(pair.get(k) == row.get(k) for k in ('model', 'effort')) for pair in runtime.get('available_pairs', []))]
             if not choices: raise ValueError('Required reviewed capability/model is unavailable')
             requested = min(choices, key=lambda row: (row['cost'], tiers.index(row['tier']), row['model'], row['effort']))
             return {'kind': 'capability_choice', 'goal': state['node']['goal'], 'node': state['node'],
@@ -4492,257 +4545,50 @@ class Workflow:
                 selector.get('goal') in ('#this', number))
 
     def node_shadowed_correction_admission(self, snapshot, state):
-        return self.api._graph_compiler.admission_shadowed(
-            snapshot['graph'], state.get('contract', {}).get('id'), snapshot['number'])
+        name = state['node']['node']
+        if name.startswith(('gc_', 'sw_')) or not any(
+                value['type'] == 'admission' for value in state['contract']['outputs'].values()):
+            return False
+        cache = snapshot.setdefault('_shadowed_admissions', {})
+        if name not in cache:
+            cache[name] = self.api._graph_compiler.admission_shadowed(
+                snapshot['graph'], name, snapshot['number'])
+        return cache[name]
+
+    def node_owned_legacy_admission(self, snapshot, state):
+        """Do not run an upgraded admission alongside its preserved owner."""
+        scopes = [permit['scope'] for permit in state['contract']['permits']
+                  if permit['type'] == 'admission']
+        if not scopes:
+            return None
+        projection = snapshot['projection']
+        for key, lease in projection['leases'].items():
+            owned = projection['states'].get(key)
+            if (owned is None or owned['node'] == state['node']
+                    or owned['node']['goal'] != state['node']['goal']
+                    or not self.node_shadowed_correction_admission(snapshot, owned)):
+                continue
+            if any(permit['type'] == 'admission' and permit['scope'] in scopes
+                   for permit in owned['contract']['permits']):
+                return lease
+        return None
 
     def node_frontier(self, snapshot, *, defer_envelope=False):
         """Format the same readiness and authority boundaries for both callers."""
         number = snapshot['number']
+        if snapshot.get('workflow_migration_blocker'):
+            return [{'kind': 'blocker', 'goal': number,
+                     'reason': snapshot['workflow_migration_blocker'],
+                     'action': 'Preserve history and resolve the exact ownership or phase-data mapping; do not amend the goal graph.'}]
         projection = snapshot['projection']; steps = []
-        rejected = []
-        def local_node(selector):
-            return self.node_local_selector(selector, number)
-        expansion_templates = {item['id']: item['template']['id'] for item in snapshot['graph']['task_sets']}
-        def same_node(selector, name):
-            return ((local_node(selector) and selector.get('node') == name) or
-                    (isinstance(selector, dict) and selector.get('kind') in ('member', 'join') and
-                     selector.get('goal') in ('#this', number) and
-                     expansion_templates.get(selector.get('expansion')) == name))
-        def permits_target(node, kind, target_name, target_output):
-            return any(permit.get('type') == kind and permit.get('scope', {}).get('output') == target_output and
-                same_node(permit.get('scope', {}).get('subject'), target_name)
-                for permit in node.get('permits', []))
-        def input_from(node, producer, *, path=None, mode=None):
-            return any(same_node(binding.get('producer', {}).get('node'), producer) and
-                (path is None or binding.get('path') == path) and
-                (mode is None or binding.get('mode') == mode)
-                for binding in node.get('inputs', {}).values())
-        def input_from_review_approval(node, review_name):
-            return (input_from(node, review_name, path=['decision'], mode='content') or
-                    input_from(node, review_name, path=[], mode='identity'))
-        compilation = self.api._graph_compiler.compile_graph(snapshot['graph'], local_goal=number)
-        recovery_complete = not compilation['diagnostics'] and compilation['graph'] == snapshot['graph']
-        def correction_route_covers(target_name, target_output, review_name, review_output):
-            return self.api._graph_compiler.correction_route_covers(
-                snapshot['graph'], target_name, target_output, review_name, review_output, number)
-        def append_member_admission_recovery(graph, target_name, target_output, review_name):
-            """Append an upgraded admission expansion while preserving every persisted task set."""
-            sets = graph['task_sets']
-            template_by_set = {item['id']: item['template']['id'] for item in sets}
-            review_sets = {name for name, template in template_by_set.items() if template == review_name}
-            findings = []
-            for item in sets:
-                node = item['template']
-                if (any(output.get('type') == 'finding' for output in node.get('outputs', {}).values()) and
-                        permits_target(node, 'finding', target_name, target_output) and
-                        any(binding.get('producer', {}).get('node', {}).get('kind') == 'member' and
-                            binding['producer']['node'].get('expansion') in review_sets and
-                            binding.get('path') == ['decision'] and binding.get('mode') == 'content'
-                            for binding in node.get('inputs', {}).values())):
-                    findings.append(item['id'])
-            candidates = []
-            for item in sets:
-                node = item['template']
-                if (any(output.get('type') == 'admission' for output in node.get('outputs', {}).values()) and
-                        permits_target(node, 'admission', target_name, target_output) and
-                        any(binding.get('producer', {}).get('node', {}).get('kind') == 'member' and
-                            binding['producer']['node'].get('expansion') in findings and
-                            binding.get('mode') == 'identity'
-                            for binding in node.get('inputs', {}).values())):
-                    candidates.append(item)
-            if len(candidates) != 1:
-                raise ValueError('Configured-member correction recovery requires one exact admission expansion')
-            recovery = copy.deepcopy(candidates[0])
-            suffix = '_atomic_transfer'
-            recovery['id'] += suffix
-            recovery['template']['id'] += suffix
-            if any(item['id'] == recovery['id'] or item['template']['id'] == recovery['template']['id']
-                   for item in sets):
-                raise ValueError('Configured-member correction recovery identity is occupied')
-            self.node_upgrade_correction_admission(recovery['template'])
-            sets.append(recovery)
-        for key, (_, result) in projection['current'].items():
-            state = projection['states'].get(key)
-            if state is None: continue
-            contract = state['contract']
-            for review_output, output_ref in result['outputs'].items():
-                output_contract = contract.get('outputs', {}).get(review_output, {})
-                artifact = snapshot['artifacts'][output_ref['hash']]
-                value = artifact.get('content')
-                decision = output_contract.get('schema', {}).get('fields', {}).get('decision', {})
-                if (output_contract.get('type') != 'review_decision' or artifact.get('type') != 'review_decision' or
-                        decision.get('kind') != 'enum' or
-                        not {'approved', 'changes_requested'} <= set(decision.get('values', [])) or
-                        not isinstance(value, dict) or value.get('decision') != 'changes_requested'):
-                    continue
-                for target_selector in contract.get('independent_of', []):
-                    subject = next((binding for binding in contract.get('inputs', {}).values()
-                                    if binding.get('producer', {}).get('node') == target_selector and
-                                    binding.get('mode') == 'identity' and not binding.get('path')), None)
-                    if subject is None or not local_node(target_selector): continue
-                    target_name, target_output = target_selector['node'], subject['output']
-                    if not recovery_complete and not correction_route_covers(target_name, target_output, contract['id'], review_output):
-                        route = (target_name, target_output, contract['id'], review_output)
-                        if route not in rejected:
-                            rejected.append(route)
-        if rejected:
-            graph = copy.deepcopy(snapshot['graph'])
-            target_counts = {}
-            for target_name, target_output, _, _ in rejected:
-                target_counts[(target_name, target_output)] = target_counts.get((target_name, target_output), 0) + 1
-            for route in rejected:
-                if route[2] in expansion_templates.values():
-                    append_member_admission_recovery(graph, *route[:3])
-                    continue
-                base_names = {'interpret_' + route[0] + '_rejection',
-                              'admit_' + route[0] + '_correction',
-                              'retain_' + route[0] + '_findings'}
-                occupied = any(node['id'] in base_names for node in graph['nodes'])
-                suffix = route[2] if target_counts[route[:2]] > 1 or occupied else None
-                self.node_append_review_correction(graph, *route, route_suffix=suffix)
-            self.api._phase_evidence.validate_graph(graph)
-            steps.append({'kind': 'repair', 'assignment': 'root', 'goal': number,
-                'diagnostic': 'Rejected review lacks correction route',
-                'reason': 'A current independent review requested changes but the reviewed graph cannot admit and resolve that correction.',
-                'action': ('Append the exact finding, admission, retention and independent-resolution route through '
-                           'graph_prepare, independently review the proposal, then graph_adopt it.'),
-                'submission': {'operation': 'graph_prepare', 'graph': graph,
-                               'rationale': 'Add only the missing correction route for the exact rejected review.'}})
-        unresolved = [{**value, '_finding_id': key[1]}
-                      for key, value in projection.get('obligations', {}).items()
-                      if value.get('applicability') == 'unresolved']
-        def assessment_covers(node, obligation):
-            obligation_input = next((value for value in node.get('inputs', {}).values()
-                if value.get('producer') == {'slot': 'obligations'} and
-                value.get('output') == 'content' and value.get('path') == [obligation['_finding_id']]), None)
-            return (obligation_input is not None and
-                    any(output.get('type') == 'applicability_assessment'
-                        for output in node.get('outputs', {}).values()) and
-                    any(permit.get('type') == 'applicability_assessment' and
-                        permit.get('scope') == obligation['content']['target']
-                        for permit in node.get('permits', [])))
-        def canonical_assessment_covers(obligation):
-            target = obligation['content']['target']; subject = target['subject']
-            return (subject.get('kind') == 'node' and subject.get('goal') == number and
-                    self.api._graph_compiler.applicability_family_covers(
-                        snapshot['graph'], subject['node'], target['output'], number))
-        uncovered = [obligation for obligation in unresolved
-                     if not canonical_assessment_covers(obligation) and not any(
-                         assessment_covers(node, obligation) for node in snapshot['graph']['nodes'])]
-        if uncovered:
-            graph = copy.deepcopy(snapshot['graph'])
-            contracts = {node['id']: node for node in graph['nodes']}
-            owners = {}
-            for _, (result_ref, result) in projection['current'].items():
-                owners[result_ref['hash']] = result
-                owners.update({ref['hash']: result for ref in result['outputs'].values()})
-            for obligation in uncovered:
-                target = obligation['content']['target']
-                target_name = target.get('subject', {}).get('node')
-                target_output = target.get('output')
-                target_contract = contracts.get(target_name)
-                if not target_contract or target_output not in target_contract['outputs']:
-                    raise ValueError('Unresolved finding target cannot be represented by the current graph')
-                target_selector = copy.deepcopy(target['subject'])
-                reviewer = next((node for node in graph['nodes'] if
-                    target_selector in node.get('independent_of', []) and
-                    any(binding.get('producer', {}).get('node') == target_selector
-                        for binding in node.get('inputs', {}).values()) and node.get('outputs')), None)
-                admission = snapshot['artifacts'].get(obligation['admission']['hash'])
-                authority_ref = (admission or {}).get('content', {}).get('authority')
-                authority_result = owners.get((authority_ref or {}).get('hash'))
-                authority_name = (authority_result or {}).get('node', {}).get('node')
-                authority_contract = contracts.get(authority_name)
-                if reviewer is None:
-                    raise ValueError('Unresolved finding lacks a declared independent reviewer route')
-                if authority_contract is None:
-                    raise ValueError('Unresolved finding lacks a current root authority route')
-                review_output = next(iter(reviewer['outputs']))
-                finding_id = obligation['finding']['hash'][7:19]
-                name = 'assess_applicability_' + finding_id
-                assessment_schema = {'kind': 'object', 'fields': {
-                    'admission': {'kind': 'object', 'fields': {'hash': {'kind': 'string'}, 'uri': {'kind': 'string'}}},
-                    'finding': {'kind': 'object', 'fields': {'hash': {'kind': 'string'}, 'uri': {'kind': 'string'}}},
-                    'subjects': {'kind': 'array', 'items': {'kind': 'object', 'fields': {
-                        'hash': {'kind': 'string'}, 'uri': {'kind': 'string'}}}},
-                    'reviewer_result': {'kind': 'object', 'fields': {'hash': {'kind': 'string'}, 'uri': {'kind': 'string'}}},
-                    'authority': {'kind': 'object', 'fields': {'hash': {'kind': 'string'}, 'uri': {'kind': 'string'}}},
-                    'applicability': {'kind': 'enum', 'values': ['applicable', 'not_applicable']},
-                    'rationale': {'kind': 'string'},
-                }}
-                ref_type = {'kind': 'object', 'fields': {'hash': {'kind': 'string'}, 'uri': {'kind': 'string'}}}
-                def value_schema(value):
-                    if value is None: return {'kind': 'null'}
-                    if isinstance(value, bool): return {'kind': 'boolean'}
-                    if isinstance(value, int): return {'kind': 'integer'}
-                    if isinstance(value, str): return {'kind': 'string'}
-                    if isinstance(value, list) and value: return {'kind': 'array', 'items': value_schema(value[0])}
-                    if isinstance(value, dict):
-                        return {'kind': 'object', 'fields': {key: value_schema(item) for key, item in value.items()}}
-                    raise ValueError('Historical obligation contains an unsupported schema value')
-                obligation_schema = {'kind': 'object', 'fields': {
-                    'admission': copy.deepcopy(ref_type), 'finding': copy.deepcopy(ref_type),
-                    'target': value_schema(target),
-                    'applicability': {'kind': 'enum', 'values': ['unresolved']},
-                }}
-                node_selector = lambda node: {'kind': 'node', 'goal': '#this', 'node': node}
-                graph['nodes'].append({
-                    'id': name,
-                    'prompt': ('Classify the exact retained historical finding applicability after fresh independent '
-                               'review. This classification does not resolve the finding or authorize implementation.'),
-                    'inputs': {
-                        'obligation': {'producer': {'slot': 'obligations'}, 'output': 'content',
-                                       'path': [obligation['_finding_id']],
-                                       'mode': 'content', 'type': obligation_schema},
-                        'subject': {'producer': {'node': target_selector}, 'output': target_output, 'path': [],
-                                    'mode': 'identity', 'type': copy.deepcopy(target_contract['outputs'][target_output]['schema'])},
-                        'review': {'producer': {'node': node_selector(reviewer['id'])}, 'output': review_output, 'path': [],
-                                   'mode': 'identity', 'type': copy.deepcopy(reviewer['outputs'][review_output]['schema'])},
-                    },
-                    'outputs': {'assessment': {'type': 'applicability_assessment', 'schema': assessment_schema}},
-                    'requires': [node_selector(reviewer['id']), node_selector(authority_name)],
-                    'executor': {'role': 'root', 'capability': 'bounded', 'resources': [],
-                                 'authority': {'subject': node_selector(name), 'output': 'assessment'}},
-                    'independent_of': [], 'gates': [], 'resolves': [],
-                    'permits': [{'type': 'applicability_assessment', 'scope': copy.deepcopy(target)}],
-                })
-            self.api._phase_evidence.validate_graph(graph)
-            steps.append({
-                'kind': 'repair', 'assignment': 'root', 'goal': number,
-                'reason': 'Finding applicability unresolved; the current graph has no reviewed applicability-assessment route.',
-                'diagnostic': 'Finding applicability unresolved',
-                'action': ('Append a root applicability-assessment node through graph_prepare, independently review the exact proposal, '
-                           'then graph_adopt it. The node must bind each returned admission/finding, the current corrected subject(s), '
-                           'their current independent reviewer Result, and current root authority. It classifies applicability only; '
-                           'it does not waive, resolve, or authorize implementation.'),
-                'obligations': [{'id': value['_finding_id'], 'admission': value['admission'], 'finding': value['finding'],
-                                 'target': value['content']['target']}
-                                for value in uncovered],
-                'required_output': {
-                    'type': 'applicability_assessment',
-                    'fields': ['admission', 'finding', 'subjects', 'reviewer_result', 'authority',
-                               'applicability', 'rationale'],
-                    'applicability': ['applicable', 'not_applicable'],
-                    'requirements': ['exact current unresolved admission and finding',
-                                     'exact current corrected subject outputs',
-                                     'current independent reviewer Result that inspected every subject',
-                                     'current authenticated root authority Result'],
-                },
-                'historical_input': {'producer': {'slot': 'obligations'},
-                                     'path': ['<finding id>'], 'mode': 'content',
-                                     'fields': ['admission', 'finding', 'target', 'applicability']},
-                'submission': {'operation': 'graph_prepare', 'graph': graph,
-                               'rationale': ('Add only the missing applicability-assessment route for the exact '
-                                             'retained unresolved historical obligation(s).')},
-            })
         for state in projection['states'].values():
             if state['node']['goal'] != number: continue
             # A reviewed additive member-route recovery preserves the legacy
             # contract and its historical Results, but only the exact upgraded
             # expansion may accept new work.
-            if self.node_shadowed_correction_admission(snapshot, state):
-                continue
             lease = projection['leases'].get(self.api._phase_evidence.task_key(state['node']))
+            if not lease and self.node_shadowed_correction_admission(snapshot, state):
+                continue
             if lease:
                 stale = state.get('input_hash') != lease['fingerprint']
                 step = {'kind': 'await_worker', 'goal': number, 'node': state['node'], 'lease': lease, 'resume_worker': lease['worker'],
@@ -4751,6 +4597,10 @@ class Workflow:
                     step['recovery_contract'] = {'operation': 'recover', 'node': state['node'], 'lease': lease['token'], 'actor': lease['worker'], 'worker_status': '<observed status>', 'evidence': '<terminal observation>'}
                 steps.append(step)
             elif state['state'] == 'ready':
+                if self.node_owned_legacy_admission(snapshot, state):
+                    steps.append({'kind': 'await_worker', 'goal': number, 'node': state['node'],
+                                  'reason': 'Legacy correction admission remains owned; resolve its exact owner before replacement work'})
+                    continue
                 resources = set(state['contract']['executor']['resources'])
                 occupied = any(resources.intersection(projection['states'][key]['contract']['executor']['resources']) for key in projection['leases'] if key in projection['states'])
                 if occupied:
@@ -5060,6 +4910,12 @@ class Workflow:
         def add(value):
             key = digest(value); artifacts[key] = value
             return self.node_ref(key, number)
+        if snapshot.get('workflow_definition'):
+            definition = snapshot['workflow_definition']
+            payload['workflow'] = {'version': definition['version'], 'graph': add(definition['graph'])}
+        if snapshot.get('goal_context') and 'goal_context' not in payload:
+            payload['goal_context'] = add({'type': 'goal_context', 'content': snapshot['goal_context'],
+                'producer': None, 'provenance': snapshot['goal_context_provenance']})
         payload['operational']['receipts'].append({'request': request['request_id'], 'payload': digest(request), 'result': add(response)})
         entry_payload = add(payload)
         envelope = {**snapshot['envelope'], 'revision': snapshot['envelope']['revision'] + 1, 'payload': entry_payload}
@@ -5240,6 +5096,59 @@ class Workflow:
             return self.node_mutate_phase(
                 number, request, prepared_verification=context['identity'])
 
+    def node_phase_finding(self, snapshot, payload, request):
+        """Record diagnostic phase data; independent review/admission grants work."""
+        fields = {'operation', 'request_id', 'actor', 'target', 'subject', 'source', 'rationale', 'id'}
+        if set(request) != fields:
+            raise ValueError('Phase finding requires the exact event submission fields')
+        root = (self.runtime or {}).get('root_id')
+        invoking = os.environ.get('CODEX_THREAD_ID')
+        if not root or request['actor'] != root or (invoking and invoking != root):
+            raise ValueError('Phase finding intake requires the authenticated coordinating root actor')
+        if payload['operational']['leases']:
+            raise ValueError('Preserve completed work and resolve existing ownership before recording late phase findings')
+        target = request['target']
+        if not isinstance(target, dict) or set(target) not in (
+                {'node', 'output'}, {'node', 'output', 'expansion', 'item', 'generation'}):
+            raise ValueError('Phase finding requires an exact local phase/output target')
+        key = (snapshot['number'], target['node'], target.get('item'), target.get('generation', 1))
+        if 'expansion' in target:
+            expansion = next((row for row in snapshot['graph']['task_sets'] if row['id'] == target['expansion']), None)
+            if (not expansion or expansion['template']['id'] != target['node']
+                    or not isinstance(target['item'], str) or type(target['generation']) is not int):
+                raise ValueError('Phase finding member identity does not match its policy template')
+        current = snapshot['projection']['current'].get(key)
+        if not current or current[1]['outputs'].get(target['output']) != request['subject']:
+            raise ValueError('Phase finding subject is stale or not the exact current target output')
+        for name in ('subject', 'source'):
+            ref = request[name]
+            self.api._phase_evidence.validate_ref(ref)
+            if ref['uri'].startswith('git:') or self.node_ref_goal(ref, snapshot['number']) != snapshot['number']:
+                raise ValueError('Phase finding evidence must belong to this goal')
+            value = snapshot['resolve'](ref)
+            if digest(value) != ref['hash']:
+                raise ValueError('Phase finding evidence checksum mismatch')
+        journal = payload.setdefault('phase_data', {'version': 1, 'events': []})
+        events = [snapshot['artifacts'][ref['hash']]['content'] for ref in journal['events']]
+        revision = 1 + max((event['revision'] for event in events if event['id'] == request['id']), default=0)
+        if any(event['id'] == request['id'] and event['target'] != target for event in events):
+            raise ValueError('Phase finding identity cannot change its target')
+        event = {name: copy.deepcopy(request[name]) for name in ('id', 'target', 'subject', 'source', 'rationale')}
+        event['revision'] = revision
+        self.api._static_workflow.phase_data([*events, event], snapshot['graph'], snapshot['number'])
+        blob = {'type': 'phase_event', 'content': event, 'producer': None,
+                'provenance': {'actor': root, 'repository': self.repository, 'goal': snapshot['number'],
+                               'request_id': request['request_id'], 'policy': self.node_evidence_policy()}}
+        reference = self.node_ref(digest(blob), snapshot['number'])
+        snapshot['artifacts'][reference['hash']] = blob
+        journal['events'].append(reference)
+        projected = self.node_project(snapshot, payload=payload)
+        response = {'next_steps': [{'kind': 'phase_data_recorded', 'goal': snapshot['number'],
+                                   'event': reference, 'revision': revision},
+                                  *scoped_frontier(self.node_frontier(projected), self, worker_limit(self.project),
+                                                   snapshot['number'], prospective_leases=[])]}
+        return self.node_persist(snapshot, payload, response, request)
+
     def node_mutate_phase(self, number, request, *, prepare_verification=False,
                           prepared_verification=None):
         ev = self.api._phase_evidence
@@ -5275,14 +5184,22 @@ class Workflow:
                         if str(issue.get('state', '')).lower() == 'closed' and not any(step.get('provider_state') == 'closed' for step in response['next_steps']):
                             raise ValueError('Closed goal cannot resume an execution receipt without explicit reopening')
                         return self.stop_completed_heartbeat(number, request, durable['operational'], response)
-            snapshot = self.node_snapshot(number)
+            ownership_graph = None
+            if request.get('operation') in {'recover', 'release', 'renew'} and envelope.get('schema_version') == 2:
+                ownership_reference = durable.get('workflow', {}).get('graph', durable['graph'])
+                ownership_graph = self.artifact_index(number).resolve(ownership_reference['hash'])[0]
+            snapshot = self.node_snapshot(number, graph_override=ownership_graph)
             if snapshot['envelope']['state'] != 'open' or str(snapshot['issue'].get('state', '')).lower() == 'closed': raise ValueError('Archived goal cannot execute or mutate')
+            if snapshot.get('workflow_migration_blocker') and request.get('operation') not in {'recover', 'release', 'renew'}:
+                raise ValueError(snapshot['workflow_migration_blocker'])
             payload = copy.deepcopy(snapshot['payload']); projection = snapshot['projection']
             for receipt in payload['operational']['receipts']:
                 if receipt['request'] == request['request_id']:
                     if receipt['payload'] != digest(request): raise ValueError('Request receipt payload conflict')
                     return copy.deepcopy(snapshot['artifacts'][receipt['result']['hash']])
             pending = self.node_pending(snapshot, request)
+            if request['operation'] == 'phase_finding':
+                return self.node_phase_finding(snapshot, payload, request)
             if request['operation'] == 'graph_normalize':
                 return self.node_graph_normalize(snapshot, payload, request)
             if request['operation'] == 'checkpoint_reconcile_adopt':
@@ -5302,8 +5219,12 @@ class Workflow:
             key = ev.task_key(node)
             state = projection['states'].get(key)
             if state is None: raise ValueError('Unknown or retired task generation')
-            if self.node_shadowed_correction_admission(snapshot, state):
+            if (request['operation'] not in {'recover', 'release', 'renew'}
+                    and self.node_shadowed_correction_admission(snapshot, state)):
                 raise ValueError('Legacy correction admission is superseded by its reviewed atomic transfer route')
+            if (request['operation'] not in {'recover', 'release', 'renew'}
+                    and self.node_owned_legacy_admission(snapshot, state)):
+                raise ValueError('Legacy correction admission remains owned; resolve its exact owner before replacement work')
             operation = request['operation']; leases = payload['operational']['leases']
             lease = next((item for item in leases if item['node'] == node), None)
             root = (self.runtime or {}).get('root_id')
@@ -6230,10 +6151,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             raise ValueError('Policy proposal changed after review')
         prospective = preflight_policy_proposal(api, repo, proposal)
         reviewed_graph = policy_section(prospective, 'workflow_adherence')['configuration']['phase_dag']
-        compilation = api._graph_compiler.compile_graph(reviewed_graph, local_goal=number)
-        if compilation['diagnostics']:
-            raise ValueError('Reviewed graph recovery is unsupported: ' + comment_store.canonical(compilation['diagnostics']))
-        policy_attachment_graph = compilation['graph']
+        api._static_workflow.definition(reviewed_graph, api._graph_compiler)
         applied = api.apply_plan(repo, prospective)
         if not applied.get('initialized'):
             api.confirm_project(repo, applied['policy_digest'], payload['approved_by'], [], True)
@@ -6373,29 +6291,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                     setattr(engine._mutation_adapter, method_name, wrapper)
         engine._suspend_mutation_guard = suspend_mutation_guard
     if operation == 'policy_approve':
-        if number is not None:
-            with engine.locked():
-                snapshot = engine.node_snapshot(number)
-                if snapshot['envelope'].get('state') == 'closed' or snapshot['issue'].get('state') == 'closed':
-                    raise ValueError('Closed goals cannot receive a reviewed graph attachment')
-                if snapshot['projection']['leases']:
-                    raise ValueError('Existing ownership must be released before reviewed graph attachment')
-                if snapshot['graph'] != policy_attachment_graph:
-                    if (snapshot['payload']['evidence']
-                            or snapshot['payload']['operational']['receipts']):
-                        return {'next_steps': [{'kind': 'repair', 'goal': number,
-                            'action': 'Policy is reviewed. Preserve this existing goal graph; prepare an independently reviewed graph adoption with explicit approval.',
-                            'reason': 'Compiled bootstrap attachment requires a fresh goal without semantic or operational history.'}]}
-                    # Reuse exact pending/ownership checks without authorizing
-                    # an arbitrary replacement through the adoption manifest.
-                    engine.node_graph_proposal(snapshot, snapshot['graph'],
-                        'Confirm fresh bootstrap attachment has no pending transaction or ownership.')
-                    updated = copy.deepcopy(snapshot['payload'])
-                    reference = {'hash': digest(policy_attachment_graph), 'uri': 'urn:' + digest(policy_attachment_graph)}
-                    snapshot['artifacts'][reference['hash']] = policy_attachment_graph
-                    updated['graph'] = reference
-                    engine.node_persist(snapshot, updated, {'next_steps': [{'kind': 'checkpoint', 'goal': number}]}, payload)
-        return {'next_steps': [{'kind': 'checkpoint', 'action': 'Reinvoke the original intent against the newly reviewed policy.'}]}
+        return {'next_steps': [{'kind': 'checkpoint', 'action': 'Reviewed workflow policy is active. Reconcile required phase data lazily; historical goal graphs and evidence remain immutable.'}]}
     if payload is None or operation in {'read', 'heartbeat'}: engine.read_only()
     if payload is None and intent == 'execute' and source == '$execute-zzzops':
         engine._normalization_read_epoch = object()
@@ -6470,22 +6366,16 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             _, goal = engine.read(number)
             content = {'specification': goal['human_spec'], 'acceptance_criteria': goal.get('acceptance_criteria', [])}
         return {'next_steps': [{'kind': 'inspect_evidence', 'goal': number, 'content': content, **({'resolved': resolved} if resolved else {})}]}
-    if operation == 'graph_prepare' and number is not None:
-        if set(payload) - {'operation', 'graph', 'rationale', 'request_id'} or not {'graph', 'rationale'} <= set(payload):
-            raise ValueError('Graph preparation accepts only the proposed graph and scoped rationale')
-        with engine.locked():
-            proposal = engine.node_graph_proposal(
-                engine.node_snapshot(number), payload['graph'], payload['rationale'],
-                pending_request=payload.get('request_id'),
-            )
-        return {'next_steps': [{'kind': 'review_required', 'assignment': 'root', 'goal': number,
-                'proposal': proposal,
-                'action': ('Give this exact manifest to an independent reviewer. Submit its explicit decision '
-                           'through the authority-free graph_review transaction on this affected goal. '
-                           'Preparation does not mutate the goal or project policy.'),
-                'submission': {'operation': 'graph_review', 'proposal': proposal, 'actor': None,
-                               'decision': None, 'report': None,
-                               'request_id': 'graph-review-' + digest(proposal)[7:]}}]}
+    if operation in {'graph_prepare', 'graph_review', 'graph_adopt', 'graph_review_bootstrap', 'graph_normalize'}:
+        # Replay already committed history without reviving retired mutation
+        # authority. Incomplete old transactions remain explicit recovery debt.
+        if number is not None and payload.get('request_id'):
+            historical = api.parse_managed_goal(engine.adapter.get_issue(number)['body'], number)
+            if historical and historical.get('schema_version') == 2:
+                durable = engine.read_artifact(number, historical['payload'])
+                if any(row['request'] == payload['request_id'] for row in durable['operational']['receipts']):
+                    return engine.node_mutate_phase(number, payload)
+        raise ValueError('Workflow topology belongs to reviewed project policy; reconcile phase data or update project policy, not individual goal graphs. An interrupted retired graph transaction requires exact checkpoint reconciliation; preserve its frozen request and history.')
     if operation == 'checkpoint_reconcile_prepare' and number is not None:
         if set(payload) != {'operation', 'transaction', 'rationale', 'request_id'}:
             raise ValueError('Checkpoint reconciliation preparation requires exact transaction and rationale')
@@ -6524,9 +6414,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         if not explicit_approval(payload.get('approved_by')) or payload.get('proposal_hash') != digest(payload['request']):
             raise ValueError('Explicit approval of this exact goal design is required; parent relationships do not confer capture authority')
         reviewed_graph = policy_section(project, 'workflow_adherence')['configuration']['phase_dag']
-        compilation = api._graph_compiler.compile_graph(reviewed_graph)
-        if compilation['diagnostics']:
-            raise ValueError('Captured graph recovery is unsupported: ' + comment_store.canonical(compilation['diagnostics']))
+        api._static_workflow.definition(reviewed_graph, api._graph_compiler)
         with engine.locked():
             created = api.apply_goal_create(engine.adapter, engine.repository, payload['request'], allow_deferred=True)
         engine.invalidate()

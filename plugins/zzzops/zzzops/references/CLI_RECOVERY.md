@@ -17,9 +17,8 @@ Renew the same live owner; expiry permits no takeover. Recover only with
 observed-stop evidence and the exact actor. Owned drafts preserve continuity,
 not acceptance; same-task reacquisition retains verification and review gates.
 Accepted-test defects use the returned interpretation/admission route, bounded
-test ownership and fresh independent review. Supported graph maintenance follows
-the deterministic normalization boundary below; arbitrary graph changes require
-reviewed adoption. Integration cannot mint Results.
+test ownership and fresh independent review. The fixed policy workflow supplies correction routes; findings update phase
+data without changing a goal graph. Integration cannot mint Results.
 
 ### Historical stopped workspace draft
 
@@ -77,104 +76,42 @@ verification and independent review remain required. Exact retries replay the
 original receipt without another write. An unchanged draft still requires its
 exact stopped snapshot and ordinary recovery; it is not offered retirement.
 
-### Deterministic graph maintenance
+### Fixed policy workflow and phase findings
 
-New capture, bootstrap graph attachment and v1 conversion compile supported
-correction routes before the first v2 graph is published. The versioned compiler
-derives route identities from the full review and target selector/output
-identities, including configured review members, before any rejection occurs.
-Frozen structural contract fingerprints determine compiler eligibility.
+Every open product goal evaluates the same versioned DAG derived from reviewed
+project policy. The payload's original graph remains immutable audit history.
+Current compatible Results are reused; missing or incompatible phase contracts,
+inputs, schemas and reviews become pending through ordinary evaluation. No
+per-goal graph preparation, review, adoption or normalization is required or
+accepted. A policy change uses policy review. An unmapped historical custom
+contract produces a specific mapping blocker rather than silently dropping an
+obligation. Existing reviewed schema-conversion entry protocols retain their
+contracts until conversion completes.
 
-Execution lazily normalizes only the selected open goal when its graph has a
-supported missing route. The host issues an exact `graph_normalize` transaction
-through the ordinary guarded mutation boundary. It preserves original node and
-task-set prefixes, terminals, Results, history and current approvals, and requires
-zero current Result invalidations. The operational receipt binds the compiler
-version, exact source, policy, current Results, target and delta. It grants no
-workspace, product, CI, integration or completion authority.
+Pre-upgrade evidence can be reused when its recorded policy, task contract,
+inputs and live workspace proof establish exact compatibility. Missing historical
+authority or substantive drift requires fresh evidence; history is never rewritten.
 
-Any lease, including an expired unrecovered lease, or an unresolved checkpoint
-defers maintenance to its normal recovery contract. After an interrupted write,
-reconcile or replay the exact returned request. A pending transaction from an
-unsupported compiler or converter version defers with guidance; never rebuild it
-under a new version or change its payload under the same ID. Execution continues
-only after exact committed-state confirmation and a refreshed ordinary frontier.
-An unconfirmed publication cannot expose downstream work.
+Late findings enter as phase data after all owners have been resolved. Submit
+`phase_finding` with a unique `request_id`, the actual root `actor`, a stable
+finding `id`, `rationale`, the exact current output `subject` Ref, and an immutable
+same-goal diagnostic `source` Ref. `target` is `{node, output}` for a singleton,
+or `{node, output, expansion, item, generation}` for a task-set member. Reusing
+an ID appends a new immutable revision for that exact target; it cannot retarget
+an existing finding. Retry uncertain writes with the identical request bytes.
 
-Preview, historical and artifact reads, node snapshots, closed goals and broad
-portfolio enumeration do not normalize graphs. Broad execution maintains at most
-one actual selected candidate; it does not sweep other goals. V1 conversion is
-also lazy on the encountered execution candidate, or an explicit bounded batch.
+The authenticated event supplies context, never authority. Follow the returned
+independent review, root interpretation/admission, correction and fresh-review
+tasks. Only an admitted correction invalidates its exact target and dependent
+evidence; unrelated work remains current. Every finding revision remains in
+history, and unresolved findings withhold dependent work and completion. Do not
+rewrite the managed body, invent a passing Result, or create a goal merely to
+change another goal's workflow.
 
-Supported unresolved applicability exposes ordinary independent observation,
-root context and root assessment tasks. The read-only `obligation_selections`
-host slot groups unresolved obligations by exact local target node/output as
-`items` and `rationale`, including empty selections. The original `obligations`
-slot retains its meaning. Neither projection classifies or resolves a finding;
-the actual current reviewer, root authority, exact finding revision and corrected
-subjects remain mandatory for an assessment.
-
-Unknown or ambiguous custom routes, unsupported targets and changes that would
-invalidate current Results retain the reviewed adoption path below. Complete
-supported custom routes are preserved; compiler eligibility is not permission
-to infer additional correction targets or bypass capability routing.
-
-### Reviewed custom applicability repair
-
-When an unresolved historical admission blocks its target and deterministic
-normalization cannot supply a supported route, execute returns a `repair` step
-with diagnostic `Finding applicability unresolved`. Its `obligations` carry the
-exact immutable admission, finding and target, and its `submission` contains the
-complete append-only target graph. Save that submission as JSON and run the
-returned public command, or invoke the installed CLI with `--intent execute`, the
-affected `--goal`, current `--runtime`, and `--input` pointing to that JSON file.
-This `graph_prepare` operation persists no adoption and grants no authority.
-
-Give the returned exact proposal to an independent reviewer and submit its
-decision through the returned `graph_review` operation on the affected goal.
-That atomic, lease-free administrative transaction stores immutable proposal
-and review artifacts plus an idempotent receipt; it grants no workspace,
-product, publication, or goal authority. Submit its returned `graph_adopt`
-continuation only after the user approves that exact reviewed proposal. Adoption
-recomputes the source, target, policy and Result-impact manifest, rejects stale or
-tampered reviews, and is idempotent when the same transaction is retried. The
-legacy `graph_review_bootstrap` operation remains readable for old transactions
-but is not a current recovery route.
-
-Bind the returned historical entry through the host-authenticated input producer
-`{"slot":"obligations"}` at path `["<finding id>"]`. Its content contains only
-the exact `admission`, `finding`, `target`, and current `applicability`; this is a
-read route, not authority. Bind corrected subjects and reviewer output through
-their ordinary current node producers.
-
-The appended root node emits `applicability_assessment` with exactly:
-`admission`, `finding`, nonempty `subjects`, `reviewer_result`, `authority`,
-`applicability`, and `rationale`. It must bind the exact admission and finding,
-each current corrected subject, and an output from the current independent
-reviewer Result. `authority` must be a current authenticated root Result.
-`applicability` is `applicable` or `not_applicable`; uncertainty remains the
-original unresolved admission and must not produce an assessment. The evaluator
-retains the original source, finding and admission, records the assessment as a
-separate immutable output, and applies normal correction and resolution gates.
-Classification alone never resolves the finding or authorizes implementation.
-
-Do not use graph adoption for a stale workspace or an unavailable model. A
-workspace invalidation requires normal stopped-owner/workspace recovery. A model
-or reasoning-effort blocker requires an available policy-allowed capability.
-Installation validation confirms package integrity; it does not replace a
-required custom graph review or provide an unavailable capability.
-
-Use this reviewed flow only for the custom graph repair returned by the host.
-
-A current independent review with `decision: changes_requested` must have a
-typed correction route before downstream work can proceed. If an older graph
-lacks a supported compilable route, execute returns `Rejected review lacks correction route` and a
-concrete append-only `graph_prepare` submission. The proposed graph adds root
-interpretation and admission, reacquires only the exact rejected producer after
-an applicable admission, requires a fresh independent review, retains every
-admitted finding, and independently resolves each retained finding. Review and
-adopt that proposal through the same bootstrap flow above; do not bypass the
-rejection by changing the downstream approval input.
+Historical reads remain available. Execution reconciles the selected goal
+lazily; broad discovery never sweeps or hydrates closed goals. Unsupported
+versions and ambiguous mappings produce specific diagnostics. Preserve original
+transactions and resolve an uncertain write before attempting a replacement.
 
 ### Stale workspace authorization
 
@@ -186,38 +123,14 @@ normal `execute` tasks. Acquire and submit them normally with the unchanged
 manifest and task identities and the exact current policy digest. Old Results
 remain immutable; downstream inputs become stale when the new authorization
 outputs are published. No special rewrite or authorization bypass exists.
-## Staged bootstrap for an existing goal
+### Infrastructure prerequisites
 
-An infrastructure goal whose final tests require infrastructure that does not
-yet exist uses goal-only graph adoption; deployed-state evidence is never
-invented and the ordinary final acceptance nodes are retained.
-
-1. With no live leases, submit `graph_prepare` to the affected goal with the
-   complete prospective `graph`, a scoped `rationale`, and an optional unique
-   `request_id`. Preserve existing node indices, task sets, terminals, settled
-   Results, and every unchanged acceptance requirement. The graph should add a
-   concrete bootstrap-plan output, an independent review of that exact output,
-   a root human-approval gate bound to the plan and review, an execution node
-   consuming only that approval, and an observation node producing actual
-   infrastructure evidence for the retained final checks.
-2. Give the returned exact `proposal` to an independent reviewer. Submit the
-   reviewer's actor identity, explicit decision, and report through the returned
-   `graph_review` contract on the affected goal. The host persists proposal and
-   review Refs atomically without changing the graph or granting authority.
-3. After the human approves that exact proposal, submit the returned
-   `graph_adopt` contract with the proposal and review Refs, `approved_by`, and
-   a unique `request_id`. Adoption rechecks the target source, policy, settled
-   Results, proposal bytes, and absence of live ownership before publishing.
-4. Reinvoke execution and acquire a fresh returned task. Execute only the
-   approved plan, then record provider-observed infrastructure evidence. The
-   existing final test, review, publication, and acceptance nodes remain
-   mandatory. A prior API-enablement approval is evidence only for that exact
-   enablement and must not be replayed as bootstrap approval.
-
-If `graph_prepare` cannot preserve a settled Result or the existing terminal,
-capture a new durable goal rather than weakening the accepted contract. Never
-edit the managed goal body, revive an old lease, or treat proposal/review/approval
-artifacts as evidence that infrastructure was deployed.
+Record missing infrastructure as phase data and use the ordinary planning,
+independent review and approval tasks. Keep final verification and acceptance
+requirements pending until actual infrastructure evidence exists. A genuinely
+separate product prerequisite can have its own dependency goal; changing the
+workflow of an existing goal is administration, not a new product goal. Never
+fabricate deployed-state evidence or revive an old lease.
 
 ### Automatic local lease monitoring
 
@@ -278,10 +191,10 @@ the returned proposal to an independent reviewer, submit the returned
 Refs with explicit approval. Preparation and adoption require stopped ownership.
 A refresh appends evidence; it never removes the original retirement, approvals,
 comments or artifacts. Only a uniquely latest valid retirement on authenticated
-receipt ancestry can permit graph preparation to continue.
+receipt ancestry can permit the affected transaction to continue.
 
 Use the request IDs returned by each fresh contract. They bind the complete
-proposal or proposal/review pair, so the same checkpoint or graph can receive a
+proposal or proposal/review pair, so the same checkpoint can receive a
 fresh review without colliding with its earlier receipt. After a failed provider
 confirmation, retry the frozen exact request, including its original ID and
 bytes. Changed bytes under that ID remain a conflict. A retirement creates no

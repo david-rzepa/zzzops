@@ -229,6 +229,10 @@ _GRAPH_COMPILER_SPEC = importlib.util.spec_from_file_location("zzzops_graph_comp
 _graph_compiler = importlib.util.module_from_spec(_GRAPH_COMPILER_SPEC)
 _GRAPH_COMPILER_SPEC.loader.exec_module(_graph_compiler)
 
+_STATIC_WORKFLOW_SPEC = importlib.util.spec_from_file_location("zzzops_static_workflow", Path(__file__).with_name("static_workflow.py"))
+_static_workflow = importlib.util.module_from_spec(_STATIC_WORKFLOW_SPEC)
+_STATIC_WORKFLOW_SPEC.loader.exec_module(_static_workflow)
+
 _WORKFLOW_SPEC = importlib.util.spec_from_file_location("zzzops_workflow", Path(__file__).with_name("workflow.py"))
 _workflow = importlib.util.module_from_spec(_WORKFLOW_SPEC)
 _WORKFLOW_SPEC.loader.exec_module(_workflow)

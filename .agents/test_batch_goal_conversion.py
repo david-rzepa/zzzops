@@ -38,7 +38,9 @@ class BatchConversionTests(dag.DagFixture):
         envelope_ref = managed.get('payload')
         payload = self.session.read(number, envelope_ref)
         graph = self.session.read(number, payload['graph'])
-        compiler.validate_recovery(graph, local_goal=number)
+        definition = dag.z._static_workflow.definition(graph, compiler)
+        self.assertEqual(graph, definition['graph'])
+        self.assertEqual(dag.z._static_workflow.digest(graph), definition['hash'])
         return graph
 
     def add(self, number, *, state='open', parent=None, dependencies=(), blockers=()):
@@ -174,6 +176,12 @@ class BatchConversionTests(dag.DagFixture):
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
         return result
 
+    def assert_legacy_graph_prepare_forbidden(self):
+        result = self.prepare_legacy_graph(expected=2)
+        self.assertRegex(json.dumps(result),
+            r'(?i)reviewed project policy|phase data|individual goal graphs')
+        return result
+
     def replace_legacy_payload(self, envelope, payload):
         envelope = copy.deepcopy(envelope)
         envelope['payload'] = self.blob(payload)
@@ -187,20 +195,28 @@ class BatchConversionTests(dag.DagFixture):
                 change(envelope)
                 row['body'] = dag.z._comment_store.encode_envelope(envelope)
 
-    def test_graph_prepare_accepts_committed_legacy_history_without_writes(self):
+    def test_graph_prepare_rejects_committed_legacy_history_without_writes(self):
         self.legacy_checkpoint()
-        self.assertEqual(self.prepare_legacy_graph(), self.prepare_legacy_graph())
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        first = self.prepare_legacy_graph(expected=2)
+        second = self.prepare_legacy_graph(expected=2)
+        self.assertEqual(first, second)
+        self.assertRegex(json.dumps(first), r'(?i)policy|phase data|individual goal graphs')
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
         self.assert_preserved(100)
 
-    def test_current_public_graph_prepare_accepts_committed_v1_lineage_and_rejects_tamper(self):
+    def test_current_public_graph_prepare_rejects_committed_v1_lineage_and_tamper(self):
         self.publish_historical_v1_migration()
-        self.assertEqual(self.prepare_legacy_graph(), self.prepare_legacy_graph())
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        first = self.prepare_legacy_graph(expected=2)
+        self.assertRegex(json.dumps(first), r'(?i)policy|phase data|individual goal graphs')
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
         envelope, payload = self.payload()
         payload = copy.deepcopy(payload)
         payload['operational']['receipts'][0]['request'] = 'tampered-v1-request'
         self.replace_legacy_payload(envelope, payload)
         rejected = self.prepare_legacy_graph(expected=2)
-        self.assertRegex(json.dumps(rejected), r'(?i)migration|request|identity|fingerprint')
+        self.assertRegex(json.dumps(rejected), r'(?i)policy|phase data|individual goal graphs')
 
     def test_current_converter_defers_actual_pending_v1_transaction_without_writes(self):
         self.publish_historical_v1_migration(interrupt=True)
@@ -217,13 +233,11 @@ class BatchConversionTests(dag.DagFixture):
                                            'policy': dag.content_hash(self.session.project['policy'])}})
         self.replace_legacy_payload(envelope, payload)
         self.session.project['policy']['sections'][0]['rationale'] = 'Later reviewed policy rationale'
-        result = self.prepare_legacy_graph()
-        engine = dag.z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
-        self.assertEqual(engine.node_evidence_policy(), result['next_steps'][0]['proposal']['policy'])
+        self.assert_legacy_graph_prepare_forbidden()
 
     def test_graph_prepare_pending_legacy_history_still_blocks(self):
         self.legacy_checkpoint(committed=False)
-        self.assertIn('Uncommitted checkpoint', json.dumps(self.prepare_legacy_graph(expected=2)))
+        self.assert_legacy_graph_prepare_forbidden()
 
     def test_graph_prepare_legacy_context_requires_goal_and_exact_fingerprint(self):
         self.legacy_checkpoint()
@@ -235,13 +249,13 @@ class BatchConversionTests(dag.DagFixture):
                     if field == 'goal': row['goal'] = value
                     else: row['context'][field] = value
                 self.edit_checkpoint_contexts(change, legacy=True)
-                self.assertIn('Uncommitted checkpoint', json.dumps(self.prepare_legacy_graph(expected=2)))
+                self.assert_legacy_graph_prepare_forbidden()
 
     def test_graph_prepare_orphan_migration_artifacts_do_not_prove_completion(self):
         envelope, payload = self.legacy_checkpoint()
         payload['operational']['receipts'] = []
         self.replace_legacy_payload(envelope, payload)
-        self.assertIn('Uncommitted checkpoint', json.dumps(self.prepare_legacy_graph(expected=2)))
+        self.assert_legacy_graph_prepare_forbidden()
 
     def test_graph_prepare_migration_transaction_requires_exact_binding(self):
         self.legacy_checkpoint()
@@ -255,12 +269,12 @@ class BatchConversionTests(dag.DagFixture):
             with self.subTest(field=field):
                 self.provider.comments = copy.deepcopy(original)
                 self.edit_checkpoint_contexts(lambda row: row['context'].update({field: value}))
-                self.assertRegex(json.dumps(self.prepare_legacy_graph(expected=2)), '(?i)migration|checkpoint')
+                self.assert_legacy_graph_prepare_forbidden()
         for field, value in (('goal', 101), ('transaction', 'wrong-transaction')):
             with self.subTest(field=field):
                 self.provider.comments = copy.deepcopy(original)
                 self.edit_checkpoint_contexts(lambda row: row.update({field: value}))
-                self.assertRegex(json.dumps(self.prepare_legacy_graph(expected=2)), '(?i)migration|checkpoint')
+                self.assert_legacy_graph_prepare_forbidden()
 
     def test_graph_prepare_conflicting_migration_transaction_blocks(self):
         self.legacy_checkpoint()
@@ -268,7 +282,7 @@ class BatchConversionTests(dag.DagFixture):
                    if (dag.z._comment_store.decode_envelope(r['body']) or {}).get('context', {}).get('migration'))
         row['context']['source_hash'] = 'sha256:' + 'b' * 64
         self.provider.comments[100].append({'id': 901, 'body': dag.z._comment_store.encode_envelope(row)})
-        self.assertIn('conflicting exact migration transaction', json.dumps(self.prepare_legacy_graph(expected=2)))
+        self.assert_legacy_graph_prepare_forbidden()
 
     def test_graph_prepare_committed_migration_request_identity_and_hash_must_match(self):
         envelope, payload = self.legacy_checkpoint()
@@ -277,7 +291,7 @@ class BatchConversionTests(dag.DagFixture):
                 altered = copy.deepcopy(payload)
                 altered['operational']['receipts'][0][field] = value
                 self.replace_legacy_payload(envelope, altered)
-                self.assertIn('request identity or fingerprint mismatch', json.dumps(self.prepare_legacy_graph(expected=2)))
+                self.assert_legacy_graph_prepare_forbidden()
 
     def test_graph_prepare_migrated_history_preserves_current_results(self):
         config = dag.z._workflow_section(self.session.project, 'workflow_adherence')['configuration']
@@ -285,14 +299,8 @@ class BatchConversionTests(dag.DagFixture):
         self.legacy_checkpoint()
         self.produce()
         before = self.result('produce')
-        self.prepare_legacy_graph()
+        self.assert_legacy_graph_prepare_forbidden()
         self.assertEqual(before, self.result('produce'))
-        _, payload = self.payload()
-        changed = self.session.read(100, payload['graph'])
-        changed['nodes'][0]['prompt'] += ' Change settled semantics.'
-        result = self.session.call(100, {'operation': 'graph_prepare', 'graph': changed,
-            'rationale': 'Must preserve settled Results'}, expected=2)
-        self.assertRegex(json.dumps(result), '(?i)settled|current|preserv')
 
     def test_graph_prepare_pending_v2_checkpoint_after_migration_still_blocks(self):
         self.legacy_checkpoint()
@@ -301,7 +309,7 @@ class BatchConversionTests(dag.DagFixture):
         request = {**ready['start'], 'policy_receipt': receipt, 'request_id': 'interrupted-v2'}
         with mock.patch.object(self.provider, 'update_issue', side_effect=RuntimeError('provider unavailable')):
             self.session.call(100, request, expected=2)
-        self.assertIn('Uncommitted checkpoint', json.dumps(self.prepare_legacy_graph(expected=2)))
+        self.assert_legacy_graph_prepare_forbidden()
 
     def test_graph_prepare_missing_rooted_source_policy_or_target_blocks(self):
         _, payload = self.legacy_checkpoint()
@@ -318,7 +326,7 @@ class BatchConversionTests(dag.DagFixture):
                     if not envelope: continue
                     envelope['artifacts'] = [a for a in envelope['artifacts'] if a['hash'] != reference['hash']]
                     row['body'] = dag.z._comment_store.encode_envelope(envelope)
-                self.assertRegex(json.dumps(self.prepare_legacy_graph(expected=2)), '(?i)artifact|migration|checkpoint')
+                self.assert_legacy_graph_prepare_forbidden()
 
     def test_graph_prepare_missing_or_corrupt_rooted_response_blocks(self):
         _, payload = self.legacy_checkpoint()
@@ -338,7 +346,7 @@ class BatchConversionTests(dag.DagFixture):
                     else:
                         envelope['artifacts'] = [a for a in envelope['artifacts'] if a['hash'] != identity]
                     row['body'] = dag.z._comment_store.encode_envelope(envelope)
-                self.assertRegex(json.dumps(self.prepare_legacy_graph(expected=2)), '(?i)artifact|migration|checkpoint')
+                self.assert_legacy_graph_prepare_forbidden()
 
     def test_graph_prepare_wrong_repository_goal_or_converter_lineage_blocks(self):
         envelope, payload = self.legacy_checkpoint()
@@ -356,7 +364,7 @@ class BatchConversionTests(dag.DagFixture):
                 reference['uri'] = 'zzzops:owner/repo:goal:100:' + reference['hash']
                 replacement['operational']['receipts'][0]['result'] = reference
                 self.replace_legacy_payload(envelope, replacement)
-                self.assertRegex(json.dumps(self.prepare_legacy_graph(expected=2)), '(?i)migration|checkpoint')
+                self.assert_legacy_graph_prepare_forbidden()
 
     def test_empty_rigor_and_risk_annotations_migrate_without_losing_requirements(self):
         self.legacy_fields(100, engineering_rigor={'risk_categories': []})
@@ -370,22 +378,21 @@ class BatchConversionTests(dag.DagFixture):
             payload = self.assert_preserved(number)
             spec = self.session.read(number, payload['spec'])['content']
             graph = self.session.read(number, payload['graph'])
+            context = self.session.read(number, payload['goal_context'])['content']
+            expected = dag.z._static_workflow.definition(
+                dag.z._workflow_section(self.policy, 'workflow_adherence')
+                ['configuration']['phase_dag'], dag.z._graph_compiler)['graph']
+            self.assertEqual(expected, graph)
             if number == 100:
-                original = dag.z._workflow_section(self.policy, 'workflow_adherence')['configuration']['phase_dag']
-                self.assertEqual(original['nodes'], graph['nodes'][:len(original['nodes'])])
-                self.assertEqual(original['task_sets'], graph['task_sets'][:len(original['task_sets'])])
-                self.assertEqual(original['terminals'], graph['terminals'])
-                for before, after in zip(original['nodes'], graph['nodes']):
-                    self.assertEqual(before['executor']['authority'], after['executor']['authority'])
-                    self.assertEqual(before['executor']['resources'], after['executor']['resources'])
-                    self.assertEqual(before['permits'], after['permits'])
-                dag.z._graph_compiler.validate_recovery(graph, local_goal=number)
+                self.assertNotIn('engineering_rigor', context['metadata'])
+                self.assertEqual(
+                    dag.z.parse_managed_goal(self.originals[number]['body'], number)['difficulty'],
+                    context['metadata']['difficulty'])
             if number == 101:
                 self.assertIn('authorization', spec)
                 self.assertIn('agentic', spec)
-                self.assertTrue(all(n['executor']['capability'] == 'architectural' for n in graph['nodes']))
-                self.assertTrue(all(row['template']['executor']['capability'] == 'architectural'
-                                    for row in graph['task_sets']))
+                self.assertEqual('agentic',
+                                 context['metadata']['engineering_rigor']['effective'])
 
     def test_rigor_mapping_keeps_stricter_floor_and_covers_custom_tasks_and_templates(self):
         self.legacy_fields(100, engineering_rigor={'risk_categories': ['authorization']})
@@ -400,9 +407,11 @@ class BatchConversionTests(dag.DagFixture):
         envelope = dag.z.parse_managed_goal(self.provider.issues[100]['body'], 100)
         payload = self.session.read(100, envelope['payload'])
         migrated = self.session.read(100, payload['graph'])
-        self.assertEqual('architectural', migrated['nodes'][0]['executor']['capability'])
-        self.assertEqual('reasoning', migrated['task_sets'][0]['template']['executor']['capability'])
-        self.assertIn('agentic', migrated['task_sets'][0]['template']['prompt'])
+        expected = dag.z._static_workflow.definition(graph, dag.z._graph_compiler)['graph']
+        self.assertEqual(expected, migrated)
+        context = self.session.read(100, payload['goal_context'])['content']
+        self.assertEqual('agentic',
+                         context['metadata']['engineering_rigor']['effective'])
 
     def test_nonexclusive_resources_preserve_hints_without_granting_edits(self):
         self.legacy_fields(100, resources=[' PATH:src/a.py ', 'integration:dev'])
@@ -414,14 +423,12 @@ class BatchConversionTests(dag.DagFixture):
         self.assertIn('not edit authority', spec)
         graph = self.session.read(100, payload['graph'])
         original = dag.z._workflow_section(self.policy, 'workflow_adherence')['configuration']['phase_dag']
-        self.assertEqual(original['nodes'], graph['nodes'][:len(original['nodes'])])
-        self.assertEqual(original['task_sets'], graph['task_sets'][:len(original['task_sets'])])
-        self.assertEqual(original['terminals'], graph['terminals'])
-        for before, after in zip(original['nodes'], graph['nodes']):
-            self.assertEqual(before['executor']['authority'], after['executor']['authority'])
-            self.assertEqual(before['executor']['resources'], after['executor']['resources'])
-            self.assertEqual(before['permits'], after['permits'])
-        dag.z._graph_compiler.validate_recovery(graph, local_goal=100)
+        expected = dag.z._static_workflow.definition(original, dag.z._graph_compiler)['graph']
+        self.assertEqual(expected, graph)
+        context = self.session.read(100, payload['goal_context'])['content']
+        self.assertEqual(['integration:dev', 'path:src/a.py'],
+                         context['metadata']['resources'])
+        self.assertEqual([], context['metadata']['exclusive_resources'])
         acquired = self.session.acquire('understand')
         self.assertNotIn('owned', acquired['lease']['acquisition'])
         self.assertNotIn('path:src/a.py', json.dumps(acquired['lease']['acquisition']))
@@ -506,7 +513,7 @@ class BatchConversionTests(dag.DagFixture):
         self.assertRegex(replay['members']['100']['reason'], r'(?i)converter|version|pending|exact|defer')
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
-    def test_migration_request_identity_preserves_v1_and_binds_full_v2_manifest(self):
+    def test_migration_request_identity_preserves_v1_and_binds_full_static_manifest(self):
         digest = dag.z._workflow.digest
         ref = lambda char: {'hash': 'sha256:' + char * 64,
                             'uri': 'urn:sha256:' + char * 64}
@@ -517,14 +524,17 @@ class BatchConversionTests(dag.DagFixture):
             for key in ('source', 'policy', 'converter')})[7:], old_request['request_id'])
         current = {'repository': 'owner/repo', 'goal': 100,
             'converter': dag.z._migration_batch.CONVERTER,
-            'compiler_version': dag.z._graph_compiler.SUPPORTED_VERSION,
+            'static_workflow_version': dag.z._static_workflow.VERSION,
+            'static_workflow_hash': 'sha256:' + '9' * 64,
             'source': ref('a'), 'policy': ref('b'), 'target_intent': ref('c'),
             'target_payload': ref('d')}
         baseline = dag.z._migration_batch.request_for_receipt(current, digest)
         self.assertEqual({'operation': 'migration_batch', 'action': 'migrate', 'goal': 100},
                          {key: baseline[key] for key in ('operation', 'action', 'goal')})
         changes = {'repository': 'other/repo', 'goal': 101,
-            'converter': 'lossless-v1-v2/3', 'compiler_version': 'future-compiler',
+            'converter': 'lossless-v1-v2/4',
+            'static_workflow_version': 'future-static-workflow',
+            'static_workflow_hash': 'sha256:' + '8' * 64,
             'source': ref('e'), 'policy': ref('f'), 'target_intent': ref('1'),
             'target_payload': ref('2')}
         for field, value in changes.items():
@@ -606,10 +616,15 @@ class BatchConversionTests(dag.DagFixture):
         envelope = dag.z.parse_managed_goal(self.provider.issues[101]['body'], 101)
         self.assertEqual(100, envelope['parent'])
         graph = self.session.read(101, payload['graph'])
-        self.assertIn('deployment window', json.dumps(graph))
-        self.assertIn('"goal": 100', json.dumps(graph))
+        expected = dag.z._static_workflow.definition(
+            dag.z._workflow_section(self.session.project, 'workflow_adherence')
+            ['configuration']['phase_dag'], dag.z._graph_compiler)['graph']
+        self.assertEqual(expected, graph)
+        context = self.session.read(101, payload['goal_context'])['content']
+        self.assertEqual([100], context['depends_on'])
+        self.assertIn('deployment window', json.dumps(context['blockers']))
         steps = self.session.checkpoint(101)
-        self.assertTrue(any('deployment window' in s.get('instruction', '') for s in steps))
+        self.assertTrue(any('deployment window' in s.get('reason', '') for s in steps))
         self.assertFalse(any(s.get('kind') == 'execute' and s.get('node', {}).get('node') in ('test_design', 'implement') for s in steps))
 
     def test_dependency_releases_only_after_real_current_implementation_review(self):
@@ -630,13 +645,20 @@ class BatchConversionTests(dag.DagFixture):
         step = next(s for s in self.session.checkpoint(101) if s.get('node', {}).get('node') == 'test_design')
         self.assertNotEqual('execute', step['kind']); self.assertRegex(step['reason'], r'(?i)parent.*(allocation|grant|authoriz)')
 
-    def test_unknown_dependency_blocks_affected_member_without_writing(self):
-        self.add(101, dependencies=[999]); before = copy.deepcopy(self.provider.issues[101])
+    def test_unknown_dependency_migrates_losslessly_then_blocks_execution(self):
+        self.add(101, dependencies=[999])
         result = self.migrate()
         self.assertEqual('migrated', result['members']['100']['status'])
-        self.assertEqual('blocked', result['members']['101']['status'])
-        self.assertIn('999', result['members']['101']['reason'])
-        self.assertEqual(before, self.provider.issues[101])
+        self.assertEqual('migrated', result['members']['101']['status'])
+        payload = self.assert_preserved(101)
+        context = self.session.read(101, payload['goal_context'])['content']
+        self.assertEqual([999], context['depends_on'])
+        steps = self.session.checkpoint(101)
+        self.assertFalse(any(step.get('kind') == 'execute'
+                             and step.get('node', {}).get('node')
+                             in {'test_design', 'implement', 'observe_merge'}
+                             for step in steps))
+        self.assertIn('999', json.dumps(steps))
 
     def test_expired_ownership_requires_observed_stopped_recovery(self):
         from test_workflow_state import WorkflowStateValidationTests

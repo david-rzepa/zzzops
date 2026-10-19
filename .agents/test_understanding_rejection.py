@@ -2,6 +2,7 @@
 import copy
 import json
 import unittest
+from unittest import mock
 
 import test_evidence_dag_journeys as j
 
@@ -44,7 +45,7 @@ class UnderstandingRejectionTests(j.DagFixture):
             'authorization': None})
 
     def compiled_understanding_admission(self):
-        graph = self.read_blob(self.payload()[1]['graph'])
+        graph = j.z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime).node_snapshot(100)['graph']
         contracts = list(graph['nodes']) + [row['template'] for row in graph['task_sets']]
         expected_scope = {'subject': {'kind': 'node', 'goal': '#this', 'node': 'understand'},
                           'output': 'design'}
@@ -63,7 +64,7 @@ class UnderstandingRejectionTests(j.DagFixture):
                     and all(permit.get('scope') == expected_scope for permit in permits)):
                 candidates.append(node['id'])
         self.assertEqual(1, len(candidates), candidates)
-        replay = j.z._graph_compiler.compile_graph(graph, local_goal=100)
+        replay = {'graph': j.z._static_workflow.canonical(graph, j.z._graph_compiler)}
         replay_ids = {node['id'] for node in replay['graph']['nodes']} | {
             row['template']['id'] for row in replay['graph']['task_sets']}
         self.assertIn(candidates[0], replay_ids, 'Canonical admission identity must be stable')
@@ -244,42 +245,24 @@ class UnderstandingRejectionTests(j.DagFixture):
     administrative_review = j.GraphAdoptionPublicTests.administrative_review
     proposal_review = j.GraphAdoptionPublicTests.proposal_review
 
-    def test_existing_goal_adopts_repaired_graph_without_rewriting_design_or_policy(self):
-        repaired = self.legacy_graph()
-        # Origen's persisted graph predates the other default correction paths:
-        # preserve its original sixteen nodes and append only this repair.
-        repair_ids = {'interpret_understand_rejection', 'admit_understand_correction',
-                      'retain_understand_findings'}
-        repaired['nodes'] = repaired['nodes'][:16] + [
-            n for n in repaired['nodes'] if n['id'] in repair_ids]
-        repaired['task_sets'] = [t for t in repaired['task_sets'] if t['id'] == 'understand_findings']
-        for node in repaired['nodes'][:16]:
-            if node['id'] != 'decompose':
-                node['requires'] = [r for r in node['requires'] if r.get('kind') != 'join']
-                node['gates'] = []
-        original = copy.deepcopy(repaired)
-        original['nodes'] = [n for n in original['nodes'] if n['id'] not in {
-            'interpret_understand_rejection', 'admit_understand_correction', 'retain_understand_findings'}]
-        original['task_sets'] = [t for t in original['task_sets'] if t['id'] != 'understand_findings']
-        review = next(n for n in original['nodes'] if n['id'] == 'review_understanding')
-        review['outputs']['authorization']['schema'] = review['outputs']['authorization']['schema']['variants'][0]
-        decompose = next(n for n in original['nodes'] if n['id'] == 'decompose')
-        decompose['requires'] = [r for r in decompose['requires'] if r.get('expansion') != 'understand_findings']
-        decompose['gates'] = []
+    def test_reviewed_policy_repair_preserves_historical_design_and_graph(self):
+        original = self.legacy_graph()
         self.setup_design(original)
         design_result = self.result('understand')[0]
+        historical_graph = copy.deepcopy(self.payload()[1]['graph'])
         history = copy.deepcopy(self.payload()[1]['evidence'])
-        policy = copy.deepcopy(self.session.project['policy'])
-        proposal = self.session.call(100, {'operation': 'graph_prepare', 'graph': repaired,
-                                         'rationale': 'Repair rejected understanding without losing current design'})
-        request = self.proposal_review(proposal['next_steps'][0]['proposal'])
-        self.session.call(100, request)
-        self.assertEqual(policy, self.session.project['policy'])
+        repaired = j.z._static_workflow.canonical(original, j.z._graph_compiler)
+        j.z._workflow_section(self.session.project, 'workflow_adherence')[
+            'configuration']['phase_dag'] = copy.deepcopy(repaired)
+        snapshot = j.z.workflow_engine(
+            self.fixture.repo, self.session.project, self.session.runtime).node_snapshot(100)
+        self.assertEqual(repaired, snapshot['graph'])
+        self.assertEqual(historical_graph, self.payload()[1]['graph'])
         self.assertEqual(history, self.payload()[1]['evidence'])
         self.assertEqual(design_result, self.result('understand')[0])
-        self.reject()
-        self.admit()
-        self.assertIn('understand', self.names())
+        self.assertFalse(any(self.read_blob(row['result']).get('type') == 'graph_normalization'
+                             for row in self.payload()[1]['operational']['receipts']))
+
 
 class RepeatedDefaultCorrectionTests(j.DagFixture):
     """A shipped correction route can revise one admitted finding repeatedly."""
@@ -474,6 +457,54 @@ class RepeatedConfiguredMemberCorrectionTests(j.DagFixture):
         self.assertEqual(1, self.read_blob(revision_one)['content']['revision'])
         self.assertEqual(2, self.read_blob(revision_two)['content']['revision'])
 
+    def test_owned_shadowed_legacy_admission_can_recover_after_policy_migration(self):
+        legacy = copy.deepcopy(self.shipped)
+        admission = next(item['template'] for item in legacy['task_sets']
+                         if item['template']['id'] == 'admit_spec_review_correction')
+        admission['outputs'].pop('transfer', None)
+        admission['permits'] = [permit for permit in admission['permits']
+                                if permit['type'] != 'supersession']
+        self.install(legacy)
+        with mock.patch.object(j.z._static_workflow, 'canonical', side_effect=lambda graph, _compiler: graph):
+            self.requirements()
+            self.specification({'data_residency': 'configured repository-specific risk'})
+            self.reject_and_interpret(1, None)
+            owned = self.session.acquire('admit_spec_review_correction',
+                                         item='data_residency', actor='legacy-owner')
+        frontier = self.session.checkpoint(100)
+        waiting = [step for step in frontier if step.get('kind') == 'await_worker'
+                   and step.get('node') == owned['node']]
+        self.assertEqual(1, len(waiting), frontier)
+        self.assertFalse(any(step.get('kind') == 'execute'
+                             and step.get('node', {}).get('node', '').startswith('gc_atomic_admit_')
+                             for step in frontier), 'replacement must not race the owned legacy admission')
+        # Capture the otherwise-ready replacement start from the same durable state
+        # with only the historical lease removed, then restore exact provider bytes.
+        durable = copy.deepcopy((self.provider.issues, self.provider.comments))
+        envelope, payload = self.payload(); payload = copy.deepcopy(payload)
+        payload['operational']['leases'] = []
+        envelope = copy.deepcopy(envelope); envelope['payload'] = self.blob(payload); envelope['revision'] += 1
+        self.provider.issues[100]['body'] = '<!-- zzzops-goal\n' + json.dumps(envelope) + '\nzzzops-goal -->'
+        replacement = next(step for step in self.session.ready()
+                           if step.get('node', {}).get('node', '').startswith('gc_atomic_admit_'))
+        receipt = json.loads(j.Path(replacement['policy']['path']).read_text())['policy_receipt']
+        self.provider.issues, self.provider.comments = durable
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        direct = {**replacement['start'], 'policy_receipt': receipt,
+                  'request_id': 'race-shadowed-legacy-admission'}
+        rejected = self.session.call(100, direct, expected=2)
+        self.assertRegex(json.dumps(rejected), r'(?i)owner|legacy|admission|lease|recover')
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        recovery = {'operation': 'recover', 'request_id': 'recover-shadowed-legacy-admission',
+                    'node': owned['node'], 'lease': owned['lease']['token'],
+                    'actor': owned['lease']['owner'], 'worker_status': 'stopped',
+                    'evidence': 'Observed the pre-migration admission worker terminated'}
+        self.session.call(100, recovery)
+        self.assertFalse(any(row['token'] == owned['lease']['token']
+                             for row in self.payload()[1]['operational']['leases']))
+        self.assertNotIn('admit_spec_review_correction', self.names())
+        self.assertTrue(any(name.startswith('gc_atomic_admit_') for name in self.names()))
+
     def test_persisted_legacy_member_route_is_shadowed_before_repeated_correction(self):
         legacy = copy.deepcopy(self.shipped)
         legacy_admissions = [item['template'] for item in legacy['task_sets']
@@ -500,11 +531,13 @@ class RepeatedConfiguredMemberCorrectionTests(j.DagFixture):
         self.assertEqual(old_terminals, persisted['terminals'])
         receipts = [self.read_blob(row['result']) for row in payload['operational']['receipts']]
         normalizations = [row for row in receipts if row.get('type') == 'graph_normalization']
-        self.assertEqual(1, len(normalizations))
+        self.assertEqual(0, len(normalizations))
         self.assertNotRegex(json.dumps([rejection, frontier]), r'(?i)graph_prepare|graph_adopt')
+        executable = j.z.workflow_engine(
+            self.fixture.repo, self.session.project, self.session.runtime).node_snapshot(100)['graph']
         legacy_source = next(item['source'] for item in persisted['task_sets']
                              if item['template']['id'] == 'admit_spec_review_correction')
-        admission_templates = [item['template'] for item in persisted['task_sets']
+        admission_templates = [item['template'] for item in executable['task_sets']
                                if item['source'] == legacy_source
                                and (item['template']['id'] == 'admit_spec_review_correction'
                                     or ('transfer' in item['template']['outputs']

@@ -8,7 +8,8 @@ from __future__ import annotations
 import copy
 
 MAX_MEMBERS = 20
-CONVERTER = 'lossless-v1-v2/2'
+LEGACY_COMPILED_CONVERTER = 'lossless-v1-v2/2'
+CONVERTER = 'lossless-v1-v2/3'
 
 
 def request_for_receipt(receipt, digest):
@@ -16,11 +17,17 @@ def request_for_receipt(receipt, digest):
     converter = receipt.get('converter')
     if converter == 'lossless-v1-v2/1':
         manifest = {key: receipt[key] for key in ('source', 'policy', 'converter')}
-    elif converter == CONVERTER:
+    elif converter == LEGACY_COMPILED_CONVERTER:
         required = {'repository', 'goal', 'converter', 'compiler_version', 'source',
                     'policy', 'target_intent', 'target_payload'}
         if not required <= receipt.keys():
             raise ValueError('Compiled migration receipt has an incomplete request manifest')
+        manifest = {key: receipt[key] for key in sorted(required)}
+    elif converter == CONVERTER:
+        required = {'repository', 'goal', 'converter', 'static_workflow_version',
+                    'static_workflow_hash', 'source', 'policy', 'target_intent', 'target_payload'}
+        if not required <= receipt.keys():
+            raise ValueError('Static workflow migration receipt has an incomplete request manifest')
         manifest = {key: receipt[key] for key in sorted(required)}
     else:
         raise ValueError('Unsupported migration converter version; exact request is deferred')
@@ -94,50 +101,116 @@ def state(engine, number):
     return issue, envelope, 'legacy'
 
 
-def selector(node, goal='#this'):
-    return {'kind': 'node', 'goal': goal, 'node': node}
-
-
-def metadata(engine, legacy):
+def metadata(engine, legacy, *, project=None):
+    project = engine.project if project is None else project
     resources = engine.api.normalize_resources(legacy.get('resources') or [])
     rigor = legacy.get('engineering_rigor') or {}
     if rigor.get('override') is not None:
         raise ValueError('Legacy engineering_rigor.override requires explicit reconciliation with current policy')
     result = {}
+    difficulty = legacy.get('difficulty')
+    if difficulty is not None:
+        if not isinstance(difficulty, str) or not difficulty:
+            raise ValueError('Legacy difficulty has unsupported routing semantics')
+        result['difficulty'] = difficulty
     if resources:
-        policy = engine.api.project_resource_policy(engine.project)
+        policy = engine.api.project_resource_policy(project)
         exclusive = engine.api.exclusive_resources(resources, policy)
         if exclusive:
             raise ValueError('Legacy exclusive resources require a compatible shared reservation protocol before migration: ' + ', '.join(exclusive))
         result['resources'] = resources
         result['exclusive_resources'] = exclusive
     if rigor.get('risk_categories'):
-        assessment = engine.api.derive_engineering_rigor(rigor, engine.api._workflow_section(engine.project, 'engineering_rigor'))
+        assessment = engine.api.derive_engineering_rigor(
+            rigor, engine.api._workflow_section(project, 'engineering_rigor'))
         if not assessment['valid']:
             raise ValueError('Legacy engineering_rigor cannot be mapped under current policy: ' + ', '.join(assessment['errors']))
         result['engineering_rigor'] = assessment
     return result
 
 
-def map_metadata(engine, graph, legacy, preserved):
-    nodes = graph['nodes'] + [entry['template'] for entry in graph['task_sets']]
-    if 'engineering_rigor' in preserved:
-        rigor = preserved['engineering_rigor']
-        settings = engine.api._workflow_section(engine.project, 'model_routing')['configuration']
-        ranks = {row['id']: row['rank'] for row in settings['tiers']}
-        # Unknown/custom tasks take the maximum across supported phase mappings,
-        # rather than silently escaping a phase-specific reviewed risk floor.
-        phases = engine.api._policy.WORKFLOW_PHASE_TYPES
-        for node in nodes:
-            phase = node['id'].removeprefix('review_').removeprefix('approve_')
-            dimensions = {'engineering_rigor': rigor['effective'],
-                'consequence': 'architectural' if 'architecture' in rigor['risk_categories'] else 'bounded',
-                'boundedness': 'atomic' if legacy.get('difficulty') in {'XS', 'S'} else 'bounded'}
-            floors = [engine.api._policy.capability_tier(settings, {**dimensions, 'phase_type': p})['tier']
-                      for p in ([phase] if phase in phases else sorted(phases))]
-            executor = node['executor']
-            executor['capability'] = max([executor['capability'], *floors], key=ranks.__getitem__)
-            node['prompt'] += '\nPreserved engineering requirement: effective rigor ' + rigor['effective'] + '; risks ' + ', '.join(rigor['risk_categories']) + '. Apply the reviewed engineering-rigor policy to this work.'
+def capability_floor(api, project, metadata, node):
+    """Project a migrated goal's routing floor without changing its policy graph."""
+    if not isinstance(metadata, dict) or not isinstance(node, dict):
+        raise ValueError('Migrated routing context must contain metadata and a node contract')
+    executor = node.get('executor')
+    if not isinstance(executor, dict) or not isinstance(executor.get('capability'), str):
+        raise ValueError('Migrated routing node capability is invalid')
+    required = executor['capability']
+    rigor = metadata.get('engineering_rigor')
+    if rigor is None:
+        return required
+    if (not isinstance(rigor, dict)
+            or not isinstance(rigor.get('effective'), str)
+            or not isinstance(rigor.get('risk_categories'), list)):
+        raise ValueError('Migrated engineering rigor metadata is invalid')
+    settings = api._workflow_section(project, 'model_routing')['configuration']
+    ranks = {row['id']: row['rank'] for row in settings['tiers']}
+    if required not in ranks:
+        raise ValueError('Migrated node capability is not a reviewed tier')
+    phase = node.get('id', '').removeprefix('review_').removeprefix('approve_')
+    phases = api._policy.WORKFLOW_PHASE_TYPES
+    dimensions = {
+        'engineering_rigor': rigor['effective'],
+        'consequence': ('architectural' if 'architecture' in rigor['risk_categories']
+                        else 'bounded'),
+        'boundedness': ('atomic' if metadata.get('difficulty') in {'XS', 'S'}
+                        else 'bounded'),
+    }
+    floors = [
+        api._policy.capability_tier(
+            settings, {**dimensions, 'phase_type': phase_type})['tier']
+        for phase_type in ([phase] if phase in phases else sorted(phases))
+    ]
+    return max([required, *floors], key=ranks.__getitem__)
+
+
+def goal_context(legacy, preserved):
+    """Preserve goal-specific v1 obligations without changing policy workflow."""
+    dependencies = legacy.get('depends_on') or []
+    blockers = legacy.get('blockers') or []
+    if (not isinstance(dependencies, list)
+            or any(type(number) is not int or number <= 0 for number in dependencies)
+            or len(dependencies) != len(set(dependencies))):
+        raise ValueError('Legacy dependencies have unsupported identity semantics')
+    if not isinstance(blockers, list) or any(not isinstance(blocker, dict) for blocker in blockers):
+        raise ValueError('Legacy blockers have unsupported typed data')
+    if not isinstance(preserved, dict):
+        raise ValueError('Legacy planning metadata has unsupported typed data')
+    return {'version': 1, 'depends_on': copy.deepcopy(dependencies),
+            'blockers': copy.deepcopy(blockers), 'metadata': copy.deepcopy(preserved)}
+
+
+def historical_goal_context(engine, receipt, source, policy):
+    """Recover obligations from an authenticated pre-static migration source.
+
+    The caller must first resolve ``source`` through the immutable reference in
+    the committed receipt.  These checks bind the decoded v1 goal to that
+    receipt before projecting its data into the current goal-context contract.
+    """
+    converter = receipt.get('converter') if isinstance(receipt, dict) else None
+    if converter not in {'lossless-v1-v2/1', LEGACY_COMPILED_CONVERTER, CONVERTER}:
+        raise ValueError('Historical goal context requires a supported migration receipt')
+    if not isinstance(source, dict) or source.get('type') != 'migration_source':
+        raise ValueError('Historical migration source artifact is malformed')
+    expected = {'actor': converter, 'source': None,
+                'policy': (receipt.get('policy') or {}).get('hash')}
+    if source.get('producer') is not None or source.get('provenance') != expected:
+        raise ValueError('Historical migration source provenance mismatch')
+    if (not isinstance(policy, dict)
+            or engine.api._workflow.digest(policy) != expected['policy']):
+        raise ValueError('Historical migration policy artifact mismatch')
+    issue = source.get('content')
+    number = receipt.get('goal')
+    if (not isinstance(issue, dict) or type(number) is not int
+            or issue.get('number') != number or not isinstance(issue.get('body'), str)):
+        raise ValueError('Historical migration source goal identity mismatch')
+    legacy = engine.api.parse_managed_goal(issue['body'], number)
+    if not isinstance(legacy, dict) or legacy.get('schema_version') != 1:
+        raise ValueError('Historical migration source is not a managed v1 goal')
+    historical_project = copy.deepcopy(engine.project)
+    historical_project['policy'] = copy.deepcopy(policy)
+    return goal_context(legacy, metadata(engine, legacy, project=historical_project))
 
 
 def remediation(number, reason):
@@ -178,64 +251,14 @@ def remediation(number, reason):
 def normal_graph(engine, number, legacy, preserved):
     graph = copy.deepcopy(configuration(engine)['phase_dag'])
     engine.api._phase_evidence.validate_graph(graph)
-    nodes = {node['id']: node for node in graph['nodes']}
-    dependencies = legacy['depends_on']
-    blockers = [b for b in legacy['blockers'] if b.get('status') == 'open']
-    # Only mappings whose execution meaning is known are automatic. Do not
-    # silently remove a custom workflow's resource or dependency semantics.
-    if (dependencies or blockers) and not {'test_design', 'implement', 'observe_merge'} <= nodes.keys():
-        raise ValueError('Current graph has no supported mapping for legacy dependency/blocker gates')
     if (legacy.get('claim') or {}).get('owner') or (legacy.get('workflow') or {}).get('leases'):
         raise ValueError('Predecessor ownership requires observed stopped recovery before migration')
     if legacy.get('status') in {'done', 'cancelled'}:
         raise ValueError('Open predecessor has terminal status; reconcile its provider state first')
-    for dependency in dependencies:
-        try:
-            related_issue, related, kind = state(engine, dependency)
-            if kind == 'closed':
-                # Explicitly targeted history can be read; it is never migrated.
-                related = engine.api.parse_managed_goal(related_issue['body'], dependency)
-                if not related or related['schema_version'] != 2:
-                    raise ValueError('Closed predecessor has no current generic dependency evidence')
-            if kind == 'custom_migration': raise ValueError('Dependency is in a custom migration')
-            target_graph = configuration(engine)['phase_dag'] if related['schema_version'] == 1 else load(engine, dependency, load(engine, dependency, related['payload'])['graph'])
-            contracts = {n['id']: n for n in target_graph['nodes']}
-            review = contracts['review_implement']['outputs']['value']
-            if review['schema']['fields']['decision'].get('values') != ['approved', 'changes_requested']:
-                raise ValueError('Dependency review has incompatible decision semantics')
-            if 'observe_merge' not in contracts: raise ValueError('Dependency lacks a merge observation gate')
-        except (ValueError, KeyError, OSError) as exc:
-            raise ValueError(f'Dependency {dependency} cannot be mapped: {exc}') from exc
-        for name in ('test_design', 'implement'):
-            node = nodes[name]
-            node['requires'].append(selector('review_implement', dependency))
-            node['inputs'][f'legacy_dependency_{dependency}'] = {
-                'producer': {'node': selector('review_implement', dependency)}, 'output': 'value',
-                'path': ['decision'], 'mode': 'content', 'type': {'kind': 'enum', 'values': ['approved']}}
-        nodes['observe_merge']['requires'].append(selector('observe_merge', dependency))
-    if blockers:
-        if 'legacy_blockers' in nodes: raise ValueError('Current graph already uses reserved legacy_blockers identity')
-        gate = {'id': 'legacy_blockers',
-                'prompt': 'Resolve every preserved blocker with actual evidence before workspace work: ' + engine.api._workflow.comment_store.canonical(blockers),
-                'inputs': {}, 'outputs': {'value': {'type': 'text', 'schema': {'kind': 'string'}}},
-                'requires': [], 'executor': {'role': 'root', 'capability': 'bounded', 'resources': [],
-                    'authority': {'subject': selector('legacy_blockers'), 'output': 'value'}},
-                'independent_of': [], 'gates': [], 'resolves': [], 'permits': []}
-        graph['nodes'].append(gate)
-        for node in graph['nodes']:
-            if node['executor']['resources']:
-                node['requires'].append(selector('legacy_blockers'))
-    map_metadata(engine, graph, legacy, preserved)
-    engine.api._phase_evidence.validate_graph(graph)
     compiler = engine.api._graph_compiler
-    compiled = compiler.compile_graph(
-        graph, local_goal=number, compiler_version=compiler.SUPPORTED_VERSION)
-    if compiled['diagnostics']:
-        raise ValueError('Migration graph recovery is unsupported: '
-                         + engine.api._workflow.comment_store.canonical(compiled['diagnostics']))
-    compiler.validate_recovery(
-        compiled['graph'], local_goal=number, compiler_version=compiled['version'])
-    return compiled
+    definition = engine.api._static_workflow.definition(graph, compiler)
+    engine.api._phase_evidence.validate_graph(definition['graph'])
+    return definition
 
 
 def prepared_source(engine, number, issue):
@@ -255,11 +278,19 @@ def prepared_source(engine, number, issue):
     context, transaction = rows[-1]
     receipt = load(engine, number, context['migration']['receipt'])
     if (receipt.get('type') != 'schema_migration' or receipt.get('repository') != engine.repository
-            or receipt.get('goal') != number or receipt.get('converter') != CONVERTER):
+            or receipt.get('goal') != number
+            or receipt.get('converter') not in {LEGACY_COMPILED_CONVERTER, CONVERTER}):
         raise ValueError('Pending migration receipt identity differs')
     compiler = engine.api._graph_compiler
-    if receipt.get('compiler_version') != compiler.SUPPORTED_VERSION:
-        raise ValueError('Pending migration compiler version is unsupported; exact prepared target is deferred')
+    converter = receipt.get('converter')
+    if converter == LEGACY_COMPILED_CONVERTER:
+        if receipt.get('compiler_version') != compiler.SUPPORTED_VERSION:
+            raise ValueError('Pending migration compiler version is unsupported; exact prepared target is deferred')
+    elif converter == CONVERTER:
+        if receipt.get('static_workflow_version') != engine.api._static_workflow.VERSION:
+            raise ValueError('Pending migration static workflow version is unsupported; exact prepared target is deferred')
+    else:
+        raise ValueError('Pending migration converter version is unsupported; exact prepared target is deferred')
     policy = load(engine, number, receipt['policy'])
     if policy != engine.project['policy']:
         raise ValueError('Pending migration policy/graph drift; stale prepared target cannot publish')
@@ -270,8 +301,14 @@ def prepared_source(engine, number, issue):
         raise ValueError('Pending migration exact target identity differs')
     payload = load(engine, number, target['payload'])
     load(engine, number, payload['spec'])
-    compiler.validate_recovery(load(engine, number, payload['graph']), local_goal=number,
-                               compiler_version=receipt['compiler_version'])
+    graph = load(engine, number, payload['graph'])
+    if converter == LEGACY_COMPILED_CONVERTER:
+        compiler.validate_recovery(graph, local_goal=number,
+                                   compiler_version=receipt['compiler_version'])
+    else:
+        definition = engine.api._static_workflow.definition(graph, compiler)
+        if definition['graph'] != graph or definition['hash'] != receipt.get('static_workflow_hash'):
+            raise ValueError('Pending migration static workflow identity differs')
     if source.get('type') != 'migration_source' or source['content']['body'] != issue['body']:
         raise ValueError('Pending migration source identity differs')
     response = load(engine, number, context['response'])
@@ -283,6 +320,7 @@ def prepared_source(engine, number, issue):
     # order. The transaction envelope also contains node_persist's response and
     # entry artifacts; feeding those back would publish a second transaction.
     ordered = (receipt['policy'], receipt['source'], payload['spec'], payload['graph'],
+               *((payload['goal_context'],) if 'goal_context' in payload else ()),
                target['payload'], receipt['target_intent'], context['migration']['receipt'])
     artifacts = {reference['hash']: load(engine, number, reference) for reference in ordered}
     return source['content'], {'context': context, 'receipt': receipt,
@@ -339,11 +377,16 @@ def migrate_one(engine, number):
             specification += '\n\nPreserved legacy planning metadata (resource declarations are reservations, not edit authority):\n' + wf.comment_store.canonical(preserved)
         spec = save({'type': 'goal_specification', 'content': specification, 'producer': None,
             'provenance': {'actor': CONVERTER, 'source': source_ref, 'policy': policy_ref['hash']}})
-        payload = {'spec': spec, 'graph': save(graph), 'evidence': [], 'operational': {'leases': [], 'receipts': []}}
+        context = goal_context(legacy, preserved)
+        context_ref = save({'type': 'goal_context', 'content': context, 'producer': None,
+            'provenance': {'actor': CONVERTER, 'source': source_ref, 'policy': policy_ref['hash']}})
+        payload = {'spec': spec, 'graph': save(graph), 'goal_context': context_ref,
+                   'evidence': [], 'operational': {'leases': [], 'receipts': []}}
         target = {'schema_version': 2, 'repository': engine.repository, 'issue': number,
                   'revision': legacy['revision'] + 1, 'state': 'open', 'parent': legacy['parent'], 'payload': save(payload)}
         receipt_value = {'type': 'schema_migration', 'repository': engine.repository, 'goal': number,
-            'converter': CONVERTER, 'compiler_version': compilation['version'],
+            'converter': CONVERTER, 'static_workflow_version': compilation['version'],
+            'static_workflow_hash': compilation['hash'],
             'source': source_ref, 'target_intent': save(target), 'target_payload': target['payload'], 'policy': policy_ref,
             'missing_obligations': ['All current normal workflow evidence, independent reviews and applicable user approvals remain required.']}
         receipt = save(receipt_value)
