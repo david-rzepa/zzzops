@@ -24,8 +24,10 @@ class GraphCompilationPublicTests(dag.DagFixture):
         return self.read_blob(payload["graph"])
 
     def assert_complete(self, graph, *, local_goal=100):
-        self.compiler().validate_recovery(graph, local_goal=local_goal)
-        self.assertIn("obligation_selections", json.dumps(graph, sort_keys=True))
+        dag.z._phase_evidence.validate_graph(graph)
+        canonical = dag.z._static_workflow.canonical(graph, self.compiler())
+        self.assertEqual(graph, canonical,
+                         "new captures must persist the complete fixed policy workflow")
 
     def capture_request(self):
         return {
@@ -75,7 +77,7 @@ class GraphCompilationPublicTests(dag.DagFixture):
         first_payload = self.session.read(created, first_v2["payload"])
         first_graph = self.session.read(created, first_payload["graph"])
         self.assert_complete(first_graph, local_goal=created)
-        expected = self.compiler().compile_graph(reviewed, local_goal=created)["graph"]
+        expected = dag.z._static_workflow.canonical(reviewed, self.compiler())
         self.assertEqual(expected, first_graph)
         self.assertEqual(expected, actual)
         self.assertEqual(unrelated, (self.provider.issues[100], self.provider.comments[100]))
@@ -99,10 +101,11 @@ class GraphCompilationPublicTests(dag.DagFixture):
         self.session.call(100, {"operation": "policy_approve", "proposal_hash": step["hash"],
                                 "approved_by": "approved-user"}, intent="inspect")
         actual = self.graph_from_goal()
-        self.assert_complete(actual)
-        self.assertEqual(reviewed_graph["terminals"], actual["terminals"])
+        self.assertEqual(self.graph, actual,
+                         "policy approval must not rewrite an existing goal's historical graph")
         self.assertEqual(before_evidence, self.payload()[1]["evidence"])
-        self.assertEqual(actual, self.compiler().compile_graph(reviewed_graph, local_goal=100)["graph"])
+        self.assertNotEqual(reviewed_graph, actual,
+                            "the newly approved policy remains current authority without adoption")
 
     def test_policy_approval_never_replaces_existing_goal_with_settled_results(self):
         self.produce()
@@ -150,6 +153,9 @@ class GraphCompilationPublicTests(dag.DagFixture):
             "type": copy.deepcopy(next(n for n in source["nodes"] if n["id"] == "understand")
                                   ["outputs"]["allocation"]["schema"]),
         }
+        review["independent_of"].append({
+            "kind": "node", "goal": "#this", "node": "understand",
+        })
         dag.z._workflow_section(self.session.project, "workflow_adherence")["configuration"]["phase_dag"] = source
         request = self.capture_request()
         def forbidden_create(_payload):

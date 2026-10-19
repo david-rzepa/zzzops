@@ -32,6 +32,19 @@ def evidence_policy(policy: dict[str, Any]) -> dict[str, Any]:
     if isinstance(sections, list):
         value["sections"] = [section for section in sections
                              if section.get("id") not in OPERATIONAL_POLICY_SECTIONS]
+        for section in value["sections"]:
+            if section.get("id") == "workflow_adherence":
+                # Individual task contracts already pin executable structure.
+                # Adding an unrelated phase must not invalidate every Result.
+                configuration = section.get("configuration")
+                if isinstance(configuration, dict):
+                    configuration.pop("phase_dag", None)
+                    configuration.pop("migration_entries", None)
+                # These fields describe review/default synchronization, not the
+                # instructions or operative requirements of the section.
+                for field in ("review", "default_digest", "default_hash", "content_hash",
+                              "default_id", "default_disposition"):
+                    section.pop(field, None)
     return value
 
 
@@ -888,10 +901,12 @@ def validate_selector(value, template=False):
         # A task-set template may address the same item in another expansion.
         # Materialization replaces this placeholder with the validated current
         # item key before evaluation; no arbitrary selector field is dynamic.
-        if template and field == 'item' and value[field] == {'item_key': True}:
+        if template and field == 'item' and value[field] in ({'item_key': True}, {'event_subject_item': True}):
             continue
         if not task_identifier(value[field]): raise ValueError(f'Selector {field} identity is invalid')
-    if kind == 'member' and value['generation'] != 'current' and not positive_integer(value['generation']): raise ValueError('Member generation must be positive or current')
+    if (kind == 'member' and value['generation'] != 'current' and not positive_integer(value['generation'])
+            and not (template and value['generation'] == {'event_subject_generation': True})):
+        raise ValueError('Member generation must be positive or current')
 
 
 def validate_scope(value, template=False):
@@ -976,6 +991,29 @@ def validate_graph(graph):
                     if not task_identifier(value['type']): raise ValueError('Permit type is invalid')
                     validate_scope(value['scope'], template)
                 else: validate_scope(value, template)
+    def event_selectors(value):
+        if isinstance(value, dict):
+            if value.get('kind') == 'member' and (value.get('item') == {'event_subject_item': True}
+                    or value.get('generation') == {'event_subject_generation': True}):
+                yield value
+            for child in value.values(): yield from event_selectors(child)
+        elif isinstance(value, list):
+            for child in value: yield from event_selectors(child)
+    for node, template in definitions:
+        for selector in event_selectors(node):
+            expansion = next((row for row in sets.values() if row['template']['id'] == node['id']), None)
+            source = expansion['source'] if expansion else {}
+            producer = source.get('producer', {})
+            target = sets.get(selector['expansion'])
+            if (not template or producer not in ({'slot': 'phase_data'}, {'slot': 'phase_event_obligations'})
+                    or source.get('mode') != 'content' or source.get('output') != 'content'
+                    or len(source.get('path', [])) != 2 or target is None
+                    or source['path'][0] != target['template']['id']
+                    or source['path'][1] not in target['template']['outputs']
+                    or selector['goal'] != '#this'
+                    or selector['item'] != {'event_subject_item': True}
+                    or selector['generation'] != {'event_subject_generation': True}):
+                raise ValueError('Event member selectors require an exact authenticated phase-event source')
     local_goals = {n['executor']['authority']['subject'].get('goal') for n, _ in definitions if n['executor']['authority']['subject'].get('node') == n['id']}
     def local_target(selector):
         if selector['kind'] == 'self': return None
@@ -1091,6 +1129,15 @@ def _derive_task_steps(graph, payload, context):
     goal = context['goal']
     artifacts = dict(context['artifacts'])
     policy = semantic_hash(evidence_policy(context['policy']))
+    full_policy = semantic_hash(context['policy'])
+    predecessor_policy = copy.deepcopy(context['policy'])
+    if isinstance(predecessor_policy.get('sections'), list):
+        predecessor_policy['sections'] = [row for row in predecessor_policy['sections']
+            if row.get('id') not in OPERATIONAL_POLICY_SECTIONS]
+    predecessor_policy_hash = semantic_hash(predecessor_policy)
+    predecessor_policy_context = {'type': 'policy_context',
+        'content': {'policy': predecessor_policy_hash}, 'producer': None,
+        'provenance': {'actor': 'host', 'source': None, 'policy': predecessor_policy_hash}}
     snapshots = dict(context.get('goals', {}))
     snapshots.setdefault(goal, {'graph': graph, 'payload': payload})
     instances, records, outputs, expansions, memberships = {}, {}, [], {}, {}
@@ -1187,6 +1234,61 @@ def _derive_task_steps(graph, payload, context):
                 ref = snapshots[number].get('context_ref')
                 if ref is None: raise ValueError('Authenticated relationship context unavailable')
                 value = artifact(ref)['content']
+            elif slot == 'phase_event_obligations':
+                if len(binding['path']) < 2:
+                    raise ValueError('Event obligations require an exact target/output path')
+                target, output = binding['path'][:2]
+                selections = snapshots[number].get('phase_data', {}).get(target, {}).get(output, {'items': {}})
+                items = {}
+                reviewer_name = 'sw_review_' + semantic_hash([target, output])[7:]
+                for event_key, event in selections['items'].items():
+                    subject = event['target']
+                    expected_subject = ({'kind': 'member', 'goal': number,
+                        'expansion': subject['expansion'], 'item': subject['item'],
+                        'generation': subject['generation']} if 'expansion' in subject else
+                        {'kind': 'node', 'goal': number, 'node': target})
+                    expected_scope = {'subject': expected_subject, 'output': output}
+                    sources = set()
+                    for result_ref, result in records[number]:
+                        if result['node']['node'] == reviewer_name and result['node']['item'] == event_key:
+                            sources.add(result_ref['hash'])
+                            sources.update(ref['hash'] for ref in result['outputs'].values())
+                    matches = [obligation for (owner, _), obligation in obligations.items()
+                               if owner == number and obligation['content']['target'] == expected_scope
+                               and obligation['content']['source']['hash'] in sources]
+                    if len(matches) > 1:
+                        raise ValueError('Ambiguous admitted findings for one late event')
+                    if matches and matches[0]['applicability'] == 'applicable':
+                        items[event_key] = {'event': event, 'finding': matches[0]['finding']}
+                value = {target: {output: {'items': items, 'rationale':
+                    'Exact current admitted member findings from authenticated event review history.'}}}
+                ref = remember({'type': 'phase_event_obligations', 'content': value, 'producer': None,
+                                'provenance': {'actor': 'host', 'source': None, 'policy': policy}})
+            elif slot == 'phase_event_presence':
+                if len(binding['path']) != 2 or any(not isinstance(key, str) for key in binding['path']):
+                    raise ValueError('Phase event presence requires an exact target/output path')
+                target, output = binding['path']
+                data = snapshots[number].get('phase_data', {})
+                event_selection = data.get(target, {}).get(output, {'items': {}})
+                value = {target: {output: bool(event_selection['items'])}}
+                ref = remember({'type': 'phase_event_presence', 'content': value, 'producer': None,
+                                'provenance': {'actor': 'host', 'source': None, 'policy': policy}})
+            elif slot == 'phase_data':
+                # Only the host-authenticated event journal can populate this
+                # slot. A similarly named goal payload field grants no authority.
+                value = snapshots[number].get('phase_data', {})
+                if not isinstance(value, dict):
+                    raise ValueError('Authenticated phase data is malformed')
+                if len(binding['path']) < 2:
+                    raise ValueError('Phase data requires an exact target/output path')
+                target, output = binding['path'][:2]
+                if target not in value or output not in value[target]:
+                    if len(binding['path']) != 2:
+                        raise ValueError('Phase event is missing')
+                    value = {target: {output: {'items': {}, 'rationale':
+                        'No authenticated late events for this phase output.'}}}
+                ref = remember({'type': 'phase_data_context', 'content': value, 'producer': None,
+                                'provenance': {'actor': 'host', 'source': None, 'policy': policy}})
             elif slot == 'obligations':
                 value = {identifier: {'admission': obligation['admission'],
                                       'finding': obligation['finding'],
@@ -1279,9 +1381,22 @@ def _derive_task_steps(graph, payload, context):
                 for item in keys - active: history[item] = history.get(item, 0) + 1
                 active = keys
             selected = []
+            def event_target(item):
+                if expansion['source']['producer'] not in ({'slot': 'phase_data'}, {'slot': 'phase_event_obligations'}):
+                    raise ValueError('Event selector cannot use an unauthenticated selection')
+                event = selection['items'][item]
+                if 'event' in event: event = event['event']
+                target = event['target']
+                if (not task_identifier(target.get('item')) or not positive_integer(target.get('generation'))
+                        or target.get('node') != expansion['source']['path'][0]
+                        or target.get('output') != expansion['source']['path'][1]):
+                    raise ValueError('Malformed authenticated event member target')
+                return target
             def compile_template(value):
                 if value == {'kind': 'self'}: return lambda item, subject: subject
                 if value == {'item_key': True}: return lambda item, subject: item
+                if value == {'event_subject_item': True}: return lambda item, subject: event_target(item)['item']
+                if value == {'event_subject_generation': True}: return lambda item, subject: event_target(item)['generation']
                 if isinstance(value, dict):
                     changed = {name: fn for name, child in value.items() if (fn := compile_template(child)) is not None}
                     if changed: return lambda item, subject: {**value, **{name: fn(item, subject) for name, fn in changed.items()}}
@@ -1312,6 +1427,8 @@ def _derive_task_steps(graph, payload, context):
         if a['kind'] == 'node': return b['kind'] == 'node' and a['node'] == b['node']
         return b.get('expansion') == a.get('expansion') and (a['kind'] == 'join' or a.get('item') == b.get('item') and (a.get('generation') == 'current' or a.get('generation') == b.get('generation')))
     def obligation_resolved(obligation):
+        if obligation['applicability'] == 'not_applicable': return True
+        if obligation['applicability'] == 'unresolved': return False
         for _, result in list(current.values()):
             for ref in result['outputs'].values():
                 output = artifact(ref)
@@ -1322,6 +1439,64 @@ def _derive_task_steps(graph, payload, context):
                 accepted = {ref['hash'] for _, item in current.values() for ref in item['outputs'].values()}
                 if all(ref['hash'] in accepted for ref in value['subjects']): return True
         return False
+    def phase_review_dismissed(number, reviewer):
+        # Root may classify a substantiated observation as outside this target's
+        # approved scope. Preserve the rejected review; an authenticated current
+        # not-applicable admission closes that event without fabricating approval.
+        sources = set()
+        for ref, result in records[number]:
+            if task_key(result['node']) == reviewer:
+                sources.add(ref['hash'])
+                sources.update(value['hash'] for value in result['outputs'].values())
+        matches = [obligation for (owner, _), obligation in obligations.items()
+                   if owner == number and obligation['content']['source']['hash'] in sources]
+        return bool(matches) and all(row['applicability'] == 'not_applicable' for row in matches)
+
+    def pending_phase_review(number, node, key):
+        resources = node['executor']['resources']
+        publication = ('repository_publication' in resources or any(
+            value['type'] in {'repository_authorization', 'publication_authorization',
+                              'merge_authorization', 'published_candidate', 'delivery_result'}
+            for value in node['outputs'].values()))
+        if not publication and 'repository_workspace' not in resources:
+            return False
+        definitions = {row['id']: row for row in snapshots[number]['graph']['nodes']}
+        definitions.update({row['template']['id']: row['template'] for row in snapshots[number]['graph']['task_sets']})
+        expansion_names = {row['id']: row['template']['id'] for row in snapshots[number]['graph']['task_sets']}
+        def descends(name, ancestor, seen=None):
+            seen = set() if seen is None else seen
+            if name == ancestor: return True
+            if name in seen or name not in definitions: return False
+            seen.add(name); contract = definitions[name]
+            selectors = list(contract['requires']) + [value['producer']['node']
+                for value in contract['inputs'].values() if 'node' in value['producer']]
+            return any(selector.get('goal') in ('#this', number) and descends(
+                selector.get('node', expansion_names.get(selector.get('expansion'))), ancestor, seen)
+                for selector in selectors)
+        for expansion in snapshots[number]['graph']['task_sets']:
+            if (expansion['source']['producer'] != {'slot': 'phase_data'}
+                    or not any(value['type'] == 'review_decision'
+                               for value in expansion['template']['outputs'].values())):
+                continue
+            target, output = expansion['source']['path']
+            if node['id'] == target:
+                continue  # The target itself must remain correctable.
+            if not publication and not descends(node['id'], target):
+                continue
+            expand((number, expansion['id']))
+            members = memberships.get((number, expansion['id']))
+            if members is None: return True
+            for reviewer in members:
+                if phase_review_dismissed(number, reviewer):
+                    continue
+                evaluate(reviewer)
+                if reviewer not in current: return True
+                for ref in current[reviewer][1]['outputs'].values():
+                    value = artifact(ref)
+                    if value['type'] == 'review_decision' and value['content']['decision'] != 'approved':
+                        return True
+        return False
+
     def evaluate(key):
         if key in statuses: return
         if key in evaluating: raise ValueError('Projected qualified-node dependency cycle: ' + str(key))
@@ -1362,6 +1537,46 @@ def _derive_task_steps(graph, payload, context):
                     return
             # Accepted finding/admission effects were folded from history above.
             # Their producing Result still obeys ordinary input freshness.
+            # Goal-specific dependencies/blockers are authenticated phase data,
+            # never mutations of the common policy workflow definition.
+            data_bindings = []
+            goal_context = snapshots[number].get('goal_context')
+            if goal_context is not None:
+                if (not isinstance(goal_context, dict) or goal_context.get('version') != 1
+                        or not isinstance(goal_context.get('depends_on'), list)
+                        or not isinstance(goal_context.get('blockers'), list)):
+                    raise ValueError('Unsupported or malformed goal context')
+                resources = node['executor']['resources']
+                publication_gate = ('repository_publication' in resources or node['id'] == 'observe_merge')
+                source_gate = 'repository_workspace' in resources
+                if source_gate or publication_gate:
+                    blockers = goal_context['blockers']
+                    if any(not isinstance(row, dict) or row.get('status') not in ('closed', 'resolved')
+                           for row in blockers):
+                        raise ValueError('Open goal-context blocker prevents resource acquisition: ' + '; '.join(
+                            json.dumps(row, sort_keys=True) for row in blockers
+                            if not isinstance(row, dict) or row.get('status') not in ('closed', 'resolved')))
+                    dependencies = goal_context['depends_on']
+                    if (any(type(value) is not int or value <= 0 or value == number for value in dependencies)
+                            or len(set(dependencies)) != len(dependencies)):
+                        raise ValueError('Malformed goal-context dependency identities')
+                    dependency_phase = 'observe_merge' if publication_gate else 'review_implement'
+                    for dependency in sorted(dependencies):
+                        dependency_key = (dependency, dependency_phase, None, 1)
+                        if dependency not in snapshots or dependency_key not in instances:
+                            raise ValueError(f'Goal #{dependency} requires current {dependency_phase} evidence; evidence unavailable')
+                        evaluate(dependency_key)
+                        if dependency_key not in current:
+                            raise ValueError(f'Goal #{dependency} requires current {dependency_phase} evidence')
+                        dependency_ref, dependency_result = current[dependency_key]
+                        if not publication_gate:
+                            reviews = [artifact(ref)['content'] for ref in dependency_result['outputs'].values()
+                                       if artifact(ref).get('type') == 'review_decision']
+                            if not reviews or any(row.get('decision') != 'approved' for row in reviews):
+                                raise ValueError(f'Goal #{dependency} requires approved {dependency_phase}; review is not approved')
+                        data_bindings.append(('__goal_dependency_' + str(dependency), dependency_ref))
+            if pending_phase_review(number, node, key):
+                raise ValueError('Pending late finding review blocks dependent resource or publication authority')
             prerequisites, declared_prerequisites = [], []
             for selector in node['requires']:
                 selected = targets(selector, number)
@@ -1415,7 +1630,7 @@ def _derive_task_steps(graph, payload, context):
             # Requires is a currentness gate. Identity dependencies must be
             # declared inputs; unrelated prerequisite Result revisions must not
             # override content-mode reuse once all gates are current again.
-            implicit = []
+            implicit = list(data_bindings)
             correction_scope = {'subject': {'kind': 'member', 'goal': number, 'expansion': instance['expansion'], 'item': key[2], 'generation': key[3]} if 'expansion' in instance else {'kind': 'node', 'goal': number, 'node': key[1]}, 'output': None}
             applicable, unresolved = [], False
             for obligation in obligations.values():
@@ -1447,7 +1662,10 @@ def _derive_task_steps(graph, payload, context):
             for ref, result in reversed(records_by_node.get(key, [])):
                 recorded_policy = artifact(ref).get('provenance', {}).get('policy')
                 legacy_contract = semantic_hash({'node': node, 'policy': recorded_policy}) if isinstance(recorded_policy, str) else None
-                if task_key(result['node']) != key or result['contract'] not in {contract, legacy_contract}: continue
+                predecessor_contract = (semantic_hash({'node': node, 'policy': predecessor_policy_hash})
+                                        if recorded_policy == full_policy else None)
+                if task_key(result['node']) != key or result['contract'] not in {contract, legacy_contract, predecessor_contract}: continue
+                predecessor = result['contract'] == predecessor_contract and predecessor_contract != contract
                 legacy = result['contract'] == legacy_contract and result['contract'] != contract
                 old_hashes = {}
                 for binding in result['inputs']:
@@ -1455,6 +1673,33 @@ def _derive_task_steps(graph, payload, context):
                     if 'publications' not in context and binding['name'] == '__publication': continue
                     old_hashes[binding['name']] = binding['source']['hash'] if binding['mode'] == 'identity' else semantic_hash(selected_path(artifact(binding['source'])['content'], binding['path']))
                 comparable_hashes = dict(hashes)
+                if predecessor and '__policy' in old_hashes:
+                    # Exact unchanged full-policy provenance permits the finite
+                    # pre-static fingerprint adapter. Never trust an arbitrary
+                    # old digest or alter the durable Result/authorization.
+                    bindings = [row for row in result['inputs'] if row['name'] == '__policy']
+                    if (len(bindings) != 1 or bindings[0]['mode'] != 'identity' or bindings[0]['path']
+                            or artifact(bindings[0]['source']) != predecessor_policy_context
+                            or old_hashes['__policy'] != semantic_hash(predecessor_policy_context)):
+                        continue
+                    comparable_hashes['__policy'] = old_hashes['__policy']
+                if predecessor and '__workspace' in old_hashes and '__workspace' in hashes:
+                    old_bindings = [row for row in result['inputs'] if row['name'] == '__workspace']
+                    new_bindings = [row for row in state['inputs'] if row['name'] == '__workspace']
+                    if len(old_bindings) != 1 or len(new_bindings) != 1:
+                        continue
+                    before, after = artifact(old_bindings[0]['source']), artifact(new_bindings[0]['source'])
+                    # The host has already revalidated the current raw baseline,
+                    # allocation, authorization and completed workspace proof.
+                    # Only the finite fingerprint projection may differ.
+                    if (any(row['mode'] != 'identity' or row['path'] for row in old_bindings + new_bindings)
+                            or before.get('type') != 'workspace_snapshot'
+                            or after.get('type') != 'workspace_snapshot'
+                            or before.get('provenance') != {'actor': 'host', 'source': None, 'policy': predecessor_policy_hash}
+                            or after.get('provenance') != {'actor': 'host', 'source': None, 'policy': policy}
+                            or {**before, 'provenance': after['provenance']} != after):
+                        continue
+                    comparable_hashes['__workspace'] = old_hashes['__workspace']
                 # Results created before policy_context existed already carry
                 # immutable policy provenance and a legacy contract.  Do not
                 # invalidate them merely because the host later introduced
@@ -1481,6 +1726,24 @@ def _derive_task_steps(graph, payload, context):
         try: complete = complete and all(key in current for key in targets(selector, goal))
         except (ValueError, KeyError): complete = False
     if any(not obligation_resolved(o) for o in obligations.values()): complete = False
+    # An admitted correction is not the only pending work: newly recorded late
+    # evidence must receive its independent review before goal completion.
+    for expansion in graph['task_sets']:
+        if (expansion['source']['producer'] != {'slot': 'phase_data'}
+                or not any(output['type'] == 'review_decision'
+                           for output in expansion['template']['outputs'].values())):
+            continue
+        for key in memberships.get((goal, expansion['id']), []):
+            if phase_review_dismissed(goal, key):
+                continue
+            if key not in current:
+                complete = False
+                continue
+            result = current[key][1]
+            for ref in result['outputs'].values():
+                blob = artifact(ref)
+                if blob['type'] == 'review_decision' and blob['content']['decision'] != 'approved':
+                    complete = False
     stale_roots = [key for key in instance_order
                    if statuses[key]['had_evidence'] and key not in current
                    and statuses[key]['state'] == 'ready']

@@ -93,10 +93,15 @@ class CheckpointRefreshTests(journeys.DagFixture):
         self.assertEqual(old_comments, self.provider.comments[100][:len(old_comments)])
         self.assertEqual(old_receipts, snapshot['payload']['operational']['receipts'][:len(old_receipts)])
         self.assertEqual(old_evidence, snapshot['payload']['evidence'])
-        prepared = self.session.call(100, {'operation': 'graph_prepare', 'graph': self.graph,
-            'rationale': 'Continue after refreshed exact retirement.', 'request_id': 'graph-after-refresh'})
-        self.assertEqual('review_required', prepared['next_steps'][0]['kind'])
-        return engine, snapshot, index, row
+        frontier = self.session.checkpoint(100)
+        executable = next(step for step in frontier if step.get('kind') == 'execute'
+                          and step.get('node', {}).get('node') == 'review_a')
+        work = self.session.acquire('review_a')
+        self.assertEqual(executable['input_hash'], work['start']['input_hash'])
+        release = {'operation': 'release', 'node': work['node'], 'lease': work['lease']['token'],
+                   'actor': work['bound_actor'], 'request_id': 'release-after-refresh'}
+        self.assertEqual('released', self.session.call(100, release)['next_steps'][0]['kind'])
+        return self.assert_reconciled(transaction)
 
     def test_valid_successor_retires_stale_pin_without_history_loss(self):
         self.refresh_pair(stale=True)
@@ -104,20 +109,17 @@ class CheckpointRefreshTests(journeys.DagFixture):
     def test_comparable_valid_pins_select_latest_authenticated_successor(self):
         self.refresh_pair(stale=False)
 
-    def test_graph_refresh_contract_ids_follow_exact_binding(self):
-        def prepare():
-            return self.session.call(100, {'operation': 'graph_prepare', 'graph': self.graph,
-                'rationale': 'Review this unchanged graph with its exact current source.'})['next_steps'][0]
-        first = prepare()
-        reviewed = self.administrative_review({**first['submission'], 'actor': 'independent-reviewer',
-            'decision': 'approved', 'report': 'The exact graph preserves current evidence.'})['next_steps'][0]
-        self.session.call(100, {**reviewed['submission'], 'approved_by': 'user: approved exact graph'})
-        second = prepare()
-        self.assertNotEqual(first['submission']['request_id'], second['submission']['request_id'])
-        second_review = self.administrative_review({**second['submission'], 'actor': 'independent-reviewer',
-            'decision': 'approved', 'report': 'The refreshed exact graph preserves current evidence.'})['next_steps'][0]
-        self.assertNotEqual(reviewed['submission']['request_id'], second_review['submission']['request_id'])
-        self.session.call(100, {**second_review['submission'], 'approved_by': 'user: approved exact graph'})
+    def test_fixed_policy_acquisition_contract_follows_current_binding(self):
+        self.produce()
+        first = self.session.acquire('review_a')
+        first_input = first['start']['input_hash']
+        release = {'operation': 'release', 'node': first['node'], 'lease': first['lease']['token'],
+                   'actor': first['bound_actor'], 'request_id': 'release-first-fixed-policy-binding'}
+        self.session.call(100, release)
+        second = self.session.acquire('review_a')
+        self.assertEqual(first['input_envelope']['contract'], second['input_envelope']['contract'])
+        self.assertEqual(first_input, second['start']['input_hash'])
+        self.assertNotEqual(first['lease']['token'], second['lease']['token'])
 
     def test_public_rejection_guards_and_unchanged_payload_retry(self):
         transaction = self.stale_checkpoint()

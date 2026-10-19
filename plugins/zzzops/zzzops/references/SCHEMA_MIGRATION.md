@@ -38,3 +38,8 @@ their original exact artifacts and policy. Do not erase metadata merely to clear
 a diagnostic. Successful conversions retain the complete original issue in the
 receipt's immutable `source` Ref, readable using the public `read` operation.
 There is no destructive reset switch; unsupported semantics remain explicit.
+
+Conversions preserve dependencies, blockers and rigor in authenticated goal context,
+separate from the shared policy DAG. Context gates enforce current dependency
+evidence, unanswered blockers and capability floors without adding per-goal nodes.
+Original issue text and transaction history remain available.

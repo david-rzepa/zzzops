@@ -512,9 +512,11 @@ class MigrationEntryPublicTests(dag.DagFixture):
         source, _graph = self.entry()
         self.provider.issues[101] = copy.deepcopy(self.provider.issues[100])
         probe = task('probe')
-        probe['executor']['authority']['subject']['goal'] = 101
+        probe['executor']['authority']['subject']['goal'] = '#this'
         graph = {'nodes': [probe], 'task_sets': [],
-                 'terminals': [{'kind': 'node', 'goal': 101, 'node': 'probe'}]}
+                 'terminals': [{'kind': 'node', 'goal': '#this', 'node': 'probe'}]}
+        z._workflow_section(self.session.project, 'workflow_adherence')[
+            'configuration']['phase_dag'] = copy.deepcopy(graph)
         payload = {**self.target_payload, 'graph': self.blob(graph)}
         envelope = {**self.target_envelope, 'issue': 101, 'payload': self.blob(payload)}
         self.provider.issues[101].update(number=101, body='## Outcome\nSecond goal.\n<!-- zzzops-goal\n'

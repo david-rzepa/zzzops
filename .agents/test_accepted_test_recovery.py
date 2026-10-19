@@ -174,7 +174,7 @@ class AcceptedTestRecoveryTests(unittest.TestCase):
     def compiled_admission(self, finding_node="interpret_accepted_test_defect", subject_node="test_design"):
         """Return the one canonical admission for the accepted-test contract."""
         c = self.case
-        graph = c.read_blob(c.payload()[1]["graph"])
+        graph = j.z.workflow_engine(c.fixture.repo, c.session.project, c.session.runtime).node_snapshot(100)["graph"]
         contracts = list(graph["nodes"]) + [row["template"] for row in graph["task_sets"]]
         expected_scope = {"subject": {"kind": "node", "goal": "#this", "node": subject_node},
                           "output": "value"}
@@ -193,7 +193,7 @@ class AcceptedTestRecoveryTests(unittest.TestCase):
                     and all(permit.get("scope") == expected_scope for permit in permits)):
                 candidates.append(node["id"])
         self.assertEqual(1, len(candidates), candidates)
-        replay = j.z._graph_compiler.compile_graph(graph, local_goal=100)
+        replay = {'graph': j.z._static_workflow.canonical(graph, j.z._graph_compiler)}
         replay_ids = {node["id"] for node in replay["graph"]["nodes"]} | {
             row["template"]["id"] for row in replay["graph"]["task_sets"]}
         self.assertIn(candidates[0], replay_ids, "Canonical admission identity must be stable")
@@ -395,51 +395,28 @@ class AcceptedTestRecoveryTests(unittest.TestCase):
                          route["inputs"]["review"]["producer"]["node"]["node"])
         self.assertEqual("identity", route["inputs"]["review"]["mode"])
 
-    def test_reviewed_existing_goal_adoption_preserves_custom_topology_and_history(self):
+    def test_reviewed_policy_repair_preserves_custom_historical_topology_and_results(self):
         c = self.case
         original_install = c.install
-
         def install_old_with_custom_node(graph):
             graph = copy.deepcopy(graph)
-            graph["nodes"] = [node for node in graph["nodes"] if node["id"] not in {
-                "interpret_accepted_test_defect", "admit_accepted_test_correction"}]
             graph["nodes"].append(j.task("custom_historical_note", role="root"))
-            custom_set = copy.deepcopy(graph["task_sets"][0])
-            custom_set["id"] = "custom_historical_findings"
-            custom_set["template"]["id"] = "resolve_custom_historical_finding"
-            graph["task_sets"].append(custom_set)
             graph["terminals"].append(j.selector("custom_historical_note"))
             original_install(graph)
-
         c.install = install_old_with_custom_node
         history = self.finish_initial_work()
         c.install = original_install
         old_payload = copy.deepcopy(c.payload()[1])
         old_graph = c.read_blob(old_payload["graph"])
-        self.assertFalse({"interpret_accepted_test_defect", "admit_accepted_test_correction"} &
-                         {node["id"] for node in old_graph["nodes"]})
-        old_node_order = [node["id"] for node in old_graph["nodes"]]
-        old_task_sets = copy.deepcopy(old_graph["task_sets"])
-        old_terminals = copy.deepcopy(old_graph["terminals"])
-        proposed = self.additive_route(c.graph)
-        prepared = c.session.call(100, {"operation": "graph_prepare", "graph": proposed,
-                                       "rationale": "Add only reviewed accepted-test recovery nodes"})
-        for name in ("add_goal", "put_envelope", "envelope_for", "read_at", "result_at",
-                     "administrative_review", "proposal_review"):
-            setattr(c, name, types.MethodType(getattr(j.GraphAdoptionPublicTests, name), c))
-        request = c.proposal_review(prepared["next_steps"][0]["proposal"])
-        with mock.patch.object(c.provider, "update_issue", side_effect=RuntimeError("interrupted adoption checkpoint")):
-            c.session.call(100, request, expected=2)
-        accepted = c.session.call(100, request)
-        self.assertEqual(accepted, c.session.call(100, request), "Exact adoption retry must be idempotent")
+        reviewed = self.additive_route(c.graph)
+        j.z._workflow_section(c.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = copy.deepcopy(reviewed)
+        snapshot = j.z.workflow_engine(c.fixture.repo, c.session.project, c.session.runtime).node_snapshot(100)
+        self.assertEqual(j.z._static_workflow.canonical(reviewed, j.z._graph_compiler), snapshot["graph"])
         payload = c.payload()[1]
+        self.assertEqual(old_payload["graph"], payload["graph"])
         self.assertEqual(old_payload["evidence"], payload["evidence"])
-        adopted = c.read_blob(payload["graph"])
-        adopted_ids = [node["id"] for node in adopted["nodes"]]
-        self.assertEqual(old_node_order, adopted_ids[:len(old_node_order)])
-        self.assertEqual(old_task_sets, adopted["task_sets"][:len(old_task_sets)])
-        self.assertEqual(old_terminals, adopted["terminals"][:len(old_terminals)])
-        self.assertIn("custom_historical_note", adopted_ids)
+        self.assertIn("custom_historical_note", {node["id"] for node in old_graph["nodes"]})
         self.assertIn("interpret_accepted_test_defect", c.names())
         for ref in history.values():
             c.read_blob(ref)
