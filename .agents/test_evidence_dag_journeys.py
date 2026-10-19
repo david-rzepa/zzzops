@@ -2762,7 +2762,11 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         parent_graph = {"nodes": parent_nodes, "task_sets": [],
                         "terminals": [{**selector("consent"), "goal": 99}]}
         if parent_mutate:
-            parent_mutate(parent_graph)
+            # Parent delivery fixtures use one reviewed static graph for the
+            # parent and every child. The callback adds the parent aggregate
+            # before any goal issues evidence under that policy.
+            parent_mutate(child_graph)
+            parent_graph = child_graph
         for child in (n for n in child_graph["nodes"] if n["id"] in ("alpha", "beta", "gamma")):
             for slot, original in (("parent_allocation", "allocation"), ("parent_authorization", "authorization"),
                                    ("parent_approval", "approval")):

@@ -742,9 +742,12 @@ class GenericDeliveryPublicTests(DagFixture):
         self.configure(renamed=True)
         publication = self.with_merge_observation(copy.deepcopy(self.graph))
         self.session.git("checkout", "-q", "goal-child")
+        deferred_mutations = []
         def composed(graph, _allocations):
             if allocation_mutator:
-                allocation_mutator(graph, _allocations)
+                deferred = allocation_mutator(graph, _allocations)
+                if deferred:
+                    deferred_mutations.append(deferred)
             observer = next(node for node in publication["nodes"] if node["id"] == self.ids["observe"])
             observer["requires"].append(selector("accept_beta"))
             observer["inputs"]["candidate"] = {"producer": {"node": selector("beta")}, "output": "value", "path": [], "mode": "identity", "type": {"kind": "string"}}
@@ -753,30 +756,31 @@ class GenericDeliveryPublicTests(DagFixture):
         if parent:
             self.setup_relationship_transport()
             def aggregate(graph):
+                observed = next(node for node in graph["nodes"] if node["id"] == "observed_merge")
+                inspect = task("inspect_shared_merge")
+                shared_merge = {"kind": "node", "goal": 100, "node": "observed_merge"}
+                inspect["requires"] = [shared_merge]
+                inspect["inputs"] = {"merge": {"producer": {"node": shared_merge}, "output": "value",
+                    "path": [], "mode": "identity", "type": observed["outputs"]["value"]["schema"]}}
+                inspect["independent_of"] = [shared_merge]
+                finish = next(node for node in graph["nodes"] if node["id"] == self.ids["finish"])
+                finish["requires"] = [shared_merge, selector("inspect_shared_merge")]
+                finish["inputs"] = {"merge": copy.deepcopy(inspect["inputs"]["merge"]),
+                    "shared_merge_review": {
+                        "producer": {"node": selector("inspect_shared_merge")}, "output": "value", "path": [],
+                        "mode": "identity", "type": {"kind": "string"}}}
                 target = {"kind": "node", "goal": "#children", "node": self.ids["finish"]}
                 collect = task("collect", role="root")
                 collect["executor"]["authority"]["subject"]["goal"] = 99
                 collect["requires"] = [target]
                 collect["inputs"] = {"children": {"producer": {"node": target}, "output": "value", "path": [],
                     "mode": "identity", "type": {"kind": "map", "values": {"kind": "string"}}}}
-                graph["nodes"].append(collect)
-                graph["terminals"] = [{"kind": "node", "goal": 99, "node": "collect"}]
-            self.setup_parent_workspace(composed, aggregate)
-            observed = next(node for node in publication["nodes"] if node["id"] == "observed_merge")
-            inspect = task("inspect_shared_merge")
-            inspect["requires"] = [selector("observed_merge")]
-            inspect["inputs"] = {"merge": {"producer": {"node": selector("observed_merge")}, "output": "value",
-                "path": [], "mode": "identity", "type": observed["outputs"]["value"]["schema"]}}
-            inspect["independent_of"] = [selector("observed_merge")]
-            inspect["executor"]["authority"]["subject"]["goal"] = 101
-            finish = task(self.ids["finish"], role="root")
-            finish["executor"]["authority"]["subject"]["goal"] = 101
-            finish["requires"] = [{"kind": "node", "goal": 101, "node": "inspect_shared_merge"}]
-            finish["inputs"] = {"merge": copy.deepcopy(inspect["inputs"]["merge"]), "review": {
-                "producer": {"node": {"kind": "node", "goal": 101, "node": "inspect_shared_merge"}},
-                "output": "value", "path": [], "mode": "identity", "type": {"kind": "string"}}}
-            self.add_goal(101, {"nodes": [inspect, finish], "task_sets": [],
-                               "terminals": [{"kind": "node", "goal": 101, "node": self.ids["finish"]}]}, parent=99)
+                graph["nodes"].extend([inspect, collect])
+                graph["terminals"] = [selector("collect")]
+                for deferred in deferred_mutations:
+                    deferred(graph)
+            shared_graph, _parent_output = self.setup_parent_workspace(composed, aggregate)
+            self.add_goal(101, shared_graph, parent=99)
             self.assertFalse(any(step["node"]["node"] == "collect" for step in self.session.ready(99)))
         else:
             self.setup_workspace(composed)
@@ -830,6 +834,10 @@ class GenericDeliveryPublicTests(DagFixture):
         self.assertTrue(self.observation["merged"])
         post_effect = self.session.acquire("observed_merge")
         self.session.finish(post_effect, {"value": self.merge_value()})
+        if parent:
+            shared_review = self.session.acquire("inspect_shared_merge", actor="root-shared-merge-reviewer")
+            self.assertIn(self.produced("observed_merge")["hash"], json.dumps(shared_review["lease"]["acquisition"]))
+            self.session.finish(shared_review, {"value": "Independent review of exact shared delivered merge"})
         self.submit_role("finish", "Current connected delivery and observed merge evidence")
         self.assertEqual(red, self.read_blob(red_reference))
         self.assertEqual(green, self.read_blob(green_reference))
@@ -844,22 +852,11 @@ class GenericDeliveryPublicTests(DagFixture):
         self.fixture.base_oid = self.session.git("rev-parse", "dev")
         self.observation["base_oid"] = self.fixture.base_oid
         prepared = {}
-        def qualify(value):
-            if isinstance(value, dict):
-                for key, child in value.items():
-                    if key == "goal" and child == 100:
-                        value[key] = 102
-                    else:
-                        qualify(child)
-            elif isinstance(value, list):
-                for child in value:
-                    qualify(child)
         def allocation(graph, manifest):
-            second = copy.deepcopy(graph)
-            qualify(second)
             second_manifest = copy.deepcopy(manifest)
             for name, entry in second_manifest["allocations"].items():
                 entry["task"]["goal"] = 102
+                entry["task"]["node"] = "second_" + name
                 entry["owned"] = {"alpha": ["second_test.py"], "beta": ["second_source.py"], "gamma": []}[name]
                 entry["consumed"] = ["source.py", "behavior_test.py", "read_dependency.txt", "second_source.py", "second_test.py"]
                 manifest["allocations"]["second_" + name] = copy.deepcopy(entry)
@@ -867,29 +864,47 @@ class GenericDeliveryPublicTests(DagFixture):
             approval["inputs"] = {"candidate": dag_fixtures.subject_input("beta"),
                                   "review": dag_fixtures.subject_input("accept_beta")}
             graph["nodes"].append(approval)
-            for node in second["nodes"]:
-                if node["id"] not in ("alpha", "beta", "gamma"):
-                    continue
-                node["requires"].append(selector("accept_first_root"))
-                for key, name in (("first_candidate", "beta"), ("first_review", "accept_beta"), ("first_root", "accept_first_root")):
-                    node["inputs"][key] = dag_fixtures.subject_input(name)
-                for slot, original in (("parent_allocation", "allocation"), ("parent_authorization", "authorization"), ("parent_approval", "approval")):
-                    node["inputs"][slot] = copy.deepcopy(node["inputs"][original])
-                    node["inputs"][slot]["producer"]["node"]["goal"] = 99
-                    if slot == "parent_allocation":
-                        node["inputs"][slot]["path"] = ["allocations", "second_" + node["id"]]
-            second_approval = task("accept_second_root", role="root")
-            second_approval["executor"]["authority"]["subject"]["goal"] = 102
-            second_approval["requires"] = [{**selector("accept_beta"), "goal": 102}]
-            second_approval["inputs"] = {"candidate": dag_fixtures.subject_input("beta"),
-                                         "review": dag_fixtures.subject_input("accept_beta")}
-            qualify(second_approval["inputs"])
-            second["nodes"].append(second_approval)
-            gamma = next(node for node in second["nodes"] if node["id"] == "gamma")
-            gamma["requires"].append({**selector("accept_second_root"), "goal": 102})
-            gamma["inputs"]["second_root"] = dag_fixtures.subject_input("accept_second_root")
-            gamma["inputs"]["second_root"]["producer"]["node"]["goal"] = 102
-            prepared.update(graph=second, manifest=second_manifest)
+            def add_second(shared):
+                names = {"alpha", "observe_alpha", "accept_alpha", "beta", "observe_beta", "accept_beta", "gamma"}
+                clones = [copy.deepcopy(node) for node in shared["nodes"] if node["id"] in names]
+                def rename(value):
+                    if isinstance(value, dict):
+                        for key, child in value.items():
+                            if key == "node" and isinstance(child, str) and child in names:
+                                value[key] = "second_" + child
+                            else:
+                                rename(child)
+                    elif isinstance(value, list):
+                        for child in value: rename(child)
+                rename(clones)
+                for node in clones:
+                    node["id"] = "second_" + node["id"] if not node["id"].startswith("second_") else node["id"]
+                for node in clones:
+                    if node["id"] not in ("second_alpha", "second_beta", "second_gamma"):
+                        continue
+                    node["requires"].append({"kind": "node", "goal": 100, "node": "accept_first_root"})
+                    for key, name in (("first_candidate", "beta"), ("first_review", "accept_beta"), ("first_root", "accept_first_root")):
+                        node["inputs"][key] = dag_fixtures.subject_input(name)
+                        node["inputs"][key]["producer"]["node"]["goal"] = 100
+                    for slot, original in (("parent_allocation", "allocation"), ("parent_authorization", "authorization"), ("parent_approval", "approval")):
+                        node["inputs"][slot] = copy.deepcopy(node["inputs"][original])
+                        node["inputs"][slot]["producer"]["node"]["goal"] = 99
+                        if slot == "parent_allocation":
+                            node["inputs"][slot]["path"] = ["allocations", node["id"]]
+                second_approval = task("accept_second_root", role="root")
+                second_approval["executor"]["authority"]["subject"]["goal"] = "#this"
+                second_approval["requires"] = [{**selector("second_accept_beta"), "goal": "#this"}]
+                second_approval["inputs"] = {"candidate": dag_fixtures.subject_input("second_beta"),
+                                             "review": dag_fixtures.subject_input("second_accept_beta")}
+                for binding in second_approval["inputs"].values():
+                    binding["producer"]["node"]["goal"] = "#this"
+                gamma = next(node for node in clones if node["id"] == "second_gamma")
+                gamma["requires"].append({**selector("accept_second_root"), "goal": "#this"})
+                gamma["inputs"]["second_root"] = dag_fixtures.subject_input("accept_second_root")
+                gamma["inputs"]["second_root"]["producer"]["node"]["goal"] = "#this"
+                shared["nodes"].extend([*clones, second_approval])
+                prepared.update(graph=shared, manifest=second_manifest)
+            return add_second
         def second_output(name, slot="value"):
             return self.result_at(102, name)[1]["outputs"][slot]
         def observe(stage):
@@ -901,11 +916,11 @@ class GenericDeliveryPublicTests(DagFixture):
                           "policy": content_hash(self.session.project["policy"]), "decision": "approved"}
                 self.session.finish(self.session.acquire("inspect_charter", number=102, actor="second-allocation-reviewer"), {"permit": permit}, number=102)
                 self.session.finish(self.session.acquire("consent", number=102), {"permit": permit}, number=102)
-            self.assertFalse(any(step["node"]["node"] == "alpha" for step in self.session.ready(102)),
+            self.assertFalse(any(step["node"]["node"] == "second_alpha" for step in self.session.ready(102)),
                              "First candidate needs both current independent review and root acceptance")
             if stage == "reviewed":
                 self.session.finish(self.session.acquire("accept_first_root"), {"value": "Root accepts exact independently reviewed first sibling"})
-                self.assertTrue(any(step["node"]["node"] == "alpha" for step in self.session.ready(102)))
+                self.assertTrue(any(step["node"]["node"] == "second_alpha" for step in self.session.ready(102)))
         self.connected_delivery(parent=True, allocation_mutator=allocation, observer=observe)
         first_envelope = self.envelope_for(100)
         first_envelope["state"] = "archived"
@@ -950,7 +965,7 @@ class GenericDeliveryPublicTests(DagFixture):
         first_proof = self.read_blob(first_candidate)["provenance"]["source"]
         proof_bytes = self.read_blob(first_proof)
         self.session.git("checkout", "-qb", "second-sibling")
-        start_step = next(step for step in self.session.ready(102) if step["node"]["node"] == "alpha")
+        start_step = next(step for step in self.session.ready(102) if step["node"]["node"] == "second_alpha")
         stale_start = {**start_step["start"], "policy_receipt": json.loads(Path(start_step["policy"]["path"]).read_text())["policy_receipt"]}
         stale_start.pop("request_id", None)
         stable_second = copy.deepcopy(self.provider.issues[102])
@@ -965,12 +980,12 @@ class GenericDeliveryPublicTests(DagFixture):
                 self.assertEqual(before, (self.provider.issues, self.provider.comments))
                 self.provider.issues[100] = copy.deepcopy(frozen_first[0])
                 self.provider.issues[102] = copy.deepcopy(stable_second)
-                self.assertEqual(start_step["input_hash"], next(step["input_hash"] for step in self.session.ready(102) if step["node"]["node"] == "alpha"))
+                self.assertEqual(start_step["input_hash"], next(step["input_hash"] for step in self.session.ready(102) if step["node"]["node"] == "second_alpha"))
         def candidate(name, expected):
             work = self.session.acquire(name, number=102, actor="second-writer-" + name)
             self.assertIn(first_candidate["hash"], json.dumps(work["lease"]["acquisition"]))
             self.assertIn(first_proof["hash"], json.dumps(work["lease"]["acquisition"]))
-            if name == "alpha":
+            if name == "second_alpha":
                 (self.fixture.repo / "second_test.py").write_text("from second_source import value\nassert value == 2\n")
             else:
                 (self.fixture.repo / "second_source.py").write_text("value = 2\n")
@@ -980,37 +995,37 @@ class GenericDeliveryPublicTests(DagFixture):
             ref = self.read_at(102, second_output(name))["provenance"]["source"]
             self.assertEqual(expected, self.read_at(102, ref)["commands"][0]["exit_code"])
             for check, actor in (("observe_", "second-checker"), ("accept_", "second-reviewer")):
-                self.session.finish(self.session.acquire(check + name, number=102, actor=actor), {"value": "Exact second proof reviewed"}, number=102)
+                self.session.finish(self.session.acquire("second_" + check + name.removeprefix("second_"), number=102, actor=actor), {"value": "Exact second proof reviewed"}, number=102)
             self.assertEqual(frozen_first, (self.provider.issues[100], self.provider.comments[100]))
             self.assertEqual(frozen_parent, (self.provider.issues[99], self.provider.comments[99]))
             self.assertEqual(proof_bytes, self.read_blob(first_proof))
-        candidate("alpha", 1)
+        candidate("second_alpha", 1)
         self.session.git("add", "second_test.py")
         self.session.git("commit", "-qm", "second sibling observed red test")
-        candidate("beta", 0)
-        self.assertFalse(any(step["node"]["node"] == "gamma" for step in self.session.ready(102)),
+        candidate("second_beta", 0)
+        self.assertFalse(any(step["node"]["node"] == "second_gamma" for step in self.session.ready(102)),
                          "Second sibling independent review cannot replace its configured root approval")
         self.session.finish(self.session.acquire("accept_second_root", number=102),
                             {"value": "Root accepts exact second candidate and independent review"}, number=102)
         self.session.git("add", "second_source.py")
         self.session.git("commit", "-qm", "second sibling observed green implementation")
-        ready = next(step for step in self.session.ready(102) if step["node"]["node"] == "gamma")
+        ready = next(step for step in self.session.ready(102) if step["node"]["node"] == "second_gamma")
         corrupt = {**first_envelope, "payload": bad_payload_ref, "revision": first_envelope["revision"] + 1}
         self.put_envelope(100, corrupt)
-        self.assertFalse(any(step.get("kind") == "execute" and step.get("node", {}).get("node") == "gamma"
+        self.assertFalse(any(step.get("kind") == "execute" and step.get("node", {}).get("node") == "second_gamma"
                              for step in self.session.checkpoint(102)))
         # Restore the exact provider snapshot; no workflow decision is patched.
         self.provider.issues[100] = copy.deepcopy(frozen_first[0])
-        self.assertEqual(ready["input_hash"], next(step["input_hash"] for step in self.session.ready(102) if step["node"]["node"] == "gamma"))
+        self.assertEqual(ready["input_hash"], next(step["input_hash"] for step in self.session.ready(102) if step["node"]["node"] == "second_gamma"))
         for name, changed in (("source.py", "def value():\n    return 1\n"), ("read_dependency.txt", "unrelated consumed drift\n")):
             path = self.fixture.repo / name
             original = path.read_bytes()
             path.write_text(changed)
             steps = self.session.checkpoint(102)
-            self.assertFalse(any(step.get("kind") == "execute" and step.get("node", {}).get("node") == "gamma" for step in steps))
+            self.assertFalse(any(step.get("kind") == "execute" and step.get("node", {}).get("node") == "second_gamma" for step in steps))
             path.write_bytes(original)
-            self.assertEqual(ready["input_hash"], next(step["input_hash"] for step in self.session.ready(102) if step["node"]["node"] == "gamma"))
-        final = self.session.acquire("gamma", number=102)
+            self.assertEqual(ready["input_hash"], next(step["input_hash"] for step in self.session.ready(102) if step["node"]["node"] == "second_gamma"))
+        final = self.session.acquire("second_gamma", number=102)
         self.session.finish(final, {"value": "Both sibling transformations remain connected"}, number=102)
         self.assertEqual(frozen_first, (self.provider.issues[100], self.provider.comments[100]))
         self.assertEqual(proof_bytes, self.read_blob(first_proof))
@@ -1057,7 +1072,11 @@ class GenericDeliveryPublicTests(DagFixture):
         self.assertTrue(selected)
         self.assertTrue(all({100, 101} == {t["goal"] for t in r["targets"]} for r in selected))
         self.session.finish(aggregate, {"value": "Both canonical children delivered and currently accepted"}, number=99)
-        self.assertEqual([], self.session.ready(99))
+        self.assertFalse(any(step.get("kind") == "execute" and step.get("node", {}).get("node") == "collect"
+                             for step in self.session.ready(99)))
+        aggregate_output = self.result_at(99, "collect")[1]["outputs"]["value"]
+        self.assertEqual("Both canonical children delivered and currently accepted",
+                         self.read_at(99, aggregate_output)["content"])
 
 
 if __name__ == "__main__":
