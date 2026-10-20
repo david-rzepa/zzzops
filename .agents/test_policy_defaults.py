@@ -23,6 +23,18 @@ PLAN = ROOT / "plugins" / "zzzops" / "zzzops" / "templates" / "project-goals" / 
 
 
 class PolicyDefaultInventoryTests(unittest.TestCase):
+    def test_release_planning_default_is_disabled_and_fully_explicit(self):
+        proposal = json.loads(PLAN.read_text(encoding="utf-8"))["policy"]
+        section = next(item for item in proposal["sections"] if item["id"] == "git_review_release")
+        self.assertEqual({
+            "enabled": False, "next_release": 1, "integration_branch": "dev",
+            "publication_branch": "main", "release_branch_prefix": "release/",
+            "execution_scope": "active_only",
+        }, section["configuration"]["release_planning"])
+        catalog = policy.policy_default_catalog()["zzzops.policy.git_review_release"]["content"]
+        self.assertEqual(section["configuration"]["release_planning"],
+                         catalog["configuration"]["release_planning"])
+
     def test_repository_boundary_is_complete_and_has_no_hot_default_leakage(self) -> None:
         report = inventory.validate(ROOT)
         boundary = report["boundary"]

@@ -18,7 +18,7 @@ z = fixtures.zzzops
 EXPECTED_CONFIGURATION_KEYS = {
     "backend": {"authority", "repository_identity", "capability_evidence"},
     "git_review_release": {
-        "review_pending_dependency", "pull_request_mode",
+        "review_pending_dependency", "pull_request_mode", "release_planning",
     },
     "verification_testing": {"required_ci"},
     "code_quality": set(),
@@ -165,6 +165,27 @@ class PolicyConfigurationSchemaTests(unittest.TestCase):
             mutation(section["configuration"])
             with self.subTest(section=identifier, expected=expected):
                 self.assertTrue(any(expected in error for error in z.validate_policy(policy, require_pending=True)))
+
+    def test_release_planning_policy_is_typed_complete_and_opt_in(self):
+        policy = self.template_policy()
+        config = next(s["configuration"] for s in policy["sections"] if s["id"] == "git_review_release")
+        self.assertEqual({
+            "enabled": False, "next_release": 1, "integration_branch": "dev",
+            "publication_branch": "main", "release_branch_prefix": "release/",
+            "execution_scope": "active_only",
+        }, config["release_planning"])
+        self.assertEqual([], z.validate_policy(policy, require_pending=True))
+        for field, invalid in (
+            ("enabled", 1), ("next_release", 0), ("next_release", True),
+            ("integration_branch", ""), ("publication_branch", None),
+            ("release_branch_prefix", ""), ("execution_scope", "all"),
+        ):
+            changed = copy.deepcopy(policy)
+            release = next(s["configuration"]["release_planning"] for s in changed["sections"]
+                           if s["id"] == "git_review_release")
+            release[field] = invalid
+            with self.subTest(field=field, invalid=invalid):
+                self.assertTrue(any("release_planning" in error for error in z.validate_policy(changed, require_pending=True)))
 
     def test_security_policy_cannot_be_marked_optional_or_inapplicable(self):
         for field in ("required", "applicable"):

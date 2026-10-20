@@ -36,6 +36,30 @@ class PortfolioScopeTests(unittest.TestCase):
     def issue(self, number, **changes):
         return self.portfolio.issue(number, **changes)
 
+    def test_portfolio_projects_release_target_fallback_conflict_and_rationale(self):
+        records = [
+            {**self.portfolio.goal(priority="P2", depends_on=[]), "key": 1, "digest": "sha256:" + "1" * 64, "target_release": 1},
+            {**self.portfolio.goal(priority="P0", depends_on=[]), "key": 2, "digest": "sha256:" + "2" * 64, "target_release": 2},
+            {**self.portfolio.goal(priority="P1", depends_on=[]), "key": 3, "digest": "sha256:" + "3" * 64},
+            {**self.portfolio.goal(priority="P2", depends_on=[2]), "key": 4, "digest": "sha256:" + "4" * 64, "target_release": 1},
+        ]
+        git_policy = {
+            "review_pending_dependency": "stack_from_reviewed_checkpoint",
+            "pull_request_mode": "github_stacked_when_verified_else_chained",
+            "release_planning": {"enabled": True, "next_release": 1, "integration_branch": "dev",
+                "publication_branch": "main", "release_branch_prefix": "release/",
+                "execution_scope": "active_only"},
+        }
+        snapshot = z.build_portfolio_snapshot("github_issues", records, reads=1, raw_bytes=10,
+                                              git_policy=git_policy)
+        projected = {row["key"]: row for row in snapshot["goals"]}
+        self.assertEqual(1, projected[3]["release"]["target"])
+        self.assertEqual("fallback_active_release", projected[3]["release"]["assignment"])
+        self.assertEqual("future_release_dependency",
+                         next(item for item in snapshot["findings"] if item["goal"] == 4)["code"])
+        self.assertEqual([3, 1], [row["goal"] for row in snapshot["effective_order"]])
+        self.assertTrue(all("release" in row["reason"] for row in snapshot["effective_order"]))
+
     def test_warm_targeted_workflow_context_skips_unrelated_comments_and_prs(self):
         implementation = {"branch": "goal/x", "base": "main", "target": "main",
                           "pr": "https://github.com/owner/repo/pull/11",

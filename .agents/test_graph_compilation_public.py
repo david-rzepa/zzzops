@@ -2,8 +2,12 @@
 from __future__ import annotations
 
 import copy
+import contextlib
+import io
 import json
 from pathlib import Path
+import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -13,6 +17,179 @@ import test_graph_normalization_public as normalization_cases
 
 
 class GraphCompilationPublicTests(dag.DagFixture):
+    def test_public_release_cli_routes_status_configure_assign_and_checkpoint(self):
+        class Provider:
+            def __init__(self):
+                self.record = None; self.lock = None; self.audit = []; self.observations = []
+                self.exchange_calls = 0; self.fail_exchange_at = None
+                self.observed = {"members": {"1": {"status": "done", "integrated_commit": "a" * 40}},
+                    "active_owners": [], "observed_commits": ["a" * 40],
+                    "source_ancestors": ["a" * 40], "forbidden_commits": [],
+                    "source_branch": "dev", "source_sha": "a" * 40}
+            def acquire_repository_lock(self, repository, request_id):
+                if self.lock not in (None, request_id): raise ValueError("locked")
+                self.lock = request_id
+            def release_repository_lock(self, repository, request_id):
+                if self.lock == request_id: self.lock = None
+            def read(self, repository): return copy.deepcopy(self.record)
+            def create_only(self, repository, record):
+                if self.record is not None: raise ValueError("duplicate")
+                self.record = copy.deepcopy(record); return copy.deepcopy(record)
+            def compare_exchange(self, repository, revision, record):
+                if self.record is None or self.record["revision"] != revision: raise ValueError("revision changed")
+                self.exchange_calls += 1
+                if self.exchange_calls == self.fail_exchange_at: raise TimeoutError("provider outcome unknown before effect")
+                self.record = copy.deepcopy(record); return copy.deepcopy(record)
+            def append_artifact(self, repository, artifact): self.audit.append(copy.deepcopy(artifact))
+            def observe_release(self, repository, release):
+                self.observations.append((repository, release))
+                return copy.deepcopy(self.observed)
+        class BranchProvider:
+            def __init__(self): self.refs = {}; self.calls = 0; self.uncertain_after = False
+            def observe(self, branch): return self.refs.get(branch)
+            def create_only(self, branch, sha):
+                self.calls += 1
+                current = self.refs.get(branch)
+                if current is not None and current != sha: raise ValueError("different-SHA conflict")
+                self.refs[branch] = sha
+                if self.uncertain_after: raise TimeoutError("provider outcome unknown after effect")
+                return {"status": "created", "branch": branch, "sha": sha}
+        provider = Provider()
+        branches = BranchProvider()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); request = root / "request.json"
+            project = copy.deepcopy(self.session.project)
+            release_policy = {"enabled": True, "next_release": 1, "integration_branch": "dev",
+                "publication_branch": "main", "release_branch_prefix": "release/", "execution_scope": "active_only"}
+            dag.z._workflow_section(project, "git_review_release")["configuration"]["release_planning"] = release_policy
+            with mock.patch.object(dag.z._package, "package_status", return_value={"ok": True, "version": "test", "revision": "test"}), \
+                 mock.patch.object(dag.z, "reviewed_project_state", return_value=project), \
+                 mock.patch.object(dag.z, "GitHubReleasePlanAdapter", return_value=provider), \
+                 mock.patch.object(dag.z, "GitHubReleaseBranchAdapter", return_value=branches):
+                def invoke(*argv, payload=None, expected_code=0):
+                    if payload is not None: request.write_text(json.dumps(payload), encoding="utf-8")
+                    args = ["zzzops", "--repo", str(root), "release", *argv]
+                    if payload is not None: args += ["--input", str(request)]
+                    with mock.patch.object(sys, "argv", args), contextlib.redirect_stdout(io.StringIO()) as output:
+                        self.assertEqual(expected_code, dag.z._private_main())
+                    return json.loads(output.getvalue())
+                configured = invoke("configure", payload={"request_id": "configure-1", "expected_revision": None,
+                    "plan": {"next_release": 1, "assignments": {}, "releases": {}}})
+                self.assertEqual("applied", configured["status"])
+                before = copy.deepcopy(provider.record); writes = provider.exchange_calls
+                invalid = invoke("assign", payload={"request_id": "assign-invalid", "expected_revision": 0,
+                    "assignments": [{"goal": 7, "release": 2}, {"goal": 8, "release": 0}]}, expected_code=2)
+                self.assertIn("positive", invalid["reason"])
+                self.assertEqual(before, provider.record)
+                self.assertEqual(writes, provider.exchange_calls)
+                provider.fail_exchange_at = provider.exchange_calls + 2
+                partial = invoke("assign", payload={"request_id": "assign-partial", "expected_revision": 0,
+                    "assignments": [{"goal": 7, "release": 2}, {"goal": 8, "release": 3}]})
+                self.assertEqual(["applied", "pending"], [row["status"] for row in partial["items"]])
+                self.assertEqual({"7": 2}, provider.record["assignments"])
+                after_partial = copy.deepcopy(provider.record); writes = provider.exchange_calls
+                conflict = invoke("assign", payload={"request_id": "assign-stale", "expected_revision": 0,
+                    "assignments": [{"goal": 9, "release": 4}, {"goal": 10, "release": 4}]}, expected_code=2)
+                self.assertIn("revision", conflict["reason"])
+                self.assertEqual(after_partial, provider.record)
+                self.assertEqual(writes, provider.exchange_calls)
+                provider.fail_exchange_at = None
+                partial_request = {"request_id": "assign-partial", "expected_revision": 0,
+                    "assignments": [{"goal": 7, "release": 2}, {"goal": 8, "release": 3}]}
+                recovered = invoke("assign", payload=partial_request)
+                self.assertEqual(["applied", "applied"], [row["status"] for row in recovered["items"]])
+                self.assertEqual({"7": 2, "8": 3}, provider.record["assignments"])
+                self.assertEqual(2, provider.record["revision"], "replay must write only the pending item")
+                completed = invoke("assign", payload={"request_id": "assign-complete", "expected_revision": 2,
+                    "assignments": [{"goal": 8, "release": 3}, {"goal": 9, "release": 3}]})
+                completed_record = copy.deepcopy(provider.record); writes = provider.exchange_calls
+                replay = invoke("assign", payload={"request_id": "assign-complete", "expected_revision": 2,
+                    "assignments": [{"goal": 8, "release": 3}, {"goal": 9, "release": 3}]})
+                self.assertEqual(completed, replay)
+                self.assertEqual(completed_record, provider.record)
+                self.assertEqual(writes, provider.exchange_calls)
+                status = invoke("status")
+                self.assertEqual(2, status["assignments"]["7"])
+                checkpoint = invoke("checkpoint", payload={"operation": "propose", "request_id": "checkpoint-1",
+                    "expected_revision": provider.record["revision"],
+                    "members": {"1": {"status": "done", "integrated_commit": "f" * 40}},
+                    "active_owners": [], "observed_commits": ["f" * 40], "source_ancestors": ["f" * 40],
+                    "source_branch": "forged", "source_sha": "f" * 40,
+                    "authority": "sha256:" + "b" * 64})
+                self.assertEqual("ready_proposal", checkpoint["status"])
+                self.assertEqual("a" * 40, checkpoint["proposal"]["source_sha"])
+                self.assertEqual([("owner/repo", 1)], provider.observations)
+                frozen = invoke("checkpoint", payload={"operation": "freeze", "request_id": "freeze-public",
+                    "expected_revision": provider.record["revision"], "proposal": checkpoint["proposal"]})
+                self.assertEqual("frozen_intent", frozen["status"])
+                provider.observed["source_sha"] = "e" * 40
+                provider.observed["members"] = {"1": {"status": "done", "integrated_commit": "e" * 40}}
+                drift = invoke("checkpoint", payload={"operation": "cut", "request_id": "cut-drift",
+                    "expected_revision": provider.record["revision"], "intent": frozen["intent"]}, expected_code=2)
+                self.assertIn(drift["code"], {"source_drift", "membership_drift"})
+                self.assertEqual(0, branches.calls)
+                self.assertEqual(1, provider.record["next_release"])
+                provider.observed.update(source_sha="a" * 40,
+                    members={"1": {"status": "done", "integrated_commit": "a" * 40}})
+                branches.uncertain_after = True
+                cut_request = {"operation": "cut", "request_id": "cut-public",
+                    "expected_revision": provider.record["revision"], "intent": frozen["intent"]}
+                confirmed = invoke("checkpoint", payload=cut_request)
+                self.assertEqual("branch_confirmed", confirmed["status"])
+                self.assertEqual(2, provider.record["next_release"])
+                calls = branches.calls; record = copy.deepcopy(provider.record)
+                replay_cut = invoke("checkpoint", payload=cut_request)
+                self.assertEqual(confirmed, replay_cut)
+                self.assertEqual(calls, branches.calls)
+                self.assertEqual(record, provider.record)
+
+    def test_release_coordination_does_not_add_goal_dag_nodes(self):
+        reviewed = compiler_cases.default_graph()
+        dag.z._workflow_section(self.session.project, "workflow_adherence")["configuration"]["phase_dag"] = reviewed
+        canonical = dag.z._static_workflow.canonical(reviewed, self.compiler())
+        self.assertEqual(canonical, dag.z._static_workflow.canonical(canonical, self.compiler()))
+        declarations = [*canonical["nodes"], *(row["template"] for row in canonical["task_sets"])]
+        self.assertFalse(any(node["id"].startswith("release_") for node in declarations))
+
+    def test_public_capture_creates_goal_then_returns_recoverable_assignment_state(self):
+        class ReleaseProvider:
+            def __init__(self):
+                self.record = {"kind": "release-plan", "revision": 0, "next_release": 1,
+                    "assignments": {}, "releases": {}}; self.lock = None; self.fail_after = True
+            def acquire_repository_lock(self, repository, request_id): self.lock = request_id
+            def release_repository_lock(self, repository, request_id): self.lock = None
+            def read(self, repository): return copy.deepcopy(self.record)
+            def compare_exchange(self, repository, revision, record):
+                if revision != self.record["revision"]: raise ValueError("revision changed")
+                self.record = copy.deepcopy(record)
+                if self.fail_after: raise TimeoutError("provider outcome unknown after effect")
+                return copy.deepcopy(record)
+            def append_artifact(self, repository, artifact): pass
+        release_provider = ReleaseProvider()
+        project = self.session.project
+        dag.z._workflow_section(project, "git_review_release")["configuration"]["release_planning"] = {
+            "enabled": True, "next_release": 1, "integration_branch": "dev",
+            "publication_branch": "main", "release_branch_prefix": "release/", "execution_scope": "active_only"}
+        request = self.capture_request(); request["target_release"] = 2
+        def create_issue(payload):
+            number = max(self.provider.issues) + 1
+            issue = {"number": number, "title": payload["title"], "body": payload["body"], "state": "open",
+                "html_url": f"https://github.com/owner/repo/issues/{number}",
+                "labels": [{"name": value} for value in payload["labels"]]}
+            self.provider.issues[number] = copy.deepcopy(issue); self.provider.comments[number] = []
+            return copy.deepcopy(issue)
+        self.provider.create_issue = create_issue
+        with mock.patch.object(dag.z, "GitHubReleasePlanAdapter", return_value=release_provider):
+            proposal = self.session.call(100, {"operation": "capture_propose", "request": request})
+            submission = copy.deepcopy(proposal["next_steps"][0]["submission"])
+            submission["approved_by"] = "approved-user"
+            result = self.session.call(100, submission)
+        created = max(set(self.provider.issues) - {100})
+        self.assertEqual("created_assignment_reconciled", result["capture"]["status"])
+        self.assertEqual(created, result["capture"]["goal"]["number"])
+        self.assertEqual(2, release_provider.record["assignments"][str(created)])
+        self.assertEqual(1, len(set(self.provider.issues) - {100}), "retry state must not duplicate the goal")
+
     def compiler(self):
         value = getattr(dag.z, "_graph_compiler", None)
         self.assertIsNotNone(value, "graph compiler service is not registered")
