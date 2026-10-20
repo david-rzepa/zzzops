@@ -22,7 +22,7 @@ The former Windows and macOS command groups have these dispositions. The discove
 | `.agents/test_marketplace_bundle.py` | Covered by `python -m unittest discover -s .agents -p test_*.py`. | `test_marketplace_bundle.MarketplaceBundleTests.test_fixed_version_build_is_deterministic_and_complete`<br>`test_agent_plugin.AgentPluginTests.test_marketplace_points_to_the_self_contained_package` |
 | `plugins/zzzops/skills/migrate-to-zzzops/scripts/test_*.py` | Covered by `python -m unittest discover -s plugins/zzzops/skills/migrate-to-zzzops/scripts -p test_*.py`. | None. Its unique assurance remains Linux-only. |
 
-Windows and macOS run a bounded native-sensitive selection in fresh Python interpreters. The explicit mapping in `run_product_validation.py` retains these former native groups:
+Windows and macOS run the same bounded native-sensitive selection in fresh Python interpreters. Windows uses `--workers 2` to split all 11 retained IDs into two disjoint, deterministic groups balanced by the timing hints; macOS retains the default single worker. Each parallel child and the combined observation must contain the exact expected started/completed IDs and valid outcome counts. Failure counts and native-facility skip evidence are combined without overwriting sibling outcomes; exceptions join the other child before failing. No native test is omitted and no additional hosted job is created. The explicit mapping in `run_product_validation.py` retains these former native groups:
 
 | Coverage obligation | Retained target behaviour |
 | --- | --- |

@@ -463,6 +463,91 @@ class NativeSelectionContractTests(unittest.TestCase):
             self.assertIn(value, summary)
 
 
+class NativeWorkerContractTests(unittest.TestCase):
+    def setUp(self):
+        self.runner = load_runner()
+        self.selected = sorted(REQUIRED_NATIVE_IDS)
+
+    def observation(self, batch):
+        return {"returncode": 0, "tests_run": len(batch), "executed_ids": list(batch),
+                "completed_ids": list(batch), "failures": 0, "errors": 0,
+                "skips": [], "invalid_skips": [], "durations": {item: .1 for item in batch}}
+
+    def invoke(self, launch, emit=lambda report: None):
+        return self.runner.run_native_validation("windows", discover=lambda: self.selected,
+                                                  launch=launch, workers=2, emit=emit)
+
+    def test_native_workers_overlap_and_complete_exact_selection(self):
+        barrier = threading.Barrier(2)
+        def launch(batch):
+            barrier.wait(timeout=5)
+            return self.observation(batch)
+        report = self.invoke(launch)
+        self.assertEqual(self.selected, sorted(report["executed_ids"]))
+        self.assertEqual(self.selected, sorted(report["completed_ids"]))
+        self.assertEqual(11, report["tests_run"])
+        self.assertEqual(2, report["workers"])
+        self.assertEqual(2, len(report["worker_reports"]))
+
+    def test_native_child_failure_and_invalid_execution_fail_closed(self):
+        for field, value, error in (
+            ("returncode", 1, subprocess.CalledProcessError),
+            ("failures", 1, subprocess.CalledProcessError),
+            ("errors", 1, subprocess.CalledProcessError),
+            ("executed_ids", [], ValueError),
+            ("completed_ids", [], ValueError),
+            ("executed_ids", ["unknown"], ValueError),
+            ("executed_ids", ["duplicate", "duplicate"], ValueError),
+            ("invalid_skips", [{"id": self.selected[0], "reason": "unsupported"}], ValueError),
+        ):
+            with self.subTest(field=field, value=value):
+                def launch(batch):
+                    observation = self.observation(batch)
+                    if self.selected[0] in batch:
+                        observation[field] = value
+                    return observation
+                with self.assertRaises(error):
+                    self.invoke(launch)
+
+    def test_native_workers_preserve_only_evidenced_facility_skips(self):
+        def launch(batch):
+            observation = self.observation(batch)
+            if self.selected[0] in batch:
+                observation["skips"] = [{"id": self.selected[0],
+                    "kind": "unavailable_native_facility", "reason": "unavailable",
+                    "evidence": "probe ENOTSUP"}]
+            return observation
+        report = self.invoke(launch)
+        self.assertEqual(1, report["skipped"])
+        self.assertEqual("probe ENOTSUP", report["coverage_limits"][0]["evidence"])
+        def invalid_launch(batch):
+            observation = launch(batch)
+            for skip in observation["skips"]:
+                skip.pop("evidence")
+            return observation
+        with self.assertRaisesRegex(ValueError, "evidence"):
+            self.invoke(invalid_launch)
+
+    def test_native_worker_exception_joins_sibling_before_propagating(self):
+        barrier = threading.Barrier(2)
+        finished = threading.Event()
+        def launch(batch):
+            barrier.wait(timeout=5)
+            if self.selected[0] in batch:
+                raise RuntimeError("native child crashed")
+            finished.set()
+            return self.observation(batch)
+        with self.assertRaisesRegex(RuntimeError, "native child crashed"):
+            self.invoke(launch)
+        self.assertTrue(finished.is_set())
+
+    def test_cli_allows_native_workers_without_linux_shard_options(self):
+        with mock.patch.object(sys, "argv", ["runner", "--platform", "windows", "--workers", "2"]), \
+                mock.patch.object(self.runner, "run_native_validation") as native:
+            self.assertEqual(0, self.runner.main())
+        native.assert_called_once_with("windows", workers=2)
+
+
 class LinuxShardContractTests(unittest.TestCase):
     def setUp(self):
         self.runner = load_runner()

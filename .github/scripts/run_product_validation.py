@@ -230,16 +230,39 @@ def run_native_validation(
     launch: Callable[[list[str]], Mapping] | None = None,
     clock: Callable[[], float] = time.perf_counter,
     emit: Callable[[dict], None] | None = None,
+    workers: int = 1,
 ) -> dict:
     started = clock()
     discovered = discover() if discover is not None else discover_native_tests(root=root)
     selected = select_native_tests(discovered)
-    observation = dict(launch(selected) if launch is not None else _launch_native(selected, Path(root)))
+    if type(workers) is not int or workers not in (1, 2):
+        raise ValueError("Native workers must be 1 or 2")
+    launch_child = launch if launch is not None else lambda batch: _launch_native(batch, Path(root))
+    worker_reports = []
+    if workers == 1:
+        observation = dict(launch_child(selected))
+    else:
+        weights, fallback = load_linux_timings()
+        batches = partition_linux_tests(selected, min(workers, len(selected)), weights,
+                                        fallback, auxiliary_seconds=0.0)
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(launch_child, batch) for batch in batches]
+            for index, (batch, future) in enumerate(zip(batches, futures)):
+                child = dict(future.result())
+                # Completion/count checks supplement the same native facility skip rules.
+                _validate_linux_observation(batch, child)
+                worker_reports.append({"worker_index": index, "selected_ids": batch,
+                                       "observation": child})
+        observation = _combine_linux_observations([worker["observation"] for worker in worker_reports])
+        _validate_linux_observation(selected, observation)
     elapsed = clock() - started
     _validate_observation(selected, observation)
     durations = {key: float(value) for key, value in observation.get("durations", {}).items()}
     report = {
         "platform": platform, "selected_ids": selected, "selected_count": len(selected),
+        "workers": workers, "worker_reports": worker_reports,
+        "executed_ids": list(observation["executed_ids"]),
+        "completed_ids": list(observation.get("completed_ids", [])),
         "tests_run": observation["tests_run"], "failures": observation.get("failures", 0),
         "errors": observation.get("errors", 0), "skipped": len(observation.get("skips", ())),
         "coverage_limits": list(observation.get("skips", ())), "wall_seconds": elapsed,
@@ -250,8 +273,8 @@ def run_native_validation(
     (emit or (lambda value: print(json.dumps(value, sort_keys=True))))(report)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         write_step_summary(report, Path(os.environ["GITHUB_STEP_SUMMARY"]))
-    if observation.get("returncode", 0):
-        raise subprocess.CalledProcessError(int(observation["returncode"]), [sys.executable, "native-tests"])
+    if observation.get("returncode", 0) or observation.get("failures", 0) or observation.get("errors", 0):
+        raise subprocess.CalledProcessError(int(observation.get("returncode") or 1), [sys.executable, "native-tests"])
     return report
 
 
@@ -259,6 +282,7 @@ def write_step_summary(report: Mapping, path: Path) -> None:
     lines = [
         f"## Native validation: {report['platform']}", "", f"- selected: {report['selected_count']}",
         f"- tests run: {report['tests_run']}",
+        f"- workers: {report.get('workers', 1)}",
         f"- failures/errors/skipped: {report['failures']}/{report['errors']}/{report['skipped']}",
         f"- wall seconds: {report['wall_seconds']:.2f}",
         f"- aggregate test seconds: {report['aggregate_test_seconds']:.2f}", "", "### Selected tests", "",
@@ -438,7 +462,7 @@ def main() -> int:
     parser.add_argument("--workers", type=int, choices=(1, 2), default=1)
     args = parser.parse_args()
     sharded = args.shard_index is not None or args.shard_count is not None
-    if sharded or args.discover_linux or args.report or args.workers != 1:
+    if sharded or args.discover_linux or args.report or (args.platform == "linux" and args.workers != 1):
         if args.platform != "linux" or args.discover_native:
             parser.error("Linux shard options require --platform linux")
         if args.shard_index is None or args.shard_count is None:
@@ -454,7 +478,10 @@ def main() -> int:
         selected = select_native_tests(discover_native_tests())
         print(json.dumps({"platform": args.platform, "selected_ids": selected, "selected_count": len(selected), "tests_run": 0}, sort_keys=True))
         return 0
-    {"linux": linux_validation, "windows": windows_validation, "macos": macos_validation}[args.platform]()
+    if args.platform == "linux":
+        linux_validation()
+    else:
+        run_native_validation(args.platform, workers=args.workers)
     return 0
 
 

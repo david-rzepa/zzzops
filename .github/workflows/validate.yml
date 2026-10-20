@@ -57,7 +57,7 @@ jobs:
         with:
           python-version: '3.14'
       - name: Test native-sensitive product contracts
-        run: python .github/scripts/run_product_validation.py --platform windows
+        run: python .github/scripts/run_product_validation.py --platform windows --workers 2
 
   validate-macos:
     name: Native-sensitive validation (macOS)
