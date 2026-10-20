@@ -1,8 +1,12 @@
 # CI coverage
 
-Linux remains the complete product-validation platform. Both Linux matrix jobs run the full `.agents` unittest discovery, migration-skill tests, manual coverage audit, plugin and release tests, prompt statistics, and Python compilation in their established order.
+Linux remains the complete product-validation platform. Each Python version (3.10 and 3.14) runs eight deterministic shards whose disjoint union is the complete current `.agents` unittest inventory. Discovery rejects loader errors and duplicate canonical IDs before partitioning. Every shard validates its exact selected, started and completed IDs; missing, duplicate, unexpected or partial execution fails the job. A new test is automatically included even when no timing hint exists.
 
-The former Windows and macOS command groups have these dispositions. Full Linux coverage means the tests remain in the exact complete discovery command shown; a native-retained ID is the narrower cross-platform assurance that now runs on Windows and macOS.
+`.github/scripts/linux_test_timings.json` contains performance hints, never an allowlist. The runner assigns the longest estimated tests first, breaking ties by canonical ID and shard index. It reserves 20 estimated seconds on shard 0 for the non-core commands. Shard 0 alone runs migration-skill tests, the manual coverage audit, plugin and release tests, prompt statistics, and Python compilation, once on each Python version. Only shard 0 installs Node and npm dependencies. Windows, macOS and Claude installed-cache legs retain their coverage.
+
+The unsharded command `python .github/scripts/run_product_validation.py --platform linux` retains full discovery followed by all non-core commands in their original order. CI invokes `--shard-index 0 --shard-count 8` (with indices 0 through 7). Add `--discover-linux` to inspect a partition without executing tests. Every shard uploads a report named `linux-python-<version>-shard-<index>` with the full inventory count/digest, selected and executed IDs, completion counts, individual durations and total wall time; the job summary exposes counts and estimated/observed duration. Timing projections are local estimates, and the five-minute target must be checked against hosted setup and runner performance.
+
+The former Windows and macOS command groups have these dispositions. The discovery commands shown identify the same complete inventory now partitioned across Linux shards; a native-retained ID is the narrower cross-platform assurance that runs on Windows and macOS.
 
 | Former native command group | Complete Linux disposition | Exact native-retained test IDs |
 | --- | --- | --- |
@@ -28,4 +32,4 @@ Windows and macOS run a bounded native-sensitive selection in fresh Python inter
 
 The runner discovers real unittest identities before selection and rejects missing, duplicate, partial, or unexpected execution. Each native report records selected and executed counts, per-test and grouped timing, failures, errors, and evidenced coverage limits. None of the current 11 targets has an authentic skip-based native-facility probe, so the real worker rejects every unittest skip. Native facility failures, including unavailable symlink support, fail the leg and retain their traceback. The report validator accepts a coverage limit only when an injected observation identifies a selected test and supplies an explicit `unavailable_native_facility` reason and probe evidence.
 
-The five hosted legs remain two complete Linux matrix jobs plus one Windows, one macOS, and one Claude installed-cache job. `dev-required-tests` continues to aggregate the four job results, including the Linux matrix result, through `require_validation.py`.
+The hosted legs are sixteen Linux shards plus one Windows, one macOS, and one Claude installed-cache job (nineteen runnable jobs before aggregation). The Linux matrix uses `fail-fast: false`. `dev-required-tests` continues to aggregate the four job results, including the entire Linux matrix result, through `require_validation.py`; any failed, cancelled, skipped or missing matrix execution prevents a successful required check.

@@ -462,6 +462,128 @@ class NativeSelectionContractTests(unittest.TestCase):
             self.assertIn(value, summary)
 
 
+class LinuxShardContractTests(unittest.TestCase):
+    def setUp(self):
+        self.runner = load_runner()
+
+    def test_balanced_partition_is_deterministic_complete_disjoint_and_includes_new_tests(self):
+        inventory = [f"test_module.Case.test_{index:02}" for index in range(24)]
+        weights = {test: float(index + 1) for index, test in enumerate(inventory[:-1])}
+        # A historical timing entry cannot select an absent test.
+        weights["removed.test"] = 9999
+        shards = self.runner.partition_linux_tests(inventory, 4, weights)
+        self.assertEqual(shards, self.runner.partition_linux_tests(reversed(inventory), 4, weights))
+        flattened = [test for shard in shards for test in shard]
+        self.assertEqual(sorted(inventory), sorted(flattened))
+        self.assertEqual(len(flattened), len(set(flattened)))
+        self.assertTrue(all(shard == sorted(shard) and shard for shard in shards))
+        loads = [sum(weights.get(test, 10) for test in shard) for shard in shards]
+        loads[0] += self.runner.LINUX_AUXILIARY_SECONDS
+        self.assertLessEqual(max(loads) - min(loads), max(weights[test] for test in inventory[:-1]))
+        small = self.runner.partition_linux_tests(["a", "b", "c"], 3, {}, fallback=1)
+        self.assertTrue(all(len(shard) == 1 for shard in small),
+                        "Auxiliary overhead cannot starve shard zero in a small inventory")
+
+    def test_partition_rejects_empty_duplicate_and_invalid_shard_counts(self):
+        for inventory, count in (([], 1), (["a", "a"], 1), (["a"], 0), (["a"], 2), (["a"], True)):
+            with self.subTest(inventory=inventory, count=count):
+                with self.assertRaises(ValueError):
+                    self.runner.partition_linux_tests(inventory, count, {})
+
+    def test_real_linux_discovery_rejects_duplicate_aliases_and_loader_errors(self):
+        for source, error in (
+            ("import unittest\nclass Case(unittest.TestCase):\n def test_one(self): pass\nAlias = Case\n", "duplicate"),
+            ("raise RuntimeError('broken Linux inventory')\n", "loader"),
+        ):
+            with self.subTest(error=error), tempfile.TemporaryDirectory() as directory:
+                tests = Path(directory) / ".agents"
+                tests.mkdir()
+                name = "test_linux_discovery_" + error
+                (tests / (name + ".py")).write_text(source, encoding="utf-8")
+                try:
+                    with self.assertRaisesRegex((ValueError, RuntimeError), error):
+                        self.runner.discover_linux_tests(Path(directory))
+                finally:
+                    sys.modules.pop(name, None)
+
+    def test_each_python_inventory_partitions_exactly_once_and_timings_only_guide_balance(self):
+        inventory = self.runner.discover_linux_tests()
+        weights, fallback = self.runner.load_linux_timings()
+        shards = self.runner.partition_linux_tests(inventory, 8, weights, fallback)
+        self.assertEqual(inventory, sorted(test for shard in shards for test in shard))
+        # Even an entirely stale or absent timing inventory cannot omit a test.
+        unprofiled = self.runner.partition_linux_tests(inventory, 8, {}, fallback)
+        self.assertEqual(inventory, sorted(test for shard in unprofiled for test in shard))
+
+    def test_linux_observation_rejects_missing_duplicate_partial_and_unfinished_execution(self):
+        selected = ["test_one.Case.test_one", "test_two.Case.test_two"]
+        valid = {"returncode": 0, "tests_run": 2, "executed_ids": selected,
+                 "completed_ids": selected, "failures": 0, "errors": 0,
+                 "invalid_skips": [], "skips": []}
+        self.runner._validate_linux_observation(selected, valid)
+        mutations = (
+            {"executed_ids": []}, {"executed_ids": selected[:1], "tests_run": 1},
+            {"executed_ids": [selected[0], selected[0]]},
+            {"executed_ids": [selected[0], "unexpected.Case.test_extra"]},
+            {"completed_ids": selected[:1]}, {"completed_ids": [selected[0], selected[0]]},
+            {"completed_ids": []}, {"failures": None}, {"returncode": False},
+        )
+        for mutation in mutations:
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                self.runner._validate_linux_observation(selected, {**valid, **mutation})
+
+    def test_shard_reports_exact_execution_and_runs_auxiliary_checks_only_on_zero(self):
+        selected = ["test_one.Case.test_one"]
+        observation = {"returncode": 0, "tests_run": 1, "executed_ids": selected,
+                       "completed_ids": selected, "failures": 0, "errors": 0,
+                       "invalid_skips": [], "skips": [], "durations": {selected[0]: .01}}
+        with tempfile.TemporaryDirectory() as directory:
+            for index in (0, 1):
+                plan = {"python_version": "3.14", "shard_index": index, "shard_count": 8,
+                        "selected_ids": selected, "selected_count": 1, "inventory_count": 8,
+                        "auxiliary_checks": index == 0, "estimated_test_seconds": .01}
+                path = Path(directory) / f"python-3.14-shard-{index}.json"
+                with mock.patch.object(self.runner, "linux_shard_plan", return_value=plan), \
+                        mock.patch.object(self.runner, "_launch_native", return_value=observation), \
+                        mock.patch.object(self.runner, "linux_auxiliary_validation") as auxiliary, \
+                        mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(Path(directory) / "summary")}), \
+                        mock.patch("builtins.print"):
+                    report = self.runner.run_linux_shard(index, 8, path)
+                self.assertEqual("success", report["status"])
+                self.assertEqual(selected, json.loads(path.read_text())["completed_ids"])
+                self.assertEqual(index == 0, auxiliary.called)
+            self.assertIn("selected/executed/completed: 1/1/1", (Path(directory) / "summary").read_text())
+
+    def test_failed_shard_keeps_failure_report_and_never_runs_auxiliary_checks(self):
+        selected = ["test_one.Case.test_one"]
+        plan = {"python_version": "3.14", "selected_ids": selected, "selected_count": 1,
+                "inventory_count": 8, "auxiliary_checks": True, "estimated_test_seconds": .01}
+        failed = {"returncode": 0, "tests_run": 1, "executed_ids": selected,
+                  "completed_ids": selected, "failures": 1, "errors": 0}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "failed.json"
+            with mock.patch.object(self.runner, "linux_shard_plan", return_value=plan), \
+                    mock.patch.object(self.runner, "_launch_native", return_value=failed), \
+                    mock.patch.object(self.runner, "linux_auxiliary_validation") as auxiliary, \
+                    mock.patch.dict(os.environ, {}, clear=True), mock.patch("builtins.print"):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    self.runner.run_linux_shard(0, 8, path)
+            self.assertEqual("failed", json.loads(path.read_text())["status"])
+            auxiliary.assert_not_called()
+
+    def test_workflow_runs_eight_shards_on_both_pythons_with_unique_reports(self):
+        workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+        linux = workflow.split("  validate-linux:", 1)[1].split("  validate-windows:", 1)[0]
+        self.assertIn("fail-fast: false", linux)
+        self.assertIn("python-version: ['3.10', '3.14']", linux)
+        self.assertIn("shard: [0, 1, 2, 3, 4, 5, 6, 7]", linux)
+        self.assertIn("--shard-index ${{ matrix.shard }} --shard-count 8", linux)
+        self.assertIn("if-no-files-found: error", linux)
+        self.assertEqual(2, linux.count("if: matrix.shard == 0"))
+        self.assertIn("name: linux-python-${{ matrix.python-version }}-shard-${{ matrix.shard }}", linux)
+        assert_required_gate_contract(self, workflow)
+
+
 class ExistingCoverageControls(unittest.TestCase):
     def test_linux_validation_remains_complete_and_in_order(self):
         runner = load_runner()
@@ -484,22 +606,19 @@ class ExistingCoverageControls(unittest.TestCase):
         workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
         assert_required_gate_contract(self, workflow)
 
+        def replace_required_run():
+            # Linux also uses a folded command now; mutate the required gate.
+            prefix, required = workflow.split("  required:", 1)
+            return prefix + "  required:" + required.replace("        run: >-", "        run: echo no-op", 1)
+
         mutations = {
             "echo no-op": workflow.replace(
                 "          python .github/scripts/require_validation.py",
                 "          echo python .github/scripts/require_validation.py",
                 1,
             ),
-            "comment-only decoy": workflow.replace(
-                "        run: >-",
-                "        run: echo no-op",
-                1,
-            ) + "\n# python .github/scripts/require_validation.py linux=${{ needs.validate-linux.result }} windows=${{ needs.validate-windows.result }} macos=${{ needs.validate-macos.result }} claude=${{ needs.validate-claude.result }}\n",
-            "other-job decoy": workflow.replace(
-                "        run: >-",
-                "        run: echo no-op",
-                1,
-            ) + """
+            "comment-only decoy": replace_required_run() + "\n# python .github/scripts/require_validation.py linux=${{ needs.validate-linux.result }} windows=${{ needs.validate-windows.result }} macos=${{ needs.validate-macos.result }} claude=${{ needs.validate-claude.result }}\n",
+            "other-job decoy": replace_required_run() + """
 
   decoy-aggregation:
     runs-on: ubuntu-latest

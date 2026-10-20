@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import math
 import os
 import subprocess
 import sys
@@ -14,6 +16,8 @@ from pathlib import Path
 from typing import Callable, Iterable, Mapping
 
 ROOT = Path(__file__).resolve().parents[2]
+LINUX_TIMINGS = ROOT / ".github" / "scripts" / "linux_test_timings.json"
+LINUX_AUXILIARY_SECONDS = 20.0
 
 NATIVE_COVERAGE = {
     "installation_cleanup": (
@@ -59,6 +63,62 @@ def discover_native_tests(root: Path = ROOT) -> set[str]:
     return _test_ids(suite)
 
 
+def discover_linux_tests(root: Path = ROOT) -> list[str]:
+    """Preserve multiplicity until duplicate canonical identities are rejected."""
+    tests = Path(root) / ".agents"
+    loader = unittest.TestLoader()
+    suite = loader.discover(str(tests), pattern="test_*.py", top_level_dir=str(tests))
+    if loader.errors:
+        raise RuntimeError("Linux unittest discovery loader errors:\n" + "\n".join(loader.errors))
+
+    def identities(group):
+        for test in group:
+            if isinstance(test, unittest.TestSuite):
+                yield from identities(test)
+            else:
+                yield test.id()
+
+    found = list(identities(suite))
+    if not found or len(found) != len(set(found)):
+        raise ValueError("Linux discovery inventory is empty or contains duplicate IDs")
+    return sorted(found)
+
+
+def load_linux_timings(path: Path = LINUX_TIMINGS) -> tuple[dict[str, float], float]:
+    value = json.loads(Path(path).read_text(encoding="utf-8"))
+    weights, fallback = value["seconds"], value["default_seconds"]
+    if value.get("schema_version") != 1 or not isinstance(weights, dict):
+        raise ValueError("Invalid Linux timing hints")
+    for seconds in [fallback, *weights.values()]:
+        if (isinstance(seconds, bool) or not isinstance(seconds, (int, float))
+                or not math.isfinite(seconds) or seconds <= 0):
+            raise ValueError("Linux timing hints must be finite positive seconds")
+    return weights, float(fallback)
+
+
+def partition_linux_tests(discovered: Iterable[str], shard_count: int,
+                          weights: Mapping[str, float], fallback: float = 10.0) -> list[list[str]]:
+    """Longest-first packing; timing hints never determine inventory membership."""
+    inventory = list(discovered)
+    if not inventory or len(inventory) != len(set(inventory)):
+        raise ValueError("Linux partition inventory is empty or contains duplicate IDs")
+    if type(shard_count) is not int or not 1 <= shard_count <= len(inventory):
+        raise ValueError("Linux shard count must be positive and cannot create empty shards")
+    shards: list[list[str]] = [[] for _ in range(shard_count)]
+    loads = [LINUX_AUXILIARY_SECONDS, *([0.0] * (shard_count - 1))]
+    for test_id in sorted(inventory, key=lambda item: (-weights.get(item, fallback), item)):
+        candidates = [item for item in range(shard_count) if not shards[item]] or range(shard_count)
+        index = min(candidates, key=lambda item: (loads[item], item))
+        shards[index].append(test_id)
+        loads[index] += weights.get(test_id, fallback)
+    # These checks also guard future changes to the partition algorithm.
+    assigned = [test_id for shard in shards for test_id in shard]
+    if (any(not shard for shard in shards) or len(assigned) != len(set(assigned))
+            or set(assigned) != set(inventory)):
+        raise ValueError("Linux shards have missing, duplicate or empty assignments")
+    return [sorted(shard) for shard in shards]
+
+
 def select_native_tests(discovered: Iterable[str]) -> list[str]:
     selected = [test_id for ids in NATIVE_COVERAGE.values() for test_id in ids]
     if not selected:
@@ -85,6 +145,7 @@ class Result(unittest.TextTestResult):
         super().startTest(test)
     def stopTest(self, test):
         self.durations[test.id()] = time.perf_counter() - self._started
+        self.completed_ids.append(test.id())
         super().stopTest(test)
     def addSkip(self, test, reason):
         self.invalid_skips.append({"id": test.id(), "reason": reason})
@@ -92,13 +153,14 @@ class Result(unittest.TextTestResult):
 sys.path.insert(0, os.path.join(sys.argv[1], ".agents"))
 suite = unittest.defaultTestLoader.loadTestsFromNames(json.loads(sys.argv[2]))
 result = Result(Stream(sys.stderr), True, 1)
-result.executed_ids, result.durations = [], {}
+result.executed_ids, result.completed_ids, result.durations = [], [], {}
 result.native_skips, result.invalid_skips = [], []
 suite.run(result)
 result.printErrors()
 payload = {
     "returncode": 0 if result.wasSuccessful() and not result.invalid_skips else 1,
     "tests_run": result.testsRun, "executed_ids": result.executed_ids,
+    "completed_ids": result.completed_ids,
     "failures": len(result.failures), "errors": len(result.errors),
     "skips": result.native_skips, "invalid_skips": result.invalid_skips,
     "durations": result.durations,
@@ -210,12 +272,81 @@ def write_step_summary(report: Mapping, path: Path) -> None:
 
 def linux_validation() -> None:
     run(sys.executable, "-m", "unittest", "discover", "-s", ".agents", "-p", "test_*.py")
+    linux_auxiliary_validation()
+
+
+def linux_auxiliary_validation() -> None:
     run(sys.executable, "-m", "unittest", "discover", "-s", "plugins/zzzops/skills/migrate-to-zzzops/scripts", "-p", "test_*.py")
     run(sys.executable, ".agents/manual_acceptance.py", "coverage")
     run("npm", "run", "test:plugin")
     run("npm", "run", "test:release")
     run(sys.executable, ".agents/prompt_stats.py", "--check")
     run(sys.executable, "-m", "compileall", "-q", ".agents", "plugins/zzzops", ".github/scripts")
+
+
+def _validate_linux_observation(selected: list[str], observation: Mapping) -> None:
+    _validate_observation(selected, observation)
+    completed = list(observation.get("completed_ids", ()))
+    if (len(completed) != len(set(completed)) or len(completed) != len(selected)
+            or set(completed) != set(selected)):
+        raise ValueError("Linux execution has missing, duplicate or partial completed IDs")
+    for key in ("tests_run", "returncode", "failures", "errors"):
+        if type(observation.get(key)) is not int or observation[key] < 0:
+            raise ValueError("Linux execution lacks valid outcome counts")
+
+
+def linux_shard_plan(shard_index: int, shard_count: int, root: Path = ROOT) -> dict:
+    inventory = discover_linux_tests(root)
+    weights, fallback = load_linux_timings()
+    shards = partition_linux_tests(inventory, shard_count, weights, fallback)
+    if type(shard_index) is not int or not 0 <= shard_index < shard_count:
+        raise ValueError("Linux shard index is outside the configured shard count")
+    selected = shards[shard_index]
+    return {
+        "schema_version": 1, "platform": "linux", "python_version": sys.version.split()[0],
+        "shard_index": shard_index, "shard_count": shard_count,
+        "inventory_count": len(inventory),
+        "inventory_sha256": hashlib.sha256("\n".join(inventory).encode()).hexdigest(),
+        "selected_ids": selected, "selected_count": len(selected),
+        "estimated_test_seconds": sum(weights.get(item, fallback) for item in selected),
+        "auxiliary_checks": shard_index == 0,
+    }
+
+
+def run_linux_shard(shard_index: int, shard_count: int, report_path: Path | None = None) -> dict:
+    started = time.perf_counter()
+    report = linux_shard_plan(shard_index, shard_count)
+    report["status"] = "failed"
+    try:
+        observation = _launch_native(report["selected_ids"], ROOT)
+        report.update({key: observation[key] for key in (
+            "returncode", "tests_run", "executed_ids", "completed_ids", "failures", "errors",
+            "skips", "invalid_skips", "durations",
+        ) if key in observation})
+        _validate_linux_observation(report["selected_ids"], observation)
+        if observation["returncode"] or observation["failures"] or observation["errors"]:
+            raise subprocess.CalledProcessError(1, [sys.executable, "linux-shard-tests"])
+        if report["auxiliary_checks"]:
+            linux_auxiliary_validation()
+        report["status"] = "success"
+    finally:
+        report["wall_seconds"] = time.perf_counter() - started
+        if report_path is not None:
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary:
+            with Path(summary).open("a", encoding="utf-8") as handle:
+                handle.write(
+                    f"## Linux Python {report['python_version']} shard {shard_index + 1}/{shard_count}\n\n"
+                    f"- status: {report['status']}\n- inventory: {report['inventory_count']}\n"
+                    f"- selected/executed/completed: {report['selected_count']}/"
+                    f"{len(report.get('executed_ids', []))}/{len(report.get('completed_ids', []))}\n"
+                    f"- estimated tests/wall seconds: {report['estimated_test_seconds']:.2f}/"
+                    f"{report['wall_seconds']:.2f}\n"
+                    f"- auxiliary checks: {report['auxiliary_checks']}\n")
+        print(json.dumps(report, sort_keys=True))
+    return report
 
 
 def windows_validation() -> None:
@@ -230,7 +361,22 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--platform", choices=("linux", "windows", "macos"), required=True)
     parser.add_argument("--discover-native", action="store_true")
+    parser.add_argument("--shard-index", type=int)
+    parser.add_argument("--shard-count", type=int)
+    parser.add_argument("--discover-linux", action="store_true")
+    parser.add_argument("--report", type=Path)
     args = parser.parse_args()
+    sharded = args.shard_index is not None or args.shard_count is not None
+    if sharded or args.discover_linux or args.report:
+        if args.platform != "linux" or args.discover_native:
+            parser.error("Linux shard options require --platform linux")
+        if args.shard_index is None or args.shard_count is None:
+            parser.error("Both --shard-index and --shard-count are required")
+        if args.discover_linux:
+            print(json.dumps(linux_shard_plan(args.shard_index, args.shard_count), sort_keys=True))
+        else:
+            run_linux_shard(args.shard_index, args.shard_count, args.report)
+        return 0
     if args.discover_native:
         if args.platform == "linux":
             parser.error("--discover-native is for native Windows/macOS validation")
