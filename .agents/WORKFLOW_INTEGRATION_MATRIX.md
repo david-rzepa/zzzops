@@ -66,6 +66,13 @@ must project that exact observation and the production base digest. The separate
 plugin adapter contracts retain exact commands, successful identity, failure and
 cache/currentness behavior. Policy and artifact decisions remain real.
 
+For consecutive steps without intervening source changes, tests may consume the
+actionable frontier returned by the preceding real public response. Start and
+bind still execute publicly. External provider, comment, worktree or policy
+changes require fresh observations; never cache an earlier scheduling decision
+across those changes. The complete shipped composition journey demonstrates
+this while retaining its publication and stale-merge recovery tail.
+
 ## Coverage review and measurement
 
 `contract_test_coverage.json` maps each retired or narrowed journey's guarantees

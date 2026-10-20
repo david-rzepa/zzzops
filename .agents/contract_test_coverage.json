@@ -171,6 +171,18 @@
         "test_zzzops.InitializationTests.test_validate_apply_and_reinspect",
         "test_zzzops.InitializationTests.test_bound_charter_and_canonical_policy_changes_invalidate_review"
       ]
+    },
+    {
+      "previous_tests": [
+        "test_evidence_dag_journeys.ShippedGoal499PublicJourneyTests.test_shipped_composition_never_acquires_leaf_implement_and_selects_integration_candidate"
+      ],
+      "guarantees": "The complete shipped composition-to-merge journey retains every original assertion, migration and feedback review, both root authorizations, stale merge lease rejection, fresh provider reassessment and terminal exhaustion. Consecutive unchanged steps consume the actual previous public response; provider/comment/head changes still trigger fresh public checkpoints. Public start and bind remain real.",
+      "contract_tests": [
+        "test_evidence_dag_journeys.ShippedGoal499PublicJourneyTests.test_shipped_composition_never_acquires_leaf_implement_and_selects_integration_candidate"
+      ],
+      "integration_tests": [
+        "test_evidence_dag_journeys.ShippedGoal499PublicJourneyTests.test_shipped_composition_never_acquires_leaf_implement_and_selects_integration_candidate"
+      ]
     }
   ]
 }
