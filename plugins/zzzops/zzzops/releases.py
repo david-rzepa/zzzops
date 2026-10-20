@@ -139,6 +139,34 @@ def _result(record, status="applied"):
             "status": status, "plan": copy.deepcopy(plan)}
 
 
+def _result_receipt(adapter, repository, request_id, identity, result, *, external):
+    if not external:
+        return {"identity": identity, "result": copy.deepcopy(result)}
+    artifact = {"kind": "zzzops-release-operation-result", "request_id": request_id,
+                "identity": identity, "result": copy.deepcopy(result)}
+    reference = digest(artifact)
+    artifact["reference"] = reference
+    adapter.append_artifact(repository, artifact)
+    return {"identity": identity, "result_reference": reference}
+
+
+def _replay_result(adapter, repository, receipt):
+    if "result" in receipt:
+        return copy.deepcopy(receipt["result"])
+    reference = receipt.get("result_reference")
+    if not isinstance(reference, str):
+        raise ValueError("durable release operation result is missing")
+    if hasattr(adapter, "result_artifact"):
+        artifact = adapter.result_artifact(repository, reference)
+    else:
+        artifact = next((row for row in getattr(adapter, "artifacts", [])
+                         if row.get("reference") == reference), None)
+    if (not isinstance(artifact, dict) or artifact.get("reference") != reference
+            or digest({key: value for key, value in artifact.items() if key != "reference"}) != reference):
+        raise ValueError("durable release operation result is unavailable or invalid")
+    return copy.deepcopy(artifact["result"])
+
+
 def persist_plan(adapter, repository, plan, *, expected_revision, request_id):
     errors = validate_release_plan(plan)
     if errors: raise ValueError("invalid release plan: " + "; ".join(errors))
@@ -149,14 +177,15 @@ def persist_plan(adapter, repository, plan, *, expected_revision, request_id):
         prior = (current or {}).get("operation_receipts", {}).get(request_id)
         if prior is not None:
             if prior.get("identity") != operation_identity: raise ValueError("request id payload changed")
-            return copy.deepcopy(prior["result"])
+            return _replay_result(adapter, repository, prior)
         if expected_revision is None:
             if current is not None:
                 if current.get("request_id") == request_id and _same_plan(current, plan): return _result(current)
                 raise ValueError("duplicate release control record conflicts with request")
             record = {"kind": "release-plan", **copy.deepcopy(plan), "request_id": request_id}
             result = _result(record)
-            record.setdefault("operation_receipts", {})[request_id] = {"identity": operation_identity, "result": result}
+            record.setdefault("operation_receipts", {})[request_id] = _result_receipt(
+                adapter, repository, request_id, operation_identity, result, external=False)
             try: adapter.create_only(repository, record)
             except TimeoutError:
                 observed = adapter.read(repository)
@@ -167,14 +196,16 @@ def persist_plan(adapter, repository, plan, *, expected_revision, request_id):
             for field in ("operation_receipts", "batch_receipts", "batch_requests"):
                 if field in current and field not in record: record[field] = copy.deepcopy(current[field])
             result = _result(record)
-            record.setdefault("operation_receipts", {})[request_id] = {"identity": operation_identity, "result": result}
+            record.setdefault("operation_receipts", {})[request_id] = _result_receipt(
+                adapter, repository, request_id, operation_identity, result, external=True)
             try: adapter.compare_exchange(repository, expected_revision, record)
             except TimeoutError:
                 observed = adapter.read(repository)
                 return _result(observed) if observed and _same_plan(observed, record) else {**record, "status": "pending", "plan": copy.deepcopy(current)}
-        artifact = {"request_id": request_id, "revision": record["revision"], "plan_digest": digest(plan)}
-        adapter.append_artifact(repository, artifact)
-        return copy.deepcopy(record["operation_receipts"][request_id]["result"])
+        if expected_revision is None:
+            adapter.append_artifact(repository, {"request_id": request_id,
+                "revision": record["revision"], "plan_digest": digest(plan)})
+        return copy.deepcopy(result)
     finally:
         adapter.release_repository_lock(repository, request_id)
 
@@ -188,7 +219,7 @@ def persist_batch_assignments(adapter, repository, assignments, *, expected_revi
         receipt = current.get("batch_receipts", {}).get(request_id)
         if receipt is not None:
             if receipt.get("identity") != batch_identity: raise ValueError("request id payload changed")
-            return copy.deepcopy(receipt["result"])
+            return _replay_result(adapter, repository, receipt)
         progress = current.get("batch_requests", {}).get(request_id)
         if progress is not None:
             if progress.get("identity") != batch_identity: raise ValueError("request id payload changed")
@@ -212,7 +243,8 @@ def persist_batch_assignments(adapter, repository, assignments, *, expected_revi
             predicted_items = [*items, {**item, "status": "applied"}]
             if index == len(assignments) - 1:
                 predicted = {"plan": _result(desired)["plan"], "items": predicted_items, "request_id": request_id}
-                desired.setdefault("batch_receipts", {})[request_id] = {"identity": batch_identity, "result": predicted}
+                desired.setdefault("batch_receipts", {})[request_id] = _result_receipt(
+                    adapter, repository, request_id, batch_identity, predicted, external=True)
             try: adapter.compare_exchange(repository, current["revision"], desired)
             except TimeoutError:
                 observed = adapter.read(repository)
@@ -224,8 +256,7 @@ def persist_batch_assignments(adapter, repository, assignments, *, expected_revi
                 current = observed
             else: current = desired
             items.append({**item, "status": "applied"})
-        adapter.append_artifact(repository, {"request_id": request_id, "revision": current["revision"], "plan_digest": digest(current)})
-        return copy.deepcopy(current["batch_receipts"][request_id]["result"])
+        return copy.deepcopy(predicted)
     finally:
         adapter.release_repository_lock(repository, request_id)
 
@@ -253,7 +284,10 @@ def select_release_work(records, release_policy, plan, owned):
                                for dep in r.get("depends_on", []))]
     rows, reason = active_rows, "active_release_priority"
     if not rows and release_policy.get("execution_scope") == "later_when_active_blocked":
-        rows = [r for r in records if targets[r["key"]] > active and r["key"] not in owned and r.get("work_state") in {"triage", "prepare", "write"}]
+        rows = [r for r in records if targets[r["key"]] > active and r["key"] not in owned
+                and r.get("work_state") in {"triage", "prepare", "write"}
+                and not any(next((candidate for candidate in records if candidate["key"] == dep), {}).get("status") not in {"done", "cancelled"}
+                            for dep in r.get("depends_on", []))]
         reason = "later_release_active_blocked"
     rows.sort(key=lambda x: (priority.get(x["priority"], 9), x["key"]))
     return {"ordered": [{"goal": r["key"], "reason": reason, "release": targets[r["key"]]} for r in rows], "conflicts": conflicts}
@@ -396,6 +430,18 @@ class GitHubReleasePlanAdapter:
                 matches.append(value)
         if len(matches) > 1 and any(row != matches[0] for row in matches[1:]):
             raise ValueError("conflicting durable release proposals")
+        return copy.deepcopy(matches[0]) if matches else None
+    def result_artifact(self, repository, reference):
+        rows = self._records(repository)
+        if len(rows) != 1: return None
+        matches = []
+        for comment in self.transport.read_comments(repository, rows[0]["number"]):
+            try: value = json.loads(comment.get("body", ""))
+            except (AttributeError, json.JSONDecodeError): continue
+            if value.get("kind") == "zzzops-release-operation-result" and value.get("reference") == reference:
+                matches.append(value)
+        if len(matches) > 1 and any(row != matches[0] for row in matches[1:]):
+            raise ValueError("conflicting durable release operation results")
         return copy.deepcopy(matches[0]) if matches else None
     def observe_release(self, repository, release): return self.transport.observe_release(repository, release)
 

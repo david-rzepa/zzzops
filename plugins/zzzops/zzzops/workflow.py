@@ -5990,9 +5990,22 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     runnable_steps = []
     waiting_steps = []
     ordered_goals = api.effective_goal_order(goals, ordering_policy)
+    later_release_keys = set()
     if release_selection is not None:
-        eligible = {row['goal'] for row in release_selection['ordered']}
+        active_eligible = {row['goal'] for row in release_selection['ordered']}
+        eligible = set(active_eligible)
+        if release_policy.get('execution_scope') == 'later_when_active_blocked':
+            by_key = {row['key']: row for row in goals}
+            later_release_keys = {row['key'] for row in goals
+                if api._releases.target_release(release_plan, row['key']) > release_plan['next_release']
+                and row['key'] not in owned and row.get('work_state') in {'triage', 'prepare', 'write'}
+                and not any(by_key.get(dep, {}).get('status') not in {'done', 'cancelled'}
+                            for dep in row.get('depends_on', []))}
+            eligible.update(later_release_keys)
         ordered_goals = [row for row in ordered_goals if row['goal'] in eligible]
+        ordered_goals.sort(key=lambda row: (row['goal'] in later_release_keys,
+                                            next(index for index, item in enumerate(api.effective_goal_order(goals, ordering_policy))
+                                                 if item['goal'] == row['goal'])))
     order_rank = {item['goal']: index for index, item in enumerate(ordered_goals)}
     def response(steps, selected):
         def goal_key(step):
@@ -6035,7 +6048,13 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
                     'action': 'Use independent graph review and explicit approval for any required recovery extension.'})
             partition(candidate_steps, runnable_steps, waiting_steps)
         candidate_batch = []
+    later_release_started = False
     for item in ordered_goals:
+        if item['goal'] in later_release_keys and not later_release_started:
+            flush_candidates()
+            if runnable_steps:
+                break
+            later_release_started = True
         goal = next(goal for goal in goals if goal['key'] == item['goal'])
         if goal['status'] in {'done', 'cancelled'}:
             continue
@@ -6394,6 +6413,12 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             owned = {row['key'] for row in portfolio_rows if (row.get('claim') or {}).get('owner')}
             eligible = api._releases.select_release_work(portfolio_rows, release_policy, release_plan, owned)
             allowed = {row['goal'] for row in eligible['ordered']}
+            if (number not in allowed
+                    and release_policy.get('execution_scope') == 'later_when_active_blocked'):
+                observed = checkpoint(api, repo, project, runtime, engine=engine)
+                allowed.update(step.get('goal', (step.get('node') or {}).get('goal'))
+                               for step in observed.get('next_steps', [])
+                               if step.get('kind') in {'execute', 'review', 'human_approval'})
             if number not in allowed:
                 raise ValueError(f'Goal #{number} is not eligible under the current release plan')
     if operation == 'read' and number is not None:
