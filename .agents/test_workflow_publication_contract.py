@@ -70,12 +70,6 @@ class WorkflowPublicationContractTests(unittest.TestCase):
             ["git", *args], cwd=repo, check=True, capture_output=True, text=True,
         ).stdout.strip()
 
-    def test_step_base_commit_uses_declared_base_not_unrelated_checkout_head(self):
-        # Exact publication safeguards now consume ordinary current generic evidence.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_publication_contract.GenericPublicationPublicTests.test_declared_base_is_not_replaced_by_unrelated_checkout_head',
-        )
 
     def publication_engine(self, *, local_head, local_base, provider_head, provider_base):
         api = PublicationAPI()
@@ -141,8 +135,6 @@ class WorkflowPublicationContractTests(unittest.TestCase):
             "branch": "goal-7", "base": "dev",
             "base_head": provider_base, "head": provider_head,
         }, candidate)
-
-
 
 
 from test_evidence_dag_journeys import DagFixture, REF_TYPE, FINDING_TYPE, ADMISSION_TYPE, content_hash, output, shape, spec_input, z

@@ -11,7 +11,7 @@ import unittest
 from unittest import mock
 
 import test_zzzops as fixtures
-from test_evidence_dag_journeys import DagFixture, run_generic_regressions
+from test_evidence_dag_journeys import DagFixture
 
 
 z = fixtures.zzzops
@@ -120,11 +120,6 @@ class PortfolioScopeTests(unittest.TestCase):
 
     def test_scheduling_inventory_is_complete_and_unavailable_inventory_fails_closed(self):
         """Capacity admission sees every live owner and never treats failure as empty."""
-        run_generic_regressions(
-            self,
-            "test_workflow_policy_enforcement.GenericWorkerCapacityTests."
-            "test_other_goal_unresolved_owner_consumes_reviewed_capacity_until_observed_stop",
-        )
         case = DagFixture()
         case.setUp()
         self.addCleanup(case.doCleanups)
@@ -305,13 +300,6 @@ class PortfolioScopeTests(unittest.TestCase):
             snapshot = z.github_repository_portfolio_snapshot(Path(directory), project())[1]
         self.assertEqual([1, 2], [row["key"] for row in snapshot["goals"]])
         relations.assert_called_once_with(Path(directory), "gh", "owner", "repo", [2])
-
-    def test_provider_drift_still_rejects_stale_inflight_result(self):
-        run_generic_regressions(
-            self,
-            "test_evidence_dag_journeys.EvidenceDagPublicTests."
-            "test_semantic_input_drift_rejects_inflight_result_and_bookkeeping_does_not",
-        )
 
 
 if __name__ == "__main__":

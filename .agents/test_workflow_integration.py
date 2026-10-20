@@ -202,32 +202,6 @@ class WorkflowIntegrationTests(unittest.TestCase):
         self.project = {'backend': 'github_issues', 'repository': {'identity': 'owner/repo'},
                         'policy': {'sections': [{'id': 'workflow_adherence', 'configuration': {'phase_dag': self.graph}}]}}
 
-    def test_rendered_goal_produces_live_inputs_without_phase_evidence(self):
-        # The regression now observes persisted public generic task evidence.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_parallel_reviews_independent_leases_and_join',
-        )
-
-    def test_operational_revision_and_preview_do_not_change_inputs(self):
-        # The regression now observes persisted public generic task evidence.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_integration.GenericIntegrationFreshnessTests.test_preview_and_operational_revision_preserve_exact_generic_inputs',
-        )
-
-    def test_configuration_and_instruction_changes_each_invalidate_open_evidence(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            "test_workflow_integration.GenericIntegrationFreshnessTests.test_configuration_and_instruction_drift_each_reject_current_assignment",
-        )
-
-    def test_submission_then_backend_reread_requires_review_not_reexecution(self):
-        # The regression now observes persisted public generic task evidence.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_parallel_reviews_independent_leases_and_join',
-        )
 
     def test_every_acceptance_bullet_is_required(self):
         body = '## Acceptance\n- [ ] Must work\n- Preserve data\n- [x] Already done\n\n## Constraints\n- Out of scope\n'
@@ -237,12 +211,6 @@ class WorkflowIntegrationTests(unittest.TestCase):
         self.assertEqual(['zzzops.py', 'workflow', '--intent', 'execute', '--source-skill', '$execute-zzzops'],
                          z.normalize_workflow_entrypoint(['zzzops.py', '--intent', 'execute']))
 
-    def test_rejected_review_returns_phase_for_correction(self):
-        # The regression now observes persisted public generic task evidence.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_specialist_missing_regression_corrects_tests_then_code_and_rereviews',
-        )
 
 class PublicWorkflowJourneyTests(unittest.TestCase):
     def setUp(self):
@@ -301,39 +269,6 @@ class PublicWorkflowJourneyTests(unittest.TestCase):
         record.update(actor='builder', selection=lease['selection'], routing=step['result_contract']['record']['routing'], output=self.engine.artifact(42, {'output': 'output'}))
         return lease, record
 
-    def test_new_goal_with_null_rigor_reaches_assessment_and_assignment(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_workflow_integration.GenericIntegrationFreshnessTests.test_generic_goal_routes_declared_task_without_hidden_phase_rigor_assessment')
-
-    def test_start_and_worker_bind_require_current_policy_read_without_writes_on_rejection(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_integration.GenericIntegrationFreshnessTests.test_start_bind_receipt_and_actual_pair_are_guarded_before_writes',
-        )
-
-    def test_persisted_execute_review_human_approval_journey(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_phase_review_contract.GenericReviewGateTests.test_review_is_not_human_approval_and_root_binds_current_subject_and_review',
-        )
-
-    def test_actor_selection_and_duplicate_submission_are_guarded(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_integration.GenericIntegrationFreshnessTests.test_start_bind_receipt_and_actual_pair_are_guarded_before_writes',
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_wrong_actor_cannot_submit_and_valid_owner_still_can',
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_exact_retry_is_idempotent_and_changed_payload_rejected',
-            'test_evidence_dag_journeys.EvidenceDagPublicTests.test_ordinary_artifact_shaped_content_cannot_issue_a_result',
-        )
-
-    def test_expiry_requires_recovery_and_missing_delegation_blocks(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_workflow_integration.GenericIntegrationFreshnessTests.test_missing_delegation_and_expired_unknown_worker_block_until_exact_stopped_recovery')
-
-    def test_blocker_step_supplies_exact_resolution_request(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_evidence_dag_journeys.EvidenceDagPublicTests.test_human_answers_drive_affected_reinvestigation_through_generic_admission')
-
 
 class MigrationEvidenceFreshnessTests(unittest.TestCase):
     """Actual input/review projection with synthetic provider observations."""
@@ -341,48 +276,10 @@ class MigrationEvidenceFreshnessTests(unittest.TestCase):
         pass  # Each retained ID invokes its concrete isolated generic public fixture.
 
 
-
-    def test_external_release_change_stales_review_without_file_or_policy_change(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationInputTests.test_release_commit_drift_blocks_exact_consumers_with_unchanged_document_and_policy')
-
-    def test_unavailable_provider_is_not_cached_as_fresh_and_restores(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationInputTests.test_unavailable_provider_is_unknown_and_restoration_reuses_exact_input')
-
-    def test_attestation_revocation_and_deletion_stale_only_affected_goal(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationInputTests.test_revoked_or_deleted_attestation_blocks_only_its_consumers_then_exact_restore')
-
-    def test_two_goal_assessments_cannot_substitute_on_resume(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationInputTests.test_foreign_goal_assessment_never_substitutes_for_exact_goal_spec')
-
-    def test_current_reassessment_reuses_substantive_output_with_new_review(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationInputTests.test_current_reassessment_requires_new_review_even_for_identical_conclusion')
-
-    def test_public_dispatch_exposes_changed_release_input_identity(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationInputTests.test_public_dispatch_exposes_new_current_release_binding_after_reassessment')
-
-
-    def test_affected_phases_share_one_observation_and_next_projection_refreshes(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationInputTests.test_two_declared_consumers_share_one_observation_per_projection_then_refresh')
-
-    def test_public_migration_blocker_contract_persists_and_replays_receipt(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationDiscoveryTests.test_factual_root_report_replays_exactly_without_granting_missing_evidence_authority')
-
-
 class MigrationDiscoveryJourneyTests(unittest.TestCase):
     """Use only public output contracts to discover and prepare local evidence."""
     def setUp(self):
         pass  # Each retained ID invokes its concrete isolated generic public fixture.
-
-
-
 
 
     def observation_shapes(self, resource):
@@ -446,15 +343,3 @@ class MigrationDiscoveryJourneyTests(unittest.TestCase):
             evidence['statement'] = 'I maintain this synthetic cache and confirm it has never been distributed.'
         contract['evidence'] = [evidence]; document['contracts'] = [contract]
         return document
-
-    def test_public_discovery_preparation_and_both_evidence_alternatives_resume(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationDiscoveryTests.test_disclosed_preparation_keeps_unknown_facts_and_both_evidence_alternatives_resume')
-
-    def test_preparation_resource_is_stable_and_refreshes_with_facts_and_spec(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationDiscoveryTests.test_preparation_identity_stable_then_changes_with_provider_and_exact_spec')
-
-    def test_discovered_route_blocks_foreign_stale_ambiguous_and_unavailable_evidence(self):
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self, 'test_migration_acceptance.GenericMigrationDiscoveryTests.test_foreign_stale_ambiguous_and_unknown_provider_block_after_valid_prepared_control')

@@ -145,6 +145,27 @@ class NativeSelectionContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing"):
             select(set())
 
+    def test_repository_discovery_contains_each_canonical_test_once(self):
+        loader = unittest.TestLoader()
+        suite = loader.discover(
+            str(ROOT / ".agents"), pattern="test_*.py",
+            top_level_dir=str(ROOT / ".agents"),
+        )
+        self.assertEqual([], loader.errors)
+
+        def test_ids(group):
+            for test in group:
+                if isinstance(test, unittest.TestSuite):
+                    yield from test_ids(test)
+                else:
+                    yield test.id()
+
+        discovered = list(test_ids(suite))
+        self.assertEqual(
+            len(discovered), len(set(discovered)),
+            "imported TestCase classes must not be collected a second time",
+        )
+
     def test_real_loader_errors_are_rejected(self):
         discover = self.require_api("discover_native_tests")
         with tempfile.TemporaryDirectory() as directory:

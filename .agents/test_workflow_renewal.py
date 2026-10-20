@@ -23,21 +23,6 @@ class RenewalTests(unittest.TestCase):
         self.addCleanup(fixture.doCleanups)
         return fixture
 
-    def test_renewal_acknowledges_exact_saved_lease_without_rehydrating_portfolio(self):
-        # Preserve the exact renewal or terminal-replay invariant through generic node ownership and public submit.
-        # Preserve the exact renewal or terminal-replay invariant through generic node ownership and public submit.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_renewal.GenericRenewalTests.test_exact_renewal_acknowledges_saved_node_lease_without_portfolio_fetch',
-        )
-
-    def test_wrong_actor_cannot_renew_and_failed_save_does_not_acknowledge(self):
-        # Preserve the exact renewal or terminal-replay invariant through generic node ownership and public submit.
-        # Preserve the exact renewal or terminal-replay invariant through generic node ownership and public submit.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_renewal.GenericRenewalTests.test_wrong_renewal_actor_and_failed_provider_save_never_acknowledge',
-        )
 
     def test_provider_timeout_unwinds_storage_with_fresh_cleanup_budget(self):
         f = self.journey()
@@ -70,13 +55,6 @@ class RenewalTests(unittest.TestCase):
                     self.fail('must not enter')
         self.assertEqual(acquire.call_args.args[:5], release.call_args.args)
 
-    def test_saved_result_replay_retries_failed_local_shutdown_without_rewriting(self):
-        # Preserve the exact renewal or terminal-replay invariant through generic node ownership and public submit.
-        # Preserve the exact renewal or terminal-replay invariant through generic node ownership and public submit.
-        from test_evidence_dag_journeys import run_generic_regressions
-        run_generic_regressions(self,
-            'test_workflow_renewal.GenericRenewalTests.test_exact_terminal_retry_retries_local_shutdown_without_durable_rewrite',
-        )
 
     def test_cli_renewal_error_identifies_request_and_preserves_uncertainty(self):
         f = self.journey()
@@ -93,7 +71,6 @@ class RenewalTests(unittest.TestCase):
         self.assertEqual([*argv[1:-1], '<submission.json>', '--source-skill', '$execute-zzzops'], step['command'][2:])
         self.assertEqual(json.loads(path.read_text()), step['submission'])
         self.assertIn('does not authorize takeover', step['action'])
-
 
 
 from test_evidence_dag_journeys import DagFixture
