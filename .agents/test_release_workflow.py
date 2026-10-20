@@ -195,8 +195,107 @@ class ReleaseWorkflowContractTests(unittest.TestCase):
         self.assertEqual(2, plans.record["next_release"])
         replay = coordinator.checkpoint(cut_after_request)
         self.assertEqual("branch_confirmed", replay["status"])
+        revision_after_confirmation = plans.record["revision"]
+        branch_calls_after_confirmation = branches.calls
+        restarted = self.r.ReleaseCoordinator("owner/repo", coordinator.policy, plans, branches)
+        restarted_replay = restarted.checkpoint(cut_after_request)
+        self.assertEqual(confirmed, restarted_replay)
+        self.assertEqual(branch_calls_after_confirmation, branches.calls)
+        self.assertEqual(revision_after_confirmation, plans.record["revision"])
         self.assertEqual("authorized", self.r.authorize_integration(
             future, plans.record, source_branch="dev", source_ancestors={"a" * 40})["status"])
+
+    def test_checkpoint_rejects_tampered_freeze_and_cut_and_rechecks_readiness(self):
+        r = self.r
+        policy = {"enabled": True, "next_release": 1, "integration_branch": "dev",
+            "publication_branch": "main", "release_branch_prefix": "release/",
+            "execution_scope": "active_only"}
+        authority = "sha256:" + "b" * 64
+        members = {1: {"status": "done", "integrated_commit": "a" * 40}}
+
+        class Plans:
+            def __init__(self):
+                self.record = {"kind": "release-plan", "revision": 0, "next_release": 1,
+                    "assignments": {"1": 1}, "releases": {}}
+                self.lock = None; self.writes = 0
+            def acquire_repository_lock(self, repository, request_id): self.lock = request_id
+            def release_repository_lock(self, repository, request_id): self.lock = None
+            def read(self, repository): return copy.deepcopy(self.record)
+            def compare_exchange(self, repository, revision, record):
+                if revision != self.record["revision"]: raise ValueError("revision changed")
+                self.writes += 1; self.record = copy.deepcopy(record); return copy.deepcopy(record)
+            def append_artifact(self, repository, artifact): pass
+
+        class Branches:
+            def __init__(self): self.calls = 0
+            def observe(self, branch): return None
+            def create_only(self, branch, sha):
+                self.calls += 1; return {"status": "created", "branch": branch, "sha": sha}
+
+        class Evidence:
+            def __init__(self): self.active_owners = []
+            def observe_release(self, repository, release):
+                return {"members": copy.deepcopy(members), "active_owners": list(self.active_owners),
+                    "observed_commits": ["a" * 40], "source_ancestors": ["a" * 40],
+                    "source_branch": "dev", "source_sha": "a" * 40, "forbidden_commits": []}
+
+        for field, value in (("repository", "other/repo"), ("release", 2),
+                             ("policy", "sha256:" + "c" * 64),
+                             ("authority", "sha256:" + "d" * 64),
+                             ("destination", "release/99")):
+            with self.subTest(freeze_tamper=field):
+                plans, branches, evidence = Plans(), Branches(), Evidence()
+                coordinator = r.ReleaseCoordinator("owner/repo", policy, plans, branches,
+                                                   evidence_provider=evidence)
+                proposal = coordinator.checkpoint({"operation": "propose", "request_id": "propose",
+                    "expected_revision": 0, "authority": authority})
+                tampered = copy.deepcopy(proposal)
+                tampered["proposal"]["intent"][field] = value
+                with self.assertRaisesRegex(ValueError, "proposal|intent|mismatch|tamper"):
+                    coordinator.checkpoint({"operation": "freeze", "request_id": "freeze",
+                        "expected_revision": 0, "proposal": tampered})
+                self.assertEqual((0, {}), (plans.writes, plans.record["releases"]))
+
+        plans, branches, evidence = Plans(), Branches(), Evidence()
+        coordinator = r.ReleaseCoordinator("owner/repo", policy, plans, branches,
+                                           evidence_provider=evidence)
+        proposal = coordinator.checkpoint({"operation": "propose", "request_id": "propose",
+            "expected_revision": 0, "authority": authority})
+        frozen = coordinator.checkpoint({"operation": "freeze", "request_id": "freeze",
+            "expected_revision": 0, "proposal": proposal})
+        tampered_intent = {**frozen["intent"], "authority": "sha256:" + "e" * 64}
+        with self.assertRaisesRegex(ValueError, "persisted|intent|mismatch|tamper"):
+            coordinator.checkpoint({"operation": "cut", "request_id": "cut-tampered",
+                "expected_revision": plans.record["revision"], "intent": tampered_intent})
+        self.assertEqual(0, branches.calls)
+
+        drifted_policy = {**policy, "integration_branch": "integration-v2"}
+        with self.assertRaisesRegex(ValueError, "policy|intent|mismatch|drift"):
+            r.ReleaseCoordinator("owner/repo", drifted_policy, plans, branches,
+                                 evidence_provider=evidence).checkpoint({"operation": "cut",
+                "request_id": "cut-policy-drift", "expected_revision": plans.record["revision"],
+                "intent": frozen["intent"]})
+        self.assertEqual(0, branches.calls)
+
+        plans.record["next_release"] = 2
+        with self.assertRaisesRegex(ValueError, "release|intent|mismatch|drift"):
+            coordinator.checkpoint({"operation": "cut", "request_id": "cut-release-drift",
+                "expected_revision": plans.record["revision"], "intent": frozen["intent"]})
+        self.assertEqual(0, branches.calls)
+        plans.record["next_release"] = 1
+
+        with self.assertRaisesRegex(ValueError, "repository|intent|mismatch"):
+            r.ReleaseCoordinator("other/repo", policy, plans, branches,
+                                 evidence_provider=evidence).checkpoint({"operation": "cut",
+                "request_id": "cut-repository-drift", "expected_revision": plans.record["revision"],
+                "intent": frozen["intent"]})
+        self.assertEqual(0, branches.calls)
+
+        evidence.active_owners = [1]
+        blocked = coordinator.checkpoint({"operation": "cut", "request_id": "cut-owned",
+            "expected_revision": plans.record["revision"], "intent": frozen["intent"]})
+        self.assertEqual("active_owner", blocked["code"])
+        self.assertEqual(0, branches.calls)
 
     def test_r1_future_content_blocks_integration_and_freeze_until_confirmed_cut(self):
         r = self.r
