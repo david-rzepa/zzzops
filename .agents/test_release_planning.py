@@ -65,6 +65,12 @@ class MemoryPlanAdapter:
         if artifact not in self.artifacts:
             self.artifacts.append(copy.deepcopy(artifact))
 
+    def result_artifact(self, repository, reference):
+        matches = [row for row in self.artifacts if row.get("reference") == reference]
+        if len(matches) > 1 and any(row != matches[0] for row in matches[1:]):
+            raise ValueError("conflicting durable release operation results")
+        return copy.deepcopy(matches[0]) if matches else None
+
 
 class ReleasePlanContractTests(unittest.TestCase):
     def setUp(self):

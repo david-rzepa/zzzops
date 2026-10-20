@@ -41,6 +41,11 @@ class GraphCompilationPublicTests(dag.DagFixture):
                 if self.exchange_calls == self.fail_exchange_at: raise TimeoutError("provider outcome unknown before effect")
                 self.record = copy.deepcopy(record); return copy.deepcopy(record)
             def append_artifact(self, repository, artifact): self.audit.append(copy.deepcopy(artifact))
+            def result_artifact(self, repository, reference):
+                matches = [row for row in self.audit if row.get("reference") == reference]
+                if len(matches) > 1 and any(row != matches[0] for row in matches[1:]):
+                    raise ValueError("conflicting durable release operation results")
+                return copy.deepcopy(matches[0]) if matches else None
             def observe_release(self, repository, release):
                 self.observations.append((repository, release))
                 return copy.deepcopy(self.observed)
