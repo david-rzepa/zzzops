@@ -23,6 +23,10 @@ Respect allocations and publication gates; infer no operations or models.
 Renew live owners; expiry permits no takeover. Recover only observed stopped owners.
 For monitoring, replay, reconciliation or test corrections, read [recovery](CLI_RECOVERY.md).
 
+Repository release planning uses `release status|configure|assign|checkpoint`
+and remains inert until enabled by reviewed policy. See [release planning](RELEASES.md)
+for revision, retry, branch-cut, and publication approval contracts.
+
 Execution migrates supported open v1 goals automatically, preserving history
 without granting authority. Preview/historical reads never migrate or reopen.
 For bulk/blocked conversion, read [schema migration](SCHEMA_MIGRATION.md).

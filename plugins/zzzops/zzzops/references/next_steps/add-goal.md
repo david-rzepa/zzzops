@@ -15,6 +15,10 @@ captured goal before its first v2 graph publication. Follow a returned unsupport
 contract diagnostic rather than inventing graph authority. This targeted
 construction does not migrate or normalize unrelated goals.
 
+When reviewed release planning is enabled, capture may include a positive
+`target_release`. Treat goal creation plus assignment as a recoverable operation;
+retry the returned pending assignment without creating another goal.
+
 Run a bounded blind-spot pass for known unknowns, tacit criteria; disposable prototype if useful. Skip well-understood work. Create one verifiable goal from evidence/blockers; never invent answers.
 
 Git-free creation: no Git/PR/checkpoint. Apply `../../../rules/CONTINUATION.md`; active same-task execute intent resumes once absent capture-only/replacement/stop. Implement: `$execute-zzzops`; stop: `../../../rules/FEEDBACK.md`.
