@@ -1,36 +1,102 @@
-# Synthetic workflow integration matrix
+# Workflow test layers and contract coverage
 
-This matrix records the executable, provider-isolated regression journeys for
-the public workflow. The suites use synthetic repositories and in-memory GitHub
-adapters; they invoke the packaged public CLI or `Workflow` transition boundary
-and never require a dogfood repository, identity, or provider mutation.
+Choose the smallest layer that exercises the behavior under test. Linux still
+runs the complete discovered suite; this layering changes test construction,
+not which guarantees CI requires. Native coverage remains in `CI_COVERAGE.md`.
 
-Run the complete matrix from the repository root:
+## Transition and interface contracts
+
+Test rule combinations at the production decision boundary with explicit valid
+inputs. For example, `Workflow.node_validate_bundle` checks finding scope and
+`Workflow.node_independence` checks the current subject's reviewer identity.
+Give each negative case a valid positive control so an unrelated malformed input
+cannot satisfy the test. Include initial-state invariants, allowed transitions,
+and rejected-transition preservation of relevant state.
+
+Mock infrastructure at an interface, never the decision being tested. Do not
+reimplement the scheduler, return a precomputed frontier, cache test results, or
+use an opaque captured workflow as a replacement for an understandable fixture.
+If a new fake replaces a real adapter, run the applicable shared contract against
+both; preserve real-adapter tests for behavior that cannot be simulated faithfully.
+
+## Narrow integrations
+
+Use real public dispatch, provider storage and targeted historical reads when
+the contract crosses those boundaries. Build only the prerequisites relevant to
+that contract. A parent consuming completed child evidence does not need to
+repeat each child's source edit, red/green checks and PR publication.
+
+`RelationshipDeliveryContractTests` exercises child selection, independent
+review/root completion, archived-child hydration, missing artifacts and aggregate
+persistence using a small shared graph. The sibling workspace test retains real
+Git, parent grants, observed checks, review/root authority and immutable proof
+reuse; it omits unrelated PR publication steps.
+
+Keep atomic no-write rejection, lease/receipt replay, live ownership, CRLF/raw
+bytes, symlinks, real Git/worktree state and crash/recovery at an integration
+boundary whenever those facilities are the subject of the guarantee.
+
+## End-to-end composition
+
+`GenericDeliveryPublicTests.test_reviewed_red_green_proofs_commit_and_exact_publication_form_one_delivery_graph`
+remains the real-files/public-dispatch proof that independently reviewed red and
+green results, the exact commit, publication approval and merge observation
+connect correctly. It is also retained in the native CI selection.
+
+`AcceptedTestRecoveryTests.test_additive_graph_feasibility_control_reaches_fresh_implementation`
+retains the complete accepted-test correction route, including every safe/unsafe
+payload variant, exact persisted output, fresh independent review, finding
+retention/resolution and reopening implementation. Separate integrations retain
+stale approval, atomic rejection and live-owner controls.
+
+`WorkspaceAuthorityPublicTests.test_accepted_correction_chain_preserves_each_round_authority_and_history`
+retains two real correction rounds, including atomic supersession, retained
+findings, immutable prior proofs and renewed review/root authority. Its production
+projection contract checks both unbounded prior provenance and corrupt current
+authority using one shared setup.
+
+Initialization plan validation reuses a valid plan with independent deep copies
+for each malformed variant. Charter digest rejection exercises production
+artifact validation directly; real apply/confirm/reinspect and canonical POLICY
+tampering remain integration tests.
+
+Initialization fixtures supply a deterministic external plugin-inventory
+observation instead of repeatedly launching installed agent CLIs. Full inspection
+must project that exact observation and the production base digest. The separate
+plugin adapter contracts retain exact commands, successful identity, failure and
+cache/currentness behavior. Policy and artifact decisions remain real.
+
+For consecutive steps without intervening source changes, tests may consume the
+actionable frontier returned by the preceding real public response. Start and
+bind still execute publicly. External provider, comment, worktree or policy
+changes require fresh observations; never cache an earlier scheduling decision
+across those changes. The complete shipped composition journey demonstrates
+this while retaining its publication and stale-merge recovery tail.
+
+## Coverage review and measurement
+
+`contract_test_coverage.json` maps each retired or narrowed journey's guarantees
+to current contract tests and retained integrations. Independent review checks
+that the mapping is substantively correct. `test_contract_test_coverage.py` checks
+that all named replacements actually exist; that mechanical check alone does not
+prove equivalent coverage. Keep the map current when moving or removing a case.
+
+Before replacing an expensive journey, measure it and identify which invariant
+requires each boundary. Afterward, run the replacement and its retained
+integration, record counts/timings under comparable conditions, and run the
+required checks. Do not trade lost parameter variations, failure behavior or
+assertions for a lower time. Profile representative slow tests before optimizing
+repository setup or introducing shared mutable fixtures.
+
+Run all tests with:
 
 ```bash
-PYTHONPATH=.agents:plugins/zzzops python3 .agents/test_workflow_integration.py
-PYTHONPATH=.agents:plugins/zzzops python3 .agents/test_workflow_public_contract.py
-PYTHONPATH=.agents:plugins/zzzops python3 .agents/test_workflow_owned_outputs.py
-PYTHONPATH=.agents:plugins/zzzops python3 .agents/test_workflow_heartbeat.py
-PYTHONPATH=.agents:plugins/zzzops python3 .agents/test_workflow_dispatch.py
-PYTHONPATH=.agents:plugins/zzzops python3 .agents/test_workflow_policy_enforcement.py
-PYTHONPATH=.agents:plugins/zzzops python3 .agents/test_workflow_policy_context.py
+python -m unittest discover -s .agents -p 'test_*.py'
 ```
 
-| Public behavior | Synthetic end-to-end evidence |
-| --- | --- |
-| Execute → assess → start → bind → result → independent review → human approval | `test_persisted_execute_review_human_approval_journey` |
-| Resume execute/review work, reject duplicate writers, and recover only a stopped worker | `test_actor_selection_and_duplicate_submission_are_guarded`, `test_expiry_requires_recovery_and_missing_delegation_blocks`, and `test_actual_old_dispatch_start_to_repaired_dispatch_same_lease` |
-| Heartbeat active, stopped, malformed, self-referential, and unknown liveness handling | all cases in `test_workflow_heartbeat.py` |
-| Immutable artifact persistence, public reads, missing references, and hash/tamper rejection | `test_artifact_round_trip_is_exact_and_missing_reference_is_rejected`, `test_artifact_content_tampering_is_rejected`, and `test_test_design_correction_retains_baseline_failure_predecessor` |
-| Result/review correction chain and immutable predecessor evidence | `test_recorded_output_exposes_own_review_and_correction_without_consumer_authority` |
-| Policy receipts are required but never disclosed or persisted in evidence | `test_start_and_worker_bind_require_current_policy_read_without_writes_on_rejection` and `test_public_migration_blocker_contract_persists_and_replays_receipt` |
-| Cache reuse, unavailable-provider recovery, and missing archive relations | `test_open_goal_cache_reuses_only_an_exact_provider_revision_marker`, `test_unavailable_provider_is_not_cached_as_fresh_and_restores`, and `test_open_goal_hydrates_only_its_exact_closed_dependency_without_unrelated_pr_reads` |
-| Blocked, dependency-only, active-worker/capacity, mixed runnable/waiting, all-done, and empty portfolios | all cases in `test_workflow_dispatch.py` and `test_checkpoint_replaces_unstartable_phase_with_capacity_step` |
-| Public input rejection, batch identity, and no unintended write on failure | all cases in `test_workflow_public_contract.py` and `test_public_workflow_cli_rejects_supplied_non_objects_and_unknown_operations_before_context` |
-| Terminal exhaustion with no follow-up command | `test_completed_or_empty_portfolio_reports_explicit_exhaustion` |
+For the coverage map and focused consumer boundary:
 
-The matrix is intentionally split by safety boundary: public CLI contracts,
-durable workflow transitions, ownership/proof enforcement, heartbeat behavior,
-and dispatch selection. A green aggregate only counts after every command above
-passes; mocked response shapes alone are not evidence for a journey.
+```bash
+PYTHONPATH=.agents python -m unittest test_contract_test_coverage
+PYTHONPATH=.agents python -m unittest test_workflow_publication_contract.RelationshipDeliveryContractTests
+```

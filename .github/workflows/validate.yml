@@ -12,25 +12,40 @@ concurrency:
 
 jobs:
   validate-linux:
-    name: Core validation (Linux, Python ${{ matrix.python-version }})
+    name: Core validation (Linux, Python ${{ matrix.python-version }}, shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ['3.10', '3.14']
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - uses: actions/setup-node@v4
+        if: matrix.shard == 0
         with:
           node-version: '24.14.0'
           cache: npm
       - name: Install release tooling
+        if: matrix.shard == 0
         run: npm ci
       - name: Test ZzzOps core and repository contracts
-        run: python .github/scripts/run_product_validation.py --platform linux
+        run: >-
+          python .github/scripts/run_product_validation.py --platform linux
+          --shard-index ${{ matrix.shard }} --shard-count 8 --workers 2
+          --report artifacts/linux-python-${{ matrix.python-version }}-shard-${{ matrix.shard }}.json
+      - name: Upload exact Linux execution inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-python-${{ matrix.python-version }}-shard-${{ matrix.shard }}
+          path: artifacts/linux-python-${{ matrix.python-version }}-shard-${{ matrix.shard }}.json
+          if-no-files-found: error
 
   validate-windows:
     name: Native-sensitive validation (Windows)
@@ -42,7 +57,7 @@ jobs:
         with:
           python-version: '3.14'
       - name: Test native-sensitive product contracts
-        run: python .github/scripts/run_product_validation.py --platform windows
+        run: python .github/scripts/run_product_validation.py --platform windows --workers 2
 
   validate-macos:
     name: Native-sensitive validation (macOS)

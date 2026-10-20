@@ -730,54 +730,17 @@ class GenericDeliveryPublicTests(DagFixture):
     def test_reviewed_red_green_proofs_commit_and_exact_publication_form_one_delivery_graph(self):
         self.connected_delivery()
 
-    def connected_delivery(self, parent=False, allocation_mutator=None, observer=None):
+    def connected_delivery(self):
         self.configure(renamed=True)
         publication = self.with_merge_observation(copy.deepcopy(self.graph))
         self.session.git("checkout", "-q", "goal-child")
-        deferred_mutations = []
         def composed(graph, _allocations):
-            if allocation_mutator:
-                deferred = allocation_mutator(graph, _allocations)
-                if deferred:
-                    deferred_mutations.append(deferred)
             observer = next(node for node in publication["nodes"] if node["id"] == self.ids["observe"])
             observer["requires"].append(selector("accept_beta"))
             observer["inputs"]["candidate"] = {"producer": {"node": selector("beta")}, "output": "value", "path": [], "mode": "identity", "type": {"kind": "string"}}
             graph["nodes"].extend(copy.deepcopy(publication["nodes"]))
             graph["terminals"] = copy.deepcopy(publication["terminals"])
-        if parent:
-            self.setup_relationship_transport()
-            def aggregate(graph):
-                observed = next(node for node in graph["nodes"] if node["id"] == "observed_merge")
-                inspect = task("inspect_shared_merge")
-                shared_merge = {"kind": "node", "goal": 100, "node": "observed_merge"}
-                inspect["requires"] = [shared_merge]
-                inspect["inputs"] = {"merge": {"producer": {"node": shared_merge}, "output": "value",
-                    "path": [], "mode": "identity", "type": observed["outputs"]["value"]["schema"]}}
-                inspect["independent_of"] = [shared_merge]
-                finish = next(node for node in graph["nodes"] if node["id"] == self.ids["finish"])
-                finish["requires"] = [shared_merge, selector("inspect_shared_merge")]
-                finish["inputs"] = {"merge": copy.deepcopy(inspect["inputs"]["merge"]),
-                    "shared_merge_review": {
-                        "producer": {"node": selector("inspect_shared_merge")}, "output": "value", "path": [],
-                        "mode": "identity", "type": {"kind": "string"}}}
-                target = {"kind": "node", "goal": "#children", "node": self.ids["finish"]}
-                collect = task("collect", role="root")
-                collect["executor"]["authority"]["subject"]["goal"] = 99
-                collect["requires"] = [target]
-                collect["inputs"] = {"children": {"producer": {"node": target}, "output": "value", "path": [],
-                    "mode": "identity", "type": {"kind": "map", "values": {"kind": "string"}}}}
-                graph["nodes"].extend([inspect, collect])
-                graph["terminals"] = [selector("collect")]
-                for deferred in deferred_mutations:
-                    deferred(graph)
-            shared_graph, _parent_output = self.setup_parent_workspace(composed, aggregate)
-            self.add_goal(101, shared_graph, parent=99)
-            self.assertFalse(any(step["node"]["node"] == "collect" for step in self.session.ready(99)))
-        else:
-            self.setup_workspace(composed)
-        if observer:
-            observer("prepared")
+        self.setup_workspace(composed)
         self.submit_role("context", self.context)
         self.submit_role("inspect", "Independent exact repository context", actor="context-reviewer")
         self.submit_role("consent", {"context": self.produced(self.ids["context"]), "policy": content_hash(self.session.project["policy"]), "decision": "approved"})
@@ -800,12 +763,8 @@ class GenericDeliveryPublicTests(DagFixture):
         self.assertRegex(json.dumps(response), r"(?i)proof|verification|check")
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
         green_reference, green = self.candidate(beta, 0)
-        if observer:
-            observer("candidate")
         self.assertNotIn(self.ids["observe"], self.names(), "Candidate must receive its separate verification and review")
         self.review_candidate("beta", 0)
-        if observer:
-            observer("reviewed")
         self.session.git("add", "source.py", "behavior_test.py")
         self.session.git("commit", "-qm", "verified generic delivery")
         self.observation["head_oid"] = self.session.git("rev-parse", "HEAD")
@@ -826,14 +785,47 @@ class GenericDeliveryPublicTests(DagFixture):
         self.assertTrue(self.observation["merged"])
         post_effect = self.session.acquire("observed_merge")
         self.session.finish(post_effect, {"value": self.merge_value()})
-        if parent:
-            shared_review = self.session.acquire("inspect_shared_merge", actor="root-shared-merge-reviewer")
-            self.assertIn(self.produced("observed_merge")["hash"], json.dumps(shared_review["lease"]["acquisition"]))
-            self.session.finish(shared_review, {"value": "Independent review of exact shared delivered merge"})
         self.submit_role("finish", "Current connected delivery and observed merge evidence")
         self.assertEqual(red, self.read_blob(red_reference))
         self.assertEqual(green, self.read_blob(green_reference))
         self.assertEqual(0, green["commands"][0]["exit_code"])
+
+    def prepare_reviewed_first_sibling(self, allocation_mutator, observer):
+        """Exercise the workspace consumer contract without publishing a PR.
+
+        Exact Git bytes, observed checks, parent grants, review/root authority,
+        and historical provider reads remain real. Publication is a separate
+        producer contract covered by connected_delivery, not a sibling input.
+        """
+        self.setup_relationship_transport()
+        self.session.git("checkout", "-q", "goal-child")
+        deferred = []
+
+        def allocate(graph, manifest):
+            deferred.append(allocation_mutator(graph, manifest))
+
+        def extend(graph):
+            for mutate in deferred:
+                mutate(graph)
+
+        self.setup_parent_workspace(allocate, extend)
+        observer("prepared")
+        alpha = self.acquire_workspace("alpha")
+        (self.fixture.repo / "behavior_test.py").write_text("from source import value\nassert value() == 2\n")
+        red_ref, red = self.candidate(alpha, 1)
+        self.review_candidate("alpha", 1)
+        beta = self.acquire_workspace("beta")
+        self.assertIn(red_ref["hash"], json.dumps(beta["lease"]["acquisition"]))
+        (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
+        green_ref, green = self.candidate(beta, 0)
+        observer("candidate")
+        self.review_candidate("beta", 0)
+        observer("reviewed")
+        self.session.git("add", "source.py", "behavior_test.py")
+        self.session.git("commit", "-qm", "reviewed first sibling workspace")
+        self.assertEqual(self.fixture.base_oid, self.session.git("rev-parse", "dev"))
+        self.assertEqual(red, self.read_blob(red_ref))
+        self.assertEqual(green, self.read_blob(green_ref))
 
     def test_second_sibling_consumes_reviewed_committed_first_proof_without_rewriting_history(self):
         import sys
@@ -913,7 +905,7 @@ class GenericDeliveryPublicTests(DagFixture):
             if stage == "reviewed":
                 self.session.finish(self.session.acquire("accept_first_root"), {"value": "Root accepts exact independently reviewed first sibling"})
                 self.assertTrue(any(step["node"]["node"] == "second_alpha" for step in self.session.ready(102)))
-        self.connected_delivery(parent=True, allocation_mutator=allocation, observer=observe)
+        self.prepare_reviewed_first_sibling(allocation, observe)
         first_envelope = self.envelope_for(100)
         first_envelope["state"] = "archived"
         first_envelope["revision"] += 1
@@ -1022,8 +1014,64 @@ class GenericDeliveryPublicTests(DagFixture):
         self.assertEqual(frozen_first, (self.provider.issues[100], self.provider.comments[100]))
         self.assertEqual(proof_bytes, self.read_blob(first_proof))
 
-    def test_parent_requires_both_children_current_terminals_and_archived_merge_evidence(self):
-        self.connected_delivery(parent=True)
+
+
+class RelationshipDeliveryContractTests(DagFixture):
+    """Consume delivered evidence without replaying its production journey.
+
+    GenericDeliveryPublicTests proves red/green checks and publication issue the
+    evidence. This contract exercises the independent consumer boundary through
+    real dispatch, immutable storage and targeted archived-provider reads.
+    """
+
+    setup_relationship_transport = dag_fixtures.RelationshipPublicTests.setup_relationship_transport
+    envelope_for = dag_fixtures.RelationshipPublicTests.envelope_for
+    put_envelope = dag_fixtures.RelationshipPublicTests.put_envelope
+    add_goal = dag_fixtures.RelationshipPublicTests.add_goal
+    read_at = dag_fixtures.RelationshipPublicTests.read_at
+    result_at = dag_fixtures.RelationshipPublicTests.result_at
+    resolutions = dag_fixtures.RelationshipPublicTests.resolutions
+
+    def prepare_children(self):
+        self.setup_relationship_transport()
+        observed = task("observed_merge")
+        shared = selector("observed_merge")
+        inspect = task("inspect_shared_merge")
+        inspect["executor"]["authority"]["subject"]["goal"] = "#this"
+        inspect["requires"] = [shared]
+        inspect["inputs"] = {"merge": dag_fixtures.subject_input("observed_merge")}
+        inspect["independent_of"] = [shared]
+        finish = task("finish", role="root")
+        finish["executor"]["authority"]["subject"]["goal"] = "#this"
+        finish["requires"] = [shared, {**selector("inspect_shared_merge"), "goal": "#this"}]
+        finish["inputs"] = {
+            "merge": dag_fixtures.subject_input("observed_merge"),
+            "shared_merge_review": dag_fixtures.subject_input("inspect_shared_merge"),
+        }
+        finish["inputs"]["shared_merge_review"]["producer"]["node"]["goal"] = "#this"
+        children = {"kind": "node", "goal": "#children", "node": "finish"}
+        collect = task("collect", role="root")
+        collect["executor"]["authority"]["subject"]["goal"] = 99
+        collect["requires"] = [children]
+        collect["inputs"] = {"children": {"producer": {"node": children}, "output": "value",
+            "path": [], "mode": "identity", "type": {"kind": "map", "values": {"kind": "string"}}}}
+        graph = {"nodes": [observed, inspect, finish, collect], "task_sets": [],
+                 "terminals": [{**selector("collect"), "goal": 99}]}
+        self.install(graph)
+        self.add_goal(99, graph)
+        envelope = self.envelope_for(100)
+        envelope["parent"] = 99
+        self.put_envelope(100, envelope)
+        self.add_goal(101, graph, parent=99)
+        self.session.finish(self.session.acquire("observed_merge", actor="merge-observer"),
+                            {"value": "Delivered merge evidence supplied at the consumer boundary"})
+        self.assertFalse(any(step["node"]["node"] == "collect" for step in self.session.ready(99)))
+        review = self.session.acquire("inspect_shared_merge", actor="first-independent-reviewer")
+        self.session.finish(review, {"value": "Independent review of exact delivered evidence"})
+        self.session.finish(self.session.acquire("finish"), {"value": "First child accepted exact delivery"})
+
+    def test_parent_requires_both_children_current_terminals_and_archived_evidence(self):
+        self.prepare_children()
         self.assertFalse(any(step["node"]["node"] == "collect" for step in self.session.ready(99)),
                          "One delivered child cannot replace its still-unreviewed sibling")
         inspect = self.session.acquire("inspect_shared_merge", number=101, actor="shared-merge-reviewer")
@@ -1033,10 +1081,10 @@ class GenericDeliveryPublicTests(DagFixture):
         checkpoint = self.session.checkpoint(101)
         if len(checkpoint) == 1 and checkpoint[0]["kind"] == "hydration_checkpoint":
             self.session.call(101, checkpoint[0]["submission"])
-        finish = self.session.acquire(self.ids["finish"], number=101)
+        finish = self.session.acquire("finish", number=101)
         self.session.finish(finish, {"value": "Second child root accepted exact reviewed delivery"}, number=101)
         self.assertTrue(any(step["node"]["node"] == "collect" for step in self.session.ready(99)))
-        sibling_output = self.result_at(101, self.ids["finish"])[1]["outputs"]["value"]
+        sibling_output = self.result_at(101, "finish")[1]["outputs"]["value"]
         envelope = self.envelope_for(101)
         envelope["state"] = "archived"
         envelope["revision"] += 1
@@ -1058,7 +1106,7 @@ class GenericDeliveryPublicTests(DagFixture):
         self.put_envelope(101, exact)
         aggregate = self.session.acquire("collect", number=99)
         acquisition = json.dumps(aggregate["lease"]["acquisition"])
-        self.assertIn(self.produced(self.ids["finish"])["hash"], acquisition)
+        self.assertIn(self.produced("finish")["hash"], acquisition)
         self.assertIn(sibling_output["hash"], acquisition)
         selected = [r for r in self.resolutions(aggregate) if r["selector"]["goal"] == "#children"]
         self.assertTrue(selected)

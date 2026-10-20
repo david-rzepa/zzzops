@@ -2638,12 +2638,23 @@ class InitializationTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.repo = Path(self.temp.name)
         (self.repo / ".zzzops").mkdir()
+        inventory = {
+            "cache_path": str(self.repo / ".zzzops" / "plugin-freshness.json"),
+            "agents": {
+                "codex": {"ok": False, "plugins": [], "error": "deterministic fixture"},
+                "claude": {"ok": False, "plugins": [], "error": "deterministic fixture"},
+            },
+        }
+        self.plugin_inventory = inventory
+        inventory_patch = mock.patch.object(
+            zzzops._plugin_freshness, "native_plugin_inventory", return_value=inventory)
+        inventory_patch.start()
+        self.addCleanup(inventory_patch.stop)
 
     def tearDown(self):
         self.temp.cleanup()
 
     def plan(self):
-        inspection = zzzops.inspect_initialization(self.repo)
         init_template = MODULE_PATH.parent / "templates" / "project-goals" / "INIT_PLAN.json"
         policy = json.loads(init_template.read_text(encoding="utf-8"))["policy"]
         policy["sections"][0]["configuration"]["repository_identity"] = "example/repo"
@@ -2651,7 +2662,7 @@ class InitializationTests(unittest.TestCase):
         policy["sections"][0]["default_disposition"] = "changed"
         return {
             "schema_version": 1,
-            "base_digest": inspection["base_digest"],
+            "base_digest": zzzops.initialization_base_digest(self.repo),
             "confirmed": True,
             "backend": "github_issues",
             "repository": {"identity": "example/repo", "remote": "local"},
@@ -2686,6 +2697,8 @@ class InitializationTests(unittest.TestCase):
         project = self.repo / ".zzzops" / "PROJECT.md"
         self.assertFalse(project.exists())
         result = zzzops.inspect_initialization(self.repo)
+        self.assertEqual(zzzops.initialization_base_digest(self.repo), result["base_digest"])
+        self.assertEqual(self.plugin_inventory, result["plugin_freshness"]["inventory"])
         self.assertFalse(result["initialized"])
         self.assertFalse(result["valid_state"])
         self.assertIn("outcome", result["missing_charter_fields"])
@@ -2863,10 +2876,14 @@ class InitializationTests(unittest.TestCase):
     def test_bound_charter_and_canonical_policy_changes_invalidate_review(self):
         applied = zzzops.apply_plan(self.repo, self.plan())
         zzzops.confirm_project(self.repo, applied["policy_digest"], "test-user", [], True)
+        reviewed_state = zzzops.read_project_state(self.repo)[2]
         project = self.repo / ".zzzops" / "PROJECT.md"
         original = project.read_text(encoding="utf-8")
         project.write_text(original + "changed\n", encoding="utf-8")
-        self.assertIn("project policy artifact digest changed", zzzops.inspect_initialization(self.repo)["state_error"])
+        self.assertIn(
+            "project policy artifact digest changed",
+            zzzops.validate_project_artifacts(self.repo, reviewed_state),
+        )
         project.write_text(original, encoding="utf-8")
         policy = self.repo / ".zzzops" / "POLICY.json"
         state = json.loads(policy.read_text(encoding="utf-8"))
@@ -2906,17 +2923,19 @@ class InitializationTests(unittest.TestCase):
             self.assertEqual(2, entry["schema_version"])
             self.assertEqual(entry["digest"], zzzops.policy_content_digest(entry["content"]))
 
-        missing_id = self.plan()
+        plan = self.plan()
+        self.assertEqual([], zzzops.validate_plan(self.repo, plan))
+        missing_id = copy.deepcopy(plan)
         next(item for item in missing_id["policy"]["sections"] if item["id"] == "documentation_style").pop("default_id")
         self.assertTrue(any("lacks a stable default identity" in error for error in zzzops.validate_plan(self.repo, missing_id)))
-        malformed = self.plan()
+        malformed = copy.deepcopy(plan)
         next(item for item in malformed["policy"]["sections"] if item["id"] == "documentation_style").pop("configuration")
         self.assertTrue(any("configuration must be an object" in error for error in zzzops.validate_plan(self.repo, malformed)))
-        forged = self.plan()
+        forged = copy.deepcopy(plan)
         next(item for item in forged["policy"]["sections"] if item["id"] == "documentation_style")["default_provenance"] = "forged"
         self.assertTrue(any("default provenance must be an object" in error for error in zzzops.validate_plan(self.repo, forged)))
 
-        applied = zzzops.apply_plan(self.repo, self.plan())
+        applied = zzzops.apply_plan(self.repo, plan)
         state = zzzops.read_project_state(self.repo)[2]
         backend = next(item for item in state["policy"]["sections"] if item["id"] == "backend")
         documentation = next(item for item in state["policy"]["sections"] if item["id"] == "documentation_style")

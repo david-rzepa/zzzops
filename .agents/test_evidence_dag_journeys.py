@@ -141,8 +141,10 @@ class TaskSession(PublicSession):
     def ready(self, number=100):
         return [step for step in self.checkpoint(number) if step.get("kind") == "execute"]
 
-    def acquire(self, name, *, number=100, actor=None, item=None):
-        ready = self.ready(number)
+    def acquire(self, name, *, number=100, actor=None, item=None, frontier=None):
+        steps = (frontier.get("next_steps", []) if isinstance(frontier, dict)
+                 else frontier if frontier is not None else self.checkpoint(number))
+        ready = [step for step in steps if step.get("kind") == "execute"]
         matches = [step for step in ready if step["node"]["node"] == name
                    and step["node"].get("item") == item]
         if len(matches) != 1:
@@ -2127,9 +2129,6 @@ class WorkspaceAuthorityPublicTests(DagFixture):
                 self.assertEqual(previous, predecessor["prior"])
                 self.assertEqual(result, predecessor["result"])
                 self.assertEqual(self.produced("consent", "permit"), predecessor["approval"])
-
-    def test_synthetic_prior_grants_cannot_replace_current_authority_or_immediate_proof(self):
-        project = self.correction_projection_fixture()
         good, _artifacts, _previous, _result = project(2)
         self.assertNotIn("error", good)
         for length in (2, 40):
@@ -2148,11 +2147,11 @@ class WorkspaceAuthorityPublicTests(DagFixture):
     def accepted_correction_chain(self, rounds):
         """Real corrections with identical authority/history checks at every size."""
         self.setup_workspace_corrections(root_gate=True, correction_rounds=rounds)
-        self.red_candidate()
+        _alpha, red_pair = self.red_candidate()
         first = self.acquire_workspace("beta")
         (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
         initial_ref, initial_proof = self.candidate(first, 0)
-        retained_proofs = [(initial_ref, initial_proof)]
+        retained_proofs = [red_pair, (initial_ref, initial_proof)]
         retained_predecessors = []
         self.review_candidate("beta", 0)
         self.assertNotIn("gamma", self.names())
@@ -2181,6 +2180,8 @@ class WorkspaceAuthorityPublicTests(DagFixture):
                 work = self.acquire_workspace("beta")
                 reference = work["lease"]["acquisition"]["predecessor"]
                 predecessor = self.session.read(100, reference)
+                self.assertIn(self.produced("beta")["hash"], json.dumps(work["lease"]["acquisition"]),
+                              "Correction acquisition must bind the exact prior candidate")
                 self.assertEqual(work["node"], predecessor["node"])
                 self.assertEqual(prior_result, predecessor["result"])
                 self.assertEqual(prior_proof, predecessor["proof"])
@@ -2210,6 +2211,10 @@ class WorkspaceAuthorityPublicTests(DagFixture):
                     self.resolve_workspace_pair(0, self.retained_correction_admissions[0])
                 self.assertNotEqual(prior_root, self.result("accept_root_beta")[0])
                 self.assertIn("gamma", self.names())
+                self.session.git("add", "source.py", "behavior_test.py")
+                self.session.git("commit", "-qm", "exact accepted correction " + str(iteration))
+                self.assertIn("gamma", self.names(),
+                              "Commit of accepted bytes preserves connected proof reuse")
                 current_comments = {comment["id"]: content_hash(comment) for comment in self.provider.comments[100]}
                 self.assertTrue(all(current_comments.get(key) == digest for key, digest in retained_comments.items()),
                                 "Every original transaction comment remains byte-exact")
@@ -2236,48 +2241,6 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         # Real public authority/history coverage stays at two corrections;
         # the synthetic projection-seam test separately exercises the count guard.
         self.accepted_correction_chain(2)
-
-    def test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance(self):
-        self.setup_workspace_corrections(root_gate=True, correction_rounds=2)
-        _alpha, (red_ref, red) = self.red_candidate()
-        beta = self.acquire_workspace("beta")
-        (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
-        first_ref, first_proof = self.candidate(beta, 0)
-        self.review_candidate("beta", 0)
-        self.assertNotIn("gamma", self.names(), "Independent review is not configured root acceptance")
-        self.session.finish(self.session.acquire("accept_root_beta"), {"value": "Root accepts exact reviewed first candidate"})
-        self.assertIn("gamma", self.names())
-        retained = [(red_ref, red), (first_ref, first_proof)]
-        for iteration in (1, 2):
-            previous_output = self.produced("beta")
-            prior_root = self.result("accept_root_beta")[0]
-            admissions = self.admit_workspace_correction()
-            self.assertNotIn("gamma", self.names())
-            correction = self.acquire_workspace("beta")
-            self.assertIn(previous_output["hash"], json.dumps(correction["lease"]["acquisition"]),
-                          "Correction must bind its exact prior candidate, not arbitrary current bytes")
-            for reference, proof in retained:
-                self.assertEqual(proof, self.read_blob(reference))
-            (self.fixture.repo / "source.py").write_text("def value():\n    # Exact correction %s.\n    return 2\n" % iteration)
-            reference, proof = self.candidate(correction, 0)
-            retained.append((reference, proof))
-            self.assertNotIn("gamma", self.names())
-            self.review_candidate("beta", 0)
-            self.resolve_workspace_correction(admissions, omit_retained=iteration == 2)
-            self.assertNotIn("gamma", self.names(), "Old root acceptance cannot approve the new subject")
-            self.assertEqual(prior_root, self.result("accept_root_beta")[0], "Historical acceptance remains immutable")
-            self.session.finish(self.session.acquire("accept_root_beta"), {"value": "Root accepts exact reviewed correction " + str(iteration)})
-            if iteration == 2:
-                self.assertNotIn("gamma", self.names(), "Earlier distinct finding pair still requires current resolution")
-                self.resolve_workspace_pair(0, self.retained_correction_admissions[0])
-            self.assertIn("gamma", self.names())
-            self.assertNotEqual(prior_root, self.result("accept_root_beta")[0])
-            self.session.git("add", "source.py", "behavior_test.py")
-            self.session.git("commit", "-qm", "exact accepted correction " + str(iteration))
-            self.assertIn("gamma", self.names(), "Commit of accepted bytes preserves connected proof reuse")
-        for reference, proof in retained:
-            self.assertEqual(proof, self.read_blob(reference))
-        self.assertEqual({100}, set(self.provider.issues), "In-scope correction cannot create follow-up goals")
 
     def test_admitted_baseline_correction_rejects_already_acquired_consumer_without_takeover(self):
         self.setup_workspace_corrections(target="alpha")
@@ -4825,82 +4788,110 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
             "policy": content_hash(self.session.project["policy"]), "decision": "approved",
         }
         self.assertEqual({"approve_spec"}, self.names())
-        self.session.finish(self.session.acquire("approve_spec"), {"authorization": authorization})
+        response = self.session.finish(self.session.acquire("approve_spec"),
+                                       {"authorization": authorization})
         decomposition = {
             "delivery_class": "composition", "rationale": "Parent integrates child results",
             "children": {"items": {}, "rationale": "Fixture has an empty observed child set"},
             "implementation_review_members": {"items": {}, "rationale": "Leaf path is inapplicable"},
             "integration_review_members": {"items": {}, "rationale": "Bounded integration fixture"},
         }
-        self.session.finish(self.session.acquire("decompose"), {"value": decomposition})
+        response = self.session.finish(
+            self.session.acquire("decompose", frontier=response), {"value": decomposition})
         review_authorization = {**authorization, "manifest": self.produced("spec", "allocation")}
-        self.session.finish(self.session.acquire("decomposition_review"), {
+        response = self.session.finish(self.session.acquire(
+            "decomposition_review", frontier=response), {
             "value": self.approved_review("Composition boundary and ownership approved"),
             "authorization": review_authorization,
         })
-        ready = self.names()
+        ready = {step["node"]["node"] for step in response["next_steps"]
+                 if step.get("kind") == "execute" and step.get("node")}
         self.assertNotIn("implement", ready,
                          "Composition must never acquire the leaf implementation workspace")
         self.assertNotIn("test_design", ready,
                          "Composition proceeds from child delivery to parent integration")
         for registry in sorted(name for name in ready if name.startswith("retain_")):
-            self.session.finish(self.session.acquire(registry), {"value": {
+            response = self.session.finish(self.session.acquire(registry, frontier=response), {"value": {
                 "items": {}, "rationale": "No findings in this approved composition fixture",
             }})
-        ready = self.names()
-        self.assertIn("child_delivery", ready, self.session.checkpoint(100))
-        self.session.finish(self.session.acquire("child_delivery"), {"value": {}})
-        self.assertEqual({"integration_verification"}, self.names(), self.session.checkpoint(100))
-        self.session.finish(self.session.acquire("integration_verification"), {"value": {
+        ready = {step["node"]["node"] for step in response["next_steps"]
+                 if step.get("kind") == "execute" and step.get("node")}
+        self.assertIn("child_delivery", ready, response["next_steps"])
+        response = self.session.finish(self.session.acquire("child_delivery", frontier=response),
+                                       {"value": {}})
+        ready = {step["node"]["node"] for step in response["next_steps"]
+                 if step.get("kind") == "execute" and step.get("node")}
+        self.assertEqual({"integration_verification"}, ready, response["next_steps"])
+        response = self.session.finish(self.session.acquire(
+            "integration_verification", frontier=response), {"value": {
             "applicability": "applicable", "candidate": "parent integration candidate",
             "parent_workspace": "parent-only", "child_evidence": "exact joined child Results",
             "rationale": "Composition requires parent integration",
         }})
-        self.assertNotIn("implement", self.names())
-        self.assertIn("select_delivery_candidate", self.names())
+        ready = {step["node"]["node"] for step in response["next_steps"]
+                 if step.get("kind") == "execute" and step.get("node")}
+        self.assertNotIn("implement", ready)
+        self.assertIn("select_delivery_candidate", ready)
         integration_ref = self.produced("integration_verification")
-        self.session.finish(self.session.acquire("select_delivery_candidate"), {"value": {
+        response = self.session.finish(self.session.acquire(
+            "select_delivery_candidate", frontier=response), {"value": {
             "delivery_class": "composition", "candidate": integration_ref,
             "integration_applicability": "applicable",
             "rationale": "Select the reviewed parent integration candidate",
         }})
-        self.assertNotIn("implement", self.names())
-        self.session.finish(self.session.acquire("migration_verification"), {"value": {
+        ready = {step["node"]["node"] for step in response["next_steps"]
+                 if step.get("kind") == "execute" and step.get("node")}
+        self.assertNotIn("implement", ready)
+        response = self.session.finish(self.session.acquire(
+            "migration_verification", frontier=response), {"value": {
             "applicability": "not_applicable", "transition": "none",
             "compatibility": "No released compatibility obligation", "recovery": "none",
             "rationale": "Fixture has no released schema",
         }})
-        self.session.finish(self.session.acquire("migration_review"),
-                            {"value": self.approved_review("Migration non-applicability approved")})
-        if "retain_migration_findings" in self.names():
-            self.session.finish(self.session.acquire("retain_migration_findings"), {"value": {
+        response = self.session.finish(self.session.acquire("migration_review", frontier=response),
+                                       {"value": self.approved_review("Migration non-applicability approved")})
+        ready = {step["node"]["node"] for step in response["next_steps"]
+                 if step.get("kind") == "execute" and step.get("node")}
+        if "retain_migration_findings" in ready:
+            response = self.session.finish(self.session.acquire(
+                "retain_migration_findings", frontier=response), {"value": {
                 "items": {}, "rationale": "No migration findings",
             }})
-        self.assertIn("authorize_repository", self.names())
+        ready = {step["node"]["node"] for step in response["next_steps"]
+                 if step.get("kind") == "execute" and step.get("node")}
+        self.assertIn("authorize_repository", ready)
         repository_authorization = {
             "manifest": self.produced("select_delivery_candidate"),
             "tasks": [{"goal": 100, "node": "publish", "item": None, "generation": 1}],
             "policy": content_hash(self.session.project["policy"]), "decision": "approved",
         }
-        self.session.finish(self.session.acquire("authorize_repository"),
-                            {"authorization": repository_authorization})
-        self.assertEqual({"publish"}, self.names())
+        response = self.session.finish(self.session.acquire(
+            "authorize_repository", frontier=response), {"authorization": repository_authorization})
+        ready = {step["node"]["node"] for step in response["next_steps"]
+                 if step.get("kind") == "execute" and step.get("node")}
+        self.assertEqual({"publish"}, ready)
         published_head = self.fixture.head_oid
-        self.session.finish(self.session.acquire("publish"), {"value": {
+        response = self.session.finish(self.session.acquire("publish", frontier=response), {"value": {
             "repository": "owner/repo", "branch": "goal-child", "base": "dev",
             "pr": "https://github.com/owner/repo/pull/9", "head_oid": published_head,
         }})
-        self.session.finish(self.session.acquire("integrate"), {"value": {
+        response = self.session.finish(self.session.acquire("integrate", frontier=response), {"value": {
             "version": 1, "provenance": "provider head and feedback snapshot",
             "actionable": [], "non_actionable": ["acknowledged"],
             "obsolete": [], "ambiguous": [],
         }})
-        self.session.finish(self.session.acquire("integration_feedback_review"),
-                            {"value": self.approved_review("Current PR feedback approved")})
-        if "retain_integration_feedback_findings" in self.names():
-            self.session.finish(self.session.acquire("retain_integration_feedback_findings"),
-                                {"value": {"items": {}, "rationale": "No feedback findings"}})
-        self.assertIn("authorize_merge", self.names())
+        response = self.session.finish(self.session.acquire(
+            "integration_feedback_review", frontier=response),
+            {"value": self.approved_review("Current PR feedback approved")})
+        ready = {step["node"]["node"] for step in response["next_steps"]
+                 if step.get("kind") == "execute" and step.get("node")}
+        if "retain_integration_feedback_findings" in ready:
+            response = self.session.finish(self.session.acquire(
+                "retain_integration_feedback_findings", frontier=response),
+                {"value": {"items": {}, "rationale": "No feedback findings"}})
+        ready = {step["node"]["node"] for step in response["next_steps"]
+                 if step.get("kind") == "execute" and step.get("node")}
+        self.assertIn("authorize_merge", ready)
         self.provider.create_issue_comment(100, "External PR review: add the missing recovery regression")
         self._pr_updated_at = "2026-09-17T13:00:00Z"
         after_feedback = self.session.checkpoint(100)
@@ -4921,18 +4912,22 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
         # authorizations and terminal merge through the real public boundary.
         self.fixture.head_oid = published_head
         self._pr_updated_at = "2026-09-17T12:00:00Z"
-        self.assertIn("authorize_merge", self.names())
+        response = self.session.call(100)
+        ready = {step["node"]["node"] for step in response["next_steps"]
+                 if step.get("kind") == "execute" and step.get("node")}
+        self.assertIn("authorize_merge", ready)
         merge_authorization = {
             "manifest": self.produced("publish"),
             "tasks": [{"goal": 100, "node": "merge", "item": None, "generation": 1}],
             "policy": content_hash(self.session.project["policy"]), "decision": "approved",
         }
-        self.session.finish(self.session.acquire("authorize_merge"),
-                            {"authorization": merge_authorization})
+        response = self.session.finish(self.session.acquire(
+            "authorize_merge", frontier=response), {"authorization": merge_authorization})
         publication_authorization = copy.deepcopy(merge_authorization)
-        self.session.finish(self.session.acquire("authorize_publication"),
-                            {"authorization": publication_authorization})
-        publication_steps = self.session.checkpoint(100)
+        response = self.session.finish(self.session.acquire(
+            "authorize_publication", frontier=response),
+            {"authorization": publication_authorization})
+        publication_steps = response["next_steps"]
         merge_operations = [step for step in publication_steps if step.get("kind") == "integrate"]
         self.assertEqual(1, len(merge_operations), publication_steps)
         terminal = copy.deepcopy(merge_operations[0]["submission"])
@@ -4943,29 +4938,37 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
         terminal["request_id"] = "stale-provider-merge"
         stale_merge = self.session.call(100, terminal, expected=2)
         self.assertRegex(json.dumps(stale_merge), r"(?i)stale|retry|reconcil|provider|changed")
-        self.assertIn("integrate", self.names())
-        self.session.finish(self.session.acquire("integrate"), {"value": {
+        response = self.session.call(100)
+        ready = {step["node"]["node"] for step in response["next_steps"]
+                 if step.get("kind") == "execute" and step.get("node")}
+        self.assertIn("integrate", ready)
+        response = self.session.finish(self.session.acquire("integrate", frontier=response), {"value": {
             "version": 2, "provenance": "fresh merged provider and feedback snapshot",
             "actionable": [], "non_actionable": ["acknowledged"],
             "obsolete": [], "ambiguous": [],
         }})
-        self.session.finish(self.session.acquire("integration_feedback_review"),
-                            {"value": self.approved_review("Fresh merged PR feedback approved")})
-        if "retain_integration_feedback_findings" in self.names():
-            self.session.finish(self.session.acquire("retain_integration_feedback_findings"),
-                                {"value": {"items": {}, "rationale": "No fresh feedback findings"}})
-        self.session.finish(self.session.acquire("authorize_merge"),
-                            {"authorization": merge_authorization})
-        self.session.finish(self.session.acquire("authorize_publication"),
-                            {"authorization": publication_authorization})
-        terminal = self.session.acquire("merge")
-        self.session.finish(terminal, {"delivery_result": {
+        response = self.session.finish(self.session.acquire(
+            "integration_feedback_review", frontier=response),
+            {"value": self.approved_review("Fresh merged PR feedback approved")})
+        ready = {step["node"]["node"] for step in response["next_steps"]
+                 if step.get("kind") == "execute" and step.get("node")}
+        if "retain_integration_feedback_findings" in ready:
+            response = self.session.finish(self.session.acquire(
+                "retain_integration_feedback_findings", frontier=response),
+                {"value": {"items": {}, "rationale": "No fresh feedback findings"}})
+        response = self.session.finish(self.session.acquire(
+            "authorize_merge", frontier=response), {"authorization": merge_authorization})
+        response = self.session.finish(self.session.acquire(
+            "authorize_publication", frontier=response),
+            {"authorization": publication_authorization})
+        terminal = self.session.acquire("merge", frontier=response)
+        response = self.session.finish(terminal, {"delivery_result": {
             "authorization": self.produced("authorize_publication", "authorization"),
             "repository": "owner/repo", "pr": "https://github.com/owner/repo/pull/9",
             "head_oid": published_head, "merge_commit": self.fixture.merge_oid,
             "status": "merged",
         }})
-        self.assertFalse(self.session.ready())
+        self.assertFalse([step for step in response["next_steps"] if step.get("kind") == "execute"])
 
     def test_shipped_configured_spec_domain_rejection_uses_generic_correction_route(self):
         self.requirements()

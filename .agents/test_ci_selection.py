@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -462,6 +463,327 @@ class NativeSelectionContractTests(unittest.TestCase):
             self.assertIn(value, summary)
 
 
+class NativeWorkerContractTests(unittest.TestCase):
+    def setUp(self):
+        self.runner = load_runner()
+        self.selected = sorted(REQUIRED_NATIVE_IDS)
+
+    def observation(self, batch):
+        return {"returncode": 0, "tests_run": len(batch), "executed_ids": list(batch),
+                "completed_ids": list(batch), "failures": 0, "errors": 0,
+                "skips": [], "invalid_skips": [], "durations": {item: .1 for item in batch}}
+
+    def invoke(self, launch, emit=lambda report: None):
+        return self.runner.run_native_validation("windows", discover=lambda: self.selected,
+                                                  launch=launch, workers=2, emit=emit)
+
+    def test_native_workers_overlap_and_complete_exact_selection(self):
+        barrier = threading.Barrier(2)
+        def launch(batch):
+            barrier.wait(timeout=5)
+            return self.observation(batch)
+        report = self.invoke(launch)
+        self.assertEqual(self.selected, sorted(report["executed_ids"]))
+        self.assertEqual(self.selected, sorted(report["completed_ids"]))
+        self.assertEqual(11, report["tests_run"])
+        self.assertEqual(2, report["workers"])
+        self.assertEqual(2, len(report["worker_reports"]))
+
+    def test_native_child_failure_and_invalid_execution_fail_closed(self):
+        for field, value, error in (
+            ("returncode", 1, subprocess.CalledProcessError),
+            ("failures", 1, subprocess.CalledProcessError),
+            ("errors", 1, subprocess.CalledProcessError),
+            ("executed_ids", [], ValueError),
+            ("completed_ids", [], ValueError),
+            ("executed_ids", ["unknown"], ValueError),
+            ("executed_ids", ["duplicate", "duplicate"], ValueError),
+            ("invalid_skips", [{"id": self.selected[0], "reason": "unsupported"}], ValueError),
+        ):
+            with self.subTest(field=field, value=value):
+                def launch(batch):
+                    observation = self.observation(batch)
+                    if self.selected[0] in batch:
+                        observation[field] = value
+                    return observation
+                with self.assertRaises(error):
+                    self.invoke(launch)
+
+    def test_native_workers_preserve_only_evidenced_facility_skips(self):
+        def launch(batch):
+            observation = self.observation(batch)
+            if self.selected[0] in batch:
+                observation["skips"] = [{"id": self.selected[0],
+                    "kind": "unavailable_native_facility", "reason": "unavailable",
+                    "evidence": "probe ENOTSUP"}]
+            return observation
+        report = self.invoke(launch)
+        self.assertEqual(1, report["skipped"])
+        self.assertEqual("probe ENOTSUP", report["coverage_limits"][0]["evidence"])
+        def invalid_launch(batch):
+            observation = launch(batch)
+            for skip in observation["skips"]:
+                skip.pop("evidence")
+            return observation
+        with self.assertRaisesRegex(ValueError, "evidence"):
+            self.invoke(invalid_launch)
+
+    def test_native_worker_exception_joins_sibling_before_propagating(self):
+        barrier = threading.Barrier(2)
+        finished = threading.Event()
+        def launch(batch):
+            barrier.wait(timeout=5)
+            if self.selected[0] in batch:
+                raise RuntimeError("native child crashed")
+            finished.set()
+            return self.observation(batch)
+        with self.assertRaisesRegex(RuntimeError, "native child crashed"):
+            self.invoke(launch)
+        self.assertTrue(finished.is_set())
+
+    def test_cli_allows_native_workers_without_linux_shard_options(self):
+        with mock.patch.object(sys, "argv", ["runner", "--platform", "windows", "--workers", "2"]), \
+                mock.patch.object(self.runner, "run_native_validation") as native:
+            self.assertEqual(0, self.runner.main())
+        native.assert_called_once_with("windows", workers=2)
+
+
+class LinuxShardContractTests(unittest.TestCase):
+    def setUp(self):
+        self.runner = load_runner()
+
+    def test_balanced_partition_is_deterministic_complete_disjoint_and_includes_new_tests(self):
+        inventory = [f"test_module.Case.test_{index:02}" for index in range(24)]
+        weights = {test: float(index + 1) for index, test in enumerate(inventory[:-1])}
+        # A historical timing entry cannot select an absent test.
+        weights["removed.test"] = 9999
+        shards = self.runner.partition_linux_tests(inventory, 4, weights)
+        self.assertEqual(shards, self.runner.partition_linux_tests(reversed(inventory), 4, weights))
+        flattened = [test for shard in shards for test in shard]
+        self.assertEqual(sorted(inventory), sorted(flattened))
+        self.assertEqual(len(flattened), len(set(flattened)))
+        self.assertTrue(all(shard == sorted(shard) and shard for shard in shards))
+        loads = [sum(weights.get(test, 10) for test in shard) for shard in shards]
+        loads[0] += self.runner.LINUX_AUXILIARY_SECONDS
+        self.assertLessEqual(max(loads) - min(loads), max(weights[test] for test in inventory[:-1]))
+        small = self.runner.partition_linux_tests(["a", "b", "c"], 3, {}, fallback=1)
+        self.assertTrue(all(len(shard) == 1 for shard in small),
+                        "Auxiliary overhead cannot starve shard zero in a small inventory")
+
+    def test_partition_rejects_empty_duplicate_and_invalid_shard_counts(self):
+        for inventory, count in (([], 1), (["a", "a"], 1), (["a"], 0), (["a"], 2), (["a"], True)):
+            with self.subTest(inventory=inventory, count=count):
+                with self.assertRaises(ValueError):
+                    self.runner.partition_linux_tests(inventory, count, {})
+
+    def test_real_linux_discovery_rejects_duplicate_aliases_and_loader_errors(self):
+        for source, error in (
+            ("import unittest\nclass Case(unittest.TestCase):\n def test_one(self): pass\nAlias = Case\n", "duplicate"),
+            ("raise RuntimeError('broken Linux inventory')\n", "loader"),
+        ):
+            with self.subTest(error=error), tempfile.TemporaryDirectory() as directory:
+                tests = Path(directory) / ".agents"
+                tests.mkdir()
+                name = "test_linux_discovery_" + error
+                (tests / (name + ".py")).write_text(source, encoding="utf-8")
+                try:
+                    with self.assertRaisesRegex((ValueError, RuntimeError), error):
+                        self.runner.discover_linux_tests(Path(directory))
+                finally:
+                    sys.modules.pop(name, None)
+
+    def test_each_python_inventory_partitions_exactly_once_and_timings_only_guide_balance(self):
+        inventory = self.runner.discover_linux_tests()
+        weights, fallback = self.runner.load_linux_timings()
+        shards = self.runner.partition_linux_tests(inventory, 8, weights, fallback)
+        self.assertEqual(inventory, sorted(test for shard in shards for test in shard))
+        # Even an entirely stale or absent timing inventory cannot omit a test.
+        unprofiled = self.runner.partition_linux_tests(inventory, 8, {}, fallback)
+        self.assertEqual(inventory, sorted(test for shard in unprofiled for test in shard))
+
+    def test_linux_observation_rejects_missing_duplicate_partial_and_unfinished_execution(self):
+        selected = ["test_one.Case.test_one", "test_two.Case.test_two"]
+        valid = {"returncode": 0, "tests_run": 2, "executed_ids": selected,
+                 "completed_ids": selected, "failures": 0, "errors": 0,
+                 "invalid_skips": [], "skips": []}
+        self.runner._validate_linux_observation(selected, valid)
+        mutations = (
+            {"executed_ids": []}, {"executed_ids": selected[:1], "tests_run": 1},
+            {"executed_ids": [selected[0], selected[0]]},
+            {"executed_ids": [selected[0], "unexpected.Case.test_extra"]},
+            {"completed_ids": selected[:1]}, {"completed_ids": [selected[0], selected[0]]},
+            {"completed_ids": []}, {"failures": None}, {"returncode": False},
+        )
+        for mutation in mutations:
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                self.runner._validate_linux_observation(selected, {**valid, **mutation})
+
+    def test_shard_reports_exact_execution_and_runs_auxiliary_checks_only_on_zero(self):
+        selected = ["test_one.Case.test_one"]
+        observation = {"returncode": 0, "tests_run": 1, "executed_ids": selected,
+                       "completed_ids": selected, "failures": 0, "errors": 0,
+                       "invalid_skips": [], "skips": [], "durations": {selected[0]: .01}}
+        with tempfile.TemporaryDirectory() as directory:
+            for index in (0, 1):
+                plan = {"python_version": "3.14", "shard_index": index, "shard_count": 8,
+                        "selected_ids": selected, "selected_count": 1, "inventory_count": 8,
+                        "auxiliary_checks": index == 0, "estimated_test_seconds": .01}
+                path = Path(directory) / f"python-3.14-shard-{index}.json"
+                with mock.patch.object(self.runner, "linux_shard_plan", return_value=plan), \
+                        mock.patch.object(self.runner, "_launch_native", return_value=observation), \
+                        mock.patch.object(self.runner, "linux_auxiliary_validation") as auxiliary, \
+                        mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(Path(directory) / "summary")}), \
+                        mock.patch("builtins.print"):
+                    report = self.runner.run_linux_shard(index, 8, path)
+                self.assertEqual("success", report["status"])
+                self.assertEqual(selected, json.loads(path.read_text())["completed_ids"])
+                self.assertEqual(index == 0, auxiliary.called)
+            self.assertIn("selected/executed/completed: 1/1/1", (Path(directory) / "summary").read_text())
+
+    def test_failed_shard_keeps_failure_report_and_never_runs_auxiliary_checks(self):
+        selected = ["test_one.Case.test_one"]
+        plan = {"python_version": "3.14", "selected_ids": selected, "selected_count": 1,
+                "inventory_count": 8, "auxiliary_checks": True, "estimated_test_seconds": .01}
+        failed = {"returncode": 0, "tests_run": 1, "executed_ids": selected,
+                  "completed_ids": selected, "failures": 1, "errors": 0}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "failed.json"
+            with mock.patch.object(self.runner, "linux_shard_plan", return_value=plan), \
+                    mock.patch.object(self.runner, "_launch_native", return_value=failed), \
+                    mock.patch.object(self.runner, "linux_auxiliary_validation") as auxiliary, \
+                    mock.patch.dict(os.environ, {}, clear=True), mock.patch("builtins.print"):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    self.runner.run_linux_shard(0, 8, path)
+            self.assertEqual("failed", json.loads(path.read_text())["status"])
+            auxiliary.assert_not_called()
+
+    def test_worker_partitions_balance_without_auxiliary_reserve_and_guard_exclusive_ids(self):
+        selected = ["a", "b", "c", "d", *self.runner.LINUX_EXCLUSIVE_TESTS]
+        with mock.patch.object(self.runner, "load_linux_timings", return_value=({}, 1)):
+            batches, exclusive = self.runner.linux_worker_plan(selected, 2)
+            reversed_batches, _ = self.runner.linux_worker_plan(list(reversed(selected)), 2)
+        self.assertEqual(batches, reversed_batches)
+        self.assertEqual([2, 2], [len(batch) for batch in batches])
+        self.assertEqual(list(self.runner.LINUX_EXCLUSIVE_TESTS), exclusive)
+        self.assertEqual(sorted(selected), sorted(sum(batches, []) + exclusive))
+        self.assertEqual(([selected], []), self.runner.linux_worker_plan(selected, 1))
+        for invalid in (0, 3, True):
+            with self.assertRaises(ValueError):
+                self.runner.linux_worker_plan(selected, invalid)
+        with mock.patch.object(self.runner, "discover_linux_tests", return_value=["a"]):
+            with self.assertRaisesRegex(ValueError, "exclusive test IDs missing"):
+                self.runner.linux_shard_plan(0, 1)
+
+    def test_two_workers_overlap_and_exclusive_test_runs_only_after_both_finish(self):
+        exclusive = list(self.runner.LINUX_EXCLUSIVE_TESTS)
+        selected = ["a", "b", *exclusive]
+        barrier = threading.Barrier(2)
+        finished = []
+        def launch(batch, root):
+            if batch == exclusive:
+                self.assertEqual(["a", "b"], sorted(finished))
+            else:
+                barrier.wait(timeout=5)
+                finished.extend(batch)
+            return {"returncode": 0, "tests_run": len(batch), "executed_ids": batch,
+                    "completed_ids": batch, "failures": 0, "errors": 0,
+                    "durations": {item: .1 for item in batch}}
+        plan = {"selected_ids": selected, "auxiliary_checks": False}
+        with mock.patch.object(self.runner, "linux_shard_plan", return_value=plan), \
+                mock.patch.object(self.runner, "_launch_native", side_effect=launch), \
+                mock.patch.dict(os.environ, {}, clear=True), mock.patch("builtins.print"):
+            report = self.runner.run_linux_shard(1, 8, workers=2)
+        self.assertEqual("success", report["status"])
+        self.assertEqual(2, report["workers"])
+        self.assertEqual(exclusive, report["serial_ids"])
+        self.assertEqual(sorted(selected), sorted(report["executed_ids"]))
+        self.assertEqual(sorted(selected), sorted(report["completed_ids"]))
+        self.assertEqual([False, False, True], [item["serial"] for item in report["worker_reports"]])
+
+    def test_worker_merge_preserves_failures_and_rejects_duplicate_observations(self):
+        def observation(test_id, failures=0):
+            return {"returncode": failures, "tests_run": 1, "executed_ids": [test_id],
+                    "completed_ids": [test_id], "failures": failures, "errors": 0,
+                    "durations": {test_id: .1}}
+        merged = self.runner._combine_linux_observations([observation("a", 1), observation("b")])
+        self.assertEqual(1, merged["returncode"])
+        self.assertEqual(1, merged["failures"])
+        self.assertEqual(2, merged["tests_run"])
+        self.assertEqual({"a": .1, "b": .1}, merged["durations"])
+        with self.assertRaisesRegex(ValueError, "duplicate duration"):
+            self.runner._combine_linux_observations([observation("a"), observation("a")])
+        duplicate = observation("a")
+        duplicate.pop("durations")
+        merged = self.runner._combine_linux_observations([duplicate, duplicate])
+        with self.assertRaisesRegex(ValueError, "duplicate executed"):
+            self.runner._validate_linux_observation(["a", "b"], merged)
+
+    def test_worker_failure_cannot_be_overwritten_by_successful_sibling(self):
+        plan = {"selected_ids": ["a", "b"], "auxiliary_checks": True}
+        def launch(batch, root):
+            failed = int("a" in batch)
+            return {"returncode": failed, "tests_run": len(batch), "executed_ids": batch,
+                    "completed_ids": batch, "failures": failed, "errors": 0,
+                    "selected_ids": ["malicious overwrite"], "workers": 999}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "failed.json"
+            with mock.patch.object(self.runner, "linux_shard_plan", return_value=plan), \
+                    mock.patch.object(self.runner, "_launch_native", side_effect=launch), \
+                    mock.patch.object(self.runner, "linux_auxiliary_validation") as auxiliary, \
+                    mock.patch.dict(os.environ, {}, clear=True), mock.patch("builtins.print"):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    self.runner.run_linux_shard(0, 8, path, workers=2)
+            report = json.loads(path.read_text())
+        self.assertEqual("failed", report["status"])
+        self.assertEqual(1, report["failures"])
+        self.assertEqual(["a", "b"], report["selected_ids"])
+        self.assertEqual(2, report["workers"])
+        self.assertEqual(2, len(report["worker_reports"]))
+        auxiliary.assert_not_called()
+
+    def test_crashed_worker_retains_successful_sibling_evidence(self):
+        exclusive = self.runner.LINUX_EXCLUSIVE_TESTS[0]
+        for crashing_id in ("a", exclusive):
+            with self.subTest(crashing_id=crashing_id):
+                plan = {"selected_ids": ["a", "b", exclusive], "auxiliary_checks": False}
+                def launch(batch, root):
+                    if crashing_id in batch:
+                        raise RuntimeError("child exited without a report")
+                    return {"returncode": 0, "tests_run": len(batch), "executed_ids": batch,
+                            "completed_ids": batch, "failures": 0, "errors": 0}
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "crashed.json"
+                    with mock.patch.object(self.runner, "linux_shard_plan", return_value=plan), \
+                            mock.patch.object(self.runner, "_launch_native", side_effect=launch), \
+                            mock.patch.dict(os.environ, {}, clear=True), mock.patch("builtins.print"):
+                        with self.assertRaisesRegex(RuntimeError, "without a report"):
+                            self.runner.run_linux_shard(1, 8, path, workers=2)
+                    report = json.loads(path.read_text())
+                self.assertEqual("failed", report["status"])
+                self.assertEqual(3, len(report["worker_reports"]))
+                self.assertEqual(["b"], report["worker_reports"][1]["observation"]["completed_ids"])
+                failed = [worker for worker in report["worker_reports"] if "error" in worker]
+                self.assertEqual(1, len(failed))
+                self.assertEqual([crashing_id], failed[0]["selected_ids"])
+                self.assertEqual(crashing_id == exclusive, failed[0]["serial"])
+                self.assertNotIn("observation", failed[0])
+
+    def test_workflow_runs_eight_shards_on_both_pythons_with_unique_reports(self):
+        workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+        linux = workflow.split("  validate-linux:", 1)[1].split("  validate-windows:", 1)[0]
+        self.assertIn("uses: actions/checkout@v4\n        with:\n          fetch-depth: 0", linux,
+                      "Published-tag contracts must execute rather than skip in shallow checkouts")
+        self.assertIn("fail-fast: false", linux)
+        self.assertIn("python-version: ['3.10', '3.14']", linux)
+        self.assertIn("shard: [0, 1, 2, 3, 4, 5, 6, 7]", linux)
+        self.assertIn("--shard-index ${{ matrix.shard }} --shard-count 8", linux)
+        self.assertIn("--workers 2", linux)
+        self.assertIn("if-no-files-found: error", linux)
+        self.assertEqual(2, linux.count("if: matrix.shard == 0"))
+        self.assertIn("name: linux-python-${{ matrix.python-version }}-shard-${{ matrix.shard }}", linux)
+        assert_required_gate_contract(self, workflow)
+
+
 class ExistingCoverageControls(unittest.TestCase):
     def test_linux_validation_remains_complete_and_in_order(self):
         runner = load_runner()
@@ -484,22 +806,19 @@ class ExistingCoverageControls(unittest.TestCase):
         workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
         assert_required_gate_contract(self, workflow)
 
+        def replace_required_run():
+            # Linux also uses a folded command now; mutate the required gate.
+            prefix, required = workflow.split("  required:", 1)
+            return prefix + "  required:" + required.replace("        run: >-", "        run: echo no-op", 1)
+
         mutations = {
             "echo no-op": workflow.replace(
                 "          python .github/scripts/require_validation.py",
                 "          echo python .github/scripts/require_validation.py",
                 1,
             ),
-            "comment-only decoy": workflow.replace(
-                "        run: >-",
-                "        run: echo no-op",
-                1,
-            ) + "\n# python .github/scripts/require_validation.py linux=${{ needs.validate-linux.result }} windows=${{ needs.validate-windows.result }} macos=${{ needs.validate-macos.result }} claude=${{ needs.validate-claude.result }}\n",
-            "other-job decoy": workflow.replace(
-                "        run: >-",
-                "        run: echo no-op",
-                1,
-            ) + """
+            "comment-only decoy": replace_required_run() + "\n# python .github/scripts/require_validation.py linux=${{ needs.validate-linux.result }} windows=${{ needs.validate-windows.result }} macos=${{ needs.validate-macos.result }} claude=${{ needs.validate-claude.result }}\n",
+            "other-job decoy": replace_required_run() + """
 
   decoy-aggregation:
     runs-on: ubuntu-latest
