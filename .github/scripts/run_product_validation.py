@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import math
@@ -18,6 +19,11 @@ from typing import Callable, Iterable, Mapping
 ROOT = Path(__file__).resolve().parents[2]
 LINUX_TIMINGS = ROOT / ".github" / "scripts" / "linux_test_timings.json"
 LINUX_AUXILIARY_SECONDS = 20.0
+# This unchanged one-second wall-clock contract needs an otherwise idle shard.
+# Keep this list explicit and discovery-guarded: never omit or relax the test.
+LINUX_EXCLUSIVE_TESTS = (
+    "test_evidence_dag_journeys.EvidenceDagPublicTests.test_pure_frontier_has_no_io_and_fixed_expanded_equal_work_budget",
+)
 
 NATIVE_COVERAGE = {
     "installation_cleanup": (
@@ -97,7 +103,8 @@ def load_linux_timings(path: Path = LINUX_TIMINGS) -> tuple[dict[str, float], fl
 
 
 def partition_linux_tests(discovered: Iterable[str], shard_count: int,
-                          weights: Mapping[str, float], fallback: float = 10.0) -> list[list[str]]:
+                          weights: Mapping[str, float], fallback: float = 10.0,
+                          auxiliary_seconds: float = LINUX_AUXILIARY_SECONDS) -> list[list[str]]:
     """Longest-first packing; timing hints never determine inventory membership."""
     inventory = list(discovered)
     if not inventory or len(inventory) != len(set(inventory)):
@@ -105,7 +112,7 @@ def partition_linux_tests(discovered: Iterable[str], shard_count: int,
     if type(shard_count) is not int or not 1 <= shard_count <= len(inventory):
         raise ValueError("Linux shard count must be positive and cannot create empty shards")
     shards: list[list[str]] = [[] for _ in range(shard_count)]
-    loads = [LINUX_AUXILIARY_SECONDS, *([0.0] * (shard_count - 1))]
+    loads = [auxiliary_seconds, *([0.0] * (shard_count - 1))]
     for test_id in sorted(inventory, key=lambda item: (-weights.get(item, fallback), item)):
         candidates = [item for item in range(shard_count) if not shards[item]] or range(shard_count)
         index = min(candidates, key=lambda item: (loads[item], item))
@@ -297,6 +304,9 @@ def _validate_linux_observation(selected: list[str], observation: Mapping) -> No
 
 def linux_shard_plan(shard_index: int, shard_count: int, root: Path = ROOT) -> dict:
     inventory = discover_linux_tests(root)
+    missing_exclusive = set(LINUX_EXCLUSIVE_TESTS) - set(inventory)
+    if missing_exclusive:
+        raise ValueError("Linux exclusive test IDs missing from discovery: " + ", ".join(sorted(missing_exclusive)))
     weights, fallback = load_linux_timings()
     shards = partition_linux_tests(inventory, shard_count, weights, fallback)
     if type(shard_index) is not int or not 0 <= shard_index < shard_count:
@@ -313,12 +323,71 @@ def linux_shard_plan(shard_index: int, shard_count: int, root: Path = ROOT) -> d
     }
 
 
-def run_linux_shard(shard_index: int, shard_count: int, report_path: Path | None = None) -> dict:
+def linux_worker_plan(selected: list[str], workers: int) -> tuple[list[list[str]], list[str]]:
+    if type(workers) is not int or workers not in (1, 2):
+        raise ValueError("Linux workers must be 1 or 2")
+    if workers == 1:
+        return [selected], []
+    exclusive = sorted(set(selected) & set(LINUX_EXCLUSIVE_TESTS))
+    concurrent = [item for item in selected if item not in exclusive]
+    weights, fallback = load_linux_timings()
+    batches = (partition_linux_tests(concurrent, min(workers, len(concurrent)), weights,
+                                    fallback, auxiliary_seconds=0.0) if concurrent else [])
+    return batches, exclusive
+
+
+def _combine_linux_observations(observations: list[Mapping]) -> dict:
+    combined = {"returncode": 0, "tests_run": 0, "failures": 0, "errors": 0,
+                "executed_ids": [], "completed_ids": [], "skips": [], "invalid_skips": [],
+                "durations": {}}
+    for observation in observations:
+        for key in ("tests_run", "failures", "errors"):
+            combined[key] += observation[key]
+        combined["returncode"] = max(combined["returncode"], observation["returncode"])
+        for key in ("executed_ids", "completed_ids", "skips", "invalid_skips"):
+            combined[key].extend(observation.get(key, []))
+        durations = observation.get("durations", {})
+        if combined["durations"].keys() & durations.keys():
+            raise ValueError("Linux workers have duplicate duration IDs")
+        combined["durations"].update(durations)
+    return combined
+
+
+def run_linux_shard(shard_index: int, shard_count: int, report_path: Path | None = None,
+                    workers: int = 1) -> dict:
     started = time.perf_counter()
     report = linux_shard_plan(shard_index, shard_count)
     report["status"] = "failed"
+    report["workers"] = workers
+    report["worker_reports"] = []
     try:
-        observation = _launch_native(report["selected_ids"], ROOT)
+        batches, exclusive = linux_worker_plan(report["selected_ids"], workers)
+        report["concurrent_worker_count"] = len(batches)
+        report["serial_ids"] = exclusive
+        # Threads only supervise fresh interpreters; unittest globals stay isolated.
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(_launch_native, batch, ROOT) for batch in batches]
+            for index, (batch, future) in enumerate(zip(batches, futures)):
+                try:
+                    child = dict(future.result())
+                    report["worker_reports"].append({"worker_index": index, "serial": False,
+                                                     "selected_ids": batch, "observation": child})
+                except Exception as error:
+                    report["worker_reports"].append({"worker_index": index, "serial": False,
+                                                     "selected_ids": batch, "error": str(error)})
+        # Pool exit waits for every child, including failures, before the timing test.
+        if exclusive:
+            worker = {"worker_index": len(batches), "serial": True, "selected_ids": exclusive}
+            report["worker_reports"].append(worker)
+            try:
+                worker["observation"] = dict(_launch_native(exclusive, ROOT))
+            except Exception as error:
+                worker["error"] = str(error)
+        for worker in report["worker_reports"]:
+            if "error" in worker:
+                raise RuntimeError(worker["error"])
+            _validate_linux_observation(worker["selected_ids"], worker["observation"])
+        observation = _combine_linux_observations([worker["observation"] for worker in report["worker_reports"]])
         report.update({key: observation[key] for key in (
             "returncode", "tests_run", "executed_ids", "completed_ids", "failures", "errors",
             "skips", "invalid_skips", "durations",
@@ -344,6 +413,7 @@ def run_linux_shard(shard_index: int, shard_count: int, report_path: Path | None
                     f"{len(report.get('executed_ids', []))}/{len(report.get('completed_ids', []))}\n"
                     f"- estimated tests/wall seconds: {report['estimated_test_seconds']:.2f}/"
                     f"{report['wall_seconds']:.2f}\n"
+                    f"- workers: {workers}; serial tests: {len(report.get('serial_ids', []))}\n"
                     f"- auxiliary checks: {report['auxiliary_checks']}\n")
         print(json.dumps(report, sort_keys=True))
     return report
@@ -365,9 +435,10 @@ def main() -> int:
     parser.add_argument("--shard-count", type=int)
     parser.add_argument("--discover-linux", action="store_true")
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--workers", type=int, choices=(1, 2), default=1)
     args = parser.parse_args()
     sharded = args.shard_index is not None or args.shard_count is not None
-    if sharded or args.discover_linux or args.report:
+    if sharded or args.discover_linux or args.report or args.workers != 1:
         if args.platform != "linux" or args.discover_native:
             parser.error("Linux shard options require --platform linux")
         if args.shard_index is None or args.shard_count is None:
@@ -375,7 +446,7 @@ def main() -> int:
         if args.discover_linux:
             print(json.dumps(linux_shard_plan(args.shard_index, args.shard_count), sort_keys=True))
         else:
-            run_linux_shard(args.shard_index, args.shard_count, args.report)
+            run_linux_shard(args.shard_index, args.shard_count, args.report, args.workers)
         return 0
     if args.discover_native:
         if args.platform == "linux":
