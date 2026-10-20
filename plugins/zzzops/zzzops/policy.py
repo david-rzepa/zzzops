@@ -92,7 +92,7 @@ ENGINEERING_RIGOR_LEVELS = ("vibe", "structured", "agentic")
 POLICY_CONFIGURATION_KEYS = {
     "backend": {"authority", "repository_identity", "capability_evidence"},
     "git_review_release": {
-        "review_pending_dependency", "pull_request_mode",
+        "review_pending_dependency", "pull_request_mode", "release_planning",
     },
     "verification_testing": {"required_ci"},
     "code_quality": set(),
@@ -1809,6 +1809,7 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                 allowed = allowed | {"migration_entries"}
             if section_id == "git_review_release":
                 allowed = allowed | {"stacked_tooling_decline"}
+                required = required - {"release_planning"}
             missing = sorted(required - set(configuration))
             unknown = sorted(set(configuration) - allowed)
             if missing or unknown:
@@ -1830,6 +1831,17 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
                     errors.append(f"{prefix}.git_review_release.configuration.pull_request_mode is invalid")
                 if "stacked_tooling_decline" in configuration and not _digest_text(configuration["stacked_tooling_decline"]):
                     errors.append(f"{prefix}.git_review_release.configuration.stacked_tooling_decline is invalid")
+                release = configuration.get("release_planning")
+                release_fields = {"enabled", "next_release", "integration_branch", "publication_branch",
+                                  "release_branch_prefix", "execution_scope"}
+                if release is not None and (not isinstance(release, dict) or set(release) != release_fields):
+                    errors.append(f"{prefix}.git_review_release.configuration.release_planning is invalid")
+                elif release is not None and (not isinstance(release["enabled"], bool)
+                      or not isinstance(release["next_release"], int) or isinstance(release["next_release"], bool) or release["next_release"] < 1
+                      or any(not isinstance(release[field], str) or not release[field].strip()
+                             for field in ("integration_branch", "publication_branch", "release_branch_prefix"))
+                      or release["execution_scope"] not in {"active_only", "later_when_active_blocked"}):
+                    errors.append(f"{prefix}.git_review_release.configuration.release_planning is invalid")
             elif section_id == "verification_testing":
                 if configuration.get("required_ci") not in REQUIRED_CI_MODES:
                     errors.append(f"{prefix}.verification_testing.configuration.required_ci is invalid")

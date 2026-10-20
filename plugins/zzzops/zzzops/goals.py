@@ -40,6 +40,7 @@ GOAL_TRANSITION_SCHEMA_VERSION = 1
 GOAL_TRANSITION_FIELDS = {"schema_version", "expected_revision", "expected_digest", "goal"}
 GOAL_CREATE_SCHEMA_VERSION = 1
 GOAL_CREATE_FIELDS = {"schema_version", "title", "body", "labels", "goal"}
+GOAL_CREATE_OPTIONAL_FIELDS = {"target_release"}
 BLOCKER_CATEGORIES = {"specification", "decision", "access-approval", "human-action", "external-dependency", "technical-unknown", "safety-compliance"}
 REDUNDANT_GOAL_TITLE_PREFIX = re.compile(r"^\[G-\d{8}-\d{3}-[^\]]+\]\s*")
 HISTORICAL_HUMAN_SECTIONS = {
@@ -645,7 +646,7 @@ def validate_goal_create(request: Any, *, allow_deferred: bool = False) -> list[
     if not isinstance(request, dict):
         return ["goal create request must be an object"]
     errors = []
-    unknown = sorted(set(request) - GOAL_CREATE_FIELDS)
+    unknown = sorted(set(request) - GOAL_CREATE_FIELDS - GOAL_CREATE_OPTIONAL_FIELDS)
     missing = sorted(GOAL_CREATE_FIELDS - set(request))
     if unknown:
         errors.append("unknown goal create fields: " + ", ".join(unknown))
@@ -653,6 +654,11 @@ def validate_goal_create(request: Any, *, allow_deferred: bool = False) -> list[
         errors.append("missing goal create fields: " + ", ".join(missing))
     if request.get("schema_version") != GOAL_CREATE_SCHEMA_VERSION:
         errors.append(f"goal create schema_version must be {GOAL_CREATE_SCHEMA_VERSION}")
+    if "target_release" in request and (
+        not isinstance(request["target_release"], int) or isinstance(request["target_release"], bool)
+        or request["target_release"] < 1
+    ):
+        errors.append("target_release must be a positive integer")
     title = request.get("title")
     if not isinstance(title, str) or not title.strip():
         errors.append("title is required")

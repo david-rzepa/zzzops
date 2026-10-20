@@ -135,6 +135,16 @@ _working_inputs = importlib.util.module_from_spec(_WORKING_INPUTS_MODULE_SPEC)
 sys.modules[_WORKING_INPUTS_MODULE_SPEC.name] = _working_inputs
 _WORKING_INPUTS_MODULE_SPEC.loader.exec_module(_working_inputs)
 
+_RELEASES_MODULE_PATH = Path(__file__).with_name("releases.py")
+_RELEASES_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_releases", _RELEASES_MODULE_PATH)
+assert _RELEASES_MODULE_SPEC and _RELEASES_MODULE_SPEC.loader
+_releases = importlib.util.module_from_spec(_RELEASES_MODULE_SPEC)
+sys.modules[_RELEASES_MODULE_SPEC.name] = _releases
+_RELEASES_MODULE_SPEC.loader.exec_module(_releases)
+
+GitHubReleasePlanAdapter = _releases.GitHubReleasePlanAdapter
+GitHubReleaseBranchAdapter = _releases.GitHubReleaseBranchAdapter
+
 _INSTALLATION_MODULE_PATH = Path(__file__).with_name("installation.py")
 _INSTALLATION_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_installation", _INSTALLATION_MODULE_PATH)
 assert _INSTALLATION_MODULE_SPEC and _INSTALLATION_MODULE_SPEC.loader
@@ -2590,6 +2600,114 @@ def inspect_repository_goal(repo: Path, project: dict[str, Any], issue_number: i
     return {"migration": migration, "goal": github_goal_record(issue)}
 
 
+class _GitHubReleaseTransport:
+    """Small provider transport composed from the existing authenticated adapters."""
+    def __init__(self, repo: Path, repository: str):
+        self.repo, self.repository = Path(repo), repository
+        self.goals = GitHubGoalTransitionAdapter(repo, repository)
+        self.reservations = GitHubReservationAdapter(repo, repository)
+
+    def list_control_issues(self, repository, marker):
+        if repository.casefold() != self.repository.casefold(): raise ValueError("repository identity changed")
+        result = self.goals._run(["api", "--paginate", "--slurp",
+            f"repos/{repository}/issues?state=all&per_page=100&labels=zzzops-release-plan-control"])
+        if result.returncode: raise self.goals._provider_error(result)
+        pages = json.loads(result.stdout)
+        rows = [row for page in pages for row in page] if isinstance(pages, list) else []
+        return [row for row in rows if isinstance(row, dict) and marker in str(row.get("body") or "")]
+
+    def create_issue(self, repository, payload): return self.goals.create_issue(payload)
+    def update_issue(self, repository, number, payload, expected_body_hash):
+        current = self.goals.get_issue(number)
+        if _releases.text_hash(current.get("body", "")) != expected_body_hash: raise ValueError("release plan revision changed")
+        return self.goals.update_issue(number, payload)
+    def read_comments(self, repository, number): return self.goals.get_issue_comments(number)
+    def append_comment(self, repository, number, body): return self.goals.create_issue_comment(number, body)
+    def acquire_label_lock(self, repository, name, description):
+        current = self.reservations.get_label(name)
+        if current is None:
+            self.reservations.create_label(name, description); current = self.reservations.get_label(name)
+        if not current or current.get("description") != description: raise ValueError("repository release plan is locked")
+    def release_label_lock(self, repository, name, description):
+        current = self.reservations.get_label(name)
+        if current and current.get("description") == description: self.reservations.delete_label(current["node_id"])
+    def observe_release(self, repository, release):
+        project = reviewed_project_state(self.repo)
+        snapshot = portfolio_snapshot(self.repo)
+        plan = _releases.GitHubReleasePlanAdapter(self).read(repository)
+        members = {}
+        frozen = (plan or {}).get("releases", {}).get(str(release), {}).get("members", {})
+        goals = {row["key"]: row for row in snapshot["goals"]}
+        identities = set(map(int, frozen)) if frozen else {
+            key for key, row in goals.items() if _releases.target_release(plan, key) == release
+        }
+        for key in identities:
+            row = goals.get(key)
+            if row is None:
+                # Frozen membership survives removal from the open index.
+                members[str(key)] = {"status": "done", "integrated_commit": frozen[str(key)]}
+            elif row.get("status") == "cancelled":
+                members[str(key)] = {"status": "cancelled", "cancellation_authority": row.get("digest")}
+            else:
+                commit = frozen.get(str(key)) or ((row.get("implementation") or {}).get("head_oid"))
+                members[str(key)] = {"status": row.get("status"), "integrated_commit": commit}
+        release_policy = _workflow_section(project, "git_review_release").get("configuration", {}).get("release_planning", {})
+        source_branch = release_policy.get("integration_branch", "dev")
+        source = subprocess.run(["git", "rev-parse", source_branch], cwd=self.repo, text=True, capture_output=True, check=False)
+        source_sha = source.stdout.strip() if source.returncode == 0 else ""
+        ancestors = set()
+        if source_sha:
+            history = subprocess.run(["git", "rev-list", source_sha], cwd=self.repo, text=True, capture_output=True, check=False)
+            if history.returncode == 0: ancestors = set(history.stdout.split())
+        commits = {value["integrated_commit"] for value in members.values() if value.get("integrated_commit")}
+        owners = [key for key, row in goals.items() if key in identities and (row.get("claim") or {}).get("owner")]
+        future = {((row.get("implementation") or {}).get("head_oid")) for key, row in goals.items()
+                  if key not in identities and _releases.target_release(plan, key) > release}
+        return {"members": members, "active_owners": owners, "observed_commits": sorted(commits),
+                "source_ancestors": sorted(ancestors), "forbidden_commits": sorted(future - {None}),
+                "source_branch": source_branch, "source_sha": source_sha}
+
+
+class GitHubReleasePlanAdapter(_releases.GitHubReleasePlanAdapter):
+    def __init__(self, repo, repository=None):
+        super().__init__(repo if repository is None else _GitHubReleaseTransport(repo, repository))
+
+
+class GitHubReleaseBranchAdapter(_releases.GitReleaseBranchAdapter):
+    pass
+
+
+def _release_policy(project):
+    configuration = _workflow_section(project, "git_review_release").get("configuration", {})
+    return copy.deepcopy(configuration.get("release_planning") or {
+        "enabled": False, "next_release": 1, "integration_branch": "dev", "publication_branch": "main",
+        "release_branch_prefix": "release/", "execution_scope": "active_only"})
+
+
+def release_cli(repo: Path, command: str, input_path: Path | None = None):
+    project = reviewed_project_state(repo); repository = _project_repository_identity(project)
+    policy = _release_policy(project)
+    adapter = GitHubReleasePlanAdapter(repo, repository)
+    request = None if input_path is None else json.loads(input_path.resolve().read_text(encoding="utf-8-sig"))
+    if command == "status":
+        plan = adapter.read(repository)
+        return plan or {**_releases.new_release_plan(policy["next_release"]), "status": "disabled" if not policy["enabled"] else "unconfigured"}
+    if command == "configure":
+        if not policy["enabled"]: raise ValueError("release planning is disabled by reviewed policy")
+        return _releases.persist_plan(adapter, repository, request["plan"],
+            expected_revision=request["expected_revision"], request_id=request["request_id"])
+    if command == "assign":
+        if not policy["enabled"]: raise ValueError("release planning is disabled by reviewed policy")
+        return _releases.persist_batch_assignments(adapter, repository, request["assignments"],
+            expected_revision=request["expected_revision"], request_id=request["request_id"])
+    if command == "checkpoint":
+        if not policy["enabled"]: raise ValueError("release planning is disabled by reviewed policy")
+        branch = GitHubReleaseBranchAdapter(repo)
+        return _releases.ReleaseCoordinator(repository, policy, adapter, branch,
+                                             evidence_provider=adapter).checkpoint(request)
+    raise ValueError("unknown release command")
+
+
 
 
 def render_portfolio_summary(snapshot: dict[str, Any], include_done: bool = False) -> str:
@@ -3551,6 +3669,12 @@ def _private_main() -> int:
     portfolio_parser.add_argument("--compare", type=Path, help="Prior JSON snapshot used only to report digest/revision drift")
     portfolio_parser.add_argument("--include-feedback", action="store_true", help="Include specially tagged feedback goals")
     portfolio_parser.add_argument("--profile", action="store_true", help="Record one local privacy-safe timing aggregate")
+    release_parser = commands.add_parser("release", help="Manage the reviewed repository release plan")
+    release_commands = release_parser.add_subparsers(dest="release_command", required=True)
+    release_commands.add_parser("status", help="Read the current release plan")
+    for name in ("configure", "assign", "checkpoint"):
+        command = release_commands.add_parser(name)
+        command.add_argument("--input", type=Path, required=True)
     goal_command = commands.add_parser("goal", help="Create, transition, or inspect validated GitHub-backed goals")
     goal_commands = goal_command.add_subparsers(dest="goal_command", required=True)
     create_goal_command = goal_commands.add_parser("create", help="Create one goal from a validated UTF-8 request file")
@@ -3798,6 +3922,15 @@ def _private_main() -> int:
                     print(json.dumps({"schema_version": PORTFOLIO_SCHEMA_VERSION, "complete": False, "valid": False, "error": str(exc)}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
                 else:
                     print(f"Could not load goals: {exc}")
+                return 2
+        elif args.command == "release":
+            try:
+                result = release_cli(repo, args.release_command, getattr(args, "input", None))
+                print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+                return 0
+            except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+                print(json.dumps({"status": "blocked", "reason": str(exc)}, ensure_ascii=False,
+                                 sort_keys=True, separators=(",", ":")))
                 return 2
         elif args.command == "goal":
             project = reviewed_project_state(repo)
