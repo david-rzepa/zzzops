@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "replacements": [
+    {
+      "previous_tests": [
+        "test_workflow_publication_contract.GenericDeliveryPublicTests.test_parent_requires_both_children_current_terminals_and_archived_merge_evidence"
+      ],
+      "guarantees": "Both child terminals, independent review and root acceptance; exact child selection; archived evidence remains usable; missing payload fails closed; restored exact inputs and persisted aggregate.",
+      "contract_tests": [
+        "test_workflow_publication_contract.RelationshipDeliveryContractTests.test_parent_requires_both_children_current_terminals_and_archived_evidence"
+      ],
+      "integration_tests": [
+        "test_workflow_publication_contract.GenericDeliveryPublicTests.test_reviewed_red_green_proofs_commit_and_exact_publication_form_one_delivery_graph"
+      ]
+    },
+    {
+      "previous_tests": [
+        "test_workflow_publication_contract.GenericDeliveryPublicTests.test_second_sibling_consumes_reviewed_committed_first_proof_without_rewriting_history"
+      ],
+      "guarantees": "First and second sibling review/root gates; exact parent allocation; observed red/green and committed bytes; disconnected or unknown prior proof and stale second authority reject without writes; consumed drift blocks; first/parent history remains unchanged.",
+      "contract_tests": [
+        "test_workflow_publication_contract.GenericDeliveryPublicTests.test_second_sibling_consumes_reviewed_committed_first_proof_without_rewriting_history"
+      ],
+      "integration_tests": [
+        "test_workflow_publication_contract.GenericDeliveryPublicTests.test_reviewed_red_green_proofs_commit_and_exact_publication_form_one_delivery_graph"
+      ]
+    },
+    {
+      "previous_tests": [
+        "test_accepted_test_recovery.AcceptedTestRecoveryTests.test_shipped_route_carries_conditional_iam_fixture",
+        "test_accepted_test_recovery.AcceptedTestRecoveryTests.test_shipped_route_carries_null_role_name_fixture",
+        "test_accepted_test_recovery.AcceptedTestRecoveryTests.test_shipped_route_carries_delete_lifecycle_fixture"
+      ],
+      "guarantees": "Every safe and unsafe payload variant including null names; exact corrected output round trip; correction acquisition pins prior test; fresh independent review and retained-finding resolution reopen implementation.",
+      "contract_tests": [
+        "test_accepted_test_recovery.AcceptedTestRecoveryTests.test_additive_graph_feasibility_control_reaches_fresh_implementation"
+      ],
+      "integration_tests": [
+        "test_accepted_test_recovery.AcceptedTestRecoveryTests.test_additive_graph_feasibility_control_reaches_fresh_implementation"
+      ]
+    },
+    {
+      "previous_tests": [
+        "test_accepted_test_recovery.AcceptedTestRecoveryTests.test_existing_implementation_route_cannot_retarget_test_design_negative_control"
+      ],
+      "guarantees": "Canonical implementation interpretation permits its own scope and rejects a test-design target. Atomic public failure remains covered at the submission boundary.",
+      "contract_tests": [
+        "test_accepted_test_recovery.AcceptedTestRecoveryTests.test_existing_implementation_route_cannot_retarget_test_design_negative_control"
+      ],
+      "integration_tests": [
+        "test_accepted_test_recovery.AcceptedTestRecoveryTests.test_wrong_target_and_active_owner_reject_without_provider_mutation"
+      ]
+    },
+    {
+      "previous_tests": [
+        "test_accepted_test_recovery.AcceptedTestRecoveryTests.test_correction_author_cannot_bind_fresh_independent_test_review"
+      ],
+      "guarantees": "The exact current subject author cannot review it; a distinct actor can. Real independent acquisition/submission remains integrated.",
+      "contract_tests": [
+        "test_accepted_test_recovery.AcceptedTestRecoveryTests.test_correction_author_cannot_bind_fresh_independent_test_review"
+      ],
+      "integration_tests": [
+        "test_accepted_test_recovery.AcceptedTestRecoveryTests.test_additive_graph_feasibility_control_reaches_fresh_implementation"
+      ]
+    },
+    {
+      "previous_tests": [
+        "test_accepted_test_recovery.AcceptedTestRecoveryTests.test_expanded_test_path_rejects_without_provider_mutation"
+      ],
+      "guarantees": "The declared test allocation rejects an unexpected path and preserves provider bytes. Accepted-test correction reuses that workspace boundary.",
+      "contract_tests": [
+        "test_accepted_test_recovery.AcceptedTestRecoveryTests.test_expanded_test_path_rejects_without_provider_mutation"
+      ],
+      "integration_tests": [
+        "test_accepted_test_recovery.AcceptedTestRecoveryTests.test_additive_graph_feasibility_control_reaches_fresh_implementation"
+      ]
+    },
+    {
+      "previous_tests": [
+        "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance"
+      ],
+      "guarantees": "Two correction rounds preserve exact prior outputs, predecessor proofs, review and root authority, allocation and authorization; stale review/root reject; retained findings require resolution; committed bytes preserve connected proofs; prior comment history stays immutable and no follow-up goals are fabricated.",
+      "contract_tests": [
+        "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_synthetic_prior_provenance_exceeds_32_without_lifetime_cap"
+      ],
+      "integration_tests": [
+        "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_accepted_correction_chain_preserves_each_round_authority_and_history"
+      ]
+    },
+    {
+      "previous_tests": [
+        "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_synthetic_prior_grants_cannot_replace_current_authority_or_immediate_proof"
+      ],
+      "guarantees": "Two and forty prior links remain valid without a lifetime cap; missing current root authority, wrong actor/review subject, corrupt immediate proof and actor/node/acquisition/workspace mutations reject through the production projection seam.",
+      "contract_tests": [
+        "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_synthetic_prior_provenance_exceeds_32_without_lifetime_cap"
+      ],
+      "integration_tests": [
+        "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_accepted_correction_chain_preserves_each_round_authority_and_history"
+      ]
+    }
+  ]
+}

@@ -202,6 +202,24 @@ class AcceptedTestRecoveryTests(unittest.TestCase):
                              "Historical admission identity must be shadowed after compilation")
         return candidates[0]
 
+    def contract_state(self, node_name, *, target_name):
+        """Build the evaluator state for one reviewed contract without replaying its predecessors."""
+        c = self.case
+        graph = json.loads(
+            (Path(__file__).parent / "fixtures" / "legacy_evidence_dag.json").read_text())
+        graph = j.z._static_workflow.canonical(graph, j.z._graph_compiler)
+        contract = next(node for node in graph["nodes"] if node["id"] == node_name)
+        node = {"goal": 100, "node": node_name, "item": None, "generation": 1}
+        target = {"goal": 100, "node": target_name, "item": None, "generation": 1}
+        selectors = []
+        for selector in contract.get("independent_of", []):
+            selectors.append({"selector": selector, "targets": [target], "location": "contract"})
+        for permit in contract.get("permits", []):
+            selector = permit["scope"]["subject"]
+            if not any(row["selector"] == selector for row in selectors):
+                selectors.append({"selector": selector, "targets": [target], "location": "contract"})
+        return graph, {"node": node, "contract": contract, "resolutions": selectors, "inputs": []}
+
     def admit(self, case_name="conditional_iam"):
         c = self.case
         interpretation = c.session.acquire("interpret_accepted_test_defect")
@@ -231,6 +249,8 @@ class AcceptedTestRecoveryTests(unittest.TestCase):
         request = c.session.submission(corrected, {"value": json.dumps(ORIGEN_CASES, sort_keys=True)}, "corrected-tests")
         request["workspace_checks"] = [[sys.executable, "-B", "behavior_test.py"]]
         c.session.call(100, request)
+        persisted_cases = c.read_blob(c.produced("test_design"))["content"]
+        self.assertEqual(ORIGEN_CASES, json.loads(persisted_cases))
         self.assertNotIn("implement", c.names())
         c.session.finish(c.session.acquire("review_test_design", actor="fresh-independent-reviewer"),
                          {"value": {"decision": "approved", "report": "Safe and negative controls verified"}})
@@ -259,9 +279,11 @@ class AcceptedTestRecoveryTests(unittest.TestCase):
 
     def test_expanded_test_path_rejects_without_provider_mutation(self):
         c = self.case
-        self.enable_additive_route_control()
-        self.finish_initial_work()
-        self.admit()
+        c.default_decomposition()
+        c.session.finish(c.session.acquire("review_decomposition"),
+                         {"value": {"decision": "approved", "report": "Atomic plan"}})
+        c.session.finish(c.session.acquire("retain_decompose_findings"),
+                         {"value": {"items": {}, "rationale": "No decomposition findings"}})
         correction = c.session.acquire("test_design", actor="bounded-test-corrector")
         (c.fixture.repo / "unexpected_test.py").write_text("assert True\n")
         before = copy.deepcopy((c.provider.issues, c.provider.comments))
@@ -319,46 +341,39 @@ class AcceptedTestRecoveryTests(unittest.TestCase):
 
     def test_existing_implementation_route_cannot_retarget_test_design_negative_control(self):
         c = self.case
-        self.finish_initial_work()
-        interpretation = c.session.acquire("interpret_implement_rejection")
-        before = copy.deepcopy((c.provider.issues, c.provider.comments))
-        response = c.session.call(100, c.session.submission(
-            interpretation, {"value": self.finding()}, "existing-route-retarget"), expected=2)
-        self.assertRegex(json.dumps(response), r"(?i)target|permit|scope")
-        self.assertEqual(before, (c.provider.issues, c.provider.comments))
+        graph, state = self.contract_state(
+            "interpret_implement_rejection", target_name="implement")
+        engine = j.z.workflow_engine(c.fixture.repo, c.session.project, c.session.runtime)
+        source = {"hash": "sha256:" + "2" * 64, "uri": "urn:sha256:" + "2" * 64}
+        subject = {"hash": "sha256:" + "3" * 64, "uri": "urn:sha256:" + "3" * 64}
+        result_ref = {"hash": "sha256:" + "4" * 64, "uri": "urn:sha256:" + "4" * 64}
+        subject_node = {"goal": 100, "node": "test_design", "item": None, "generation": 1}
+        subject_result = {"node": subject_node, "executor": "test-author", "inputs": [],
+                          "outputs": {"value": subject}}
+        snapshot = {"graph": graph, "projection": {
+            "current": {j.z._phase_evidence.task_key(subject_node): (result_ref, subject_result)},
+            "states": {}, "obligations": {}},
+            "artifacts": {source["hash"]: {"type": "review_decision", "content": {}},
+                          subject["hash"]: {"type": "test_design", "content": {}}},
+            "payload": {"evidence": []}}
+        wrong_target = {
+            "id": "accepted_test_conditional_iam", "revision": 1,
+            "source": source, "subjects": [subject],
+            "target": {"subject": {"kind": "node", "goal": 100,
+                                    "node": "test_design"}, "output": "value"},
+            "request": "Correct only the accepted fixture",
+            "rationale": "The implementation route cannot grant test-design scope",
+            "supersedes": None,
+        }
+        with self.assertRaisesRegex(ValueError, r"permit|scope|target"):
+            engine.node_validate_bundle(snapshot, state, {"value": wrong_target}, "root-thread")
+        allowed_finding = copy.deepcopy(wrong_target)
+        allowed_finding["target"]["subject"]["node"] = "implement"
+        engine.node_validate_bundle(snapshot, state, {"value": allowed_finding}, "root-thread")
+        allowed = next(permit for permit in state["contract"]["permits"]
+                       if permit["type"] == "finding")["scope"]
+        self.assertEqual("implement", allowed["subject"]["node"])
 
-    def run_shipped_case(self, case_name):
-        c = self.case
-        self.finish_initial_work()
-        self.assertIn("interpret_accepted_test_defect", c.names())
-        finding = self.admit(case_name)
-        correction = c.session.acquire("test_design", actor="correction-" + case_name)
-        self.assertIn(c.result("test_design")[0]["hash"], json.dumps(correction["lease"]["acquisition"]))
-        self.assertEqual(case_name, self.case.read_blob(finding)["content"]["rationale"].split(":", 1)[0])
-        (c.fixture.repo / "behavior_test.py").write_text("assert True  # sanitized workflow fixture\n")
-        request = c.session.submission(correction, {"value": json.dumps(ORIGEN_CASES[case_name], sort_keys=True)},
-                                       "corrected-" + case_name)
-        request["workspace_checks"] = [[sys.executable, "-B", "behavior_test.py"]]
-        c.session.call(100, request)
-        c.session.finish(c.session.acquire("review_test_design", actor="reviewer-" + case_name),
-                         {"value": {"decision": "approved", "report": "Safe and negative inputs reviewed"}})
-        c.session.finish(c.session.acquire("retain_test_design_findings"), {"value": {
-            "items": {"accepted_test_" + case_name: finding}, "rationale": "Retain exact defect"}})
-        c.session.finish(c.session.acquire("resolve_test_design_finding", item="accepted_test_" + case_name,
-                                           actor="resolver-" + case_name), {"value": {
-            "finding": finding, "subjects": [c.produced("test_design")],
-            "reviewer_result": c.result("review_test_design")[0], "decision": "resolved",
-            "rationale": "Fresh independent review covers corrected fixture"}})
-        self.assertIn("implement", c.names())
-
-    def test_shipped_route_carries_conditional_iam_fixture(self):
-        self.run_shipped_case("conditional_iam")
-
-    def test_shipped_route_carries_null_role_name_fixture(self):
-        self.run_shipped_case("null_role_name")
-
-    def test_shipped_route_carries_delete_lifecycle_fixture(self):
-        self.run_shipped_case("delete_lifecycle")
 
     def test_default_graph_declares_acyclic_accepted_test_route(self):
         c = self.case
@@ -463,22 +478,16 @@ class AcceptedTestRecoveryTests(unittest.TestCase):
 
     def test_correction_author_cannot_bind_fresh_independent_test_review(self):
         c = self.case
-        self.enable_additive_route_control()
-        self.finish_initial_work()
-        self.admit()
-        correction = c.session.acquire("test_design", actor="same-person")
-        (c.fixture.repo / "behavior_test.py").write_text("assert True\n")
-        request = c.session.submission(correction, {"value": "corrected bounded test"}, "self-review-candidate")
-        request["workspace_checks"] = [[sys.executable, "-B", "behavior_test.py"]]
-        c.session.call(100, request)
-        step = next(row for row in c.session.ready() if row["node"]["node"] == "review_test_design")
-        receipt = json.loads(Path(step["policy"]["path"]).read_text())["policy_receipt"]
-        started = c.session.call(100, {**step["start"], "policy_receipt": receipt})["next_steps"][0]
-        bind = {**started["bind"], "lease": started["lease"]["token"], "actor": "same-person",
-                "selection": started["lease"]["selection"], "policy_receipt": receipt,
-                "request_id": "self-review-bind"}
-        response = c.session.call(100, bind, expected=2)
-        self.assertRegex(json.dumps(response), r"(?i)independent|actor|self|review")
+        graph, state = self.contract_state("review_test_design", target_name="test_design")
+        engine = j.z.workflow_engine(c.fixture.repo, c.session.project, c.session.runtime)
+        subject = state["resolutions"][0]["targets"][0]
+        key = j.z._phase_evidence.task_key(subject)
+        snapshot = {"graph": graph, "projection": {"current": {
+            key: ({"hash": "sha256:" + "1" * 64, "uri": "urn:sha256:" + "1" * 64},
+                  {"node": subject, "executor": "same-person", "outputs": {}, "inputs": []})}}}
+        with self.assertRaisesRegex(ValueError, r"[Ii]ndependent reviewer"):
+            engine.node_independence(snapshot, state, "same-person")
+        engine.node_independence(snapshot, state, "different-reviewer")
 
     def test_live_implementation_correction_owner_blocks_test_recovery_takeover(self):
         c = self.case

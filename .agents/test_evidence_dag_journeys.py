@@ -2127,9 +2127,6 @@ class WorkspaceAuthorityPublicTests(DagFixture):
                 self.assertEqual(previous, predecessor["prior"])
                 self.assertEqual(result, predecessor["result"])
                 self.assertEqual(self.produced("consent", "permit"), predecessor["approval"])
-
-    def test_synthetic_prior_grants_cannot_replace_current_authority_or_immediate_proof(self):
-        project = self.correction_projection_fixture()
         good, _artifacts, _previous, _result = project(2)
         self.assertNotIn("error", good)
         for length in (2, 40):
@@ -2148,11 +2145,11 @@ class WorkspaceAuthorityPublicTests(DagFixture):
     def accepted_correction_chain(self, rounds):
         """Real corrections with identical authority/history checks at every size."""
         self.setup_workspace_corrections(root_gate=True, correction_rounds=rounds)
-        self.red_candidate()
+        _alpha, red_pair = self.red_candidate()
         first = self.acquire_workspace("beta")
         (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
         initial_ref, initial_proof = self.candidate(first, 0)
-        retained_proofs = [(initial_ref, initial_proof)]
+        retained_proofs = [red_pair, (initial_ref, initial_proof)]
         retained_predecessors = []
         self.review_candidate("beta", 0)
         self.assertNotIn("gamma", self.names())
@@ -2181,6 +2178,8 @@ class WorkspaceAuthorityPublicTests(DagFixture):
                 work = self.acquire_workspace("beta")
                 reference = work["lease"]["acquisition"]["predecessor"]
                 predecessor = self.session.read(100, reference)
+                self.assertIn(self.produced("beta")["hash"], json.dumps(work["lease"]["acquisition"]),
+                              "Correction acquisition must bind the exact prior candidate")
                 self.assertEqual(work["node"], predecessor["node"])
                 self.assertEqual(prior_result, predecessor["result"])
                 self.assertEqual(prior_proof, predecessor["proof"])
@@ -2210,6 +2209,10 @@ class WorkspaceAuthorityPublicTests(DagFixture):
                     self.resolve_workspace_pair(0, self.retained_correction_admissions[0])
                 self.assertNotEqual(prior_root, self.result("accept_root_beta")[0])
                 self.assertIn("gamma", self.names())
+                self.session.git("add", "source.py", "behavior_test.py")
+                self.session.git("commit", "-qm", "exact accepted correction " + str(iteration))
+                self.assertIn("gamma", self.names(),
+                              "Commit of accepted bytes preserves connected proof reuse")
                 current_comments = {comment["id"]: content_hash(comment) for comment in self.provider.comments[100]}
                 self.assertTrue(all(current_comments.get(key) == digest for key, digest in retained_comments.items()),
                                 "Every original transaction comment remains byte-exact")
@@ -2236,48 +2239,6 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         # Real public authority/history coverage stays at two corrections;
         # the synthetic projection-seam test separately exercises the count guard.
         self.accepted_correction_chain(2)
-
-    def test_corrected_workspace_candidate_preserves_prior_proofs_and_requires_fresh_root_acceptance(self):
-        self.setup_workspace_corrections(root_gate=True, correction_rounds=2)
-        _alpha, (red_ref, red) = self.red_candidate()
-        beta = self.acquire_workspace("beta")
-        (self.fixture.repo / "source.py").write_text("def value():\n    return 2\n")
-        first_ref, first_proof = self.candidate(beta, 0)
-        self.review_candidate("beta", 0)
-        self.assertNotIn("gamma", self.names(), "Independent review is not configured root acceptance")
-        self.session.finish(self.session.acquire("accept_root_beta"), {"value": "Root accepts exact reviewed first candidate"})
-        self.assertIn("gamma", self.names())
-        retained = [(red_ref, red), (first_ref, first_proof)]
-        for iteration in (1, 2):
-            previous_output = self.produced("beta")
-            prior_root = self.result("accept_root_beta")[0]
-            admissions = self.admit_workspace_correction()
-            self.assertNotIn("gamma", self.names())
-            correction = self.acquire_workspace("beta")
-            self.assertIn(previous_output["hash"], json.dumps(correction["lease"]["acquisition"]),
-                          "Correction must bind its exact prior candidate, not arbitrary current bytes")
-            for reference, proof in retained:
-                self.assertEqual(proof, self.read_blob(reference))
-            (self.fixture.repo / "source.py").write_text("def value():\n    # Exact correction %s.\n    return 2\n" % iteration)
-            reference, proof = self.candidate(correction, 0)
-            retained.append((reference, proof))
-            self.assertNotIn("gamma", self.names())
-            self.review_candidate("beta", 0)
-            self.resolve_workspace_correction(admissions, omit_retained=iteration == 2)
-            self.assertNotIn("gamma", self.names(), "Old root acceptance cannot approve the new subject")
-            self.assertEqual(prior_root, self.result("accept_root_beta")[0], "Historical acceptance remains immutable")
-            self.session.finish(self.session.acquire("accept_root_beta"), {"value": "Root accepts exact reviewed correction " + str(iteration)})
-            if iteration == 2:
-                self.assertNotIn("gamma", self.names(), "Earlier distinct finding pair still requires current resolution")
-                self.resolve_workspace_pair(0, self.retained_correction_admissions[0])
-            self.assertIn("gamma", self.names())
-            self.assertNotEqual(prior_root, self.result("accept_root_beta")[0])
-            self.session.git("add", "source.py", "behavior_test.py")
-            self.session.git("commit", "-qm", "exact accepted correction " + str(iteration))
-            self.assertIn("gamma", self.names(), "Commit of accepted bytes preserves connected proof reuse")
-        for reference, proof in retained:
-            self.assertEqual(proof, self.read_blob(reference))
-        self.assertEqual({100}, set(self.provider.issues), "In-scope correction cannot create follow-up goals")
 
     def test_admitted_baseline_correction_rejects_already_acquired_consumer_without_takeover(self):
         self.setup_workspace_corrections(target="alpha")
