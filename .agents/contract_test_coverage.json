@@ -98,6 +98,30 @@
       "integration_tests": [
         "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_accepted_correction_chain_preserves_each_round_authority_and_history"
       ]
+    },
+    {
+      "previous_tests": [
+        "test_zzzops.InitializationTests.test_default_catalog_and_adopted_provenance_are_canonical"
+      ],
+      "guarantees": "Canonical default catalog identities and digests, missing stable identity, malformed configuration and forged provenance reject through production validation using independently copied valid plans; original valid plan still applies and preserves adopted provenance.",
+      "contract_tests": [
+        "test_zzzops.InitializationTests.test_default_catalog_and_adopted_provenance_are_canonical"
+      ],
+      "integration_tests": [
+        "test_zzzops.InitializationTests.test_validate_apply_and_reinspect"
+      ]
+    },
+    {
+      "previous_tests": [
+        "test_zzzops.InitializationTests.test_bound_charter_and_canonical_policy_changes_invalidate_review"
+      ],
+      "guarantees": "Changed PROJECT bytes invalidate their reviewed artifact digest through production artifact validation; canonical POLICY tampering still invalidates real initialization inspection.",
+      "contract_tests": [
+        "test_zzzops.InitializationTests.test_bound_charter_and_canonical_policy_changes_invalidate_review"
+      ],
+      "integration_tests": [
+        "test_zzzops.InitializationTests.test_validate_apply_and_reinspect"
+      ]
     }
   ]
 }

@@ -55,6 +55,11 @@ findings, immutable prior proofs and renewed review/root authority. Its producti
 projection contract checks both unbounded prior provenance and corrupt current
 authority using one shared setup.
 
+Initialization plan validation reuses a valid plan with independent deep copies
+for each malformed variant. Charter digest rejection exercises production
+artifact validation directly; real apply/confirm/reinspect and canonical POLICY
+tampering remain integration tests.
+
 ## Coverage review and measurement
 
 `contract_test_coverage.json` maps each retired or narrowed journey's guarantees
