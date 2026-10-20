@@ -121,6 +121,23 @@ class ReleasePlanContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duplicate|conflict"):
             self.r.persist_plan(adapter, "owner/repo", self.r.assign_release(self.plan, 1, 2, expected_revision=0), expected_revision=None, request_id="create-2")
 
+    def test_durable_assignment_receipts_stay_provider_bounded_and_replay_exactly(self):
+        """Audit history must not make the single GitHub issue body grow quadratically."""
+        adapter = MemoryPlanAdapter()
+        original = self.r.persist_plan(
+            adapter, "owner/repo", self.plan, expected_revision=None, request_id="create-scale")
+        for goal in range(1, 101):
+            current = adapter.read("owner/repo")
+            changed = self.r.assign_release(current, goal, 2, expected_revision=current["revision"])
+            self.r.persist_plan(adapter, "owner/repo", changed,
+                                expected_revision=current["revision"], request_id=f"assign-{goal}")
+        encoded = json.dumps(adapter.record, sort_keys=True, separators=(",", ":")).encode()
+        self.assertLess(len(encoded), 65_536)
+        restarted = self.r.persist_plan(
+            adapter, "owner/repo", self.plan, expected_revision=None, request_id="create-scale")
+        self.assertEqual(original, restarted)
+        self.assertEqual(100, len(adapter.record["assignments"]))
+
     def test_uncertain_write_reconciles_exact_state_or_reports_pending(self):
         adapter = MemoryPlanAdapter(); adapter.uncertain = True
         result = self.r.persist_plan(adapter, "owner/repo", self.plan, expected_revision=None, request_id="uncertain")

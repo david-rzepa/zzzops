@@ -60,6 +60,38 @@ class PortfolioScopeTests(unittest.TestCase):
         self.assertEqual([3, 1], [row["goal"] for row in snapshot["effective_order"]])
         self.assertTrue(all("release" in row["reason"] for row in snapshot["effective_order"]))
 
+    def test_public_checkpoint_evaluates_later_release_after_active_frontier_blocks(self):
+        goals = [
+            {"key": 1, "schema_version": 2, "priority": "P1", "status": "ready",
+             "work_state": "write", "target_release": 1, "depends_on": [], "claim": None},
+            {"key": 2, "schema_version": 2, "priority": "P1", "status": "ready",
+             "work_state": "write", "target_release": 2, "depends_on": [], "claim": None},
+        ]
+        active_blocker = {"kind": "blocker", "goal": 1, "action": "Await human input"}
+        later_execute = {"kind": "execute", "goal": 2, "action": "Prepare isolated work"}
+        engine = mock.Mock(spec=z._workflow.Workflow)
+        engine.repository = "owner/repo"; engine.runtime = {}
+        engine.portfolio.return_value = goals
+        engine.step.side_effect = lambda number: [active_blocker] if number == 1 else [later_execute]
+        engine.reconciliation_step.return_value = None
+        engine.validation_blockers.return_value = []
+        release_policy = {"enabled": True, "next_release": 1, "integration_branch": "dev",
+                          "publication_branch": "main", "release_branch_prefix": "release/",
+                          "execution_scope": "later_when_active_blocked"}
+        reviewed = {"policy": {"sections": [
+            {"id": "autonomy_approval_parallelism", "configuration": fixtures.TEST_AUTONOMY_CONFIGURATION},
+            {"id": "git_review_release", "configuration": {"release_planning": release_policy}},
+        ]}}
+        plan = {"revision": 0, "next_release": 1, "assignments": {"1": 1, "2": 2},
+                "cohorts": {}, "releases": {}}
+        adapter = mock.Mock(); adapter.read.return_value = plan
+        with mock.patch.object(z, "GitHubReleasePlanAdapter", return_value=adapter):
+            result = z._workflow.checkpoint(z, Path("."), reviewed, {}, engine=engine)
+        self.assertEqual([mock.call(1), mock.call(2)], engine.step.call_args_list)
+        self.assertEqual(2, result["next_steps"][0]["goal"])
+        self.assertEqual("execute", result["next_steps"][0]["kind"])
+        self.assertEqual(1, result["deferred_steps"][0]["goal"])
+
     def test_warm_targeted_workflow_context_skips_unrelated_comments_and_prs(self):
         implementation = {"branch": "goal/x", "base": "main", "target": "main",
                           "pr": "https://github.com/owner/repo/pull/11",
