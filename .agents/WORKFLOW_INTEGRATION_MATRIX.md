@@ -60,6 +60,12 @@ for each malformed variant. Charter digest rejection exercises production
 artifact validation directly; real apply/confirm/reinspect and canonical POLICY
 tampering remain integration tests.
 
+Initialization fixtures supply a deterministic external plugin-inventory
+observation instead of repeatedly launching installed agent CLIs. Full inspection
+must project that exact observation and the production base digest. The separate
+plugin adapter contracts retain exact commands, successful identity, failure and
+cache/currentness behavior. Policy and artifact decisions remain real.
+
 ## Coverage review and measurement
 
 `contract_test_coverage.json` maps each retired or narrowed journey's guarantees

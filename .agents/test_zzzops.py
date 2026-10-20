@@ -2638,12 +2638,23 @@ class InitializationTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.repo = Path(self.temp.name)
         (self.repo / ".zzzops").mkdir()
+        inventory = {
+            "cache_path": str(self.repo / ".zzzops" / "plugin-freshness.json"),
+            "agents": {
+                "codex": {"ok": False, "plugins": [], "error": "deterministic fixture"},
+                "claude": {"ok": False, "plugins": [], "error": "deterministic fixture"},
+            },
+        }
+        self.plugin_inventory = inventory
+        inventory_patch = mock.patch.object(
+            zzzops._plugin_freshness, "native_plugin_inventory", return_value=inventory)
+        inventory_patch.start()
+        self.addCleanup(inventory_patch.stop)
 
     def tearDown(self):
         self.temp.cleanup()
 
     def plan(self):
-        inspection = zzzops.inspect_initialization(self.repo)
         init_template = MODULE_PATH.parent / "templates" / "project-goals" / "INIT_PLAN.json"
         policy = json.loads(init_template.read_text(encoding="utf-8"))["policy"]
         policy["sections"][0]["configuration"]["repository_identity"] = "example/repo"
@@ -2651,7 +2662,7 @@ class InitializationTests(unittest.TestCase):
         policy["sections"][0]["default_disposition"] = "changed"
         return {
             "schema_version": 1,
-            "base_digest": inspection["base_digest"],
+            "base_digest": zzzops.initialization_base_digest(self.repo),
             "confirmed": True,
             "backend": "github_issues",
             "repository": {"identity": "example/repo", "remote": "local"},
@@ -2686,6 +2697,8 @@ class InitializationTests(unittest.TestCase):
         project = self.repo / ".zzzops" / "PROJECT.md"
         self.assertFalse(project.exists())
         result = zzzops.inspect_initialization(self.repo)
+        self.assertEqual(zzzops.initialization_base_digest(self.repo), result["base_digest"])
+        self.assertEqual(self.plugin_inventory, result["plugin_freshness"]["inventory"])
         self.assertFalse(result["initialized"])
         self.assertFalse(result["valid_state"])
         self.assertIn("outcome", result["missing_charter_fields"])

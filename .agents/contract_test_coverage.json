@@ -122,6 +122,55 @@
       "integration_tests": [
         "test_zzzops.InitializationTests.test_validate_apply_and_reinspect"
       ]
+    },
+    {
+      "previous_tests": [
+        "test_zzzops.InitializationTests.test_inspect_is_read_only_and_reports_incomplete",
+        "test_zzzops.InitializationTests.test_policy_review_table_explains_defaults_staleness_approval_and_missing_rows",
+        "test_zzzops.InitializationTests.test_validate_apply_and_reinspect",
+        "test_zzzops.InitializationTests.test_review_is_exact_digest_explicit_and_incremental",
+        "test_zzzops.InitializationTests.test_policy_rereview_preserves_history_and_appends_once",
+        "test_zzzops.InitializationTests.test_clean_initialization_starts_with_one_pending_history_entry",
+        "test_zzzops.InitializationTests.test_bound_charter_and_canonical_policy_changes_invalidate_review",
+        "test_zzzops.InitializationTests.test_initialization_plan_digest_binds_existing_policy_state",
+        "test_zzzops.InitializationTests.test_policy_preserves_custom_instructions_and_agents_cannot_preapprove",
+        "test_zzzops.InitializationTests.test_default_catalog_and_adopted_provenance_are_canonical",
+        "test_zzzops.InitializationTests.test_default_comparison_is_progressive_and_never_attributes_legacy_values",
+        "test_zzzops.InitializationTests.test_removed_policy_knobs_route_review_and_preserve_custom_resource_choices",
+        "test_zzzops.InitializationTests.test_changed_default_acceptance_uses_normal_policy_review",
+        "test_zzzops.InitializationTests.test_changed_default_decline_is_stable_and_does_not_reprompt",
+        "test_zzzops.InitializationTests.test_default_provenance_renders_plain_language",
+        "test_zzzops.InitializationTests.test_policy_review_guidance_loads_changed_default_snapshots_progressively",
+        "test_zzzops.InitializationTests.test_project_policy_requires_resolvable_source_citations",
+        "test_zzzops.InitializationTests.test_approval_digest_rejects_machine_policy_tampering",
+        "test_zzzops.InitializationTests.test_not_applicable_policy_requires_explicit_review",
+        "test_zzzops.InitializationTests.test_policy_conflict_remains_a_decision_blocker",
+        "test_zzzops.InitializationTests.test_cli_confirm_requires_and_uses_current_digest",
+        "test_zzzops.InitializationTests.test_cli_without_command_shows_help_without_writing_local_state",
+        "test_zzzops.InitializationTests.test_rejects_unconfirmed_unknown_and_stale_plans",
+        "test_zzzops.InitializationTests.test_github_backend_requires_observed_capability",
+        "test_zzzops.InitializationTests.test_invalid_project_state_is_reported",
+        "test_zzzops.InitializationTests.test_atomic_text_cleans_temporary_file_on_replace_failure",
+        "test_zzzops.InitializationTests.test_repository_size_reports_only_existing_git_tracked_evidence",
+        "test_zzzops.InitializationTests.test_repository_size_does_not_choose_policy_when_git_is_unavailable",
+        "test_zzzops.InitializationTests.test_plugin_package_status_and_provenance_are_valid",
+        "test_zzzops.InitializationTests.test_rejects_unconfirmed_proposal",
+        "test_zzzops.InitializationTests.test_rejects_unsupported_project_state_schema",
+        "test_zzzops.InitializationTests.test_probe_output_redacts_url_userinfo",
+        "test_zzzops.InitializationTests.test_project_state_path_is_stable",
+        "test_zzzops.InitializationTests.test_github_probe_requires_issues_and_management_permission"
+      ],
+      "guarantees": "Initialization uses production base-digest computation and full policy/artifact/apply validation; full inspection projects the exact isolated external plugin inventory. Separate native adapter contracts retain exact commands, identity, failure/unknown and freshness/cache behavior. No policy decision or inspection result is mocked.",
+      "contract_tests": [
+        "test_zzzops.InitializationTests.test_inspect_is_read_only_and_reports_incomplete",
+        "test_zzzops.PluginFreshnessTests.test_freshness_inventory_uses_native_read_only_commands_and_preserves_identity",
+        "test_zzzops.PluginFreshnessTests.test_freshness_inventory_failures_are_unknown_and_never_current",
+        "test_zzzops.PluginFreshnessTests.test_freshness_due_respects_successful_daily_cache_and_forced_errors"
+      ],
+      "integration_tests": [
+        "test_zzzops.InitializationTests.test_validate_apply_and_reinspect",
+        "test_zzzops.InitializationTests.test_bound_charter_and_canonical_policy_changes_invalidate_review"
+      ]
     }
   ]
 }
