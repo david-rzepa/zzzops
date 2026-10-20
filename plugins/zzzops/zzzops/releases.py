@@ -144,7 +144,8 @@ def _result_receipt(adapter, repository, request_id, identity, result, *, extern
         return {"identity": identity, "result": copy.deepcopy(result)}
     artifact = {"kind": "zzzops-release-operation-result", "request_id": request_id,
                 "identity": identity, "result": copy.deepcopy(result)}
-    reference = digest(artifact)
+    reference = digest({"kind": artifact["kind"], "request_id": request_id})
+    artifact["artifact_digest"] = digest(artifact)
     artifact["reference"] = reference
     adapter.append_artifact(repository, artifact)
     return {"identity": identity, "result_reference": reference}
@@ -156,15 +157,40 @@ def _replay_result(adapter, repository, receipt):
     reference = receipt.get("result_reference")
     if not isinstance(reference, str):
         raise ValueError("durable release operation result is missing")
-    if hasattr(adapter, "result_artifact"):
-        artifact = adapter.result_artifact(repository, reference)
-    else:
-        artifact = next((row for row in getattr(adapter, "artifacts", [])
-                         if row.get("reference") == reference), None)
-    if (not isinstance(artifact, dict) or artifact.get("reference") != reference
-            or digest({key: value for key, value in artifact.items() if key != "reference"}) != reference):
+    if not hasattr(adapter, "result_artifact"):
+        raise ValueError("release plan adapter cannot read durable operation results")
+    artifact = adapter.result_artifact(repository, reference)
+    if not isinstance(artifact, dict):
+        raise ValueError("durable release operation result is unavailable or invalid")
+    content = {key: value for key, value in artifact.items() if key not in {"reference", "artifact_digest"}}
+    if (artifact.get("reference") != reference
+            or artifact.get("artifact_digest") != digest(content)):
         raise ValueError("durable release operation result is unavailable or invalid")
     return copy.deepcopy(artifact["result"])
+
+
+def _historical_result(adapter, repository, request_id, identity):
+    if not hasattr(adapter, "result_artifact"):
+        return None
+    reference = digest({"kind": "zzzops-release-operation-result", "request_id": request_id})
+    artifact = adapter.result_artifact(repository, reference)
+    if artifact is None:
+        return None
+    commit_reference = digest({"kind": "zzzops-release-operation-commit", "request_id": request_id})
+    commit = adapter.result_artifact(repository, commit_reference)
+    if not isinstance(commit, dict) or commit.get("identity") != identity:
+        return None
+    if artifact.get("identity") != identity:
+        raise ValueError("request id payload changed")
+    return _replay_result(adapter, repository, {"result_reference": reference})
+
+
+def _commit_result(adapter, repository, request_id, identity):
+    artifact = {"kind": "zzzops-release-operation-commit", "request_id": request_id,
+                "identity": identity}
+    artifact["artifact_digest"] = digest(artifact)
+    artifact["reference"] = digest({"kind": artifact["kind"], "request_id": request_id})
+    adapter.append_artifact(repository, artifact)
 
 
 def persist_plan(adapter, repository, plan, *, expected_revision, request_id):
@@ -178,6 +204,9 @@ def persist_plan(adapter, repository, plan, *, expected_revision, request_id):
         if prior is not None:
             if prior.get("identity") != operation_identity: raise ValueError("request id payload changed")
             return _replay_result(adapter, repository, prior)
+        historical = _historical_result(adapter, repository, request_id, operation_identity)
+        if historical is not None:
+            return historical
         if expected_revision is None:
             if current is not None:
                 if current.get("request_id") == request_id and _same_plan(current, plan): return _result(current)
@@ -198,10 +227,13 @@ def persist_plan(adapter, repository, plan, *, expected_revision, request_id):
             result = _result(record)
             record.setdefault("operation_receipts", {})[request_id] = _result_receipt(
                 adapter, repository, request_id, operation_identity, result, external=True)
+            _bound_receipts(adapter, repository, record, "operation_receipts")
             try: adapter.compare_exchange(repository, expected_revision, record)
             except TimeoutError:
                 observed = adapter.read(repository)
-                return _result(observed) if observed and _same_plan(observed, record) else {**record, "status": "pending", "plan": copy.deepcopy(current)}
+                if observed and _same_plan(observed, record):
+                    return result
+                return {**record, "status": "pending", "plan": copy.deepcopy(current)}
         if expected_revision is None:
             adapter.append_artifact(repository, {"request_id": request_id,
                 "revision": record["revision"], "plan_digest": digest(plan)})
@@ -220,6 +252,9 @@ def persist_batch_assignments(adapter, repository, assignments, *, expected_revi
         if receipt is not None:
             if receipt.get("identity") != batch_identity: raise ValueError("request id payload changed")
             return _replay_result(adapter, repository, receipt)
+        historical = _historical_result(adapter, repository, request_id, batch_identity)
+        if historical is not None:
+            return historical
         progress = current.get("batch_requests", {}).get(request_id)
         if progress is not None:
             if progress.get("identity") != batch_identity: raise ValueError("request id payload changed")
@@ -245,6 +280,8 @@ def persist_batch_assignments(adapter, repository, assignments, *, expected_revi
                 predicted = {"plan": _result(desired)["plan"], "items": predicted_items, "request_id": request_id}
                 desired.setdefault("batch_receipts", {})[request_id] = _result_receipt(
                     adapter, repository, request_id, batch_identity, predicted, external=True)
+                _bound_receipts(adapter, repository, desired, "batch_receipts")
+                _bound_map(desired, "batch_requests")
             try: adapter.compare_exchange(repository, current["revision"], desired)
             except TimeoutError:
                 observed = adapter.read(repository)
@@ -297,6 +334,8 @@ def authorize_integration(goal, plan, *, source_branch, source_ancestors):
     release = goal.get("target_release", target_release(plan, goal["key"]))
     if release > plan["next_release"]:
         return {"status": "blocked", "code": "future_release_integration", "goal": goal["key"], "release": release}
+    if set(source_ancestors) & set(goal.get("forbidden_commits", [])):
+        return {"status": "blocked", "code": "future_release_provenance", "goal": goal["key"], "release": release}
     return {"status": "authorized", "release": release}
 
 
@@ -407,6 +446,7 @@ class GitHubReleasePlanAdapter:
     def create_only(self, repository, record):
         if self._records(repository): raise ValueError("duplicate release control record")
         body = self.MARKER + "\n" + canonical(record)
+        if len(body.encode("utf-8")) > 65536: raise ValueError("release control record exceeds provider body limit")
         return self.transport.create_issue(repository, {"title": "ZzzOps release plan", "body": body, "labels": ["zzzops-release-plan-control"]})
     def compare_exchange(self, repository, expected_revision, record):
         rows = self._records(repository)
@@ -414,6 +454,7 @@ class GitHubReleasePlanAdapter:
         current = self.read(repository)
         if current["revision"] != expected_revision: raise ValueError("release plan revision changed")
         body = self.MARKER + "\n" + canonical(record)
+        if len(body.encode("utf-8")) > 65536: raise ValueError("release control record exceeds provider body limit")
         return self.transport.update_issue(repository, rows[0]["number"], {"body": body}, text_hash(rows[0]["body"]))
     def append_artifact(self, repository, artifact):
         rows = self._records(repository)
@@ -438,12 +479,26 @@ class GitHubReleasePlanAdapter:
         for comment in self.transport.read_comments(repository, rows[0]["number"]):
             try: value = json.loads(comment.get("body", ""))
             except (AttributeError, json.JSONDecodeError): continue
-            if value.get("kind") == "zzzops-release-operation-result" and value.get("reference") == reference:
+            if value.get("kind") in {"zzzops-release-operation-result", "zzzops-release-operation-commit"} and value.get("reference") == reference:
                 matches.append(value)
         if len(matches) > 1 and any(row != matches[0] for row in matches[1:]):
             raise ValueError("conflicting durable release operation results")
         return copy.deepcopy(matches[0]) if matches else None
+    def capture_receipt(self, repository, request_id):
+        rows = self._records(repository)
+        if len(rows) != 1: return None
+        matches = []
+        for comment in self.transport.read_comments(repository, rows[0]["number"]):
+            try: value = json.loads(comment.get("body", ""))
+            except (AttributeError, json.JSONDecodeError): continue
+            if value.get("kind") == "zzzops-capture-receipt" and value.get("request_id") == request_id:
+                matches.append(value)
+        if len(matches) > 1 and any(row != matches[0] for row in matches[1:]):
+            raise ValueError("conflicting durable capture receipts")
+        return copy.deepcopy(matches[0]) if matches else None
     def observe_release(self, repository, release): return self.transport.observe_release(repository, release)
+    def observe_integration(self, repository, goal, head_oid):
+        return self.transport.observe_integration(repository, goal, head_oid)
 
 
 class ReleaseCoordinator:
@@ -461,7 +516,10 @@ class ReleaseCoordinator:
         durable = (plan or {}).get("checkpoint_receipts", {}).get(request_id)
         if durable is not None:
             if durable.get("identity") != identity: raise ValueError("request id payload changed")
-            return copy.deepcopy(durable["result"])
+            return _replay_result(self.plans, self.repository, durable)
+        historical = _historical_result(self.plans, self.repository, request_id, identity)
+        if historical is not None:
+            return historical
         operation = request["operation"]
         if operation == "propose" and hasattr(self.plans, "proposal"):
             prior = self.plans.proposal(self.repository, request_id)
@@ -522,7 +580,9 @@ class ReleaseCoordinator:
                 raise ValueError("release proposal intent mismatch")
             result = {"status": "frozen_intent", "intent": intent}
             updated = copy.deepcopy(plan); updated.setdefault("releases", {})[str(plan["next_release"])] = {"state": "frozen_intent", "intent": intent, "members": intent["members"]}; updated["revision"] += 1
-            updated.setdefault("checkpoint_receipts", {})[request_id] = {"identity": identity, "result": copy.deepcopy(result)}
+            updated.setdefault("checkpoint_receipts", {})[request_id] = _result_receipt(
+                self.plans, self.repository, request_id, identity, result, external=False)
+            _bound_receipts(self.plans, self.repository, updated, "checkpoint_receipts")
             persist_plan(self.plans, self.repository, updated, expected_revision=plan["revision"], request_id=request_id)
         elif operation == "cut":
             intent = request["intent"]
@@ -554,9 +614,34 @@ class ReleaseCoordinator:
                 updated = copy.deepcopy(current)
                 updated["releases"][str(intent["release"])]["state"] = "branch_confirmed"
                 updated["next_release"] = intent["release"] + 1; updated["revision"] += 1
-                updated.setdefault("checkpoint_receipts", {})[request_id] = {"identity": identity, "result": copy.deepcopy(result)}
+                updated.setdefault("checkpoint_receipts", {})[request_id] = _result_receipt(
+                    self.plans, self.repository, request_id, identity, result, external=False)
+                _bound_receipts(self.plans, self.repository, updated, "checkpoint_receipts")
                 self.plans.compare_exchange(self.repository, current["revision"], {"kind": "release-plan", **updated, "request_id": request_id})
                 self.plans.append_artifact(self.repository, {"request_id": request_id, "revision": updated["revision"], "plan_digest": digest(updated)})
             finally: self.plans.release_repository_lock(self.repository, request_id)
         else: raise ValueError("unknown release checkpoint operation")
         self._receipts[request_id] = (identity, copy.deepcopy(result)); return result
+MAX_CONTROL_RECEIPTS = 32
+
+
+def _bound_map(record, name):
+    values = record.get(name)
+    if isinstance(values, dict) and len(values) > MAX_CONTROL_RECEIPTS:
+        items = list(values.items())
+        record[name] = dict([items[0], *items[-(MAX_CONTROL_RECEIPTS - 1):]])
+
+
+def _bound_receipts(adapter, repository, record, name):
+    values = record.get(name)
+    if not isinstance(values, dict) or len(values) <= MAX_CONTROL_RECEIPTS:
+        return
+    items = list(values.items())
+    retained = {items[0][0], *(key for key, _ in items[-(MAX_CONTROL_RECEIPTS - 1):])}
+    for request_id, receipt in items:
+        if request_id not in retained:
+            if "result" in receipt:
+                _result_receipt(adapter, repository, request_id, receipt["identity"],
+                                receipt["result"], external=True)
+            _commit_result(adapter, repository, request_id, receipt["identity"])
+    _bound_map(record, name)

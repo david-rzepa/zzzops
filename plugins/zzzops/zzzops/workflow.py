@@ -4721,9 +4721,13 @@ class Workflow:
                 release_plan = self.api.GitHubReleasePlanAdapter(self.repo, self.repository).read(self.repository)
                 if release_plan is None: raise ValueError('Release plan is missing; integration is blocked')
                 target = self.api._releases.target_release(release_plan, snapshot['number'])
+                integration = self.api.GitHubReleasePlanAdapter(self.repo, self.repository).observe_integration(
+                    self.repository, snapshot['number'], facts['head_oid'])
                 decision = self.api._releases.authorize_integration(
-                    {'key': snapshot['number'], 'target_release': target}, release_plan,
-                    source_branch=facts.get('base_ref', ''), source_ancestors=set())
+                    {'key': snapshot['number'], 'target_release': target,
+                     'forbidden_commits': integration['forbidden_commits']}, release_plan,
+                    source_branch=facts.get('base_ref', ''),
+                    source_ancestors=set(integration['source_ancestors']))
                 if decision['status'] != 'authorized':
                     raise ValueError(f"Release integration blocked: {decision['code']}")
             if not facts.get('merged'):
@@ -6496,15 +6500,43 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             raise ValueError('target_release requires release planning enabled by reviewed policy')
         reviewed_graph = policy_section(project, 'workflow_adherence')['configuration']['phase_dag']
         api._static_workflow.definition(reviewed_graph, api._graph_compiler)
-        with engine.locked():
-            created = api.apply_goal_create(engine.adapter, engine.repository, payload['request'], allow_deferred=True)
+        release_adapter = (api.GitHubReleasePlanAdapter(repo, engine.repository)
+                           if isinstance(release_policy, dict) and release_policy.get('enabled') else None)
+        receipt = (release_adapter.capture_receipt(engine.repository, payload['proposal_hash'])
+                   if release_adapter is not None and hasattr(release_adapter, 'capture_receipt') else None)
+        if receipt is not None:
+            if (receipt.get('repository') != engine.repository
+                    or receipt.get('proposal_hash') != payload['proposal_hash']
+                    or receipt.get('request_digest') != digest(payload['request'])):
+                raise ValueError('capture receipt conflicts with repository or approved proposal')
+            created = copy.deepcopy(receipt['goal'])
+        else:
+            marker = '<!-- zzzops-capture:' + payload['proposal_hash'] + ' -->'
+            create_request = copy.deepcopy(payload['request'])
+            create_request['body'] = create_request['body'].rstrip() + '\n\n' + marker + '\n'
+            created = (engine.adapter.find_capture_goal(marker)
+                       if hasattr(engine.adapter, 'find_capture_goal') else None)
+            if created is None:
+                try:
+                    with engine.locked():
+                        created = api.apply_goal_create(engine.adapter, engine.repository, create_request, allow_deferred=True)
+                except (OSError, RuntimeError, TimeoutError, ValueError):
+                    created = (engine.adapter.find_capture_goal(marker)
+                               if hasattr(engine.adapter, 'find_capture_goal') else None)
+                    if created is None:
+                        raise
+            if release_adapter is not None:
+                release_adapter.append_artifact(engine.repository, {
+                    'kind': 'zzzops-capture-receipt', 'request_id': payload['proposal_hash'],
+                    'repository': engine.repository, 'proposal_hash': payload['proposal_hash'],
+                    'request_digest': digest(payload['request']), 'goal': copy.deepcopy(created)})
         engine.invalidate()
         created_number = created['number']
         capture = None
         if isinstance(release_policy, dict) and release_policy.get('enabled'):
             effective_target = target_release or release_policy['next_release']
             try:
-                adapter = api.GitHubReleasePlanAdapter(repo, engine.repository)
+                adapter = release_adapter
                 plan = adapter.read(engine.repository)
                 if plan is None:
                     raise ValueError('release plan is missing')

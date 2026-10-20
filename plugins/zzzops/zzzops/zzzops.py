@@ -995,6 +995,23 @@ class GitHubGoalTransitionAdapter:
             raise GoalTransitionProviderError("GitHub returned incomplete goal data; no goal update was made.")
         return issue
 
+    def find_capture_goal(self, marker: str) -> dict[str, Any] | None:
+        """Recover one exact marked create after an uncertain provider response."""
+        self.ensure_identity()
+        result = self._run(["api", "--paginate", "--slurp",
+            f"repos/{self.repository}/issues?state=all&labels=zzzops&per_page=100"])
+        if result.returncode: raise self._provider_error(result)
+        try: pages = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise GoalTransitionProviderError("GitHub returned invalid capture recovery data") from exc
+        matches = [row for page in pages for row in page
+                   if isinstance(row, dict) and marker in str(row.get("body") or "")]
+        if len(matches) > 1: raise GoalTransitionProviderError("Conflicting marked capture goals require reconciliation")
+        if not matches: return None
+        row = matches[0]
+        return {"number": row["number"], "revision": 1, "state": "open", "status": "new",
+                "url": row.get("html_url") or f"https://github.com/{self.repository}/issues/{row['number']}"}
+
     def list_issue_metadata(self, cursor: str | None = None) -> dict[str, Any]:
         """Complete paginated goal identities, without broad body hydration.
 
@@ -2686,12 +2703,21 @@ class _GitHubReleaseTransport:
             commits = {value["merge_commit"] for value in merged}
             if len(commits) > 1: raise ValueError("release member has ambiguous integration evidence")
             complete = state.get("projection", {}).get("complete") is True
-            result = {"row": row, "leases": leases, "complete": complete,
+            envelope = state.get("envelope", {})
+            # A v2 archive with an incomplete canonical projection is the
+            # durable cancellation/removal authority. Completed work still
+            # requires independent merge evidence below.
+            cancelled = envelope.get("state") == "archived" and not complete
+            result = {"row": row, "leases": leases, "complete": complete, "cancelled": cancelled,
+                      "cancellation_authority": _releases.digest(envelope) if cancelled else None,
                       "merge_commit": next(iter(commits), None)}
             observed_goals[key] = result; return result
         for key in identities:
             fact = observe_goal(key)
-            if fact["complete"] and fact["merge_commit"]:
+            if fact["cancelled"]:
+                members[str(key)] = {"status": "cancelled",
+                                     "cancellation_authority": fact["cancellation_authority"]}
+            elif fact["complete"] and fact["merge_commit"]:
                 members[str(key)] = {"status": "done", "integrated_commit": fact["merge_commit"]}
             else:
                 members[str(key)] = {"status": "in_progress", "integrated_commit": None}
@@ -2716,6 +2742,25 @@ class _GitHubReleaseTransport:
         return {"members": members, "active_owners": owners, "observed_commits": sorted(commits),
                 "source_ancestors": sorted(ancestors), "forbidden_commits": sorted(future),
                 "source_branch": source_branch, "source_sha": source_sha}
+    def observe_integration(self, repository, goal, head_oid):
+        project = reviewed_project_state(self.repo)
+        plan = _releases.GitHubReleasePlanAdapter(self).read(repository) or {}
+        target = _releases.target_release(plan, goal)
+        future_ids = {int(key) for field in ("assignments", "cohorts")
+                      for key, release in plan.get(field, {}).items() if release > target}
+        engine = workflow_engine(self.repo, project)
+        forbidden = set()
+        for number in future_ids:
+            state = engine.node_snapshot(number, publication_probe=True)
+            heads = {value.get("publication", {}).get("provider", {}).get("head_oid")
+                     for value in state.get("projection", {}).get("states", {}).values()
+                     if isinstance(value.get("publication"), dict)}
+            for candidate in heads - {None, ""}:
+                check = self.goals._run(["api", f"repos/{repository}/compare/{candidate}...{head_oid}"])
+                if check.returncode: raise self.goals._provider_error(check)
+                if json.loads(check.stdout).get("status") in {"ahead", "identical"}:
+                    forbidden.add(candidate)
+        return {"source_ancestors": sorted(forbidden), "forbidden_commits": sorted(forbidden)}
     def observe_approval(self, reference):
         plan = _releases.GitHubReleasePlanAdapter(self).read(self.repository) or {}
         for release in plan.get("releases", {}).values():
