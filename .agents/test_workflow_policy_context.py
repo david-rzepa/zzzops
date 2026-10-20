@@ -99,6 +99,60 @@ class PolicyContextTests(unittest.TestCase):
             with mock.patch.object(context.tempfile, 'gettempdir', side_effect=AssertionError('Shared TEMP must not be used')):
                 self.assertEqual(home / 'AppData' / 'Local' / 'Temp', context.cache_root())
 
+    def test_cache_reuses_exact_competing_publication_after_replace_denial(self):
+        content = b'{"policy":"exact bytes"}\r\n'
+        with tempfile.TemporaryDirectory() as output:
+            published = []
+
+            def competing_publish(source, destination):
+                published.append(Path(destination))
+                Path(destination).write_bytes(Path(source).read_bytes())
+                raise PermissionError(13, 'competing publication')
+
+            with mock.patch.object(context.os, 'replace', side_effect=competing_publish) as replace:
+                result = context.cached_file(Path.cwd(), content, root=output)
+            replace.assert_called_once()
+            self.assertEqual(content, Path(result['path']).read_bytes())
+            self.assertEqual(hashlib.sha256(content).hexdigest(), result['sha256'])
+            self.assertEqual([published[0]], list(published[0].parent.iterdir()))
+            self.assertEqual(result, context.cached_file(Path.cwd(), content, root=output))
+
+    def test_cache_replace_denial_rejects_unverified_destinations(self):
+        content = b'{"policy":"exact bytes"}\n'
+        for case in ('absent', 'different', 'directory', 'symlink', 'unreadable'):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as output:
+                denied = PermissionError(13, 'replacement denied')
+                destinations = []
+                original_read = Path.read_bytes
+                original_symlink = Path.is_symlink
+
+                def competing_publish(source, destination):
+                    destination = Path(destination)
+                    destinations.append(destination)
+                    if case == 'directory':
+                        destination.mkdir()
+                    elif case != 'absent':
+                        destination.write_bytes(b'wrong' if case == 'different' else content)
+                    raise denied
+
+                def read_bytes(path):
+                    if case == 'unreadable' and path in destinations:
+                        raise PermissionError(13, 'read denied')
+                    return original_read(path)
+
+                def is_symlink(path):
+                    # Exercise the symlink rejection on Windows without requiring
+                    # the runner account to possess symlink creation privileges.
+                    return (case == 'symlink' and path in destinations) or original_symlink(path)
+
+                with mock.patch.object(context.os, 'replace', side_effect=competing_publish) as replace, \
+                        mock.patch.object(Path, 'read_bytes', read_bytes), \
+                        mock.patch.object(Path, 'is_symlink', is_symlink):
+                    with self.assertRaises(PermissionError):
+                        context.cached_file(Path.cwd(), content, root=output)
+                replace.assert_called_once()
+                self.assertFalse(list(destinations[0].parent.glob('tmp*')))
+
     def test_review_handoff_discloses_same_receipt_as_review_start(self):
         with tempfile.TemporaryDirectory() as output:
             result = {'next_steps': [

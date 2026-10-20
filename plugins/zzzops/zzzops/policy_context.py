@@ -150,7 +150,14 @@ def cached_file(repo, content, root=None):
             temporary = Path(handle.name)
             handle.write(content)
         try:
-            os.replace(temporary, path)
+            try:
+                os.replace(temporary, path)
+            except PermissionError:
+                # Windows may deny replacement after another publisher won.
+                # Reuse only a complete, authenticated competing publication;
+                # a missing, unsafe or unreadable destination remains an error.
+                if path.is_symlink() or not path.is_file() or path.read_bytes() != content:
+                    raise
         finally:
             temporary.unlink(missing_ok=True)
     return {'path': str(path.resolve()), 'sha256': sha256}
