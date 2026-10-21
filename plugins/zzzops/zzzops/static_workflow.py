@@ -275,6 +275,37 @@ def event_key(event):
     return 'event_' + digest([event['id'], event['revision']])[7:]
 
 
+def resolved_goal_context(context, resolutions):
+    """Return a detached context with only exact authenticated blockers removed.
+
+    The host authenticates the immutable journal and passes the selected content
+    hashes here.  Content identity deliberately avoids inventing IDs for legacy
+    blockers; duplicate content therefore cannot be selected unambiguously.
+    """
+    if (not isinstance(context, dict) or set(context) !=
+            {'version', 'depends_on', 'blockers', 'metadata'} or context.get('version') != 1
+            or not isinstance(context.get('depends_on'), list)
+            or not isinstance(context.get('blockers'), list)
+            or not isinstance(context.get('metadata'), dict)):
+        raise ValueError('Unsupported or malformed goal context')
+    if not isinstance(resolutions, list) or any(
+            not isinstance(value, str) or re.fullmatch(r'sha256:[0-9a-f]{64}', value) is None
+            for value in resolutions):
+        raise ValueError('Malformed goal-context resolution identities')
+    if len(resolutions) != len(set(resolutions)):
+        raise ValueError('Goal-context blocker cannot be resolved more than once')
+    counts = {}
+    for blocker in context['blockers']:
+        identity = digest(blocker)
+        counts[identity] = counts.get(identity, 0) + 1
+    if any(counts.get(identity) != 1 for identity in resolutions):
+        raise ValueError('Goal-context resolution identifies an unknown or ambiguous blocker')
+    selected = set(resolutions)
+    result = copy.deepcopy(context)
+    result['blockers'] = [blocker for blocker in result['blockers'] if digest(blocker) not in selected]
+    return result
+
+
 def phase_data(events, graph, goal):
     """Project authenticated event contents without dropping historical versions.
 
