@@ -2673,6 +2673,46 @@ class WorkspaceAuthorityPublicTests(DagFixture):
                     path.write_bytes(original)
                 self.assertIn("beta", self.names(), "Exact restored proof must remain reusable")
 
+    def test_clean_committed_consumed_change_refreshes_completed_workspace_proof(self):
+        self.setup_workspace()
+        _work, _proof = self.red_candidate()
+        historical_ref, historical_result = self.result("alpha")
+        historical_bytes = copy.deepcopy(self.read_blob(historical_ref))
+        self.assertIn("beta", self.names(), "Connected completed proof is the positive reuse control")
+
+        dependency = self.fixture.repo / "read_dependency.txt"
+        original = dependency.read_bytes()
+        dependency.write_text("unreviewed dirty consumed change\n")
+        dirty = self.session.checkpoint(100)
+        self.assertFalse(any(step.get("kind") == "execute" and
+                             step.get("node", {}).get("node") == "alpha" for step in dirty),
+                         "Dirty consumed bytes cannot become a fresh acquisition baseline")
+        self.assertRegex(json.dumps(dirty), r"(?i)workspace|proof|drift|consumed|clean|committed")
+        dependency.write_bytes(original)
+        self.assertIn("beta", self.names(), "Exact restoration must reconnect the completed proof")
+        self.assertEqual(historical_result, self.result("alpha")[1])
+
+        dependency.write_text("reviewed merged consumed change\n")
+        self.session.git("add", "read_dependency.txt")
+        self.session.git("commit", "-qm", "reviewed consumed dependency merge")
+        current_head = self.session.git("rev-parse", "HEAD").strip()
+        steps = self.session.checkpoint(100)
+        refreshed = next(step for step in steps if step.get("kind") == "execute" and
+                         step.get("node", {}).get("node") == "alpha")
+        self.assertEqual("alpha", refreshed["node"]["node"])
+        self.assertFalse({"observe_alpha", "accept_alpha", "beta"}.intersection(self.names()),
+                         "Dependent review and work must remain stale until fresh production")
+
+        acquired = self.session.acquire("alpha", frontier=steps, actor="writer-alpha-refresh")
+        acquisition = acquired["lease"]["acquisition"]
+        self.assertEqual(current_head, acquisition["git_commit"])
+        self.assertEqual({}, acquisition["checkout_overrides"],
+                         "Fresh clean HEAD must be acquired directly without a dirty fallback")
+        self.assertEqual(historical_bytes, self.read_blob(historical_ref),
+                         "Fresh acquisition must preserve historical Result and proof bytes")
+        self.assertEqual(historical_result, self.result("alpha")[1])
+        self.assertFalse({"observe_alpha", "accept_alpha", "beta"}.intersection(self.names()))
+
     def setup_parent_workspace(self, mutate=None, parent_mutate=None):
         self.setup_workspace(mutate)
         child_graph = copy.deepcopy(self.graph)
