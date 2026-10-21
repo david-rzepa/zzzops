@@ -470,11 +470,33 @@ def build_portfolio_snapshot(
             )
         ).encode("utf-8")
     ).hexdigest()
+    effective_order = effective_goal_order(records, portfolio_order)
+    release_policy = git_policy.get("release_planning") if isinstance(git_policy, dict) else None
+    if isinstance(release_policy, dict) and release_policy.get("enabled"):
+        # The repository control record is overlaid by the public gateway.  A
+        # direct snapshot still projects explicit goal targets and the reviewed
+        # active-release fallback deterministically.
+        plan = {"revision": 0, "next_release": release_policy["next_release"], "assignments": {
+            str(record["key"]): record["target_release"] for record in records
+            if isinstance(record.get("target_release"), int) and not isinstance(record.get("target_release"), bool)
+        }, "releases": {}}
+        from zzzops_releases import select_release_work, target_release
+        selection = select_release_work(records, release_policy, plan, owned={
+            record["key"] for record in records if (record.get("claim") or {}).get("owner")
+        })
+        for record in records:
+            explicit = str(record["key"]) in plan["assignments"]
+            record["release"] = {"target": target_release(plan, record["key"]),
+                                 "assignment": "explicit" if explicit else "fallback_active_release"}
+        findings = [{"code": item["code"], "goal": item["goal"],
+                     "detail": f"dependency #{item['dependency']} is assigned to a later release"}
+                    for item in selection["conflicts"]] + findings
+        effective_order = selection["ordered"]
     return {
         "schema_version": PORTFOLIO_SCHEMA_VERSION, "backend": backend, "complete": True,
         "valid": not findings,
         "portfolio_digest": portfolio_digest, "goals": sorted(records, key=lambda record: _portfolio_key(record["key"])),
-        "effective_order": effective_goal_order(records, portfolio_order),
+        "effective_order": effective_order,
         "findings": findings, "summary": {
             "total": len(records), "available": len(available), "writable": len(writable),
             "waiting": len(waiting), "blocked": len(blocked),

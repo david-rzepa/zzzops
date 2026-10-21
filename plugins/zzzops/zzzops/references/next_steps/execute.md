@@ -22,6 +22,9 @@ use project policy review, not goal graph adoption. Preview and historical reads
 remain read-only; broad discovery never sweeps goals for migration. See
 [recovery](../CLI_RECOVERY.md#fixed-policy-workflow-and-phase-findings).
 
+Follow release order; isolate future work until the active cut. Release
+checkpoint and publication approval are separate. See [contracts](../RELEASES.md).
+
 `zzzops-feedback` goals remain excluded until the user authorizes that queue for the current execution session. Preserve that authorization only through fields the workflow returns; never invent a flag or ask per issue.
 
 Apply [[bounded commitment]](../../../concepts/bounded-commitment.md) and [[safe useful work]](../../../concepts/safe-useful-work.md) when acting on a returned step.

@@ -36,6 +36,62 @@ class PortfolioScopeTests(unittest.TestCase):
     def issue(self, number, **changes):
         return self.portfolio.issue(number, **changes)
 
+    def test_portfolio_projects_release_target_fallback_conflict_and_rationale(self):
+        records = [
+            {**self.portfolio.goal(priority="P2", depends_on=[]), "key": 1, "digest": "sha256:" + "1" * 64, "target_release": 1},
+            {**self.portfolio.goal(priority="P0", depends_on=[]), "key": 2, "digest": "sha256:" + "2" * 64, "target_release": 2},
+            {**self.portfolio.goal(priority="P1", depends_on=[]), "key": 3, "digest": "sha256:" + "3" * 64},
+            {**self.portfolio.goal(priority="P2", depends_on=[2]), "key": 4, "digest": "sha256:" + "4" * 64, "target_release": 1},
+        ]
+        git_policy = {
+            "review_pending_dependency": "stack_from_reviewed_checkpoint",
+            "pull_request_mode": "github_stacked_when_verified_else_chained",
+            "release_planning": {"enabled": True, "next_release": 1, "integration_branch": "dev",
+                "publication_branch": "main", "release_branch_prefix": "release/",
+                "execution_scope": "active_only"},
+        }
+        snapshot = z.build_portfolio_snapshot("github_issues", records, reads=1, raw_bytes=10,
+                                              git_policy=git_policy)
+        projected = {row["key"]: row for row in snapshot["goals"]}
+        self.assertEqual(1, projected[3]["release"]["target"])
+        self.assertEqual("fallback_active_release", projected[3]["release"]["assignment"])
+        self.assertEqual("future_release_dependency",
+                         next(item for item in snapshot["findings"] if item["goal"] == 4)["code"])
+        self.assertEqual([3, 1], [row["goal"] for row in snapshot["effective_order"]])
+        self.assertTrue(all("release" in row["reason"] for row in snapshot["effective_order"]))
+
+    def test_public_checkpoint_evaluates_later_release_after_active_frontier_blocks(self):
+        goals = [
+            {"key": 1, "schema_version": 2, "priority": "P1", "status": "ready",
+             "work_state": "write", "target_release": 1, "depends_on": [], "claim": None},
+            {"key": 2, "schema_version": 2, "priority": "P1", "status": "ready",
+             "work_state": "write", "target_release": 2, "depends_on": [], "claim": None},
+        ]
+        active_blocker = {"kind": "blocker", "goal": 1, "action": "Await human input"}
+        later_execute = {"kind": "execute", "goal": 2, "action": "Prepare isolated work"}
+        engine = mock.Mock(spec=z._workflow.Workflow)
+        engine.repository = "owner/repo"; engine.runtime = {}
+        engine.portfolio.return_value = goals
+        engine.step.side_effect = lambda number: [active_blocker] if number == 1 else [later_execute]
+        engine.reconciliation_step.return_value = None
+        engine.validation_blockers.return_value = []
+        release_policy = {"enabled": True, "next_release": 1, "integration_branch": "dev",
+                          "publication_branch": "main", "release_branch_prefix": "release/",
+                          "execution_scope": "later_when_active_blocked"}
+        reviewed = {"policy": {"sections": [
+            {"id": "autonomy_approval_parallelism", "configuration": fixtures.TEST_AUTONOMY_CONFIGURATION},
+            {"id": "git_review_release", "configuration": {"release_planning": release_policy}},
+        ]}}
+        plan = {"revision": 0, "next_release": 1, "assignments": {"1": 1, "2": 2},
+                "cohorts": {}, "releases": {}}
+        adapter = mock.Mock(); adapter.read.return_value = plan
+        with mock.patch.object(z, "GitHubReleasePlanAdapter", return_value=adapter):
+            result = z._workflow.checkpoint(z, Path("."), reviewed, {}, engine=engine)
+        self.assertEqual([mock.call(1), mock.call(2)], engine.step.call_args_list)
+        self.assertEqual(2, result["next_steps"][0]["goal"])
+        self.assertEqual("execute", result["next_steps"][0]["kind"])
+        self.assertEqual(1, result["deferred_steps"][0]["goal"])
+
     def test_warm_targeted_workflow_context_skips_unrelated_comments_and_prs(self):
         implementation = {"branch": "goal/x", "base": "main", "target": "main",
                           "pr": "https://github.com/owner/repo/pull/11",

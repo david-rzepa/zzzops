@@ -4716,6 +4716,20 @@ class Workflow:
         if operation == 'integrate':
             facts = publication['provider']
             if request.get('expected_head') != facts['head_oid']: raise ValueError('Expected head differs from current provider head')
+            release_policy = policy_section(self.project, 'git_review_release')['configuration'].get('release_planning')
+            if isinstance(release_policy, dict) and release_policy.get('enabled'):
+                release_plan = self.api.GitHubReleasePlanAdapter(self.repo, self.repository).read(self.repository)
+                if release_plan is None: raise ValueError('Release plan is missing; integration is blocked')
+                target = self.api._releases.target_release(release_plan, snapshot['number'])
+                integration = self.api.GitHubReleasePlanAdapter(self.repo, self.repository).observe_integration(
+                    self.repository, snapshot['number'], facts['head_oid'])
+                decision = self.api._releases.authorize_integration(
+                    {'key': snapshot['number'], 'target_release': target,
+                     'forbidden_commits': integration['forbidden_commits']}, release_plan,
+                    source_branch=facts.get('base_ref', ''),
+                    source_ancestors=set(integration['source_ancestors']))
+                if decision['status'] != 'authorized':
+                    raise ValueError(f"Release integration blocked: {decision['code']}")
             if not facts.get('merged'):
                 result = subprocess.run(['gh', 'pr', 'merge', publication['context']['pr'], '--squash', '--match-head-commit', facts['head_oid']], cwd=self.repo, capture_output=True, text=True, check=True)
                 observed, _, _ = self.api._github_pull_request_states(self.repo, 'gh', [{'number': snapshot['number']}], {snapshot['number']: {'repository_context': publication['context']}})
@@ -5908,6 +5922,18 @@ def scoped_frontier(steps, engine, limit, number, *, prospective_leases=None):
 def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     engine = engine or Workflow(api, repo, project, runtime)
     goals = engine.portfolio(allow_invalid=True)
+    release_section = next((section for section in project.get('policy', {}).get('sections', [])
+                            if section.get('id') == 'git_review_release'), None)
+    release_policy = ((release_section or {}).get('configuration') or {}).get('release_planning')
+    release_plan = None
+    release_selection = None
+    if number is None and isinstance(release_policy, dict) and release_policy.get('enabled'):
+        release_plan = api.GitHubReleasePlanAdapter(repo, engine.repository).read(engine.repository)
+        if release_plan is None:
+            return {'next_steps': [{'kind': 'blocker', 'assignment': 'root',
+                'reason': 'Release plan is missing; portfolio dispatch is blocked.'}]}
+        owned = {row['key'] for row in goals if (row.get('claim') or {}).get('owner')}
+        release_selection = api._releases.select_release_work(goals, release_policy, release_plan, owned)
     ordering_policy = next(
         (
             section.get('configuration', {}).get('portfolio_order')
@@ -5968,6 +5994,22 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
     runnable_steps = []
     waiting_steps = []
     ordered_goals = api.effective_goal_order(goals, ordering_policy)
+    later_release_keys = set()
+    if release_selection is not None:
+        active_eligible = {row['goal'] for row in release_selection['ordered']}
+        eligible = set(active_eligible)
+        if release_policy.get('execution_scope') == 'later_when_active_blocked':
+            by_key = {row['key']: row for row in goals}
+            later_release_keys = {row['key'] for row in goals
+                if api._releases.target_release(release_plan, row['key']) > release_plan['next_release']
+                and row['key'] not in owned and row.get('work_state') in {'triage', 'prepare', 'write'}
+                and not any(by_key.get(dep, {}).get('status') not in {'done', 'cancelled'}
+                            for dep in row.get('depends_on', []))}
+            eligible.update(later_release_keys)
+        ordered_goals = [row for row in ordered_goals if row['goal'] in eligible]
+        ordered_goals.sort(key=lambda row: (row['goal'] in later_release_keys,
+                                            next(index for index, item in enumerate(api.effective_goal_order(goals, ordering_policy))
+                                                 if item['goal'] == row['goal'])))
     order_rank = {item['goal']: index for index, item in enumerate(ordered_goals)}
     def response(steps, selected):
         def goal_key(step):
@@ -6010,7 +6052,13 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
                     'action': 'Use independent graph review and explicit approval for any required recovery extension.'})
             partition(candidate_steps, runnable_steps, waiting_steps)
         candidate_batch = []
+    later_release_started = False
     for item in ordered_goals:
+        if item['goal'] in later_release_keys and not later_release_started:
+            flush_candidates()
+            if runnable_steps:
+                break
+            later_release_started = True
         goal = next(goal for goal in goals if goal['key'] == item['goal'])
         if goal['status'] in {'done', 'cancelled'}:
             continue
@@ -6063,8 +6111,25 @@ def checkpoint(api, repo, project, runtime, number=None, *, engine=None):
         runnable_steps.append(capacity_step(active_workers, limit))
     steps = (runnable_steps or waiting_steps)[:limit]
     if not steps:
-        steps = [{'kind': 'terminal_report', 'assignment': 'root', 'state': 'complete',
-                  'action': 'All goals are complete or the portfolio is empty. Report workflow exhaustion; no CLI command is required.'}]
+        if release_selection is not None:
+            observation = api.GitHubReleasePlanAdapter(repo, engine.repository).observe_release(
+                engine.repository, release_plan['next_release'])
+            readiness = api._releases.release_readiness(observation['members'],
+                active_owners=set(observation['active_owners']),
+                observed_commits=set(observation['observed_commits']),
+                source_ancestors=set(observation['source_ancestors']),
+                forbidden_commits=set(observation.get('forbidden_commits', [])))
+            if readiness['status'] == 'ready':
+                steps = [{'kind': 'release_checkpoint', 'assignment': 'root',
+                    'release': release_plan['next_release'],
+                    'action': 'Propose, freeze, and cut the ready release before dispatching later-release work.',
+                    'submission': {'command': 'release checkpoint', 'operation': 'propose',
+                                   'request_id': '<stable-request-id>', 'authority': '<coordinator-authority>'}}]
+            else:
+                steps = [{'kind': 'blocker', 'assignment': 'root', 'reason': readiness}]
+        else:
+            steps = [{'kind': 'terminal_report', 'assignment': 'root', 'state': 'complete',
+                      'action': 'All goals are complete or the portfolio is empty. Report workflow exhaustion; no CLI command is required.'}]
     return response(steps, runnable_steps[:limit])
 
 
@@ -6343,7 +6408,23 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 raise
             except (ValueError, KeyError, OSError) as exc:
                 return {'next_steps': [{'kind': 'blocker', 'goal': number, 'reason': str(exc), 'remediation': api._migration_batch.remediation(number, str(exc))}]}
-    if operation not in {'read', 'release', 'renew'}: engine.portfolio(allow_invalid=True)
+    portfolio_rows = engine.portfolio(allow_invalid=True) if operation not in {'read', 'release', 'renew'} else None
+    if operation == 'start' and number is not None:
+        release_policy = policy_section(project, 'git_review_release')['configuration'].get('release_planning')
+        if isinstance(release_policy, dict) and release_policy.get('enabled'):
+            release_plan = api.GitHubReleasePlanAdapter(repo, engine.repository).read(engine.repository)
+            if release_plan is None: raise ValueError('Release plan is missing; explicit goal dispatch is blocked')
+            owned = {row['key'] for row in portfolio_rows if (row.get('claim') or {}).get('owner')}
+            eligible = api._releases.select_release_work(portfolio_rows, release_policy, release_plan, owned)
+            allowed = {row['goal'] for row in eligible['ordered']}
+            if (number not in allowed
+                    and release_policy.get('execution_scope') == 'later_when_active_blocked'):
+                observed = checkpoint(api, repo, project, runtime, engine=engine)
+                allowed.update(step.get('goal', (step.get('node') or {}).get('goal'))
+                               for step in observed.get('next_steps', [])
+                               if step.get('kind') in {'execute', 'review', 'human_approval'})
+            if number not in allowed:
+                raise ValueError(f'Goal #{number} is not eligible under the current release plan')
     if operation == 'read' and number is not None:
         artifact = payload.get('artifact')
         resolved = None
@@ -6413,12 +6494,68 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             raise ValueError('Goal design approval must be coordinated by root')
         if not explicit_approval(payload.get('approved_by')) or payload.get('proposal_hash') != digest(payload['request']):
             raise ValueError('Explicit approval of this exact goal design is required; parent relationships do not confer capture authority')
+        target_release = payload['request'].get('target_release')
+        release_policy = policy_section(project, 'git_review_release')['configuration'].get('release_planning')
+        if target_release is not None and (not isinstance(release_policy, dict) or not release_policy.get('enabled')):
+            raise ValueError('target_release requires release planning enabled by reviewed policy')
         reviewed_graph = policy_section(project, 'workflow_adherence')['configuration']['phase_dag']
         api._static_workflow.definition(reviewed_graph, api._graph_compiler)
-        with engine.locked():
-            created = api.apply_goal_create(engine.adapter, engine.repository, payload['request'], allow_deferred=True)
+        release_adapter = (api.GitHubReleasePlanAdapter(repo, engine.repository)
+                           if isinstance(release_policy, dict) and release_policy.get('enabled') else None)
+        receipt = (release_adapter.capture_receipt(engine.repository, payload['proposal_hash'])
+                   if release_adapter is not None and hasattr(release_adapter, 'capture_receipt') else None)
+        if receipt is not None:
+            if (receipt.get('repository') != engine.repository
+                    or receipt.get('proposal_hash') != payload['proposal_hash']
+                    or receipt.get('request_digest') != digest(payload['request'])):
+                raise ValueError('capture receipt conflicts with repository or approved proposal')
+            created = copy.deepcopy(receipt['goal'])
+        else:
+            marker = '<!-- zzzops-capture:' + payload['proposal_hash'] + ' -->'
+            create_request = copy.deepcopy(payload['request'])
+            create_request['body'] = create_request['body'].rstrip() + '\n\n' + marker + '\n'
+            created = (engine.adapter.find_capture_goal(marker)
+                       if hasattr(engine.adapter, 'find_capture_goal') else None)
+            if created is None:
+                try:
+                    with engine.locked():
+                        created = api.apply_goal_create(engine.adapter, engine.repository, create_request, allow_deferred=True)
+                except (OSError, RuntimeError, TimeoutError, ValueError):
+                    created = (engine.adapter.find_capture_goal(marker)
+                               if hasattr(engine.adapter, 'find_capture_goal') else None)
+                    if created is None:
+                        raise
+            if release_adapter is not None:
+                release_adapter.append_artifact(engine.repository, {
+                    'kind': 'zzzops-capture-receipt', 'request_id': payload['proposal_hash'],
+                    'repository': engine.repository, 'proposal_hash': payload['proposal_hash'],
+                    'request_digest': digest(payload['request']), 'goal': copy.deepcopy(created)})
         engine.invalidate()
         created_number = created['number']
+        capture = None
+        if isinstance(release_policy, dict) and release_policy.get('enabled'):
+            effective_target = target_release or release_policy['next_release']
+            try:
+                adapter = release_adapter
+                plan = adapter.read(engine.repository)
+                if plan is None:
+                    raise ValueError('release plan is missing')
+                if target_release is not None:
+                    assignment = api._releases.persist_batch_assignments(adapter, engine.repository,
+                        [{'goal': created_number, 'release': target_release}], expected_revision=plan['revision'],
+                        request_id='capture-' + payload['proposal_hash'])
+                    applied = assignment['items'][0]['status'] == 'applied'
+                    capture = api._releases.capture_assignment_result(goal=created,
+                        assignment=assignment if applied else None, target_release=target_release,
+                        error=None if applied else 'provider outcome unknown', request_id=payload['proposal_hash'])
+                else:
+                    enrolled = api._releases.enroll_release_member(plan, created_number,
+                        expected_revision=plan['revision'])
+                    api._releases.persist_plan(adapter, engine.repository, enrolled,
+                        expected_revision=plan['revision'], request_id='capture-cohort-' + payload['proposal_hash'])
+            except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+                capture = api._releases.capture_assignment_result(goal=created, assignment=None,
+                    target_release=effective_target, error=str(exc), request_id=payload['proposal_hash'])
         # Convert only this newly created goal. Its first generic graph is
         # compiled by the versioned converter before any executable frontier.
         result = api._migration_batch.run(engine, {'action': 'migrate', 'goals': [created_number]})
@@ -6427,7 +6564,9 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             return {'next_steps': [{'kind': 'blocker', 'goal': created_number,
                                    'reason': member.get('reason', member['status']),
                                    'remediation': member.get('remediation')}]}
-        return {'next_steps': member['next_steps']}
+        result = {'next_steps': member['next_steps']}
+        if capture is not None: result['capture'] = capture
+        return result
     if operation == 'batch':
         items = payload.get('items')
         if not isinstance(items, list) or not items or len(items) > 20:

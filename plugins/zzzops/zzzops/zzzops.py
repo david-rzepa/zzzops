@@ -135,6 +135,16 @@ _working_inputs = importlib.util.module_from_spec(_WORKING_INPUTS_MODULE_SPEC)
 sys.modules[_WORKING_INPUTS_MODULE_SPEC.name] = _working_inputs
 _WORKING_INPUTS_MODULE_SPEC.loader.exec_module(_working_inputs)
 
+_RELEASES_MODULE_PATH = Path(__file__).with_name("releases.py")
+_RELEASES_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_releases", _RELEASES_MODULE_PATH)
+assert _RELEASES_MODULE_SPEC and _RELEASES_MODULE_SPEC.loader
+_releases = importlib.util.module_from_spec(_RELEASES_MODULE_SPEC)
+sys.modules[_RELEASES_MODULE_SPEC.name] = _releases
+_RELEASES_MODULE_SPEC.loader.exec_module(_releases)
+
+GitHubReleasePlanAdapter = _releases.GitHubReleasePlanAdapter
+GitHubReleaseBranchAdapter = _releases.GitHubReleaseBranchAdapter
+
 _INSTALLATION_MODULE_PATH = Path(__file__).with_name("installation.py")
 _INSTALLATION_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_installation", _INSTALLATION_MODULE_PATH)
 assert _INSTALLATION_MODULE_SPEC and _INSTALLATION_MODULE_SPEC.loader
@@ -984,6 +994,23 @@ class GitHubGoalTransitionAdapter:
         if not isinstance(issue, dict):
             raise GoalTransitionProviderError("GitHub returned incomplete goal data; no goal update was made.")
         return issue
+
+    def find_capture_goal(self, marker: str) -> dict[str, Any] | None:
+        """Recover one exact marked create after an uncertain provider response."""
+        self.ensure_identity()
+        result = self._run(["api", "--paginate", "--slurp",
+            f"repos/{self.repository}/issues?state=all&labels=zzzops&per_page=100"])
+        if result.returncode: raise self._provider_error(result)
+        try: pages = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            raise GoalTransitionProviderError("GitHub returned invalid capture recovery data") from exc
+        matches = [row for page in pages for row in page
+                   if isinstance(row, dict) and marker in str(row.get("body") or "")]
+        if len(matches) > 1: raise GoalTransitionProviderError("Conflicting marked capture goals require reconciliation")
+        if not matches: return None
+        row = matches[0]
+        return {"number": row["number"], "revision": 1, "state": "open", "status": "new",
+                "url": row.get("html_url") or f"https://github.com/{self.repository}/issues/{row['number']}"}
 
     def list_issue_metadata(self, cursor: str | None = None) -> dict[str, Any]:
         """Complete paginated goal identities, without broad body hydration.
@@ -2316,9 +2343,29 @@ def _validated_portfolio_project(repo: Path) -> dict[str, Any]:
 
 def portfolio_snapshot(repo: Path, include_feedback: bool = False, *, timing: Any = None, include_pull_requests: bool = True) -> dict[str, Any]:
     project = _timed_call(timing, "policy_validation", lambda: _validated_portfolio_project(repo))
-    _repository, snapshot = github_repository_portfolio_snapshot(
+    repository, snapshot = github_repository_portfolio_snapshot(
         repo, project, include_feedback, timing=timing, include_pull_requests=include_pull_requests,
     )
+    release_section = next((section for section in project.get("policy", {}).get("sections", [])
+                            if section.get("id") == "git_review_release"), None)
+    release_policy = ((release_section or {}).get("configuration") or {}).get("release_planning")
+    if isinstance(release_policy, dict) and release_policy.get("enabled"):
+        plan = GitHubReleasePlanAdapter(repo, repository).read(repository)
+        if plan is None:
+            raise ValueError("Release planning is enabled but the repository release plan is missing")
+        owned = {row["key"] for row in snapshot["goals"] if (row.get("claim") or {}).get("owner")}
+        selection = _releases.select_release_work(snapshot["goals"], release_policy, plan, owned)
+        snapshot["effective_order"] = selection["ordered"]
+        conflicts = [{"code": row["code"], "goal": row["goal"],
+                      "detail": f"dependency #{row['dependency']} is assigned to a later release"}
+                     for row in selection["conflicts"]]
+        snapshot["findings"] = conflicts + [row for row in snapshot.get("findings", [])
+                                             if row.get("code") != "future_release_dependency"]
+        snapshot["valid"] = not snapshot["findings"]
+        for row in snapshot["goals"]:
+            explicit = str(row["key"]) in plan.get("assignments", {})
+            row["release"] = {"target": _releases.target_release(plan, row["key"]),
+                              "assignment": "explicit" if explicit else "fallback_active_release"}
     return snapshot
 
 
@@ -2588,6 +2635,251 @@ def inspect_repository_goal(repo: Path, project: dict[str, Any], issue_number: i
     migration = ensure_current_goal_schema(adapter, repository, issue_number)
     issue = adapter.get_issue(issue_number)
     return {"migration": migration, "goal": github_goal_record(issue)}
+
+
+class _GitHubReleaseTransport:
+    """Small provider transport composed from the existing authenticated adapters."""
+    def __init__(self, repo: Path, repository: str):
+        self.repo, self.repository = Path(repo), repository
+        self.goals = GitHubGoalTransitionAdapter(repo, repository)
+        self.reservations = GitHubReservationAdapter(repo, repository)
+        self._lock_tokens = {}
+
+    def list_control_issues(self, repository, marker):
+        if repository.casefold() != self.repository.casefold(): raise ValueError("repository identity changed")
+        result = self.goals._run(["api", "--paginate", "--slurp",
+            f"repos/{repository}/issues?state=all&per_page=100&labels=zzzops-release-plan-control"])
+        if result.returncode: raise self.goals._provider_error(result)
+        pages = json.loads(result.stdout)
+        rows = [row for page in pages for row in page] if isinstance(pages, list) else []
+        return [row for row in rows if isinstance(row, dict) and marker in str(row.get("body") or "")]
+
+    def create_issue(self, repository, payload): return self.goals.create_issue(payload)
+    def update_issue(self, repository, number, payload, expected_body_hash):
+        current = self.goals.get_issue(number)
+        if _releases.text_hash(current.get("body", "")) != expected_body_hash: raise ValueError("release plan revision changed")
+        return self.goals.update_issue(number, payload)
+    def read_comments(self, repository, number): return self.goals.get_issue_comments(number)
+    def append_comment(self, repository, number, body): return self.goals.create_issue_comment(number, body)
+    def acquire_label_lock(self, repository, name, description):
+        token = "lock:" + hashlib.sha256(
+            f"{description}:{os.getpid()}:{time.time_ns()}:{id(self)}".encode()).hexdigest()
+        current = self.reservations.get_label(name)
+        if current is None:
+            self.reservations.create_label(name, token); current = self.reservations.get_label(name)
+        if not current or current.get("description") != token: raise ValueError("repository release plan is locked")
+        self._lock_tokens[(name, description)] = token
+    def release_label_lock(self, repository, name, description):
+        token = self._lock_tokens.pop((name, description), None)
+        current = self.reservations.get_label(name)
+        if token and current and current.get("description") == token: self.reservations.delete_label(current["node_id"])
+    def observe_release(self, repository, release):
+        project = reviewed_project_state(self.repo)
+        snapshot = portfolio_snapshot(self.repo)
+        plan = _releases.GitHubReleasePlanAdapter(self).read(repository)
+        members = {}
+        frozen = (plan or {}).get("releases", {}).get(str(release), {}).get("members", {})
+        goals = {row["key"]: row for row in snapshot["goals"]}
+        assigned = {int(key) for field in ("assignments", "cohorts")
+                    for key, value in (plan or {}).get(field, {}).items() if value == release}
+        identities = set(map(int, frozen)) if frozen else assigned | {
+            key for key, row in goals.items() if _releases.target_release(plan, key) == release
+        }
+        engine = workflow_engine(self.repo, project)
+        observed_goals = {}
+        def observe_goal(key):
+            if key in observed_goals: return observed_goals[key]
+            issue = self.goals.get_issue(key); row = github_goal_record(issue)
+            if row.get("key") != key: raise ValueError("targeted release member observation mismatch")
+            if row.get("schema_version") != 2:
+                raise ValueError(f"release member #{key} requires current workflow evidence")
+            state = engine.node_snapshot(key, publication_probe=True)
+            leases = state.get("payload", {}).get("operational", {}).get("leases")
+            if not isinstance(leases, list): raise ValueError("release ownership evidence is unavailable")
+            merged = [value["publication"]["provider"] for value in state["projection"]["states"].values()
+                      if isinstance(value.get("publication"), dict)
+                      and value["publication"].get("provider", {}).get("merged") is True
+                      and value["publication"]["provider"].get("merge_commit")]
+            commits = {value["merge_commit"] for value in merged}
+            if len(commits) > 1: raise ValueError("release member has ambiguous integration evidence")
+            complete = state.get("projection", {}).get("complete") is True
+            envelope = state.get("envelope", {})
+            # A v2 archive with an incomplete canonical projection is the
+            # durable cancellation/removal authority. Completed work still
+            # requires independent merge evidence below.
+            cancelled = envelope.get("state") == "archived" and not complete
+            result = {"row": row, "leases": leases, "complete": complete, "cancelled": cancelled,
+                      "cancellation_authority": _releases.digest(envelope) if cancelled else None,
+                      "merge_commit": next(iter(commits), None)}
+            observed_goals[key] = result; return result
+        for key in identities:
+            fact = observe_goal(key)
+            if fact["cancelled"]:
+                members[str(key)] = {"status": "cancelled",
+                                     "cancellation_authority": fact["cancellation_authority"]}
+            elif fact["complete"] and fact["merge_commit"]:
+                members[str(key)] = {"status": "done", "integrated_commit": fact["merge_commit"]}
+            else:
+                members[str(key)] = {"status": "in_progress", "integrated_commit": None}
+        release_policy = _workflow_section(project, "git_review_release").get("configuration", {}).get("release_planning", {})
+        source_branch = release_policy.get("integration_branch", "dev")
+        source = subprocess.run(["git", "ls-remote", "--heads", "origin", f"refs/heads/{source_branch}"],
+                                cwd=self.repo, text=True, capture_output=True, check=False)
+        source_sha = source.stdout.split()[0] if source.returncode == 0 and source.stdout.strip() else ""
+        def integrated(commit):
+            if not source_sha or not isinstance(commit, str): return False
+            check = self.goals._run(["api", f"repos/{repository}/compare/{commit}...{source_sha}"])
+            if check.returncode: raise self.goals._provider_error(check)
+            return json.loads(check.stdout).get("status") in {"ahead", "identical"}
+        commits = {value["integrated_commit"] for value in members.values()
+                   if value.get("integrated_commit") and integrated(value["integrated_commit"])}
+        owners = [key for key in identities if observe_goal(key)["leases"]]
+        future_ids = {int(key) for field in ("assignments", "cohorts")
+                      for key, target in (plan or {}).get(field, {}).items() if target > release}
+        future = {observe_goal(key)["merge_commit"] for key in future_ids}
+        future = {commit for commit in future if commit and integrated(commit)}
+        ancestors = commits | future
+        return {"members": members, "active_owners": owners, "observed_commits": sorted(commits),
+                "source_ancestors": sorted(ancestors), "forbidden_commits": sorted(future),
+                "source_branch": source_branch, "source_sha": source_sha}
+    def observe_integration(self, repository, goal, head_oid):
+        project = reviewed_project_state(self.repo)
+        plan = _releases.GitHubReleasePlanAdapter(self).read(repository) or {}
+        target = _releases.target_release(plan, goal)
+        future_ids = {int(key) for field in ("assignments", "cohorts")
+                      for key, release in plan.get(field, {}).items() if release > target}
+        engine = workflow_engine(self.repo, project)
+        forbidden = set()
+        for number in future_ids:
+            state = engine.node_snapshot(number, publication_probe=True)
+            heads = {value.get("publication", {}).get("provider", {}).get("head_oid")
+                     for value in state.get("projection", {}).get("states", {}).values()
+                     if isinstance(value.get("publication"), dict)}
+            for candidate in heads - {None, ""}:
+                check = self.goals._run(["api", f"repos/{repository}/compare/{candidate}...{head_oid}"])
+                if check.returncode: raise self.goals._provider_error(check)
+                if json.loads(check.stdout).get("status") in {"ahead", "identical"}:
+                    forbidden.add(candidate)
+        return {"source_ancestors": sorted(forbidden), "forbidden_commits": sorted(forbidden)}
+    def observe_approval(self, reference):
+        plan = _releases.GitHubReleasePlanAdapter(self).read(self.repository) or {}
+        for release in plan.get("releases", {}).values():
+            for row in release.get("publication_approvals", {}).values():
+                if row.get("reference") == reference: return copy.deepcopy(row["approval"])
+        raise ValueError("authenticated release publication approval was not found")
+    def observe(self, repository, release, target):
+        plan = _releases.GitHubReleasePlanAdapter(self).read(repository) or {}
+        intent = plan.get("releases", {}).get(str(release), {}).get("intent")
+        if not intent: raise ValueError("frozen release intent is missing")
+        result = self.goals._run(["api", "--paginate", "--slurp", f"repos/{repository}/releases?per_page=100"])
+        if result.returncode: raise self.goals._provider_error(result)
+        pages = json.loads(result.stdout); rows = [row for page in pages for row in page]
+        for row in rows:
+            tag = row.get("tag_name")
+            if not isinstance(tag, str) or not tag: continue
+            if row.get("draft") is not False or not row.get("published_at"):
+                continue
+            # GitHub records the branch or exact commit selected when the release
+            # was published.  Do not accept a tag found on the right commit when
+            # the provider says the release was published from another target.
+            if row.get("target_commitish") not in {target, intent["source_sha"]}:
+                continue
+            ref = subprocess.run(["git", "ls-remote", "origin", f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}"],
+                                 cwd=self.repo, text=True, capture_output=True, check=False)
+            shas = [line.split()[0] for line in ref.stdout.splitlines() if line.strip()]
+            if intent["source_sha"] in shas:
+                return {"tag": tag, "version": tag[1:] if tag.startswith("v") else tag,
+                        "target_sha": intent["source_sha"]}
+        raise ValueError("provider has no publication observation for the frozen release")
+
+
+class GitHubReleasePlanAdapter(_releases.GitHubReleasePlanAdapter):
+    def __init__(self, repo, repository=None):
+        super().__init__(repo if repository is None else _GitHubReleaseTransport(repo, repository))
+
+    def open_goal_ids(self):
+        transport = self.transport
+        project = reviewed_project_state(transport.repo)
+        _capability, indexes, findings, _bytes, _reads, _excluded = github_repository_goal_index(
+            transport.repo, project, False)
+        if findings:
+            raise ValueError("open-goal cohort discovery is incomplete")
+        return [row["number"] for row in indexes if str(row.get("state", "")).casefold() == "open"]
+
+
+class GitHubReleaseBranchAdapter(_releases.GitReleaseBranchAdapter):
+    pass
+
+
+def _release_policy(project):
+    configuration = _workflow_section(project, "git_review_release").get("configuration", {})
+    return copy.deepcopy(configuration.get("release_planning") or {
+        "enabled": False, "next_release": 1, "integration_branch": "dev", "publication_branch": "main",
+        "release_branch_prefix": "release/", "execution_scope": "active_only"})
+
+
+def release_cli(repo: Path, command: str, input_path: Path | None = None):
+    project = reviewed_project_state(repo); repository = _project_repository_identity(project)
+    policy = _release_policy(project)
+    adapter = GitHubReleasePlanAdapter(repo, repository)
+    request = None if input_path is None else json.loads(input_path.resolve().read_text(encoding="utf-8-sig"))
+    if command == "status":
+        plan = adapter.read(repository)
+        return plan or {**_releases.new_release_plan(policy["next_release"]), "status": "disabled" if not policy["enabled"] else "unconfigured"}
+    if command == "configure":
+        if not policy["enabled"]: raise ValueError("release planning is disabled by reviewed policy")
+        plan = {"revision": 0, **request["plan"]}
+        current = adapter.read(repository)
+        if current is None:
+            plan.setdefault("cohorts", {})
+            for number in adapter.open_goal_ids() if hasattr(adapter, "open_goal_ids") else []:
+                plan["cohorts"].setdefault(str(number), _releases.target_release(plan, number))
+        elif current.get("request_id") != request["request_id"]:
+            raise ValueError("release configure is initialization-only; use assign or checkpoint for existing plans")
+        return _releases.persist_plan(adapter, repository, plan,
+            expected_revision=request["expected_revision"], request_id=request["request_id"])
+    if command == "assign":
+        if not policy["enabled"]: raise ValueError("release planning is disabled by reviewed policy")
+        return _releases.persist_batch_assignments(adapter, repository, request["assignments"],
+            expected_revision=request["expected_revision"], request_id=request["request_id"])
+    if command == "checkpoint":
+        if not policy["enabled"]: raise ValueError("release planning is disabled by reviewed policy")
+        branch = GitHubReleaseBranchAdapter(repo)
+        return _releases.ReleaseCoordinator(repository, policy, adapter, branch,
+                                             evidence_provider=adapter).checkpoint(request)
+    if command == "approve":
+        if not policy["enabled"]: raise ValueError("release planning is disabled by reviewed policy")
+        if not isinstance(request.get("approved_by"), str) or not request["approved_by"].strip():
+            raise ValueError("explicit human release approval is required")
+        plan = adapter.read(repository); intent = request["intent"]; target = request["target"]
+        if target != policy["publication_branch"]: raise ValueError("publication approval target differs from reviewed policy")
+        release = plan.get("releases", {}).get(str(intent.get("release")), {})
+        if release.get("intent") != intent or release.get("state") != "branch_confirmed":
+            raise ValueError("publication approval requires the exact confirmed frozen release")
+        approval = _releases.bind_publication_approval(intent, target=target)
+        reference = "release-approval:" + approval["digest"]
+        updated = copy.deepcopy(plan); updated["revision"] += 1
+        updated["releases"][str(intent["release"])].setdefault("publication_approvals", {})[target] = {
+            "reference": reference, "approval": approval, "approved_by": request["approved_by"]}
+        _releases.persist_plan(adapter, repository, updated, expected_revision=plan["revision"], request_id=request["request_id"])
+        return {"status": "approved", "reference": reference, "approval": approval}
+    if command == "publication":
+        if not policy["enabled"]: raise ValueError("release planning is disabled by reviewed policy")
+        plan = adapter.read(repository); release = request["release"]; target = request["target"]
+        if target != policy["publication_branch"]: raise ValueError("publication target differs from reviewed policy")
+        intent = plan.get("releases", {}).get(str(release), {}).get("intent")
+        if not intent: raise ValueError("frozen release intent is missing")
+        observation = _releases.observe_publication(adapter.transport, intent,
+            request["approval_reference"], target=target)
+        if (not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?", observation["version"])
+                or observation["tag"] not in {observation["version"], "v" + observation["version"]}):
+            raise ValueError("provider publication is not a semantic version/tag observation")
+        updated = copy.deepcopy(plan); updated["revision"] += 1
+        updated["releases"][str(release)]["publication"] = copy.deepcopy(observation)
+        _releases.persist_plan(adapter, repository, updated, expected_revision=plan["revision"],
+                               request_id=request["request_id"])
+        return {"status": "observed", **observation}
+    raise ValueError("unknown release command")
 
 
 
@@ -3551,6 +3843,12 @@ def _private_main() -> int:
     portfolio_parser.add_argument("--compare", type=Path, help="Prior JSON snapshot used only to report digest/revision drift")
     portfolio_parser.add_argument("--include-feedback", action="store_true", help="Include specially tagged feedback goals")
     portfolio_parser.add_argument("--profile", action="store_true", help="Record one local privacy-safe timing aggregate")
+    release_parser = commands.add_parser("release", help="Manage the reviewed repository release plan")
+    release_commands = release_parser.add_subparsers(dest="release_command", required=True)
+    release_commands.add_parser("status", help="Read the current release plan")
+    for name in ("configure", "assign", "checkpoint", "approve", "publication"):
+        command = release_commands.add_parser(name)
+        command.add_argument("--input", type=Path, required=True)
     goal_command = commands.add_parser("goal", help="Create, transition, or inspect validated GitHub-backed goals")
     goal_commands = goal_command.add_subparsers(dest="goal_command", required=True)
     create_goal_command = goal_commands.add_parser("create", help="Create one goal from a validated UTF-8 request file")
@@ -3798,6 +4096,15 @@ def _private_main() -> int:
                     print(json.dumps({"schema_version": PORTFOLIO_SCHEMA_VERSION, "complete": False, "valid": False, "error": str(exc)}, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
                 else:
                     print(f"Could not load goals: {exc}")
+                return 2
+        elif args.command == "release":
+            try:
+                result = release_cli(repo, args.release_command, getattr(args, "input", None))
+                print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+                return 2 if result.get("status") == "blocked" else 0
+            except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+                print(json.dumps({"status": "blocked", "reason": str(exc)}, ensure_ascii=False,
+                                 sort_keys=True, separators=(",", ":")))
                 return 2
         elif args.command == "goal":
             project = reviewed_project_state(repo)

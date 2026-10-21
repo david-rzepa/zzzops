@@ -6583,8 +6583,13 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual("github_stacked_when_verified_else_chained", git_policy["pull_request_mode"])
         self.assertNotIn("legacy_migration", git_policy)
         self.assertEqual({
-            "review_pending_dependency", "pull_request_mode",
+            "review_pending_dependency", "pull_request_mode", "release_planning",
         }, set(git_policy))
+        self.assertEqual({
+            "enabled": False, "next_release": 1,
+            "integration_branch": "dev", "publication_branch": "main",
+            "release_branch_prefix": "release/", "execution_scope": "active_only",
+        }, git_policy["release_planning"])
 
         invalid = json.loads(json.dumps(plan["policy"]))
         invalid_git = next(section for section in invalid["sections"] if section["id"] == "git_review_release")
