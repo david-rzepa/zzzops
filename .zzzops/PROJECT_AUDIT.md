@@ -1,6 +1,6 @@
 # ZzzOps project policy audit
 
-Status: complete. Reviewer: User previously explicitly approved the exact durable #523-first portfolio order and instructed that dependencies/blockers be respected; all other current policy settings are preserved.. Revision: 62.
+Status: complete. Reviewer: User: Ok now continue, after correcting all four goals550,532,551,490 into Release1; preserve all other policy settings.. Revision: 64.
 
 ## Evidence and decisions
 
@@ -15,11 +15,11 @@ Status: complete. Reviewer: User previously explicitly approved the exact durabl
   - Unresolved: none
 - [x] `[policy:git_review_release]` **Git, review, and release** (applicable)
   - Instructions: Follow repository rules and the CLI-selected pull-request mode. Keep one branch and pull request per source-changing goal and one active stack. Base dependent work on the exact reviewed dependency checkpoint, make verified sub-goal commits, collect human pull-request approval at true queue exhaustion, and integrate in dependency order. Never bypass policy review, required checks, merge authority, or release authority. Preserve or migrate shipped contracts. Only evidenced unreleased contracts may permit bounded replacement of affected project-owned state within existing authority; ambiguous evidence blocks that action. Releases refresh affected contract evidence, not unchanged policy approval.
-  - Rationale: User approved adoption of the installed plugin default on 2026-10-01.
+  - Rationale: User approved adoption of the installed plugin default on 2026-10-01. Enable numbered planning releases as requested; unassigned goals fall back to the active release, future work remains isolated, and main publication retains its separate approval.
   - Sources: E-DEFAULT-RESET-20261001: Current user conversation, 2026-10-01 — User approved resetting all policy to installed defaults except model inventory and removing repository-specific instructions, especially branching from dev.
-  - Confidence/default: medium; ZzzOps exhaustion-time review fallback → accepted
-  - Provenance: adopted from the recorded ZzzOps default
-  - Configuration: `{"pull_request_mode": "github_stacked_when_verified_else_chained", "review_pending_dependency": "stack_from_reviewed_checkpoint"}`
+  - Confidence/default: medium; ZzzOps exhaustion-time review fallback → changed
+  - Provenance: customized from a ZzzOps default
+  - Configuration: `{"pull_request_mode": "github_stacked_when_verified_else_chained", "release_planning": {"enabled": true, "execution_scope": "active_only", "integration_branch": "dev", "next_release": 1, "publication_branch": "main", "release_branch_prefix": "release/"}, "review_pending_dependency": "stack_from_reviewed_checkpoint"}`
   - Exceptions: none
   - Unresolved: none
 - [x] `[policy:verification_testing]` **Verification and testing** (applicable)
@@ -174,5 +174,7 @@ Status: complete. Reviewer: User previously explicitly approved the exact durabl
 | 2026-10-04 | User explicitly instructed: Ok enable the policy, after disclosure that external591 ownership remains unresolved. Preserve that ownership and refresh authorizations before resuming affected work. | Reviewed policy revision 60 | Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:092b3a63b350f331d33e7f9f78508a0c1ec501e07bd1e58d62c9e5d99fad900d. |
 | 2026-10-07 | ZzzOps initialization | Created pending revision 61 | Confirmed agent-generated draft; explicit policy review still required. |
 | 2026-10-07 | User previously explicitly approved the exact durable #523-first portfolio order and instructed that dependencies/blockers be respected; all other current policy settings are preserved. | Reviewed policy revision 62 | Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:7fa7180c8282851565006e8c377775e6f66e3fc55dff5c5f450ac8e5aed643f2. |
+| 2026-10-20 | ZzzOps initialization | Created pending revision 63 | Confirmed agent-generated draft; explicit policy review still required. |
+| 2026-10-20 | User: Ok now continue, after correcting all four goals550,532,551,490 into Release1; preserve all other policy settings. | Reviewed policy revision 64 | Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:f6f5c991288e9765a2349bc3c9163c619f7a108cddb35e748ef55c159341ebbb. |
 
 The machine-readable authority is [POLICY.json](POLICY.json); this file is its human audit view.
