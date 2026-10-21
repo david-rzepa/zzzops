@@ -2160,8 +2160,6 @@ class Workflow:
             if source_artifact.get('type') != 'migration_source':
                 self.node_committed_legacy_requests(lineage, migration_context_only=True)
             recovered = lineage.get('historical_goal_context')
-            if recovered is not None and lineage.get('historical_goal_context_converter') == 'lossless-v1-v2/1':
-                recovered = copy.deepcopy(recovered); recovered['metadata'] = {}
             if 'goal_context' in payload:
                 metadata = resolve(payload['goal_context'])
                 if (metadata.get('type') != 'goal_context' or metadata.get('producer') is not None

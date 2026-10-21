@@ -240,6 +240,17 @@ class GoalContextResolutionTests(unittest.TestCase):
         envelope = dag.z.parse_managed_goal(self.case.provider.issues[100]["body"], 100)
         before = copy.deepcopy(self.case.session.read(100, envelope["payload"]))
         self.assertNotIn("goal_context", before)
+        def observed_context():
+            with mock.patch.object(dag.z, "GitHubGoalTransitionAdapter",
+                                   return_value=self.case.provider):
+                engine = dag.z.workflow_engine(self.case.fixture.repo,
+                                               self.case.session.project,
+                                               self.case.session.runtime)
+            engine.adapter = self.case.provider
+            return engine.node_snapshot(100)
+        initial = observed_context()
+        self.assertEqual({"difficulty": "S"}, initial["original_goal_context"]["metadata"])
+        self.assertEqual({"difficulty": "S"}, initial["goal_context"]["metadata"])
         self.case.normal_setup(100)
         discovered = self.discovery()
         request = copy.deepcopy(discovered["submission"])
@@ -262,7 +273,10 @@ class GoalContextResolutionTests(unittest.TestCase):
         context = self.case.session.read(100, context_ref)
         self.assertEqual(discovered["submission"]["context_hash"], context_ref["hash"])
         self.assertEqual({"version": 1, "depends_on": [101],
-                          "blockers": [self.blocker], "metadata": {}}, context["content"])
+                          "blockers": [self.blocker], "metadata": {"difficulty": "S"}}, context["content"])
+        resolved = observed_context()
+        self.assertEqual({"difficulty": "S"}, resolved["original_goal_context"]["metadata"])
+        self.assertEqual({"difficulty": "S"}, resolved["goal_context"]["metadata"])
 
     def test_exact_replay_is_stable_and_changed_payload_conflicts(self):
         request = self.request("stable-resolution-request")
