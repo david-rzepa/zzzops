@@ -1,6 +1,6 @@
 # ZzzOps project policy audit
 
-Status: complete. Reviewer: User: Ok now continue, after correcting all four goals550,532,551,490 into Release1; preserve all other policy settings.. Revision: 64.
+Status: complete. Reviewer: User explicitly instructed superseding the old goal order with release assignments; normal priorities within releases. Preserve other settings.. Revision: 66.
 
 ## Evidence and decisions
 
@@ -114,11 +114,11 @@ Status: complete. Reviewer: User: Ok now continue, after correcting all four goa
   - Unresolved: none
 - [x] `[policy:autonomy_approval_parallelism]` **Autonomy, approvals, and parallelism** (applicable)
   - Instructions: Capture requirements adaptively with the requesting user; during unattended execution persist consequential questions as blockers. Keep human interaction on root, enforce reviewed worker and resource limits, record privacy-safe execution diagnostics, and suggest only bounded valuable work in reviewed categories. Keep worktrees clean, remove or deliberately reuse them after work, and never abandon dirty worktrees. Do not automatically adopt suggested defaults without review.
-  - Rationale: User approved adoption of the installed plugin default on 2026-10-01. Record the exact user-directed durable queue preference after verifying existing equal-priority ordering support; retain priority semantics and all legality gates.
+  - Rationale: User explicitly superseded the historical #523-first queue with numbered release assignments; use normal priority ordering within each release. Preserve all other autonomy settings.
   - Sources: E-DEFAULT-RESET-20261001: Current user conversation, 2026-10-01 — User approved resetting all policy to installed defaults except model inventory and removing repository-specific instructions, especially branching from dev.
   - Confidence/default: medium; ZzzOps conservative fallback → changed
   - Provenance: customized from a ZzzOps default
-  - Configuration: `{"execution_reports": {"enabled": true}, "max_workers": 10, "portfolio_order": {"ordered_goal_keys": [523, 540, 563, 562, 503, 527, 507, 554, 515, 543, 504, 557, 566, 564, 550], "rationale": "User explicitly directed goal523 next at P1, then this benefit/cost sequence for regular execute: 540 ->563 ->562 ->503 ->527 ->507 ->554 ->515 ->543 ->504 ->557 ->566 ->564 ->550. Apply preferences within existing priority tiers, respecting blockers, dependencies, ancestors and ownership/active claims; never promote to P0 or rewrite dependencies. 550 remains P3 and562 is P1."}, "refill": {"allowed_categories": ["documentation", "tests", "code_quality_non_behavioral", "agent_observability", "verification_efficiency"], "enabled": true, "max_suggestions": 3}, "resource_reservations": {"exclusive_prefixes": ["generated", "external"], "exclusive_resources": [], "mode": "conflict_tolerant"}}`
+  - Configuration: `{"execution_reports": {"enabled": true}, "max_workers": 10, "refill": {"allowed_categories": ["documentation", "tests", "code_quality_non_behavioral", "agent_observability", "verification_efficiency"], "enabled": true, "max_suggestions": 3}, "resource_reservations": {"exclusive_prefixes": ["generated", "external"], "exclusive_resources": [], "mode": "conflict_tolerant"}}`
   - Exceptions: none
   - Unresolved: none
 
@@ -176,5 +176,7 @@ Status: complete. Reviewer: User: Ok now continue, after correcting all four goa
 | 2026-10-07 | User previously explicitly approved the exact durable #523-first portfolio order and instructed that dependencies/blockers be respected; all other current policy settings are preserved. | Reviewed policy revision 62 | Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:7fa7180c8282851565006e8c377775e6f66e3fc55dff5c5f450ac8e5aed643f2. |
 | 2026-10-20 | ZzzOps initialization | Created pending revision 63 | Confirmed agent-generated draft; explicit policy review still required. |
 | 2026-10-20 | User: Ok now continue, after correcting all four goals550,532,551,490 into Release1; preserve all other policy settings. | Reviewed policy revision 64 | Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:f6f5c991288e9765a2349bc3c9163c619f7a108cddb35e748ef55c159341ebbb. |
+| 2026-10-20 | ZzzOps initialization | Created pending revision 65 | Confirmed agent-generated draft; explicit policy review still required. |
+| 2026-10-20 | User explicitly instructed superseding the old goal order with release assignments; normal priorities within releases. Preserve other settings. | Reviewed policy revision 66 | Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:49ced998de3dffa18d09455930410c58197dc13c42ec0a8da4aa42775fcbd641. |
 
 The machine-readable authority is [POLICY.json](POLICY.json); this file is its human audit view.
