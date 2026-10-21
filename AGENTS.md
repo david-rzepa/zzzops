@@ -7,7 +7,6 @@ Use `$execute-zzzops` for the goal loop and “work on all goals”/`/goal`; use
 - Goals are work truth. Triage `new`; mark `done` only from observed criteria. PROJECT determines write actionability and ancestry/merge order.
 - Capture interviews the user to reviewed depth; execution persists unanswered questions as blockers without prompting.
 - Before editing define and run one falsifiable probe; build a narrow harness or block rather than guess.
-- Capture test-discovered out-of-scope bugs as separate human-blocked TODOs with reproduction evidence; do not fix or hide them before input.
 - PROJECT policy controls operations. Parallel permission is a ceiling: workers are read-only unless `worktrees`; only the coordinator edits ZzzOps state/integrates. Refill requires reviewed opt-in.
 - Before switching/stopping persist resumable state. Commit each verified sub-goal separately with semantic Conventional Commits (`type(scope): outcome`).
 

@@ -11,6 +11,7 @@ z = fixtures.zzzops
 class WorkflowContextScopeTests(unittest.TestCase):
     def setUp(self):
         self.fixture = fixtures.InitializationTests()
+        self.addCleanup(self.fixture.doCleanups)
         self.fixture.setUp()
         self.addCleanup(self.fixture.tearDown)
         self.repo = self.fixture.repo
