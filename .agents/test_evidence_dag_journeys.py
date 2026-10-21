@@ -2693,8 +2693,12 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.assertEqual(historical_result, self.result("alpha")[1])
 
         dependency.write_text("reviewed merged consumed change\n")
-        self.session.git("add", "read_dependency.txt")
+        self.session.git("add", "read_dependency.txt", "behavior_test.py")
         self.session.git("commit", "-qm", "reviewed consumed dependency merge")
+        exclude = self.fixture.repo / ".git" / "info" / "exclude"
+        exclude.write_text(exclude.read_text() + "\n.zzzops/\n")
+        self.assertEqual("", self.session.git("status", "--porcelain"),
+                         "Fresh acquisition fixture must use a fully clean committed checkout")
         current_head = self.session.git("rev-parse", "HEAD").strip()
         steps = self.session.checkpoint(100)
         refreshed = next(step for step in steps if step.get("kind") == "execute" and
