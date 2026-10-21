@@ -208,7 +208,7 @@ class GoalContextResolutionTests(unittest.TestCase):
         self.assertFalse(candidates, candidates)
         request = {
             "operation": "resolve_goal_blocker", "request_id": "ambiguous-blocker",
-            "actor": "root-thread", "context_hash": self.case.assert_preserved(100)["goal_context"]["hash"],
+            "actor": "root-thread", "context_hash": self.current_payload()["goal_context"]["hash"],
             "blocker_hash": dag.z._workflow.digest(self.blocker), "rationale": "Exact duplicate.",
             "resolution_basis": "Root attestation.", "evidence": self.evidence(),
             "human_approval": {"approved_by": "requesting-user", "attribution": "Approved."},
