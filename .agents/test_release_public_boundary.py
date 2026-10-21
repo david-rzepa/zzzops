@@ -10,11 +10,75 @@ import unittest
 from unittest import mock
 
 import test_zzzops as fixtures
+from test_release_planning import MemoryPlanAdapter
 
 z = fixtures.zzzops
 
 
 class ReleasePublicBoundaryTests(unittest.TestCase):
+    def test_configure_retry_reuses_enrollment_after_audit_failure(self):
+        adapter = MemoryPlanAdapter()
+        adapter.open_goal_ids = mock.Mock(return_value=[7, 8])
+        project = {'backend': 'github_issues', 'repository': {'identity': 'owner/repo'}}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'request.json'
+            request = {'request_id': 'configure', 'expected_revision': None,
+                       'plan': z._releases.new_release_plan(1)}
+            path.write_text(json.dumps(request))
+            with mock.patch.object(z, 'reviewed_project_state', return_value=project), \
+                 mock.patch.object(z, '_release_policy', return_value={'enabled': True}), \
+                 mock.patch.object(z, 'GitHubReleasePlanAdapter', return_value=adapter), \
+                 mock.patch.object(adapter, 'append_artifact', side_effect=ValueError('audit unavailable')):
+                with self.assertRaisesRegex(ValueError, 'audit unavailable'):
+                    z.release_cli(Path(directory), 'configure', path)
+                self.assertEqual({'7': 1, '8': 1}, adapter.record['cohorts'])
+                adapter.open_goal_ids.return_value = [7, 8, 9]
+                replay = z.release_cli(Path(directory), 'configure', path)
+                self.assertEqual({'7': 1, '8': 1}, replay['plan']['cohorts'])
+                self.assertEqual(1, adapter.open_goal_ids.call_count)
+                request['plan']['next_release'] = 2
+                path.write_text(json.dumps(request))
+                with self.assertRaisesRegex(ValueError, 'payload changed'):
+                    z.release_cli(Path(directory), 'configure', path)
+
+    def test_reassigned_goal_is_not_its_own_forbidden_future_commit(self):
+        plan = z._releases.new_release_plan(1)
+        plan['cohorts'] = {'7': 2}
+        plan = z._releases.assign_release(plan, 7, 1, expected_revision=0)
+        transport = z._GitHubReleaseTransport(Path('.'), 'owner/repo')
+        engine = mock.Mock()
+        engine.node_snapshot.return_value = {'projection': {'states': {
+            'publication': {'publication': {'provider': {'head_oid': 'a' * 40}}}}}}
+        with mock.patch.object(z, 'reviewed_project_state', return_value={}), \
+             mock.patch.object(z._releases.GitHubReleasePlanAdapter, 'read', return_value=plan), \
+             mock.patch.object(z, 'workflow_engine', return_value=engine), \
+             mock.patch.object(transport.goals, '_run',
+                 return_value=subprocess.CompletedProcess([], 0, '{"status":"identical"}', '')):
+            result = transport.observe_integration('owner/repo', 7, 'a' * 40)
+            self.assertEqual([], result['forbidden_commits'])
+            engine.node_snapshot.assert_not_called()
+
+    def test_release_membership_uses_explicit_assignment_over_old_enrollment(self):
+        plan = z._releases.new_release_plan(1)
+        plan['cohorts'] = {'7': 1}
+        plan = z._releases.assign_release(plan, 7, 2, expected_revision=0)
+        transport = z._GitHubReleaseTransport(Path('.'), 'owner/repo')
+        engine = mock.Mock()
+        engine.node_snapshot.return_value = {'payload': {'operational': {'leases': []}},
+            'projection': {'states': {}, 'complete': False}, 'envelope': {}}
+        project = {'policy': {'sections': [{'id': 'git_review_release',
+                   'configuration': {'release_planning': {'integration_branch': 'dev'}}}]}}
+        with mock.patch.object(z, 'reviewed_project_state', return_value=project), \
+             mock.patch.object(z, 'portfolio_snapshot', return_value={'goals': []}), \
+             mock.patch.object(z._releases.GitHubReleasePlanAdapter, 'read', return_value=plan), \
+             mock.patch.object(z, 'workflow_engine', return_value=engine), \
+             mock.patch.object(transport.goals, 'get_issue', return_value={}), \
+             mock.patch.object(z, 'github_goal_record', return_value={'key': 7, 'schema_version': 2}), \
+             mock.patch.object(z.subprocess, 'run', return_value=subprocess.CompletedProcess(
+                 [], 0, 'a' * 40 + '\trefs/heads/dev\n', '')):
+            self.assertEqual({}, transport.observe_release('owner/repo', 1)['members'])
+            self.assertEqual({'7'}, set(transport.observe_release('owner/repo', 2)['members']))
+
     def test_documented_command_help_is_reachable_in_subprocess(self):
         result = subprocess.run([sys.executable, str(fixtures.MODULE_PATH),
                                  'release', '--help'], capture_output=True, text=True)
