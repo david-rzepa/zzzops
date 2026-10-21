@@ -91,6 +91,8 @@ contracts until conversion completes.
 Pre-upgrade evidence can be reused when its recorded policy, task contract,
 inputs and live workspace proof establish exact compatibility. Missing historical
 authority or substantive drift requires fresh evidence; history is never rewritten.
+A disconnected completed proof permits fresh acquisition only from an entirely
+clean committed checkout; corrupt-proof errors retain priority.
 
 Late findings enter as phase data after all owners have been resolved. Submit
 `phase_finding` with a unique `request_id`, the actual root `actor`, a stable
