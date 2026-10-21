@@ -113,6 +113,27 @@ lazily; broad discovery never sweeps or hydrates closed goals. Unsupported
 versions and ambiguous mappings produce specific diagnostics. Preserve original
 transactions and resolve an uncertain write before attempting a replacement.
 
+### Migrated blocker resolution recovery
+
+`resolve_goal_blocker` identifies an obligation by the returned original
+goal-context hash and exact blocker-content hash. Legacy blockers need no added
+ID; identical duplicate blocker content remains ambiguous and cannot be
+resolved. Stop or recover every active owner first. Cite immutable current
+same-goal Result/output Refs and explain why they satisfy this exact obligation.
+For a human-action blocker, obtain explicit approval in the conversation and
+record both `approved_by` and `attribution`; do not infer approval from an old
+phase, matching words or unrelated evidence.
+
+The operation appends a versioned resolution event and ordinary committed
+request receipt. It never edits the authenticated original context or prior
+comments. Retry an uncertain publication with the identical request ID and
+payload. Exact replay returns the original response; changed bytes under the
+same ID are rejected. A later root may consume an authenticated historical
+resolution, while current task, workspace and publication authority must still
+be established independently. Missing or changed event content, provenance,
+evidence or receipt fails authentication; restore the exact immutable record
+rather than creating a replacement resolution.
+
 ### Stale workspace authorization
 
 Workspace-authorization producer Results include a host-authenticated

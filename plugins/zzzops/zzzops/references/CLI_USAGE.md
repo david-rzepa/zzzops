@@ -29,6 +29,17 @@ Execution migrates supported open v1 goals automatically, preserving history
 without granting authority. Preview/historical reads never migrate or reopen.
 For bulk/blocked conversion, read [schema migration](SCHEMA_MIGRATION.md).
 
+An unresolved migrated blocker is returned as `kind: goal_blocker_resolution`
+with a root-only `resolve_goal_blocker` submission. Supply the actual root actor,
+the returned original context and blocker hashes, a rationale, an explicit root
+resolution basis, and authentic current same-goal Result/output Refs. A
+`human-action` blocker also requires the approving user and exact conversational
+attribution. This is root judgement: approval text is never matched
+automatically. Resolution appends an immutable journal event and preserves the
+original migration context, dependencies, metadata, comments and phase Results.
+It does not acquire work or satisfy review, workspace, CI, merge or release
+gates. Preview exposes the contract without writing.
+
 ## Working inputs
 
 Capture, execute, migration, and policy-review checkpoints return a `working_input` object containing a stable ignored path and runnable commands. Ambiguous provider dispatches return an exact `working-input reconcile` command; active references return `working-input status`. See [WORKING_INPUTS.md](WORKING_INPUTS.md) for lifecycle and recovery rules.

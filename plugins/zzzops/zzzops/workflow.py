@@ -190,7 +190,7 @@ class ObservedArtifactIndex(comment_store.ArtifactIndex):
 # being routed through an unrelated installation, policy, lease, or portfolio
 # gate.
 PUBLIC_OPERATIONS = frozenset({
-    'batch', 'bind', 'block', 'phase_finding', 'graph_normalize', 'migration_batch', 'graph_prepare', 'graph_review', 'graph_adopt', 'graph_review_bootstrap',
+    'batch', 'bind', 'block', 'phase_finding', 'resolve_goal_blocker', 'graph_normalize', 'migration_batch', 'graph_prepare', 'graph_review', 'graph_adopt', 'graph_review_bootstrap',
     'checkpoint_reconcile_prepare', 'checkpoint_reconcile_review', 'checkpoint_reconcile_adopt',
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
     'feedback_submit', 'heartbeat', 'hydration_checkpoint', 'installation_record', 'integrate',
@@ -201,6 +201,10 @@ PUBLIC_OPERATIONS = frozenset({
 
 class VerificationUncertain(ValueError):
     """A started command has no durably observed terminal outcome."""
+
+
+class GoalContextResolutionAuthenticationError(ValueError):
+    """A persisted blocker-resolution journal failed immutable authentication."""
 
 
 class RenewalBudget:
@@ -2097,7 +2101,7 @@ class Workflow:
                     validated.add(ref['hash'])
                 return value
             payload = resolve(envelope['payload'])
-            ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'} | (set(payload) & {'phase_data', 'goal_context', 'workflow'}), 'Payload')
+            ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'} | (set(payload) & {'phase_data', 'goal_context', 'goal_context_resolutions', 'workflow'}), 'Payload')
             ev.contract_fields(payload['operational'], {'leases', 'receipts'}, 'Operational payload')
             if not isinstance(payload['evidence'], list): raise ValueError('Evidence must be an ordered Ref array')
             historical_graph = resolve(payload['graph'])
@@ -2156,6 +2160,8 @@ class Workflow:
             if source_artifact.get('type') != 'migration_source':
                 self.node_committed_legacy_requests(lineage, migration_context_only=True)
             recovered = lineage.get('historical_goal_context')
+            if recovered is not None and lineage.get('historical_goal_context_converter') == 'lossless-v1-v2/1':
+                recovered = copy.deepcopy(recovered); recovered['metadata'] = {}
             if 'goal_context' in payload:
                 metadata = resolve(payload['goal_context'])
                 if (metadata.get('type') != 'goal_context' or metadata.get('producer') is not None
@@ -2164,9 +2170,14 @@ class Workflow:
                         or metadata.get('provenance') not in lineage.get('goal_context_provenances', [])):
                     raise ValueError('Goal context lacks its exact authenticated migration source/policy lineage')
                 snapshot['goal_context'] = metadata['content']
+                snapshot['goal_context_ref'] = copy.deepcopy(payload['goal_context'])
+                snapshot['goal_context_provenance'] = copy.deepcopy(metadata['provenance'])
             elif recovered is not None:
-                snapshot['goal_context'] = recovered
+                snapshot['goal_context'] = copy.deepcopy(recovered)
                 snapshot['goal_context_provenance'] = lineage['goal_context_provenances'][-1]
+                context_artifact = {'type': 'goal_context', 'content': copy.deepcopy(snapshot['goal_context']),
+                    'producer': None, 'provenance': snapshot['goal_context_provenance']}
+                snapshot['goal_context_ref'] = remember(context_artifact)
             elif (source_artifact.get('provenance', {}).get('actor') in
                     ('lossless-v1-v2/1', self.api._migration_batch.LEGACY_COMPILED_CONVERTER)
                     or any(row['id'] == 'legacy_blockers'
@@ -2174,6 +2185,91 @@ class Workflow:
                            or 'Preserved engineering requirement:' in row['prompt']
                            for row in historical_graph['nodes'])):
                 raise ValueError('Historical goal constraints require the exact committed migration lineage; restore missing history')
+            if 'goal_context' in snapshot:
+                snapshot['original_goal_context'] = copy.deepcopy(snapshot['goal_context'])
+                resolution_journal = payload.get('goal_context_resolutions', {'version': 1, 'events': []})
+                if (not isinstance(resolution_journal, dict)
+                        or set(resolution_journal) != {'version', 'events'}
+                        or resolution_journal.get('version') != 1
+                        or not isinstance(resolution_journal.get('events'), list)):
+                    raise GoalContextResolutionAuthenticationError(
+                        'Unsupported or malformed goal-context resolution journal')
+                resolved, seen = [], set()
+                for reference in resolution_journal['events']:
+                    try:
+                        ev.validate_ref(reference)
+                        foreign = self.node_ref_goal(reference, n) != n
+                    except (ValueError, KeyError) as exc:
+                        raise GoalContextResolutionAuthenticationError(
+                            'Goal-context resolution event reference is malformed or foreign') from exc
+                    if foreign or reference['hash'] in seen:
+                        raise GoalContextResolutionAuthenticationError(
+                            'Goal-context resolution journal contains a foreign or duplicate event')
+                    seen.add(reference['hash'])
+                    try:
+                        event = resolve(reference)
+                    except (ValueError, KeyError) as exc:
+                        raise GoalContextResolutionAuthenticationError(
+                            'Goal-context resolution artifact checksum or content is unavailable') from exc
+                    provenance = event.get('provenance', {}) if isinstance(event, dict) else {}
+                    content = event.get('content', {}) if isinstance(event, dict) else {}
+                    required_content = {'context_hash', 'blocker_hash', 'rationale', 'resolution_basis', 'evidence'}
+                    if content.get('human_approval') is not None:
+                        required_content.add('human_approval')
+                    if (event.get('type') != 'goal_blocker_resolution' or event.get('producer') is not None
+                            or set(content) != required_content
+                            or set(provenance) != {'actor', 'repository', 'goal', 'request_id'}
+                            or provenance.get('repository') != self.repository or provenance.get('goal') != n
+                            or not isinstance(provenance.get('actor'), str) or not provenance['actor']
+                            or not isinstance(provenance.get('request_id'), str) or not provenance['request_id']
+                            or content.get('context_hash') != snapshot['goal_context_ref']['hash']
+                            or not isinstance(content.get('rationale'), str) or not content['rationale'].strip()
+                            or not isinstance(content.get('resolution_basis'), str) or not content['resolution_basis'].strip()
+                            or not isinstance(content.get('evidence'), list) or not content['evidence']):
+                        raise GoalContextResolutionAuthenticationError(
+                            'Goal-context resolution artifact or provenance is malformed')
+                    matches = [row for row in snapshot['original_goal_context']['blockers']
+                               if digest(row) == content.get('blocker_hash')]
+                    if len(matches) != 1:
+                        raise GoalContextResolutionAuthenticationError(
+                            'Goal-context resolution identifies an unknown or ambiguous blocker')
+                    human = matches[0].get('category') == 'human-action'
+                    approval = content.get('human_approval')
+                    if human and (not isinstance(approval, dict) or set(approval) != {'approved_by', 'attribution'}
+                                  or not all(isinstance(approval.get(key), str) and approval[key].strip()
+                                             for key in ('approved_by', 'attribution'))):
+                        raise GoalContextResolutionAuthenticationError(
+                            'Human-action blocker resolution lacks explicit approval attribution')
+                    if not human and approval is not None:
+                        raise GoalContextResolutionAuthenticationError(
+                            'Nonhuman blocker resolution contains fabricated human approval')
+                    for evidence in content['evidence']:
+                        try:
+                            ev.validate_ref(evidence)
+                            if evidence['uri'].startswith('git:') or self.node_ref_goal(evidence, n) != n:
+                                raise ValueError('foreign evidence')
+                            resolve(evidence)
+                        except (ValueError, KeyError) as exc:
+                            raise GoalContextResolutionAuthenticationError(
+                                'Goal-context resolution evidence is missing, forged, or foreign') from exc
+                    request = {'operation': 'resolve_goal_blocker', 'request_id': provenance['request_id'],
+                               'actor': provenance['actor'], **copy.deepcopy(content)}
+                    receipts = [row for row in payload['operational']['receipts']
+                                if row['request'] == provenance['request_id'] and row['payload'] == digest(request)]
+                    expected = {'next_steps': [{'kind': 'goal_blocker_resolved', 'goal': n,
+                                                'resolution': reference}]}
+                    try:
+                        receipt_response = resolve(receipts[0]['result']) if len(receipts) == 1 else None
+                    except (ValueError, KeyError) as exc:
+                        raise GoalContextResolutionAuthenticationError(
+                            'Goal-context resolution committed receipt response is missing or forged') from exc
+                    if receipt_response != expected:
+                        raise GoalContextResolutionAuthenticationError(
+                            'Goal-context resolution lacks its exact committed receipt')
+                    resolved.append(content['blocker_hash'])
+                snapshot['goal_context_resolution_events'] = copy.deepcopy(resolution_journal['events'])
+                snapshot['goal_context'] = self.api._static_workflow.resolved_goal_context(
+                    snapshot['original_goal_context'], resolved)
             retired_nodes = {row['id']: row for row in historical_graph['nodes']} \
                 .keys() - {row['id'] for row in graph['nodes']}
             # Compiler-generated routes are historical evidence, not additional
@@ -2572,6 +2668,7 @@ class Workflow:
                 if 'historical_goal_context' in snapshot and snapshot['historical_goal_context'] != recovered:
                     raise ValueError('Conflicting committed historical goal context')
                 snapshot['historical_goal_context'] = recovered
+                snapshot['historical_goal_context_converter'] = converter
                 snapshot['goal_context_provenances'] = [
                     {'actor': converter, 'source': receipt['source'], 'policy': receipt['policy']['hash']},
                     {'actor': 'host', 'source': step['receipt'], 'policy': receipt['policy']['hash']}]
@@ -4379,6 +4476,8 @@ class Workflow:
                 snapshot = handoff[2]
             else:
                 snapshot = self.node_snapshot(number)
+        except GoalContextResolutionAuthenticationError:
+            raise
         except (ValueError, KeyError, OSError) as exc: return [{
             'kind': 'blocker', 'goal': number, 'reason': str(exc),
             'action': 'Resolve the exact missing schema, evidence or authority.',
@@ -4576,8 +4675,35 @@ class Workflow:
     def node_frontier(self, snapshot, *, defer_envelope=False):
         """Format the same readiness and authority boundaries for both callers."""
         number = snapshot['number']
+        resolution_steps = []
+        context = snapshot.get('goal_context')
+        original = snapshot.get('original_goal_context')
+        context_ref = snapshot.get('goal_context_ref')
+        if context is not None and original is not None and context_ref is not None:
+            counts = {}
+            for blocker in original['blockers']:
+                identity = digest(blocker); counts[identity] = counts.get(identity, 0) + 1
+            for blocker in context['blockers']:
+                identity = digest(blocker)
+                if counts.get(identity) != 1 or blocker.get('status') in ('closed', 'resolved'):
+                    continue
+                submission = {'operation': 'resolve_goal_blocker', 'request_id': '<unique request id>',
+                    'actor': '<authenticated root>', 'context_hash': context_ref['hash'],
+                    'blocker_hash': identity, 'rationale': '<why this exact obligation is satisfied>',
+                    'resolution_basis': '<root attestation based on cited evidence>',
+                    'evidence': ['<authentic current same-goal Result/output Ref>']}
+                if blocker.get('category') == 'human-action':
+                    submission['human_approval'] = {
+                        'approved_by': '<approving user>',
+                        'attribution': '<exact approval attribution from the conversation>'}
+                resolution_steps.append({'kind': 'goal_blocker_resolution', 'assignment': 'root',
+                    'goal': number, 'blocker': copy.deepcopy(blocker),
+                    'reason': 'An authenticated migrated goal-context blocker remains open.',
+                    'action': ('Root must judge whether immutable current evidence satisfies this exact obligation. '
+                               'Human-action blockers also require explicit user approval attribution.'),
+                    'submission': submission})
         if snapshot.get('workflow_migration_blocker'):
-            return [{'kind': 'blocker', 'goal': number,
+            return [*resolution_steps, {'kind': 'blocker', 'goal': number,
                      'reason': snapshot['workflow_migration_blocker'],
                      'action': 'Preserve history and resolve the exact ownership or phase-data mapping; do not amend the goal graph.'}]
         projection = snapshot['projection']; steps = []
@@ -4658,7 +4784,7 @@ class Workflow:
         invalidated = projection.get('invalidated_ancestor_gates', [])
         for step in steps:
             step['invalidated_ancestor_gates'] = copy.deepcopy(invalidated)
-        return steps
+        return [*resolution_steps, *steps]
 
     def node_publication_authorities(self, snapshot):
         projection = snapshot['projection']; artifacts = snapshot['artifacts']; found = []
@@ -4927,8 +5053,8 @@ class Workflow:
         if snapshot.get('workflow_definition'):
             definition = snapshot['workflow_definition']
             payload['workflow'] = {'version': definition['version'], 'graph': add(definition['graph'])}
-        if snapshot.get('goal_context') and 'goal_context' not in payload:
-            payload['goal_context'] = add({'type': 'goal_context', 'content': snapshot['goal_context'],
+        if snapshot.get('original_goal_context') and 'goal_context' not in payload:
+            payload['goal_context'] = add({'type': 'goal_context', 'content': snapshot['original_goal_context'],
                 'producer': None, 'provenance': snapshot['goal_context_provenance']})
         payload['operational']['receipts'].append({'request': request['request_id'], 'payload': digest(request), 'result': add(response)})
         entry_payload = add(payload)
@@ -5110,6 +5236,85 @@ class Workflow:
             return self.node_mutate_phase(
                 number, request, prepared_verification=context['identity'])
 
+    def node_resolve_goal_blocker(self, snapshot, payload, request):
+        """Append one authenticated resolution without rewriting migration history."""
+        common = {'operation', 'request_id', 'actor', 'context_hash', 'blocker_hash',
+                  'rationale', 'resolution_basis', 'evidence'}
+        original = snapshot.get('original_goal_context')
+        context_ref = snapshot.get('goal_context_ref')
+        if original is None or context_ref is None:
+            raise ValueError('Goal has no authenticated migrated goal context')
+        matches = [row for row in original['blockers'] if digest(row) == request.get('blocker_hash')]
+        human = bool(matches) and all(row.get('category') == 'human-action' for row in matches)
+        expected = common | ({'human_approval'} if human else set())
+        if set(request) != expected:
+            raise ValueError('Goal blocker resolution requires the exact returned fields')
+        if (not isinstance(request['request_id'], str)
+                or re.fullmatch(r'[A-Za-z0-9._:-]{1,128}', request['request_id']) is None):
+            raise ValueError('Goal blocker resolution request_id is invalid')
+        root = (self.runtime or {}).get('root_id'); invoking = os.environ.get('CODEX_THREAD_ID')
+        if not root or request.get('actor') != root or (invoking and invoking != root):
+            raise ValueError('Goal blocker resolution requires the authenticated coordinating root actor')
+        if request.get('context_hash') != context_ref['hash']:
+            raise ValueError('Goal blocker resolution context is stale or unknown')
+        if len(matches) != 1:
+            raise ValueError('Goal blocker resolution identifies an unknown or ambiguous duplicate blocker')
+        blocker = matches[0]
+        if blocker.get('status') in ('closed', 'resolved'):
+            raise ValueError('Goal blocker is already closed or resolved')
+        effective = snapshot.get('goal_context', {})
+        if not any(digest(row) == request['blocker_hash'] for row in effective.get('blockers', [])):
+            raise ValueError('Goal blocker is already resolved')
+        if payload['operational']['leases']:
+            raise ValueError('Active ownership must be recovered or completed before resolving a goal blocker')
+        for name in ('rationale', 'resolution_basis'):
+            if not isinstance(request.get(name), str) or not request[name].strip():
+                raise ValueError('Goal blocker resolution requires a nonempty ' + name.replace('_', ' '))
+        evidence = request.get('evidence')
+        if not isinstance(evidence, list) or not evidence:
+            raise ValueError('Goal blocker resolution requires immutable current evidence')
+        if len({json.dumps(ref, sort_keys=True) for ref in evidence if isinstance(ref, dict)}) != len(evidence):
+            raise ValueError('Goal blocker resolution evidence must be unique')
+        current = set()
+        for result_ref, result in snapshot['projection']['current'].values():
+            current.add(result_ref['hash'])
+            current.update(ref['hash'] for ref in result['outputs'].values())
+        for ref in evidence:
+            self.api._phase_evidence.validate_ref(ref)
+            if ref['uri'].startswith('git:') or self.node_ref_goal(ref, snapshot['number']) != snapshot['number']:
+                raise ValueError('Goal blocker resolution evidence belongs to another goal')
+            value = snapshot['resolve'](ref)
+            if digest(value) != ref['hash']:
+                raise ValueError('Goal blocker resolution evidence checksum mismatch')
+            if ref['hash'] not in current:
+                raise ValueError('Goal blocker resolution evidence is stale or is not a current Result/output')
+        if human:
+            approval = request.get('human_approval')
+            if (not isinstance(approval, dict) or set(approval) != {'approved_by', 'attribution'}
+                    or not all(isinstance(approval.get(key), str) and approval[key].strip()
+                               for key in ('approved_by', 'attribution'))):
+                raise ValueError('Human-action blocker resolution requires explicit human approval attribution')
+        content = {key: copy.deepcopy(request[key]) for key in
+                   ('context_hash', 'blocker_hash', 'rationale', 'resolution_basis', 'evidence')}
+        if human:
+            content['human_approval'] = copy.deepcopy(request['human_approval'])
+        event = {'type': 'goal_blocker_resolution', 'content': content, 'producer': None,
+                 'provenance': {'actor': root, 'repository': self.repository,
+                                'goal': snapshot['number'], 'request_id': request['request_id']}}
+        reference = self.node_ref(digest(event), snapshot['number'])
+        snapshot['artifacts'][reference['hash']] = event
+        journal = payload.setdefault('goal_context_resolutions', {'version': 1, 'events': []})
+        if (not isinstance(journal, dict) or set(journal) != {'version', 'events'}
+                or journal.get('version') != 1 or not isinstance(journal.get('events'), list)):
+            raise ValueError('Unsupported goal-context resolution journal')
+        journal['events'].append(reference)
+        resolved = [snapshot['artifacts'][ref['hash']]['content']['blocker_hash']
+                    for ref in journal['events']]
+        self.api._static_workflow.resolved_goal_context(original, resolved)
+        response = {'next_steps': [{'kind': 'goal_blocker_resolved', 'goal': snapshot['number'],
+                                    'resolution': reference}]}
+        return self.node_persist(snapshot, payload, response, request)
+
     def node_phase_finding(self, snapshot, payload, request):
         """Record diagnostic phase data; independent review/admission grants work."""
         fields = {'operation', 'request_id', 'actor', 'target', 'subject', 'source', 'rationale', 'id'}
@@ -5212,6 +5417,8 @@ class Workflow:
                     if receipt['payload'] != digest(request): raise ValueError('Request receipt payload conflict')
                     return copy.deepcopy(snapshot['artifacts'][receipt['result']['hash']])
             pending = self.node_pending(snapshot, request)
+            if request['operation'] == 'resolve_goal_blocker':
+                return self.node_resolve_goal_blocker(snapshot, payload, request)
             if request['operation'] == 'phase_finding':
                 return self.node_phase_finding(snapshot, payload, request)
             if request['operation'] == 'graph_normalize':
