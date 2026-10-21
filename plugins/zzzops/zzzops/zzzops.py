@@ -2350,6 +2350,7 @@ def portfolio_snapshot(repo: Path, include_feedback: bool = False, *, timing: An
                             if section.get("id") == "git_review_release"), None)
     release_policy = ((release_section or {}).get("configuration") or {}).get("release_planning")
     if isinstance(release_policy, dict) and release_policy.get("enabled"):
+        repository = _project_repository_identity(project)
         plan = GitHubReleasePlanAdapter(repo, repository).read(repository)
         if plan is None:
             raise ValueError("Release planning is enabled but the repository release plan is missing")
@@ -2680,8 +2681,9 @@ class _GitHubReleaseTransport:
         members = {}
         frozen = (plan or {}).get("releases", {}).get(str(release), {}).get("members", {})
         goals = {row["key"]: row for row in snapshot["goals"]}
-        assigned = {int(key) for field in ("assignments", "cohorts")
-                    for key, value in (plan or {}).get(field, {}).items() if value == release}
+        enrolled = {int(key) for field in ("assignments", "cohorts")
+                    for key in (plan or {}).get(field, {})}
+        assigned = {key for key in enrolled if _releases.target_release(plan, key) == release}
         identities = set(map(int, frozen)) if frozen else assigned | {
             key for key, row in goals.items() if _releases.target_release(plan, key) == release
         }
@@ -2734,8 +2736,7 @@ class _GitHubReleaseTransport:
         commits = {value["integrated_commit"] for value in members.values()
                    if value.get("integrated_commit") and integrated(value["integrated_commit"])}
         owners = [key for key in identities if observe_goal(key)["leases"]]
-        future_ids = {int(key) for field in ("assignments", "cohorts")
-                      for key, target in (plan or {}).get(field, {}).items() if target > release}
+        future_ids = {key for key in enrolled if _releases.target_release(plan, key) > release}
         future = {observe_goal(key)["merge_commit"] for key in future_ids}
         future = {commit for commit in future if commit and integrated(commit)}
         ancestors = commits | future
@@ -2746,8 +2747,9 @@ class _GitHubReleaseTransport:
         project = reviewed_project_state(self.repo)
         plan = _releases.GitHubReleasePlanAdapter(self).read(repository) or {}
         target = _releases.target_release(plan, goal)
-        future_ids = {int(key) for field in ("assignments", "cohorts")
-                      for key, release in plan.get(field, {}).items() if release > target}
+        enrolled = {int(key) for field in ("assignments", "cohorts")
+                    for key in plan.get(field, {})}
+        future_ids = {key for key in enrolled if _releases.target_release(plan, key) > target}
         engine = workflow_engine(self.repo, project)
         forbidden = set()
         for number in future_ids:
@@ -2834,8 +2836,17 @@ def release_cli(repo: Path, command: str, input_path: Path | None = None):
             plan.setdefault("cohorts", {})
             for number in adapter.open_goal_ids() if hasattr(adapter, "open_goal_ids") else []:
                 plan["cohorts"].setdefault(str(number), _releases.target_release(plan, number))
-        elif current.get("request_id") != request["request_id"]:
-            raise ValueError("release configure is initialization-only; use assign or checkpoint for existing plans")
+        else:
+            receipt = current.get("operation_receipts", {}).get(request["request_id"])
+            if receipt is None:
+                raise ValueError("release configure is initialization-only; use assign or checkpoint for existing plans")
+            original = _releases._replay_result(adapter, repository, receipt)["plan"]
+            # Enrollment was derived once from provider state, not supplied by
+            # the caller. Replay against that frozen membership even if goals
+            # or assignments changed after initialization. persist_plan still
+            # authenticates the complete effective plan and expected revision.
+            for key, release in original.get("cohorts", {}).items():
+                plan.setdefault("cohorts", {}).setdefault(key, release)
         return _releases.persist_plan(adapter, repository, plan,
             expected_revision=request["expected_revision"], request_id=request["request_id"])
     if command == "assign":
@@ -4475,6 +4486,8 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(',', ':')))
         return 0
     command_index = 3 if len(argv) > 2 and argv[1] == '--repo' else 1
+    if len(argv) > command_index and argv[command_index] == 'release':
+        return release_main(argv[1:command_index] + argv[command_index + 1:])
     if len(argv) > command_index and argv[command_index] == 'workflow':
         argv.pop(command_index)
     if '--intent' in argv:
@@ -4584,6 +4597,28 @@ def main() -> int:
             except (OSError, ValueError, subprocess.SubprocessError):
                 pass
         print(json.dumps(failure, ensure_ascii=False, separators=(",", ":")))
+        return 2
+
+
+def release_main(argv: list[str]) -> int:
+    """Expose only the documented release operations, not legacy adapters."""
+    class ReleaseParser(argparse.ArgumentParser):
+        def error(self, message):
+            raise ValueError(message)
+    parser = ReleaseParser(description='ZzzOps release planning')
+    parser.add_argument('--repo', type=Path, default=Path.cwd())
+    commands = parser.add_subparsers(dest='command', required=True)
+    for name in ('status', 'configure', 'assign', 'checkpoint', 'approve', 'publication'):
+        command = commands.add_parser(name)
+        command.add_argument('--repo', type=Path, default=argparse.SUPPRESS)
+        if name != 'status': command.add_argument('--input', type=Path, required=True)
+    try:
+        args = parser.parse_args(argv)
+        result = release_cli(args.repo.resolve(), args.command, getattr(args, 'input', None))
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(',', ':')))
+        return 2 if result.get('status') == 'blocked' else 0
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
+        print(json.dumps({'status': 'blocked', 'reason': str(exc)}, ensure_ascii=False))
         return 2
 
 

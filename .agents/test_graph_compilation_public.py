@@ -76,7 +76,7 @@ class GraphCompilationPublicTests(dag.DagFixture):
                     args = ["zzzops", "--repo", str(root), "release", *argv]
                     if payload is not None: args += ["--input", str(request)]
                     with mock.patch.object(sys, "argv", args), contextlib.redirect_stdout(io.StringIO()) as output:
-                        self.assertEqual(expected_code, dag.z._private_main())
+                        self.assertEqual(expected_code, dag.z.main())
                     return json.loads(output.getvalue())
                 configured = invoke("configure", payload={"request_id": "configure-1", "expected_revision": None,
                     "plan": {"next_release": 1, "assignments": {}, "releases": {}}})
