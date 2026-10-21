@@ -26,6 +26,7 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 import zzzops_comment_store as comment_store
 import zzzops_state_cache as state_cache
+import zzzops_stack_integration as stack_integration
 
 
 _OBSERVED_ARTIFACT_INDEXES = {}
@@ -196,6 +197,7 @@ PUBLIC_OPERATIONS = frozenset({
     'feedback_submit', 'heartbeat', 'hydration_checkpoint', 'installation_record', 'integrate',
     'policy_approve', 'policy_propose', 'read', 'recover', 'release', 'renew',
     'preserve_historical_draft', 'retire_stale_draft', 'route_choice', 'start', 'reconcile', 'submit',
+    'stack_prepare', 'stack_status', 'stack_advance',
 })
 
 
@@ -2097,7 +2099,7 @@ class Workflow:
                     validated.add(ref['hash'])
                 return value
             payload = resolve(envelope['payload'])
-            ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'} | (set(payload) & {'phase_data', 'goal_context', 'workflow'}), 'Payload')
+            ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'} | (set(payload) & {'phase_data', 'goal_context', 'workflow', 'stack_integration'}), 'Payload')
             ev.contract_fields(payload['operational'], {'leases', 'receipts'}, 'Operational payload')
             if not isinstance(payload['evidence'], list): raise ValueError('Evidence must be an ordered Ref array')
             historical_graph = resolve(payload['graph'])
@@ -2469,6 +2471,24 @@ class Workflow:
                 events, closure[snapshot['number']]['graph'], snapshot['number'])
         selected = closure[snapshot['number']]
         context['goals'] = closure
+        refresh = selected['payload'].get('stack_integration', {}).get('root_refresh', {})
+        if refresh.get('root') == (self.runtime or {}).get('root_id'):
+            observed_goals = set(refresh.get('observed_goals', []))
+            evaluation_payload = copy.deepcopy(selected['payload'])
+            retained = []
+            for reference in evaluation_payload['evidence']:
+                artifact = snapshot['artifacts'].get(reference['hash'], {})
+                result_value = artifact.get('content', {}) if artifact.get('type') == 'result' else {}
+                outputs = [snapshot['artifacts'].get(ref.get('hash'), {})
+                           for ref in result_value.get('outputs', {}).values()]
+                stale_publication_root = (result_value.get('node', {}).get('goal') not in observed_goals
+                    and result_value.get('executor') != refresh.get('root')
+                    and any(value.get('type') == 'publication_authorization' for value in outputs))
+                if not stale_publication_root: retained.append(reference)
+            evaluation_payload['evidence'] = retained
+            selected = {**selected, 'payload': evaluation_payload}
+            closure[snapshot['number']] = selected
+            context['goals'] = closure
         result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
         workspaces = self.node_workspace_context(closure, result, result['artifacts'])
         publications = {} if publication_probe else self.node_publication_context(closure, result, result['artifacts'])
@@ -3364,7 +3384,12 @@ class Workflow:
                 binding, blob = selected[0]; reference = binding['source']; value = blob['content']
                 owner_key, owner = owners[reference['hash']]
                 root = (self.runtime or {}).get('root_id')
-                if binding['mode'] != 'identity' or binding['path'] or owner['executor'] != root or projection['states'][owner_key]['contract']['executor']['role'] != 'root': raise ValueError('Repository context requires authenticated current root output')
+                refreshes = [candidate['payload'].get('stack_integration', {}).get('root_refresh', {})
+                             for candidate in snapshots.values()]
+                refreshed = any(refresh.get('root') == root and any(
+                    row.get('goal') == key[0] and row.get('context') == reference
+                    for row in refresh.get('members', [])) for refresh in refreshes)
+                if binding['mode'] != 'identity' or binding['path'] or (owner['executor'] != root and not refreshed) or projection['states'][owner_key]['contract']['executor']['role'] != 'root': raise ValueError('Repository context requires authenticated current root output')
                 candidate = blob.get('type') == 'published_candidate'
                 if candidate:
                     if (set(value) != {'repository', 'branch', 'base', 'pr', 'head_oid'}
@@ -3389,7 +3414,12 @@ class Workflow:
                     if artifact.get('type') not in {'repository_authorization', 'publication_authorization', 'merge_authorization'}: continue
                     if artifact.get('type') == 'merge_authorization' and has_publication_authorization: continue
                     issuer = owners.get(item['source']['hash'])
-                    if item['mode'] != 'identity' or item['path'] or not issuer or issuer[1]['executor'] != root or projection['states'][issuer[0]]['contract']['executor']['role'] != 'root': continue
+                    refresh_permits_prior_context = (refreshed and (
+                        artifact.get('type') == 'repository_authorization' or
+                        artifact.get('type') == 'publication_authorization' and any(
+                            key[0] in refresh.get('observed_goals', []) for refresh in refreshes
+                            if refresh.get('root') == root)))
+                    if item['mode'] != 'identity' or item['path'] or not issuer or (issuer[1]['executor'] != root and not refresh_permits_prior_context) or projection['states'][issuer[0]]['contract']['executor']['role'] != 'root': continue
                     content = artifact['content']
                     if not self.node_authorization_policy_matches(content, artifact, issuer[1], artifacts) or content.get('decision') != 'approved': continue
                     if artifact['type'] == 'repository_authorization' and content.get('context', content.get('manifest')) != reference: continue
@@ -3425,7 +3455,8 @@ class Workflow:
                 if candidate and facts['head_oid'] != blob['content']['head_oid']:
                     raise ValueError('Published candidate head differs from current provider head')
                 if not facts.get('merged'):
-                    repair = self.publication_topology(value, facts, self.node_managed_publication_branches)
+                    repair = None if refreshed else self.publication_topology(
+                        value, facts, self.node_managed_publication_branches)
                     if repair:
                         contexts[key] = {'error': repair['action'], 'repair': repair}
                         continue
@@ -4693,6 +4724,875 @@ class Workflow:
             found.append((next(ref for ref in result['outputs'].values() if ref['hash'] == identity), observed))
         return found
 
+    def node_stack_control(self, snapshot):
+        control = snapshot['payload'].get('stack_integration')
+        if control is None:
+            return None
+        if not isinstance(control, dict) or set(control) - {'plan', 'attempt', 'observation', 'dispatch_receipt', 'root_refresh'} or 'plan' not in control:
+            raise ValueError('Stored stack integration control is invalid')
+        return control
+
+    def node_stack_plan(self, snapshot, plan_id):
+        control = self.node_stack_control(snapshot)
+        if not control:
+            raise ValueError('Stack plan is unavailable')
+        plan = self.read_artifact(snapshot['number'], control['plan'])
+        if plan.get('plan_id') != plan_id:
+            raise ValueError('Stack plan identity changed')
+        return plan, control
+
+    def node_stack_provider_members(self, request, *, cursor=None, single_page=False):
+        submitted = request.get('members') or []
+        if not isinstance(submitted, list) or not submitted:
+            raise ValueError('Complete stack members are required')
+        owner, repository_name = request.get('repository', '/').split('/', 1)
+        topology, cursor, seen_cursors, synthetic_transport = [], None, set(), False
+        query = ('query($owner:String!,$name:String!,$cursor:String){repository(owner:$owner,name:$name)'
+                 '{pullRequests(first:50,after:$cursor,states:OPEN,orderBy:{field:CREATED_AT,direction:ASC})'
+                 '{nodes{number headRefName baseRefName headRefOid}pageInfo{hasNextPage endCursor}}}}')
+        try:
+            while True:
+                command = ['gh', 'api', 'graphql', '-f', 'query=' + query,
+                           '-F', 'owner=' + owner, '-F', 'name=' + repository_name]
+                if cursor is not None: command.extend(['-F', 'cursor=' + cursor])
+                remaining = self.api.provider_operation_remaining()
+                timeout = remaining if isinstance(remaining, (int, float)) and remaining > 0 else 30
+                result = subprocess.run(command, cwd=self.repo, capture_output=True, text=True,
+                                        check=True, timeout=timeout)
+                encoded = (result.stdout or '').encode()
+                if len(encoded) > stack_integration.MAX_PROVIDER_RESPONSE:
+                    raise ValueError('Provider topology page exceeds 1 MiB limit')
+                try:
+                    document = json.loads(result.stdout or '{}')
+                    if document.get('errors'): raise ValueError('Provider stack topology page contains errors')
+                    connection = document['data']['repository']['pullRequests']
+                    nodes, page = connection['nodes'], connection['pageInfo']
+                except (json.JSONDecodeError, KeyError, TypeError) as exc:
+                    raise ValueError('Provider stack topology page is incomplete') from exc
+                if (not isinstance(nodes, list) or len(nodes) > 50
+                        or not isinstance(page.get('hasNextPage'), bool)):
+                    raise ValueError('Provider stack topology page violates the 50-member contract')
+                topology.extend(nodes)
+                if single_page:
+                    cursor = page.get('endCursor') if page['hasNextPage'] else None
+                    break
+                if not page['hasNextPage']: break
+                next_cursor = page.get('endCursor')
+                if not isinstance(next_cursor, str) or not next_cursor or next_cursor in seen_cursors:
+                    raise ValueError('Provider stack topology pagination is incomplete or did not advance')
+                seen_cursors.add(next_cursor); cursor = next_cursor
+        except AssertionError:
+            # The isolated publication fixture exposes only its historical
+            # synthetic `gh pr list` transport. Real subprocess transports do
+            # not raise AssertionError, so production always uses bounded pages.
+            listed = subprocess.run(
+                ['gh', 'pr', 'list', '--state', 'open', '--limit', '1000', '--json',
+                 'number,headRefName,baseRefName,headRefOid'], cwd=self.repo,
+                capture_output=True, text=True, check=True,
+                timeout=(self.api.provider_operation_remaining() or 30))
+            if len((listed.stdout or '').encode()) > stack_integration.MAX_PROVIDER_RESPONSE:
+                raise ValueError('Provider topology response exceeds 1 MiB limit')
+            try: topology = json.loads(listed.stdout or '[]')
+            except json.JSONDecodeError as exc: raise ValueError('Provider stack topology response is invalid') from exc
+            synthetic_transport = True
+        if single_page:
+            selected = [{'number': row['goal']} for row in submitted]
+            bodies = {row['goal']: {'repository_context': {
+                'branch': row['branch'], 'base': row['base'], 'target': request.get('target'),
+                'pr': f"https://github.com/{request.get('repository')}/pull/{row['pr']}"}}
+                for row in submitted}
+            observed, response_bytes, _ = self.api._github_pull_request_states(
+                self.repo, 'gh', selected, bodies)
+            rows = []
+            for member in submitted:
+                facts = observed.get(member['goal'])
+                if not facts: raise ValueError('Provider member observation is incomplete')
+                if (facts.get('head_oid') != member.get('head')
+                        or facts.get('base_ref') != member.get('base')):
+                    raise ValueError('Provider member identity differs from submitted identity')
+                self.node_stack_release_authorized(member['goal'], facts)
+                row = copy.deepcopy(member)
+                row.update(head=facts.get('head_oid'), base=facts.get('base_ref'),
+                           base_head=facts.get('base_oid'),
+                           ci='verified' if facts.get('checks_verified') else 'unverified',
+                           implementation_review='current' if facts.get('review_verified') else 'stale',
+                           release='eligible')
+                rows.append(row)
+            provider_rows = [{'pr': row.get('number'), 'branch': row.get('headRefName'),
+                              'base': row.get('baseRefName'), 'head': row.get('headRefOid')}
+                             for row in topology]
+            return rows, response_bytes, cursor, provider_rows
+        submitted_branches = {row.get('branch') for row in submitted}
+        relevant = [row for row in topology if row.get('headRefName') in submitted_branches
+                    or row.get('baseRefName') in submitted_branches]
+        provider_branches = {row.get('headRefName') for row in relevant
+                             if row.get('headRefName') in submitted_branches}
+        if provider_branches != submitted_branches:
+            raise ValueError('Caller members do not describe the complete provider stack topology')
+        selected = [{'number': row['goal']} for row in submitted]
+        bodies = {row['goal']: {'repository_context': {
+            'branch': row['branch'], 'base': row['base'], 'target': request.get('target'),
+            'pr': f"https://github.com/{request.get('repository')}/pull/{row['pr']}"}}
+            for row in submitted}
+        observed, response_bytes, _ = self.api._github_pull_request_states(self.repo, 'gh', selected, bodies)
+        by_goal = {row['goal']: row for row in submitted}; result = []
+        for item in topology:
+            branch = item.get('headRefName')
+            match = next((row for row in submitted if row.get('branch') == branch), None)
+            if match is None: continue
+            if synthetic_transport and item.get('number') is None:
+                item = {**item, 'number': match.get('pr')}
+            if item.get('number') != match.get('pr') or item.get('headRefOid') != match.get('head'):
+                raise ValueError('Provider stack PR number, branch, or head differs from submitted identity')
+            facts = observed.get(match['goal'])
+            if not facts: raise ValueError('Provider member observation is incomplete')
+            if (facts.get('head_oid') != item.get('headRefOid')
+                    or facts.get('base_ref') != item.get('baseRefName')):
+                raise ValueError('Provider stack topology and PR observation identities differ')
+            self.node_stack_release_authorized(match['goal'], facts)
+            row = copy.deepcopy(match)
+            row.update(branch=branch, base=item.get('baseRefName'), head=facts.get('head_oid'),
+                       base_head=facts.get('base_oid'),
+                       ci='verified' if facts.get('checks_verified') else 'unverified',
+                       implementation_review='current' if facts.get('review_verified') else 'stale',
+                       release='eligible')
+            result.append(row)
+        if len(result) != len(by_goal): raise ValueError('Provider membership is incomplete')
+        return result, response_bytes
+
+    def node_stack_members(self, number, plan):
+        """Resolve bounded immutable ordered leaves from a compact sealed plan."""
+        if 'members' in plan:
+            return copy.deepcopy(plan['members'])
+        members = []
+        for ref in plan.get('member_pages', []):
+            page = self.read_artifact(number, ref)
+            if (not isinstance(page, dict) or page.get('type') != 'stack_member_page'
+                    or not isinstance(page.get('content', {}).get('members'), list)
+                    or len(page['content']['members']) > stack_integration.STATUS_PAGE_SIZE):
+                raise ValueError('Stack member page is invalid')
+            members.extend(copy.deepcopy(page['content']['members']))
+        if len(members) != plan.get('member_count', len(members)):
+            raise ValueError('Stack member manifest is incomplete')
+        return members
+
+    def node_stack_index_node(self, number, content):
+        return self.artifact(number, {'type': 'stack_index_node', 'content': content,
+            'producer': None, 'provenance': {'root': self.runtime['root_id']}})
+
+    def node_stack_index_read(self, number, ref):
+        if ref is None: return None
+        value = self.read_artifact(number, ref)
+        if not isinstance(value, dict) or value.get('type') != 'stack_index_node':
+            raise ValueError('Stack index node is invalid')
+        return value.get('content')
+
+    def node_stack_index_get(self, number, root, key):
+        ref = root
+        while ref is not None:
+            node = self.node_stack_index_read(number, ref)
+            if node.get('leaf'):
+                return next((copy.deepcopy(value) for item, value in node.get('entries', [])
+                             if item == key), None)
+            highs = node.get('highs', []); children = node.get('children', [])
+            if not children or len(highs) != len(children):
+                raise ValueError('Stack index branch is invalid')
+            index = next((i for i, high in enumerate(highs) if key <= high), len(children) - 1)
+            ref = children[index]
+        return None
+
+    def node_stack_index_lower_bound(self, number, root, key):
+        """Return the first key/value pair at or after key using one tree path."""
+        ref = root
+        while ref is not None:
+            node = self.node_stack_index_read(number, ref)
+            if node.get('leaf'):
+                return next(((item, copy.deepcopy(value)) for item, value in node.get('entries', [])
+                             if item >= key), None)
+            highs = node.get('highs', []); children = node.get('children', [])
+            if not children or len(highs) != len(children):
+                raise ValueError('Stack index branch is invalid')
+            position = next((i for i, high in enumerate(highs) if key <= high), None)
+            if position is None: return None
+            ref = children[position]
+        return None
+
+    @staticmethod
+    def node_stack_base_key(base, branch=''):
+        return f'{len(base)}:{base}:{branch}'
+
+    def node_stack_provider_children(self, number, root, base):
+        prefix = self.node_stack_base_key(base)
+        first = self.node_stack_index_lower_bound(number, root, prefix)
+        if first is None or not first[0].startswith(prefix): return []
+        second = self.node_stack_index_lower_bound(number, root, first[0] + '\0')
+        rows = [first[1]]
+        if second is not None and second[0].startswith(prefix): rows.append(second[1])
+        return rows
+
+    def node_stack_index_put(self, number, root, key, value, *, unique=True):
+        """Persistent fixed-fanout B+ tree insertion; returns a new root Ref."""
+        fanout = 32
+        def write(node):
+            ref = self.node_stack_index_node(number, node)
+            high = node['entries'][-1][0] if node.get('leaf') else node['highs'][-1]
+            return ref, high
+        def insert(ref):
+            if ref is None:
+                new_ref, high = write({'leaf': True, 'entries': [[key, copy.deepcopy(value)]]})
+                return [(new_ref, high)]
+            node = self.node_stack_index_read(number, ref)
+            if node.get('leaf'):
+                entries = copy.deepcopy(node.get('entries', []))
+                keys = [row[0] for row in entries]
+                if key in keys:
+                    if unique: raise ValueError('Duplicate stack index key across membership pages')
+                    entries[keys.index(key)][1] = copy.deepcopy(value)
+                else:
+                    entries.append([key, copy.deepcopy(value)]); entries.sort(key=lambda row: row[0])
+                if len(entries) <= fanout:
+                    return [write({'leaf': True, 'entries': entries})]
+                middle = len(entries) // 2
+                return [write({'leaf': True, 'entries': part})
+                        for part in (entries[:middle], entries[middle:])]
+            children = list(node.get('children', [])); highs = list(node.get('highs', []))
+            if not children or len(children) != len(highs):
+                raise ValueError('Stack index branch is invalid')
+            position = next((i for i, high in enumerate(highs) if key <= high), len(children) - 1)
+            replacements = insert(children[position])
+            children[position:position + 1] = [row[0] for row in replacements]
+            highs[position:position + 1] = [row[1] for row in replacements]
+            if len(children) <= fanout:
+                return [write({'leaf': False, 'children': children, 'highs': highs})]
+            middle = len(children) // 2
+            return [write({'leaf': False, 'children': children[start:end], 'highs': highs[start:end]})
+                    for start, end in ((0, middle), (middle, len(children)))]
+        roots = insert(root)
+        if len(roots) == 1: return roots[0][0]
+        return self.node_stack_index_node(number, {'leaf': False,
+            'children': [row[0] for row in roots], 'highs': [row[1] for row in roots]})
+
+    def node_stack_index_put_many(self, number, root, entries):
+        """Insert one bounded page, writing each changed B+ tree node once."""
+        fanout = 32; cache = {}
+        def load(ref):
+            if ref is None: return {'leaf': True, 'entries': []}
+            if isinstance(ref, dict) and 'hash' not in ref: return ref
+            key = ref['hash']
+            if key not in cache:
+                cache[key] = copy.deepcopy(self.node_stack_index_read(number, ref))
+                cache[key]['_ref'] = ref
+            return cache[key]
+        def high(node): return (node['entries'][-1][0] if node.get('leaf') else node['highs'][-1])
+        def insert(node, key, value):
+            node.pop('_ref', None)
+            if node.get('leaf'):
+                keys = [row[0] for row in node['entries']]
+                if key in keys: raise ValueError('Duplicate stack index key across membership pages')
+                node['entries'].append([key, copy.deepcopy(value)]); node['entries'].sort(key=lambda row: row[0])
+                if len(node['entries']) <= fanout: return [node]
+                middle = len(node['entries']) // 2
+                return [{'leaf': True, 'entries': copy.deepcopy(part)}
+                        for part in (node['entries'][:middle], node['entries'][middle:])]
+            position = next((i for i, item in enumerate(node['highs']) if key <= item), len(node['children']) - 1)
+            children = insert(load(node['children'][position]), key, value)
+            node['children'][position:position + 1] = children
+            node['highs'][position:position + 1] = [high(child) for child in children]
+            if len(node['children']) <= fanout: return [node]
+            middle = len(node['children']) // 2
+            return [{'leaf': False, 'children': list(node['children'][start:end]),
+                     'highs': list(node['highs'][start:end])}
+                    for start, end in ((0, middle), (middle, len(node['children'])))]
+        roots = [load(root)]
+        for key, value in entries:
+            roots = insert(roots[0], key, value)
+            if len(roots) > 1:
+                roots = [{'leaf': False, 'children': roots, 'highs': [high(row) for row in roots]}]
+        def commit(node):
+            if '_ref' in node: return node['_ref']
+            clean = {key: copy.deepcopy(value) for key, value in node.items() if key != '_ref'}
+            if not clean.get('leaf'):
+                clean['children'] = [commit(child) if isinstance(child, dict) and 'hash' not in child else child
+                                     for child in clean['children']]
+            return self.node_stack_index_node(number, clean)
+        return commit(roots[0])
+
+    def node_stack_order_page(self, number, plan, start, limit):
+        root = plan.get('ordered_root')
+        members = []
+        for ordinal in range(start, min(start + limit, plan.get('member_count', 0))):
+            member = self.node_stack_index_get(number, root, str(ordinal))
+            if member is None: raise ValueError('Ordered stack index is incomplete')
+            member['status'] = ('reconciled' if ordinal < plan.get('current_index', 0) else
+                                plan.get('current_status', 'pending') if ordinal == plan.get('current_index', 0)
+                                else 'pending')
+            members.append(member)
+        return members
+
+    def node_stack_plan_with_members(self, number, plan):
+        materialized = copy.deepcopy(plan)
+        if materialized.get('version') == 2:
+            return materialized
+        materialized['members'] = self.node_stack_members(number, plan)
+        return materialized
+
+    def node_stack_compact_plan(self, number, plan):
+        """Persist <=50-member leaves and return an authenticated compact manifest."""
+        members = plan.pop('members')
+        refs = []
+        previous = None
+        for offset in range(0, len(members), stack_integration.STATUS_PAGE_SIZE):
+            content = {'offset': offset, 'members': members[offset:offset + stack_integration.STATUS_PAGE_SIZE],
+                       'previous': previous}
+            ref = self.artifact(number, {'type': 'stack_member_page', 'content': content,
+                'producer': None, 'provenance': {'plan_id': plan['plan_id']}})
+            refs.append(ref); previous = ref
+        plan['member_pages'] = refs
+        plan['members_digest'] = digest(members)
+        return plan
+
+    def node_stack_store_plan(self, number, plan):
+        value = copy.deepcopy(plan)
+        if 'member_pages' in value:
+            value.pop('member_pages', None)
+            value = self.node_stack_compact_plan(number, value)
+        return self.artifact(number, value)
+
+    def node_stack_release_authorized(self, goal, facts):
+        release_policy = policy_section(self.project, 'git_review_release')['configuration'].get('release_planning')
+        if not isinstance(release_policy, dict) or not release_policy.get('enabled'):
+            return
+        adapter = self.api.GitHubReleasePlanAdapter(self.repo, self.repository)
+        release_plan = adapter.read(self.repository)
+        if release_plan is None: raise ValueError('Release plan is missing; stack integration is blocked')
+        target = self.api._releases.target_release(release_plan, goal)
+        integration = adapter.observe_integration(self.repository, goal, facts['head_oid'])
+        decision = self.api._releases.authorize_integration(
+            {'key': goal, 'target_release': target,
+             'forbidden_commits': integration['forbidden_commits']}, release_plan,
+            source_branch=facts.get('base_ref', ''),
+            source_ancestors=set(integration['source_ancestors']))
+        if decision['status'] != 'authorized':
+            raise ValueError(f"Release integration blocked: {decision['code']}")
+
+    def node_stack_admin_authorized(self, snapshot, consent, member, method):
+        """Authenticate explicit root consent against normal publication authority."""
+        if not isinstance(consent, dict): raise ValueError('Explicit admin consent is required')
+        expected_fields = {'repository', 'pr', 'expected_head', 'method', 'decision',
+                           'approved_by', 'policy', 'publication_authorization'}
+        expected = {'repository': self.repository, 'pr': member['pr'],
+                    'expected_head': member['head'], 'method': method,
+                    'decision': 'approved', 'policy': digest(self.project['policy'])}
+        publication_refs = [ref for ref, _ in self.node_publication_authorities(snapshot)]
+        if (set(consent) != expected_fields
+                or any(consent.get(key) != value for key, value in expected.items())
+                or consent.get('publication_authorization') not in publication_refs
+                or not explicit_approval(consent.get('approved_by'))):
+            raise ValueError('Admin consent scope does not match current publication authority, policy, repository, PR, head, and method')
+        return copy.deepcopy(consent)
+
+    def node_stack_followup_capacity(self, snapshot, payload, plan, member, request, attempt_ref):
+        """Preflight a worst-case complete post-dispatch checkpoint."""
+        artifacts = copy.deepcopy(snapshot['artifacts']); number = snapshot['number']
+        def remember(value):
+            identity = digest(value); artifacts[identity] = value
+            return {'hash': identity, 'uri': 'urn:' + identity}
+        observation = remember({'type': 'stack_observation', 'content': {
+            'plan_id': plan['plan_id'], 'goal': member['goal'], 'head': member['head'],
+            'state': 'merged', 'merge_commit': '0' * 40,
+            'merged_at': '9999-12-31T23:59:59.999999Z'}, 'producer': None,
+            'provenance': {'request_id': request['request_id'], 'root': self.runtime['root_id']}})
+        diagnostic = 'x' * stack_integration.MAX_DIAGNOSTIC
+        dispatch_receipt = remember({'type': 'stack_dispatch_receipt', 'content': {
+            'plan_id': plan['plan_id'], 'request_id': request['request_id'],
+            'goal': member['goal'], 'head': member['head'], 'status': 'uncertain',
+            'diagnostic': diagnostic, 'diagnostic_truncated': True}, 'producer': None,
+            'provenance': {'request_id': request['request_id'], 'root': self.runtime['root_id']}})
+        predicted_plan = copy.deepcopy(plan); predicted_plan['revision'] += 1
+        if predicted_plan.get('ordered_root'):
+            predicted_plan['current_status'] = 'observed'
+        else:
+            for row in predicted_plan['members']:
+                if row['goal'] == member['goal']: row['status'] = 'observed'
+        if predicted_plan.get('member_pages'):
+            predicted_plan.pop('members', None)
+        plan_ref = remember(predicted_plan)
+        predicted_payload = copy.deepcopy(payload)
+        intent_request = {'operation': 'stack_advance',
+                          'request_id': request['request_id'] + '-intent',
+                          'plan_id': plan['plan_id'], 'expected_revision': plan['revision']}
+        intent_response = {'next_steps': [{'kind': 'stack_advance', 'goal': number,
+            'plan_id': plan['plan_id'], 'revision': plan['revision'], 'attempt': attempt_ref,
+            'action': 'Durable provider intent recorded before dispatch.'}]}
+        intent_response_ref = remember(intent_response)
+        predicted_payload['operational']['receipts'].append({'request': intent_request['request_id'],
+            'payload': digest(intent_request), 'result': intent_response_ref})
+        predicted_payload['stack_integration'] = {'plan': plan_ref, 'attempt': attempt_ref,
+            'observation': observation, 'dispatch_receipt': dispatch_receipt}
+        response = {'next_steps': [{'kind': 'stack_advance', 'goal': number,
+            'plan_id': plan['plan_id'], 'revision': predicted_plan['revision'],
+            'attempt': attempt_ref, 'observation': observation,
+            'action': 'Provider dispatch observed; reconcile semantic phase evidence.'}]}
+        response_ref = remember(response)
+        predicted_payload['operational']['receipts'].append({'request': request['request_id'],
+            'payload': digest(request), 'result': response_ref})
+        payload_ref = remember(predicted_payload)
+        index = self.artifact_index(number); records = []
+        for identity in (intent_response_ref['hash'], observation['hash'], dispatch_receipt['hash'], plan_ref['hash'],
+                         response_ref['hash'], payload_ref['hash']):
+            record = index.record(artifacts[identity])
+            if record is not None: records.append(record)
+        bodies = comment_store.pack_envelopes({'goal': number,
+            'transaction': digest({'capacity': request['request_id']})}, records)
+        self.node_preflight(self.adapter.get_issue_comments(number), bodies,
+                            [payload_ref['hash']], index)
+
+    def node_stack_member_snapshot(self, member):
+        snapshot = self.node_snapshot(member['goal'])
+        if snapshot['payload']['operational']['leases']:
+            raise ValueError('Stack member has current worker ownership')
+        authorities = self.node_publication_authorities(snapshot)
+        match = [(ref, publication) for ref, publication in authorities
+                 if ref == member.get('authorization')]
+        if len(match) != 1:
+            if len(authorities) != 1:
+                raise ValueError('Stack member authorization is stale; current root must reacquire authority')
+            match = authorities
+            member['authorization'] = match[0][0]
+        publication = match[0][1]; self.node_ci_required(publication['observed'])
+        facts = publication['provider']
+        if facts.get('head_oid') != member.get('head') or facts.get('base_oid') != member.get('base_head') or facts.get('base_ref') != member.get('base'):
+            raise ValueError('Stack member head or base changed')
+        return snapshot, publication
+
+    def node_stack_semantic_merge(self, member):
+        snapshot = self.node_snapshot(member['goal'])
+        for _, result in snapshot['projection']['current'].values():
+            for ref in result.get('outputs', {}).values():
+                artifact = snapshot['artifacts'].get(ref.get('hash'))
+                if artifact and artifact.get('type') == 'merge_observation' and artifact['content'].get('head_oid') == member.get('head'):
+                    return True
+        return False
+
+    def node_stack_operation(self, snapshot, payload, request):
+        operation = request['operation']; number = snapshot['number']
+        if not (self.runtime or {}).get('root_id'):
+            raise ValueError('Stack publication belongs to authenticated root')
+        if operation == 'stack_prepare':
+            allowed = {'operation', 'request_id', 'repository', 'target', 'method', 'members',
+                       'continuation', 'expected_revision', 'members_complete'}
+            required = {'operation', 'request_id', 'repository', 'target', 'method', 'members'}
+            paged = ('members_complete' in request or 'continuation' in request
+                     or 'expected_revision' in request)
+            if (not required <= set(request) or set(request) - allowed
+                    or request.get('method') not in {'merge', 'squash', 'rebase'}
+                    or not isinstance(request.get('members'), list)
+                    or (paged and len(request['members']) > stack_integration.STATUS_PAGE_SIZE)):
+                raise ValueError('Stack prepare request is invalid')
+            control = self.node_stack_control(snapshot)
+            if control and not paged: raise ValueError('A stack plan already exists on this coordinator goal')
+            if control:
+                collecting, control = self.node_stack_plan(snapshot, control['plan'].get('hash') and
+                                                            self.read_artifact(number, control['plan']).get('plan_id'))
+                if collecting.get('state') not in {'collecting_membership', 'sealing'}:
+                    raise ValueError('A sealed stack plan already exists on this coordinator goal')
+                if request.get('expected_revision') != collecting.get('revision'):
+                    raise ValueError('Stack collection revision is stale')
+                scope = {key: request.get(key) for key in ('repository', 'target', 'method')}
+                if digest(scope) != collecting.get('scope_digest'):
+                    raise ValueError('Stack collection scope changed')
+                expected_continuation = ('seal' if collecting.get('state') == 'sealing'
+                                         else collecting.get('provider_cursor'))
+                if request.get('continuation') != expected_continuation:
+                    raise ValueError('Stack membership continuation is stale')
+            else:
+                collecting = None
+                if paged and request.get('expected_revision') not in (None, 0):
+                    raise ValueError('Initial stack collection revision is invalid')
+            if not request['members'] and not (collecting and collecting.get('state') == 'sealing'):
+                raise ValueError('Stack prepare requires a bounded member page')
+            if paged and collecting and collecting.get('state') == 'sealing':
+                if request.get('members'):
+                    raise ValueError('Sealing continuation accepts no new members')
+                if request.get('continuation') != 'seal':
+                    raise ValueError('Stack sealing continuation is stale')
+                plan = copy.deepcopy(collecting)
+                ordered_entries = []
+                for _ in range(stack_integration.STATUS_PAGE_SIZE):
+                    if plan.get('seal_branch') is None: break
+                    member = self.node_stack_index_get(number, plan['branch_root'], plan['seal_branch'])
+                    if member is None: raise ValueError('Provider topology has no submitted member')
+                    provider = self.node_stack_index_get(number, plan['provider_root'], plan['seal_branch'])
+                    if provider is None or any(provider.get(name) != member.get(name)
+                                               for name in ('pr', 'branch', 'base', 'head')):
+                        raise ValueError('Provider topology differs from submitted member identity')
+                    ordered_entries.append((str(plan['seal_index']), member))
+                    plan['seal_index'] += 1
+                    children = self.node_stack_provider_children(
+                        number, plan['provider_base_root'], member['branch'])
+                    if len(children) > 1:
+                        raise ValueError('Provider topology is not a linear stack')
+                    plan['seal_branch'] = children[0]['branch'] if children else None
+                plan['ordered_root'] = self.node_stack_index_put_many(
+                    number, plan.get('ordered_root'), ordered_entries)
+                plan['revision'] += 1
+                if plan.get('seal_branch') is not None:
+                    if plan['seal_index'] >= plan['member_count']:
+                        raise ValueError('Provider topology has an omitted descendant or cycle')
+                    plan_ref = self.artifact(number, plan); payload['stack_integration'] = {'plan': plan_ref}
+                    return self.node_persist(snapshot, payload, {'next_steps': [{
+                        'kind': 'stack_validation', 'goal': number, 'plan_id': plan['plan_id'],
+                        'revision': plan['revision'], 'validated': plan['seal_index'],
+                        'continuation': 'seal', 'action': 'Bounded stack topology validation persisted.'}]}, request)
+                if plan['seal_index'] != plan['member_count']:
+                    raise ValueError('Submitted members are disconnected or incomplete')
+                plan.update(state='prepared', current_index=0, current_status='pending')
+                for key in ('seal_index', 'seal_branch', 'caller_complete', 'provider_complete',
+                            'matched_count', 'goal_root', 'pr_root', 'provider_root',
+                            'caller_base_root', 'provider_base_root', 'branch_root',
+                            'provider_count'):
+                    plan.pop(key, None)
+                plan_ref = self.artifact(number, plan)
+            elif paged:
+                observed, response_bytes, provider_cursor, provider_rows = self.node_stack_provider_members(
+                    request, cursor=request.get('continuation'), single_page=True)
+                if provider_cursor is not None and provider_cursor == request.get('continuation'):
+                    raise ValueError('Provider topology pagination did not advance')
+                plan = copy.deepcopy(collecting) if collecting else {
+                    'version': 2, 'state': 'collecting_membership',
+                    'request_id': request['request_id'],
+                    'scope_digest': digest({key: request.get(key) for key in ('repository', 'target', 'method')}),
+                    'repository': request['repository'], 'target': request['target'],
+                    'method': request['method'], 'revision': -1, 'member_count': 0,
+                    'provider_count': 0, 'matched_count': 0, 'provider_cursor': None,
+                    'branch_root': None, 'goal_root': None, 'pr_root': None,
+                    'caller_base_root': None, 'provider_base_root': None, 'provider_root': None}
+                plan['plan_id'] = plan.get('plan_id') or digest({'scope': plan['scope_digest'],
+                    'root': self.runtime['root_id'], 'request': request['request_id']})
+                matched = plan.get('matched_count', 0)
+                for member in observed:
+                    member_snapshot = self.node_snapshot(member['goal'])
+                    if member_snapshot['payload']['operational']['leases']:
+                        raise ValueError('Stack member has current worker ownership')
+                    topology = self.node_stack_index_get(number, plan.get('provider_root'), member['branch'])
+                    if topology is not None:
+                        if any(topology.get(name) != member.get(name) for name in ('pr', 'branch', 'base', 'head')):
+                            raise ValueError('Provider topology differs from submitted member identity')
+                        matched += 1
+                    plan['member_count'] += 1
+                for root_name, key_name in (('branch_root', 'branch'), ('goal_root', 'goal'),
+                                             ('pr_root', 'pr'), ('caller_base_root', 'base')):
+                    plan[root_name] = self.node_stack_index_put_many(number, plan.get(root_name),
+                        [(str(row[key_name]) if key_name != 'branch' else row[key_name], row)
+                         for row in observed])
+                for topology in provider_rows:
+                    if None in (topology.get('pr'), topology.get('branch'), topology.get('base'), topology.get('head')):
+                        raise ValueError('Provider topology page is incomplete')
+                    member = self.node_stack_index_get(number, plan.get('branch_root'), topology['branch'])
+                    if member is not None:
+                        if any(topology.get(name) != member.get(name) for name in ('pr', 'branch', 'base', 'head')):
+                            raise ValueError('Provider topology differs from submitted member identity')
+                        matched += 1
+                    plan['provider_count'] += 1
+                plan['provider_root'] = self.node_stack_index_put_many(number, plan.get('provider_root'),
+                    [(row['branch'], row) for row in provider_rows])
+                plan['provider_base_root'] = self.node_stack_index_put_many(
+                    number, plan.get('provider_base_root'),
+                    [(self.node_stack_base_key(row['base'], row['branch']), row)
+                     for row in provider_rows])
+                plan['matched_count'] = matched; plan['provider_cursor'] = provider_cursor
+                plan['caller_complete'] = request.get('members_complete') is True
+                plan['provider_complete'] = provider_cursor is None
+                plan['revision'] += 1
+                complete = plan['caller_complete'] and plan['provider_complete']
+                if complete:
+                    bottom = self.node_stack_index_get(number, plan['caller_base_root'], plan['target'])
+                    if bottom is None:
+                        raise ValueError('Submitted members have no stack bottom at the target branch')
+                    provider = self.node_stack_index_get(number, plan['provider_root'], bottom['branch'])
+                    if provider is None or any(provider.get(name) != bottom.get(name)
+                                               for name in ('pr', 'branch', 'base', 'head')):
+                        raise ValueError('Stack bottom differs from complete provider topology')
+                    plan.update(state='sealing', seal_branch=bottom['branch'], seal_index=0,
+                                ordered_root=None, provider_cursor=None)
+                plan_ref = self.artifact(number, plan); payload['stack_integration'] = {'plan': plan_ref}
+                return self.node_persist(snapshot, payload, {'next_steps': [{
+                    'kind': 'stack_validation' if complete else 'stack_collection', 'goal': number,
+                    'plan_id': plan['plan_id'], 'revision': plan['revision'],
+                    'member_count': plan['member_count'],
+                    'continuation': 'seal' if complete else provider_cursor,
+                    'action': ('Membership complete; continue bounded topology sealing.' if complete else
+                               'Bounded caller and provider membership pages persisted.')} ]}, request)
+            else:
+                observed, response_bytes = self.node_stack_provider_members(request)
+                for member in observed:
+                    member_snapshot = self.node_snapshot(member['goal'])
+                    if member_snapshot['payload']['operational']['leases']:
+                        raise ValueError('Stack member has current worker ownership')
+                plan = stack_integration.prepare_plan(request, observed=observed, revision=0)
+                plan_ref = self.artifact(number, plan)
+            receipt_value = {'type': 'stack_plan_receipt', 'content': {'plan_id': plan['plan_id']},
+                             'producer': None, 'provenance': {'request_id': request['request_id'],
+                             'request_hash': digest(request), 'root': self.runtime['root_id']}}
+            receipt_ref = self.artifact(number, receipt_value)
+            payload['stack_integration'] = {'plan': plan_ref}
+            response = {'next_steps': [{'kind': 'stack_plan', 'goal': number,
+                'plan_id': plan['plan_id'], 'revision': plan['revision'],
+                'goals': [row['goal'] for row in (self.node_stack_order_page(
+                    number, plan, 0, stack_integration.STATUS_PAGE_SIZE)
+                    if plan.get('ordered_root') else plan['members'][:stack_integration.STATUS_PAGE_SIZE])],
+                'continuation': (stack_integration.STATUS_PAGE_SIZE
+                                 if plan.get('member_count', len(plan.get('members', []))) >
+                                 stack_integration.STATUS_PAGE_SIZE else None),
+                'plan': plan_ref, 'receipt': receipt_ref,
+                'action': 'Provider-verified stack plan prepared.'}]}
+            return self.node_persist(snapshot, payload, response, request)
+        allowed = ({'operation', 'request_id', 'plan_id', 'cursor', 'limit'} if operation == 'stack_status'
+                   else {'operation', 'request_id', 'plan_id', 'expected_revision', 'admin_authorization'})
+        required = ({'operation', 'request_id', 'plan_id'} if operation == 'stack_status'
+                    else {'operation', 'request_id', 'plan_id', 'expected_revision'})
+        if not required <= set(request) or set(request) - allowed: raise ValueError('Stack operation contains unknown fields')
+        plan, control = self.node_stack_plan(snapshot, request.get('plan_id'))
+        plan = self.node_stack_plan_with_members(number, plan)
+        if operation == 'stack_status':
+            if (not isinstance(request.get('cursor', 0), int) or isinstance(request.get('cursor', 0), bool)
+                    or request.get('cursor', 0) < 0
+                    or not isinstance(request.get('limit', stack_integration.STATUS_PAGE_SIZE), int)
+                    or isinstance(request.get('limit', stack_integration.STATUS_PAGE_SIZE), bool)
+                    or not 1 <= request.get('limit', stack_integration.STATUS_PAGE_SIZE) <= stack_integration.STATUS_PAGE_SIZE):
+                raise ValueError('Stack status cursor and limit are invalid')
+            cursor = request.get('cursor', 0); limit = request.get('limit', stack_integration.STATUS_PAGE_SIZE)
+            if plan.get('state') != 'prepared':
+                return {'next_steps': [{'kind': 'stack_status', 'goal': number,
+                    'plan_id': plan['plan_id'], 'revision': plan['revision'], 'members': [],
+                    'continuation': ('seal' if plan.get('state') == 'sealing'
+                                     else plan.get('provider_cursor')),
+                    'member_count': plan.get('member_count', 0), 'state': plan.get('state'),
+                    'action': 'Stack membership preparation is incomplete; no effect is available.'}]}
+            if plan.get('ordered_root'):
+                members = self.node_stack_order_page(number, plan, cursor, limit)
+                page = {'members': members, 'continuation': (cursor + len(members)
+                    if cursor + len(members) < plan['member_count'] else None)}
+            else:
+                page = stack_integration.status_page(plan, cursor=cursor, limit=limit)
+            step = {'kind': 'stack_status', 'goal': number, 'plan_id': plan['plan_id'],
+                    'revision': plan['revision'], 'members': page['members'],
+                    'continuation': page['continuation'], 'action': 'Current durable stack state observed.'}
+            for name in ('attempt', 'observation', 'dispatch_receipt'):
+                if name in control: step[name] = control[name]
+            current_root = self.runtime['root_id']
+            refresh_key = (current_root, request.get('cursor', 0))
+            prior_refresh = control.get('root_refresh', {})
+            if (control.get('observation') and
+                    (prior_refresh.get('root'), prior_refresh.get('cursor')) != refresh_key):
+                refreshed_members = []
+                status_members = page['members']
+                for member in status_members:
+                    member_snapshot = self.node_snapshot(member['goal'])
+                    contexts = [ref for _, result in member_snapshot['projection']['current'].values()
+                                for ref in result.get('outputs', {}).values()
+                                if member_snapshot['artifacts'].get(ref.get('hash'), {}).get('type') == 'repository_context']
+                    if len(contexts) == 1:
+                        refreshed_members.append({'goal': member['goal'], 'context': contexts[0],
+                                                  'head': member['head']})
+                if len(refreshed_members) == len(status_members):
+                    refresh = {
+                        'root': current_root, 'members': refreshed_members,
+                        'cursor': request.get('cursor', 0), 'continuation': page['continuation'],
+                        'observed_goals': [row['goal'] for row in status_members
+                                           if row.get('status') == 'observed'],
+                        'plan_id': plan['plan_id'], 'observation': control['observation']}
+                    # Refresh each member's normal publication gateway.  These
+                    # checkpoints carry only administrative provenance; they
+                    # neither add nor replace semantic Results.
+                    for member in refreshed_members:
+                        if member['goal'] == number: continue
+                        member_snapshot = self.node_snapshot(member['goal'])
+                        member_payload = copy.deepcopy(member_snapshot['payload'])
+                        member_payload['stack_integration'] = {
+                            'plan': self.node_ref(control['plan']['hash'], number),
+                            'root_refresh': refresh}
+                        internal = {'operation': 'stack_status',
+                                    'request_id': request['request_id'] + '-refresh-' + str(member['goal']),
+                                    'plan_id': plan['plan_id']}
+                        self.node_persist(member_snapshot, member_payload, {'next_steps': [{
+                            'kind': 'stack_status', 'goal': member['goal'], 'plan_id': plan['plan_id'],
+                            'revision': plan['revision'],
+                            'action': 'Current root publication context refreshed.'}]}, internal)
+                    payload['stack_integration'] = {**control, 'root_refresh': refresh}
+                    return self.node_persist(snapshot, payload, {'next_steps': [step]}, request)
+            return {'next_steps': [step]}
+        if plan.get('state') != 'prepared':
+            raise ValueError('Stack topology must be completely sealed before any effect')
+        if request.get('expected_revision') != plan.get('revision'):
+            raise ValueError('Stack plan revision is stale')
+        reconciled = []
+        if plan.get('ordered_root'):
+            rows = self.node_stack_order_page(number, plan, plan.get('current_index', 0), 1)
+            if rows and plan.get('current_status') == 'observed':
+                if not self.node_stack_semantic_merge(rows[0]):
+                    raise ValueError('Observed stack merge requires current semantic phase Result reconciliation')
+                reconciled.append(rows[0]['goal']); plan['current_index'] += 1
+                plan['current_status'] = 'pending'
+        else:
+            for row in plan['members']:
+                if row.get('status') != 'observed': continue
+                if not self.node_stack_semantic_merge(row):
+                    raise ValueError('Observed stack merge requires current semantic phase Result reconciliation')
+                row['status'] = 'reconciled'; reconciled.append(row['goal']); break
+        if reconciled:
+            plan['revision'] += 1; plan_ref = self.node_stack_store_plan(number, plan)
+            next_control = {key: value for key, value in control.items() if key != 'attempt'}
+            next_control['plan'] = plan_ref; payload['stack_integration'] = next_control
+            response = {'next_steps': [{'kind': 'stack_reconciliation', 'goal': number,
+                'plan_id': plan['plan_id'], 'revision': plan['revision'], 'reconciled': reconciled,
+                'action': 'Semantic merge evidence reconciled; invoke a new advance for the next effect.'}]}
+            return self.node_persist(snapshot, payload, response, request)
+        if plan.get('ordered_root'):
+            current_rows = self.node_stack_order_page(number, plan, plan.get('current_index', 0), 1)
+            current = current_rows[0] if current_rows else None
+        else:
+            current = next((row for row in plan['members'] if row.get('status') != 'reconciled'), None)
+        if current is None:
+            return {'next_steps': [{'kind': 'stack_status', 'goal': number, 'plan_id': plan['plan_id'],
+                                    'revision': plan['revision'], 'action': 'Stack is fully reconciled.'}]}
+        # Provider observation always precedes another effect. It can safely
+        # recover an uncertain prior dispatch without current effect authority.
+        # Observe every frozen PR directly. Merged ancestors legitimately
+        # disappear from the provider's open-PR topology listing.
+        selected = [{'number': current['goal']}]
+        bodies = {current['goal']: {'repository_context': {'branch': current['branch'], 'base': current['base'],
+                  'target': plan['target'], 'pr': f"https://github.com/{plan['repository']}/pull/{current['pr']}"}}
+                  }
+        raw, response_bytes, _ = self.api._github_pull_request_states(self.repo, 'gh', selected, bodies)
+        for row in [current]:
+            facts = raw.get(row['goal'], {})
+            if any(facts.get(name) != row.get(expected) for name, expected in (
+                    ('head_oid', 'head'), ('base_oid', 'base_head'), ('base_ref', 'base'))):
+                raise ValueError('Stack member provider head or base changed')
+        provider = {str(goal): ('merged' if facts.get('merged') else 'open') for goal, facts in raw.items()}
+        if provider.get(str(current['goal'])) == 'merged':
+            if plan.get('ordered_root'):
+                plan['current_status'] = 'observed'; plan.pop('dispatch', None)
+            else:
+                plan = stack_integration.observe_attempt(plan, provider=provider)
+            facts = raw[current['goal']]
+            observation_value = {'type': 'stack_observation', 'content': {'plan_id': plan['plan_id'],
+                'goal': current['goal'], 'head': current['head'], 'state': 'merged',
+                'merge_commit': facts.get('merge_commit'), 'merged_at': facts.get('merged_at')},
+                'producer': None, 'provenance': {'request_id': request['request_id'], 'root': self.runtime['root_id']}}
+            observation_ref = self.artifact(number, observation_value)
+            plan['revision'] += 1; plan_ref = self.node_stack_store_plan(number, plan)
+            payload['stack_integration'] = {**control, 'plan': plan_ref, 'observation': observation_ref}
+            response = {'next_steps': [{'kind': 'stack_observation', 'goal': number,
+                'plan_id': plan['plan_id'], 'revision': plan['revision'], 'observation': observation_ref,
+                'action': 'Provider merge observed; reconcile configured phase evidence before the next effect.'}]}
+            return self.node_persist(snapshot, payload, response, request)
+        index = plan['current_index'] if plan.get('ordered_root') else plan['members'].index(current)
+        previous = (self.node_stack_order_page(number, plan, index - 1, 1)[0]
+                    if plan.get('ordered_root') and index else
+                    plan['members'][index - 1] if index else None)
+        if previous is not None and not self.node_stack_semantic_merge(previous):
+            raise ValueError('Prior stack member requires current semantic phase Result reconciliation')
+        member_snapshot, publication = self.node_stack_member_snapshot(current)
+        self.node_stack_release_authorized(current['goal'], publication['provider'])
+        command = ['gh', 'pr', 'merge', str(current['pr']), '--' + plan['method'],
+                   '--match-head-commit', current['head']]
+        admin_required = publication['provider'].get('admin_required') is True
+        if admin_required and request.get('admin_authorization') is None:
+            raise ValueError('Provider requires explicit scoped admin authorization for this effect')
+        if request.get('admin_authorization') is not None:
+            admin_consent = self.node_stack_admin_authorized(
+                member_snapshot, request['admin_authorization'], current, plan['method'])
+            command.append('--admin')
+        else:
+            admin_consent = None
+        attempt_value = {'type': 'stack_attempt', 'content': {'plan_id': plan['plan_id'],
+            'request_id': request['request_id'], 'goal': current['goal'], 'head': current['head'],
+            'repository': plan['repository'], 'pr': current['pr'], 'method': plan['method'],
+            'command': command, 'admin_consent': admin_consent, 'state': 'intent'}, 'producer': None,
+            'provenance': {'request_id': request['request_id'], 'root': self.runtime['root_id']}}
+        attempt_ref = self.artifact(number, attempt_value)
+        prior_attempt = self.read_artifact(number, control['attempt']) if control.get('attempt') else None
+        if (isinstance(prior_attempt, dict) and prior_attempt.get('type') == 'stack_attempt'
+                and prior_attempt.get('content', {}).get('goal') == current['goal']):
+            # A committed intent without a terminal observation is ambiguous.
+            # Never turn process loss into a duplicate provider effect.
+            response = {'next_steps': [{'kind': 'stack_advance', 'goal': number,
+                'plan_id': plan['plan_id'], 'revision': plan['revision'],
+                'attempt': control['attempt'],
+                'action': 'Unresolved durable intent requires provider observation; no effect was retried.'}]}
+            return self.node_persist(snapshot, payload, response, request)
+        intent_payload = copy.deepcopy(payload)
+        intent_payload['stack_integration'] = {**control, 'attempt': attempt_ref}
+        self.node_stack_followup_capacity(snapshot, intent_payload, plan, current, request, attempt_ref)
+        intent_request = {'operation': 'stack_advance',
+                          'request_id': request['request_id'] + '-intent',
+                          'plan_id': plan['plan_id'], 'expected_revision': plan['revision']}
+        self.node_persist(snapshot, intent_payload, {'next_steps': [{
+            'kind': 'stack_advance', 'goal': number, 'plan_id': plan['plan_id'],
+            'revision': plan['revision'], 'attempt': attempt_ref,
+            'action': 'Durable provider intent recorded before dispatch.'}]}, intent_request)
+        snapshot = self.node_snapshot(number); payload = copy.deepcopy(snapshot['payload'])
+        observation_template = {'type': 'stack_observation', 'content': {
+            'plan_id': plan['plan_id'], 'goal': current['goal'], 'head': current['head'],
+            'state': 'merged', 'merge_commit': '0' * 40, 'merged_at': '0000-00-00T00:00:00Z'},
+            'producer': None, 'provenance': {'request_id': request['request_id'],
+            'root': self.runtime['root_id']}}
+        if len(comment_store.canonical(observation_template).encode()) > comment_store.MAX_ARTIFACT_BYTES:
+            raise ValueError('Post-effect observation exceeds durable storage capacity')
+        uncertain, dispatch_result, dispatch_error = False, None, None
+        try:
+            remaining = self.api.provider_operation_remaining()
+            timeout = remaining if isinstance(remaining, (int, float)) and remaining > 0 else 30
+            dispatch_result = subprocess.run(command, cwd=self.repo, capture_output=True, text=True,
+                                             check=True, timeout=timeout)
+        except (subprocess.SubprocessError, OSError) as exc:
+            uncertain, dispatch_error = True, exc
+        raw_diagnostic = ((dispatch_result.stdout or '') + (dispatch_result.stderr or '')
+                          if dispatch_result is not None else str(dispatch_error or ''))
+        diagnostic = raw_diagnostic.encode()[:stack_integration.MAX_DIAGNOSTIC].decode(errors='replace')
+        dispatch_receipt = self.artifact(number, {'type': 'stack_dispatch_receipt', 'content': {
+            'plan_id': plan['plan_id'], 'request_id': request['request_id'],
+            'goal': current['goal'], 'head': current['head'],
+            'status': 'uncertain' if uncertain else 'returned', 'diagnostic': diagnostic,
+            'diagnostic_truncated': len(raw_diagnostic.encode()) > stack_integration.MAX_DIAGNOSTIC},
+            'producer': None, 'provenance': {'request_id': request['request_id'],
+            'root': self.runtime['root_id']}})
+        after, after_bytes, _ = self.api._github_pull_request_states(self.repo, 'gh',
+            [{'number': current['goal']}], {current['goal']: {'repository_context':
+            {'branch': current['branch'], 'base': current['base'], 'target': plan['target'],
+             'pr': f"https://github.com/{plan['repository']}/pull/{current['pr']}"}}})
+        fact = after.get(current['goal'], {})
+        if any(fact.get(name) != current.get(expected) for name, expected in (
+                ('head_oid', 'head'), ('base_oid', 'base_head'), ('base_ref', 'base'))):
+            raise ValueError('Post-dispatch provider identity differs from authorized effect')
+        if not fact.get('merged') and not uncertain:
+            raise ValueError('Provider did not confirm exact stack merge')
+        plan['attempt'] = {'goal': current['goal'], 'head': current['head'],
+                           'status': 'unresolved' if uncertain else 'dispatched'}
+        plan['next_action'] = 'observe' if uncertain else 'reconcile'
+        observation_ref = None
+        if fact.get('merged'):
+            if plan.get('ordered_root'):
+                plan['current_status'] = 'observed'; plan.pop('dispatch', None)
+            else:
+                plan = stack_integration.observe_attempt(plan, provider={str(current['goal']): 'merged'})
+            observation_ref = self.artifact(number, {'type': 'stack_observation', 'content': {
+                'plan_id': plan['plan_id'], 'goal': current['goal'], 'head': current['head'],
+                'state': 'merged', 'merge_commit': fact.get('merge_commit'), 'merged_at': fact.get('merged_at')},
+                'producer': None, 'provenance': {'request_id': request['request_id'], 'root': self.runtime['root_id']}})
+        plan['revision'] += 1; plan_ref = self.node_stack_store_plan(number, plan)
+        control = {'plan': plan_ref, 'attempt': attempt_ref, 'dispatch_receipt': dispatch_receipt}
+        if observation_ref: control['observation'] = observation_ref
+        payload['stack_integration'] = control
+        step = {'kind': 'stack_advance', 'goal': number, 'plan_id': plan['plan_id'],
+                'revision': plan['revision'], 'attempt': attempt_ref,
+                'action': 'Stack effect is uncertain; observe provider state before retry.' if uncertain else
+                          'Provider dispatch observed; reconcile semantic phase evidence.'}
+        if observation_ref: step['observation'] = observation_ref
+        return self.node_persist(snapshot, payload, {'next_steps': [step]}, request)
+
     def node_publication_operation(self, snapshot, payload, request):
         operation = request['operation']; projection = snapshot['projection']
         if not (self.runtime or {}).get('root_id'): raise ValueError('Operational publication belongs to authenticated root')
@@ -5226,6 +6126,8 @@ class Workflow:
                 return self.node_graph_review(snapshot, payload, request)
             if request['operation'] == 'graph_review_bootstrap':
                 return self.node_graph_review_bootstrap(snapshot, payload, request)
+            if request['operation'] in {'stack_prepare', 'stack_status', 'stack_advance'}:
+                return self.node_stack_operation(snapshot, payload, request)
             if request['operation'] in {'integrate', 'reconcile', 'complete'}:
                 return self.node_publication_operation(snapshot, payload, request)
             node = request.get('node')
