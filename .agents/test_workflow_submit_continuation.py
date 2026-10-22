@@ -60,6 +60,32 @@ class SubmitContinuationTests(DagFixture):
         template = z._comment_store.ArtifactIndex([rows[0]]).resolve(first['context']['response']['hash'])[0]
         self.assertEqual({key: value for key, value in response.items() if key != 'working_input'}, template['response'])
         self.assertEqual({'review_a', 'review_b'}, self.ready_names(self.session.call(100)))
+        committed = copy.deepcopy((self.provider.issues, self.provider.comments))
+        conflict = copy.deepcopy(request)
+        conflict['outputs']['value'] = 'different candidate'
+        rejected = self.session.call(100, conflict, expected=2)
+        self.assertRegex(json.dumps(rejected), r'(?i)request|payload|identity')
+        self.assertEqual(before + 1, len(self.provider.updates))
+        self.assertEqual(committed, (self.provider.issues, self.provider.comments))
+        self.assertEqual(response, self.session.call(100, request))
+
+    def test_unrecoverable_bounded_continuation_still_writes_nothing(self):
+        work = self.session.acquire('produce')
+        request = self.session.submission(work, {'value': 'candidate'}, 'unrecoverable-bounded-continuation')
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        original_pack = z._comment_store.pack_envelopes
+        def missing_first_record(common, records, history=None):
+            bodies = original_pack(common, records, history)
+            first = z._comment_store.decode_envelope(bodies[0])
+            first['artifacts'] = []
+            first['members'] = []
+            bodies[0] = z._comment_store.encode_envelope(first)
+            return bodies
+        with self.large_continuation(60000), mock.patch.object(
+                z._comment_store, 'pack_envelopes', side_effect=missing_first_record):
+            failed = self.session.call(100, request, expected=2)
+        self.assertIn('first-envelope recovery budget', str(failed))
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
     def test_large_continuation_partial_upload_retains_exact_template(self):
         _work, _values, request = journeys.GenericStoragePublicTests.multipart_request(
