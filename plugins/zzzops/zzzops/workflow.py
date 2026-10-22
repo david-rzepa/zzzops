@@ -32,6 +32,12 @@ import zzzops_stack_integration as stack_integration
 _OBSERVED_ARTIFACT_INDEXES = {}
 _GIT_ARTIFACT_SNAPSHOTS = {}
 _VERIFICATION_LOCKS = {}
+
+
+class ContinuationFirstEnvelopeBudget(ValueError):
+    """A fresh submission's exact retry template cannot fit its first write."""
+
+
 HYDRATION_CHECKPOINT_MIN_COMMENTS = 32
 HYDRATION_CHECKPOINT_MIN_BYTES = 262144
 HYDRATION_CHECKPOINT_MAX_AGE_SECONDS = 86400
@@ -5958,6 +5964,30 @@ class Workflow:
         return record
 
     def node_persist(self, snapshot, payload, response, request):
+        if response.get('type') != 'submission_continuation' or snapshot.get('pending'):
+            return self._node_persist_once(snapshot, payload, response, request)
+        original_payload = copy.deepcopy(payload)
+        original_artifacts = dict(snapshot['artifacts'])
+        original_activation = copy.deepcopy(snapshot.get('activation'))
+        try:
+            return self._node_persist_once(snapshot, payload, response, request)
+        except ContinuationFirstEnvelopeBudget:
+            # The guard runs before provider writes. Rebuild the whole receipt
+            # from its original candidate, so a retry never points at a
+            # continuation whose first envelope was only partly published.
+            payload.clear()
+            payload.update(original_payload)
+            snapshot['artifacts'].clear()
+            snapshot['artifacts'].update(original_artifacts)
+            if original_activation is not None:
+                snapshot['activation'] = original_activation
+            bounded = copy.deepcopy(response)
+            bounded['response']['next_steps'] = [{'kind': 'checkpoint', 'goal': snapshot['number'],
+                'action': 'Submission committed. Reinvoke execute to read the complete current workflow frontier.'}]
+            bounded['bindings'] = []
+            return self._node_persist_once(snapshot, payload, bounded, request)
+
+    def _node_persist_once(self, snapshot, payload, response, request):
         number = snapshot['number']; artifacts = snapshot['artifacts']
         def add(value):
             key = digest(value); artifacts[key] = value
@@ -6067,7 +6097,7 @@ class Workflow:
                     first = ObservedArtifactIndex([{'body': bodies[0]}])
                     retained = first.resolve(digest(response))[0]
             except (IndexError, KeyError, ValueError) as exc:
-                raise ValueError('Continuation exceeds the first-envelope recovery budget; no comments were appended') from exc
+                raise ContinuationFirstEnvelopeBudget('Continuation exceeds the first-envelope recovery budget; no comments were appended') from exc
             if retained != response:
                 raise ValueError('First-envelope continuation identity differs; no comments were appended')
         prospective = self.node_preflight(comments, bodies, [envelope['payload']['hash']], index)
