@@ -43,14 +43,23 @@ class SubmitContinuationTests(DagFixture):
             z._comment_store.encode_envelope(legacy)
         self.assertEqual(response, self.session.call(100, request))
 
-    def test_chunked_continuation_fails_before_any_provider_write(self):
+    def test_oversized_continuation_commits_bounded_retry_and_rechecks_frontier(self):
         work = self.session.acquire('produce')
         request = self.session.submission(work, {'value': 'candidate'}, 'oversized-continuation')
-        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        before = len(self.provider.updates)
         with self.large_continuation(60000):
-            failed = self.session.call(100, request, expected=2)
-        self.assertIn('first-envelope recovery budget', str(failed))
-        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+            response = self.session.call(100, request)
+        self.assertEqual('checkpoint', response['next_steps'][0]['kind'])
+        self.assertEqual(before + 1, len(self.provider.updates))
+        self.assertEqual(response, self.session.call(100, request))
+        rows = [row for row in self.provider.comments[100]
+                if (z._comment_store.decode_envelope(row['body']) or {}).get('context', {}).get('request_id') == request['request_id']]
+        self.assertTrue(rows)
+        self.assertTrue(all(len(row['body']) <= 65536 for row in rows))
+        first = z._comment_store.decode_envelope(rows[0]['body'])
+        template = z._comment_store.ArtifactIndex([rows[0]]).resolve(first['context']['response']['hash'])[0]
+        self.assertEqual({key: value for key, value in response.items() if key != 'working_input'}, template['response'])
+        self.assertEqual({'review_a', 'review_b'}, self.ready_names(self.session.call(100)))
 
     def test_large_continuation_partial_upload_retains_exact_template(self):
         _work, _values, request = journeys.GenericStoragePublicTests.multipart_request(
@@ -68,6 +77,30 @@ class SubmitContinuationTests(DagFixture):
         self.assertEqual(1, len(written))
         first = z._comment_store.decode_envelope(written[0])
         template = z._comment_store.ArtifactIndex([{'body': written[0]}]).resolve(first['context']['response']['hash'])[0]
+        with mock.patch.object(z._workflow, 'scoped_frontier', side_effect=AssertionError('Must replay the original frontier')):
+            response = self.session.call(100, request)
+        self.assertEqual(template['response'], {key: value for key, value in response.items() if key != 'working_input'})
+        self.assertEqual(response, self.session.call(100, request))
+
+    def test_bounded_continuation_partial_upload_replays_checkpoint(self):
+        _work, _values, request = journeys.GenericStoragePublicTests.multipart_request(
+            self, request_id='partial-bounded-continuation')
+        append = self.provider.create_issue_comment
+        written = []
+        def interrupted(number, body):
+            if written:
+                raise z.GoalTransitionProviderError('interrupted after first comment')
+            result = append(number, body)
+            written.append(body)
+            return result
+        with self.large_continuation(60000), mock.patch.object(
+                self.provider, 'create_issue_comment', side_effect=interrupted):
+            self.session.call(100, request, expected=2)
+        self.assertEqual(1, len(written))
+        first = z._comment_store.decode_envelope(written[0])
+        template = z._comment_store.ArtifactIndex([{'body': written[0]}]).resolve(
+            first['context']['response']['hash'])[0]
+        self.assertEqual('checkpoint', template['response']['next_steps'][0]['kind'])
         with mock.patch.object(z._workflow, 'scoped_frontier', side_effect=AssertionError('Must replay the original frontier')):
             response = self.session.call(100, request)
         self.assertEqual(template['response'], {key: value for key, value in response.items() if key != 'working_input'})
