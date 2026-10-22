@@ -4101,8 +4101,22 @@ class Workflow:
                             raise ValueError('Stopped draft Git baseline changed outside owned scope')
                 elif prior and current_ref == prior['result']:
                     if 'error' in prior: raise ValueError(prior['error'])
-                    if not connected(prior['after']): raise ValueError('Completed workspace proof output/consumed drift or disconnected snapshot')
-                    acquisition = prior['data']['acquisition']; baseline = prior['before']
+                    if connected(prior['after']):
+                        acquisition = prior['data']['acquisition']; baseline = prior['before']
+                    else:
+                        # A valid completed proof remains immutable history, but
+                        # does not pin a later clean integration forever.  Bind
+                        # the actual current commit/raw checkout as fresh input;
+                        # dirty or mixed snapshots still fail the ordinary clean
+                        # checkout gate below.
+                        baseline = actual
+                        acquisition = {'git_commit': head, 'workspace_digest': digest(baseline),
+                                       'checkout_overrides': {}}
+                        try:
+                            acquisition['checkout_overrides'] = self.clean_checkout_overrides(
+                                head, committed, actual)
+                        except ValueError:
+                            raise ValueError('Completed workspace proof is disconnected and the current checkout is not a clean committed baseline') from None
                 else:
                     baseline = actual
                     acquisition = {'git_commit': head, 'workspace_digest': digest(baseline), 'checkout_overrides': {}}
