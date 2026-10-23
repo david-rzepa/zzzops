@@ -19,7 +19,7 @@ class LeafApplicabilityTests(unittest.TestCase):
         nodes = {node["id"]: node for node in self.dag["nodes"]}
         for name in ("test_design", "implement"):
             node = nodes[name]
-            self.assertIn("repository_workspace", node["executor"]["resources"])
+            self.assertIn("repository_git_workspace", node["executor"]["resources"])
             self.assertIn("allocation", node["inputs"])
             for name, producer in (("review_authorization", "decomposition_review"),
                                    ("root_authorization", "approve_spec")):
@@ -46,6 +46,8 @@ class LeafApplicabilityTests(unittest.TestCase):
             self.assertEqual({"subject": {"kind": "node", "goal": "#this", "node": "spec"},
                               "output": "allocation"}, node["executor"]["authority"],
                              "Topology alone grants no workspace authority")
+        self.assertIn('repository_git_workspace',
+                      nodes['integration_verification']['executor']['resources'])
 
     def test_review_types_and_consequence_overrides_are_policy_owned(self):
         # Review strength is configured graph evidence, not a hidden risk switch.
