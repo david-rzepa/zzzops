@@ -4445,6 +4445,10 @@ class Workflow:
                                     'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
                 contexts[key] = {'binding': binding, 'acquisition': {'read_commit': baseline_commit}, 'readonly': True}
                 continue
+            if (lease and 'read_commit' in lease['acquisition']
+                    or previous_content and 'git_commit' in previous_content and 'files' not in previous_content):
+                contexts[key] = {'error': 'Read-only Git task workspace changed outside empty write scope'}
+                continue
             baseline = read_actual
             if lease and 'files' in lease['acquisition']:
                 baseline = lease['acquisition']['files']
@@ -7187,13 +7191,15 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
     if payload is not None and number is not None:
         stopped_attempt = None
         if operation == 'recover':
-            snapshot = engine.node_snapshot(number)
-            node_key = api._phase_evidence.task_key(payload.get('node'))
-            prior = snapshot['projection']['leases'].get(node_key)
-            if (prior and prior.get('token') == payload.get('lease')
-                    and 'git_commit' in prior.get('acquisition', {})
-                    and 'files' not in prior['acquisition']):
-                stopped_attempt = prior
+            historical = api.parse_managed_goal(engine.adapter.get_issue(number)['body'], number)
+            if historical.get('schema_version') == 2:
+                snapshot = engine.node_snapshot(number)
+                node_key = api._phase_evidence.task_key(payload.get('node'))
+                prior = snapshot['projection']['leases'].get(node_key)
+                if (prior and prior.get('token') == payload.get('lease')
+                        and 'git_commit' in prior.get('acquisition', {})
+                        and 'files' not in prior['acquisition']):
+                    stopped_attempt = prior
         result = engine.mutate(number, payload)
         if operation == 'start':
             for step in result.get('next_steps', []):
