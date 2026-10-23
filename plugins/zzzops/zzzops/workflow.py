@@ -5172,6 +5172,25 @@ class Workflow:
                     return True
         return False
 
+    def node_native_sources(self, snapshot):
+        """Pin native delivery to the current reviewed phase Results."""
+        artifacts = snapshot['artifacts']
+        sources = {'test_design': set(), 'implement': set()}
+        for _, result in snapshot['projection']['current'].values():
+            node = result.get('node', {})
+            phase = node.get('node')
+            if node.get('goal') != snapshot['number'] or phase not in sources:
+                continue
+            for output in result.get('outputs', {}).values():
+                source = artifacts.get(output['hash'], {}).get('provenance', {}).get('source')
+                proof = artifacts.get(source.get('hash'), {}) if isinstance(source, dict) else {}
+                if proof.get('kind') == 'git_phase_proof':
+                    sources[phase].add(proof['checkpoint']['result_commit'])
+        if any(len(values) != 1 for values in sources.values()):
+            raise ValueError('Git-native delivery requires one current reviewed RED and GREEN source')
+        return {'test_source': next(iter(sources['test_design'])),
+                'implementation_source': next(iter(sources['implement']))}
+
     def node_publication_operation(self, snapshot, payload, request):
         operation = request['operation']; projection = snapshot['projection']
         if not (self.runtime or {}).get('root_id'): raise ValueError('Operational publication belongs to authenticated root')
@@ -5212,9 +5231,11 @@ class Workflow:
             if not facts.get('merged'):
                 merge_method = '--squash'
                 if self.node_native_delivery(snapshot):
-                    git_phase_state.verify_two_commit_candidate(self.repo,
+                    candidate = git_phase_state.verify_two_commit_candidate(self.repo,
                         goal=snapshot['number'], base_commit=facts['base_oid'],
                         head_commit=facts['head_oid'])
+                    if any(candidate[name] != value for name, value in self.node_native_sources(snapshot).items()):
+                        raise ValueError('Git-native candidate sources differ from current reviewed phase Results')
                     merge_method = '--merge'
                 result = subprocess.run(['gh', 'pr', 'merge', publication['context']['pr'], merge_method, '--match-head-commit', facts['head_oid']], cwd=self.repo, capture_output=True, text=True, check=True)
                 observed, _, _ = self.api._github_pull_request_states(self.repo, 'gh', [{'number': snapshot['number']}], {snapshot['number']: {'repository_context': publication['context']}})

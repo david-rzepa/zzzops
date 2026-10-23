@@ -318,6 +318,7 @@ def verify_two_commit_candidate(repo: Path, *, goal: int, base_commit: str,
         raise ValueError('Candidate RED commit must have exactly one parent')
     if _git(repo, 'rev-parse', test[1] + '^{tree}') != _git(repo, 'rev-parse', base_commit + '^{tree}'):
         raise ValueError('Candidate base tree changed after review')
+    source_commits = {}
     for commit, phase, title in ((test_commit, 'test_design', f'test(goal-{goal}): consolidate reviewed RED tests'),
                                  (head_commit, 'implement', f'feat(goal-{goal}): consolidate GREEN implementation')):
         message = _git(repo, 'show', '-s', '--format=%B', commit).decode().splitlines()
@@ -331,4 +332,7 @@ def verify_two_commit_candidate(repo: Path, *, goal: int, base_commit: str,
         _commit(repo, sources[0])
         if _git(repo, 'rev-parse', sources[0] + '^{tree}') != _git(repo, 'rev-parse', commit + '^{tree}'):
             raise ValueError('Candidate tree differs from its retained source')
-    return {'test_commit': test_commit, 'implementation_commit': head_commit}
+        source_commits[phase] = sources[0]
+    return {'test_commit': test_commit, 'implementation_commit': head_commit,
+            'test_source': source_commits['test_design'],
+            'implementation_source': source_commits['implement']}

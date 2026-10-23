@@ -75,6 +75,8 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         engine.node_publication_authorities = lambda _snapshot: [(authorization, publication)]
         engine.node_ci_required = lambda _observed: None
         engine.node_native_delivery = lambda _snapshot: True
+        engine.node_native_sources = lambda _snapshot: {'test_source': 'c' * 40,
+                                                        'implementation_source': 'd' * 40}
         engine.node_persist = lambda _snapshot, _payload, response, _request: response
         engine.api = SimpleNamespace(_github_pull_request_states=lambda *_args: ({7: {
             **facts, 'merged': True}}, 0, 0))
@@ -89,9 +91,17 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         with mock.patch.object(workflow, 'policy_section', return_value={'configuration': {'release_planning': {'enabled': False}}}), \
              mock.patch.object(workflow.git_phase_state, 'verify_two_commit_candidate') as verify, \
              mock.patch.object(workflow.subprocess, 'run', side_effect=run):
+            verify.return_value = {'test_source': 'c' * 40,
+                                   'implementation_source': 'd' * 40}
             engine.node_publication_operation(snapshot, payload, request)
-        verify.assert_called_once_with(Path('/repo'), goal=7,
-                                       base_commit=facts['base_oid'], head_commit=facts['head_oid'])
+            engine.node_native_sources = lambda _snapshot: {'test_source': 'e' * 40,
+                                                            'implementation_source': 'd' * 40}
+            with self.assertRaisesRegex(ValueError, 'sources differ'):
+                engine.node_publication_operation(snapshot, payload, request)
+        self.assertEqual(2, verify.call_count)
+        verify.assert_called_with(Path('/repo'), goal=7,
+                                  base_commit=facts['base_oid'], head_commit=facts['head_oid'])
+        self.assertEqual(1, len(commands))
         self.assertIn('--merge', commands[0])
         self.assertNotIn('--squash', commands[0])
 
@@ -109,6 +119,25 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         self.assertTrue(engine.node_native_delivery(snapshot))
         artifacts['proof']['kind'] = 'repository_workspace_proof'
         self.assertFalse(engine.node_native_delivery(snapshot))
+
+    def test_native_sources_require_current_phase_results(self):
+        engine = workflow.Workflow.__new__(workflow.Workflow)
+        artifacts = {}
+        current = {}
+        for phase, commit in (('test_design', 'c' * 40), ('implement', 'd' * 40)):
+            output = {'hash': phase + '-output'}
+            proof = {'hash': phase + '-proof'}
+            artifacts[output['hash']] = {'provenance': {'source': proof}}
+            artifacts[proof['hash']] = {'kind': 'git_phase_proof',
+                                        'checkpoint': {'result_commit': commit}}
+            current[phase] = ({'hash': phase + '-result'},
+                              {'node': {'goal': 7, 'node': phase}, 'outputs': {'value': output}})
+        snapshot = {'number': 7, 'projection': {'current': current}, 'artifacts': artifacts}
+        self.assertEqual({'test_source': 'c' * 40, 'implementation_source': 'd' * 40},
+                         engine.node_native_sources(snapshot))
+        del current['test_design']
+        with self.assertRaisesRegex(ValueError, 'current reviewed RED and GREEN'):
+            engine.node_native_sources(snapshot)
 
     def legacy_project(self):
         dag = json.loads((Path(__file__).parent / 'fixtures/legacy_phase_dag.json').read_text())
