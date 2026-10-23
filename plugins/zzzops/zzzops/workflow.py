@@ -6723,9 +6723,6 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 api._phase_evidence.validate_ref(artifact)
                 artifact = {'hash': artifact['hash'], 'reference': artifact['uri']}
             content = engine.read_artifact(number, artifact)
-            if (isinstance(content, dict) and content.get('type') == 'goal_context'
-                    and isinstance(content.get('content'), dict)):
-                content = content['content']
         elif payload.get('node'):
             snapshot = engine.node_snapshot(number); requested = payload['node']
             result = next(((ref, snapshot['artifacts'][ref['hash']]['content']) for ref in reversed(snapshot['payload']['evidence']) if snapshot['artifacts'][ref['hash']]['content']['node'] == requested), None)

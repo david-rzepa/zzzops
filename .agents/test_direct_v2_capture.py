@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import copy
 import importlib.util
-import json
 from pathlib import Path
 import re
 import shutil
@@ -160,6 +159,31 @@ class DirectV2CaptureTests(dag.DagFixture):
             )
         return dag.z.parse_managed_goal(managed[0]["body"], number)
 
+    def expected_goal_context_artifact(self, number, request):
+        excluded = {"schema_version", "status", "revision", "parent", "depends_on",
+                    "blockers", "claim", "implementation"}
+        metadata = {key: copy.deepcopy(value) for key, value in request["goal"].items()
+                    if key not in excluded}
+        policy_hash = self.session.api._workflow.digest(self.session.project["policy"])
+        engine = self.session.api.workflow_engine(
+            self.fixture.repo, self.session.project, self.fixture.runtime,
+        )
+        return {
+            "type": "goal_context",
+            "content": {
+                "version": 1,
+                "depends_on": copy.deepcopy(request["goal"]["depends_on"]),
+                "blockers": copy.deepcopy(request["goal"]["blockers"]),
+                "metadata": metadata,
+            },
+            "producer": None,
+            "provenance": {
+                "actor": "direct-v2-capture/1",
+                "source": None,
+                "policy": engine.node_ref(policy_hash, number),
+            },
+        }
+
     def test_invalid_normalized_goal_has_zero_provider_writes(self):
         request = self.request()
         request["goal"]["engineering_rigor"]["risk_categories"] = ["Not_Normalized"]
@@ -188,11 +212,7 @@ class DirectV2CaptureTests(dag.DagFixture):
         context = self.session.read(number, payload["goal_context"])
         self.assertEqual(request["body"], specification["content"])
         self.assertEqual(self.reviewed_graph, graph)
-        serialized_context = json.dumps(context, sort_keys=True)
-        for retained in ("Approved capture evidence.", "Confirm the provider readback.",
-                         "data_integrity"):
-            self.assertIn(retained, serialized_context)
-        self.assertEqual([100], context["depends_on"])
+        self.assertEqual(self.expected_goal_context_artifact(number, request), context)
         self.assertEqual([], payload["evidence"])
         self.assertEqual([], payload["operational"]["leases"])
         self.assertEqual([], payload["operational"]["receipts"])
@@ -325,7 +345,7 @@ class DirectV2CaptureTests(dag.DagFixture):
         specification = self.session.read(number, payload["spec"])
         context = self.session.read(number, payload["goal_context"])
         self.assertEqual(request["body"], specification["content"])
-        self.assertIn("Approved capture evidence.", json.dumps(context, sort_keys=True))
+        self.assertEqual(self.expected_goal_context_artifact(number, request), context)
 
 
 if __name__ == "__main__":
