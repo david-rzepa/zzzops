@@ -941,6 +941,49 @@ class GenericPublicationPublicTests(DagFixture):
             self.assertEqual(stable, (self.provider.issues, self.provider.comments))
             self.assertEqual(1, len(self.merge_calls))
 
+    def test_public_native_integration_preserves_reviewed_red_green_pair(self):
+        repo = self.fixture.repo
+        base = self.session.git('rev-parse', 'HEAD').strip()
+        (repo / 'behavior_test.py').write_text('assert True\n')
+        self.session.git('add', 'behavior_test.py')
+        self.session.git('commit', '-qm', 'test(goal-100): RED source')
+        red_source = self.session.git('rev-parse', 'HEAD').strip()
+        (repo / 'source.py').write_text('def value():\n    return 2\n')
+        self.session.git('add', 'source.py')
+        self.session.git('commit', '-qm', 'feat(goal-100): GREEN source')
+        green_source = self.session.git('rev-parse', 'HEAD').strip()
+        def compact_commit(source, parent, message):
+            tree = self.session.git('rev-parse', source + '^{tree}').strip()
+            result = subprocess.run(['git', 'commit-tree', tree, '-p', parent],
+                                    cwd=repo, input=message, text=True,
+                                    capture_output=True, check=True)
+            return result.stdout.strip()
+        red = compact_commit(red_source, base,
+            f'test(goal-100): consolidate reviewed RED tests\n\nZzzOps-Goal: 100\nZzzOps-Phase: test_design\nZzzOps-Source: {red_source}\n')
+        green = compact_commit(green_source, red,
+            f'feat(goal-100): consolidate GREEN implementation\n\nZzzOps-Goal: 100\nZzzOps-Phase: implement\nZzzOps-Source: {green_source}\n')
+        self.session.git('reset', '--hard', base)
+        self.session.git('branch', '-f', 'goal-child', green)
+        self.observation.update(head_oid=green, base_oid=base)
+        self.authorize_context()
+        authority = self.approve_publication()
+        self.submit_role('finish', 'Exact configured graph complete')
+        request = self.integration_request(authority)
+        request['request_id'] = 'native-public-integration'
+        with mock.patch.object(z._workflow.Workflow, 'node_native_delivery',
+                               return_value=True), \
+             mock.patch.object(z._workflow.Workflow, 'node_native_sources',
+                               return_value={'test_source': red_source,
+                                             'implementation_source': green_source}), \
+             mock.patch.object(z._workflow.Workflow, 'node_cleanup_delivered_worktrees',
+                               return_value={'status': 'complete', 'removed': 0,
+                                             'preserved_dirty': 0}):
+            result = self.session.call(100, request)
+        self.assertEqual(1, len(self.merge_calls))
+        self.assertIn('--merge', self.merge_calls[0])
+        self.assertNotIn('--squash', self.merge_calls[0])
+        self.assertIn('complete', json.dumps(result['next_steps'][0]['local_cleanup']))
+
     def test_exact_root_authorization_rejects_wrong_subject_review_policy_and_forged_integration(self):
         self.authorize_context()
         self.submit_role("observe", self.observed_value())
