@@ -5191,6 +5191,55 @@ class Workflow:
         return {'test_source': next(iter(sources['test_design'])),
                 'implementation_source': next(iter(sources['implement']))}
 
+    def node_compaction_inputs(self, snapshot):
+        """Derive local candidate inputs from current proofs and retained history."""
+        sources = self.node_native_sources(snapshot)
+        artifacts = snapshot['artifacts']
+        goal = snapshot['number']
+        owned = {'test_design': [], 'implement': []}
+        for key, (_, result) in snapshot['projection']['current'].items():
+            phase = result.get('node', {}).get('node')
+            if result.get('node', {}).get('goal') != goal or phase not in owned:
+                continue
+            workspace = snapshot['workspaces'].get(key, {})
+            if not workspace.get('git_workspace') or 'entry' not in workspace:
+                raise ValueError('Compaction requires current reviewed Git workspace scope')
+            owned[phase].append(workspace['entry']['owned'])
+        if any(len(scopes) != 1 for scopes in owned.values()):
+            raise ValueError('Compaction requires one current RED and GREEN allocation')
+        retained = {}
+        prefix = f'refs/heads/zzzops/attempts/{goal}/'
+        def add(ref, commit):
+            if (not isinstance(ref, str) or not ref.startswith((prefix + 'test_design/', prefix + 'implement/'))
+                    or not isinstance(commit, str)):
+                raise ValueError('Compaction retained attempt identity is invalid')
+            if ref in retained and retained[ref] != commit:
+                raise ValueError('Compaction retained attempt ref has conflicting commits')
+            retained[ref] = commit
+        for reference in snapshot['payload']['evidence']:
+            result = artifacts.get(reference['hash'], {}).get('content', {})
+            if result.get('node', {}).get('goal') != goal or result['node'].get('node') not in owned:
+                continue
+            for output in result.get('outputs', {}).values():
+                source = artifacts.get(output['hash'], {}).get('provenance', {}).get('source')
+                proof = artifacts.get(source.get('hash'), {}) if isinstance(source, dict) else {}
+                if proof.get('kind') == 'git_phase_proof':
+                    add(proof['retained_ref'], proof['checkpoint']['result_commit'])
+        for receipt in snapshot['payload']['operational']['receipts']:
+            response = snapshot['resolve'](receipt['result'])
+            for step in response.get('next_steps', []):
+                attempt = step.get('retained_attempt')
+                if attempt and step.get('kind') == 'checkpoint' and step.get('goal') == goal:
+                    add(attempt['ref'], attempt['commit'])
+        attempts = [{'ref': ref, 'commit': commit} for ref, commit in sorted(retained.items())]
+        test_attempts = [row for row in attempts if row['ref'].startswith(prefix + 'test_design/')]
+        base = git_phase_state.compaction_base_from_attempts(self.repo, goal=goal,
+            test_source=sources['test_source'], attempts=test_attempts, remote='origin')
+        return {'goal': goal, 'base_commit': base, **sources,
+                'test_owned': owned['test_design'][0],
+                'implementation_owned': owned['implement'][0],
+                'retained_attempts': attempts}
+
     def node_publication_operation(self, snapshot, payload, request):
         operation = request['operation']; projection = snapshot['projection']
         if not (self.runtime or {}).get('root_id'): raise ValueError('Operational publication belongs to authenticated root')

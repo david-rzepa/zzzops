@@ -139,6 +139,46 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'current reviewed RED and GREEN'):
             engine.node_native_sources(snapshot)
 
+    def test_compaction_inputs_derive_from_current_proofs_and_retained_history(self):
+        engine = workflow.Workflow.__new__(workflow.Workflow)
+        engine.repo = Path('/repo')
+        engine.node_native_sources = lambda _snapshot: {
+            'test_source': 'c' * 40, 'implementation_source': 'd' * 40}
+        artifacts, current, evidence, workspaces = {}, {}, [], {}
+        for phase, commit, owned in (('test_design', 'c' * 40, ['behavior_test.py']),
+                                     ('implement', 'd' * 40, ['source.py'])):
+            output = {'hash': phase + '-output'}
+            proof = {'hash': phase + '-proof'}
+            result = {'hash': phase + '-result'}
+            ref = f'refs/heads/zzzops/attempts/7/{phase}/' + ('a' if phase == 'test_design' else 'b') * 32
+            artifacts[output['hash']] = {'provenance': {'source': proof}}
+            artifacts[proof['hash']] = {'kind': 'git_phase_proof', 'retained_ref': ref,
+                                        'checkpoint': {'result_commit': commit}}
+            value = {'node': {'goal': 7, 'node': phase}, 'outputs': {'value': output}}
+            artifacts[result['hash']] = {'content': value}
+            current[phase] = (result, value)
+            evidence.append(result)
+            workspaces[phase] = {'git_workspace': True, 'entry': {'owned': owned}}
+        recovery = {'hash': 'recovery-response'}
+        recovered_ref = 'refs/heads/zzzops/attempts/7/test_design/' + 'f' * 32
+        recovered = {'next_steps': [{'kind': 'checkpoint', 'goal': 7,
+                                     'retained_attempt': {'ref': recovered_ref,
+                                                          'commit': 'f' * 40}}]}
+        snapshot = {'number': 7, 'projection': {'current': current},
+                    'payload': {'evidence': evidence, 'operational': {'receipts': []}},
+                    'artifacts': artifacts, 'workspaces': workspaces,
+                    'resolve': lambda ref: recovered if ref == recovery else artifacts[ref['hash']]}
+        snapshot['payload']['operational']['receipts'].append({'result': recovery})
+        with mock.patch.object(workflow.git_phase_state, 'compaction_base_from_attempts',
+                               return_value='e' * 40) as derive:
+            inputs = engine.node_compaction_inputs(snapshot)
+        self.assertEqual('e' * 40, inputs['base_commit'])
+        self.assertEqual(['behavior_test.py'], inputs['test_owned'])
+        self.assertEqual(['source.py'], inputs['implementation_owned'])
+        self.assertEqual(3, len(inputs['retained_attempts']))
+        self.assertIn({'ref': recovered_ref, 'commit': 'f' * 40}, inputs['retained_attempts'])
+        derive.assert_called_once()
+
     def legacy_project(self):
         dag = json.loads((Path(__file__).parent / 'fixtures/legacy_phase_dag.json').read_text())
         return {'policy': {'sections': [{'id': 'workflow_adherence', 'configuration': {'phase_dag': dag}}]}}
