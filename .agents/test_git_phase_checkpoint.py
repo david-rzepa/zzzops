@@ -172,6 +172,11 @@ class GitPhaseCheckpointTests(unittest.TestCase):
         self.assertEqual('2', self.git('rev-list', '--count', f'{self.base}..HEAD').strip())
         self.assertEqual(preview['test_tree'], self.git('rev-parse', 'HEAD^^{tree}').strip())
         self.assertEqual(preview['implementation_tree'], self.git('rev-parse', 'HEAD^{tree}').strip())
+        self.assertEqual(preview, git_phase_state.preview_two_commit_candidate(
+            self.repo, goal=566, base_commit=self.base, test_source=test_source,
+            implementation_source=implementation_source,
+            test_owned=['behavior_test.py'], implementation_owned=['output.py'],
+            retained_attempts=attempts, remote='origin'))
         self.assertEqual({'test_commit': compacted['test_commit'],
                           'implementation_commit': compacted['implementation_commit'],
                           'test_source': test_source,

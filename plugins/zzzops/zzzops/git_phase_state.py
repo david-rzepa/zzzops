@@ -274,12 +274,20 @@ def preview_two_commit_candidate(repo: Path, *, goal: int, base_commit: str,
     repo = Path(repo).resolve()
     branch = _candidate_branch(repo)
     _clean_candidate(repo)
-    if _git(repo, 'rev-parse', 'HEAD').decode().strip() != implementation_source:
-        raise ValueError('Compaction source differs from the candidate branch head')
-    return {**_compaction_facts(repo, goal=goal, base_commit=base_commit,
+    facts = _compaction_facts(repo, goal=goal, base_commit=base_commit,
         test_source=test_source, implementation_source=implementation_source,
         test_owned=test_owned, implementation_owned=implementation_owned,
-        retained_attempts=retained_attempts, remote=remote), 'branch_ref': branch}
+        retained_attempts=retained_attempts, remote=remote)
+    head = _git(repo, 'rev-parse', 'HEAD').decode().strip()
+    if head != implementation_source:
+        candidate = verify_two_commit_candidate(repo, goal=goal,
+            base_commit=base_commit, head_commit=head)
+        if (candidate['test_source'] != test_source
+                or candidate['implementation_source'] != implementation_source
+                or _git(repo, 'rev-parse', candidate['test_commit'] + '^{tree}').decode().strip() != facts['test_tree']
+                or _git(repo, 'rev-parse', head + '^{tree}').decode().strip() != facts['implementation_tree']):
+            raise ValueError('Compaction source differs from the candidate branch head')
+    return {**facts, 'branch_ref': branch}
 
 
 def _commit_tree(repo: Path, *, tree: str, parent: str, source: str,

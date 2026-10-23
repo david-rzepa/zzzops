@@ -179,6 +179,107 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         self.assertIn({'ref': recovered_ref, 'commit': 'f' * 40}, inputs['retained_attempts'])
         derive.assert_called_once()
 
+    def test_compaction_requires_current_root_repository_authorization(self):
+        engine = workflow.Workflow.__new__(workflow.Workflow)
+        engine.runtime = {'root_id': 'root'}
+        engine.node_authorization_policy_matches = lambda *_args: True
+        authorization = {'hash': 'authorization'}
+        manifest = {'hash': 'manifest'}
+        implementation = {'hash': 'implementation'}
+        review = {'hash': 'review'}
+        artifacts = {
+            'authorization': {'type': 'repository_authorization', 'content': {
+                'decision': 'approved', 'manifest': manifest}},
+            'manifest': {'type': 'delivery_candidate', 'content': {
+                'delivery_class': 'leaf', 'candidate': implementation}},
+            'review': {'content': {'one': {'decision': 'approved'}}},
+        }
+        auth_result = {'node': {'goal': 7, 'node': 'authorize_repository'},
+                       'executor': 'root', 'outputs': {'authorization': authorization},
+                       'inputs': [{'name': 'approved_implementation_reviews', 'source': review}]}
+        implementation_result = {'node': {'goal': 7, 'node': 'implement'},
+                                 'outputs': {'value': implementation}}
+        current = {'authorize': ({'hash': 'auth-result'}, auth_result),
+                   'select': ({'hash': 'selection-result'}, {'node': {'goal': 7, 'node': 'select_delivery_candidate'},
+                                                           'outputs': {'value': manifest}}),
+                   'implement': ({'hash': 'implementation-result'}, implementation_result)}
+        states = {'authorize': {'contract': {'executor': {'role': 'root'}}}}
+        snapshot = {'number': 7, 'projection': {'current': current, 'states': states},
+                    'artifacts': artifacts}
+        self.assertEqual(authorization,
+                         engine.node_compaction_authorization(snapshot, authorization))
+        artifacts['review']['content']['one']['decision'] = 'changes_requested'
+        with self.assertRaisesRegex(ValueError, 'approved independent reviews'):
+            engine.node_compaction_authorization(snapshot, authorization)
+
+    def test_candidate_compaction_uses_managed_branch_and_returns_bounded_receipt(self):
+        engine = workflow.Workflow.__new__(workflow.Workflow)
+        engine.repo = Path('/repo')
+        authorization = {'hash': 'sha256:' + 'a' * 64, 'uri': 'urn:sha256:' + 'a' * 64}
+        engine.node_compaction_authorization = lambda _snapshot, ref: ref
+        engine.node_compaction_inputs = lambda _snapshot: {
+            'goal': 7, 'base_commit': 'b' * 40, 'test_source': 'c' * 40,
+            'implementation_source': 'd' * 40, 'test_owned': ['behavior_test.py'],
+            'implementation_owned': ['source.py'], 'retained_attempts': []}
+        engine.node_persist = lambda _snapshot, _payload, response, _request: response
+        snapshot = {'number': 7}
+        payload = {'operational': {'leases': []}}
+        request = {'operation': 'compact_candidate', 'request_id': 'compact-7',
+                   'authorization': authorization}
+        worktree = {'status': 'clean', 'path': '/repo/.zzzops/worktrees/7/candidate/' + 'a' * 32,
+                    'branch': 'zzzops/goal-7/candidate/' + 'a' * 32, 'head': 'd' * 40}
+        preview = {'branch_ref': 'refs/heads/' + worktree['branch']}
+        pair = {'outcome': 'created', 'test_commit': 'e' * 40,
+                'implementation_commit': 'f' * 40}
+        with mock.patch.object(workflow.managed_worktrees, 'inspect_attempt_worktree',
+                               side_effect=[{'status': 'missing'}, worktree]) as inspect, \
+             mock.patch.object(workflow.managed_worktrees, 'prepare_worktree') as prepare, \
+             mock.patch.object(workflow.git_phase_state, 'preview_two_commit_candidate',
+                               return_value=preview) as preview_call, \
+             mock.patch.object(workflow.git_phase_state, 'apply_two_commit_candidate',
+                               return_value=pair):
+            response = engine.node_compact_candidate(snapshot, payload, request)
+        prepare.assert_called_once_with(Path('/repo'), goal=7, node='candidate',
+                                        attempt='a' * 32, base_commit='d' * 40)
+        self.assertEqual(2, inspect.call_count)
+        preview_call.assert_called_once()
+        step = response['next_steps'][0]
+        self.assertEqual('candidate_compacted', step['kind'])
+        self.assertEqual('f' * 40, step['head_oid'])
+        self.assertNotIn('retained_attempts', step)
+
+    def test_candidate_readiness_is_inferred_from_exact_managed_head(self):
+        engine = workflow.Workflow.__new__(workflow.Workflow)
+        engine.repo = Path('/repo')
+        auth = {'hash': 'sha256:' + 'a' * 64}
+        engine.node_compaction_authorization = lambda _snapshot, ref: ref
+        engine.node_native_sources = lambda _snapshot: {
+            'test_source': 'c' * 40, 'implementation_source': 'd' * 40}
+        engine.node_compaction_inputs = lambda _snapshot: {
+            'goal': 7, 'base_commit': 'b' * 40, 'test_source': 'c' * 40,
+            'implementation_source': 'd' * 40, 'test_owned': ['behavior_test.py'],
+            'implementation_owned': ['source.py'], 'retained_attempts': []}
+        snapshot = {'number': 7, 'artifacts': {auth['hash']: {
+            'type': 'repository_authorization'}},
+            'projection': {'current': {'auth': ({'hash': 'result'},
+                {'outputs': {'authorization': auth}})}}}
+        with mock.patch.object(workflow.managed_worktrees, 'inspect_attempt_worktree',
+                               return_value={'status': 'missing'}):
+            self.assertEqual('needs_compaction', engine.node_candidate_state(snapshot)['status'])
+        observed = {'status': 'clean', 'path': '/repo/candidate',
+                    'branch': 'zzzops/goal-7/candidate/' + 'a' * 32, 'head': 'f' * 40}
+        with mock.patch.object(workflow.managed_worktrees, 'inspect_attempt_worktree',
+                               return_value=observed), \
+             mock.patch.object(workflow.git_phase_state, 'preview_two_commit_candidate'), \
+             mock.patch.object(workflow.git_phase_state, 'verify_two_commit_candidate',
+                               return_value={'test_source': 'c' * 40,
+                                             'implementation_source': 'd' * 40}):
+            self.assertEqual('ready', engine.node_candidate_state(snapshot)['status'])
+        with mock.patch.object(workflow.managed_worktrees, 'inspect_attempt_worktree',
+                               return_value={**observed, 'status': 'dirty'}):
+            with self.assertRaisesRegex(ValueError, 'dirty'):
+                engine.node_candidate_state(snapshot)
+
     def legacy_project(self):
         dag = json.loads((Path(__file__).parent / 'fixtures/legacy_phase_dag.json').read_text())
         return {'policy': {'sections': [{'id': 'workflow_adherence', 'configuration': {'phase_dag': dag}}]}}

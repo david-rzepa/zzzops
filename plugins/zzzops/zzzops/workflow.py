@@ -204,6 +204,7 @@ PUBLIC_OPERATIONS = frozenset({
     'feedback_submit', 'heartbeat', 'hydration_checkpoint', 'installation_record', 'integrate',
     'policy_approve', 'policy_propose', 'read', 'recover', 'release', 'renew',
     'preserve_historical_draft', 'retire_stale_draft', 'route_choice', 'start', 'reconcile', 'submit',
+    'compact_candidate',
 })
 
 
@@ -5072,7 +5073,23 @@ class Workflow:
                 if occupied:
                     steps.append({'kind': 'await_worker', 'goal': number, 'node': state['node'], 'reason': 'Declared resource is owned by another task'})
                     continue
-                try: steps.append(self.node_step(state, snapshot))
+                try:
+                    candidate = None
+                    if state['node']['node'] == 'publish' and self.node_native_delivery(snapshot):
+                        candidate = self.node_candidate_state(snapshot)
+                        if candidate['status'] == 'needs_compaction':
+                            steps.append({'kind': 'compact_candidate', 'assignment': 'root',
+                                'goal': number, 'node': state['node'],
+                                'action': 'Compact the exact reviewed RED and GREEN sources in a managed candidate worktree before publication.',
+                                'submission': {'operation': 'compact_candidate',
+                                    'request_id': uuid.uuid4().hex,
+                                    'authorization': candidate['authorization']}})
+                            continue
+                    ready = self.node_step(state, snapshot)
+                    if candidate and candidate['status'] == 'ready':
+                        ready['managed_candidate'] = {name: candidate[name]
+                            for name in ('path', 'branch', 'head_oid')}
+                    steps.append(ready)
                 except ValueError as exc: steps.append({'kind': 'blocker', 'goal': number, 'node': state['node'], 'reason': str(exc)})
             elif state['state'] == 'blocked' and 'repair' in snapshot['publications'].get(self.api._phase_evidence.task_key(state['node']), {}):
                 steps.append({**snapshot['publications'][self.api._phase_evidence.task_key(state['node'])]['repair'], 'goal': number, 'node': state['node']})
@@ -5239,6 +5256,126 @@ class Workflow:
                 'test_owned': owned['test_design'][0],
                 'implementation_owned': owned['implement'][0],
                 'retained_attempts': attempts}
+
+    def node_compaction_authorization(self, snapshot, reference):
+        """Require the current reviewed repository grant for this delivery."""
+        root = (self.runtime or {}).get('root_id')
+        if not root:
+            raise ValueError('Candidate compaction belongs to authenticated root')
+        projection, artifacts = snapshot['projection'], snapshot['artifacts']
+        owners = {output['hash']: (key, result, output)
+                  for key, (_, result) in projection['current'].items()
+                  for output in result['outputs'].values()}
+        owner = owners.get(reference.get('hash')) if isinstance(reference, dict) else None
+        if not owner or owner[2] != reference:
+            raise ValueError('Candidate compaction requires current repository authorization')
+        key, result, _ = owner
+        artifact = artifacts[reference['hash']]
+        value = artifact.get('content', {})
+        if (artifact.get('type') != 'repository_authorization'
+                or result['executor'] != root
+                or projection['states'][key]['contract']['executor']['role'] != 'root'
+                or value.get('decision') != 'approved'
+                or not self.node_authorization_policy_matches(value, artifact, result, artifacts)):
+            raise ValueError('Candidate compaction requires current approved root repository authorization')
+        manifest = value.get('manifest')
+        selected = owners.get(manifest.get('hash')) if isinstance(manifest, dict) else None
+        if (not selected or selected[2] != manifest
+                or artifacts[manifest['hash']].get('type') != 'delivery_candidate'
+                or artifacts[manifest['hash']]['content'].get('delivery_class') not in {'leaf', 'atomic'}):
+            raise ValueError('Candidate compaction requires the current leaf or atomic delivery selection')
+        candidate = artifacts[manifest['hash']]['content'].get('candidate')
+        current_implementation = [output for _, (_, result) in projection['current'].items()
+            if result.get('node', {}).get('goal') == snapshot['number']
+            and result['node'].get('node') == 'implement'
+            for output in result['outputs'].values()]
+        if candidate not in current_implementation:
+            raise ValueError('Candidate compaction selection differs from current implementation')
+        reviews = [artifacts.get(binding['source']['hash'], {}).get('content')
+                   for binding in result.get('inputs', [])
+                   if binding.get('name') == 'approved_implementation_reviews']
+        if (len(reviews) != 1 or not isinstance(reviews[0], dict) or not reviews[0]
+                or any(not isinstance(row, dict) or row.get('decision') != 'approved'
+                       for row in reviews[0].values())):
+            raise ValueError('Candidate compaction requires approved independent reviews')
+        return reference
+
+    def node_compact_candidate(self, snapshot, payload, request):
+        """Compact an authorized goal candidate with an exact replayable receipt."""
+        if set(request) != {'operation', 'request_id', 'authorization'}:
+            raise ValueError('Candidate compaction request has unknown authority fields')
+        if payload['operational']['leases']:
+            raise ValueError('Candidate compaction requires reconciled worker ownership')
+        reference = self.node_compaction_authorization(snapshot, request['authorization'])
+        identity = reference['hash'] if isinstance(reference, dict) else None
+        if not isinstance(identity, str) or not re.fullmatch(r'sha256:[0-9a-f]{64}', identity):
+            raise ValueError('Candidate compaction requires exact authorization identity')
+        inputs = self.node_compaction_inputs(snapshot)
+        attempt = identity[7:39]
+        observed = managed_worktrees.inspect_attempt_worktree(
+            self.repo, goal=snapshot['number'], node='candidate', attempt=attempt)
+        if observed['status'] == 'missing':
+            managed_worktrees.prepare_worktree(self.repo, goal=snapshot['number'],
+                node='candidate', attempt=attempt,
+                base_commit=inputs['implementation_source'])
+            observed = managed_worktrees.inspect_attempt_worktree(
+                self.repo, goal=snapshot['number'], node='candidate', attempt=attempt)
+        if observed['status'] != 'clean':
+            raise ValueError('Candidate worktree is dirty; preserve it for exact recovery')
+        path = Path(observed['path'])
+        preview = git_phase_state.preview_two_commit_candidate(path,
+            goal=snapshot['number'], base_commit=inputs['base_commit'],
+            test_source=inputs['test_source'], implementation_source=inputs['implementation_source'],
+            test_owned=inputs['test_owned'], implementation_owned=inputs['implementation_owned'],
+            retained_attempts=inputs['retained_attempts'], remote='origin')
+        result = git_phase_state.apply_two_commit_candidate(path, preview,
+            test_owned=inputs['test_owned'], implementation_owned=inputs['implementation_owned'],
+            retained_attempts=inputs['retained_attempts'], remote='origin')
+        response = {'next_steps': [{'kind': 'candidate_compacted', 'goal': snapshot['number'],
+            'authorization': reference, 'branch': observed['branch'],
+            'base_commit': inputs['base_commit'], 'test_commit': result['test_commit'],
+            'head_oid': result['implementation_commit'], 'outcome': result['outcome'],
+            'action': 'Publish this exact managed candidate head, then obtain fresh head-bound independent review and CI.'}]}
+        return self.node_persist(snapshot, payload, response, request)
+
+    def node_candidate_state(self, snapshot):
+        """Infer the approved candidate's readiness from its managed Git branch."""
+        artifacts = snapshot['artifacts']
+        authorities = [output for _, (_, result) in snapshot['projection']['current'].items()
+            for output in result['outputs'].values()
+            if artifacts[output['hash']].get('type') == 'repository_authorization']
+        approved = []
+        for reference in authorities:
+            try:
+                approved.append(self.node_compaction_authorization(snapshot, reference))
+            except ValueError:
+                continue
+        if len(approved) != 1:
+            raise ValueError('Git-native publication requires one current approved repository authorization')
+        reference = approved[0]
+        sources = self.node_native_sources(snapshot)
+        attempt = reference['hash'][7:39]
+        observed = managed_worktrees.inspect_attempt_worktree(self.repo,
+            goal=snapshot['number'], node='candidate', attempt=attempt)
+        if observed['status'] == 'missing' or (observed['status'] == 'clean'
+                and observed['head'] == sources['implementation_source']):
+            return {'status': 'needs_compaction', 'authorization': reference}
+        if observed['status'] != 'clean':
+            raise ValueError('Managed candidate worktree is dirty or changed')
+        inputs = self.node_compaction_inputs(snapshot)
+        git_phase_state.preview_two_commit_candidate(Path(observed['path']),
+            goal=snapshot['number'], base_commit=inputs['base_commit'],
+            test_source=inputs['test_source'], implementation_source=inputs['implementation_source'],
+            test_owned=inputs['test_owned'], implementation_owned=inputs['implementation_owned'],
+            retained_attempts=inputs['retained_attempts'], remote='origin')
+        pair = git_phase_state.verify_two_commit_candidate(Path(observed['path']),
+            goal=snapshot['number'], base_commit=inputs['base_commit'],
+            head_commit=observed['head'])
+        if any(pair[name] != value for name, value in sources.items()):
+            raise ValueError('Managed candidate differs from current reviewed source commits')
+        return {'status': 'ready', 'authorization': reference,
+                'path': observed['path'], 'branch': observed['branch'],
+                'head_oid': observed['head']}
 
     def node_publication_operation(self, snapshot, payload, request):
         operation = request['operation']; projection = snapshot['projection']
@@ -5881,6 +6018,8 @@ class Workflow:
                 return self.node_checkpoint_reconcile_adopt(snapshot, payload, request)
             if request['operation'] == 'checkpoint_reconcile_review':
                 return self.node_checkpoint_reconcile_review(snapshot, payload, request)
+            if request['operation'] == 'compact_candidate':
+                return self.node_compact_candidate(snapshot, payload, request)
             if request['operation'] == 'graph_adopt':
                 return self.node_graph_adopt(snapshot, payload, request)
             if request['operation'] == 'graph_review':
@@ -5923,6 +6062,9 @@ class Workflow:
             elif operation == 'start':
                 if lease: raise ValueError('Task already has an owner; observed-stop recovery is required')
                 if state['state'] != 'ready' or request.get('input_hash') != state.get('input_hash'): raise ValueError('Stale input or prerequisite prevents acquisition')
+                if node['node'] == 'publish' and self.node_native_delivery(snapshot):
+                    if self.node_candidate_state(snapshot)['status'] != 'ready':
+                        raise ValueError('Git-native candidate must be compacted before publication acquisition')
                 draft_acquisition = state.get('workspace', {}).get('acquisition', {})
                 if draft_acquisition.get('stopped_draft') and draft_acquisition.get('input_hash') != state['input_hash']:
                     raise ValueError('Stopped workspace draft full input identity changed; reconcile current authority before acquisition')
@@ -6130,6 +6272,14 @@ class Workflow:
                             )
                             if not legacy_rejected_authorization and not ev.value_matches(contracts[slot]['schema'], content):
                                 raise ValueError('Output type contract rejected slot ' + slot)
+                        if node['node'] == 'publish' and self.node_native_delivery(snapshot):
+                            candidate = self.node_candidate_state(snapshot)
+                            value = bundle.get('value')
+                            if (candidate['status'] != 'ready' or not isinstance(value, dict)
+                                    or value.get('branch') != candidate['branch']
+                                    or value.get('head_oid') != candidate['head_oid']
+                                    or value.get('repository') != self.repository):
+                                raise ValueError('Published candidate differs from the exact managed Git head')
                         self.node_validate_bundle(snapshot, state, bundle, lease['worker'])
                         verification = None
                         if request.get('workspace_checks'):
@@ -7325,6 +7475,17 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                     step['managed_worktree'] = workspace
                     step['action'] = ('Run this leased task in the managed worktree at '
                                       + workspace['path'] + '; preserve the exact attempt branch.')
+        if operation == 'compact_candidate':
+            for step in result.get('next_steps', []):
+                if step.get('kind') != 'candidate_compacted' or step.get('goal') != number:
+                    continue
+                attempt = step['authorization']['hash'][7:39]
+                local = managed_worktrees.inspect_attempt_worktree(
+                    repo, goal=number, node='candidate', attempt=attempt)
+                step['managed_candidate'] = local
+                if local['status'] != 'clean' or local['head'] != step['head_oid']:
+                    step['action'] = ('The exact compacted head is not available in this machine\'s '
+                                      'managed worktree; restore it from retained attempts before publication.')
         if stopped_attempt is not None:
             local = managed_worktrees.inspect_attempt_worktree(
                 repo, goal=number, node=stopped_attempt['node']['node'],
