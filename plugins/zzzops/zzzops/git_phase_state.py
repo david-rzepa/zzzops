@@ -358,6 +358,173 @@ def _commit_tree(repo: Path, *, tree: str, parent: str, source: str,
     return result.stdout.decode().strip()
 
 
+def _grouped_candidate_facts(repo: Path, *, goal: int, base_commit: str,
+                             groups: list[dict], retained_attempts: list[dict],
+                             remote: str) -> dict:
+    """Validate declarative publish groups against exact retained attempt commits."""
+    if type(goal) is not int or goal <= 0 or not isinstance(groups, list) or not groups:
+        raise ValueError('Git publication requires reviewed ordered groups')
+    _commit(repo, base_commit)
+    if not isinstance(retained_attempts, list) or not retained_attempts:
+        raise ValueError('Git publication requires retained attempts')
+    seen_groups, seen_nodes, all_paths, previous_tree = set(), set(), set(), base_commit
+    previous_source = base_commit
+    normalized = []
+    node_scopes, source_refs = {}, set()
+    for order, group in enumerate(groups):
+        if (not isinstance(group, dict)
+                or set(group) != {'id', 'order', 'nodes', 'commit_type', 'summary'}
+                or not isinstance(group['id'], str) or not _NODE.fullmatch(group['id'])
+                or group['id'] in seen_groups or type(group['order']) is not int
+                or group['order'] != order
+                or not isinstance(group['commit_type'], str)
+                or not re.fullmatch(r'[a-z][a-z0-9]*', group['commit_type'])
+                or not isinstance(group['summary'], str) or not group['summary'].strip()
+                or group['summary'] != group['summary'].strip()
+                or len(group['summary']) > 120
+                or any(ord(character) < 32 or ord(character) == 127
+                       for character in group['summary'])
+                or not isinstance(group['nodes'], list) or not group['nodes']):
+            raise ValueError('Git publication group declaration is malformed')
+        seen_groups.add(group['id'])
+        owned, sources = set(), []
+        for member in group['nodes']:
+            if (not isinstance(member, dict) or set(member) != {'node', 'source', 'owned'}
+                    or not isinstance(member['node'], str) or not _NODE.fullmatch(member['node'])
+                    or member['node'] in seen_nodes):
+                raise ValueError('Git publication group has an invalid or duplicate node')
+            _commit(repo, member['source'])
+            _scope_hash(member['owned'])
+            if not member['owned']:
+                raise ValueError('Git publication node has no reviewed owned paths')
+            seen_nodes.add(member['node'])
+            node_scopes[member['node']] = member['owned']
+            owned.update(member['owned'])
+            sources.append(member['source'])
+            source_refs.add((member['node'], member['source']))
+        if all_paths.intersection(owned):
+            raise ValueError('Git publication groups overlap in reviewed paths')
+        all_paths.update(owned)
+        tips = [source for source in set(sources) if all(
+            subprocess.run(['git', 'merge-base', '--is-ancestor', other, source],
+                           cwd=repo, capture_output=True).returncode == 0
+            for other in sources)]
+        if len(tips) != 1:
+            raise ValueError('Git publication group sources have no unique ancestry tip')
+        source = tips[0]
+        if subprocess.run(['git', 'merge-base', '--is-ancestor', previous_source, source],
+                          cwd=repo, capture_output=True).returncode:
+            raise ValueError('Git publication groups do not follow declared order')
+        tree = _project_owned_tree(repo, base_commit=previous_tree,
+                                   source_commit=source, owned_paths=sorted(owned))
+        if not _scoped_change_count(repo, previous_tree, tree, sorted(owned)):
+            raise ValueError('Git publication group has no reviewed changes')
+        normalized.append({'id': group['id'], 'order': order, 'source': source,
+                           'tree': tree, 'scope': _scope_hash(sorted(owned)),
+                           'commit_type': group['commit_type'], 'summary': group['summary']})
+        previous_tree, previous_source = tree, source
+    _scoped_change_count(repo, base_commit, previous_source, sorted(all_paths))
+    if _git(repo, 'rev-parse', previous_source + '^{tree}').decode().strip() != previous_tree:
+        raise ValueError('Git publication final tree differs from retained source')
+    observed_sources, seen_refs = set(), set()
+    for attempt in retained_attempts:
+        if (not isinstance(attempt, dict) or set(attempt) != {'ref', 'commit'}
+                or attempt['ref'] in seen_refs):
+            raise ValueError('Git publication retained attempt is malformed')
+        seen_refs.add(attempt['ref'])
+        match = re.fullmatch(
+            rf'refs/heads/zzzops/attempts/{goal}/([A-Za-z0-9_.-]+)/[0-9a-f]{{32}}',
+            attempt['ref'])
+        if not match or match.group(1) not in node_scopes:
+            raise ValueError('Git publication retained attempt has an undeclared node')
+        verify_attempt_ref(repo, remote=remote, **attempt)
+        parents = _git(repo, 'rev-list', '--parents', '-n', '1', attempt['commit']).decode().split()
+        if len(parents) != 2:
+            raise ValueError('Git publication retained attempt must have one parent')
+        _scoped_change_count(repo, parents[1], attempt['commit'], node_scopes[match.group(1)])
+        observed_sources.add((match.group(1), attempt['commit']))
+    if not source_refs <= observed_sources:
+        raise ValueError('Git publication source is missing its exact retained attempt')
+    plan_hash = 'sha256:' + hashlib.sha256(json.dumps(groups, sort_keys=True,
+        separators=(',', ':')).encode()).hexdigest()
+    attempts_hash = 'sha256:' + hashlib.sha256(json.dumps(retained_attempts,
+        sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    return {'goal': goal, 'base_commit': base_commit, 'groups': normalized,
+            'plan_hash': plan_hash, 'retained_attempts_hash': attempts_hash}
+
+
+def _grouped_commit_message(facts: dict, group: dict) -> str:
+    return (f"{group['commit_type']}(goal-{facts['goal']}): {group['summary']}\n\n"
+            f"ZzzOps-Goal: {facts['goal']}\nZzzOps-Group: {group['id']}\n"
+            f"ZzzOps-Source: {group['source']}\nZzzOps-Plan: {facts['plan_hash']}\n")
+
+
+def _grouped_commits(repo: Path, facts: dict) -> list[str]:
+    parent, commits = facts['base_commit'], []
+    for group in facts['groups']:
+        parent = _commit_tree(repo, tree=group['tree'], parent=parent,
+                              source=group['source'],
+                              message=_grouped_commit_message(facts, group))
+        commits.append(parent)
+    return commits
+
+
+def preview_grouped_candidate(repo: Path, *, goal: int, base_commit: str,
+                              groups: list[dict], retained_attempts: list[dict],
+                              remote: str) -> dict:
+    """Preview a policy-declared candidate without moving its branch."""
+    repo = Path(repo).resolve()
+    branch = _candidate_branch(repo)
+    _clean_candidate(repo)
+    facts = _grouped_candidate_facts(repo, goal=goal, base_commit=base_commit,
+        groups=groups, retained_attempts=retained_attempts, remote=remote)
+    head = _git(repo, 'rev-parse', 'HEAD').decode().strip()
+    source = facts['groups'][-1]['source']
+    if head != source and head != _grouped_commits(repo, facts)[-1]:
+        raise ValueError('Git publication candidate head differs from reviewed source or compacted plan')
+    return {**facts, 'branch_ref': branch, 'expected_head': head}
+
+
+def apply_grouped_candidate(repo: Path, preview: dict, *, groups: list[dict],
+                            retained_attempts: list[dict], remote: str) -> dict:
+    """Revalidate the reviewed plan, then CAS the clean candidate branch."""
+    repo = Path(repo).resolve()
+    if not isinstance(preview, dict) or _candidate_branch(repo) != preview.get('branch_ref'):
+        raise ValueError('Git publication candidate branch changed')
+    facts = _grouped_candidate_facts(repo, goal=preview['goal'],
+        base_commit=preview['base_commit'], groups=groups,
+        retained_attempts=retained_attempts, remote=remote)
+    if preview != {**facts, 'branch_ref': preview['branch_ref'],
+                   'expected_head': preview['expected_head']}:
+        raise ValueError('Git publication reviewed plan or retained attempts changed')
+    commits = _grouped_commits(repo, facts)
+    current = _git(repo, 'rev-parse', 'HEAD').decode().strip()
+    _clean_candidate(repo)
+    if current == commits[-1]:
+        return {'outcome': 'existing', 'head_commit': current, 'commits': commits}
+    if current != preview['expected_head'] or current != facts['groups'][-1]['source']:
+        raise ValueError('Git publication candidate head moved after preview')
+    _git(repo, 'update-ref', '-m', f"zzzops compact goal {facts['goal']}",
+         preview['branch_ref'], commits[-1], current)
+    _clean_candidate(repo)
+    return {'outcome': 'created', 'head_commit': commits[-1], 'commits': commits}
+
+
+def verify_grouped_candidate(repo: Path, *, goal: int, base_commit: str,
+                             head_commit: str, groups: list[dict],
+                             retained_attempts: list[dict], remote: str) -> dict:
+    """Bind a published head to the same exact reviewed group plan and refs."""
+    repo = Path(repo).resolve()
+    _commit(repo, head_commit)
+    facts = _grouped_candidate_facts(repo, goal=goal, base_commit=base_commit,
+        groups=groups, retained_attempts=retained_attempts, remote=remote)
+    commits = _grouped_commits(repo, facts)
+    if head_commit != commits[-1]:
+        raise ValueError('Git publication head differs from the reviewed compacted plan')
+    return {'head_commit': head_commit, 'commits': commits,
+            'plan_hash': facts['plan_hash']}
+
+
 def apply_two_commit_candidate(repo: Path, preview: dict, *, test_owned: list[str],
                                implementation_owned: list[str], retained_attempts: list[dict],
                                remote: str) -> dict:

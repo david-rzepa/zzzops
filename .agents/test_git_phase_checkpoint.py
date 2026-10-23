@@ -296,8 +296,75 @@ class GitPhaseCheckpointTests(unittest.TestCase):
         self.assertEqual('existing', git_phase_state.apply_two_commit_candidate(self.repo,
             preview, test_owned=['behavior_test.py'], implementation_owned=['output.py'],
             retained_attempts=attempts, remote='origin')['outcome'])
+        self.git('switch', '-c', 'feat/interleaved-declared', implementation_source)
+        groups = [
+            {'id': 'red', 'order': 0, 'commit_type': 'test', 'summary': 'reviewed RED checks',
+             'nodes': [{'node': 'test_design', 'source': test_source,
+                        'owned': ['behavior_test.py']}]},
+            {'id': 'green', 'order': 1, 'commit_type': 'feat', 'summary': 'reviewed GREEN behavior',
+             'nodes': [{'node': 'implement', 'source': implementation_source,
+                        'owned': ['output.py']}]},
+        ]
+        grouped = git_phase_state.preview_grouped_candidate(self.repo, goal=566,
+            base_commit=self.base, groups=groups, retained_attempts=attempts,
+            remote='origin')
+        compacted_grouped = git_phase_state.apply_grouped_candidate(self.repo, grouped,
+            groups=groups, retained_attempts=attempts, remote='origin')
+        self.assertEqual(preview['test_tree'],
+                         self.git('rev-parse', compacted_grouped['commits'][0] + '^{tree}').strip())
+        self.assertEqual(preview['implementation_tree'],
+                         self.git('rev-parse', compacted_grouped['head_commit'] + '^{tree}').strip())
         for row in attempts:
             self.assertEqual(row['commit'], self.git('ls-remote', 'origin', row['ref']).split()[0])
+
+    def test_declarative_groups_compact_custom_nodes_and_bind_exact_plan(self):
+        self.remote()
+        self.git('switch', '-c', 'feat/custom-groups')
+        attempts, sources = [], {}
+        for number, (node, path) in enumerate((
+                ('checks_a', 'a_test.py'), ('checks_b', 'b_test.py'),
+                ('ship', 'source.py')), start=1):
+            source = self.result(path, f'{node} = True\n')
+            retained = git_phase_state.retain_attempt_ref(
+                self.repo, remote='origin', goal=566, node=node,
+                attempt=f'{number:032x}', commit=source)
+            attempts.append({'ref': retained['ref'], 'commit': source})
+            sources[node] = source
+        groups = [
+            {'id': 'checks', 'order': 0, 'commit_type': 'test',
+             'summary': 'consolidate reviewed checks', 'nodes': [
+                 {'node': 'checks_a', 'source': sources['checks_a'], 'owned': ['a_test.py']},
+                 {'node': 'checks_b', 'source': sources['checks_b'], 'owned': ['b_test.py']}]},
+            {'id': 'code', 'order': 1, 'commit_type': 'feat',
+             'summary': 'deliver reviewed behavior', 'nodes': [
+                 {'node': 'ship', 'source': sources['ship'], 'owned': ['source.py']}]},
+        ]
+        preview = git_phase_state.preview_grouped_candidate(
+            self.repo, goal=566, base_commit=self.base, groups=groups,
+            retained_attempts=attempts, remote='origin')
+        result = git_phase_state.apply_grouped_candidate(self.repo, preview,
+            groups=groups, retained_attempts=attempts, remote='origin')
+        self.assertEqual('created', result['outcome'])
+        self.assertEqual(2, len(result['commits']))
+        self.assertEqual('2', self.git('rev-list', '--count', f"{self.base}..HEAD").strip())
+        for path in ('a_test.py', 'b_test.py'):
+            self.assertTrue(self.git('show', result['commits'][0] + ':' + path))
+        self.assertEqual(result['head_commit'], git_phase_state.verify_grouped_candidate(
+            self.repo, goal=566, base_commit=self.base, head_commit=result['head_commit'],
+            groups=groups, retained_attempts=attempts, remote='origin')['head_commit'])
+        self.assertEqual('existing', git_phase_state.apply_grouped_candidate(
+            self.repo, preview, groups=groups, retained_attempts=attempts,
+            remote='origin')['outcome'])
+        changed = [{**groups[0], 'summary': 'different reviewed claim'}, groups[1]]
+        with self.assertRaisesRegex(ValueError, 'reviewed compacted plan'):
+            git_phase_state.verify_grouped_candidate(
+                self.repo, goal=566, base_commit=self.base, head_commit=result['head_commit'],
+                groups=changed, retained_attempts=attempts, remote='origin')
+        self.git('push', '--force', 'origin', self.base + ':' + attempts[0]['ref'])
+        with self.assertRaisesRegex(ValueError, 'missing or moved'):
+            git_phase_state.verify_grouped_candidate(
+                self.repo, goal=566, base_commit=self.base, head_commit=result['head_commit'],
+                groups=groups, retained_attempts=attempts, remote='origin')
 
     def test_compaction_stops_if_attempt_ref_moves(self):
         self.remote()
