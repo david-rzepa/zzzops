@@ -5421,6 +5421,84 @@ class Workflow:
                 'path': observed['path'], 'branch': observed['branch'],
                 'head_oid': observed['head']}
 
+    def node_cleanup_delivered_worktrees(self, snapshot):
+        """Retry local cleanup only after exact merged provider and Git facts."""
+        number = snapshot['number']
+        merged = {digest(state['publication']['provider']): state['publication']['provider']
+                  for state in snapshot['projection']['states'].values()
+                  if state.get('publication', {}).get('provider', {}).get('merged')}
+        if len(merged) != 1:
+            raise ValueError('Local cleanup requires one observed merged candidate')
+        facts = next(iter(merged.values()))
+        integrated, head, base_ref = (facts.get(name)
+            for name in ('merge_commit', 'head_oid', 'base_ref'))
+        if (not all(isinstance(oid, str) and re.fullmatch(r'[0-9a-f]{40}', oid)
+                    for oid in (integrated, head))
+                or not isinstance(base_ref, str)
+                or not re.fullmatch(r'[A-Za-z0-9_./-]+', base_ref)
+                or base_ref.startswith(('-', '/')) or '..' in base_ref.split('/')):
+            raise ValueError('Local cleanup requires exact merged provider identities')
+        fetched = subprocess.run(['git', 'fetch', '--no-tags', 'origin',
+                                  'refs/heads/' + base_ref], cwd=self.repo,
+                                 capture_output=True, text=True)
+        if fetched.returncode:
+            raise ValueError('Cannot fetch the exact merged target for local cleanup')
+        target = subprocess.run(['git', 'rev-parse', 'FETCH_HEAD'], cwd=self.repo,
+                                capture_output=True, text=True, check=True).stdout.strip()
+        if subprocess.run(['git', 'merge-base', '--is-ancestor', integrated, target],
+                          cwd=self.repo, capture_output=True).returncode:
+            raise ValueError('Observed merge commit is not in the current target branch')
+        inputs = self.node_compaction_inputs(snapshot)
+        git_phase_state.verify_two_commit_candidate(self.repo, goal=number,
+            base_commit=inputs['base_commit'], head_commit=head)
+        if subprocess.run(['git', 'merge-base', '--is-ancestor', head, integrated],
+                          cwd=self.repo, capture_output=True).returncode:
+            raise ValueError('Exact reviewed candidate is not in the observed merge commit')
+        removed, preserved = 0, 0
+        for attempt in inputs['retained_attempts']:
+            ref, commit = attempt['ref'], attempt['commit']
+            match = re.fullmatch(
+                rf'refs/heads/zzzops/attempts/{number}/(test_design|implement)/([0-9a-f]{{32}})', ref)
+            if not match:
+                raise ValueError('Retained attempt identity changed before local cleanup')
+            node, attempt_id = match.groups()
+            local = managed_worktrees.inspect_attempt_worktree(self.repo,
+                goal=number, node=node, attempt=attempt_id)
+            if local['status'] == 'missing':
+                continue
+            if local['status'] != 'clean':
+                preserved += 1
+                continue
+            managed_worktrees.cleanup_delivered_attempt_worktree(self.repo, goal=number,
+                node=node, attempt=attempt_id, expected_head=commit,
+                delivery_base=inputs['base_commit'], delivery_head=head,
+                integrated_commit=integrated, remote='origin', retained_ref=ref)
+            removed += 1
+        authorities = [output for _, (_, result) in snapshot['projection']['current'].items()
+            for output in result['outputs'].values()
+            if snapshot['artifacts'][output['hash']].get('type') == 'repository_authorization']
+        approved = []
+        for reference in authorities:
+            try:
+                if self.node_compaction_authorization(snapshot, reference) == reference:
+                    approved.append(reference)
+            except ValueError:
+                continue
+        if len(approved) != 1:
+            raise ValueError('Current candidate authorization is unavailable for local cleanup')
+        candidate_id = approved[0]['hash'][7:39]
+        candidate = managed_worktrees.inspect_attempt_worktree(self.repo,
+            goal=number, node='candidate', attempt=candidate_id)
+        if candidate['status'] == 'dirty':
+            preserved += 1
+        elif candidate['status'] == 'clean':
+            managed_worktrees.cleanup_delivered_candidate_worktree(self.repo,
+                goal=number, attempt=candidate_id, expected_head=head,
+                delivery_base=inputs['base_commit'], integrated_commit=integrated)
+            removed += 1
+        return {'status': 'complete' if not preserved else 'preserved_dirty',
+                'removed': removed, 'preserved_dirty': preserved}
+
     def node_publication_operation(self, snapshot, payload, request):
         operation = request['operation']; projection = snapshot['projection']
         if not (self.runtime or {}).get('root_id'): raise ValueError('Operational publication belongs to authenticated root')
@@ -7505,6 +7583,21 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                         and 'files' not in prior['acquisition']):
                     stopped_attempt = prior
         result = engine.mutate(number, payload)
+        if operation == 'integrate':
+            cleanup = None
+            try:
+                current = engine.node_snapshot(number)
+                if engine.node_native_delivery(current):
+                    cleanup = engine.node_cleanup_delivered_worktrees(current)
+            except (ValueError, OSError, subprocess.SubprocessError) as exc:
+                cleanup = {'status': 'pending', 'reason': str(exc)}
+            if cleanup is not None:
+                for step in result.get('next_steps', []):
+                    if step.get('kind') == 'checkpoint' and step.get('goal') == number:
+                        step['local_cleanup'] = cleanup
+                        if cleanup['status'] == 'pending':
+                            step['local_cleanup_action'] = ('Replay this exact integrate request after fixing the '
+                                'local cleanup obstacle; the provider merge and goal receipt remain committed.')
         if operation == 'start':
             for step in result.get('next_steps', []):
                 lease = step.get('lease') if step.get('kind') == 'perform' else None

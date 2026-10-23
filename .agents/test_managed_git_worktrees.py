@@ -87,6 +87,77 @@ class ManagedWorktreeTests(unittest.TestCase):
                 remote='origin', retained_ref='refs/heads/zzzops/attempts/566/implement/' + 'a' * 32)
         self.assertTrue((path / 'unverified.txt').exists())
 
+    def test_compacted_delivery_can_cleanup_retained_correction_worktree(self):
+        first = managed.prepare_worktree(self.repo, goal=566, node='test_design',
+                                         attempt='b' * 32, base_commit=self.base)
+        first_path = Path(first['path'])
+        (first_path / 'behavior_test.py').write_text('assert False\n')
+        self.git('add', 'behavior_test.py', cwd=first_path)
+        self.git('commit', '-qm', 'test: first attempt', cwd=first_path)
+        rejected = self.git('rev-parse', 'HEAD', cwd=first_path).strip()
+        first_ref = phase.retain_attempt_ref(first_path, remote='origin', goal=566,
+            node='test_design', attempt='b' * 32, commit=rejected)['ref']
+        corrected = managed.prepare_worktree(self.repo, goal=566, node='test_design',
+                                             attempt='c' * 32, base_commit=rejected)
+        corrected_path = Path(corrected['path'])
+        (corrected_path / 'behavior_test.py').write_text('assert True\n')
+        self.git('add', 'behavior_test.py', cwd=corrected_path)
+        self.git('commit', '-qm', 'test: corrected attempt', cwd=corrected_path)
+        test_source = self.git('rev-parse', 'HEAD', cwd=corrected_path).strip()
+        test_ref = phase.retain_attempt_ref(corrected_path, remote='origin', goal=566,
+            node='test_design', attempt='c' * 32, commit=test_source)['ref']
+        implementation = managed.prepare_worktree(self.repo, goal=566, node='implement',
+                                                  attempt='a' * 32, base_commit=test_source)
+        implementation_path = Path(implementation['path'])
+        (implementation_path / 'source.py').write_text('value = 1\n')
+        self.git('add', 'source.py', cwd=implementation_path)
+        self.git('commit', '-qm', 'feat: implementation', cwd=implementation_path)
+        implementation_source = self.git('rev-parse', 'HEAD', cwd=implementation_path).strip()
+        implementation_ref = phase.retain_attempt_ref(implementation_path, remote='origin',
+            goal=566, node='implement', attempt='a' * 32,
+            commit=implementation_source)['ref']
+        attempts = [{'ref': ref, 'commit': commit} for ref, commit in (
+            (first_ref, rejected), (test_ref, test_source),
+            (implementation_ref, implementation_source))]
+        candidate = managed.prepare_worktree(self.repo, goal=566, node='candidate',
+                                             attempt='d' * 32, base_commit=implementation_source)
+        candidate_path = Path(candidate['path'])
+        preview = phase.preview_two_commit_candidate(candidate_path, goal=566,
+            base_commit=self.base, test_source=test_source,
+            implementation_source=implementation_source,
+            test_owned=['behavior_test.py'], implementation_owned=['source.py'],
+            retained_attempts=attempts, remote='origin')
+        pair = phase.apply_two_commit_candidate(candidate_path, preview,
+            test_owned=['behavior_test.py'], implementation_owned=['source.py'],
+            retained_attempts=attempts, remote='origin')
+        self.git('merge', '--no-ff', '-qm', 'merge reviewed candidate', candidate['branch'])
+        integrated = self.git('rev-parse', 'HEAD').strip()
+        removed = managed.cleanup_delivered_attempt_worktree(self.repo, goal=566,
+            node='test_design', attempt='b' * 32, expected_head=rejected,
+            delivery_base=self.base, delivery_head=pair['implementation_commit'],
+            integrated_commit=integrated, remote='origin', retained_ref=first_ref)
+        self.assertEqual('removed', removed['outcome'])
+        self.assertFalse(first_path.exists())
+        self.assertEqual(rejected, self.git('ls-remote', 'origin', first_ref).split()[0])
+        self.assertEqual('already_removed', managed.cleanup_delivered_attempt_worktree(
+            self.repo, goal=566, node='test_design', attempt='b' * 32,
+            expected_head=rejected, delivery_base=self.base,
+            delivery_head=pair['implementation_commit'], integrated_commit=integrated,
+            remote='origin', retained_ref=first_ref)['outcome'])
+        (corrected_path / 'unverified.txt').write_text('dirty local draft\n')
+        with self.assertRaisesRegex(ValueError, 'dirty'):
+            managed.cleanup_delivered_attempt_worktree(self.repo, goal=566,
+                node='test_design', attempt='c' * 32, expected_head=test_source,
+                delivery_base=self.base, delivery_head=pair['implementation_commit'],
+                integrated_commit=integrated, remote='origin', retained_ref=test_ref)
+        self.assertTrue((corrected_path / 'unverified.txt').exists())
+        candidate_removed = managed.cleanup_delivered_candidate_worktree(
+            self.repo, goal=566, attempt='d' * 32,
+            expected_head=pair['implementation_commit'], delivery_base=self.base,
+            integrated_commit=integrated)
+        self.assertEqual('removed', candidate_removed['outcome'])
+        self.assertFalse(candidate_path.exists())
+
 
 if __name__ == '__main__':
     unittest.main()

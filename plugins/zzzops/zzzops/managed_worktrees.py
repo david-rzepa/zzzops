@@ -157,3 +157,83 @@ def cleanup_integrated_worktree(repo: Path, *, goal: int, node: str, attempt: st
         raise ValueError('Managed worktree removal could not be confirmed')
     return {'outcome': 'removed', 'path': str(path), 'branch': branch,
             'integrated_commit': integrated_commit}
+
+
+def cleanup_delivered_attempt_worktree(repo: Path, *, goal: int, node: str,
+                                       attempt: str, expected_head: str,
+                                       delivery_base: str, delivery_head: str,
+                                       integrated_commit: str, remote: str,
+                                       retained_ref: str) -> dict:
+    """Remove a clean archived attempt after its two-commit delivery is merged.
+
+    Rejected correction commits need not be ancestors of the compacted pair.
+    Their exact remote refs survive this local cleanup.
+    """
+    repo = Path(repo).resolve()
+    _identity(goal, node, attempt)
+    if (any(not isinstance(oid, str) or not _OID.fullmatch(oid)
+            for oid in (expected_head, delivery_base, delivery_head, integrated_commit))
+            or retained_ref != f'refs/heads/zzzops/attempts/{goal}/{node}/{attempt}'):
+        raise ValueError('Cleanup requires exact attempt and delivery identities')
+    from zzzops_git_phase_state import verify_attempt_ref, verify_two_commit_candidate
+    verify_attempt_ref(repo, remote=remote, ref=retained_ref, commit=expected_head)
+    verify_two_commit_candidate(repo, goal=goal, base_commit=delivery_base,
+                                head_commit=delivery_head)
+    if _run(repo, 'merge-base', '--is-ancestor', delivery_head, integrated_commit,
+            check=False).returncode:
+        raise ValueError('Reviewed candidate is not integrated into the observed target commit')
+    observed = inspect_attempt_worktree(repo, goal=goal, node=node, attempt=attempt)
+    path, branch = Path(observed['path']), observed['branch']
+    branch_ref = 'refs/heads/' + branch
+    if observed['status'] != 'missing':
+        if observed['status'] != 'clean':
+            raise ValueError('Managed worktree is dirty; preserve its unverified files locally')
+        if observed['head'] != expected_head:
+            raise ValueError('Managed attempt head changed before cleanup')
+        _run(_primary(repo), 'worktree', 'remove', str(path))
+        if path.exists() or any(Path(row['worktree']).resolve() == path for row in _worktrees(repo)):
+            raise ValueError('Managed worktree removal could not be confirmed')
+    existing = _run(repo, 'rev-parse', '--verify', branch_ref, check=False)
+    if existing.returncode == 0:
+        if existing.stdout.strip() != expected_head:
+            raise ValueError('Managed attempt branch changed during cleanup')
+        _run(repo, 'update-ref', '-d', branch_ref, expected_head)
+    return {'outcome': 'removed' if observed['status'] != 'missing' or existing.returncode == 0
+            else 'already_removed', 'path': str(path), 'branch': branch,
+            'integrated_commit': integrated_commit}
+
+
+def cleanup_delivered_candidate_worktree(repo: Path, *, goal: int, attempt: str,
+                                         expected_head: str, delivery_base: str,
+                                         integrated_commit: str) -> dict:
+    """Remove only a clean exact candidate already present in the target."""
+    repo = Path(repo).resolve()
+    _identity(goal, 'candidate', attempt)
+    if any(not isinstance(oid, str) or not _OID.fullmatch(oid)
+           for oid in (expected_head, delivery_base, integrated_commit)):
+        raise ValueError('Candidate cleanup requires exact commit identities')
+    from zzzops_git_phase_state import verify_two_commit_candidate
+    verify_two_commit_candidate(repo, goal=goal, base_commit=delivery_base,
+                                head_commit=expected_head)
+    if _run(repo, 'merge-base', '--is-ancestor', expected_head, integrated_commit,
+            check=False).returncode:
+        raise ValueError('Reviewed candidate is not integrated into the observed target commit')
+    observed = inspect_attempt_worktree(repo, goal=goal, node='candidate', attempt=attempt)
+    path, branch = Path(observed['path']), observed['branch']
+    branch_ref = 'refs/heads/' + branch
+    if observed['status'] != 'missing':
+        if observed['status'] != 'clean':
+            raise ValueError('Managed candidate worktree is dirty; preserve its files locally')
+        if observed['head'] != expected_head:
+            raise ValueError('Managed candidate head changed before cleanup')
+        _run(_primary(repo), 'worktree', 'remove', str(path))
+        if path.exists() or any(Path(row['worktree']).resolve() == path for row in _worktrees(repo)):
+            raise ValueError('Managed candidate worktree removal could not be confirmed')
+    existing = _run(repo, 'rev-parse', '--verify', branch_ref, check=False)
+    if existing.returncode == 0:
+        if existing.stdout.strip() != expected_head:
+            raise ValueError('Managed candidate branch changed during cleanup')
+        _run(repo, 'update-ref', '-d', branch_ref, expected_head)
+    return {'outcome': 'removed' if observed['status'] != 'missing' or existing.returncode == 0
+            else 'already_removed', 'path': str(path), 'branch': branch,
+            'integrated_commit': integrated_commit}

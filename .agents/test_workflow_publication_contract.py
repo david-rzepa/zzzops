@@ -280,6 +280,36 @@ class WorkflowPublicationContractTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'dirty'):
                 engine.node_candidate_state(snapshot)
 
+    def test_post_merge_cleanup_preserves_dirty_local_attempts(self):
+        engine = workflow.Workflow.__new__(workflow.Workflow)
+        engine.repo = Path('/repo')
+        engine.node_compaction_inputs = lambda _snapshot: {
+            'base_commit': 'b' * 40,
+            'retained_attempts': [{'ref': 'refs/heads/zzzops/attempts/7/test_design/' + 'a' * 32,
+                                   'commit': 'c' * 40}]}
+        engine.node_compaction_authorization = lambda _snapshot, ref: ref
+        auth = {'hash': 'sha256:' + 'f' * 64}
+        facts = {'merged': True, 'merge_commit': 'e' * 40,
+                 'head_oid': 'd' * 40, 'base_ref': 'dev'}
+        snapshot = {'number': 7, 'artifacts': {auth['hash']: {'type': 'repository_authorization'}},
+                    'projection': {'states': {'merge': {'publication': {'provider': facts}}},
+                                   'current': {'auth': ({'hash': 'result'},
+                                       {'outputs': {'authorization': auth}})}}}
+        def run(command, **_kwargs):
+            if command[1:3] == ['rev-parse', 'FETCH_HEAD']:
+                return SimpleNamespace(returncode=0, stdout='e' * 40)
+            return SimpleNamespace(returncode=0, stdout='')
+        with mock.patch.object(workflow.subprocess, 'run', side_effect=run), \
+             mock.patch.object(workflow.git_phase_state, 'verify_two_commit_candidate'), \
+             mock.patch.object(workflow.managed_worktrees, 'inspect_attempt_worktree',
+                               side_effect=[{'status': 'clean'}, {'status': 'dirty'}]), \
+             mock.patch.object(workflow.managed_worktrees,
+                               'cleanup_delivered_attempt_worktree') as cleanup:
+            outcome = engine.node_cleanup_delivered_worktrees(snapshot)
+        self.assertEqual({'status': 'preserved_dirty', 'removed': 1,
+                          'preserved_dirty': 1}, outcome)
+        cleanup.assert_called_once()
+
     def legacy_project(self):
         dag = json.loads((Path(__file__).parent / 'fixtures/legacy_phase_dag.json').read_text())
         return {'policy': {'sections': [{'id': 'workflow_adherence', 'configuration': {'phase_dag': dag}}]}}
@@ -800,6 +830,26 @@ class GenericPublicationPublicTests(DagFixture):
         self.assertEqual(authorization, request["authorization"])
         self.assertEqual(self.observation["head_oid"], request["expected_head"])
         return request
+
+    def test_native_post_merge_cleanup_failure_is_replayable_without_second_merge(self):
+        self.authorize_context()
+        authority = self.approve_publication()
+        self.submit_role("finish", "Exact configured graph complete")
+        request = self.integration_request(authority)
+        request["request_id"] = "native-cleanup-retry"
+        native_after_merge = lambda _snapshot: self.observation["merged"]
+        with mock.patch.object(z._workflow.Workflow, "node_native_delivery",
+                               side_effect=native_after_merge), \
+             mock.patch.object(z._workflow.Workflow, "node_cleanup_delivered_worktrees",
+                               side_effect=ValueError("simulated local cleanup failure")):
+            first = self.session.call(100, request)
+            self.assertIn("pending", json.dumps(first))
+            self.assertEqual(1, len(self.merge_calls))
+            stable = copy.deepcopy((self.provider.issues, self.provider.comments))
+            replay = self.session.call(100, request)
+            self.assertIn("pending", json.dumps(replay))
+            self.assertEqual(stable, (self.provider.issues, self.provider.comments))
+            self.assertEqual(1, len(self.merge_calls))
 
     def test_exact_root_authorization_rejects_wrong_subject_review_policy_and_forged_integration(self):
         self.authorize_context()
