@@ -7191,7 +7191,8 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             node_key = api._phase_evidence.task_key(payload.get('node'))
             prior = snapshot['projection']['leases'].get(node_key)
             if (prior and prior.get('token') == payload.get('lease')
-                    and 'git_commit' in prior.get('acquisition', {})):
+                    and 'git_commit' in prior.get('acquisition', {})
+                    and 'files' not in prior['acquisition']):
                 stopped_attempt = prior
         result = engine.mutate(number, payload)
         if operation == 'start':
@@ -7200,7 +7201,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 acquisition = lease.get('acquisition', {}) if isinstance(lease, dict) else {}
                 if (lease and lease.get('node') == payload.get('node')
                         and lease.get('owner') == (runtime or {}).get('root_id')
-                        and 'git_commit' in acquisition):
+                        and 'git_commit' in acquisition and 'files' not in acquisition):
                     node = lease['node']
                     workspace = managed_worktrees.prepare_worktree(
                         repo, goal=number, node=node['node'], attempt=lease['attempt'],
