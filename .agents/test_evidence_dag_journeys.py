@@ -4664,10 +4664,12 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
         self.session.finish(self.session.acquire("requirements"), {"value": value})
         return value
 
-    def specification(self, review_items, allocation_names=("test_design", "implement")):
+    def specification(self, review_items, allocation_names=("test_design", "implement"),
+                      owned_by_node=None):
+        owned_by_node = owned_by_node or {}
         allocation = {"allocations": {
             name: {"task": {"goal": 100, "node": name, "item": None, "generation": 1},
-                   "owned": [], "consumed": []}
+                   "owned": owned_by_node.get(name, []), "consumed": []}
             for name in allocation_names
         }}
         value = {"specification": "One falsifiable behavior", "criteria": ["observable"],
@@ -4811,6 +4813,11 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
                       "A specification-only flaw must not reopen settled requirements")
 
     def test_shipped_composition_never_acquires_leaf_implement_and_selects_integration_candidate(self):
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        bare = Path(remote_dir.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
+        self.session.git('remote', 'add', 'origin', str(bare))
         # Authenticated provider coverage proves this fixture's immediate-child
         # membership is known-empty; the graph must still use #children.
         self.provider.get_sub_issues = lambda _number: []
@@ -4833,7 +4840,8 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
         z._github_pull_request_states.side_effect = current_pr_states
         self.requirements()
         _spec, allocation = self.specification(
-            {}, allocation_names=("test_design", "implement", "integration_verification"))
+            {}, allocation_names=("test_design", "implement", "integration_verification"),
+            owned_by_node={"integration_verification": ["integration_test.py"]})
         if "retain_spec_review_findings" in self.names():
             self.session.finish(self.session.acquire("retain_spec_review_findings"), {"value": {
                 "items": {}, "rationale": "No specification review findings",
@@ -4850,7 +4858,9 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
             "delivery_class": "composition", "rationale": "Parent integrates child results",
             "children": {"items": {}, "rationale": "Fixture has an empty observed child set"},
             "implementation_review_members": {"items": {}, "rationale": "Leaf path is inapplicable"},
-            "integration_review_members": {"items": {}, "rationale": "Bounded integration fixture"},
+            "integration_review_members": {"items": {
+                "acceptance_contracts": "Review parent integration behavior"},
+                "rationale": "Independent review of parent integration"},
         }
         response = self.session.finish(
             self.session.acquire("decompose", frontier=response), {"value": decomposition})
@@ -4878,12 +4888,22 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
         ready = {step["node"]["node"] for step in response["next_steps"]
                  if step.get("kind") == "execute" and step.get("node")}
         self.assertEqual({"integration_verification"}, ready, response["next_steps"])
-        response = self.session.finish(self.session.acquire(
-            "integration_verification", frontier=response), {"value": {
+        integration_work = self.session.acquire("integration_verification", frontier=response)
+        integration_tree = Path(integration_work['managed_worktree']['path'])
+        (integration_tree / 'integration_test.py').write_text('assert True\n')
+        subprocess.run(['git', 'add', 'integration_test.py'], cwd=integration_tree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test(goal-100): verify composition'],
+                       cwd=integration_tree, check=True)
+        integration_source = subprocess.run(['git', 'rev-parse', 'HEAD'],
+            cwd=integration_tree, capture_output=True, text=True, check=True).stdout.strip()
+        integration_request = self.session.submission(integration_work, {"value": {
             "applicability": "applicable", "candidate": "parent integration candidate",
             "parent_workspace": "parent-only", "child_evidence": "exact joined child Results",
             "rationale": "Composition requires parent integration",
-        }})
+        }}, 'composition-integration')
+        integration_request['workspace_checks'] = [[sys.executable, '-B', 'integration_test.py']]
+        integration_request['verification_expectation'] = 'passed'
+        response = self.session.call(100, integration_request)
         ready = {step["node"]["node"] for step in response["next_steps"]
                  if step.get("kind") == "execute" and step.get("node")}
         self.assertNotIn("implement", ready)
@@ -4913,6 +4933,12 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
                 "retain_migration_findings", frontier=response), {"value": {
                 "items": {}, "rationale": "No migration findings",
             }})
+        response = self.session.finish(self.session.acquire(
+            "integration_review", item="acceptance_contracts", frontier=response), {
+            "value": self.approved_review("Reviewed parent integration result")})
+        for registry in sorted(name for name in self.names() if name.startswith("retain_integration_")):
+            response = self.session.finish(self.session.acquire(registry, frontier=response), {
+                "value": {"items": {}, "rationale": "No integration review findings"}})
         ready = {step["node"]["node"] for step in response["next_steps"]
                  if step.get("kind") == "execute" and step.get("node")}
         self.assertIn("authorize_repository", ready)
@@ -4923,12 +4949,26 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
         }
         response = self.session.finish(self.session.acquire(
             "authorize_repository", frontier=response), {"authorization": repository_authorization})
+        compaction = next(step for step in response['next_steps']
+                          if step.get('kind') == 'compact_candidate')
+        response = self.session.call(100, compaction['submission'])
+        compacted = response['next_steps'][0]
+        retained_ref = ('refs/heads/zzzops/attempts/100/integration_verification/'
+                        + integration_work['lease']['attempt'])
+        self.assertEqual(integration_source,
+                         self.session.git('ls-remote', 'origin', retained_ref).split()[0])
+        self.assertEqual(2, len(self.session.git('rev-list', '--parents', '-n', '1',
+                                               compacted['head_oid']).split()))
+        self.assertEqual([100], sorted(self.provider.issues))
+        self.fixture.head_oid = compacted['head_oid']
+        self.fixture.base_oid = compacted['base_commit']
+        response = self.session.call(100)
         ready = {step["node"]["node"] for step in response["next_steps"]
                  if step.get("kind") == "execute" and step.get("node")}
-        self.assertEqual({"publish"}, ready)
+        self.assertEqual({"publish"}, ready, response['next_steps'])
         published_head = self.fixture.head_oid
         response = self.session.finish(self.session.acquire("publish", frontier=response), {"value": {
-            "repository": "owner/repo", "branch": "goal-child", "base": "dev",
+            "repository": "owner/repo", "branch": compacted['branch'], "base": "dev",
             "pr": "https://github.com/owner/repo/pull/9", "head_oid": published_head,
         }})
         response = self.session.finish(self.session.acquire("integrate", frontier=response), {"value": {

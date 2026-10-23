@@ -5188,7 +5188,7 @@ class Workflow:
                         if candidate['status'] == 'needs_compaction':
                             steps.append({'kind': 'compact_candidate', 'assignment': 'root',
                                 'goal': number, 'node': state['node'],
-                                'action': 'Compact the exact reviewed RED and GREEN sources in a managed candidate worktree before publication.',
+                                'action': 'Compact the exact reviewed phase source in a managed candidate worktree before publication.',
                                 'submission': {'operation': 'compact_candidate',
                                     'request_id': uuid.uuid4().hex,
                                     'authorization': candidate['authorization']}})
@@ -5468,9 +5468,14 @@ class Workflow:
             raise ValueError('Candidate compaction selection differs from current reviewed source')
         review_input = ('approved_integration_reviews' if delivery_class == 'composition'
                         else 'approved_implementation_reviews')
-        reviews = [artifacts.get(binding['source']['hash'], {}).get('content')
-                   for binding in result.get('inputs', [])
-                   if binding.get('name') == review_input]
+        reviews = []
+        for binding in result.get('inputs', []):
+            if binding.get('name') != review_input:
+                continue
+            value = artifacts.get(binding['source']['hash'], {}).get('content')
+            for part in binding.get('path', []):
+                value = value.get(part) if isinstance(value, dict) else None
+            reviews.append(value)
         if (len(reviews) != 1 or not isinstance(reviews[0], dict) or not reviews[0]
                 or any(not isinstance(row, dict) or row.get('decision') != 'approved'
                        for row in reviews[0].values())):
