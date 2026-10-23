@@ -145,6 +145,68 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         self.assertIn('current repository authorization', json.dumps(response))
         self.assertEqual(before, (fixture.provider.issues, fixture.provider.comments))
 
+    def test_public_compaction_persists_exact_candidate_without_duplicate_goal(self):
+        fixture = self.fixture_with_git_workspace()
+        repo = fixture.fixture.repo
+        remote = Path(tempfile.mkdtemp()) / 'remote.git'
+        self.addCleanup(lambda: __import__('shutil').rmtree(remote.parent))
+        subprocess.run(['git', 'init', '--bare', '-q', str(remote)], check=True)
+        fixture.session.git('remote', 'add', 'origin', str(remote))
+        base = fixture.session.git('rev-parse', 'HEAD').strip()
+        (repo / 'behavior_test.py').write_text('assert True\n')
+        fixture.session.git('add', 'behavior_test.py')
+        fixture.session.git('commit', '-qm', 'test(goal-100): reviewed RED source')
+        red = fixture.session.git('rev-parse', 'HEAD').strip()
+        (repo / 'source.py').write_text('def value():\n    return 2\n')
+        fixture.session.git('add', 'source.py')
+        fixture.session.git('commit', '-qm', 'feat(goal-100): reviewed GREEN source')
+        green = fixture.session.git('rev-parse', 'HEAD').strip()
+        red_ref = 'refs/heads/zzzops/attempts/100/test_design/' + 'a' * 32
+        green_ref = 'refs/heads/zzzops/attempts/100/implement/' + 'b' * 32
+        fixture.session.git('push', 'origin', red + ':' + red_ref,
+                            green + ':' + green_ref)
+        inputs = {'goal': 100, 'base_commit': base,
+                  'test_source': red, 'implementation_source': green,
+                  'test_owned': ['behavior_test.py'],
+                  'implementation_owned': ['source.py'],
+                  'retained_attempts': [{'ref': red_ref, 'commit': red},
+                                        {'ref': green_ref, 'commit': green}]}
+        authority = {'hash': 'sha256:' + 'c' * 64,
+                     'uri': 'urn:sha256:' + 'c' * 64}
+        request = {'operation': 'compact_candidate',
+                   'request_id': 'public-real-compaction',
+                   'authorization': authority}
+        receipts_before = len(fixture.payload()[1]['operational']['receipts'])
+        create_comment = fixture.provider.create_issue_comment
+        lost = []
+        def uncertain_comment(number, body):
+            result = create_comment(number, body)
+            if number == 100 and not lost:
+                lost.append(True)
+                raise z.GoalTransitionProviderError('Compaction comment committed; response lost')
+            return result
+        with mock.patch.object(z._workflow.Workflow, 'node_compaction_authorization',
+                               return_value=authority), \
+             mock.patch.object(z._workflow.Workflow, 'node_compaction_inputs',
+                               return_value=inputs):
+            with mock.patch.object(fixture.provider, 'create_issue_comment',
+                                   side_effect=uncertain_comment):
+                fixture.session.call(100, request, expected=None)
+            self.assertTrue(lost)
+            first = fixture.session.call(100, request)
+            comments = len(fixture.provider.comments[100])
+            replay = fixture.session.call(100, request)
+        self.assertEqual(first, replay)
+        self.assertEqual(comments, len(fixture.provider.comments[100]))
+        self.assertEqual([100], sorted(fixture.provider.issues))
+        self.assertEqual(receipts_before + 1,
+                         len(fixture.payload()[1]['operational']['receipts']))
+        step = first['next_steps'][0]
+        self.assertEqual('candidate_compacted', step['kind'])
+        self.assertEqual('created', step['outcome'])
+        self.assertNotEqual(green, step['head_oid'])
+        self.assertTrue(all(len(comment['body']) <= 65536 for comment in fixture.provider.comments[100]))
+
     def test_worktree_creation_failure_after_start_replays_without_new_lease(self):
         fixture = self.fixture_with_git_workspace()
         step = next(s for s in fixture.session.ready() if s['node']['node'] == 'alpha')
