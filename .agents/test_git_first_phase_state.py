@@ -147,16 +147,17 @@ class FreshGoalGitCheckpointTests(DagFixture):
 
 
 class GitWorkspaceAcquisitionTests(unittest.TestCase):
-    def fixture_with_git_workspace(self):
+    def fixture_with_git_workspace(self, *, many_files=0):
         fixture = journeys.WorkspaceAuthorityPublicTests('runTest')
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
-        paths = fixture.fixture.repo / 'many'
-        paths.mkdir()
-        for index in range(2200):
-            (paths / f'fixture_{index:04d}.txt').write_text(f'file {index}\n')
-        fixture.session.git('add', 'many')
-        fixture.session.git('commit', '-qm', 'large workspace base')
+        if many_files:
+            paths = fixture.fixture.repo / 'many'
+            paths.mkdir()
+            for index in range(many_files):
+                (paths / f'fixture_{index:04d}.txt').write_text(f'file {index}\n')
+            fixture.session.git('add', 'many')
+            fixture.session.git('commit', '-qm', 'large workspace base')
         fixture.session.git('config', 'gc.auto', '0')
         def git_mode(graph, _allocations):
             for node in graph['nodes']:
@@ -167,7 +168,7 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         return fixture
 
     def test_authorised_large_workspace_acquires_with_commit_only(self):
-        fixture = self.fixture_with_git_workspace()
+        fixture = self.fixture_with_git_workspace(many_files=2200)
 
         work = fixture.acquire_workspace('alpha')
         acquisition = work['lease']['acquisition']
@@ -656,6 +657,9 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
         self.assertEqual(i2_head, case.session.git('ls-remote', 'origin',
             f"refs/heads/zzzops/attempts/100/implement/{i2['lease']['attempt']}").split()[0])
         self.assertEqual([100], sorted(case.provider.issues))
+        frontier = case.session.checkpoint(100)
+        self.assertEqual({'publish'}, {step['node']['node'] for step in frontier
+            if step.get('kind') == 'execute'}, frontier)
 
     def test_correction_attempts_compact_to_two_final_commits(self):
         case = journeys.DefaultCorrectionPublicTests('runTest')
@@ -793,7 +797,7 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
                               capture_output=True, text=True, check=True).stdout.strip()
 
     def test_clean_git_workspace_acquisition_does_not_hash_every_file(self):
-        fixture = self.fixture_with_git_workspace()
+        fixture = self.fixture_with_git_workspace(many_files=2200)
         with (mock.patch.object(z._workflow.Workflow, 'workspace_files',
                                 side_effect=AssertionError('repository file scan')),
               mock.patch.object(z._workflow.Workflow, 'git_files',
