@@ -163,7 +163,9 @@ def cleanup_delivered_attempt_worktree(repo: Path, *, goal: int, node: str,
                                        integrated_commit: str, remote: str,
                                        retained_ref: str,
                                        delivery_class: str = 'leaf',
-                                       test_owned: list[str] | None = None) -> dict:
+                                       test_owned: list[str] | None = None,
+                                       groups: list[dict] | None = None,
+                                       retained_attempts: list[dict] | None = None) -> dict:
     """Remove a clean archived attempt after its exact delivery is merged.
 
     Rejected correction commits need not be ancestors of the compacted pair.
@@ -175,18 +177,26 @@ def cleanup_delivered_attempt_worktree(repo: Path, *, goal: int, node: str,
             for oid in (expected_head, delivery_base, delivery_head, integrated_commit))
             or retained_ref != f'refs/heads/zzzops/attempts/{goal}/{node}/{attempt}'):
         raise ValueError('Cleanup requires exact attempt and delivery identities')
-    if delivery_class not in {'leaf', 'composition'} or (
+    if delivery_class not in {'leaf', 'composition', 'grouped'} or (
             delivery_class == 'composition' and node != 'integration_verification') or (
-            delivery_class == 'leaf' and node not in {'test_design', 'implement'}):
+            delivery_class == 'leaf' and node not in {'test_design', 'implement'}) or (
+            delivery_class == 'grouped' and node not in {
+                member['node'] for group in (groups or []) for member in group.get('nodes', [])}):
         raise ValueError('Cleanup delivery class does not match attempt phase')
     from zzzops_git_phase_state import (verify_attempt_ref,
-        verify_single_commit_candidate, verify_two_commit_candidate)
+        verify_single_commit_candidate, verify_two_commit_candidate,
+        verify_grouped_candidate)
     verify_attempt_ref(repo, remote=remote, ref=retained_ref, commit=expected_head)
-    verifier = (verify_single_commit_candidate if delivery_class == 'composition'
-                else verify_two_commit_candidate)
-    verification_options = {} if delivery_class == 'composition' else {'test_owned': test_owned}
-    verifier(repo, goal=goal, base_commit=delivery_base, head_commit=delivery_head,
-             **verification_options)
+    if delivery_class == 'grouped':
+        verify_grouped_candidate(repo, goal=goal, base_commit=delivery_base,
+            head_commit=delivery_head, groups=groups, retained_attempts=retained_attempts,
+            remote=remote)
+    else:
+        verifier = (verify_single_commit_candidate if delivery_class == 'composition'
+                    else verify_two_commit_candidate)
+        verification_options = {} if delivery_class == 'composition' else {'test_owned': test_owned}
+        verifier(repo, goal=goal, base_commit=delivery_base, head_commit=delivery_head,
+                 **verification_options)
     if _run(repo, 'merge-base', '--is-ancestor', delivery_head, integrated_commit,
             check=False).returncode:
         raise ValueError('Reviewed candidate is not integrated into the observed target commit')
@@ -215,21 +225,30 @@ def cleanup_delivered_candidate_worktree(repo: Path, *, goal: int, attempt: str,
                                          expected_head: str, delivery_base: str,
                                          integrated_commit: str,
                                          delivery_class: str = 'leaf',
-                                         test_owned: list[str] | None = None) -> dict:
+                                         test_owned: list[str] | None = None,
+                                         groups: list[dict] | None = None,
+                                         retained_attempts: list[dict] | None = None,
+                                         remote: str = 'origin') -> dict:
     """Remove only a clean exact candidate already present in the target."""
     repo = Path(repo).resolve()
     _identity(goal, 'candidate', attempt)
     if any(not isinstance(oid, str) or not _OID.fullmatch(oid)
            for oid in (expected_head, delivery_base, integrated_commit)):
         raise ValueError('Candidate cleanup requires exact commit identities')
-    from zzzops_git_phase_state import verify_single_commit_candidate, verify_two_commit_candidate
-    if delivery_class not in {'leaf', 'composition'}:
+    from zzzops_git_phase_state import (verify_single_commit_candidate,
+        verify_two_commit_candidate, verify_grouped_candidate)
+    if delivery_class not in {'leaf', 'composition', 'grouped'}:
         raise ValueError('Candidate cleanup delivery class is invalid')
-    verifier = (verify_single_commit_candidate if delivery_class == 'composition'
-                else verify_two_commit_candidate)
-    verification_options = {} if delivery_class == 'composition' else {'test_owned': test_owned}
-    verifier(repo, goal=goal, base_commit=delivery_base, head_commit=expected_head,
-             **verification_options)
+    if delivery_class == 'grouped':
+        verify_grouped_candidate(repo, goal=goal, base_commit=delivery_base,
+            head_commit=expected_head, groups=groups, retained_attempts=retained_attempts,
+            remote=remote)
+    else:
+        verifier = (verify_single_commit_candidate if delivery_class == 'composition'
+                    else verify_two_commit_candidate)
+        verification_options = {} if delivery_class == 'composition' else {'test_owned': test_owned}
+        verifier(repo, goal=goal, base_commit=delivery_base, head_commit=expected_head,
+                 **verification_options)
     if _run(repo, 'merge-base', '--is-ancestor', expected_head, integrated_commit,
             check=False).returncode:
         raise ValueError('Reviewed candidate is not integrated into the observed target commit')

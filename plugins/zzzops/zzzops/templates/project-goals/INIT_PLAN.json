@@ -1976,6 +1976,14 @@
                     "value": "Typed non-applicability: reviewed composition topology owns no leaf workspace work."
                   },
                   "rationale": "Typed non-applicability: reviewed composition topology owns no leaf workspace work."
+                },
+                "git_publish": {
+                  "series": "leaf",
+                  "group": "red",
+                  "order": 0,
+                  "output": "value",
+                  "commit_type": "test",
+                  "summary": "consolidate reviewed RED tests"
                 }
               },
               {
@@ -2537,6 +2545,14 @@
                     "value": "Typed non-applicability: reviewed composition topology owns no leaf workspace work."
                   },
                   "rationale": "Typed non-applicability: reviewed composition topology owns no leaf workspace work."
+                },
+                "git_publish": {
+                  "series": "leaf",
+                  "group": "green",
+                  "order": 1,
+                  "output": "value",
+                  "commit_type": "feat",
+                  "summary": "consolidate GREEN implementation"
                 }
               },
               {
@@ -3463,6 +3479,14 @@
                     }
                   },
                   "rationale": "Reviewed leaf or atomic topology retains the complete leaf path."
+                },
+                "git_publish": {
+                  "series": "composition",
+                  "group": "integration",
+                  "order": 0,
+                  "output": "value",
+                  "commit_type": "test",
+                  "summary": "consolidate reviewed integration"
                 }
               },
               {

@@ -268,6 +268,63 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         self.assertNotEqual(green, step['head_oid'])
         self.assertTrue(all(len(comment['body']) <= 65536 for comment in fixture.provider.comments[100]))
 
+    def test_public_compaction_accepts_reviewed_group_plan_without_duplicate_goal(self):
+        fixture = self.fixture_with_git_workspace()
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        remote = Path(remote_dir.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(remote)], check=True)
+        fixture.session.git('remote', 'add', 'origin', str(remote))
+        base = fixture.session.git('rev-parse', 'HEAD').strip()
+        attempts, members = [], []
+        for number, (node, path) in enumerate((('checks', 'behavior_test.py'),
+                                                ('ship', 'source.py')), start=1):
+            (fixture.fixture.repo / path).write_text(f'{node} = True\n')
+            fixture.session.git('add', path)
+            fixture.session.git('commit', '-qm', f'feat(goal-100): record {node}')
+            commit = fixture.session.git('rev-parse', 'HEAD').strip()
+            ref = f'refs/heads/zzzops/attempts/100/{node}/{number:032x}'
+            fixture.session.git('push', 'origin', commit + ':' + ref)
+            attempts.append({'ref': ref, 'commit': commit})
+            members.append({'node': node, 'source': commit, 'owned': [path]})
+        groups = [
+            {'id': 'checks', 'order': 0, 'nodes': [members[0]],
+             'commit_type': 'test', 'summary': 'reviewed checks'},
+            {'id': 'ship', 'order': 1, 'nodes': [members[1]],
+             'commit_type': 'feat', 'summary': 'reviewed behavior'},
+        ]
+        authority = {'hash': 'sha256:' + 'd' * 64,
+                     'uri': 'urn:sha256:' + 'd' * 64}
+        inputs = {'goal': 100, 'delivery_class': 'grouped', 'base_commit': base,
+                  'groups': groups, 'retained_attempts': attempts}
+        request = {'operation': 'compact_candidate', 'request_id': 'grouped-public-compaction',
+                   'authorization': authority}
+        with mock.patch.object(z._workflow.Workflow, 'node_compaction_authorization',
+                               return_value=authority), \
+             mock.patch.object(z._workflow.Workflow, 'node_compaction_inputs',
+                               return_value=inputs):
+            first = fixture.session.call(100, request)
+            comments = len(fixture.provider.comments[100])
+            self.assertEqual(first, fixture.session.call(100, request))
+        self.assertEqual(comments, len(fixture.provider.comments[100]))
+        self.assertEqual([100], sorted(fixture.provider.issues))
+        step = first['next_steps'][0]
+        self.assertEqual('candidate_compacted', step['kind'])
+        self.assertEqual(2, len(step['group_commits']))
+        self.assertEqual(step['head_oid'], z._git_phase_state.verify_grouped_candidate(
+            fixture.fixture.repo, goal=100, base_commit=base,
+            head_commit=step['head_oid'], groups=groups,
+            retained_attempts=attempts, remote='origin')['head_commit'])
+        cleaned = z._workflow.managed_worktrees.cleanup_delivered_candidate_worktree(
+            fixture.fixture.repo, goal=100, attempt='d' * 32,
+            expected_head=step['head_oid'], delivery_base=base,
+            integrated_commit=step['head_oid'], delivery_class='grouped',
+            groups=groups, retained_attempts=attempts, remote='origin')
+        self.assertEqual('removed', cleaned['outcome'])
+        for attempt in attempts:
+            self.assertEqual(attempt['commit'], fixture.session.git(
+                'ls-remote', 'origin', attempt['ref']).split()[0])
+
     def test_worktree_creation_failure_after_start_replays_without_new_lease(self):
         fixture = self.fixture_with_git_workspace()
         step = next(s for s in fixture.session.ready() if s['node']['node'] == 'alpha')
@@ -621,6 +678,24 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
             ref = f"refs/heads/zzzops/attempts/100/test_design/{work['lease']['attempt']}"
             self.assertEqual(commit, case.session.git('ls-remote', 'origin', ref).split()[0])
         self.assertNotEqual(first['lease']['attempt'], corrected['lease']['attempt'])
+        authorization = {'hash': 'sha256:' + 'e' * 64,
+                         'uri': 'urn:sha256:' + 'e' * 64}
+        with mock.patch.object(z._workflow.Workflow, 'node_compaction_authorization',
+                               return_value=authorization):
+            response = case.session.call(100, {
+                'operation': 'compact_candidate', 'request_id': 'declared-correction-compaction',
+                'authorization': authorization})
+        step = response['next_steps'][0]
+        self.assertEqual('candidate_compacted', step['kind'])
+        self.assertEqual(2, len(step['group_commits']))
+        self.assertEqual(self.session_tree(candidate, compacted['implementation_commit']),
+                         self.session_tree(case.fixture.repo, step['head_oid']))
+        self.assertEqual([100], sorted(case.provider.issues))
+
+    @staticmethod
+    def session_tree(repo, commit):
+        return subprocess.run(['git', 'rev-parse', commit + '^{tree}'], cwd=repo,
+                              capture_output=True, text=True, check=True).stdout.strip()
 
     def test_clean_git_workspace_acquisition_does_not_hash_every_file(self):
         fixture = self.fixture_with_git_workspace()

@@ -5601,11 +5601,14 @@ class Workflow:
                 or artifacts[manifest['hash']]['content'].get('delivery_class') not in {'leaf', 'atomic', 'composition'}):
             raise ValueError('Candidate compaction requires the current delivery selection')
         delivery_class = artifacts[manifest['hash']]['content']['delivery_class']
-        source_phase = 'integration_verification' if delivery_class == 'composition' else 'implement'
+        declared = self.node_declared_compaction_inputs(snapshot)
+        source_phases = ({member['node'] for member in declared['groups'][-1]['nodes']}
+                         if declared is not None else
+                         {'integration_verification' if delivery_class == 'composition' else 'implement'})
         candidate = artifacts[manifest['hash']]['content'].get('candidate')
         current_sources = [output for _, (_, result) in projection['current'].items()
             if result.get('node', {}).get('goal') == snapshot['number']
-            and result['node'].get('node') == source_phase
+            and result['node'].get('node') in source_phases
             for output in result['outputs'].values()]
         if candidate not in current_sources:
             raise ValueError('Candidate compaction selection differs from current reviewed source')
@@ -5790,20 +5793,29 @@ class Workflow:
         integrated, head = self.node_cleanup_merge_facts(snapshot)
         inputs = self.node_compaction_inputs(snapshot)
         delivery_class = inputs.get('delivery_class', 'leaf')
-        verifier = (git_phase_state.verify_single_commit_candidate
-                    if delivery_class == 'composition'
-                    else git_phase_state.verify_two_commit_candidate)
-        verification_options = ({} if delivery_class == 'composition'
-                                else {'test_owned': inputs.get('test_owned')})
-        verifier(self.repo, goal=number, base_commit=inputs['base_commit'],
-                 head_commit=head, **verification_options)
+        if delivery_class == 'grouped':
+            git_phase_state.verify_grouped_candidate(self.repo, goal=number,
+                base_commit=inputs['base_commit'], head_commit=head,
+                groups=inputs['groups'], retained_attempts=inputs['retained_attempts'],
+                remote='origin')
+        else:
+            verifier = (git_phase_state.verify_single_commit_candidate
+                        if delivery_class == 'composition'
+                        else git_phase_state.verify_two_commit_candidate)
+            verification_options = ({} if delivery_class == 'composition'
+                                    else {'test_owned': inputs.get('test_owned')})
+            verifier(self.repo, goal=number, base_commit=inputs['base_commit'],
+                     head_commit=head, **verification_options)
         if subprocess.run(['git', 'merge-base', '--is-ancestor', head, integrated],
                           cwd=self.repo, capture_output=True).returncode:
             raise ValueError('Exact reviewed candidate is not in the observed merge commit')
         removed, preserved = 0, 0
         for attempt in inputs['retained_attempts']:
             ref, commit = attempt['ref'], attempt['commit']
-            phases = 'integration_verification' if delivery_class == 'composition' else 'test_design|implement'
+            phases = ('|'.join(re.escape(member['node']) for group in inputs['groups']
+                       for member in group['nodes']) if delivery_class == 'grouped' else
+                       'integration_verification' if delivery_class == 'composition'
+                       else 'test_design|implement')
             match = re.fullmatch(
                 rf'refs/heads/zzzops/attempts/{number}/({phases})/([0-9a-f]{{32}})', ref)
             if not match:
@@ -5821,7 +5833,8 @@ class Workflow:
                 delivery_base=inputs['base_commit'], delivery_head=head,
                 integrated_commit=integrated, remote='origin', retained_ref=ref,
                 delivery_class=delivery_class,
-                test_owned=inputs.get('test_owned') if delivery_class != 'composition' else None)
+                test_owned=inputs.get('test_owned') if delivery_class == 'leaf' else None,
+                groups=inputs.get('groups'), retained_attempts=inputs['retained_attempts'])
             removed += 1
         authorities = [output for _, (_, result) in snapshot['projection']['current'].items()
             for output in result['outputs'].values()
@@ -5845,7 +5858,8 @@ class Workflow:
                 goal=number, attempt=candidate_id, expected_head=head,
                 delivery_base=inputs['base_commit'], integrated_commit=integrated,
                 delivery_class=delivery_class,
-                test_owned=inputs.get('test_owned') if delivery_class != 'composition' else None)
+                test_owned=inputs.get('test_owned') if delivery_class == 'leaf' else None,
+                groups=inputs.get('groups'), retained_attempts=inputs['retained_attempts'])
             removed += 1
         readonly_removed, readonly_preserved = self.node_cleanup_readonly_attempts(snapshot, integrated)
         removed += readonly_removed
@@ -5947,7 +5961,17 @@ class Workflow:
                 merge_method = '--squash'
                 if self.node_native_delivery(snapshot):
                     inputs = self.node_compaction_inputs(snapshot)
-                    if inputs.get('delivery_class') == 'composition':
+                    if inputs.get('delivery_class') == 'grouped':
+                        movement = git_phase_state.classify_base_move(self.repo,
+                            old_base=inputs['base_commit'], new_base=facts['base_oid'])
+                        if movement['action'] not in {'current', 'retarget_only'}:
+                            raise ValueError('Git publication base requires reviewed restack and verification')
+                        git_phase_state.verify_grouped_candidate(self.repo,
+                            goal=snapshot['number'], base_commit=inputs['base_commit'],
+                            head_commit=facts['head_oid'], groups=inputs['groups'],
+                            retained_attempts=inputs['retained_attempts'], remote='origin')
+                        candidate, expected = {}, {}
+                    elif inputs.get('delivery_class') == 'composition':
                         candidate = git_phase_state.verify_single_commit_candidate(self.repo,
                             goal=snapshot['number'], base_commit=facts['base_oid'],
                             head_commit=facts['head_oid'])

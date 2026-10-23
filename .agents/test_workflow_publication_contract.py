@@ -167,7 +167,7 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         recovered = {'next_steps': [{'kind': 'checkpoint', 'goal': 7,
                                      'retained_attempt': {'ref': recovered_ref,
                                                           'commit': 'f' * 40}}]}
-        snapshot = {'number': 7, 'projection': {'current': current},
+        snapshot = {'number': 7, 'graph': {'nodes': []}, 'projection': {'current': current},
                     'payload': {'evidence': evidence, 'operational': {'receipts': []}},
                     'artifacts': artifacts, 'workspaces': workspaces,
                     'resolve': lambda ref: recovered if ref == recovery else artifacts[ref['hash']]}
@@ -192,7 +192,7 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         ref = 'refs/heads/zzzops/attempts/7/integration_verification/' + 'a' * 32
         content = {'node': {'goal': 7, 'node': 'integration_verification'},
                    'outputs': {'value': output}}
-        snapshot = {'number': 7,
+        snapshot = {'number': 7, 'graph': {'nodes': []},
             'projection': {'current': {'integration': (result, content)}},
             'payload': {'evidence': [result], 'operational': {'receipts': []}},
             'artifacts': {output['hash']: {'provenance': {'source': proof}},
@@ -477,6 +477,46 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         self.assertEqual(ref, attempt_cleanup.call_args.kwargs['retained_ref'])
         self.assertEqual('composition', candidate_cleanup.call_args.kwargs['delivery_class'])
         self.assertEqual('b' * 40, readonly_cleanup.call_args.kwargs['expected_head'])
+
+    def test_grouped_cleanup_uses_declared_node_and_exact_group_proof(self):
+        engine = workflow.Workflow.__new__(workflow.Workflow)
+        engine.repo = Path('/repo')
+        ref = 'refs/heads/zzzops/attempts/7/custom_check/' + 'a' * 32
+        groups = [{'id': 'checks', 'order': 0, 'commit_type': 'test',
+                   'summary': 'reviewed checks', 'nodes': [{
+                       'node': 'custom_check', 'source': 'c' * 40,
+                       'owned': ['checks.py']}]}]
+        attempts = [{'ref': ref, 'commit': 'c' * 40}]
+        engine.node_compaction_inputs = lambda _snapshot: {
+            'delivery_class': 'grouped', 'base_commit': 'b' * 40,
+            'groups': groups, 'retained_attempts': attempts}
+        engine.node_compaction_authorization = lambda _snapshot, reference: reference
+        auth = {'hash': 'sha256:' + 'f' * 64}
+        facts = {'merged': True, 'merge_commit': 'e' * 40,
+                 'head_oid': 'd' * 40, 'base_ref': 'dev'}
+        snapshot = {'number': 7, 'artifacts': {auth['hash']: {
+            'type': 'repository_authorization'}},
+            'payload': {'operational': {'receipts': []}},
+            'projection': {'states': {'merge': {'publication': {'provider': facts}}},
+                           'current': {'auth': ({'hash': 'result'},
+                               {'outputs': {'authorization': auth}})}}}
+        def run(command, **_kwargs):
+            if command[1:3] == ['rev-parse', 'FETCH_HEAD']:
+                return SimpleNamespace(returncode=0, stdout='e' * 40)
+            return SimpleNamespace(returncode=0, stdout='')
+        with mock.patch.object(workflow.subprocess, 'run', side_effect=run), \
+             mock.patch.object(workflow.git_phase_state,
+                               'verify_grouped_candidate') as verify, \
+             mock.patch.object(workflow.managed_worktrees, 'inspect_attempt_worktree',
+                               side_effect=[{'status': 'clean'}, {'status': 'clean'}]), \
+             mock.patch.object(workflow.managed_worktrees,
+                               'cleanup_delivered_attempt_worktree') as attempt_cleanup, \
+             mock.patch.object(workflow.managed_worktrees,
+                               'cleanup_delivered_candidate_worktree') as candidate_cleanup:
+            self.assertEqual(2, engine.node_cleanup_delivered_worktrees(snapshot)['removed'])
+        verify.assert_called_once()
+        self.assertEqual('custom_check', attempt_cleanup.call_args.kwargs['node'])
+        self.assertEqual(groups, candidate_cleanup.call_args.kwargs['groups'])
 
     def test_legacy_delivery_cleans_commit_pinned_readonly_attempt(self):
         engine = workflow.Workflow.__new__(workflow.Workflow)
