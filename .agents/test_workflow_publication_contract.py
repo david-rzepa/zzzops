@@ -61,6 +61,55 @@ class PublicationAPI:
 
 
 class WorkflowPublicationContractTests(unittest.TestCase):
+    def test_git_native_delivery_preserves_the_two_reviewed_commits(self):
+        engine = workflow.Workflow.__new__(workflow.Workflow)
+        engine.repo = Path('/repo')
+        engine.repository = 'owner/repo'
+        engine.runtime = {'root_id': 'root'}
+        engine.project = {'policy': {}}
+        authorization = {'hash': 'sha256:' + '1' * 64, 'uri': 'urn:sha256:' + '1' * 64}
+        facts = {'repository': 'owner/repo', 'head_oid': 'a' * 40,
+                 'base_oid': 'b' * 40, 'base_ref': 'dev', 'merged': False}
+        publication = {'provider': facts, 'observed': {},
+                       'context': {'pr': 'https://example.test/pull/7'}}
+        engine.node_publication_authorities = lambda _snapshot: [(authorization, publication)]
+        engine.node_ci_required = lambda _observed: None
+        engine.node_native_delivery = lambda _snapshot: True
+        engine.node_persist = lambda _snapshot, _payload, response, _request: response
+        engine.api = SimpleNamespace(_github_pull_request_states=lambda *_args: ({7: {
+            **facts, 'merged': True}}, 0, 0))
+        snapshot = {'number': 7, 'projection': {'states': {}}, 'payload': {}}
+        payload = {'operational': {'leases': []}}
+        request = {'operation': 'integrate', 'request_id': 'native-delivery',
+                   'authorization': authorization, 'expected_head': facts['head_oid']}
+        commands = []
+        def run(command, **_kwargs):
+            commands.append(command)
+            return subprocess.CompletedProcess(command, 0, stdout='', stderr='')
+        with mock.patch.object(workflow, 'policy_section', return_value={'configuration': {'release_planning': {'enabled': False}}}), \
+             mock.patch.object(workflow.git_phase_state, 'verify_two_commit_candidate') as verify, \
+             mock.patch.object(workflow.subprocess, 'run', side_effect=run):
+            engine.node_publication_operation(snapshot, payload, request)
+        verify.assert_called_once_with(Path('/repo'), goal=7,
+                                       base_commit=facts['base_oid'], head_commit=facts['head_oid'])
+        self.assertIn('--merge', commands[0])
+        self.assertNotIn('--squash', commands[0])
+
+    def test_native_delivery_is_derived_from_goal_evidence(self):
+        engine = workflow.Workflow.__new__(workflow.Workflow)
+        proof = {'hash': 'proof'}
+        output = {'hash': 'output'}
+        result = {'hash': 'result'}
+        artifacts = {
+            'result': {'content': {'node': {'goal': 7}, 'outputs': {'value': output}}},
+            'output': {'provenance': {'source': proof}},
+            'proof': {'kind': 'git_phase_proof'},
+        }
+        snapshot = {'number': 7, 'payload': {'evidence': [result]}, 'artifacts': artifacts}
+        self.assertTrue(engine.node_native_delivery(snapshot))
+        artifacts['proof']['kind'] = 'repository_workspace_proof'
+        self.assertFalse(engine.node_native_delivery(snapshot))
+
     def legacy_project(self):
         dag = json.loads((Path(__file__).parent / 'fixtures/legacy_phase_dag.json').read_text())
         return {'policy': {'sections': [{'id': 'workflow_adherence', 'configuration': {'phase_dag': dag}}]}}

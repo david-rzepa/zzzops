@@ -5159,6 +5159,19 @@ class Workflow:
             found.append((next(ref for ref in result['outputs'].values() if ref['hash'] == identity), observed))
         return found
 
+    def node_native_delivery(self, snapshot):
+        """Treat any retained Git phase Result as requiring native commit delivery."""
+        artifacts = snapshot['artifacts']
+        for reference in snapshot['payload']['evidence']:
+            result = artifacts.get(reference['hash'], {}).get('content', {})
+            if result.get('node', {}).get('goal') != snapshot['number']:
+                continue
+            for output in result.get('outputs', {}).values():
+                source = artifacts.get(output['hash'], {}).get('provenance', {}).get('source')
+                if isinstance(source, dict) and artifacts.get(source.get('hash'), {}).get('kind') == 'git_phase_proof':
+                    return True
+        return False
+
     def node_publication_operation(self, snapshot, payload, request):
         operation = request['operation']; projection = snapshot['projection']
         if not (self.runtime or {}).get('root_id'): raise ValueError('Operational publication belongs to authenticated root')
@@ -5197,7 +5210,13 @@ class Workflow:
                 if decision['status'] != 'authorized':
                     raise ValueError(f"Release integration blocked: {decision['code']}")
             if not facts.get('merged'):
-                result = subprocess.run(['gh', 'pr', 'merge', publication['context']['pr'], '--squash', '--match-head-commit', facts['head_oid']], cwd=self.repo, capture_output=True, text=True, check=True)
+                merge_method = '--squash'
+                if self.node_native_delivery(snapshot):
+                    git_phase_state.verify_two_commit_candidate(self.repo,
+                        goal=snapshot['number'], base_commit=facts['base_oid'],
+                        head_commit=facts['head_oid'])
+                    merge_method = '--merge'
+                result = subprocess.run(['gh', 'pr', 'merge', publication['context']['pr'], merge_method, '--match-head-commit', facts['head_oid']], cwd=self.repo, capture_output=True, text=True, check=True)
                 observed, _, _ = self.api._github_pull_request_states(self.repo, 'gh', [{'number': snapshot['number']}], {snapshot['number']: {'repository_context': publication['context']}})
                 after = observed.get(snapshot['number'], {})
                 if not after.get('merged') or any(after.get(name) != facts.get(name) for name in ('repository', 'head_oid', 'base_oid', 'base_ref')): raise ValueError('Provider did not confirm exact authorized merge; retry same request')

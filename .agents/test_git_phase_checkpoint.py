@@ -169,10 +169,21 @@ class GitPhaseCheckpointTests(unittest.TestCase):
         self.assertEqual('2', self.git('rev-list', '--count', f'{self.base}..HEAD').strip())
         self.assertEqual(preview['test_tree'], self.git('rev-parse', 'HEAD^^{tree}').strip())
         self.assertEqual(preview['implementation_tree'], self.git('rev-parse', 'HEAD^{tree}').strip())
+        self.assertEqual({'test_commit': compacted['test_commit'],
+                          'implementation_commit': compacted['implementation_commit']},
+                         git_phase_state.verify_two_commit_candidate(
+                             self.repo, goal=566, base_commit=self.base,
+                             head_commit=compacted['implementation_commit']))
         self.assertEqual('existing', git_phase_state.apply_two_commit_candidate(
             self.repo, preview, test_owned=['behavior_test.py'],
             implementation_owned=['output.py'], retained_attempts=attempts,
             remote='origin')['outcome'])
+        self.git('switch', 'dev')
+        changed_base = self.result('input.txt', 'new base content\n')
+        with self.assertRaisesRegex(ValueError, 'base tree changed'):
+            git_phase_state.verify_two_commit_candidate(
+                self.repo, goal=566, base_commit=changed_base,
+                head_commit=compacted['implementation_commit'])
         for row in attempts:
             self.assertEqual(row['commit'], self.git('ls-remote', 'origin', row['ref']).split()[0])
 

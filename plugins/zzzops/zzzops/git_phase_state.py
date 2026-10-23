@@ -299,3 +299,36 @@ def apply_two_commit_candidate(repo: Path, preview: dict, *, test_owned: list[st
     _clean_candidate(repo)
     return {'outcome': 'created', 'test_commit': test_commit,
             'implementation_commit': implementation_commit}
+
+
+def verify_two_commit_candidate(repo: Path, *, goal: int, base_commit: str,
+                                head_commit: str) -> dict:
+    """Require the reviewed RED/GREEN pair before an ancestry-preserving merge."""
+    repo = Path(repo).resolve()
+    if type(goal) is not int or goal <= 0:
+        raise ValueError('Candidate goal identity is invalid')
+    _commit(repo, base_commit)
+    _commit(repo, head_commit)
+    implementation = _git(repo, 'rev-list', '--parents', '-n', '1', head_commit).decode().split()
+    if len(implementation) != 2:
+        raise ValueError('Candidate GREEN commit must have exactly one parent')
+    test_commit = implementation[1]
+    test = _git(repo, 'rev-list', '--parents', '-n', '1', test_commit).decode().split()
+    if len(test) != 2:
+        raise ValueError('Candidate RED commit must have exactly one parent')
+    if _git(repo, 'rev-parse', test[1] + '^{tree}') != _git(repo, 'rev-parse', base_commit + '^{tree}'):
+        raise ValueError('Candidate base tree changed after review')
+    for commit, phase, title in ((test_commit, 'test_design', f'test(goal-{goal}): consolidate reviewed RED tests'),
+                                 (head_commit, 'implement', f'feat(goal-{goal}): consolidate GREEN implementation')):
+        message = _git(repo, 'show', '-s', '--format=%B', commit).decode().splitlines()
+        if (not message or message[0] != title or f'ZzzOps-Goal: {goal}' not in message
+                or f'ZzzOps-Phase: {phase}' not in message):
+            raise ValueError('Candidate commit does not name the reviewed goal and phase')
+        sources = [line.removeprefix('ZzzOps-Source: ') for line in message
+                   if line.startswith('ZzzOps-Source: ')]
+        if len(sources) != 1:
+            raise ValueError('Candidate commit has no unique retained source')
+        _commit(repo, sources[0])
+        if _git(repo, 'rev-parse', sources[0] + '^{tree}') != _git(repo, 'rev-parse', commit + '^{tree}'):
+            raise ValueError('Candidate tree differs from its retained source')
+    return {'test_commit': test_commit, 'implementation_commit': head_commit}
