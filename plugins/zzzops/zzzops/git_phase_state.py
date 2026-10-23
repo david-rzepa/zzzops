@@ -186,18 +186,20 @@ def _scoped_change_count(repo: Path, before: str, after: str, paths: list[str]) 
 
 
 def compaction_base_from_attempts(repo: Path, *, goal: int, test_source: str,
-                                  attempts: list[dict], remote: str) -> str:
-    """Find the base before the earliest retained RED attempt on the final line."""
+                                  attempts: list[dict], remote: str,
+                                  phase: str = 'test_design') -> str:
+    """Find the base before the earliest retained attempt on the final line."""
     repo = Path(repo).resolve()
-    if type(goal) is not int or goal <= 0 or not isinstance(attempts, list) or not attempts:
-        raise ValueError('Compaction requires retained RED attempts')
+    if (type(goal) is not int or goal <= 0 or not isinstance(attempts, list)
+            or not attempts or phase not in {'test_design', 'integration_verification'}):
+        raise ValueError('Compaction requires retained phase attempts')
     _commit(repo, test_source)
     earliest = test_source
     found_source = False
     for attempt in attempts:
         if (not isinstance(attempt, dict) or set(attempt) != {'ref', 'commit'}
-                or not attempt['ref'].startswith(f'refs/heads/zzzops/attempts/{goal}/test_design/')):
-            raise ValueError('Compaction RED attempt identity is malformed')
+                or not attempt['ref'].startswith(f'refs/heads/zzzops/attempts/{goal}/{phase}/')):
+            raise ValueError('Compaction phase attempt identity is malformed')
         verify_attempt_ref(repo, remote=remote, **attempt)
         commit = attempt['commit']
         if commit == test_source:
@@ -209,10 +211,10 @@ def compaction_base_from_attempts(repo: Path, *, goal: int, test_source: str,
                           cwd=repo, capture_output=True).returncode == 0:
             earliest = commit
     if not found_source:
-        raise ValueError('Final RED source lacks its exact retained attempt ref')
+        raise ValueError('Final phase source lacks its exact retained attempt ref')
     parents = _git(repo, 'rev-list', '--parents', '-n', '1', earliest).decode().split()
     if len(parents) != 2:
-        raise ValueError('Earliest RED attempt must have exactly one base parent')
+        raise ValueError('Earliest phase attempt must have exactly one base parent')
     return parents[1]
 
 
@@ -375,6 +377,117 @@ def verify_two_commit_candidate(repo: Path, *, goal: int, base_commit: str,
     return {'test_commit': test_commit, 'implementation_commit': head_commit,
             'test_source': source_commits['test_design'],
             'implementation_source': source_commits['implement']}
+
+
+def _single_compaction_facts(repo: Path, *, goal: int, base_commit: str,
+                             source_commit: str, owned_paths: list[str],
+                             retained_attempts: list[dict], remote: str) -> dict:
+    if type(goal) is not int or goal <= 0 or not isinstance(retained_attempts, list):
+        raise ValueError('Composition compaction requires a positive goal and retained attempts')
+    for commit in (base_commit, source_commit):
+        _commit(repo, commit)
+    prefix = f'refs/heads/zzzops/attempts/{goal}/integration_verification/'
+    seen = set()
+    for attempt in retained_attempts:
+        if (not isinstance(attempt, dict) or set(attempt) != {'ref', 'commit'}
+                or not isinstance(attempt['ref'], str)
+                or not attempt['ref'].startswith(prefix) or attempt['ref'] in seen):
+            raise ValueError('Composition retained attempt identity is malformed')
+        seen.add(attempt['ref'])
+        verify_attempt_ref(repo, remote=remote, **attempt)
+        parents = _git(repo, 'rev-list', '--parents', '-n', '1', attempt['commit']).decode().split()
+        if len(parents) != 2:
+            raise ValueError('Composition attempt must have one parent')
+        _scoped_change_count(repo, parents[1], attempt['commit'], owned_paths)
+    if compaction_base_from_attempts(repo, goal=goal, test_source=source_commit,
+            attempts=retained_attempts, remote=remote,
+            phase='integration_verification') != base_commit:
+        raise ValueError('Composition base differs from retained attempt ancestry')
+    _scoped_change_count(repo, base_commit, source_commit, owned_paths)
+    raw_attempts = json.dumps(retained_attempts, sort_keys=True, separators=(',', ':')).encode()
+    return {'goal': goal, 'phase': 'integration_verification',
+            'base_commit': base_commit, 'source_commit': source_commit,
+            'source_tree': _git(repo, 'rev-parse', source_commit + '^{tree}').decode().strip(),
+            'scope': _scope_hash(owned_paths),
+            'retained_attempt_count': len(retained_attempts),
+            'retained_attempts_hash': 'sha256:' + hashlib.sha256(raw_attempts).hexdigest()}
+
+
+def verify_single_commit_candidate(repo: Path, *, goal: int, base_commit: str,
+                                   head_commit: str) -> dict:
+    """Verify the exact one-commit composition delivery and retained source."""
+    repo = Path(repo).resolve()
+    if type(goal) is not int or goal <= 0:
+        raise ValueError('Composition candidate goal identity is invalid')
+    _commit(repo, base_commit)
+    _commit(repo, head_commit)
+    parents = _git(repo, 'rev-list', '--parents', '-n', '1', head_commit).decode().split()
+    if len(parents) != 2:
+        raise ValueError('Composition candidate must have exactly one parent')
+    if _git(repo, 'rev-parse', parents[1] + '^{tree}') != _git(repo, 'rev-parse', base_commit + '^{tree}'):
+        raise ValueError('Composition candidate base tree changed after review')
+    lines = _git(repo, 'show', '-s', '--format=%B', head_commit).decode().splitlines()
+    if (not lines or lines[0] != f'feat(goal-{goal}): consolidate reviewed integration'
+            or f'ZzzOps-Goal: {goal}' not in lines
+            or 'ZzzOps-Phase: integration_verification' not in lines):
+        raise ValueError('Composition candidate does not name the reviewed goal and phase')
+    sources = [line.removeprefix('ZzzOps-Source: ') for line in lines
+               if line.startswith('ZzzOps-Source: ')]
+    if len(sources) != 1:
+        raise ValueError('Composition candidate lacks one retained source')
+    _commit(repo, sources[0])
+    if _git(repo, 'rev-parse', sources[0] + '^{tree}') != _git(repo, 'rev-parse', head_commit + '^{tree}'):
+        raise ValueError('Composition candidate tree differs from its retained source')
+    return {'candidate_commit': head_commit, 'source_commit': sources[0]}
+
+
+def preview_single_commit_candidate(repo: Path, *, goal: int, base_commit: str,
+                                    source_commit: str, owned_paths: list[str],
+                                    retained_attempts: list[dict], remote: str) -> dict:
+    """Preview one reviewed composition commit without changing branch refs."""
+    repo = Path(repo).resolve()
+    facts = _single_compaction_facts(repo, goal=goal, base_commit=base_commit,
+        source_commit=source_commit, owned_paths=owned_paths,
+        retained_attempts=retained_attempts, remote=remote)
+    branch = _candidate_branch(repo)
+    head = _git(repo, 'rev-parse', 'HEAD').decode().strip()
+    if head != source_commit:
+        candidate = verify_single_commit_candidate(repo, goal=goal,
+            base_commit=base_commit, head_commit=head)
+        if candidate['source_commit'] != source_commit:
+            raise ValueError('Composition source differs from candidate branch head')
+    _clean_candidate(repo)
+    return {**facts, 'branch_ref': branch}
+
+
+def apply_single_commit_candidate(repo: Path, preview: dict, *, owned_paths: list[str],
+                                  retained_attempts: list[dict], remote: str) -> dict:
+    """CAS a one-commit composition candidate after rechecking its exact preview."""
+    repo = Path(repo).resolve()
+    if not isinstance(preview, dict) or _candidate_branch(repo) != preview.get('branch_ref'):
+        raise ValueError('Composition candidate branch changed')
+    facts = _single_compaction_facts(repo, goal=preview['goal'],
+        base_commit=preview['base_commit'], source_commit=preview['source_commit'],
+        owned_paths=owned_paths, retained_attempts=retained_attempts, remote=remote)
+    if preview != {**facts, 'branch_ref': preview['branch_ref']}:
+        raise ValueError('Composition reviewed preview or retained attempts changed')
+    source = facts['source_commit']
+    candidate_commit = _commit_tree(repo, tree=facts['source_tree'],
+        parent=facts['base_commit'], source=source,
+        message=(f"feat(goal-{facts['goal']}): consolidate reviewed integration\n\n"
+            f"ZzzOps-Goal: {facts['goal']}\nZzzOps-Phase: integration_verification\n"
+            f"ZzzOps-Source: {source}\n"))
+    current = _git(repo, 'rev-parse', 'HEAD').decode().strip()
+    if current == candidate_commit:
+        _clean_candidate(repo)
+        return {'outcome': 'existing', 'candidate_commit': candidate_commit}
+    if current != source:
+        raise ValueError('Composition candidate branch moved after preview')
+    _clean_candidate(repo)
+    _git(repo, 'update-ref', '-m', f"zzzops compact composition goal {facts['goal']}",
+         preview['branch_ref'], candidate_commit, current)
+    _clean_candidate(repo)
+    return {'outcome': 'created', 'candidate_commit': candidate_commit}
 
 
 def classify_base_move(repo: Path, *, old_base: str, new_base: str) -> dict:

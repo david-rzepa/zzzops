@@ -234,6 +234,39 @@ class GitPhaseCheckpointTests(unittest.TestCase):
                 remote='origin')
         self.assertEqual(implementation_source, self.git('rev-parse', 'HEAD').strip())
 
+    def test_composition_compacts_retained_corrections_to_one_commit(self):
+        self.remote()
+        self.git('switch', '-c', 'feat/composition')
+        attempts = []
+        for number, value in enumerate(('first integration\n', 'corrected integration\n'), start=1):
+            source = self.result('integration.txt', value)
+            retained = git_phase_state.retain_attempt_ref(self.repo, remote='origin',
+                goal=566, node='integration_verification',
+                attempt=f'{number:032x}', commit=source)
+            attempts.append({'ref': retained['ref'], 'commit': source})
+        source = attempts[-1]['commit']
+        base = git_phase_state.compaction_base_from_attempts(
+            self.repo, goal=566, test_source=source, attempts=attempts,
+            remote='origin', phase='integration_verification')
+        self.assertEqual(self.base, base)
+        preview = git_phase_state.preview_single_commit_candidate(
+            self.repo, goal=566, base_commit=base, source_commit=source,
+            owned_paths=['integration.txt'], retained_attempts=attempts,
+            remote='origin')
+        first = git_phase_state.apply_single_commit_candidate(
+            self.repo, preview, owned_paths=['integration.txt'],
+            retained_attempts=attempts, remote='origin')
+        self.assertEqual('created', first['outcome'])
+        self.assertEqual('1', self.git('rev-list', '--count', f'{base}..HEAD').strip())
+        self.assertEqual(source, git_phase_state.verify_single_commit_candidate(
+            self.repo, goal=566, base_commit=base,
+            head_commit=first['candidate_commit'])['source_commit'])
+        self.assertEqual('existing', git_phase_state.apply_single_commit_candidate(
+            self.repo, preview, owned_paths=['integration.txt'],
+            retained_attempts=attempts, remote='origin')['outcome'])
+        for row in attempts:
+            self.assertEqual(row['commit'], self.git('ls-remote', 'origin', row['ref']).split()[0])
+
     def test_compaction_stops_if_candidate_branch_moves_after_preview(self):
         self.remote()
         self.git('switch', '-c', 'feat/566')
