@@ -1930,6 +1930,32 @@ class Workflow:
                 if len(matches) > 1:
                     return topology_repair('multiple open PRs claim one relevant head', matches)
                 if not matches:
+                    if (candidate_row and cursor == identity['base_ref']
+                            and isinstance(identity.get('base_oid'), str)
+                            and re.fullmatch(r'[0-9a-f]{40}', identity['base_oid'])):
+                        fetched = subprocess.run(['git', 'fetch', '--no-tags', 'origin',
+                            'refs/heads/' + trunk], cwd=self.repo,
+                            capture_output=True, text=True)
+                        if fetched.returncode == 0:
+                            tip = subprocess.run(['git', 'rev-parse', 'FETCH_HEAD'],
+                                cwd=self.repo, capture_output=True, text=True)
+                            if tip.returncode == 0 and re.fullmatch(r'[0-9a-f]{40}', tip.stdout.strip()):
+                                try:
+                                    movement = git_phase_state.classify_base_move(self.repo,
+                                        old_base=identity['base_oid'], new_base=tip.stdout.strip())
+                                except (ValueError, OSError, subprocess.SubprocessError):
+                                    movement = None
+                                if movement and movement['action'] in {'current', 'retarget_only'}:
+                                    return {'kind': 'repair_stack', 'assignment': 'root',
+                                        'action': (f'Retarget the PR base from integrated {cursor} to {trunk} '
+                                            'without rewriting the candidate head; fetch and recheck exact provider topology.'),
+                                        'continuation': 'Refresh base-bound CI and review if required, preserving equivalent-tree phase evidence.',
+                                        'identities': [implementation['branch'], cursor, trunk,
+                                            identity['head_oid'], identity['base_oid'], tip.stdout.strip()],
+                                        'publication_directive': {'action': 'retarget_pr_base',
+                                            'from': cursor, 'to': trunk, 'head': identity['head_oid']},
+                                        'base_movement': movement,
+                                        'requires_phase_reverification': False}
                     return topology_repair('a relevant PR ancestor is missing before dev',
                                            relevant_by_head.values(), [cursor, branch])
                 row = matches[0]

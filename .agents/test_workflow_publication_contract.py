@@ -487,6 +487,51 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         engine.node_compaction_authorization = lambda _snapshot, ref: ref
         self.assertEqual({'goal-7'}, engine.node_authenticate_publication_candidates([7]))
 
+    def test_merged_ancestor_retains_candidate_head_and_retargets_pr_base(self):
+        engine, api, _ = self.publication_engine(
+            local_head='a' * 40, local_base='b' * 40,
+            provider_head='a' * 40, provider_base='b' * 40)
+        candidate = {'branch': 'goal-7', 'base': 'goal-6', 'target': 'dev',
+                     'pr': 'https://example.test/pull/7'}
+        identity = {'head_oid': 'a' * 40, 'base_oid': 'b' * 40,
+                    'base_ref': 'goal-6'}
+        calls = []
+        def run(command, **_kwargs):
+            calls.append(command)
+            if command[:3] == ['gh', 'pr', 'list']:
+                return SimpleNamespace(stdout=json.dumps([{
+                    'number': 7, 'headRefName': 'goal-7',
+                    'baseRefName': 'goal-6', 'headRefOid': 'a' * 40}]))
+            if command[:4] == ['git', 'fetch', '--no-tags', 'origin']:
+                return SimpleNamespace(returncode=0)
+            if command[:3] == ['git', 'rev-parse', 'FETCH_HEAD']:
+                return SimpleNamespace(returncode=0, stdout='c' * 40 + '\n')
+            if command[:3] == ['git', 'merge-base', '--is-ancestor']:
+                return SimpleNamespace(returncode=0)
+            raise AssertionError(command)
+        for action, expected_retarget in (('retarget_only', True),
+                                          ('rebase_and_reverify', False)):
+            with self.subTest(action=action):
+                movement = {'action': action,
+                            'old_base': 'b' * 40, 'new_base': 'c' * 40,
+                            'old_tree': 'd' * 40,
+                            'new_tree': ('d' if expected_retarget else 'e') * 40,
+                            'preserves_ancestry': True}
+                with mock.patch.object(workflow.subprocess, 'run', side_effect=run), \
+                     mock.patch.object(workflow.git_phase_state, 'classify_base_move',
+                                       return_value=movement):
+                    result = engine.publication_topology(candidate, identity,
+                                                         {'goal-7', 'goal-6'}, goal_number=7)
+                self.assertEqual('repair_stack', result['kind'])
+                if expected_retarget:
+                    self.assertEqual('retarget_pr_base', result['publication_directive']['action'])
+                    self.assertFalse(result['requires_phase_reverification'])
+                    self.assertIn('without rewriting', result['action'])
+                else:
+                    self.assertNotIn('publication_directive', result)
+                    self.assertIn('missing', result['action'])
+                self.assertEqual([], api.calls)
+
 
 from test_evidence_dag_journeys import DagFixture, REF_TYPE, FINDING_TYPE, ADMISSION_TYPE, content_hash, output, shape, spec_input, z
 import test_evidence_dag_journeys as dag_fixtures
