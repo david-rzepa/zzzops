@@ -23,7 +23,6 @@ import hashlib
 import importlib.util
 import os
 import sys
-import subprocess
 from types import SimpleNamespace
 from unittest import mock
 
@@ -3200,11 +3199,6 @@ class DefaultCorrectionPublicTests(DagFixture):
 
     def test_default_test_design_correction_keeps_workspace_authority_and_red_proof(self):
         self.default_decomposition()
-        remote_dir = tempfile.TemporaryDirectory()
-        self.addCleanup(remote_dir.cleanup)
-        remote = Path(remote_dir.name) / 'remote.git'
-        subprocess.run(['git', 'init', '--bare', '-q', str(remote)], check=True)
-        self.session.git('remote', 'add', 'origin', str(remote))
         self.session.finish(self.session.acquire("decomposition_review"), {
             "value": self.review("approved", "Atomic disposition accepted"),
             "authorization": self.decomposition_authorization()})
@@ -3212,11 +3206,8 @@ class DefaultCorrectionPublicTests(DagFixture):
             "value": {"items": {}, "rationale": "No decomposition findings were admitted"}})
         approval = self.result("approve_spec")[0]
         original = self.session.acquire("test_design")
-        path = Path(original['managed_worktree']['path']) / "behavior_test.py"
+        path = self.fixture.repo / "behavior_test.py"
         path.write_text("raise AssertionError('expected initial red fixture')\n")
-        subprocess.run(['git', 'add', path.name], cwd=path.parent, check=True)
-        subprocess.run(['git', 'commit', '-qm', 'test(goal-100): rejected RED attempt'],
-                       cwd=path.parent, check=True)
         request = self.session.submission(original, {"value": "Initial RED test candidate"}, "default-red")
         request["workspace_checks"] = [[sys.executable, str(path)]]
         self.session.call(100, request)
@@ -3235,12 +3226,10 @@ class DefaultCorrectionPublicTests(DagFixture):
             "finding": finding, "target_inputs": self.result("test_design")[1]["inputs"],
             "authority": self.result("interpret_test_design_rejection")[0],
             "applicability": "applicable", "rationale": "Same exact reviewed test allocation"}, "transfer": None})
+        self.session.git("add", path.name)
+        self.session.git("commit", "-qm", "preserve rejected test candidate")
         corrected = self.session.acquire("test_design")
-        path = Path(corrected['managed_worktree']['path']) / "behavior_test.py"
         path.write_text("from pathlib import Path\nassert Path('product.txt').is_file()\n")
-        subprocess.run(['git', 'add', path.name], cwd=path.parent, check=True)
-        subprocess.run(['git', 'commit', '-qm', 'test(goal-100): corrected RED attempt'],
-                       cwd=path.parent, check=True)
         request = self.session.submission(corrected, {"value": "Meaningful bounded fixture probe"}, "default-corrected")
         request["workspace_checks"] = [[sys.executable, str(path)]]
         self.session.call(100, request)
