@@ -111,6 +111,22 @@ def prepare_worktree(repo: Path, *, goal: int, node: str, attempt: str,
             'base_commit': base_commit}
 
 
+def inspect_attempt_worktree(repo: Path, *, goal: int, node: str, attempt: str) -> dict:
+    """Report one local attempt without changing its files, branch or lease."""
+    repo = Path(repo).resolve()
+    _identity(goal, node, attempt)
+    primary = _primary(repo)
+    path, branch = _managed(primary, goal, node, attempt)
+    registered = next((row for row in _worktrees(repo) if Path(row['worktree']).resolve() == path), None)
+    if not registered and not path.exists():
+        return {'status': 'missing', 'path': str(path), 'branch': branch}
+    if not registered or registered.get('branch') != 'refs/heads/' + branch or not path.is_dir():
+        raise ValueError('Local attempt worktree changed; inspect its registration before recovery')
+    return {'status': 'dirty' if not _clean(path) else 'clean',
+            'path': str(path), 'branch': branch,
+            'head': _run(path, 'rev-parse', 'HEAD').stdout.strip()}
+
+
 def cleanup_integrated_worktree(repo: Path, *, goal: int, node: str, attempt: str,
                                 expected_head: str, integrated_commit: str,
                                 remote: str, retained_ref: str) -> dict:

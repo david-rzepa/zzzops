@@ -77,6 +77,10 @@ class ManagedWorktreeTests(unittest.TestCase):
         prepared = self.prepare()
         path = Path(prepared['path'])
         (path / 'unverified.txt').write_text('dirty\n')
+        observed = managed.inspect_attempt_worktree(self.repo, goal=566,
+            node='implement', attempt='a' * 32)
+        self.assertEqual('dirty', observed['status'])
+        self.assertEqual(self.base, observed['head'])
         with self.assertRaisesRegex(ValueError, 'dirty'):
             managed.cleanup_integrated_worktree(self.repo, goal=566, node='implement',
                 attempt='a' * 32, expected_head=self.base, integrated_commit=self.base,

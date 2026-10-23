@@ -150,6 +150,44 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         self.assertEqual(comments, len(fixture.provider.comments[100]))
         self.assertEqual(1, len(fixture.payload()[1]['operational']['leases']))
 
+    def test_stopped_worker_recovery_preserves_dirty_managed_attempt(self):
+        fixture = self.fixture_with_git_workspace()
+        work = fixture.acquire_workspace('alpha')
+        path = Path(work['managed_worktree']['path'])
+        (path / 'behavior_test.py').write_text('unverified local draft\n')
+        response = fixture.session.call(100, {
+            'operation': 'recover', 'node': work['node'],
+            'lease': work['lease']['token'], 'actor': work['bound_actor'],
+            'worker_status': 'stopped', 'evidence': 'Worker process exited; local file observed.',
+            'request_id': 'stopped-managed-attempt',
+        })['next_steps'][0]
+        self.assertEqual('dirty', response['preserved_attempt']['status'])
+        self.assertEqual(str(path), response['preserved_attempt']['path'])
+        self.assertTrue((path / 'behavior_test.py').exists())
+        self.assertEqual([], fixture.payload()[1]['operational']['leases'])
+
+    def test_submission_uses_managed_worktree_commit_and_checks(self):
+        fixture = self.fixture_with_git_workspace()
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        bare = Path(remote_dir.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
+        fixture.session.git('remote', 'add', 'origin', str(bare))
+        work = fixture.acquire_workspace('alpha')
+        path = Path(work['managed_worktree']['path'])
+        (path / 'behavior_test.py').write_text('from source import value\nassert value() == 1\n')
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=path, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: implement goal 100 alpha'], cwd=path, check=True)
+        head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=path, capture_output=True,
+                              text=True, check=True).stdout.strip()
+        request = fixture.session.submission(work, {'value': 'Managed alpha result'}, 'managed-alpha-result')
+        request['workspace_checks'] = [[sys.executable, '-B', 'behavior_test.py']]
+        request['verification_expectation'] = 'passed'
+        fixture.session.call(100, request)
+        ref = f"refs/heads/zzzops/attempts/100/alpha/{work['lease']['attempt']}"
+        self.assertEqual(head, fixture.session.git('ls-remote', 'origin', ref).split()[0])
+        self.assertNotEqual(head, fixture.session.git('rev-parse', 'HEAD').strip())
+
 
 class GitWorkspaceJourneyTests(unittest.TestCase):
     fixture_with_git_workspace = GitWorkspaceAcquisitionTests.fixture_with_git_workspace
@@ -179,11 +217,13 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
             'value': {'items': {}, 'rationale': 'No decomposition findings'}})
 
         first = case.session.acquire('test_design')
-        path = case.fixture.repo / 'behavior_test.py'
+        first_tree = Path(first['managed_worktree']['path'])
+        path = first_tree / 'behavior_test.py'
         path.write_text("raise AssertionError('unconditional red')\n")
-        case.session.git('add', path.name)
-        case.session.git('commit', '-qm', 'test: first red attempt')
-        rejected_commit = case.session.git('rev-parse', 'HEAD').strip()
+        subprocess.run(['git', 'add', path.name], cwd=first_tree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: first red attempt'], cwd=first_tree, check=True)
+        rejected_commit = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=first_tree,
+                                         capture_output=True, text=True, check=True).stdout.strip()
         request = case.session.submission(first, {'value': 'Initial RED candidate'}, 'git-correction-first')
         request['workspace_checks'] = [[sys.executable, str(path)]]
         case.session.call(100, request)
@@ -205,14 +245,17 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
 
         corrected = case.session.acquire('test_design')
         self.assertEqual(rejected_commit, corrected['lease']['acquisition']['git_commit'])
-        path.write_text("from pathlib import Path\nassert Path('product.txt').is_file()\n")
-        case.session.git('add', path.name)
-        case.session.git('commit', '-qm', 'test: correct red attempt')
-        corrected_commit = case.session.git('rev-parse', 'HEAD').strip()
+        corrected_tree = Path(corrected['managed_worktree']['path'])
+        corrected_path = corrected_tree / 'behavior_test.py'
+        corrected_path.write_text("from pathlib import Path\nassert Path('product.txt').is_file()\n")
+        subprocess.run(['git', 'add', corrected_path.name], cwd=corrected_tree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: correct red attempt'], cwd=corrected_tree, check=True)
+        corrected_commit = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=corrected_tree,
+                                          capture_output=True, text=True, check=True).stdout.strip()
         request = case.session.submission(corrected, {'value': 'Meaningful RED probe'}, 'git-correction-second')
-        request['workspace_checks'] = [[sys.executable, str(path)]]
+        request['workspace_checks'] = [[sys.executable, str(corrected_path)]]
         case.session.call(100, request)
-        case.verify_test_design(path, 'git-correction-green-verification')
+        case.verify_test_design(corrected_path, 'git-correction-green-verification')
         case.session.finish(case.session.acquire('test_design_review'), {
             'value': case.review('approved', 'Current bounded probe is adequate')})
         case.session.finish(case.session.acquire('retain_test_design_findings'), {
@@ -223,23 +266,39 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
                       'decision': 'resolved', 'rationale': 'Fresh independent review resolves this finding'}})
         self.assertIn('implement', case.names())
         case.read_blob(rejected)
-        final_test_tree = case.session.git('rev-parse', corrected_commit + '^{tree}').strip()
         original_base = first['lease']['acquisition']['git_commit']
-        case.session.git('reset', '--soft', original_base)
-        case.session.git('commit', '-qm', 'test: final reviewed RED tests')
-        compacted_test = case.session.git('rev-parse', 'HEAD').strip()
-        self.assertEqual(final_test_tree, case.session.git('rev-parse', 'HEAD^{tree}').strip())
         self.assertIn('implement', case.names())
         implementation = case.session.acquire('implement')
-        self.assertEqual(compacted_test, implementation['lease']['acquisition']['git_commit'])
-        (case.fixture.repo / 'source.py').write_text('def value():\n    return 2\n')
-        case.session.git('add', 'source.py')
-        case.session.git('commit', '-qm', 'feat: final GREEN implementation')
+        self.assertEqual(corrected_commit, implementation['lease']['acquisition']['git_commit'])
+        implementation_tree = Path(implementation['managed_worktree']['path'])
+        (implementation_tree / 'source.py').write_text('def value():\n    return 2\n')
+        subprocess.run(['git', 'add', 'source.py'], cwd=implementation_tree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'feat: final GREEN implementation'],
+                       cwd=implementation_tree, check=True)
+        implementation_commit = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=implementation_tree,
+                                               capture_output=True, text=True, check=True).stdout.strip()
         request = case.session.submission(implementation, {'value': 'GREEN implementation'}, 'git-two-commit-final')
-        request['workspace_checks'] = [[sys.executable, str(path)]]
+        request['workspace_checks'] = [[sys.executable, str(corrected_path)]]
         request['verification_expectation'] = 'passed'
         case.session.call(100, request)
-        self.assertEqual('2', case.session.git('rev-list', '--count', f'{original_base}..HEAD').strip())
+        retained = [{'ref': f"refs/heads/zzzops/attempts/100/{work['node']['node']}/{work['lease']['attempt']}",
+                     'commit': commit} for work, commit in
+                    ((first, rejected_commit), (corrected, corrected_commit),
+                     (implementation, implementation_commit))]
+        candidate_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(candidate_dir.cleanup)
+        candidate = Path(candidate_dir.name) / 'candidate'
+        case.session.git('worktree', 'add', '-q', '-b', 'candidate-566', str(candidate), implementation_commit)
+        preview = z._git_phase_state.preview_two_commit_candidate(candidate, goal=100,
+            base_commit=original_base, test_source=corrected_commit,
+            implementation_source=implementation_commit, test_owned=['behavior_test.py'],
+            implementation_owned=['source.py'], retained_attempts=retained, remote='origin')
+        compacted = z._git_phase_state.apply_two_commit_candidate(candidate, preview,
+            test_owned=['behavior_test.py'], implementation_owned=['source.py'],
+            retained_attempts=retained, remote='origin')
+        self.assertEqual('2', subprocess.run(['git', 'rev-list', '--count',
+                         f"{original_base}..{compacted['implementation_commit']}"], cwd=candidate,
+                         capture_output=True, text=True, check=True).stdout.strip())
         self.assertNotEqual(rejected_commit, corrected_commit)
         for work, commit in ((first, rejected_commit), (corrected, corrected_commit)):
             ref = f"refs/heads/zzzops/attempts/100/test_design/{work['lease']['attempt']}"
@@ -258,9 +317,10 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
     def test_unowned_commit_cannot_be_submitted_under_git_workspace_lease(self):
         fixture = self.fixture_with_git_workspace()
         work = fixture.acquire_workspace('alpha')
-        (fixture.fixture.repo / 'unowned.txt').write_text('outside allocation\n')
-        fixture.session.git('add', 'unowned.txt')
-        fixture.session.git('commit', '-qm', 'unowned change')
+        worktree = Path(work['managed_worktree']['path'])
+        (worktree / 'unowned.txt').write_text('outside allocation\n')
+        subprocess.run(['git', 'add', 'unowned.txt'], cwd=worktree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'unowned change'], cwd=worktree, check=True)
         before = copy.deepcopy((fixture.provider.issues, fixture.provider.comments))
         request = fixture.session.submission(work, {'value': 'Cannot accept unowned output'}, 'git-unowned-result')
         request['workspace_checks'] = [[sys.executable, '-c', 'pass']]
@@ -276,10 +336,12 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
         subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
         fixture.session.git('remote', 'add', 'origin', str(bare))
         work = fixture.acquire_workspace('alpha')
-        (fixture.fixture.repo / 'behavior_test.py').write_text('from source import value\nassert value() == 1\n')
-        fixture.session.git('add', 'behavior_test.py')
-        fixture.session.git('commit', '-qm', 'test: implement goal 100 alpha')
-        result_commit = fixture.session.git('rev-parse', 'HEAD').strip()
+        worktree = Path(work['managed_worktree']['path'])
+        (worktree / 'behavior_test.py').write_text('from source import value\nassert value() == 1\n')
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=worktree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: implement goal 100 alpha'], cwd=worktree, check=True)
+        result_commit = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=worktree,
+                                       capture_output=True, text=True, check=True).stdout.strip()
         request = fixture.session.submission(work, {'value': 'Committed alpha result'}, 'git-alpha-result')
         request['workspace_checks'] = [[sys.executable, '-B', 'behavior_test.py']]
         request['verification_expectation'] = 'passed'
@@ -312,10 +374,12 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
         subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
         fixture.session.git('remote', 'add', 'origin', str(bare))
         alpha = fixture.acquire_workspace('alpha')
-        (fixture.fixture.repo / 'behavior_test.py').write_text('from source import value\nassert value() == 2\n')
-        fixture.session.git('add', 'behavior_test.py')
-        fixture.session.git('commit', '-qm', 'test: capture required behavior')
-        test_commit = fixture.session.git('rev-parse', 'HEAD').strip()
+        alpha_tree = Path(alpha['managed_worktree']['path'])
+        (alpha_tree / 'behavior_test.py').write_text('from source import value\nassert value() == 2\n')
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=alpha_tree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: capture required behavior'], cwd=alpha_tree, check=True)
+        test_commit = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=alpha_tree,
+                                     capture_output=True, text=True, check=True).stdout.strip()
         red = fixture.session.submission(alpha, {'value': 'RED test candidate'}, 'git-red-test')
         red['workspace_checks'] = [[sys.executable, '-B', 'behavior_test.py']]
         fixture.session.call(100, red)
@@ -328,10 +392,12 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
 
         beta = fixture.acquire_workspace('beta')
         self.assertEqual(test_commit, beta['lease']['acquisition']['git_commit'])
-        (fixture.fixture.repo / 'source.py').write_text('def value():\n    return 2\n')
-        fixture.session.git('add', 'source.py')
-        fixture.session.git('commit', '-qm', 'feat: satisfy reviewed test')
-        implementation_commit = fixture.session.git('rev-parse', 'HEAD').strip()
+        beta_tree = Path(beta['managed_worktree']['path'])
+        (beta_tree / 'source.py').write_text('def value():\n    return 2\n')
+        subprocess.run(['git', 'add', 'source.py'], cwd=beta_tree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'feat: satisfy reviewed test'], cwd=beta_tree, check=True)
+        implementation_commit = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=beta_tree,
+                                               capture_output=True, text=True, check=True).stdout.strip()
         green = fixture.session.submission(beta, {'value': 'GREEN implementation candidate'}, 'git-green-implementation')
         green['workspace_checks'] = [[sys.executable, '-B', 'behavior_test.py']]
         green['verification_expectation'] = 'passed'
