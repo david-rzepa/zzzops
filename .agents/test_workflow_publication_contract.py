@@ -355,6 +355,63 @@ class WorkflowPublicationContractTests(unittest.TestCase):
             "base_head": provider_base, "head": provider_head,
         }, candidate)
 
+    def test_independent_release_lanes_do_not_form_one_pr_fork(self):
+        engine, api, _run = self.publication_engine(
+            local_head='a' * 40, local_base='b' * 40,
+            provider_head='a' * 40, provider_base='b' * 40)
+        engine.repository = 'owner/repo'
+        engine.portfolio = lambda: [
+            {'key': 7, 'implementation': {'branch': 'goal-7'}},
+            {'key': 8, 'implementation': {'branch': 'goal-8'}}]
+        plan = {'next_release': 1, 'assignments': {'7': 1, '8': 2}}
+        api._releases = SimpleNamespace(target_release=lambda value, goal: value['assignments'][str(goal)])
+        api.GitHubReleasePlanAdapter = lambda *_args: SimpleNamespace(read=lambda *_args: plan)
+        rows = [{'number': 7, 'headRefName': 'goal-7', 'baseRefName': 'dev', 'headRefOid': 'a' * 40},
+                {'number': 8, 'headRefName': 'goal-8', 'baseRefName': 'dev', 'headRefOid': 'c' * 40}]
+        def run(command, **_kwargs):
+            if command[:3] == ['gh', 'pr', 'list']:
+                return SimpleNamespace(stdout=json.dumps(rows))
+            raise AssertionError(command)
+        with mock.patch.object(workflow, 'policy_section', return_value={
+                'configuration': {'release_planning': {'enabled': True}}}), \
+             mock.patch.object(workflow.subprocess, 'run', side_effect=run):
+            self.assertIsNone(engine.publication_topology(
+                {'branch': 'goal-7', 'base': 'dev', 'target': 'dev', 'pr': None},
+                {'head_oid': 'a' * 40, 'base_oid': 'b' * 40, 'base_ref': 'dev'},
+                {'goal-7', 'goal-8'}, goal_number=7))
+            plan['assignments']['8'] = 1
+            same_lane = engine.publication_topology(
+                {'branch': 'goal-7', 'base': 'dev', 'target': 'dev', 'pr': None},
+                {'head_oid': 'a' * 40, 'base_oid': 'b' * 40, 'base_ref': 'dev'},
+                {'goal-7', 'goal-8'}, goal_number=7)
+        self.assertEqual([], api.calls[0][0])
+        self.assertEqual('goal-7', api.calls[0][1]['branch'])
+        self.assertEqual('repair_stack', same_lane['kind'])
+        self.assertIn('multiple successors', same_lane['action'])
+
+    def test_native_published_heads_participate_in_their_release_stack(self):
+        engine = workflow.Workflow.__new__(workflow.Workflow)
+        engine.runtime = {'root_id': 'root'}
+        engine.node_authorization_policy_matches = lambda *_args: True
+        auth = {'hash': 'authorization'}
+        published = {'hash': 'published'}
+        auth_result = {'node': {'goal': 7, 'node': 'authorize_repository'},
+                       'executor': 'root', 'outputs': {'authorization': auth}, 'inputs': []}
+        publish_result = {'node': {'goal': 7, 'node': 'publish'}, 'executor': 'root',
+                          'outputs': {'value': published},
+                          'inputs': [{'source': auth, 'mode': 'identity', 'path': []}]}
+        snapshot = {'projection': {'current': {'auth': ({'hash': 'r1'}, auth_result),
+                                               'publish': ({'hash': 'r2'}, publish_result)},
+                                   'states': {'auth': {'contract': {'executor': {'role': 'root'}}},
+                                              'publish': {'contract': {'executor': {'role': 'root'}}}}},
+                    'artifacts': {'authorization': {'type': 'repository_authorization',
+                                                    'content': {'decision': 'approved'}},
+                                  'published': {'type': 'published_candidate',
+                                                'content': {'branch': 'goal-7'}}}}
+        engine.node_snapshot = lambda _number, **_kwargs: snapshot
+        engine.node_compaction_authorization = lambda _snapshot, ref: ref
+        self.assertEqual({'goal-7'}, engine.node_authenticate_publication_candidates([7]))
+
 
 from test_evidence_dag_journeys import DagFixture, REF_TYPE, FINDING_TYPE, ADMISSION_TYPE, content_hash, output, shape, spec_input, z
 import test_evidence_dag_journeys as dag_fixtures

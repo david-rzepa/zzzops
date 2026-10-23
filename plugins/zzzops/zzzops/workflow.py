@@ -1826,9 +1826,10 @@ class Workflow:
                 return {'kind': 'publication_setup', 'assignment': 'root', 'action': 'Record the implementation branch, base and target before publication.'}
             return None
         managed = {(g.get('implementation') or {}).get('branch') for g in self.portfolio()}
-        return self.publication_topology(implementation, self.publication_identity(goal), managed - {None})
+        return self.publication_topology(implementation, self.publication_identity(goal),
+                                         managed - {None}, goal_number=goal['key'])
 
-    def publication_topology(self, implementation, identity, managed_branches):
+    def publication_topology(self, implementation, identity, managed_branches, *, goal_number=None):
         """Validate provider ancestry without changing refs or publication state."""
         # Read provider topology here, never accept a caller-supplied topology as
         # proof that another coordinator has not published in the meantime.
@@ -1863,6 +1864,29 @@ class Workflow:
             return topology_repair('the provider returned an incomplete PR list')
         managed_branches = set(managed_branches(observed) if callable(managed_branches) else managed_branches)
         managed_branches.add(implementation['branch'])
+        try:
+            planning = policy_section(self.project, 'git_review_release')['configuration'].get('release_planning')
+        except (ValueError, KeyError):
+            planning = None
+        if isinstance(planning, dict) and planning.get('enabled') and goal_number is not None:
+            plan = self.api.GitHubReleasePlanAdapter(self.repo, self.repository).read(self.repository)
+            if plan is None:
+                return topology_repair('the reviewed release plan is unavailable')
+            lane = self.api._releases.target_release(plan, goal_number)
+            owners = {}
+            for goal in self.portfolio():
+                branch = (goal.get('implementation') or {}).get('branch')
+                if branch:
+                    if branch in owners and owners[branch] != goal['key']:
+                        return topology_repair('managed branch belongs to multiple goals', branches=[branch])
+                    owners[branch] = goal['key']
+            unknown = sorted(branch for branch in managed_branches - {implementation['branch']}
+                             if branch not in owners)
+            if unknown:
+                return topology_repair('managed PR release assignment is unknown', branches=unknown)
+            managed_branches = {branch for branch in managed_branches
+                if branch == implementation['branch']
+                or self.api._releases.target_release(plan, owners[branch]) == lane}
         # An incomplete row makes the provider snapshot unsafe to reason from,
         # even when its relationship to this candidate cannot be established.
         for row in observed:
@@ -3529,7 +3553,8 @@ class Workflow:
                 if candidate and facts['head_oid'] != blob['content']['head_oid']:
                     raise ValueError('Published candidate head differs from current provider head')
                 if not facts.get('merged'):
-                    repair = self.publication_topology(value, facts, self.node_managed_publication_branches)
+                    repair = self.publication_topology(value, facts,
+                        self.node_managed_publication_branches, goal_number=key[0])
                     if repair:
                         contexts[key] = {'error': repair['action'], 'repair': repair}
                         continue
@@ -3615,7 +3640,7 @@ class Workflow:
                     # workspace/relationship consumers. This filter grants no authority.
                     declarations = [*graph['nodes'], *(row['template'] for row in graph['task_sets'])]
                     slots = {node['id']: {name for name, contract in node['outputs'].items()
-                                         if contract.get('type') == 'repository_context'}
+                                         if contract.get('type') in {'repository_context', 'published_candidate'}}
                              for node in declarations}
                     if not any(slots.values()): continue
                     candidate = False
@@ -3626,7 +3651,8 @@ class Workflow:
                         for name in slots.get(result['node']['node'], set()):
                             if name not in result['outputs']: continue
                             context = read(result['outputs'][name])
-                            if context.get('type') == 'repository_context' and context['content'].get('branch') in heads: candidate = True
+                            if (context.get('type') in {'repository_context', 'published_candidate'}
+                                    and context['content'].get('branch') in heads): candidate = True
                     if not candidate: continue
                     candidates.append(number)
             finally:
@@ -3656,6 +3682,24 @@ class Workflow:
                     if not any(row['source'] == reference and row['mode'] == 'identity' and not row['path'] for row in result['inputs']): continue
                     context = artifacts[reference['hash']]
                     if context.get('type') == 'repository_context' and isinstance(context['content'].get('branch'), str): branches.add(context['content']['branch'])
+                for identity, (key, result) in owners.items():
+                    artifact = artifacts[identity]
+                    if artifact.get('type') != 'published_candidate' or result['executor'] != root:
+                        continue
+                    if projection['states'][key]['contract']['executor']['role'] != 'root':
+                        continue
+                    permits = [row['source'] for row in result['inputs']
+                               if row.get('mode') == 'identity' and not row.get('path')
+                               and artifacts[row['source']['hash']].get('type') == 'repository_authorization']
+                    if len(permits) != 1:
+                        continue
+                    try:
+                        self.node_compaction_authorization(snapshot, permits[0])
+                    except ValueError:
+                        continue
+                    branch = artifact.get('content', {}).get('branch')
+                    if isinstance(branch, str) and branch:
+                        branches.add(branch)
         except Exception:
             self._publication_candidate_discovery = None
             raise
