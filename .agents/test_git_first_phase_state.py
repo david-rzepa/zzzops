@@ -497,7 +497,8 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
 class GitWorkspaceJourneyTests(unittest.TestCase):
     fixture_with_git_workspace = GitWorkspaceAcquisitionTests.fixture_with_git_workspace
 
-    def test_late_test_finding_rebases_t2_on_i1_then_i2_on_t2(self):
+    def acceptance_late_test_finding_rebases_t2_on_i1_then_i2_on_t2(self):
+        """Opt-in full shipped-DAG journey; focused CI contracts cover each boundary."""
         case = journeys.DefaultCorrectionPublicTests('runTest')
         case.setUp()
         self.addCleanup(case.doCleanups)
