@@ -414,6 +414,7 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         facts = {'merged': True, 'merge_commit': 'e' * 40,
                  'head_oid': 'd' * 40, 'base_ref': 'dev'}
         snapshot = {'number': 7, 'artifacts': {auth['hash']: {'type': 'repository_authorization'}},
+                    'payload': {'operational': {'receipts': []}},
                     'projection': {'states': {'merge': {'publication': {'provider': facts}}},
                                    'current': {'auth': ({'hash': 'result'},
                                        {'outputs': {'authorization': auth}})}}}
@@ -445,6 +446,10 @@ class WorkflowPublicationContractTests(unittest.TestCase):
                  'head_oid': 'd' * 40, 'base_ref': 'dev'}
         snapshot = {'number': 7, 'artifacts': {auth['hash']: {
             'type': 'repository_authorization'}},
+            'payload': {'operational': {'receipts': [{'result': {'hash': 'readonly-receipt'}}]}},
+            'resolve': lambda _ref: {'next_steps': [{'kind': 'perform', 'lease': {
+                'node': {'goal': 7, 'node': 'understand'}, 'attempt': 'b' * 32,
+                'acquisition': {'read_commit': 'b' * 40}}}]},
             'projection': {'states': {'merge': {'publication': {'provider': facts}}},
                            'current': {'auth': ({'hash': 'result'},
                                {'outputs': {'authorization': auth}})}}}
@@ -456,16 +461,55 @@ class WorkflowPublicationContractTests(unittest.TestCase):
              mock.patch.object(workflow.git_phase_state,
                                'verify_single_commit_candidate') as verify, \
              mock.patch.object(workflow.managed_worktrees, 'inspect_attempt_worktree',
-                               side_effect=[{'status': 'clean'}, {'status': 'clean'}]), \
+                               side_effect=[{'status': 'clean'}, {'status': 'clean'},
+                                            {'status': 'clean'}]), \
              mock.patch.object(workflow.managed_worktrees,
                                'cleanup_delivered_attempt_worktree') as attempt_cleanup, \
              mock.patch.object(workflow.managed_worktrees,
-                               'cleanup_delivered_candidate_worktree') as candidate_cleanup:
-            self.assertEqual(2, engine.node_cleanup_delivered_worktrees(snapshot)['removed'])
+                               'cleanup_delivered_candidate_worktree') as candidate_cleanup, \
+             mock.patch.object(workflow.managed_worktrees,
+                               'cleanup_delivered_readonly_worktree') as readonly_cleanup:
+            self.assertEqual(3, engine.node_cleanup_delivered_worktrees(snapshot)['removed'])
         verify.assert_called_once()
         self.assertEqual('composition', attempt_cleanup.call_args.kwargs['delivery_class'])
         self.assertEqual(ref, attempt_cleanup.call_args.kwargs['retained_ref'])
         self.assertEqual('composition', candidate_cleanup.call_args.kwargs['delivery_class'])
+        self.assertEqual('b' * 40, readonly_cleanup.call_args.kwargs['expected_head'])
+
+    def test_legacy_delivery_cleans_commit_pinned_readonly_attempt(self):
+        engine = workflow.Workflow.__new__(workflow.Workflow)
+        engine.repo = Path('/repo')
+        facts = {'merged': True, 'merge_commit': 'e' * 40,
+                 'head_oid': 'd' * 40, 'base_ref': 'dev'}
+        snapshot = {'number': 7, 'projection': {'states': {
+            'merge': {'publication': {'provider': facts}}}},
+            'payload': {'operational': {'receipts': [{'result': {'hash': 'receipt'}}]}},
+            'resolve': lambda _ref: {'next_steps': [{'kind': 'perform', 'lease': {
+                'node': {'goal': 7, 'node': 'understand'}, 'attempt': 'a' * 32,
+                'acquisition': {'read_commit': 'b' * 40}}}]}}
+        def run(command, **_kwargs):
+            if command[1:3] == ['rev-parse', 'FETCH_HEAD']:
+                return SimpleNamespace(returncode=0, stdout='e' * 40)
+            return SimpleNamespace(returncode=0, stdout='')
+        with mock.patch.object(workflow.subprocess, 'run', side_effect=run), \
+             mock.patch.object(workflow.managed_worktrees, 'inspect_attempt_worktree',
+                               return_value={'status': 'clean'}), \
+             mock.patch.object(workflow.managed_worktrees,
+                               'cleanup_delivered_readonly_worktree') as cleanup:
+            result = engine.node_cleanup_delivered_readonly_worktrees(snapshot)
+        self.assertEqual({'status': 'complete', 'removed': 1, 'preserved_dirty': 0}, result)
+        cleanup.assert_called_once_with(Path('/repo'), goal=7, node='understand',
+            attempt='a' * 32, expected_head='b' * 40, integrated_commit='e' * 40)
+
+    def test_legacy_delivery_without_readonly_attempts_needs_no_git_cleanup(self):
+        engine = workflow.Workflow.__new__(workflow.Workflow)
+        engine.repo = Path('/repo')
+        snapshot = {'number': 7, 'payload': {'operational': {'receipts': []}}}
+        with mock.patch.object(workflow.subprocess, 'run',
+                               side_effect=AssertionError('unnecessary Git fetch')):
+            self.assertEqual({'status': 'complete', 'removed': 0,
+                              'preserved_dirty': 0},
+                             engine.node_cleanup_delivered_readonly_worktrees(snapshot))
 
     def legacy_project(self):
         dag = json.loads((Path(__file__).parent / 'fixtures/legacy_phase_dag.json').read_text())

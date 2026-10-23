@@ -5583,9 +5583,8 @@ class Workflow:
                 'path': observed['path'], 'branch': observed['branch'],
                 'head_oid': observed['head']}
 
-    def node_cleanup_delivered_worktrees(self, snapshot):
-        """Retry local cleanup only after exact merged provider and Git facts."""
-        number = snapshot['number']
+    def node_cleanup_merge_facts(self, snapshot):
+        """Confirm the observed merge remains in its exact remote target."""
         merged = {digest(state['publication']['provider']): state['publication']['provider']
                   for state in snapshot['projection']['states'].values()
                   if state.get('publication', {}).get('provider', {}).get('merged')}
@@ -5610,6 +5609,12 @@ class Workflow:
         if subprocess.run(['git', 'merge-base', '--is-ancestor', integrated, target],
                           cwd=self.repo, capture_output=True).returncode:
             raise ValueError('Observed merge commit is not in the current target branch')
+        return integrated, head
+
+    def node_cleanup_delivered_worktrees(self, snapshot):
+        """Retry local cleanup only after exact merged provider and Git facts."""
+        number = snapshot['number']
+        integrated, head = self.node_cleanup_merge_facts(snapshot)
         inputs = self.node_compaction_inputs(snapshot)
         delivery_class = inputs.get('delivery_class', 'leaf')
         verifier = (git_phase_state.verify_single_commit_candidate
@@ -5664,6 +5669,62 @@ class Workflow:
                 delivery_base=inputs['base_commit'], integrated_commit=integrated,
                 delivery_class=delivery_class)
             removed += 1
+        readonly_removed, readonly_preserved = self.node_cleanup_readonly_attempts(snapshot, integrated)
+        removed += readonly_removed
+        preserved += readonly_preserved
+        return {'status': 'complete' if not preserved else 'preserved_dirty',
+                'removed': removed, 'preserved_dirty': preserved}
+
+    def node_readonly_attempts(self, snapshot):
+        """Recover bounded read-only identities from immutable start receipts."""
+        number = snapshot['number']
+        readonly = {}
+        for receipt in snapshot['payload']['operational']['receipts']:
+            response = snapshot['resolve'](receipt['result'])
+            for step in response.get('next_steps', []):
+                lease = step.get('lease') if step.get('kind') == 'perform' else None
+                acquisition = lease.get('acquisition', {}) if isinstance(lease, dict) else {}
+                if 'read_commit' not in acquisition:
+                    continue
+                node = lease.get('node', {})
+                attempt = lease.get('attempt')
+                commit = acquisition['read_commit']
+                if (node.get('goal') != number or not isinstance(node.get('node'), str)
+                        or not isinstance(attempt, str) or not re.fullmatch(r'[0-9a-f]{32}', attempt)
+                        or not isinstance(commit, str) or not re.fullmatch(r'[0-9a-f]{40}', commit)):
+                    raise ValueError('Read-only cleanup receipt identity is malformed')
+                identity = (node['node'], attempt)
+                if identity in readonly and readonly[identity] != commit:
+                    raise ValueError('Read-only cleanup receipt has conflicting base commits')
+                readonly[identity] = commit
+        return readonly
+
+    def node_cleanup_readonly_attempts(self, snapshot, integrated, readonly=None):
+        """Retire exact clean read-only attempts after their input remains reachable."""
+        number = snapshot['number']
+        readonly = self.node_readonly_attempts(snapshot) if readonly is None else readonly
+        removed, preserved = 0, 0
+        for (node, attempt), commit in sorted(readonly.items()):
+            local = managed_worktrees.inspect_attempt_worktree(self.repo,
+                goal=number, node=node, attempt=attempt)
+            if local['status'] == 'missing':
+                continue
+            if local['status'] != 'clean':
+                preserved += 1
+                continue
+            managed_worktrees.cleanup_delivered_readonly_worktree(self.repo,
+                goal=number, node=node, attempt=attempt, expected_head=commit,
+                integrated_commit=integrated)
+            removed += 1
+        return removed, preserved
+
+    def node_cleanup_delivered_readonly_worktrees(self, snapshot):
+        """Clean read-only attempts for a legacy delivery after its provider merge."""
+        readonly = self.node_readonly_attempts(snapshot)
+        if not readonly:
+            return {'status': 'complete', 'removed': 0, 'preserved_dirty': 0}
+        integrated, _ = self.node_cleanup_merge_facts(snapshot)
+        removed, preserved = self.node_cleanup_readonly_attempts(snapshot, integrated, readonly)
         return {'status': 'complete' if not preserved else 'preserved_dirty',
                 'removed': removed, 'preserved_dirty': preserved}
 
@@ -7765,6 +7826,8 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 current = engine.node_snapshot(number)
                 if engine.node_native_delivery(current):
                     cleanup = engine.node_cleanup_delivered_worktrees(current)
+                else:
+                    cleanup = engine.node_cleanup_delivered_readonly_worktrees(current)
             except (ValueError, OSError, subprocess.SubprocessError) as exc:
                 cleanup = {'status': 'pending', 'reason': str(exc)}
             if cleanup is not None:

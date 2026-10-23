@@ -246,3 +246,36 @@ def cleanup_delivered_candidate_worktree(repo: Path, *, goal: int, attempt: str,
     return {'outcome': 'removed' if observed['status'] != 'missing' or existing.returncode == 0
             else 'already_removed', 'path': str(path), 'branch': branch,
             'integrated_commit': integrated_commit}
+
+
+def cleanup_delivered_readonly_worktree(repo: Path, *, goal: int, node: str,
+                                        attempt: str, expected_head: str,
+                                        integrated_commit: str) -> dict:
+    """Retire a clean read-only checkout only when its input remains reachable."""
+    repo = Path(repo).resolve()
+    _identity(goal, node, attempt)
+    if any(not isinstance(oid, str) or not _OID.fullmatch(oid)
+           for oid in (expected_head, integrated_commit)):
+        raise ValueError('Read-only cleanup requires exact commit identities')
+    if _run(repo, 'merge-base', '--is-ancestor', expected_head, integrated_commit,
+            check=False).returncode:
+        raise ValueError('Read-only input commit is not retained by the integrated target')
+    observed = inspect_attempt_worktree(repo, goal=goal, node=node, attempt=attempt)
+    path, branch = Path(observed['path']), observed['branch']
+    branch_ref = 'refs/heads/' + branch
+    if observed['status'] != 'missing':
+        if observed['status'] != 'clean':
+            raise ValueError('Read-only managed worktree is dirty; preserve its local files')
+        if observed['head'] != expected_head:
+            raise ValueError('Read-only managed worktree moved before cleanup')
+        _run(_primary(repo), 'worktree', 'remove', str(path))
+        if path.exists() or any(Path(row['worktree']).resolve() == path for row in _worktrees(repo)):
+            raise ValueError('Read-only worktree removal could not be confirmed')
+    existing = _run(repo, 'rev-parse', '--verify', branch_ref, check=False)
+    if existing.returncode == 0:
+        if existing.stdout.strip() != expected_head:
+            raise ValueError('Read-only branch moved before cleanup')
+        _run(repo, 'update-ref', '-d', branch_ref, expected_head)
+    return {'outcome': 'removed' if observed['status'] != 'missing' or existing.returncode == 0
+            else 'already_removed', 'path': str(path), 'branch': branch,
+            'integrated_commit': integrated_commit}

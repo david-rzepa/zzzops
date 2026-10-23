@@ -1166,9 +1166,9 @@ class EvidenceDagPublicTests(DagFixture):
 
     def test_generic_task_read_dependency_and_undeclared_edit_reject_with_valid_control(self):
         work = self.session.acquire("produce")
-        # Empty output authority cannot exempt either a consumed file or a new file.
+        # Empty output authority cannot exempt edits inside its exact managed checkout.
         for name in ("product.txt", "unexpected.py"):
-            path = self.fixture.repo / name
+            path = Path(work['managed_worktree']['path']) / name
             original = path.read_bytes() if path.exists() else None
             try:
                 path.write_text("unapproved worktree change\n")
@@ -4083,7 +4083,10 @@ class GenericStoragePublicTests(DagFixture):
                     self.assertTrue(case.provider.updates)
                     self.assertTrue(all(set(payload) == {"body"} for _, payload in case.provider.updates))
                     before = copy.deepcopy((case.provider.issues, case.provider.comments, case.provider.updates))
-                    self.assertEqual(response, case.session.call(100, request))
+                    replay = case.session.call(100, request)
+                    expected = copy.deepcopy(response)
+                    expected['next_steps'][0]['managed_worktree']['outcome'] = 'existing'
+                    self.assertEqual(expected, replay)
                     self.assertEqual(before, (case.provider.issues, case.provider.comments, case.provider.updates))
                 finally:
                     case.doCleanups()

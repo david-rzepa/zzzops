@@ -195,6 +195,32 @@ class ManagedWorktreeTests(unittest.TestCase):
         self.assertEqual('removed', removed_candidate['outcome'])
         self.assertFalse(candidate_path.exists())
 
+    def test_readonly_cleanup_removes_only_exact_clean_ancestor_worktree(self):
+        readonly = managed.prepare_worktree(self.repo, goal=566, node='understand',
+                                            attempt='c' * 32, base_commit=self.base)
+        path = Path(readonly['path'])
+        (self.repo / 'delivered.txt').write_text('integrated\n')
+        self.git('add', 'delivered.txt')
+        self.git('commit', '-qm', 'feat: integrate reviewed goal')
+        integrated = self.git('rev-parse', 'HEAD').strip()
+        removed = managed.cleanup_delivered_readonly_worktree(self.repo, goal=566,
+            node='understand', attempt='c' * 32, expected_head=self.base,
+            integrated_commit=integrated)
+        self.assertEqual('removed', removed['outcome'])
+        self.assertFalse(path.exists())
+        self.assertEqual('already_removed', managed.cleanup_delivered_readonly_worktree(
+            self.repo, goal=566, node='understand', attempt='c' * 32,
+            expected_head=self.base, integrated_commit=integrated)['outcome'])
+        draft = managed.prepare_worktree(self.repo, goal=566, node='review_understanding',
+                                         attempt='d' * 32, base_commit=self.base)
+        draft_path = Path(draft['path'])
+        (draft_path / 'unverified.txt').write_text('preserve local draft\n')
+        with self.assertRaisesRegex(ValueError, 'dirty'):
+            managed.cleanup_delivered_readonly_worktree(self.repo, goal=566,
+                node='review_understanding', attempt='d' * 32,
+                expected_head=self.base, integrated_commit=integrated)
+        self.assertTrue((draft_path / 'unverified.txt').exists())
+
 
 if __name__ == '__main__':
     unittest.main()
