@@ -75,7 +75,8 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         engine.node_publication_authorities = lambda _snapshot: [(authorization, publication)]
         engine.node_ci_required = lambda _observed: None
         engine.node_native_delivery = lambda _snapshot: True
-        engine.node_compaction_inputs = lambda _snapshot: {'delivery_class': 'leaf'}
+        engine.node_compaction_inputs = lambda _snapshot: {
+            'delivery_class': 'leaf', 'test_owned': ['behavior_test.py']}
         engine.node_native_sources = lambda _snapshot: {'test_source': 'c' * 40,
                                                         'implementation_source': 'd' * 40}
         engine.node_persist = lambda _snapshot, _payload, response, _request: response
@@ -101,7 +102,8 @@ class WorkflowPublicationContractTests(unittest.TestCase):
                 engine.node_publication_operation(snapshot, payload, request)
         self.assertEqual(2, verify.call_count)
         verify.assert_called_with(Path('/repo'), goal=7,
-                                  base_commit=facts['base_oid'], head_commit=facts['head_oid'])
+                                  base_commit=facts['base_oid'], head_commit=facts['head_oid'],
+                                  test_owned=['behavior_test.py'])
         self.assertEqual(1, len(commands))
         self.assertIn('--merge', commands[0])
         self.assertNotIn('--squash', commands[0])

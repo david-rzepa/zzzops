@@ -13,6 +13,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 
 
 _COMMIT = re.compile(r'[0-9a-f]{40}\Z')
@@ -185,6 +186,28 @@ def _scoped_change_count(repo: Path, before: str, after: str, paths: list[str]) 
     return len(names)
 
 
+def _project_owned_tree(repo: Path, *, base_commit: str, source_commit: str,
+                        owned_paths: list[str]) -> str:
+    """Apply only a reviewed phase's final paths to a disposable Git index."""
+    if not isinstance(owned_paths, list) or not owned_paths:
+        raise ValueError('Projected candidate phase requires reviewed owned paths')
+    _scope_hash(owned_paths)
+    patch = _git(repo, '--literal-pathspecs', 'diff', '--binary', '--no-renames',
+                 base_commit, source_commit, '--', *owned_paths)
+    with tempfile.TemporaryDirectory(prefix='zzzops-candidate-index-') as directory:
+        environment = {**os.environ, 'GIT_INDEX_FILE': str(Path(directory) / 'index')}
+        def isolated(*arguments, input_bytes=None):
+            result = subprocess.run(['git', *arguments], cwd=repo, env=environment,
+                                    input=input_bytes, capture_output=True)
+            if result.returncode:
+                raise ValueError('Git could not project the reviewed phase into a candidate tree')
+            return result.stdout
+        isolated('read-tree', base_commit)
+        if patch:
+            isolated('apply', '--cached', '--binary', input_bytes=patch)
+        return isolated('write-tree').decode().strip()
+
+
 def compaction_base_from_attempts(repo: Path, *, goal: int, test_source: str,
                                   attempts: list[dict], remote: str,
                                   phase: str = 'test_design') -> str:
@@ -230,24 +253,46 @@ def _compaction_facts(repo: Path, *, goal: int, base_commit: str, test_source: s
         if subprocess.run(['git', 'merge-base', '--is-ancestor', earlier, later],
                           cwd=repo, capture_output=True).returncode:
             raise ValueError('Compaction sources must follow the exact goal stack ancestry')
-    if not _scoped_change_count(repo, base_commit, test_source, test_owned):
+    if set(test_owned).intersection(implementation_owned):
+        raise ValueError('Compaction RED and GREEN owned scopes overlap')
+    _scope_hash(test_owned)
+    _scope_hash(implementation_owned)
+    _scoped_change_count(repo, base_commit, implementation_source,
+                         test_owned + implementation_owned)
+    test_tree = _project_owned_tree(repo, base_commit=base_commit,
+        source_commit=test_source, owned_paths=test_owned)
+    if not _scoped_change_count(repo, base_commit, test_tree, test_owned):
         raise ValueError('Compaction has no reviewed RED test changes')
     if not _scoped_change_count(repo, test_source, implementation_source, implementation_owned):
         raise ValueError('Compaction has no reviewed GREEN implementation changes')
     seen = set()
+    final_refs = {'test_design': False, 'implement': False}
     for attempt in retained_attempts:
         if (not isinstance(attempt, dict) or set(attempt) != {'ref', 'commit'}
                 or attempt['ref'] in seen
                 or not attempt['ref'].startswith(f'refs/heads/zzzops/attempts/{goal}/')):
             raise ValueError('Compaction retained attempt list is malformed')
         seen.add(attempt['ref'])
+        match = re.fullmatch(
+            rf'refs/heads/zzzops/attempts/{goal}/(test_design|implement)/[0-9a-f]{{32}}',
+            attempt['ref'])
+        if not match:
+            raise ValueError('Compaction retained attempt phase is not a reviewed group')
         verify_attempt_ref(repo, remote=remote, **attempt)
-    if not {test_source, implementation_source} <= {row['commit'] for row in retained_attempts}:
-        raise ValueError('Compaction must retain both final source attempts')
+        phase = match.group(1)
+        parent = _git(repo, 'rev-list', '--parents', '-n', '1', attempt['commit']).decode().split()
+        if len(parent) != 2:
+            raise ValueError('Compaction retained attempt must have one exact parent')
+        _scoped_change_count(repo, parent[1], attempt['commit'],
+                             test_owned if phase == 'test_design' else implementation_owned)
+        if attempt['commit'] == (test_source if phase == 'test_design' else implementation_source):
+            final_refs[phase] = True
+    if not all(final_refs.values()):
+        raise ValueError('Compaction must retain both final source attempts by phase')
     raw_attempts = json.dumps(retained_attempts, sort_keys=True, separators=(',', ':')).encode()
     return {'goal': goal, 'base_commit': base_commit, 'test_source': test_source,
             'implementation_source': implementation_source,
-            'test_tree': _git(repo, 'rev-parse', test_source + '^{tree}').decode().strip(),
+            'test_tree': test_tree,
             'implementation_tree': _git(repo, 'rev-parse', implementation_source + '^{tree}').decode().strip(),
             'test_scope': _scope_hash(test_owned),
             'implementation_scope': _scope_hash(implementation_owned),
@@ -283,7 +328,7 @@ def preview_two_commit_candidate(repo: Path, *, goal: int, base_commit: str,
     head = _git(repo, 'rev-parse', 'HEAD').decode().strip()
     if head != implementation_source:
         candidate = verify_two_commit_candidate(repo, goal=goal,
-            base_commit=base_commit, head_commit=head)
+            base_commit=base_commit, head_commit=head, test_owned=test_owned)
         if (candidate['test_source'] != test_source
                 or candidate['implementation_source'] != implementation_source
                 or _git(repo, 'rev-parse', candidate['test_commit'] + '^{tree}').decode().strip() != facts['test_tree']
@@ -343,7 +388,8 @@ def apply_two_commit_candidate(repo: Path, preview: dict, *, test_owned: list[st
 
 
 def verify_two_commit_candidate(repo: Path, *, goal: int, base_commit: str,
-                                head_commit: str) -> dict:
+                                head_commit: str,
+                                test_owned: list[str] | None = None) -> dict:
     """Require the reviewed RED/GREEN pair before an ancestry-preserving merge."""
     repo = Path(repo).resolve()
     if type(goal) is not int or goal <= 0:
@@ -371,7 +417,11 @@ def verify_two_commit_candidate(repo: Path, *, goal: int, base_commit: str,
         if len(sources) != 1:
             raise ValueError('Candidate commit has no unique retained source')
         _commit(repo, sources[0])
-        if _git(repo, 'rev-parse', sources[0] + '^{tree}') != _git(repo, 'rev-parse', commit + '^{tree}'):
+        expected_tree = (_project_owned_tree(repo, base_commit=base_commit,
+            source_commit=sources[0], owned_paths=test_owned)
+            if phase == 'test_design' and test_owned is not None
+            else _git(repo, 'rev-parse', sources[0] + '^{tree}').decode().strip())
+        if expected_tree != _git(repo, 'rev-parse', commit + '^{tree}').decode().strip():
             raise ValueError('Candidate tree differs from its retained source')
         source_commits[phase] = sources[0]
     return {'test_commit': test_commit, 'implementation_commit': head_commit,

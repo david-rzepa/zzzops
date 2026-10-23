@@ -162,7 +162,8 @@ def cleanup_delivered_attempt_worktree(repo: Path, *, goal: int, node: str,
                                        delivery_base: str, delivery_head: str,
                                        integrated_commit: str, remote: str,
                                        retained_ref: str,
-                                       delivery_class: str = 'leaf') -> dict:
+                                       delivery_class: str = 'leaf',
+                                       test_owned: list[str] | None = None) -> dict:
     """Remove a clean archived attempt after its exact delivery is merged.
 
     Rejected correction commits need not be ancestors of the compacted pair.
@@ -183,7 +184,9 @@ def cleanup_delivered_attempt_worktree(repo: Path, *, goal: int, node: str,
     verify_attempt_ref(repo, remote=remote, ref=retained_ref, commit=expected_head)
     verifier = (verify_single_commit_candidate if delivery_class == 'composition'
                 else verify_two_commit_candidate)
-    verifier(repo, goal=goal, base_commit=delivery_base, head_commit=delivery_head)
+    verification_options = {} if delivery_class == 'composition' else {'test_owned': test_owned}
+    verifier(repo, goal=goal, base_commit=delivery_base, head_commit=delivery_head,
+             **verification_options)
     if _run(repo, 'merge-base', '--is-ancestor', delivery_head, integrated_commit,
             check=False).returncode:
         raise ValueError('Reviewed candidate is not integrated into the observed target commit')
@@ -211,7 +214,8 @@ def cleanup_delivered_attempt_worktree(repo: Path, *, goal: int, node: str,
 def cleanup_delivered_candidate_worktree(repo: Path, *, goal: int, attempt: str,
                                          expected_head: str, delivery_base: str,
                                          integrated_commit: str,
-                                         delivery_class: str = 'leaf') -> dict:
+                                         delivery_class: str = 'leaf',
+                                         test_owned: list[str] | None = None) -> dict:
     """Remove only a clean exact candidate already present in the target."""
     repo = Path(repo).resolve()
     _identity(goal, 'candidate', attempt)
@@ -223,7 +227,9 @@ def cleanup_delivered_candidate_worktree(repo: Path, *, goal: int, attempt: str,
         raise ValueError('Candidate cleanup delivery class is invalid')
     verifier = (verify_single_commit_candidate if delivery_class == 'composition'
                 else verify_two_commit_candidate)
-    verifier(repo, goal=goal, base_commit=delivery_base, head_commit=expected_head)
+    verification_options = {} if delivery_class == 'composition' else {'test_owned': test_owned}
+    verifier(repo, goal=goal, base_commit=delivery_base, head_commit=expected_head,
+             **verification_options)
     if _run(repo, 'merge-base', '--is-ancestor', expected_head, integrated_commit,
             check=False).returncode:
         raise ValueError('Reviewed candidate is not integrated into the observed target commit')

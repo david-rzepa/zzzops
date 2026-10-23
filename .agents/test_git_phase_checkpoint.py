@@ -211,6 +211,58 @@ class GitPhaseCheckpointTests(unittest.TestCase):
         for row in attempts:
             self.assertEqual(row['commit'], self.git('ls-remote', 'origin', row['ref']).split()[0])
 
+    def test_interleaved_t1_i1_t2_i2_compacts_to_final_red_and_green(self):
+        self.remote()
+        self.git('switch', '-c', 'feat/interleaved')
+        attempts = []
+        sequence = (
+            ('test_design', 'behavior_test.py', 'assert value() == 1\n'),
+            ('implement', 'output.py', 'def value(): return 1\n'),
+            ('test_design', 'behavior_test.py', 'assert value() == 2\n'),
+            ('implement', 'output.py', 'def value(): return 2\n'),
+        )
+        for number, (phase, path, value) in enumerate(sequence, start=1):
+            commit = self.result(path, value)
+            retained = git_phase_state.retain_attempt_ref(self.repo, remote='origin',
+                goal=566, node=phase, attempt=f'{number:032x}', commit=commit)
+            attempts.append({'ref': retained['ref'], 'commit': commit})
+        test_source = attempts[2]['commit']
+        implementation_source = attempts[3]['commit']
+        self.assertEqual(self.base, git_phase_state.compaction_base_from_attempts(
+            self.repo, goal=566, test_source=test_source,
+            attempts=[attempts[0], attempts[2]], remote='origin'))
+        preview = git_phase_state.preview_two_commit_candidate(self.repo,
+            goal=566, base_commit=self.base, test_source=test_source,
+            implementation_source=implementation_source,
+            test_owned=['behavior_test.py'], implementation_owned=['output.py'],
+            retained_attempts=attempts, remote='origin')
+        compacted = git_phase_state.apply_two_commit_candidate(self.repo, preview,
+            test_owned=['behavior_test.py'], implementation_owned=['output.py'],
+            retained_attempts=attempts, remote='origin')
+        self.assertEqual('2', self.git('rev-list', '--count',
+                                     f"{self.base}..{compacted['implementation_commit']}").strip())
+        self.assertEqual('assert value() == 2\n',
+            self.git('show', compacted['test_commit'] + ':behavior_test.py'))
+        self.assertNotEqual(self.git('rev-parse', test_source + '^{tree}').strip(),
+                            self.git('rev-parse', compacted['test_commit'] + '^{tree}').strip())
+        self.assertEqual(implementation_source,
+            git_phase_state.verify_two_commit_candidate(self.repo, goal=566,
+                base_commit=self.base, head_commit=compacted['implementation_commit'],
+                test_owned=['behavior_test.py'])['implementation_source'])
+        with self.assertRaisesRegex(ValueError, 'Candidate tree differs'):
+            git_phase_state.verify_two_commit_candidate(self.repo, goal=566,
+                base_commit=self.base, head_commit=compacted['implementation_commit'])
+        self.assertEqual(preview, git_phase_state.preview_two_commit_candidate(self.repo,
+            goal=566, base_commit=self.base, test_source=test_source,
+            implementation_source=implementation_source,
+            test_owned=['behavior_test.py'], implementation_owned=['output.py'],
+            retained_attempts=attempts, remote='origin'))
+        self.assertEqual('existing', git_phase_state.apply_two_commit_candidate(self.repo,
+            preview, test_owned=['behavior_test.py'], implementation_owned=['output.py'],
+            retained_attempts=attempts, remote='origin')['outcome'])
+        for row in attempts:
+            self.assertEqual(row['commit'], self.git('ls-remote', 'origin', row['ref']).split()[0])
+
     def test_compaction_stops_if_attempt_ref_moves(self):
         self.remote()
         self.git('switch', '-c', 'feat/566')

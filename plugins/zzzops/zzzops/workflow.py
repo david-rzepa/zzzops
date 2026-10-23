@@ -5575,7 +5575,7 @@ class Workflow:
                 retained_attempts=inputs['retained_attempts'], remote='origin')
             candidate = git_phase_state.verify_two_commit_candidate(Path(observed['path']),
                 goal=snapshot['number'], base_commit=inputs['base_commit'],
-                head_commit=observed['head'])
+                head_commit=observed['head'], test_owned=inputs['test_owned'])
             current = sources
         if any(candidate[name] != value for name, value in current.items()):
             raise ValueError('Managed candidate differs from current reviewed source commits')
@@ -5620,7 +5620,10 @@ class Workflow:
         verifier = (git_phase_state.verify_single_commit_candidate
                     if delivery_class == 'composition'
                     else git_phase_state.verify_two_commit_candidate)
-        verifier(self.repo, goal=number, base_commit=inputs['base_commit'], head_commit=head)
+        verification_options = ({} if delivery_class == 'composition'
+                                else {'test_owned': inputs.get('test_owned')})
+        verifier(self.repo, goal=number, base_commit=inputs['base_commit'],
+                 head_commit=head, **verification_options)
         if subprocess.run(['git', 'merge-base', '--is-ancestor', head, integrated],
                           cwd=self.repo, capture_output=True).returncode:
             raise ValueError('Exact reviewed candidate is not in the observed merge commit')
@@ -5644,7 +5647,8 @@ class Workflow:
                 node=node, attempt=attempt_id, expected_head=commit,
                 delivery_base=inputs['base_commit'], delivery_head=head,
                 integrated_commit=integrated, remote='origin', retained_ref=ref,
-                delivery_class=delivery_class)
+                delivery_class=delivery_class,
+                test_owned=inputs.get('test_owned') if delivery_class != 'composition' else None)
             removed += 1
         authorities = [output for _, (_, result) in snapshot['projection']['current'].items()
             for output in result['outputs'].values()
@@ -5667,7 +5671,8 @@ class Workflow:
             managed_worktrees.cleanup_delivered_candidate_worktree(self.repo,
                 goal=number, attempt=candidate_id, expected_head=head,
                 delivery_base=inputs['base_commit'], integrated_commit=integrated,
-                delivery_class=delivery_class)
+                delivery_class=delivery_class,
+                test_owned=inputs.get('test_owned') if delivery_class != 'composition' else None)
             removed += 1
         readonly_removed, readonly_preserved = self.node_cleanup_readonly_attempts(snapshot, integrated)
         removed += readonly_removed
@@ -5777,7 +5782,7 @@ class Workflow:
                     else:
                         candidate = git_phase_state.verify_two_commit_candidate(self.repo,
                             goal=snapshot['number'], base_commit=facts['base_oid'],
-                            head_commit=facts['head_oid'])
+                            head_commit=facts['head_oid'], test_owned=inputs.get('test_owned'))
                         expected = self.node_native_sources(snapshot)
                     if any(candidate[name] != value for name, value in expected.items()):
                         raise ValueError('Git-native candidate sources differ from current reviewed phase Results')
