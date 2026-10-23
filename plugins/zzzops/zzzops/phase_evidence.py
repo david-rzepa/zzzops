@@ -950,7 +950,7 @@ def validate_graph(graph):
         definitions.append((expansion['template'], True))
     for node, template in definitions:
         node_fields = {'id', 'prompt', 'inputs', 'outputs', 'requires', 'executor', 'independent_of', 'gates', 'resolves', 'permits'}
-        if not isinstance(node, dict) or set(node) - node_fields - {'applicability'} or node_fields - set(node):
+        if not isinstance(node, dict) or set(node) - node_fields - {'applicability', 'git_publish'} or node_fields - set(node):
             raise ValueError('Node has unsupported or missing fields')
         name = node['id']
         if not task_identifier(name) or name in names or name in sets: raise ValueError('Duplicate or invalid node/template identity')
@@ -982,6 +982,21 @@ def validate_graph(graph):
         if executor['role'] not in ('root', 'worker') or not task_identifier(executor['capability']): raise ValueError('Executor role/capability is invalid')
         if not isinstance(executor['resources'], list) or any(not task_identifier(r) for r in executor['resources']) or len(set(executor['resources'])) != len(executor['resources']): raise ValueError('Executor resources must be unique identities')
         validate_scope(executor['authority'], template)
+        publish = node.get('git_publish')
+        if publish is not None:
+            contract_fields(publish, {'series', 'group', 'order', 'output', 'commit_type', 'summary'}, 'Git publish')
+            if ('repository_git_workspace' not in executor['resources']
+                    or any(not task_identifier(publish[key]) for key in ('series', 'group'))
+                    or not isinstance(publish['commit_type'], str)
+                    or not re.fullmatch(r'[a-z][a-z0-9]*', publish['commit_type'])
+                    or type(publish['order']) is not int or publish['order'] < 0
+                    or publish['output'] not in node['outputs']
+                    or not isinstance(publish['summary'], str)
+                    or not publish['summary'].strip()
+                    or publish['summary'] != publish['summary'].strip()
+                    or len(publish['summary']) > 120
+                    or any(character in publish['summary'] for character in '\r\n\x00')):
+                raise ValueError('Git publish requires a bounded reviewed group and Git workspace output')
         for field in ('requires', 'independent_of', 'gates', 'resolves', 'permits'):
             if not isinstance(node[field], list): raise ValueError(f'Node {field} must be an array')
             for value in node[field]:
@@ -991,6 +1006,20 @@ def validate_graph(graph):
                     if not task_identifier(value['type']): raise ValueError('Permit type is invalid')
                     validate_scope(value['scope'], template)
                 else: validate_scope(value, template)
+    series = {}
+    for node, _ in definitions:
+        publish = node.get('git_publish')
+        if publish is None:
+            continue
+        groups = series.setdefault(publish['series'], {})
+        signature = (publish['order'], publish['commit_type'], publish['summary'])
+        previous = groups.setdefault(publish['group'], signature)
+        if previous != signature:
+            raise ValueError('Git publish group declarations disagree')
+    for groups in series.values():
+        orders = [signature[0] for signature in groups.values()]
+        if sorted(orders) != list(range(len(orders))):
+            raise ValueError('Git publish group order must be unique and contiguous')
     def event_selectors(value):
         if isinstance(value, dict):
             if value.get('kind') == 'member' and (value.get('item') == {'event_subject_item': True}

@@ -171,6 +171,22 @@ class GitPhaseCheckpointTests(unittest.TestCase):
         self.assertEqual('observed_after_uncertain_push', retained['outcome'])
         self.assertEqual(result, self.git('ls-remote', 'origin', retained['ref']).split()[0])
 
+    def test_compaction_base_accepts_a_reviewed_custom_git_node(self):
+        self.remote()
+        result = self.result('custom.txt')
+        retained = git_phase_state.retain_attempt_ref(
+            self.repo, remote='origin', goal=566, node='custom_phase',
+            attempt='c' * 32, commit=result)
+        self.assertEqual(self.base, git_phase_state.compaction_base_from_attempts(
+            self.repo, goal=566, test_source=result,
+            attempts=[{'ref': retained['ref'], 'commit': result}],
+            remote='origin', phase='custom_phase'))
+        with self.assertRaisesRegex(ValueError, 'retained phase attempts'):
+            git_phase_state.compaction_base_from_attempts(
+                self.repo, goal=566, test_source=result,
+                attempts=[{'ref': retained['ref'], 'commit': result}],
+                remote='origin', phase='../unsafe')
+
     def test_reviewed_attempts_compact_to_two_deterministic_candidate_commits(self):
         self.remote()
         self.git('switch', '-c', 'feat/566')

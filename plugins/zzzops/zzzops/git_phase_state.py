@@ -219,7 +219,7 @@ def compaction_base_from_attempts(repo: Path, *, goal: int, test_source: str,
     """Find the base before the earliest retained attempt on the final line."""
     repo = Path(repo).resolve()
     if (type(goal) is not int or goal <= 0 or not isinstance(attempts, list)
-            or not attempts or phase not in {'test_design', 'integration_verification'}):
+            or not attempts or not isinstance(phase, str) or not _NODE.fullmatch(phase)):
         raise ValueError('Compaction requires retained phase attempts')
     _commit(repo, test_source)
     earliest = test_source
