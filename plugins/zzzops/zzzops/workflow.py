@@ -26,6 +26,7 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 import zzzops_comment_store as comment_store
 import zzzops_state_cache as state_cache
+import zzzops_git_phase_state as git_phase_state
 
 
 _OBSERVED_ARTIFACT_INDEXES = {}
@@ -3705,10 +3706,34 @@ class Workflow:
         raw snapshots to the same pure evaluator.
         """
         ev = self.api._phase_evidence
-        states = projection['states']; work = {key: state for key, state in states.items() if 'repository_workspace' in state['contract']['executor']['resources']}
-        actual = self.workspace_files()
+        states = projection['states']; work = {key: state for key, state in states.items()
+            if {'repository_workspace', 'repository_git_workspace'}.intersection(state['contract']['executor']['resources'])}
         head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
-        committed = self.git_files(head)
+        native_only = bool(work) and all('repository_git_workspace' in state['contract']['executor']['resources']
+                                         for state in work.values())
+        legacy_lease = any('files' in lease.get('acquisition', {})
+                           for snapshot in snapshots.values()
+                           for lease in snapshot['payload']['operational']['leases'])
+        legacy_result = any(any(binding['name'] == '__workspace' and
+                                artifacts.get(binding['source']['hash'], {}).get('content', {}).get('files') is not None
+                                for binding in result['inputs'])
+                            for _, result in projection['current'].values())
+        legacy_draft = any(snapshot.get('workspace_drafts') for snapshot in snapshots.values())
+        clean = None
+        if native_only and not (legacy_lease or legacy_result or legacy_draft):
+            observed = subprocess.run(['git', 'status', '--porcelain=v1', '-z', '--untracked-files=all',
+                                       '--', '.', ':(exclude).zzzops'], cwd=self.repo, capture_output=True)
+            if observed.returncode:
+                raise ValueError('Cannot verify clean Git workspace state')
+            clean = not observed.stdout
+        if clean:
+            # New Git-backed graphs need only HEAD and Git's clean-index/worktree
+            # observation. Legacy maps remain available when a historical lease,
+            # Result or draft requires them.
+            actual = committed = {}
+        else:
+            actual = self.workspace_files()
+            committed = self.git_files(head)
         current_outputs = {ref['hash']: (key, result) for key, (_, result) in projection['current'].items() for ref in result['outputs'].values()}
         all_results = [(ref, artifacts[ref['hash']]['content']) for snapshot in snapshots.values() for ref in snapshot['payload']['evidence']]
         def remember(value):
@@ -3811,6 +3836,8 @@ class Workflow:
         for result_ref, result in all_results:
             key = ev.task_key(result['node'])
             if key not in work: continue
+            if 'repository_git_workspace' in states[key]['contract']['executor']['resources']:
+                continue
             for output in result['outputs'].values():
                 source = content(output).get('provenance', {}).get('source')
                 if not source: continue
@@ -4027,6 +4054,81 @@ class Workflow:
             if len(found) > 1:
                 raise ValueError('Multiple historical stopped recoveries match this current workspace; select an exact recovery result')
             return found[0] if found else None
+        def checked_git_lease(key, state, grant, lease):
+            receipts = [content(reference) for token, reference in snapshots[key[0]]['acquisition_receipts'].items()
+                        if token == lease['token']]
+            pinned = [step['lease']['acquisition'] for receipt in receipts for step in receipt.get('next_steps', [])
+                      if step.get('lease', {}).get('token') == lease['token'] and step['lease'].get('acquisition')]
+            if pinned != [lease['acquisition']] or lease['acquisition'].get('input_hash') != lease['fingerprint']:
+                raise ValueError('Git workspace acquisition differs from immutable start receipt')
+            base = lease['acquisition'].get('git_commit')
+            if head != base:
+                git_phase_state.validate_checkpoint(self.repo, base_commit=base, result_commit=head,
+                    owned_paths=grant['entry']['owned'])
+            return base
+        def checked_git_proof(state, grant, result):
+            sources = {value['provenance']['source']['hash']: value['provenance']['source']
+                       for ref in result['outputs'].values()
+                       if (value := content(ref)).get('provenance', {}).get('source')}
+            if len(sources) != 1:
+                raise ValueError('Git phase result has no unique workspace proof')
+            proof = content(next(iter(sources.values())))
+            acquisition = proof.get('acquisition', {})
+            checkpoint = proof.get('checkpoint', {})
+            base, result_commit = acquisition.get('git_commit'), checkpoint.get('result_commit')
+            expected_ref = (f"refs/heads/zzzops/attempts/{result['node']['goal']}/"
+                            f"{result['node']['node']}/{result['attempt']}")
+            if (proof.get('kind') != 'git_phase_proof' or proof.get('node') != result['node']
+                    or proof.get('actor') != result['executor'] or proof.get('input_hash') != acquisition.get('input_hash')
+                    or proof.get('acquisition_hash') != digest(acquisition)
+                    or proof.get('scope') != digest(grant['entry'])
+                    or proof.get('retained_ref') != expected_ref
+                    or checkpoint.get('base_commit') != base
+                    or checkpoint != git_phase_state.validate_checkpoint(self.repo,
+                        base_commit=base, result_commit=result_commit,
+                        owned_paths=grant['entry']['owned'], require_clean_worktree=False)):
+                raise ValueError('Git phase result/proof or reviewed scope differs')
+            git_phase_state.verify_attempt_ref(self.repo, remote='origin',
+                ref=proof['retained_ref'], commit=result_commit)
+            return proof
+        git_edges = None
+        def connected_git_head(start):
+            nonlocal git_edges
+            start_tree = subprocess.run(['git', 'rev-parse', start + '^{tree}'], cwd=self.repo,
+                                        capture_output=True, text=True, check=True).stdout.strip()
+            head_tree = subprocess.run(['git', 'rev-parse', head + '^{tree}'], cwd=self.repo,
+                                       capture_output=True, text=True, check=True).stdout.strip()
+            if start_tree == head_tree: return True
+            if git_edges is None:
+                git_edges = []
+                for other_key, other in work.items():
+                    if 'repository_git_workspace' not in other['contract']['executor']['resources'] or other['state'] == 'blocked':
+                        continue
+                    try:
+                        other_grant = authority(other)
+                        other_lease = next((l for l in snapshots[other_key[0]]['payload']['operational']['leases']
+                                            if ev.task_key(l['node']) == other_key), None)
+                        if other_lease:
+                            predecessor = checked_git_lease(other_key, other, other_grant, other_lease)
+                            if predecessor != head:
+                                checkpoint = git_phase_state.validate_checkpoint(self.repo,
+                                    base_commit=predecessor, result_commit=head,
+                                    owned_paths=other_grant['entry']['owned'])
+                                git_edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
+                        elif other_key in projection['current']:
+                            proof = checked_git_proof(other, other_grant, projection['current'][other_key][1])
+                            checkpoint = proof['checkpoint']
+                            git_edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
+                    except (ValueError, KeyError, subprocess.SubprocessError):
+                        continue
+            pending, seen = [start_tree], set()
+            while pending:
+                tree = pending.pop()
+                if tree == head_tree: return True
+                if tree in seen: continue
+                seen.add(tree)
+                pending.extend(after for before, after in git_edges if before == tree)
+            return False
         contexts = {}; migrations = {}
         for key, state in work.items():
             if state['state'] == 'blocked':
@@ -4048,6 +4150,26 @@ class Workflow:
                     if migration['decision']['action'] == 'block':
                         contexts[key] = {'error': 'Migration release/assessment evidence: ' + migration['decision']['reason'], 'migration': migration, 'path': expected_path}
                         continue
+                if 'repository_git_workspace' in state['contract']['executor']['resources']:
+                    if actual != committed:
+                        raise ValueError('Git workspace acquisition requires a clean committed worktree')
+                    lease = next((l for l in snapshots[key[0]]['payload']['operational']['leases'] if ev.task_key(l['node']) == key), None)
+                    base = lease['acquisition'].get('git_commit') if lease else head
+                    if lease:
+                        base = checked_git_lease(key, state, grant, lease)
+                    elif key in projection['current']:
+                        _, result = projection['current'][key]
+                        proof = checked_git_proof(state, grant, result)
+                        base = proof['checkpoint']['base_commit']
+                        if not connected_git_head(proof['checkpoint']['result_commit']):
+                            raise ValueError('Git phase result is disconnected from the current managed head')
+                    binding = remember({'type': 'workspace_snapshot', 'content': {
+                        'git_commit': base, **{name: grant[name] for name in ('allocation', 'authorization', 'approval')},
+                        **({'migration': migration} if migration is not None else {})}, 'producer': None,
+                        'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
+                    contexts[key] = {'binding': binding, 'acquisition': {'git_commit': base},
+                                     'git_workspace': True, **grant}
+                    continue
                 lease = next((l for l in snapshots[key[0]]['payload']['operational']['leases'] if ev.task_key(l['node']) == key), None)
                 matches = [row for row in candidates if row['key'] == key]
                 prior = matches[-1] if matches else None
@@ -4373,6 +4495,48 @@ class Workflow:
         if workspace is None or workspace.get('readonly'):
             if request.get('workspace_checks'): raise ValueError('Workspace commands require explicit reviewed resource authority')
             return None
+        if workspace.get('git_workspace'):
+            base = lease['acquisition']['git_commit']
+            head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=self.repo,
+                                  capture_output=True, text=True, check=True).stdout.strip()
+            checkpoint = git_phase_state.validate_checkpoint(self.repo, base_commit=base,
+                result_commit=head, owned_paths=workspace['entry']['owned'])
+            pending = snapshot.get('pending')
+            if pending and pending.get('proof'):
+                ref = pending['proof']; proof = self.artifact_index(snapshot['number']).resolve(ref['hash'])[0]
+                if (proof.get('kind') != 'git_phase_proof' or proof.get('checkpoint') != checkpoint
+                        or proof.get('acquisition_hash') != digest(lease['acquisition'])
+                        or proof.get('actor') != lease['worker'] or proof.get('lease') != lease['token']):
+                    raise ValueError('Pending Git phase proof/acquisition/output drift')
+                for record in proof['commands']:
+                    if hashlib.sha256(Path(record['log']).read_bytes()).hexdigest() != record['log_hash']:
+                        raise ValueError('Pending Git verification log changed')
+                git_phase_state.verify_attempt_ref(self.repo, remote='origin',
+                    ref=proof['retained_ref'], commit=head)
+                snapshot['artifacts'][ref['hash']] = proof; snapshot['workspace_proof'] = ref
+                return ref
+            commands = request.get('workspace_checks', [])
+            if not isinstance(commands, list) or any(not isinstance(c, list) or not c or any(not isinstance(a, str) or not a for a in c) for c in commands):
+                raise ValueError('Workspace checks require nonempty argument arrays')
+            if checkpoint['change_count'] and not commands:
+                raise ValueError('Changed Git outputs require observed verification checks')
+            results = self.node_verification_commands(snapshot, lease, request, commands,
+                {'git_commit': head, 'tree': checkpoint['result_tree']}, reuse_only=reuse_only)
+            if git_phase_state.validate_checkpoint(self.repo, base_commit=base,
+                    result_commit=head, owned_paths=workspace['entry']['owned']) != checkpoint:
+                raise ValueError('Workspace checks changed the Git result commit')
+            retained = git_phase_state.retain_attempt_ref(self.repo, remote='origin',
+                goal=state['node']['goal'], node=state['node']['node'],
+                attempt=lease['attempt'], commit=head)
+            proof = {'kind': 'git_phase_proof', 'node': state['node'],
+                     'acquisition': lease['acquisition'], 'acquisition_hash': digest(lease['acquisition']),
+                     'input_hash': lease['fingerprint'], 'actor': lease['worker'], 'lease': lease['token'],
+                     'checkpoint': checkpoint, 'retained_ref': retained['ref'],
+                     'scope': digest(workspace['entry']), 'commands': results,
+                     'passed': len(results) == len(commands) and all(row['exit_code'] == 0 for row in results)}
+            identity = digest(proof); snapshot['artifacts'][identity] = proof
+            snapshot['workspace_proof'] = self.node_ref(identity, snapshot['number'])
+            return snapshot['workspace_proof']
         pending = snapshot.get('pending')
         if pending and pending.get('proof'):
             ref = pending['proof']; proof = self.artifact_index(snapshot['number']).resolve(ref['hash'])[0]
@@ -4408,7 +4572,15 @@ class Workflow:
                 any(not isinstance(argument, str) or not argument for argument in command)
                 for command in commands):
             raise ValueError('Workspace checks require nonempty argument arrays')
-        before = self.workspace_files()
+        if workspace.get('git_workspace'):
+            head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=self.repo,
+                capture_output=True, text=True, check=True).stdout.strip()
+            checkpoint = git_phase_state.validate_checkpoint(self.repo,
+                base_commit=lease['acquisition']['git_commit'], result_commit=head,
+                owned_paths=workspace['entry']['owned'])
+            before = {'git_commit': head, 'tree': checkpoint['result_tree']}
+        else:
+            before = self.workspace_files()
         identity = {
             'request': digest(request), 'node': state['node'],
             'lease': {key: copy.deepcopy(lease[key]) for key in

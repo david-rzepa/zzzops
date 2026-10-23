@@ -1458,7 +1458,7 @@ def _derive_task_steps(graph, payload, context):
             value['type'] in {'repository_authorization', 'publication_authorization',
                               'merge_authorization', 'published_candidate', 'delivery_result'}
             for value in node['outputs'].values()))
-        if not publication and 'repository_workspace' not in resources:
+        if not publication and not {'repository_workspace', 'repository_git_workspace'}.intersection(resources):
             return False
         definitions = {row['id']: row for row in snapshots[number]['graph']['nodes']}
         definitions.update({row['template']['id']: row['template'] for row in snapshots[number]['graph']['task_sets']})
@@ -1548,7 +1548,7 @@ def _derive_task_steps(graph, payload, context):
                     raise ValueError('Unsupported or malformed goal context')
                 resources = node['executor']['resources']
                 publication_gate = ('repository_publication' in resources or node['id'] == 'observe_merge')
-                source_gate = 'repository_workspace' in resources
+                source_gate = bool({'repository_workspace', 'repository_git_workspace'}.intersection(resources))
                 if source_gate or publication_gate:
                     blockers = goal_context['blockers']
                     if any(not isinstance(row, dict) or row.get('status') not in ('closed', 'resolved')
@@ -1610,7 +1610,7 @@ def _derive_task_steps(graph, payload, context):
                                 'provenance': {'actor': 'host', 'source': None, 'policy': policy}})
                 state['inputs'].append({'name': '__policy', 'source': ref, 'path': [], 'mode': 'identity'})
                 hashes['__policy'] = ref['hash']
-            if ('workspaces' in context or 'repository_workspace' in node['executor']['resources']) and not context.get('workspace_probe'):
+            if ('workspaces' in context or {'repository_workspace', 'repository_git_workspace'}.intersection(node['executor']['resources'])) and not context.get('workspace_probe'):
                 workspace = context.get('workspaces', {}).get(key)
                 if not workspace or 'error' in workspace: raise ValueError((workspace or {}).get('error', 'Workspace allocation/authority is unavailable'))
                 ref = workspace['binding']

@@ -144,3 +144,14 @@ def retain_attempt_ref(repo: Path, *, remote: str, goal: int, node: str,
         if not uncertain or retry:
             raise ValueError('Remote attempt ref was not retained')
     raise ValueError('Remote attempt ref was not retained')
+
+
+def verify_attempt_ref(repo: Path, *, remote: str, ref: str, commit: str) -> None:
+    """Read-only check that the retained attempt still names its exact commit."""
+    if (not isinstance(remote, str) or not _NODE.fullmatch(remote)
+            or not isinstance(ref, str) or not re.fullmatch(
+                r'refs/heads/zzzops/attempts/[1-9][0-9]*/[A-Za-z0-9_.-]+/[0-9a-f]{32}', ref)
+            or not isinstance(commit, str) or not _COMMIT.fullmatch(commit)):
+        raise ValueError('Invalid retained attempt identity')
+    if _remote_ref(Path(repo).resolve(), remote, ref) != commit:
+        raise ValueError('Retained attempt ref is missing or moved')
