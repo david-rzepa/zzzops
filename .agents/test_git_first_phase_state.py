@@ -19,6 +19,12 @@ class FreshGoalGitCheckpointTests(DagFixture):
         template = json.loads((fixtures.PLUGIN_ROOT / 'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
         self.install(z._workflow_section(template, 'workflow_adherence')['configuration']['phase_dag'])
 
+    def test_inactive_legacy_composition_phase_does_not_force_repository_file_map(self):
+        self.default_graph()
+        with mock.patch.object(z._workflow.Workflow, 'workspace_files',
+                               side_effect=AssertionError('inactive legacy phase scanned files')):
+            self.session.acquire('requirements')
+
     def test_first_acquisition_with_many_files_is_bounded_and_replayable(self):
         paths = self.fixture.repo / 'many'
         paths.mkdir()
@@ -331,7 +337,8 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
             for node in graph['nodes']:
                 if node['id'] in {'test_design', 'implement'}:
                     resources = node['executor']['resources']
-                    resources[resources.index('repository_workspace')] = 'repository_git_workspace'
+                    if 'repository_workspace' in resources:
+                        resources[resources.index('repository_workspace')] = 'repository_git_workspace'
             return original_install(graph)
         case.install = install_git_graph
         remote_dir = tempfile.TemporaryDirectory()

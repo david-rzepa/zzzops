@@ -3809,8 +3809,18 @@ class Workflow:
         states = projection['states']; work = {key: state for key, state in states.items()
             if {'repository_workspace', 'repository_git_workspace'}.intersection(state['contract']['executor']['resources'])}
         head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
-        native_only = bool(work) and all('repository_git_workspace' in state['contract']['executor']['resources']
-                                         for state in work.values())
+        legacy_active = any(
+            'repository_workspace' in state['contract']['executor']['resources']
+            and (state['state'] == 'ready' or key in projection['leases']
+                 or (key in projection['current']
+                     and not projection['current'][key][1].get('non_applicability'))
+                 or (state['state'] == 'blocked'
+                     and any(binding.get('name') == 'allocation'
+                             for binding in state.get('inputs', []))))
+            for key, state in work.items())
+        native_only = (bool(work) and not legacy_active
+                       and any('repository_git_workspace' in state['contract']['executor']['resources']
+                               for state in work.values()))
         legacy_lease = any('files' in lease.get('acquisition', {})
                            for snapshot in snapshots.values()
                            for lease in snapshot['payload']['operational']['leases'])

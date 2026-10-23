@@ -19,7 +19,7 @@ class LeafApplicabilityTests(unittest.TestCase):
         nodes = {node["id"]: node for node in self.dag["nodes"]}
         for name in ("test_design", "implement"):
             node = nodes[name]
-            self.assertIn("repository_workspace", node["executor"]["resources"])
+            self.assertIn("repository_git_workspace", node["executor"]["resources"])
             self.assertIn("allocation", node["inputs"])
             for name, producer in (("review_authorization", "decomposition_review"),
                                    ("root_authorization", "approve_spec")):

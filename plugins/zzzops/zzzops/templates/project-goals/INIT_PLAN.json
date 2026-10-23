@@ -1915,7 +1915,7 @@
                   "role": "worker",
                   "capability": "reasoning",
                   "resources": [
-                    "repository_workspace"
+                    "repository_git_workspace"
                   ],
                   "authority": {
                     "subject": {
@@ -2476,7 +2476,7 @@
                   "role": "worker",
                   "capability": "reasoning",
                   "resources": [
-                    "repository_workspace"
+                    "repository_git_workspace"
                   ],
                   "authority": {
                     "subject": {
