@@ -134,6 +134,17 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         self.assertEqual(comments, len(fixture.provider.comments[100]))
         self.assertEqual([100], sorted(fixture.provider.issues))
 
+    def test_public_compaction_rejects_missing_repository_review_authority(self):
+        fixture = self.fixture_with_git_workspace()
+        before = copy.deepcopy((fixture.provider.issues, fixture.provider.comments))
+        response = fixture.session.call(100, {
+            'operation': 'compact_candidate', 'request_id': 'unreviewed-compaction',
+            'authorization': {'hash': 'sha256:' + 'a' * 64,
+                              'uri': 'urn:sha256:' + 'a' * 64},
+        }, expected=2)
+        self.assertIn('current repository authorization', json.dumps(response))
+        self.assertEqual(before, (fixture.provider.issues, fixture.provider.comments))
+
     def test_worktree_creation_failure_after_start_replays_without_new_lease(self):
         fixture = self.fixture_with_git_workspace()
         step = next(s for s in fixture.session.ready() if s['node']['node'] == 'alpha')
