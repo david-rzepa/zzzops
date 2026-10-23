@@ -77,7 +77,7 @@ def _install_ignore(repo: Path) -> None:
 
 
 def prepare_worktree(repo: Path, *, goal: int, node: str, attempt: str,
-                     base_commit: str) -> dict:
+                     base_commit: str, resume_dirty: bool = False) -> dict:
     """Create or resume one exact isolated attempt from a committed base."""
     repo = Path(repo).resolve()
     _identity(goal, node, attempt)
@@ -91,10 +91,13 @@ def prepare_worktree(repo: Path, *, goal: int, node: str, attempt: str,
     registered = next((row for row in _worktrees(repo) if Path(row['worktree']).resolve() == path), None)
     if registered:
         if (registered.get('branch') != branch_ref or not path.is_dir()
-                or _run(path, 'rev-parse', 'HEAD').stdout.strip() != base_commit
-                or not _clean(path)):
+                or _run(path, 'rev-parse', 'HEAD').stdout.strip() != base_commit):
             raise ValueError('Managed worktree changed; inspect its branch and files before recovery')
-        return {'outcome': 'existing', 'path': str(path), 'branch': branch,
+        clean = _clean(path)
+        if not clean and not resume_dirty:
+            raise ValueError('Managed worktree changed; inspect its branch and files before recovery')
+        return {'outcome': 'existing' if clean else 'existing_dirty',
+                'path': str(path), 'branch': branch,
                 'base_commit': base_commit}
     if path.exists() or _run(repo, 'show-ref', '--verify', '--quiet', branch_ref, check=False).returncode == 0:
         raise ValueError('Managed worktree path or branch already exists without matching registration')

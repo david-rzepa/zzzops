@@ -8050,10 +8050,14 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                     node = lease['node']
                     workspace = managed_worktrees.prepare_worktree(
                         repo, goal=number, node=node['node'], attempt=lease['attempt'],
-                        base_commit=acquisition.get('git_commit', acquisition.get('read_commit')))
+                        base_commit=acquisition.get('git_commit', acquisition.get('read_commit')),
+                        resume_dirty='git_commit' in acquisition)
                     step['managed_worktree'] = workspace
-                    step['action'] = ('Run this leased task in the managed worktree at '
-                                      + workspace['path'] + '; preserve the exact attempt branch.')
+                    step['action'] = ('Resume this leased dirty draft in the managed worktree at '
+                        + workspace['path'] + '; verify and commit only authorized outputs before submission.'
+                        if workspace['outcome'] == 'existing_dirty' else
+                        'Run this leased task in the managed worktree at '
+                        + workspace['path'] + '; preserve the exact attempt branch.')
         if operation == 'compact_candidate':
             for step in result.get('next_steps', []):
                 if step.get('kind') != 'candidate_compacted' or step.get('goal') != number:

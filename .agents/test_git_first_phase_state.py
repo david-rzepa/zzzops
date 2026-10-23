@@ -99,6 +99,21 @@ class FreshGoalGitCheckpointTests(DagFixture):
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
         self.assertTrue((path / 'unreviewed.txt').exists())
 
+    def test_start_replay_never_resumes_dirty_readonly_worktree(self):
+        self.default_graph()
+        step = next(s for s in self.session.ready() if s['node']['node'] == 'requirements')
+        receipt = json.loads(Path(step['policy']['path']).read_text())['policy_receipt']
+        request = {**step['start'], 'policy_receipt': receipt,
+                   'request_id': 'dirty-readonly-start-replay'}
+        started = self.session.call(100, request)['next_steps'][0]
+        path = Path(started['managed_worktree']['path'])
+        (path / 'unreviewed.txt').write_text('dirty reviewer draft\n')
+        comments = len(self.provider.comments[100])
+        replay = self.session.call(100, request, expected=2)
+        self.assertIn('Managed worktree changed', json.dumps(replay))
+        self.assertEqual(comments, len(self.provider.comments[100]))
+        self.assertTrue((path / 'unreviewed.txt').exists())
+
     def test_moved_commit_cannot_accept_a_readonly_result(self):
         self.default_graph()
         work = self.session.acquire('requirements')
@@ -339,6 +354,24 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         comments = len(fixture.provider.comments[100])
         resumed = fixture.session.call(100, request)['next_steps'][0]
         self.assertEqual('created', resumed['managed_worktree']['outcome'])
+        self.assertEqual(comments, len(fixture.provider.comments[100]))
+        self.assertEqual(1, len(fixture.payload()[1]['operational']['leases']))
+
+    def test_start_replay_resumes_dirty_writable_attempt_without_new_lease(self):
+        fixture = self.fixture_with_git_workspace()
+        step = next(s for s in fixture.session.ready() if s['node']['node'] == 'alpha')
+        receipt = json.loads(Path(step['policy']['path']).read_text())['policy_receipt']
+        request = {**step['start'], 'policy_receipt': receipt,
+                   'request_id': 'managed-dirty-attempt-replay'}
+        started = fixture.session.call(100, request)['next_steps'][0]
+        path = Path(started['managed_worktree']['path'])
+        (path / 'behavior_test.py').write_text('local draft survives replay\n')
+        comments = len(fixture.provider.comments[100])
+        resumed = fixture.session.call(100, request)['next_steps'][0]
+        self.assertEqual('existing_dirty', resumed['managed_worktree']['outcome'])
+        self.assertEqual(started['lease']['token'], resumed['lease']['token'])
+        self.assertEqual('local draft survives replay\n',
+                         (path / 'behavior_test.py').read_text())
         self.assertEqual(comments, len(fixture.provider.comments[100]))
         self.assertEqual(1, len(fixture.payload()[1]['operational']['leases']))
 
