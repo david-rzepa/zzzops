@@ -137,6 +137,92 @@ class GitPhaseCheckpointTests(unittest.TestCase):
         self.assertEqual('observed_after_uncertain_push', retained['outcome'])
         self.assertEqual(result, self.git('ls-remote', 'origin', retained['ref']).split()[0])
 
+    def test_reviewed_attempts_compact_to_two_deterministic_candidate_commits(self):
+        self.remote()
+        self.git('switch', '-c', 'feat/566')
+        attempts = []
+        for number, (path, value) in enumerate((
+                ('behavior_test.py', 'assert False\n'),
+                ('behavior_test.py', 'assert True\n'),
+                ('output.py', 'value = 1\n'),
+                ('output.py', 'value = 2\n')), start=1):
+            commit = self.result(path, value)
+            retained = git_phase_state.retain_attempt_ref(
+                self.repo, remote='origin', goal=566,
+                node='test_design' if number <= 2 else 'implement',
+                attempt=f'{number:032x}', commit=commit)
+            attempts.append({'ref': retained['ref'], 'commit': commit})
+            if number == 2:
+                test_source = commit
+        implementation_source = attempts[-1]['commit']
+        preview = git_phase_state.preview_two_commit_candidate(
+            self.repo, goal=566, base_commit=self.base, test_source=test_source,
+            implementation_source=implementation_source,
+            test_owned=['behavior_test.py'], implementation_owned=['output.py'],
+            retained_attempts=attempts, remote='origin')
+        self.assertEqual(4, preview['retained_attempt_count'])
+        compacted = git_phase_state.apply_two_commit_candidate(
+            self.repo, preview, test_owned=['behavior_test.py'],
+            implementation_owned=['output.py'], retained_attempts=attempts,
+            remote='origin')
+        self.assertEqual('created', compacted['outcome'])
+        self.assertEqual('2', self.git('rev-list', '--count', f'{self.base}..HEAD').strip())
+        self.assertEqual(preview['test_tree'], self.git('rev-parse', 'HEAD^^{tree}').strip())
+        self.assertEqual(preview['implementation_tree'], self.git('rev-parse', 'HEAD^{tree}').strip())
+        self.assertEqual('existing', git_phase_state.apply_two_commit_candidate(
+            self.repo, preview, test_owned=['behavior_test.py'],
+            implementation_owned=['output.py'], retained_attempts=attempts,
+            remote='origin')['outcome'])
+        for row in attempts:
+            self.assertEqual(row['commit'], self.git('ls-remote', 'origin', row['ref']).split()[0])
+
+    def test_compaction_stops_if_attempt_ref_moves(self):
+        self.remote()
+        self.git('switch', '-c', 'feat/566')
+        test_source = self.result('behavior_test.py', 'assert True\n')
+        implementation_source = self.result('output.py', 'value = 2\n')
+        attempts = []
+        for number, (node, commit) in enumerate((('test_design', test_source), ('implement', implementation_source)), start=1):
+            retained = git_phase_state.retain_attempt_ref(self.repo, remote='origin',
+                goal=566, node=node, attempt=f'{number:032x}', commit=commit)
+            attempts.append({'ref': retained['ref'], 'commit': commit})
+        preview = git_phase_state.preview_two_commit_candidate(
+            self.repo, goal=566, base_commit=self.base, test_source=test_source,
+            implementation_source=implementation_source,
+            test_owned=['behavior_test.py'], implementation_owned=['output.py'],
+            retained_attempts=attempts, remote='origin')
+        self.git('push', '--force', 'origin', f"{self.base}:{attempts[0]['ref']}")
+        with self.assertRaisesRegex(ValueError, 'Retained attempt ref'):
+            git_phase_state.apply_two_commit_candidate(
+                self.repo, preview, test_owned=['behavior_test.py'],
+                implementation_owned=['output.py'], retained_attempts=attempts,
+                remote='origin')
+        self.assertEqual(implementation_source, self.git('rev-parse', 'HEAD').strip())
+
+    def test_compaction_stops_if_candidate_branch_moves_after_preview(self):
+        self.remote()
+        self.git('switch', '-c', 'feat/566')
+        test_source = self.result('behavior_test.py', 'assert True\n')
+        implementation_source = self.result('output.py', 'value = 2\n')
+        attempts = []
+        for number, (node, commit) in enumerate((('test_design', test_source), ('implement', implementation_source)), start=1):
+            retained = git_phase_state.retain_attempt_ref(self.repo, remote='origin',
+                goal=566, node=node, attempt=f'{number:032x}', commit=commit)
+            attempts.append({'ref': retained['ref'], 'commit': commit})
+        preview = git_phase_state.preview_two_commit_candidate(
+            self.repo, goal=566, base_commit=self.base, test_source=test_source,
+            implementation_source=implementation_source,
+            test_owned=['behavior_test.py'], implementation_owned=['output.py'],
+            retained_attempts=attempts, remote='origin')
+        self.git('commit', '--allow-empty', '-qm', 'unexpected branch movement')
+        moved = self.git('rev-parse', 'HEAD').strip()
+        with self.assertRaisesRegex(ValueError, 'branch moved'):
+            git_phase_state.apply_two_commit_candidate(
+                self.repo, preview, test_owned=['behavior_test.py'],
+                implementation_owned=['output.py'], retained_attempts=attempts,
+                remote='origin')
+        self.assertEqual(moved, self.git('rev-parse', 'HEAD').strip())
+
 
 if __name__ == '__main__':
     unittest.main()

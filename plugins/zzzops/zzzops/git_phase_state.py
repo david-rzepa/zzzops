@@ -8,6 +8,9 @@ the exact returned commits before a result can become current.
 from __future__ import annotations
 
 from pathlib import Path, PurePosixPath
+import hashlib
+import json
+import os
 import re
 import subprocess
 
@@ -155,3 +158,144 @@ def verify_attempt_ref(repo: Path, *, remote: str, ref: str, commit: str) -> Non
         raise ValueError('Invalid retained attempt identity')
     if _remote_ref(Path(repo).resolve(), remote, ref) != commit:
         raise ValueError('Retained attempt ref is missing or moved')
+
+
+def _scope_hash(paths: list[str]) -> str:
+    if not isinstance(paths, list) or any(not _owned_path(path) for path in paths) or len(set(paths)) != len(paths):
+        raise ValueError('Compaction requires distinct canonical reviewed paths')
+    raw = json.dumps(sorted(paths), ensure_ascii=False, separators=(',', ':')).encode()
+    return 'sha256:' + hashlib.sha256(raw).hexdigest()
+
+
+def _scoped_change_count(repo: Path, before: str, after: str, paths: list[str]) -> int:
+    changed = _git(repo, 'diff', '--name-only', '--no-renames', '-z', before, after)
+    try:
+        names = [name.decode('utf-8') for name in changed.split(b'\x00') if name]
+    except UnicodeDecodeError as exc:
+        raise ValueError('Compaction contains a non-UTF-8 path') from exc
+    if any(not _owned_path(name) or name not in paths for name in names):
+        raise ValueError('Compaction changes files outside reviewed owned paths')
+    for name in names:
+        entry = _git(repo, 'ls-tree', '-z', after, '--', name)
+        if entry:
+            metadata, listed = entry.rstrip(b'\x00').split(b'\t', 1)
+            mode, kind, _oid = metadata.split()
+            if listed.decode('utf-8') != name or kind != b'blob' or mode not in _ORDINARY_MODES:
+                raise ValueError('Compaction requires ordinary scoped files')
+    return len(names)
+
+
+def _compaction_facts(repo: Path, *, goal: int, base_commit: str, test_source: str,
+                      implementation_source: str, test_owned: list[str],
+                      implementation_owned: list[str], retained_attempts: list[dict],
+                      remote: str) -> dict:
+    if type(goal) is not int or goal <= 0 or not isinstance(retained_attempts, list) or not retained_attempts:
+        raise ValueError('Compaction requires a positive goal and retained attempts')
+    for commit in (base_commit, test_source, implementation_source):
+        _commit(repo, commit)
+    for earlier, later in ((base_commit, test_source), (test_source, implementation_source)):
+        if subprocess.run(['git', 'merge-base', '--is-ancestor', earlier, later],
+                          cwd=repo, capture_output=True).returncode:
+            raise ValueError('Compaction sources must follow the exact goal stack ancestry')
+    if not _scoped_change_count(repo, base_commit, test_source, test_owned):
+        raise ValueError('Compaction has no reviewed RED test changes')
+    if not _scoped_change_count(repo, test_source, implementation_source, implementation_owned):
+        raise ValueError('Compaction has no reviewed GREEN implementation changes')
+    seen = set()
+    for attempt in retained_attempts:
+        if (not isinstance(attempt, dict) or set(attempt) != {'ref', 'commit'}
+                or attempt['ref'] in seen
+                or not attempt['ref'].startswith(f'refs/heads/zzzops/attempts/{goal}/')):
+            raise ValueError('Compaction retained attempt list is malformed')
+        seen.add(attempt['ref'])
+        verify_attempt_ref(repo, remote=remote, **attempt)
+    if not {test_source, implementation_source} <= {row['commit'] for row in retained_attempts}:
+        raise ValueError('Compaction must retain both final source attempts')
+    raw_attempts = json.dumps(retained_attempts, sort_keys=True, separators=(',', ':')).encode()
+    return {'goal': goal, 'base_commit': base_commit, 'test_source': test_source,
+            'implementation_source': implementation_source,
+            'test_tree': _git(repo, 'rev-parse', test_source + '^{tree}').decode().strip(),
+            'implementation_tree': _git(repo, 'rev-parse', implementation_source + '^{tree}').decode().strip(),
+            'test_scope': _scope_hash(test_owned),
+            'implementation_scope': _scope_hash(implementation_owned),
+            'retained_attempt_count': len(retained_attempts),
+            'retained_attempts_hash': 'sha256:' + hashlib.sha256(raw_attempts).hexdigest()}
+
+
+def _candidate_branch(repo: Path) -> str:
+    branch = _git(repo, 'symbolic-ref', 'HEAD').decode().strip()
+    if not branch.startswith('refs/heads/') or branch in {'refs/heads/dev', 'refs/heads/main'}:
+        raise ValueError('Compaction requires a checked-out candidate branch')
+    return branch
+
+
+def _clean_candidate(repo: Path) -> None:
+    if _git(repo, 'status', '--porcelain=v1', '-z', '--untracked-files=all',
+            '--', '.', ':(exclude).zzzops'):
+        raise ValueError('Compaction requires a clean candidate worktree')
+
+
+def preview_two_commit_candidate(repo: Path, *, goal: int, base_commit: str,
+                                 test_source: str, implementation_source: str,
+                                 test_owned: list[str], implementation_owned: list[str],
+                                 retained_attempts: list[dict], remote: str) -> dict:
+    """Read-only preview of one final RED and one final GREEN commit."""
+    repo = Path(repo).resolve()
+    branch = _candidate_branch(repo)
+    _clean_candidate(repo)
+    if _git(repo, 'rev-parse', 'HEAD').decode().strip() != implementation_source:
+        raise ValueError('Compaction source differs from the candidate branch head')
+    return {**_compaction_facts(repo, goal=goal, base_commit=base_commit,
+        test_source=test_source, implementation_source=implementation_source,
+        test_owned=test_owned, implementation_owned=implementation_owned,
+        retained_attempts=retained_attempts, remote=remote), 'branch_ref': branch}
+
+
+def _commit_tree(repo: Path, *, tree: str, parent: str, source: str,
+                 message: str) -> str:
+    metadata = _git(repo, 'show', '-s', '--format=%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI',
+                    source).rstrip(b'\n').decode().split('\x00')
+    if len(metadata) != 6:
+        raise ValueError('Cannot preserve source commit authorship during compaction')
+    environment = {**os.environ, **dict(zip(
+        ('GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_AUTHOR_DATE',
+         'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL', 'GIT_COMMITTER_DATE'), metadata))}
+    result = subprocess.run(['git', 'commit-tree', tree, '-p', parent], cwd=repo,
+                            input=message.encode(), capture_output=True, env=environment)
+    if result.returncode:
+        raise ValueError('Git could not prepare a deterministic compacted commit')
+    return result.stdout.decode().strip()
+
+
+def apply_two_commit_candidate(repo: Path, preview: dict, *, test_owned: list[str],
+                               implementation_owned: list[str], retained_attempts: list[dict],
+                               remote: str) -> dict:
+    """CAS the candidate branch after rechecking the exact preview and refs."""
+    repo = Path(repo).resolve()
+    if not isinstance(preview, dict) or _candidate_branch(repo) != preview.get('branch_ref'):
+        raise ValueError('Compaction candidate branch changed')
+    facts = _compaction_facts(repo, goal=preview['goal'], base_commit=preview['base_commit'],
+        test_source=preview['test_source'], implementation_source=preview['implementation_source'],
+        test_owned=test_owned, implementation_owned=implementation_owned,
+        retained_attempts=retained_attempts, remote=remote)
+    if preview != {**facts, 'branch_ref': preview['branch_ref']}:
+        raise ValueError('Compaction reviewed preview or retained attempts changed')
+    test_commit = _commit_tree(repo, tree=facts['test_tree'], parent=facts['base_commit'],
+        source=facts['test_source'], message=(f"test(goal-{facts['goal']}): consolidate reviewed RED tests\n\n"
+            f"ZzzOps-Goal: {facts['goal']}\nZzzOps-Phase: test_design\nZzzOps-Source: {facts['test_source']}\n"))
+    implementation_commit = _commit_tree(repo, tree=facts['implementation_tree'], parent=test_commit,
+        source=facts['implementation_source'], message=(f"feat(goal-{facts['goal']}): consolidate GREEN implementation\n\n"
+            f"ZzzOps-Goal: {facts['goal']}\nZzzOps-Phase: implement\nZzzOps-Source: {facts['implementation_source']}\n"))
+    current = _git(repo, 'rev-parse', 'HEAD').decode().strip()
+    if current == implementation_commit:
+        _clean_candidate(repo)
+        return {'outcome': 'existing', 'test_commit': test_commit,
+                'implementation_commit': implementation_commit}
+    if current != facts['implementation_source']:
+        raise ValueError('Compaction candidate branch moved after preview')
+    _clean_candidate(repo)
+    _git(repo, 'update-ref', '-m', f"zzzops compact goal {facts['goal']}",
+         preview['branch_ref'], implementation_commit, current)
+    _clean_candidate(repo)
+    return {'outcome': 'created', 'test_commit': test_commit,
+            'implementation_commit': implementation_commit}
