@@ -342,6 +342,9 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
                      'commit': commit} for work, commit in
                     ((first, rejected_commit), (corrected, corrected_commit),
                      (implementation, implementation_commit))]
+        self.assertEqual(original_base, z._git_phase_state.compaction_base_from_attempts(
+            case.fixture.repo, goal=100, test_source=corrected_commit,
+            attempts=retained[:2], remote='origin'))
         candidate_dir = tempfile.TemporaryDirectory()
         self.addCleanup(candidate_dir.cleanup)
         candidate = Path(candidate_dir.name) / 'candidate'

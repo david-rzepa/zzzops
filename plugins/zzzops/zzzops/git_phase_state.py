@@ -185,6 +185,37 @@ def _scoped_change_count(repo: Path, before: str, after: str, paths: list[str]) 
     return len(names)
 
 
+def compaction_base_from_attempts(repo: Path, *, goal: int, test_source: str,
+                                  attempts: list[dict], remote: str) -> str:
+    """Find the base before the earliest retained RED attempt on the final line."""
+    repo = Path(repo).resolve()
+    if type(goal) is not int or goal <= 0 or not isinstance(attempts, list) or not attempts:
+        raise ValueError('Compaction requires retained RED attempts')
+    _commit(repo, test_source)
+    earliest = test_source
+    found_source = False
+    for attempt in attempts:
+        if (not isinstance(attempt, dict) or set(attempt) != {'ref', 'commit'}
+                or not attempt['ref'].startswith(f'refs/heads/zzzops/attempts/{goal}/test_design/')):
+            raise ValueError('Compaction RED attempt identity is malformed')
+        verify_attempt_ref(repo, remote=remote, **attempt)
+        commit = attempt['commit']
+        if commit == test_source:
+            found_source = True
+        if subprocess.run(['git', 'merge-base', '--is-ancestor', commit, test_source],
+                          cwd=repo, capture_output=True).returncode:
+            continue  # An abandoned branch stays retained but is not in the final candidate.
+        if subprocess.run(['git', 'merge-base', '--is-ancestor', commit, earliest],
+                          cwd=repo, capture_output=True).returncode == 0:
+            earliest = commit
+    if not found_source:
+        raise ValueError('Final RED source lacks its exact retained attempt ref')
+    parents = _git(repo, 'rev-list', '--parents', '-n', '1', earliest).decode().split()
+    if len(parents) != 2:
+        raise ValueError('Earliest RED attempt must have exactly one base parent')
+    return parents[1]
+
+
 def _compaction_facts(repo: Path, *, goal: int, base_commit: str, test_source: str,
                       implementation_source: str, test_owned: list[str],
                       implementation_owned: list[str], retained_attempts: list[dict],

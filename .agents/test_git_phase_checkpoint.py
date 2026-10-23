@@ -155,6 +155,9 @@ class GitPhaseCheckpointTests(unittest.TestCase):
             if number == 2:
                 test_source = commit
         implementation_source = attempts[-1]['commit']
+        self.assertEqual(self.base, git_phase_state.compaction_base_from_attempts(
+            self.repo, goal=566, test_source=test_source,
+            attempts=attempts[:2], remote='origin'))
         preview = git_phase_state.preview_two_commit_candidate(
             self.repo, goal=566, base_commit=self.base, test_source=test_source,
             implementation_source=implementation_source,
