@@ -4192,6 +4192,16 @@ class Workflow:
             try:
                 entry = authority(state)['entry']; allocated_paths.update(entry['owned']); allocated_paths.update(entry['consumed'])
             except (ValueError, KeyError): pass
+        tree_cache = {}
+        def same_tree(commit):
+            if not isinstance(commit, str) or not re.fullmatch(r'[0-9a-f]{40}', commit):
+                return False
+            for oid in (commit, head):
+                if oid not in tree_cache:
+                    observed = subprocess.run(['git', 'rev-parse', '--verify', oid + '^{tree}'],
+                                              cwd=self.repo, capture_output=True, text=True)
+                    tree_cache[oid] = observed.stdout.strip() if observed.returncode == 0 else None
+            return tree_cache[commit] is not None and tree_cache[commit] == tree_cache[head]
         for key, state in states.items():
             if key in work or state['state'] == 'blocked': continue
             lease = next((item for item in snapshots[key[0]]['payload']['operational']['leases'] if ev.task_key(item['node']) == key), None)
@@ -4204,12 +4214,14 @@ class Workflow:
             # Keep historical map-based acquisitions readable until migrated.
             if actual == committed and not (lease and 'files' in lease['acquisition']) and not (previous_content and 'files' in previous_content):
                 pinned = lease['acquisition'].get('read_commit') if lease else None
-                if lease and (not isinstance(pinned, str) or not re.fullmatch(r'[0-9a-f]{40}', pinned) or pinned != head):
+                if lease and not same_tree(pinned):
                     contexts[key] = {'error': 'Read-only task Git commit changed after acquisition'}
                     continue
-                binding = remember({'type': 'workspace_snapshot', 'content': {'git_commit': head}, 'producer': None,
+                historical = previous_content.get('git_commit') if previous_content else None
+                baseline_commit = pinned if lease else historical if same_tree(historical) else head
+                binding = remember({'type': 'workspace_snapshot', 'content': {'git_commit': baseline_commit}, 'producer': None,
                                     'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
-                contexts[key] = {'binding': binding, 'acquisition': {'read_commit': head}, 'readonly': True}
+                contexts[key] = {'binding': binding, 'acquisition': {'read_commit': baseline_commit}, 'readonly': True}
                 continue
             baseline = read_actual
             if lease and 'files' in lease['acquisition']:

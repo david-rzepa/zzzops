@@ -58,6 +58,22 @@ class FreshGoalGitCheckpointTests(DagFixture):
         self.assertIn('Git commit changed', json.dumps(response))
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
+    def test_same_tree_new_commit_keeps_readonly_evidence_current(self):
+        self.default_graph()
+        work = self.session.acquire('requirements')
+        pinned = work['lease']['acquisition']['read_commit']
+        self.session.git('commit', '--allow-empty', '-qm', 'ancestry only')
+        self.assertNotEqual(pinned, self.session.git('rev-parse', 'HEAD').strip())
+        request = self.session.submission(work, {'value': {
+            'statements': ['Ancestry-only movement retains this evidence.'], 'questions': [],
+            'investigations': {'items': {}, 'rationale': 'No unknowns.'},
+        }}, 'equivalent-tree-result')
+        self.session.call(100, request)
+        self.assertEqual(1, len(self.payload()[1]['evidence']))
+        next_work = self.session.acquire('spec')
+        self.assertEqual(self.session.git('rev-parse', 'HEAD').strip(),
+                         next_work['lease']['acquisition']['read_commit'])
+
 
 if __name__ == '__main__':
     import unittest
