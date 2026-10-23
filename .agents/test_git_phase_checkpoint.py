@@ -103,6 +103,35 @@ class GitPhaseCheckpointTests(unittest.TestCase):
         self.assertEqual('rebase_and_reverify', git_phase_state.classify_base_move(
             self.repo, old_base=same_tree, new_base=changed)['action'])
 
+    def test_restack_preview_reports_clean_tree_or_exact_owned_conflict_without_moving_head(self):
+        self.git('checkout', '-q', '-b', 'attempt', self.base)
+        attempt = self.result('input.txt', 'attempt\n')
+        self.git('checkout', '-q', '-b', 'advanced-base', self.base)
+        self.git('commit', '--allow-empty', '-qm', 'same-tree trunk movement')
+        same_tree_base = self.git('rev-parse', 'HEAD').strip()
+        same_tree = git_phase_state.preview_attempt_restack(self.repo,
+            old_base=self.base, new_base=same_tree_base, attempt_commit=attempt,
+            owned_paths=['input.txt'])
+        self.assertEqual('clean', same_tree['status'])
+        self.assertFalse(same_tree['content_stale'])
+        self.assertTrue(same_tree['topology_changed'])
+        advanced = self.result('other.txt', 'independent\n')
+        clean = git_phase_state.preview_attempt_restack(self.repo,
+            old_base=self.base, new_base=advanced, attempt_commit=attempt,
+            owned_paths=['input.txt'])
+        self.assertEqual('clean', clean['status'])
+        self.assertTrue(clean['content_stale'])
+        self.assertEqual([], clean['conflicts'])
+        self.assertEqual(advanced, self.git('rev-parse', 'HEAD').strip())
+        conflicted = self.result('input.txt', 'different base\n')
+        conflict = git_phase_state.preview_attempt_restack(self.repo,
+            old_base=self.base, new_base=conflicted, attempt_commit=attempt,
+            owned_paths=['input.txt'])
+        self.assertEqual('conflict', conflict['status'])
+        self.assertEqual(['input.txt'], conflict['conflicts'])
+        self.assertEqual(conflicted, self.git('rev-parse', 'HEAD').strip())
+        self.assertEqual(attempt, self.git('rev-parse', 'attempt').strip())
+
     def test_unowned_change_and_dirty_worktree_are_rejected(self):
         result = self.result()
         with self.assertRaisesRegex(ValueError, 'outside reviewed owned paths'):

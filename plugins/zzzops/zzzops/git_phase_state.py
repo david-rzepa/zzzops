@@ -731,3 +731,49 @@ def classify_base_move(repo: Path, *, old_base: str, new_base: str) -> dict:
     return {'action': action, 'old_base': old_base, 'new_base': new_base,
             'old_tree': old_tree, 'new_tree': new_tree,
             'preserves_ancestry': preserves_ancestry}
+
+
+def preview_attempt_restack(repo: Path, *, old_base: str, new_base: str,
+                            attempt_commit: str, owned_paths: list[str]) -> dict:
+    """Inspect one verified attempt on a moved base without changing any ref."""
+    repo = Path(repo).resolve()
+    original = validate_checkpoint(repo, base_commit=old_base,
+        result_commit=attempt_commit, owned_paths=owned_paths,
+        require_clean_worktree=False)
+    movement = classify_base_move(repo, old_base=old_base, new_base=new_base)
+    try:
+        result = subprocess.run(['git', 'merge-tree', '--write-tree', '--name-only', '-z',
+            '--merge-base=' + old_base, new_base, attempt_commit],
+            cwd=repo, capture_output=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError('Git restack preview could not complete') from exc
+    if result.returncode not in (0, 1):
+        raise ValueError('Git restack preview could not determine conflicts')
+    parts = result.stdout.split(b'\x00')
+    if not parts or re.fullmatch(rb'[0-9a-f]{40}', parts[0]) is None:
+        raise ValueError('Git restack preview returned no exact tree')
+    tree = parts[0].decode('ascii')
+    if result.returncode:
+        if b'' not in parts[1:]:
+            raise ValueError('Git restack preview omitted conflict path boundary')
+        boundary = parts.index(b'', 1)
+        try:
+            conflicts = [path.decode('utf-8') for path in parts[1:boundary]]
+        except UnicodeDecodeError as exc:
+            raise ValueError('Git restack preview contains a non-UTF-8 conflict path') from exc
+        if not conflicts or any(not _owned_path(path) or path not in owned_paths
+                                for path in conflicts):
+            raise ValueError('Git restack conflict is missing or outside reviewed owned paths')
+        status = 'conflict'
+        changed = None
+    else:
+        if parts[1:] != [b'']:
+            raise ValueError('Git restack preview returned unexpected clean output')
+        conflicts = []
+        changed = _scoped_change_count(repo, new_base, tree, owned_paths)
+        status = 'clean'
+    return {'status': status, 'old_base': old_base, 'new_base': new_base,
+            'attempt_commit': attempt_commit, 'original_tree': original['result_tree'],
+            'proposed_tree': tree, 'conflicts': conflicts, 'change_count': changed,
+            'content_stale': movement['old_tree'] != movement['new_tree'],
+            'topology_changed': old_base != new_base}
