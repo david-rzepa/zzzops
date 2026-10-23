@@ -4196,18 +4196,19 @@ class Workflow:
             git_phase_state.verify_attempt_ref(self.repo, remote='origin',
                 ref=proof['retained_ref'], commit=result_commit)
             return proof
-        git_edges = None
-        def connected_git_head(start):
-            nonlocal git_edges
+        git_edges = {}
+        def connected_git_head(start, goal):
             start_tree = subprocess.run(['git', 'rev-parse', start + '^{tree}'], cwd=self.repo,
                                         capture_output=True, text=True, check=True).stdout.strip()
             head_tree = subprocess.run(['git', 'rev-parse', head + '^{tree}'], cwd=self.repo,
                                        capture_output=True, text=True, check=True).stdout.strip()
             if start_tree == head_tree: return True
-            if git_edges is None:
-                git_edges = []
+            if goal not in git_edges:
+                edges = []
                 for other_key, other in work.items():
-                    if 'repository_git_workspace' not in other['contract']['executor']['resources'] or other['state'] == 'blocked':
+                    if (other_key[0] != goal
+                            or 'repository_git_workspace' not in other['contract']['executor']['resources']
+                            or other['state'] == 'blocked'):
                         continue
                     try:
                         other_grant = authority(other)
@@ -4219,11 +4220,11 @@ class Workflow:
                                 checkpoint = git_phase_state.validate_checkpoint(self.repo,
                                     base_commit=predecessor, result_commit=head,
                                     owned_paths=other_grant['entry']['owned'])
-                                git_edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
+                                edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
                         elif other_key in projection['current']:
                             proof = checked_git_proof(other, other_grant, projection['current'][other_key][1])
                             checkpoint = proof['checkpoint']
-                            git_edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
+                            edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
                     except (ValueError, KeyError, subprocess.SubprocessError):
                         continue
                 admitted_subjects = {subject['hash']
@@ -4232,16 +4233,33 @@ class Workflow:
                     for subject in obligation.get('content', {}).get('subjects', [])}
                 for _, result in all_results:
                     other_key = ev.task_key(result['node'])
-                    if (other_key not in work or not admitted_subjects.intersection(
+                    if (other_key[0] != goal or other_key not in work or not admitted_subjects.intersection(
                             value['hash'] for value in result['outputs'].values())):
                         continue
                     other = work[other_key]
                     try:
                         proof = checked_git_proof(other, authority(other), result)
                         checkpoint = proof['checkpoint']
-                        git_edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
+                        edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
                     except (ValueError, KeyError, subprocess.SubprocessError):
                         continue
+                # A corrected test may be based on an implementation whose
+                # evidence became stale when the test finding was admitted.
+                # Its retained Result still proves an exact Git edge; use it
+                # for topology only, never as current task authority.
+                for _, result in all_results:
+                    other_key = ev.task_key(result['node'])
+                    other = states.get(other_key)
+                    if (other is None or other_key[0] != goal
+                            or 'repository_git_workspace' not in other['contract']['executor']['resources']):
+                        continue
+                    try:
+                        proof = checked_git_proof(other, historical_authority(result['node']), result)
+                        checkpoint = proof['checkpoint']
+                        edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
+                    except (ValueError, KeyError, subprocess.SubprocessError):
+                        continue
+                git_edges[goal] = edges
             # Walk only authenticated Git phase edges out of the primary base.
             # The primary checkout itself does not advance for a draft stack.
             pending, seen = [head_tree], set()
@@ -4250,7 +4268,7 @@ class Workflow:
                 if tree == start_tree: return True
                 if tree in seen: continue
                 seen.add(tree)
-                pending.extend(after for before, after in git_edges if before == tree)
+                pending.extend(after for before, after in git_edges[goal] if before == tree)
             return False
         def depends_on(consumer, ancestor):
             visited = set()
@@ -4302,10 +4320,37 @@ class Workflow:
                     for other in corrected)]
                 if len(latest) != 1:
                     raise ValueError('Admitted correction attempts have no unique retained Git tip')
-                if subprocess.run(['git', 'merge-base', '--is-ancestor', head, latest[0]],
+                correction_tip = latest[0]
+                # A late finding can reopen tests after implementation was
+                # recorded. The implementation is now stale as evidence, but
+                # remains the exact code that the corrected RED test must run
+                # against. Follow only authenticated recorded Git attempts on
+                # this goal's ancestry line; divergent attempts require a
+                # coordinator decision instead of an arbitrary branch choice.
+                descendants = [correction_tip]
+                for _, result in all_results:
+                    other_key = ev.task_key(result['node'])
+                    other = states.get(other_key)
+                    if (other_key[0] != key[0] or other is None
+                            or 'repository_git_workspace' not in other['contract']['executor']['resources']):
+                        continue
+                    try:
+                        candidate = checked_git_proof(other, historical_authority(result['node']), result)['checkpoint']['result_commit']
+                    except (ValueError, KeyError, subprocess.SubprocessError):
+                        continue
+                    if subprocess.run(['git', 'merge-base', '--is-ancestor', correction_tip, candidate],
+                                      cwd=self.repo, capture_output=True).returncode == 0:
+                        descendants.append(candidate)
+                tips = [candidate for candidate in set(descendants) if all(
+                    subprocess.run(['git', 'merge-base', '--is-ancestor', other, candidate],
+                                   cwd=self.repo, capture_output=True).returncode == 0
+                    for other in descendants)]
+                if len(tips) != 1:
+                    raise ValueError('Recorded Git correction descendants have no unique stack tip')
+                if subprocess.run(['git', 'merge-base', '--is-ancestor', head, tips[0]],
                                   cwd=self.repo, capture_output=True).returncode:
                     raise ValueError('Corrected Git attempt is disconnected from the current base')
-                return latest[0]
+                return tips[0]
             candidates = []
             for other_key, other in work.items():
                 if (other_key == key or other_key not in projection['current']
@@ -4324,7 +4369,7 @@ class Workflow:
                 for other in candidates)]
             if len(latest) != 1:
                 raise ValueError('Reviewed Git predecessor commits do not form one exact stack')
-            if not connected_git_head(latest[0]):
+            if not connected_git_head(latest[0], key[0]):
                 raise ValueError('Reviewed Git predecessor is disconnected from the current base')
             return latest[0]
         contexts = {}; migrations = {}
@@ -4359,7 +4404,7 @@ class Workflow:
                         _, result = projection['current'][key]
                         proof = checked_git_proof(state, grant, result)
                         base = proof['checkpoint']['base_commit']
-                        if not connected_git_head(proof['checkpoint']['result_commit']):
+                        if not connected_git_head(proof['checkpoint']['result_commit'], key[0]):
                             raise ValueError('Git phase result is disconnected from the current managed head')
                     binding = remember({'type': 'workspace_snapshot', 'content': {
                         'git_commit': base, **{name: grant[name] for name in ('allocation', 'authorization', 'approval')},

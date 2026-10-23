@@ -383,6 +383,124 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
 class GitWorkspaceJourneyTests(unittest.TestCase):
     fixture_with_git_workspace = GitWorkspaceAcquisitionTests.fixture_with_git_workspace
 
+    def test_late_test_finding_rebases_t2_on_i1_then_i2_on_t2(self):
+        case = journeys.DefaultCorrectionPublicTests('runTest')
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        bare = Path(remote_dir.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
+        case.session.git('remote', 'add', 'origin', str(bare))
+        case.default_decomposition()
+        case.session.finish(case.session.acquire('decomposition_review'), {
+            'value': case.review('approved', 'Atomic disposition accepted'),
+            'authorization': case.decomposition_authorization()})
+        case.session.finish(case.session.acquire('retain_decomposition_findings'), {
+            'value': {'items': {}, 'rationale': 'No decomposition findings'}})
+
+        def commit(work, path, content, message, expectation):
+            tree = Path(work['managed_worktree']['path'])
+            (tree / path).write_text(content)
+            subprocess.run(['git', 'add', path], cwd=tree, check=True)
+            subprocess.run(['git', 'commit', '-qm', message], cwd=tree, check=True)
+            head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=tree,
+                                  capture_output=True, text=True, check=True).stdout.strip()
+            request = case.session.submission(work, {'value': message}, message)
+            request['workspace_checks'] = [[sys.executable, '-B', 'behavior_test.py']]
+            request['verification_expectation'] = expectation
+            case.session.call(100, request)
+            return head
+
+        t1 = case.session.acquire('test_design')
+        base = t1['lease']['acquisition']['git_commit']
+        t1_head = commit(t1, 'behavior_test.py',
+                         "from pathlib import Path\nassert Path('source.py').is_file()\n",
+                         'test: first red', 'observed')
+        case.verify_test_design(Path(t1['managed_worktree']['path']) / 'behavior_test.py', 't1-proof')
+        case.session.finish(case.session.acquire('test_design_review'), {
+            'value': case.review('approved', 'Exact RED proof accepted')})
+        case.session.finish(case.session.acquire('retain_test_design_findings'), {
+            'value': {'items': {}, 'rationale': 'No initial findings'}})
+        i1 = case.session.acquire('implement')
+        self.assertEqual(t1_head, i1['lease']['acquisition']['git_commit'])
+        i1_head = commit(i1, 'source.py', 'def value():\n    return 1\n',
+                         'feat: first green', 'passed')
+
+        t1_result, t1_record = case.result('test_design')
+        t1_subject = t1_record['outputs']['value']
+        finding_request = {'operation': 'phase_finding', 'request_id': 'late-test-after-i1',
+                           'actor': 'root-thread', 'target': {'node': 'test_design', 'output': 'value'},
+                           'subject': t1_subject, 'source': t1_result,
+                           'rationale': 'The accepted test misses a behavior regression after I1.',
+                           'id': 'late-test-defect'}
+        with mock.patch.dict('os.environ', {'CODEX_THREAD_ID': 'root-thread'}):
+            response = case.session.call(100, finding_request)
+        review_step = next(step for step in response['next_steps'] if step.get('kind') == 'execute'
+                           and step.get('node', {}).get('node', '').startswith('sw_review_'))
+        review_name = review_step['node']['node']
+        item = review_step['node']['item']
+        case.session.finish(case.session.acquire(review_name, item=item, actor='late-reviewer'), {
+            'value': {'decision': 'changes_requested', 'report': 'Add an assertion on value().'}})
+
+        def acquire_prefix(prefix):
+            step = next(step for step in case.session.ready()
+                        if step['node']['node'].startswith(prefix) and step['node'].get('item') == item)
+            return case.session.acquire(step['node']['node'], item=item, actor='root-thread')
+
+        interpret = acquire_prefix('gc_interpret_')
+        case.session.finish(interpret, {'value': {
+            'id': 'late-test-defect', 'revision': 1,
+            'source': case.produced(review_name, item=item), 'subjects': [t1_subject],
+            'target': {'subject': {'kind': 'node', 'goal': 100, 'node': 'test_design'},
+                       'output': 'value'},
+            'request': 'Assert the corrected behavior', 'rationale': 'Independent late review',
+            'supersedes': None}})
+        finding = case.produced(interpret['node']['node'], item=item)
+        admit = acquire_prefix('gc_admit_')
+        case.session.finish(admit, {'value': {
+            'finding': finding, 'target_inputs': t1_record['inputs'],
+            'authority': case.result(interpret['node']['node'], item)[0],
+            'applicability': 'applicable', 'rationale': 'Same reviewed test allocation'},
+            'transfer': None})
+        t2 = case.session.acquire('test_design')
+        self.assertEqual(i1_head, t2['lease']['acquisition']['git_commit'])
+        t2_head = commit(t2, 'behavior_test.py',
+                         'from source import value\nassert value() == 2\n',
+                         'test: corrected red', 'observed')
+        t2_proof_ref = case.read_blob(case.produced('test_design'))['provenance']['source']
+        self.assertEqual(1, case.read_blob(t2_proof_ref)['commands'][0]['exit_code'])
+        fresh = case.session.acquire(review_name, item=item, actor='fresh-reviewer')
+        case.session.finish(fresh, {'value': {
+            'decision': 'approved', 'report': 'Current corrected test resolves the finding.'}})
+        case.verify_test_design(Path(t2['managed_worktree']['path']) / 'behavior_test.py', 't2-proof')
+        case.session.finish(case.session.acquire('test_design_review'), {
+            'value': case.review('approved', 'Current corrected RED proof accepted')})
+        case.session.finish(case.session.acquire('retain_test_design_findings'), {
+            'value': {'items': {'late-test-defect': finding},
+                      'rationale': 'Retain the exact admitted late test finding'}})
+        resolve = acquire_prefix('gc_resolve_')
+        case.session.finish(resolve, {'value': {
+            'finding': finding, 'subjects': [case.produced('test_design')],
+            'reviewer_result': case.result(review_name, item)[0],
+            'decision': 'resolved', 'rationale': 'Independent late review accepted T2'}})
+        case.session.finish(case.session.acquire('resolve_test_design_finding', item='late-test-defect'), {
+            'value': {'finding': finding, 'subjects': [case.produced('test_design')],
+                      'reviewer_result': case.result('test_design_review')[0],
+                      'decision': 'resolved', 'rationale': 'Fresh independent test review accepted T2'}})
+        i2 = case.session.acquire('implement')
+        self.assertEqual(t2_head, i2['lease']['acquisition']['git_commit'])
+        i2_head = commit(i2, 'source.py', 'def value():\n    return 2\n',
+                         'feat: corrected green', 'passed')
+        self.assertEqual(4, len({t1_head, i1_head, t2_head, i2_head}))
+        for work, head in ((t1, t1_head), (i1, i1_head), (t2, t2_head), (i2, i2_head)):
+            ref = f"refs/heads/zzzops/attempts/100/{work['node']['node']}/{work['lease']['attempt']}"
+            self.assertEqual(head, case.session.git('ls-remote', 'origin', ref).split()[0])
+        self.assertEqual(base, z._git_phase_state.compaction_base_from_attempts(
+            case.fixture.repo, goal=100, test_source=t2_head,
+            attempts=[{'ref': f"refs/heads/zzzops/attempts/100/test_design/{w['lease']['attempt']}",
+                       'commit': h} for w, h in ((t1, t1_head), (t2, t2_head))], remote='origin'))
+
     def test_correction_attempts_compact_to_two_final_commits(self):
         case = journeys.DefaultCorrectionPublicTests('runTest')
         case.setUp()
