@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 
 MODULE = Path(__file__).parents[1] / 'plugins/zzzops/zzzops/git_phase_state.py'
@@ -95,6 +96,46 @@ class GitPhaseCheckpointTests(unittest.TestCase):
             git_phase_state.validate_checkpoint(
                 self.repo, base_commit=self.base, result_commit=link_result,
                 owned_paths=['link.txt'])
+
+    def remote(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        bare = Path(temporary.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
+        self.git('remote', 'add', 'origin', str(bare))
+        return bare
+
+    def test_attempt_ref_is_create_only_and_retry_is_idempotent(self):
+        self.remote()
+        result = self.result()
+        arguments = dict(goal=566, node='implement', attempt='a' * 32, commit=result)
+        first = git_phase_state.retain_attempt_ref(self.repo, remote='origin', **arguments)
+        self.assertEqual('created', first['outcome'])
+        self.assertEqual(result, self.git('ls-remote', 'origin', first['ref']).split()[0])
+        second = git_phase_state.retain_attempt_ref(self.repo, remote='origin', **arguments)
+        self.assertEqual('existing', second['outcome'])
+        self.assertEqual(first['ref'], second['ref'])
+        moved = self.result('second.txt', 'different result\n')
+        with self.assertRaisesRegex(ValueError, 'different commit'):
+            git_phase_state.retain_attempt_ref(self.repo, remote='origin',
+                                               **{**arguments, 'commit': moved})
+        self.assertEqual(result, self.git('ls-remote', 'origin', first['ref']).split()[0])
+
+    def test_uncertain_push_observes_exact_remote_commit(self):
+        self.remote()
+        result = self.result()
+        original_run = subprocess.run
+        def accepted_then_timeout(command, *args, **kwargs):
+            if command[:2] == ['git', 'push']:
+                original_run(command, *args, **kwargs)
+                raise subprocess.TimeoutExpired(command, 30)
+            return original_run(command, *args, **kwargs)
+        with mock.patch.object(git_phase_state.subprocess, 'run', side_effect=accepted_then_timeout):
+            retained = git_phase_state.retain_attempt_ref(
+                self.repo, remote='origin', goal=566, node='implement',
+                attempt='b' * 32, commit=result)
+        self.assertEqual('observed_after_uncertain_push', retained['outcome'])
+        self.assertEqual(result, self.git('ls-remote', 'origin', retained['ref']).split()[0])
 
 
 if __name__ == '__main__':

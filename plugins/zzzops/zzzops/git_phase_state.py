@@ -13,6 +13,8 @@ import subprocess
 
 
 _COMMIT = re.compile(r'[0-9a-f]{40}\Z')
+_NODE = re.compile(r'[A-Za-z0-9_.-]+\Z')
+_ATTEMPT = re.compile(r'[0-9a-f]{32}\Z')
 _ORDINARY_MODES = {b'100644', b'100755'}
 
 
@@ -86,3 +88,59 @@ def validate_checkpoint(repo: Path, *, base_commit: str, result_commit: str,
         'result_tree': _git(repo, 'rev-parse', result_commit + '^{tree}').decode().strip(),
         'change_count': len(paths),
     }
+
+
+def _remote_ref(repo: Path, remote: str, ref: str) -> str | None:
+    observation = subprocess.run(['git', 'ls-remote', '--exit-code', '--refs', remote, ref],
+                                 cwd=repo, capture_output=True, timeout=30)
+    if observation.returncode == 2 and not observation.stdout:
+        return None
+    if observation.returncode:
+        raise ValueError('Cannot confirm the exact remote attempt ref')
+    rows = observation.stdout.decode('ascii').splitlines()
+    if len(rows) != 1:
+        raise ValueError('Remote attempt ref observation is ambiguous')
+    values = rows[0].split('\t')
+    if len(values) != 2 or values[1] != ref or not _COMMIT.fullmatch(values[0]):
+        raise ValueError('Remote attempt ref identity is malformed')
+    return values[0]
+
+
+def retain_attempt_ref(repo: Path, *, remote: str, goal: int, node: str,
+                       attempt: str, commit: str) -> dict:
+    """Create an immutable remote attempt branch; never infer acceptance from it.
+
+    An uncertain push is resolved by observing the exact ref. A missing ref
+    gets one create-only retry; a moved ref stops without overwriting it.
+    """
+    repo = Path(repo).resolve()
+    if (not isinstance(remote, str) or not _NODE.fullmatch(remote)
+            or type(goal) is not int or goal <= 0
+            or not isinstance(node, str) or not _NODE.fullmatch(node)
+            or not isinstance(attempt, str) or not _ATTEMPT.fullmatch(attempt)):
+        raise ValueError('Invalid remote attempt identity')
+    _commit(repo, commit)
+    ref = f'refs/heads/zzzops/attempts/{goal}/{node}/{attempt}'
+    previous = _remote_ref(repo, remote, ref)
+    if previous == commit:
+        return {'ref': ref, 'commit': commit, 'outcome': 'existing'}
+    if previous is not None:
+        raise ValueError('Remote attempt ref already names a different commit')
+    for retry in range(2):
+        uncertain = False
+        try:
+            pushed = subprocess.run(
+                ['git', 'push', '--porcelain', f'--force-with-lease={ref}:',
+                 remote, f'{commit}:{ref}'], cwd=repo, capture_output=True, timeout=60)
+        except (OSError, subprocess.TimeoutExpired):
+            uncertain = True
+            pushed = None
+        observed = _remote_ref(repo, remote, ref)
+        if observed == commit:
+            return {'ref': ref, 'commit': commit,
+                    'outcome': 'observed_after_uncertain_push' if uncertain else 'created'}
+        if observed is not None:
+            raise ValueError('Remote attempt ref moved to a different commit')
+        if not uncertain or retry:
+            raise ValueError('Remote attempt ref was not retained')
+    raise ValueError('Remote attempt ref was not retained')
