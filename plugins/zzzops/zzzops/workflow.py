@@ -4195,6 +4195,22 @@ class Workflow:
         for key, state in states.items():
             if key in work or state['state'] == 'blocked': continue
             lease = next((item for item in snapshots[key[0]]['payload']['operational']['leases'] if ev.task_key(item['node']) == key), None)
+            previous = projection['current'].get(key, (None, None))[1]
+            previous_binding = next((item for item in previous['inputs'] if item['name'] == '__workspace'), None) if previous else None
+            previous_content = content(previous_binding['source'])['content'] if previous_binding else None
+            # A clean Git tree has a finite, immutable identity. New read-only
+            # acquisitions bind that commit instead of copying every file hash
+            # into the workspace artifact, lease, receipt and provider comment.
+            # Keep historical map-based acquisitions readable until migrated.
+            if actual == committed and not (lease and 'files' in lease['acquisition']) and not (previous_content and 'files' in previous_content):
+                pinned = lease['acquisition'].get('read_commit') if lease else None
+                if lease and (not isinstance(pinned, str) or not re.fullmatch(r'[0-9a-f]{40}', pinned) or pinned != head):
+                    contexts[key] = {'error': 'Read-only task Git commit changed after acquisition'}
+                    continue
+                binding = remember({'type': 'workspace_snapshot', 'content': {'git_commit': head}, 'producer': None,
+                                    'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
+                contexts[key] = {'binding': binding, 'acquisition': {'read_commit': head}, 'readonly': True}
+                continue
             baseline = read_actual
             if lease and 'files' in lease['acquisition']:
                 baseline = lease['acquisition']['files']
@@ -5533,7 +5549,9 @@ class Workflow:
                 if 'workspace' in state:
                     workspace = state['workspace']
                     lease['acquisition'].update(copy.deepcopy(workspace['acquisition']))
-                    lease['acquisition'].update(files=workspace['files'], input_hash=state['input_hash'])
+                    if 'files' in workspace:
+                        lease['acquisition']['files'] = copy.deepcopy(workspace['files'])
+                    lease['acquisition']['input_hash'] = state['input_hash']
                 lease['acquisition'].update(inputs=copy.deepcopy(state['inputs']), resolutions=copy.deepcopy(state['resolutions']), contract=state['contract_hash'])
                 if pending: lease.update(copy.deepcopy(pending['response']['next_steps'][0]['lease']))
                 leases.append(lease)

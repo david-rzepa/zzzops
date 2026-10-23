@@ -3014,8 +3014,9 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.install(graph)
         work = self.session.acquire("decompose")
         acquisition = work["lease"]["acquisition"]
-        self.assertIn("read_files", acquisition)
-        self.assertEqual(acquisition["files"], acquisition["read_files"])
+        self.assertEqual(self.session.git('rev-parse', 'HEAD').strip(), acquisition['read_commit'])
+        self.assertNotIn('files', acquisition)
+        self.assertNotIn('read_files', acquisition)
 
         engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
         actual = engine.workspace_files()
