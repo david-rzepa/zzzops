@@ -5316,8 +5316,73 @@ class Workflow:
         return {'test_source': next(iter(sources['test_design'])),
                 'implementation_source': next(iter(sources['implement']))}
 
+    def node_composition_source(self, snapshot):
+        """Return the current Git-backed integration source, if applicable."""
+        artifacts = snapshot['artifacts']
+        sources = set()
+        for _, result in snapshot['projection']['current'].values():
+            node = result.get('node', {})
+            if (node.get('goal') != snapshot['number']
+                    or node.get('node') != 'integration_verification'
+                    or result.get('non_applicability')):
+                continue
+            for output in result.get('outputs', {}).values():
+                source = artifacts.get(output['hash'], {}).get('provenance', {}).get('source')
+                proof = artifacts.get(source.get('hash'), {}) if isinstance(source, dict) else {}
+                if proof.get('kind') == 'git_phase_proof':
+                    sources.add(proof['checkpoint']['result_commit'])
+        if len(sources) > 1:
+            raise ValueError('Composition delivery has conflicting current Git sources')
+        return next(iter(sources)) if sources else None
+
     def node_compaction_inputs(self, snapshot):
         """Derive local candidate inputs from current proofs and retained history."""
+        composition_source = self.node_composition_source(snapshot)
+        if composition_source is not None:
+            artifacts = snapshot['artifacts']
+            goal = snapshot['number']
+            owned = []
+            for key, (_, result) in snapshot['projection']['current'].items():
+                if (result.get('node', {}).get('goal') == goal
+                        and result['node'].get('node') == 'integration_verification'):
+                    workspace = snapshot['workspaces'].get(key, {})
+                    if not workspace.get('git_workspace') or 'entry' not in workspace:
+                        raise ValueError('Composition requires current reviewed Git workspace scope')
+                    owned.append(workspace['entry']['owned'])
+            if len(owned) != 1:
+                raise ValueError('Composition requires one current integration allocation')
+            retained = {}
+            prefix = f'refs/heads/zzzops/attempts/{goal}/integration_verification/'
+            def add(ref, commit):
+                if (not isinstance(ref, str) or not ref.startswith(prefix)
+                        or not isinstance(commit, str)):
+                    raise ValueError('Composition retained attempt identity is invalid')
+                if ref in retained and retained[ref] != commit:
+                    raise ValueError('Composition retained attempt ref has conflicting commits')
+                retained[ref] = commit
+            for reference in snapshot['payload']['evidence']:
+                result = artifacts.get(reference['hash'], {}).get('content', {})
+                if (result.get('node', {}).get('goal') != goal
+                        or result['node'].get('node') != 'integration_verification'):
+                    continue
+                for output in result.get('outputs', {}).values():
+                    source = artifacts.get(output['hash'], {}).get('provenance', {}).get('source')
+                    proof = artifacts.get(source.get('hash'), {}) if isinstance(source, dict) else {}
+                    if proof.get('kind') == 'git_phase_proof':
+                        add(proof['retained_ref'], proof['checkpoint']['result_commit'])
+            for receipt in snapshot['payload']['operational']['receipts']:
+                response = snapshot['resolve'](receipt['result'])
+                for step in response.get('next_steps', []):
+                    attempt = step.get('retained_attempt')
+                    if attempt and step.get('kind') == 'checkpoint' and step.get('goal') == goal:
+                        add(attempt['ref'], attempt['commit'])
+            attempts = [{'ref': ref, 'commit': commit} for ref, commit in sorted(retained.items())]
+            base = git_phase_state.compaction_base_from_attempts(self.repo, goal=goal,
+                test_source=composition_source, attempts=attempts, remote='origin',
+                phase='integration_verification')
+            return {'goal': goal, 'delivery_class': 'composition', 'base_commit': base,
+                    'integration_source': composition_source, 'integration_owned': owned[0],
+                    'retained_attempts': attempts}
         sources = self.node_native_sources(snapshot)
         artifacts = snapshot['artifacts']
         goal = snapshot['number']
@@ -5360,7 +5425,7 @@ class Workflow:
         test_attempts = [row for row in attempts if row['ref'].startswith(prefix + 'test_design/')]
         base = git_phase_state.compaction_base_from_attempts(self.repo, goal=goal,
             test_source=sources['test_source'], attempts=test_attempts, remote='origin')
-        return {'goal': goal, 'base_commit': base, **sources,
+        return {'goal': goal, 'delivery_class': 'leaf', 'base_commit': base, **sources,
                 'test_owned': owned['test_design'][0],
                 'implementation_owned': owned['implement'][0],
                 'retained_attempts': attempts}
@@ -5390,18 +5455,22 @@ class Workflow:
         selected = owners.get(manifest.get('hash')) if isinstance(manifest, dict) else None
         if (not selected or selected[2] != manifest
                 or artifacts[manifest['hash']].get('type') != 'delivery_candidate'
-                or artifacts[manifest['hash']]['content'].get('delivery_class') not in {'leaf', 'atomic'}):
-            raise ValueError('Candidate compaction requires the current leaf or atomic delivery selection')
+                or artifacts[manifest['hash']]['content'].get('delivery_class') not in {'leaf', 'atomic', 'composition'}):
+            raise ValueError('Candidate compaction requires the current delivery selection')
+        delivery_class = artifacts[manifest['hash']]['content']['delivery_class']
+        source_phase = 'integration_verification' if delivery_class == 'composition' else 'implement'
         candidate = artifacts[manifest['hash']]['content'].get('candidate')
-        current_implementation = [output for _, (_, result) in projection['current'].items()
+        current_sources = [output for _, (_, result) in projection['current'].items()
             if result.get('node', {}).get('goal') == snapshot['number']
-            and result['node'].get('node') == 'implement'
+            and result['node'].get('node') == source_phase
             for output in result['outputs'].values()]
-        if candidate not in current_implementation:
-            raise ValueError('Candidate compaction selection differs from current implementation')
+        if candidate not in current_sources:
+            raise ValueError('Candidate compaction selection differs from current reviewed source')
+        review_input = ('approved_integration_reviews' if delivery_class == 'composition'
+                        else 'approved_implementation_reviews')
         reviews = [artifacts.get(binding['source']['hash'], {}).get('content')
                    for binding in result.get('inputs', [])
-                   if binding.get('name') == 'approved_implementation_reviews']
+                   if binding.get('name') == review_input]
         if (len(reviews) != 1 or not isinstance(reviews[0], dict) or not reviews[0]
                 or any(not isinstance(row, dict) or row.get('decision') != 'approved'
                        for row in reviews[0].values())):
@@ -5419,30 +5488,45 @@ class Workflow:
         if not isinstance(identity, str) or not re.fullmatch(r'sha256:[0-9a-f]{64}', identity):
             raise ValueError('Candidate compaction requires exact authorization identity')
         inputs = self.node_compaction_inputs(snapshot)
+        composition = inputs.get('delivery_class') == 'composition'
+        source = inputs['integration_source'] if composition else inputs['implementation_source']
         attempt = identity[7:39]
         observed = managed_worktrees.inspect_attempt_worktree(
             self.repo, goal=snapshot['number'], node='candidate', attempt=attempt)
         if observed['status'] == 'missing':
             managed_worktrees.prepare_worktree(self.repo, goal=snapshot['number'],
                 node='candidate', attempt=attempt,
-                base_commit=inputs['implementation_source'])
+                base_commit=source)
             observed = managed_worktrees.inspect_attempt_worktree(
                 self.repo, goal=snapshot['number'], node='candidate', attempt=attempt)
         if observed['status'] != 'clean':
             raise ValueError('Candidate worktree is dirty; preserve it for exact recovery')
         path = Path(observed['path'])
-        preview = git_phase_state.preview_two_commit_candidate(path,
-            goal=snapshot['number'], base_commit=inputs['base_commit'],
-            test_source=inputs['test_source'], implementation_source=inputs['implementation_source'],
-            test_owned=inputs['test_owned'], implementation_owned=inputs['implementation_owned'],
-            retained_attempts=inputs['retained_attempts'], remote='origin')
-        result = git_phase_state.apply_two_commit_candidate(path, preview,
-            test_owned=inputs['test_owned'], implementation_owned=inputs['implementation_owned'],
-            retained_attempts=inputs['retained_attempts'], remote='origin')
+        if composition:
+            preview = git_phase_state.preview_single_commit_candidate(path,
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                source_commit=source, owned_paths=inputs['integration_owned'],
+                retained_attempts=inputs['retained_attempts'], remote='origin')
+            result = git_phase_state.apply_single_commit_candidate(path, preview,
+                owned_paths=inputs['integration_owned'],
+                retained_attempts=inputs['retained_attempts'], remote='origin')
+            head = result['candidate_commit']
+            phase_commits = {}
+        else:
+            preview = git_phase_state.preview_two_commit_candidate(path,
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                test_source=inputs['test_source'], implementation_source=source,
+                test_owned=inputs['test_owned'], implementation_owned=inputs['implementation_owned'],
+                retained_attempts=inputs['retained_attempts'], remote='origin')
+            result = git_phase_state.apply_two_commit_candidate(path, preview,
+                test_owned=inputs['test_owned'], implementation_owned=inputs['implementation_owned'],
+                retained_attempts=inputs['retained_attempts'], remote='origin')
+            head = result['implementation_commit']
+            phase_commits = {'test_commit': result['test_commit']}
         response = {'next_steps': [{'kind': 'candidate_compacted', 'goal': snapshot['number'],
             'authorization': reference, 'branch': observed['branch'],
-            'base_commit': inputs['base_commit'], 'test_commit': result['test_commit'],
-            'head_oid': result['implementation_commit'], 'outcome': result['outcome'],
+            'base_commit': inputs['base_commit'], **phase_commits,
+            'head_oid': head, 'outcome': result['outcome'],
             'action': 'Publish this exact managed candidate head, then obtain fresh head-bound independent review and CI.'}]}
         return self.node_persist(snapshot, payload, response, request)
 
@@ -5461,25 +5545,39 @@ class Workflow:
         if len(approved) != 1:
             raise ValueError('Git-native publication requires one current approved repository authorization')
         reference = approved[0]
-        sources = self.node_native_sources(snapshot)
+        inputs = self.node_compaction_inputs(snapshot)
+        composition = inputs.get('delivery_class') == 'composition'
+        sources = ({'integration_source': inputs['integration_source']} if composition
+                   else self.node_native_sources(snapshot))
+        source = (sources['integration_source'] if composition else sources['implementation_source'])
         attempt = reference['hash'][7:39]
         observed = managed_worktrees.inspect_attempt_worktree(self.repo,
             goal=snapshot['number'], node='candidate', attempt=attempt)
         if observed['status'] == 'missing' or (observed['status'] == 'clean'
-                and observed['head'] == sources['implementation_source']):
+                and observed['head'] == source):
             return {'status': 'needs_compaction', 'authorization': reference}
         if observed['status'] != 'clean':
             raise ValueError('Managed candidate worktree is dirty or changed')
-        inputs = self.node_compaction_inputs(snapshot)
-        git_phase_state.preview_two_commit_candidate(Path(observed['path']),
-            goal=snapshot['number'], base_commit=inputs['base_commit'],
-            test_source=inputs['test_source'], implementation_source=inputs['implementation_source'],
-            test_owned=inputs['test_owned'], implementation_owned=inputs['implementation_owned'],
-            retained_attempts=inputs['retained_attempts'], remote='origin')
-        pair = git_phase_state.verify_two_commit_candidate(Path(observed['path']),
-            goal=snapshot['number'], base_commit=inputs['base_commit'],
-            head_commit=observed['head'])
-        if any(pair[name] != value for name, value in sources.items()):
+        if composition:
+            git_phase_state.preview_single_commit_candidate(Path(observed['path']),
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                source_commit=source, owned_paths=inputs['integration_owned'],
+                retained_attempts=inputs['retained_attempts'], remote='origin')
+            candidate = git_phase_state.verify_single_commit_candidate(Path(observed['path']),
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                head_commit=observed['head'])
+            current = {'source_commit': source}
+        else:
+            git_phase_state.preview_two_commit_candidate(Path(observed['path']),
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                test_source=inputs['test_source'], implementation_source=source,
+                test_owned=inputs['test_owned'], implementation_owned=inputs['implementation_owned'],
+                retained_attempts=inputs['retained_attempts'], remote='origin')
+            candidate = git_phase_state.verify_two_commit_candidate(Path(observed['path']),
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                head_commit=observed['head'])
+            current = sources
+        if any(candidate[name] != value for name, value in current.items()):
             raise ValueError('Managed candidate differs from current reviewed source commits')
         return {'status': 'ready', 'authorization': reference,
                 'path': observed['path'], 'branch': observed['branch'],
@@ -5513,16 +5611,20 @@ class Workflow:
                           cwd=self.repo, capture_output=True).returncode:
             raise ValueError('Observed merge commit is not in the current target branch')
         inputs = self.node_compaction_inputs(snapshot)
-        git_phase_state.verify_two_commit_candidate(self.repo, goal=number,
-            base_commit=inputs['base_commit'], head_commit=head)
+        delivery_class = inputs.get('delivery_class', 'leaf')
+        verifier = (git_phase_state.verify_single_commit_candidate
+                    if delivery_class == 'composition'
+                    else git_phase_state.verify_two_commit_candidate)
+        verifier(self.repo, goal=number, base_commit=inputs['base_commit'], head_commit=head)
         if subprocess.run(['git', 'merge-base', '--is-ancestor', head, integrated],
                           cwd=self.repo, capture_output=True).returncode:
             raise ValueError('Exact reviewed candidate is not in the observed merge commit')
         removed, preserved = 0, 0
         for attempt in inputs['retained_attempts']:
             ref, commit = attempt['ref'], attempt['commit']
+            phases = 'integration_verification' if delivery_class == 'composition' else 'test_design|implement'
             match = re.fullmatch(
-                rf'refs/heads/zzzops/attempts/{number}/(test_design|implement)/([0-9a-f]{{32}})', ref)
+                rf'refs/heads/zzzops/attempts/{number}/({phases})/([0-9a-f]{{32}})', ref)
             if not match:
                 raise ValueError('Retained attempt identity changed before local cleanup')
             node, attempt_id = match.groups()
@@ -5536,7 +5638,8 @@ class Workflow:
             managed_worktrees.cleanup_delivered_attempt_worktree(self.repo, goal=number,
                 node=node, attempt=attempt_id, expected_head=commit,
                 delivery_base=inputs['base_commit'], delivery_head=head,
-                integrated_commit=integrated, remote='origin', retained_ref=ref)
+                integrated_commit=integrated, remote='origin', retained_ref=ref,
+                delivery_class=delivery_class)
             removed += 1
         authorities = [output for _, (_, result) in snapshot['projection']['current'].items()
             for output in result['outputs'].values()
@@ -5558,7 +5661,8 @@ class Workflow:
         elif candidate['status'] == 'clean':
             managed_worktrees.cleanup_delivered_candidate_worktree(self.repo,
                 goal=number, attempt=candidate_id, expected_head=head,
-                delivery_base=inputs['base_commit'], integrated_commit=integrated)
+                delivery_base=inputs['base_commit'], integrated_commit=integrated,
+                delivery_class=delivery_class)
             removed += 1
         return {'status': 'complete' if not preserved else 'preserved_dirty',
                 'removed': removed, 'preserved_dirty': preserved}
@@ -5603,10 +5707,18 @@ class Workflow:
             if not facts.get('merged'):
                 merge_method = '--squash'
                 if self.node_native_delivery(snapshot):
-                    candidate = git_phase_state.verify_two_commit_candidate(self.repo,
-                        goal=snapshot['number'], base_commit=facts['base_oid'],
-                        head_commit=facts['head_oid'])
-                    if any(candidate[name] != value for name, value in self.node_native_sources(snapshot).items()):
+                    inputs = self.node_compaction_inputs(snapshot)
+                    if inputs.get('delivery_class') == 'composition':
+                        candidate = git_phase_state.verify_single_commit_candidate(self.repo,
+                            goal=snapshot['number'], base_commit=facts['base_oid'],
+                            head_commit=facts['head_oid'])
+                        expected = {'source_commit': inputs['integration_source']}
+                    else:
+                        candidate = git_phase_state.verify_two_commit_candidate(self.repo,
+                            goal=snapshot['number'], base_commit=facts['base_oid'],
+                            head_commit=facts['head_oid'])
+                        expected = self.node_native_sources(snapshot)
+                    if any(candidate[name] != value for name, value in expected.items()):
                         raise ValueError('Git-native candidate sources differ from current reviewed phase Results')
                     merge_method = '--merge'
                 result = subprocess.run(['gh', 'pr', 'merge', publication['context']['pr'], merge_method, '--match-head-commit', facts['head_oid']], cwd=self.repo, capture_output=True, text=True, check=True)

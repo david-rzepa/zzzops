@@ -163,8 +163,9 @@ def cleanup_delivered_attempt_worktree(repo: Path, *, goal: int, node: str,
                                        attempt: str, expected_head: str,
                                        delivery_base: str, delivery_head: str,
                                        integrated_commit: str, remote: str,
-                                       retained_ref: str) -> dict:
-    """Remove a clean archived attempt after its two-commit delivery is merged.
+                                       retained_ref: str,
+                                       delivery_class: str = 'leaf') -> dict:
+    """Remove a clean archived attempt after its exact delivery is merged.
 
     Rejected correction commits need not be ancestors of the compacted pair.
     Their exact remote refs survive this local cleanup.
@@ -175,10 +176,16 @@ def cleanup_delivered_attempt_worktree(repo: Path, *, goal: int, node: str,
             for oid in (expected_head, delivery_base, delivery_head, integrated_commit))
             or retained_ref != f'refs/heads/zzzops/attempts/{goal}/{node}/{attempt}'):
         raise ValueError('Cleanup requires exact attempt and delivery identities')
-    from zzzops_git_phase_state import verify_attempt_ref, verify_two_commit_candidate
+    if delivery_class not in {'leaf', 'composition'} or (
+            delivery_class == 'composition' and node != 'integration_verification') or (
+            delivery_class == 'leaf' and node not in {'test_design', 'implement'}):
+        raise ValueError('Cleanup delivery class does not match attempt phase')
+    from zzzops_git_phase_state import (verify_attempt_ref,
+        verify_single_commit_candidate, verify_two_commit_candidate)
     verify_attempt_ref(repo, remote=remote, ref=retained_ref, commit=expected_head)
-    verify_two_commit_candidate(repo, goal=goal, base_commit=delivery_base,
-                                head_commit=delivery_head)
+    verifier = (verify_single_commit_candidate if delivery_class == 'composition'
+                else verify_two_commit_candidate)
+    verifier(repo, goal=goal, base_commit=delivery_base, head_commit=delivery_head)
     if _run(repo, 'merge-base', '--is-ancestor', delivery_head, integrated_commit,
             check=False).returncode:
         raise ValueError('Reviewed candidate is not integrated into the observed target commit')
@@ -205,16 +212,20 @@ def cleanup_delivered_attempt_worktree(repo: Path, *, goal: int, node: str,
 
 def cleanup_delivered_candidate_worktree(repo: Path, *, goal: int, attempt: str,
                                          expected_head: str, delivery_base: str,
-                                         integrated_commit: str) -> dict:
+                                         integrated_commit: str,
+                                         delivery_class: str = 'leaf') -> dict:
     """Remove only a clean exact candidate already present in the target."""
     repo = Path(repo).resolve()
     _identity(goal, 'candidate', attempt)
     if any(not isinstance(oid, str) or not _OID.fullmatch(oid)
            for oid in (expected_head, delivery_base, integrated_commit)):
         raise ValueError('Candidate cleanup requires exact commit identities')
-    from zzzops_git_phase_state import verify_two_commit_candidate
-    verify_two_commit_candidate(repo, goal=goal, base_commit=delivery_base,
-                                head_commit=expected_head)
+    from zzzops_git_phase_state import verify_single_commit_candidate, verify_two_commit_candidate
+    if delivery_class not in {'leaf', 'composition'}:
+        raise ValueError('Candidate cleanup delivery class is invalid')
+    verifier = (verify_single_commit_candidate if delivery_class == 'composition'
+                else verify_two_commit_candidate)
+    verifier(repo, goal=goal, base_commit=delivery_base, head_commit=expected_head)
     if _run(repo, 'merge-base', '--is-ancestor', expected_head, integrated_commit,
             check=False).returncode:
         raise ValueError('Reviewed candidate is not integrated into the observed target commit')
