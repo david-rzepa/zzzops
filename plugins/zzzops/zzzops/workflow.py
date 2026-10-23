@@ -4243,22 +4243,23 @@ class Workflow:
                         edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
                     except (ValueError, KeyError, subprocess.SubprocessError):
                         continue
-                # A corrected test may be based on an implementation whose
-                # evidence became stale when the test finding was admitted.
-                # Its retained Result still proves an exact Git edge; use it
-                # for topology only, never as current task authority.
-                for _, result in all_results:
-                    other_key = ev.task_key(result['node'])
-                    other = states.get(other_key)
-                    if (other is None or other_key[0] != goal
-                            or 'repository_git_workspace' not in other['contract']['executor']['resources']):
-                        continue
-                    try:
-                        proof = checked_git_proof(other, historical_authority(result['node']), result)
-                        checkpoint = proof['checkpoint']
-                        edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
-                    except (ValueError, KeyError, subprocess.SubprocessError):
-                        continue
+                if admitted_subjects:
+                    # A corrected test may be based on an implementation whose
+                    # evidence became stale when the test finding was admitted.
+                    # Its retained Result still proves an exact Git edge; use
+                    # it for topology only, never as current task authority.
+                    for _, result in all_results:
+                        other_key = ev.task_key(result['node'])
+                        other = states.get(other_key)
+                        if (other is None or other_key[0] != goal
+                                or 'repository_git_workspace' not in other['contract']['executor']['resources']):
+                            continue
+                        try:
+                            proof = checked_git_proof(other, historical_authority(result['node']), result)
+                            checkpoint = proof['checkpoint']
+                            edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
+                        except (ValueError, KeyError, subprocess.SubprocessError):
+                            continue
                 git_edges[goal] = edges
             # Walk only authenticated Git phase edges out of the primary base.
             # The primary checkout itself does not advance for a draft stack.

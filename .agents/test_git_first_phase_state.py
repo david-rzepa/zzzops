@@ -426,6 +426,7 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
         self.assertEqual(t1_head, i1['lease']['acquisition']['git_commit'])
         i1_head = commit(i1, 'source.py', 'def value():\n    return 1\n',
                          'feat: first green', 'passed')
+        i1_result = case.result('implement')[0]
 
         t1_result, t1_record = case.result('test_design')
         t1_subject = t1_record['outputs']['value']
@@ -493,6 +494,9 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
         i2_head = commit(i2, 'source.py', 'def value():\n    return 2\n',
                          'feat: corrected green', 'passed')
         self.assertEqual(4, len({t1_head, i1_head, t2_head, i2_head}))
+        self.assertEqual([100], sorted(case.provider.issues))
+        case.read_blob(t1_result)
+        case.read_blob(i1_result)
         for work, head in ((t1, t1_head), (i1, i1_head), (t2, t2_head), (i2, i2_head)):
             ref = f"refs/heads/zzzops/attempts/100/{work['node']['node']}/{work['lease']['attempt']}"
             self.assertEqual(head, case.session.git('ls-remote', 'origin', ref).split()[0])
