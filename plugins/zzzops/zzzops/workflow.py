@@ -3813,14 +3813,8 @@ class Workflow:
             'repository_workspace' in state['contract']['executor']['resources']
             and (state['state'] == 'ready' or key in projection.get('leases', {})
                  or (key in projection['current']
-                     and not projection['current'][key][1].get('non_applicability'))
-                 or (state['state'] == 'blocked'
-                     and any(binding.get('name') == 'allocation'
-                             for binding in state.get('inputs', []))))
+                     and not projection['current'][key][1].get('non_applicability')))
             for key, state in work.items())
-        native_only = (bool(work) and not legacy_active
-                       and any('repository_git_workspace' in state['contract']['executor']['resources']
-                               for state in work.values()))
         legacy_lease = any('files' in lease.get('acquisition', {})
                            for snapshot in snapshots.values()
                            for lease in snapshot['payload']['operational']['leases'])
@@ -3829,17 +3823,12 @@ class Workflow:
                                 for binding in result['inputs'])
                             for _, result in projection['current'].values())
         legacy_draft = any(snapshot.get('workspace_drafts') for snapshot in snapshots.values())
-        clean = None
-        if native_only and not (legacy_lease or legacy_result or legacy_draft):
-            observed = subprocess.run(['git', 'status', '--porcelain=v1', '-z', '--untracked-files=all',
-                                       '--', '.', ':(exclude).zzzops'], cwd=self.repo, capture_output=True)
-            if observed.returncode:
-                raise ValueError('Cannot verify clean Git workspace state')
-            clean = not observed.stdout
-        if clean:
-            # New Git-backed graphs need only HEAD and Git's clean-index/worktree
-            # observation. Legacy maps remain available when a historical lease,
-            # Result or draft requires them.
+        commit_only = not (legacy_active or legacy_lease or legacy_result or legacy_draft)
+        if commit_only:
+            # New tasks run in managed worktrees at HEAD. Uncommitted primary
+            # checkout bytes are never their inputs, even when the checkout is
+            # dirty. Legacy active work and historical map evidence still need
+            # the exact file snapshots until they are resolved.
             actual = committed = {}
         else:
             actual = self.workspace_files()
@@ -4548,6 +4537,12 @@ class Workflow:
                 if lease and not same_tree(pinned):
                     contexts[key] = {'error': 'Read-only task Git commit changed after acquisition'}
                     continue
+                if lease and lease.get('worker') is not None:
+                    observed = managed_worktrees.inspect_attempt_worktree(self.repo,
+                        goal=key[0], node=state['node']['node'], attempt=lease['attempt'])
+                    if observed['status'] != 'clean' or observed['head'] != pinned:
+                        contexts[key] = {'error': 'Read-only managed worktree changed; replay the exact start or inspect its local files'}
+                        continue
                 historical = previous_content.get('git_commit') if previous_content else None
                 baseline_commit = pinned if lease else historical if same_tree(historical) else head
                 binding = remember({'type': 'workspace_snapshot', 'content': {'git_commit': baseline_commit}, 'producer': None,
@@ -7785,11 +7780,12 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 acquisition = lease.get('acquisition', {}) if isinstance(lease, dict) else {}
                 if (lease and lease.get('node') == payload.get('node')
                         and lease.get('owner') == (runtime or {}).get('root_id')
-                        and 'git_commit' in acquisition and 'files' not in acquisition):
+                        and ('git_commit' in acquisition or 'read_commit' in acquisition)
+                        and 'files' not in acquisition):
                     node = lease['node']
                     workspace = managed_worktrees.prepare_worktree(
                         repo, goal=number, node=node['node'], attempt=lease['attempt'],
-                        base_commit=acquisition['git_commit'])
+                        base_commit=acquisition.get('git_commit', acquisition.get('read_commit')))
                     step['managed_worktree'] = workspace
                     step['action'] = ('Run this leased task in the managed worktree at '
                                       + workspace['path'] + '; preserve the exact attempt branch.')

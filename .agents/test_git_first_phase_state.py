@@ -25,6 +25,33 @@ class FreshGoalGitCheckpointTests(DagFixture):
                                side_effect=AssertionError('inactive legacy phase scanned files')):
             self.session.acquire('requirements')
 
+    def test_fresh_readonly_acquisition_skips_future_legacy_scopes_and_dirty_primary(self):
+        paths = self.fixture.repo / 'many'
+        paths.mkdir()
+        for index in range(2200):
+            (paths / f'fixture_{index:04d}.txt').write_text(f'file {index}\n')
+        self.session.git('add', 'many')
+        self.session.git('commit', '-qm', 'large committed goal input')
+        dirty = self.fixture.repo / 'local-draft.txt'
+        dirty.write_text('uncommitted local work\n')
+        template = json.loads((fixtures.PLUGIN_ROOT / 'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
+        graph = z._workflow_section(template, 'workflow_adherence')['configuration']['phase_dag']
+        for node in graph['nodes']:
+            if node['id'] in {'test_design', 'implement'}:
+                node['executor']['resources'] = ['repository_workspace']
+        self.install(graph)
+        with mock.patch.object(z._workflow.Workflow, 'workspace_files',
+                               side_effect=AssertionError('future legacy task scanned files')):
+            work = self.session.acquire('requirements')
+        self.assertEqual(self.session.git('rev-parse', 'HEAD').strip(),
+                         work['lease']['acquisition']['read_commit'])
+        self.assertNotIn('files', work['lease']['acquisition'])
+        self.assertFalse((Path(work['managed_worktree']['path']) / dirty.name).exists())
+        self.assertTrue(dirty.exists())
+        self.assertEqual([100], sorted(self.provider.issues))
+        self.assertTrue(all(len(comment['body']) <= 65536
+                            for comment in self.provider.comments[100]))
+
     def test_first_acquisition_with_many_files_is_bounded_and_replayable(self):
         paths = self.fixture.repo / 'many'
         paths.mkdir()
@@ -55,6 +82,21 @@ class FreshGoalGitCheckpointTests(DagFixture):
         next_work = self.session.acquire('spec')
         self.assertEqual(acquisition['read_commit'], next_work['lease']['acquisition']['read_commit'])
         self.assertTrue(all(len(comment['body']) <= 65536 for comment in self.provider.comments[100]))
+
+    def test_readonly_managed_worktree_must_remain_at_exact_clean_commit(self):
+        self.default_graph()
+        work = self.session.acquire('requirements')
+        path = Path(work['managed_worktree']['path'])
+        (path / 'unreviewed.txt').write_text('uncommitted draft\n')
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        request = self.session.submission(work, {'value': {
+            'statements': ['This must not be accepted.'], 'questions': [],
+            'investigations': {'items': {}, 'rationale': 'None.'},
+        }}, 'dirty-readonly-worktree')
+        response = self.session.call(100, request, expected=2)
+        self.assertIn('Read-only managed worktree changed', json.dumps(response))
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.assertTrue((path / 'unreviewed.txt').exists())
 
     def test_moved_commit_cannot_accept_a_readonly_result(self):
         self.default_graph()
@@ -124,6 +166,19 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         self.assertNotIn('workspace_digest', acquisition)
         self.assertEqual([100], sorted(fixture.provider.issues))
         self.assertTrue(all(len(comment['body']) <= 65536 for comment in fixture.provider.comments[100]))
+
+    def test_dirty_primary_checkout_does_not_enter_isolated_git_attempt(self):
+        fixture = self.fixture_with_git_workspace()
+        dirty = fixture.fixture.repo / 'local-uncommitted.txt'
+        dirty.write_text('user draft outside the managed attempt\n')
+        work = fixture.acquire_workspace('alpha')
+        self.assertEqual(fixture.session.git('rev-parse', 'HEAD').strip(),
+                         work['lease']['acquisition']['git_commit'])
+        self.assertFalse((Path(work['managed_worktree']['path']) / dirty.name).exists())
+        self.assertTrue(dirty.exists())
+        self.assertEqual([100], sorted(fixture.provider.issues))
+        self.assertTrue(all(len(comment['body']) <= 65536
+                            for comment in fixture.provider.comments[100]))
 
     def test_public_start_retry_reuses_exact_worktree_and_receipt(self):
         fixture = self.fixture_with_git_workspace()
