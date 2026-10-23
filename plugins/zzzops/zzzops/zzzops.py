@@ -248,6 +248,11 @@ _git_phase_state = importlib.util.module_from_spec(_GIT_PHASE_STATE_SPEC)
 sys.modules[_GIT_PHASE_STATE_SPEC.name] = _git_phase_state
 _GIT_PHASE_STATE_SPEC.loader.exec_module(_git_phase_state)
 
+_MANAGED_WORKTREES_SPEC = importlib.util.spec_from_file_location("zzzops_managed_worktrees", Path(__file__).with_name("managed_worktrees.py"))
+_managed_worktrees = importlib.util.module_from_spec(_MANAGED_WORKTREES_SPEC)
+sys.modules[_MANAGED_WORKTREES_SPEC.name] = _managed_worktrees
+_MANAGED_WORKTREES_SPEC.loader.exec_module(_managed_worktrees)
+
 _WORKFLOW_SPEC = importlib.util.spec_from_file_location("zzzops_workflow", Path(__file__).with_name("workflow.py"))
 _workflow = importlib.util.module_from_spec(_WORKFLOW_SPEC)
 _WORKFLOW_SPEC.loader.exec_module(_workflow)

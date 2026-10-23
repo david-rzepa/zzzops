@@ -27,6 +27,7 @@ from pathlib import Path
 import zzzops_comment_store as comment_store
 import zzzops_state_cache as state_cache
 import zzzops_git_phase_state as git_phase_state
+import zzzops_managed_worktrees as managed_worktrees
 
 
 _OBSERVED_ARTIFACT_INDEXES = {}
@@ -7066,7 +7067,22 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             steps.append({'kind': 'repair', 'action': result['error']})
         return {'next_steps': steps}
     if payload is not None and number is not None:
-        return engine.mutate(number, payload)
+        result = engine.mutate(number, payload)
+        if operation == 'start':
+            for step in result.get('next_steps', []):
+                lease = step.get('lease') if step.get('kind') == 'perform' else None
+                acquisition = lease.get('acquisition', {}) if isinstance(lease, dict) else {}
+                if (lease and lease.get('node') == payload.get('node')
+                        and lease.get('owner') == (runtime or {}).get('root_id')
+                        and 'git_commit' in acquisition):
+                    node = lease['node']
+                    workspace = managed_worktrees.prepare_worktree(
+                        repo, goal=number, node=node['node'], attempt=lease['attempt'],
+                        base_commit=acquisition['git_commit'])
+                    step['managed_worktree'] = workspace
+                    step['action'] = ('Run this leased task in the managed worktree at '
+                                      + workspace['path'] + '; preserve the exact attempt branch.')
+        return result
     if payload is not None:
         raise ValueError('Unknown operation or missing goal; request an intent checkpoint for its submission contract')
     if source == '$add-zzzops-goal' or intent == 'capture':

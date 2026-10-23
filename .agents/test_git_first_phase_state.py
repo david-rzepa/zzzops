@@ -107,11 +107,48 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
 
         work = fixture.acquire_workspace('alpha')
         acquisition = work['lease']['acquisition']
+        managed = work['managed_worktree']
         self.assertEqual(fixture.session.git('rev-parse', 'HEAD').strip(), acquisition['git_commit'])
+        self.assertEqual('created', managed['outcome'])
+        self.assertEqual(acquisition['git_commit'],
+                         subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=managed['path'],
+                                        capture_output=True, text=True, check=True).stdout.strip())
+        self.assertEqual('', fixture.session.git('status', '--porcelain'))
         self.assertNotIn('files', acquisition)
         self.assertNotIn('workspace_digest', acquisition)
         self.assertEqual([100], sorted(fixture.provider.issues))
         self.assertTrue(all(len(comment['body']) <= 65536 for comment in fixture.provider.comments[100]))
+
+    def test_public_start_retry_reuses_exact_worktree_and_receipt(self):
+        fixture = self.fixture_with_git_workspace()
+        step = next(s for s in fixture.session.ready() if s['node']['node'] == 'alpha')
+        receipt = json.loads(Path(step['policy']['path']).read_text())['policy_receipt']
+        request = {**step['start'], 'policy_receipt': receipt,
+                   'request_id': 'managed-worktree-retry'}
+        first = fixture.session.call(100, request)['next_steps'][0]
+        comments = len(fixture.provider.comments[100])
+        second = fixture.session.call(100, request)['next_steps'][0]
+        self.assertEqual(first['lease'], second['lease'])
+        self.assertEqual('existing', second['managed_worktree']['outcome'])
+        self.assertEqual(first['managed_worktree']['path'], second['managed_worktree']['path'])
+        self.assertEqual(comments, len(fixture.provider.comments[100]))
+        self.assertEqual([100], sorted(fixture.provider.issues))
+
+    def test_worktree_creation_failure_after_start_replays_without_new_lease(self):
+        fixture = self.fixture_with_git_workspace()
+        step = next(s for s in fixture.session.ready() if s['node']['node'] == 'alpha')
+        receipt = json.loads(Path(step['policy']['path']).read_text())['policy_receipt']
+        request = {**step['start'], 'policy_receipt': receipt,
+                   'request_id': 'managed-worktree-interrupted'}
+        with mock.patch.object(z._workflow.managed_worktrees, 'prepare_worktree',
+                               side_effect=ValueError('simulated local interruption')):
+            failed = fixture.session.call(100, request, expected=2)
+        self.assertIn('simulated local interruption', json.dumps(failed))
+        comments = len(fixture.provider.comments[100])
+        resumed = fixture.session.call(100, request)['next_steps'][0]
+        self.assertEqual('created', resumed['managed_worktree']['outcome'])
+        self.assertEqual(comments, len(fixture.provider.comments[100]))
+        self.assertEqual(1, len(fixture.payload()[1]['operational']['leases']))
 
 
 class GitWorkspaceJourneyTests(unittest.TestCase):
