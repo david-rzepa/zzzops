@@ -4198,12 +4198,16 @@ class Workflow:
                                 value['hash'] for value in result['outputs'].values())):
                         proof = checked_git_proof(states[key], authority(states[key]), result)
                         corrected.append(proof['checkpoint']['result_commit'])
-                if len(corrected) != 1:
-                    raise ValueError('Admitted correction has no unique retained Git attempt')
-                if subprocess.run(['git', 'merge-base', '--is-ancestor', head, corrected[0]],
+                latest = [candidate for candidate in corrected if all(
+                    subprocess.run(['git', 'merge-base', '--is-ancestor', other, candidate],
+                                   cwd=self.repo, capture_output=True).returncode == 0
+                    for other in corrected)]
+                if len(latest) != 1:
+                    raise ValueError('Admitted correction attempts have no unique retained Git tip')
+                if subprocess.run(['git', 'merge-base', '--is-ancestor', head, latest[0]],
                                   cwd=self.repo, capture_output=True).returncode:
                     raise ValueError('Corrected Git attempt is disconnected from the current base')
-                return corrected[0]
+                return latest[0]
             candidates = []
             for other_key, other in work.items():
                 if (other_key == key or other_key not in projection['current']
