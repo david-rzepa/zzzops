@@ -1994,7 +1994,35 @@ class Workflow:
         def rev(ref):
             return subprocess.run(['git', 'rev-parse', ref], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
         candidate = {'branch': implementation['branch'], 'base': identity['base_ref'], 'base_head': identity['base_oid'], 'head': identity['head_oid']}
-        if implementation.get('pr') and (rev(implementation['branch']) != identity['head_oid'] or rev(implementation['base']) != identity['base_oid']):
+        local_head, local_base = ((rev(implementation['branch']), rev(implementation['base']))
+                                  if implementation.get('pr') else (None, None))
+        if implementation.get('pr') and local_head == identity['head_oid'] and local_base != identity['base_oid']:
+            try:
+                movement = git_phase_state.classify_base_move(self.repo,
+                    old_base=local_base, new_base=identity['base_oid'])
+            except (ValueError, OSError, subprocess.SubprocessError):
+                movement = None
+            if movement and movement['action'] == 'retarget_only':
+                return {'kind': 'repair_stack', 'assignment': 'root',
+                    'action': (f"Fetch exact provider base {identity['base_oid']} for {implementation['base']} "
+                               'and recheck topology; the equivalent-tree advance preserves phase evidence and needs no branch rewrite.'),
+                    'continuation': 'Recheck the exact PR head and base after fetching; preserve all current phase evidence.',
+                    'identities': [implementation['branch'], implementation['base'], identity['head_oid'], identity['base_oid']],
+                    'head': identity['head_oid'], 'base': identity['base_oid'],
+                    'base_movement': movement, 'requires_phase_reverification': False}
+            if movement and movement['action'] in {'topology_rewrite', 'rebase_and_reverify'}:
+                changed_tree = movement['action'] == 'rebase_and_reverify'
+                scope = ('rebase the candidate and reverify affected design, tests and implementation'
+                         if changed_tree else
+                         'repair candidate topology while retaining equivalent-tree phase evidence')
+                return {'kind': 'repair_stack', 'assignment': 'root',
+                    'action': (f"Preview {scope} for {implementation['branch']} against exact provider base "
+                               f"{identity['base_oid']}; require fresh head-bound review and CI after any rewrite."),
+                    'continuation': 'Use the reviewed restack path, then recheck exact PR head and base before publication.',
+                    'identities': [implementation['branch'], implementation['base'], identity['head_oid'], identity['base_oid']],
+                    'head': identity['head_oid'], 'base': identity['base_oid'],
+                    'base_movement': movement, 'requires_phase_reverification': changed_tree}
+        if implementation.get('pr') and (local_head != identity['head_oid'] or local_base != identity['base_oid']):
             return {'kind': 'repair_stack', 'assignment': 'root',
                     'action': f"Local {implementation['branch']} / {implementation['base']} do not match provider candidate {identity['head_oid']} and base {identity['base_oid']}; Synchronize the exact refs before publication.",
                     'continuation': f"The root continues from dev after reconciling {implementation['branch']} onto its declared immediate base {implementation['base']}; preserve existing PR heads and re-run exact-head checks.",

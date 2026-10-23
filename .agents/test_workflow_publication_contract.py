@@ -359,12 +359,57 @@ class WorkflowPublicationContractTests(unittest.TestCase):
                     local_head=local_head, local_base=local_base,
                     provider_head=provider_head, provider_base=provider_base,
                 )
-                with mock.patch.object(workflow.subprocess, "run", side_effect=run):
+                with mock.patch.object(workflow.subprocess, "run", side_effect=run), \
+                     mock.patch.object(workflow.git_phase_state, 'classify_base_move',
+                                       side_effect=ValueError('base observation unavailable')):
                     result = engine.publication_gate(self.goal())
                 self.assertEqual("repair_stack", result["kind"])
                 self.assertIn("Synchronize", result["action"])
                 self.assertEqual(provider_head, result["head"])
                 self.assertEqual(provider_base, result["base"])
+                self.assertEqual([], api.calls)
+
+    def test_equivalent_tree_base_advance_requests_fetch_without_staling(self):
+        head, old_base, new_base = 'a' * 40, 'b' * 40, 'c' * 40
+        engine, api, run = self.publication_engine(
+            local_head=head, local_base=old_base,
+            provider_head=head, provider_base=new_base)
+        movement = {'action': 'retarget_only', 'old_base': old_base,
+                    'new_base': new_base, 'old_tree': 'd' * 40,
+                    'new_tree': 'd' * 40, 'preserves_ancestry': True}
+        with mock.patch.object(workflow.subprocess, 'run', side_effect=run), \
+             mock.patch.object(workflow.git_phase_state, 'classify_base_move',
+                               return_value=movement) as classify:
+            result = engine.publication_gate(self.goal())
+        classify.assert_called_once_with(Path('/repo'), old_base=old_base,
+                                         new_base=new_base)
+        self.assertEqual('repair_stack', result['kind'])
+        self.assertEqual('retarget_only', result['base_movement']['action'])
+        self.assertFalse(result['requires_phase_reverification'])
+        self.assertIn('fetch', result['action'].lower())
+        self.assertEqual([], api.calls)
+
+    def test_changed_or_rewritten_base_previews_affected_verification(self):
+        head, old_base, new_base = 'a' * 40, 'b' * 40, 'c' * 40
+        for action, reverify in (('topology_rewrite', False),
+                                 ('rebase_and_reverify', True)):
+            with self.subTest(action=action):
+                engine, api, run = self.publication_engine(
+                    local_head=head, local_base=old_base,
+                    provider_head=head, provider_base=new_base)
+                movement = {'action': action, 'old_base': old_base,
+                            'new_base': new_base,
+                            'old_tree': 'd' * 40,
+                            'new_tree': ('d' if not reverify else 'e') * 40,
+                            'preserves_ancestry': False}
+                with mock.patch.object(workflow.subprocess, 'run', side_effect=run), \
+                     mock.patch.object(workflow.git_phase_state, 'classify_base_move',
+                                       return_value=movement):
+                    result = engine.publication_gate(self.goal())
+                self.assertEqual('repair_stack', result['kind'])
+                self.assertEqual(movement, result['base_movement'])
+                self.assertIs(reverify, result['requires_phase_reverification'])
+                self.assertIn('preview', result['action'].lower())
                 self.assertEqual([], api.calls)
 
     def test_exact_provider_identity_drives_publication_topology(self):
