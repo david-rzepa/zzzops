@@ -69,6 +69,20 @@ class GitPhaseCheckpointTests(unittest.TestCase):
         self.assertLess(len(json.dumps(proof)), 500)
         self.assertEqual(1, proof['change_count'])
 
+    def test_base_movement_separates_content_from_topology(self):
+        self.git('commit', '--allow-empty', '-qm', 'merge topology only')
+        same_tree = self.git('rev-parse', 'HEAD').strip()
+        self.assertEqual('retarget_only', git_phase_state.classify_base_move(
+            self.repo, old_base=self.base, new_base=same_tree)['action'])
+        self.git('checkout', '-q', '-b', 'squashed-base', self.base)
+        self.git('commit', '--allow-empty', '-qm', 'separate same-tree history')
+        unrelated = self.git('rev-parse', 'HEAD').strip()
+        self.assertEqual('topology_rewrite', git_phase_state.classify_base_move(
+            self.repo, old_base=same_tree, new_base=unrelated)['action'])
+        changed = self.result('input.txt', 'different base\n')
+        self.assertEqual('rebase_and_reverify', git_phase_state.classify_base_move(
+            self.repo, old_base=same_tree, new_base=changed)['action'])
+
     def test_unowned_change_and_dirty_worktree_are_rejected(self):
         result = self.result()
         with self.assertRaisesRegex(ValueError, 'outside reviewed owned paths'):

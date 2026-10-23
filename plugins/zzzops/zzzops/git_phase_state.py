@@ -375,3 +375,24 @@ def verify_two_commit_candidate(repo: Path, *, goal: int, base_commit: str,
     return {'test_commit': test_commit, 'implementation_commit': head_commit,
             'test_source': source_commits['test_design'],
             'implementation_source': source_commits['implement']}
+
+
+def classify_base_move(repo: Path, *, old_base: str, new_base: str) -> dict:
+    """Classify what a changed base invalidates without rewriting a branch."""
+    repo = Path(repo).resolve()
+    _commit(repo, old_base)
+    _commit(repo, new_base)
+    old_tree = _git(repo, 'rev-parse', old_base + '^{tree}').decode().strip()
+    new_tree = _git(repo, 'rev-parse', new_base + '^{tree}').decode().strip()
+    preserves_ancestry = subprocess.run(
+        ['git', 'merge-base', '--is-ancestor', old_base, new_base],
+        cwd=repo, capture_output=True).returncode == 0
+    if old_base == new_base:
+        action = 'current'
+    elif old_tree == new_tree:
+        action = 'retarget_only' if preserves_ancestry else 'topology_rewrite'
+    else:
+        action = 'rebase_and_reverify'
+    return {'action': action, 'old_base': old_base, 'new_base': new_base,
+            'old_tree': old_tree, 'new_tree': new_tree,
+            'preserves_ancestry': preserves_ancestry}
