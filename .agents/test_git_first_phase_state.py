@@ -375,6 +375,28 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         self.assertEqual(comments, len(fixture.provider.comments[100]))
         self.assertEqual(1, len(fixture.payload()[1]['operational']['leases']))
 
+    def test_stopped_dirty_attempt_cannot_resume_from_old_start_receipt(self):
+        fixture = self.fixture_with_git_workspace()
+        step = next(s for s in fixture.session.ready() if s['node']['node'] == 'alpha')
+        receipt = json.loads(Path(step['policy']['path']).read_text())['policy_receipt']
+        request = {**step['start'], 'policy_receipt': receipt,
+                   'request_id': 'stopped-dirty-start-replay'}
+        started = fixture.session.call(100, request)['next_steps'][0]
+        lease = started['lease']
+        actor = 'worker-alpha-stopped'
+        fixture.session.call(100, {**started['bind'], 'lease': lease['token'],
+            'actor': actor, 'selection': lease['selection'], 'policy_receipt': receipt,
+            'request_id': 'bind-stopped-dirty-attempt'})
+        path = Path(started['managed_worktree']['path'])
+        (path / 'behavior_test.py').write_text('dirty stopped draft\n')
+        fixture.session.call(100, {'operation': 'recover', 'node': started['node'],
+            'lease': lease['token'], 'actor': actor, 'worker_status': 'stopped',
+            'evidence': 'Worker process exited.', 'request_id': 'recover-stopped-dirty'})
+        replay = fixture.session.call(100, request, expected=2)
+        self.assertIn('lease', json.dumps(replay).lower())
+        self.assertEqual([], fixture.payload()[1]['operational']['leases'])
+        self.assertEqual('dirty stopped draft\n', (path / 'behavior_test.py').read_text())
+
     def test_stopped_worker_recovery_preserves_dirty_managed_attempt(self):
         fixture = self.fixture_with_git_workspace()
         work = fixture.acquire_workspace('alpha')

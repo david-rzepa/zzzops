@@ -8047,6 +8047,16 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                         and lease.get('owner') == (runtime or {}).get('root_id')
                         and ('git_commit' in acquisition or 'read_commit' in acquisition)
                         and 'files' not in acquisition):
+                    current = engine.node_snapshot(number)
+                    active = [item for item in current['payload']['operational']['leases']
+                              if item.get('token') == lease['token']]
+                    if (len(active) != 1 or active[0].get('node') != lease['node']
+                            or active[0].get('attempt') != lease['attempt']
+                            or active[0].get('owner') != lease['owner']
+                            or active[0].get('fingerprint') != lease['fingerprint']
+                            or active[0].get('acquisition') != acquisition
+                            or active[0].get('expires_at', 0) <= time.time()):
+                        raise ValueError('Original Git workspace lease is no longer active; recover through the current workflow')
                     node = lease['node']
                     workspace = managed_worktrees.prepare_worktree(
                         repo, goal=number, node=node['node'], attempt=lease['attempt'],
