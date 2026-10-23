@@ -39,6 +39,7 @@ class FreshGoalGitCheckpointTests(DagFixture):
         for node in graph['nodes']:
             if node['id'] in {'test_design', 'implement'}:
                 node['executor']['resources'] = ['repository_workspace']
+                node.pop('git_publish', None)
         self.install(graph)
         with mock.patch.object(z._workflow.Workflow, 'workspace_files',
                                side_effect=AssertionError('future legacy task scanned files')):
