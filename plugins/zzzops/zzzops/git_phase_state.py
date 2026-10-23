@@ -192,10 +192,14 @@ def _project_owned_tree(repo: Path, *, base_commit: str, source_commit: str,
     if not isinstance(owned_paths, list) or not owned_paths:
         raise ValueError('Projected candidate phase requires reviewed owned paths')
     _scope_hash(owned_paths)
-    patch = _git(repo, '--literal-pathspecs', 'diff', '--binary', '--no-renames',
-                 base_commit, source_commit, '--', *owned_paths)
+    changed = set(_git(repo, 'diff', '--name-only', '--no-renames', '-z',
+                       base_commit, source_commit).split(b'\x00'))
+    selected = [path for path in owned_paths if path.encode('utf-8') in changed]
     with tempfile.TemporaryDirectory(prefix='zzzops-candidate-index-') as directory:
         environment = {**os.environ, 'GIT_INDEX_FILE': str(Path(directory) / 'index')}
+        pathspec = Path(directory) / 'owned-paths'
+        if selected:
+            pathspec.write_bytes(b'\x00'.join(path.encode('utf-8') for path in selected) + b'\x00')
         def isolated(*arguments, input_bytes=None):
             result = subprocess.run(['git', *arguments], cwd=repo, env=environment,
                                     input=input_bytes, capture_output=True)
@@ -203,8 +207,9 @@ def _project_owned_tree(repo: Path, *, base_commit: str, source_commit: str,
                 raise ValueError('Git could not project the reviewed phase into a candidate tree')
             return result.stdout
         isolated('read-tree', base_commit)
-        if patch:
-            isolated('apply', '--cached', '--binary', input_bytes=patch)
+        if selected:
+            isolated('restore', '--source=' + source_commit, '--staged',
+                     '--pathspec-from-file=' + str(pathspec), '--pathspec-file-nul')
         return isolated('write-tree').decode().strip()
 
 

@@ -69,6 +69,26 @@ class GitPhaseCheckpointTests(unittest.TestCase):
         self.assertLess(len(json.dumps(proof)), 500)
         self.assertEqual(1, proof['change_count'])
 
+    def test_projected_phase_uses_bounded_pathspec_and_ignores_unchanged_owned_paths(self):
+        (self.repo / 'input.txt').unlink()
+        (self.repo / 'output.txt').write_text('new result\n')
+        self.git('add', '-A')
+        self.git('commit', '-qm', 'replace reviewed paths')
+        source = self.git('rev-parse', 'HEAD').strip()
+        owned = ['input.txt', 'output.txt'] + [f'allowed_{index:04d}.txt' for index in range(1800)]
+        commands = []
+        original_run = subprocess.run
+
+        def record(command, **kwargs):
+            commands.append(command)
+            return original_run(command, **kwargs)
+
+        with mock.patch.object(git_phase_state.subprocess, 'run', side_effect=record):
+            tree = git_phase_state._project_owned_tree(
+                self.repo, base_commit=self.base, source_commit=source, owned_paths=owned)
+        self.assertEqual(self.git('rev-parse', source + '^{tree}').strip(), tree)
+        self.assertTrue(all(len(command) < 12 for command in commands))
+
     def test_base_movement_separates_content_from_topology(self):
         self.git('commit', '--allow-empty', '-qm', 'merge topology only')
         same_tree = self.git('rev-parse', 'HEAD').strip()
