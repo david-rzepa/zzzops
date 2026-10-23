@@ -166,6 +166,63 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         self.assertTrue((path / 'behavior_test.py').exists())
         self.assertEqual([], fixture.payload()[1]['operational']['leases'])
 
+    def test_stopped_clean_commit_is_retained_before_lease_release(self):
+        fixture = self.fixture_with_git_workspace()
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        bare = Path(remote_dir.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
+        fixture.session.git('remote', 'add', 'origin', str(bare))
+        work = fixture.acquire_workspace('alpha')
+        path = Path(work['managed_worktree']['path'])
+        (path / 'behavior_test.py').write_text('assert True\n')
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=path, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: retained stopped attempt'], cwd=path, check=True)
+        head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=path,
+                              capture_output=True, text=True, check=True).stdout.strip()
+        request = {'operation': 'recover', 'node': work['node'],
+                   'lease': work['lease']['token'], 'actor': work['bound_actor'],
+                   'worker_status': 'stopped', 'evidence': 'Worker process exited after commit.',
+                   'request_id': 'stopped-clean-attempt'}
+        first = fixture.session.call(100, request)['next_steps'][0]
+        ref = f"refs/heads/zzzops/attempts/100/alpha/{work['lease']['attempt']}"
+        self.assertEqual({'ref': ref, 'commit': head, 'outcome': 'created'}, first['retained_attempt'])
+        self.assertEqual(head, subprocess.run(['git', 'ls-remote', '--exit-code', '--refs',
+                                               str(bare), ref], capture_output=True,
+                                              text=True, check=True).stdout.split()[0])
+        self.assertEqual([], fixture.payload()[1]['operational']['leases'])
+        comments = len(fixture.provider.comments[100])
+        second = fixture.session.call(100, request)['next_steps'][0]
+        self.assertEqual(ref, second['retained_attempt']['ref'])
+        self.assertEqual(comments, len(fixture.provider.comments[100]))
+
+    def test_failed_attempt_retention_does_not_release_lease(self):
+        fixture = self.fixture_with_git_workspace()
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        bare = Path(remote_dir.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
+        fixture.session.git('remote', 'add', 'origin', str(bare))
+        work = fixture.acquire_workspace('alpha')
+        path = Path(work['managed_worktree']['path'])
+        (path / 'behavior_test.py').write_text('assert True\n')
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=path, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: retry stopped attempt'], cwd=path, check=True)
+        request = {'operation': 'recover', 'node': work['node'],
+                   'lease': work['lease']['token'], 'actor': work['bound_actor'],
+                   'worker_status': 'stopped', 'evidence': 'Worker process exited after commit.',
+                   'request_id': 'retry-retention'}
+        comments = len(fixture.provider.comments[100])
+        with mock.patch.object(z._workflow.git_phase_state, 'retain_attempt_ref',
+                               side_effect=ValueError('remote unavailable')):
+            failed = fixture.session.call(100, request, expected=2)
+        self.assertIn('remote unavailable', json.dumps(failed))
+        self.assertEqual(comments, len(fixture.provider.comments[100]))
+        self.assertEqual(1, len(fixture.payload()[1]['operational']['leases']))
+        recovered = fixture.session.call(100, request)['next_steps'][0]
+        self.assertEqual('created', recovered['retained_attempt']['outcome'])
+        self.assertEqual([], fixture.payload()[1]['operational']['leases'])
+
     def test_submission_uses_managed_worktree_commit_and_checks(self):
         fixture = self.fixture_with_git_workspace()
         remote_dir = tempfile.TemporaryDirectory()

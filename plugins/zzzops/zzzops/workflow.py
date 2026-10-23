@@ -5947,6 +5947,27 @@ class Workflow:
                     if request.get('worker_status') != 'stopped' or not isinstance(request.get('evidence'), str) or not request['evidence'].strip(): raise ValueError('Observed stopped worker evidence required; unknown liveness cannot recover')
                     if request.get('actor') != lease['worker']: raise ValueError('Exact bound actor required for observed-stop recovery')
                     step = {'kind': 'checkpoint', 'goal': number}
+                    if ('git_commit' in lease['acquisition'] and 'files' not in lease['acquisition']):
+                        observed = managed_worktrees.inspect_attempt_worktree(
+                            self.repo, goal=number, node=node['node'], attempt=lease['attempt'])
+                        base = lease['acquisition']['git_commit']
+                        workspace = state.get('workspace')
+                        if (observed['status'] == 'clean' and observed['head'] != base
+                                and workspace and workspace.get('git_workspace')):
+                            try:
+                                git_phase_state.validate_checkpoint(Path(observed['path']),
+                                    base_commit=base, result_commit=observed['head'],
+                                    owned_paths=workspace['entry']['owned'])
+                            except ValueError as exc:
+                                step['unretained_attempt'] = str(exc)
+                            else:
+                                # Retain before releasing the lease. A failed or
+                                # uncertain push leaves this exact recover request
+                                # replayable, and the remote ref is create-only.
+                                step['retained_attempt'] = git_phase_state.retain_attempt_ref(
+                                    Path(observed['path']), remote='origin', goal=number,
+                                    node=node['node'], attempt=lease['attempt'],
+                                    commit=observed['head'])
                     if 'repository_workspace' in state['contract']['executor']['resources']:
                         if state['state'] != 'ready' or state.get('input_hash') != lease['fingerprint']:
                             raise ValueError('Stale workspace authority/input prevents draft recovery: ' + state.get('reason', 'workspace drift'))
