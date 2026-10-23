@@ -159,5 +159,42 @@ class ManagedWorktreeTests(unittest.TestCase):
         self.assertFalse(candidate_path.exists())
 
 
+    def test_composition_cleanup_preserves_remote_attempt_and_removes_clean_worktrees(self):
+        attempt = managed.prepare_worktree(self.repo, goal=566,
+            node='integration_verification', attempt='a' * 32, base_commit=self.base)
+        attempt_path = Path(attempt['path'])
+        (attempt_path / 'integration.txt').write_text('combined behavior verified\n')
+        self.git('add', 'integration.txt', cwd=attempt_path)
+        self.git('commit', '-qm', 'test(goal-566): verify composition', cwd=attempt_path)
+        source = self.git('rev-parse', 'HEAD', cwd=attempt_path).strip()
+        retained = phase.retain_attempt_ref(attempt_path, remote='origin', goal=566,
+            node='integration_verification', attempt='a' * 32, commit=source)['ref']
+        candidate = managed.prepare_worktree(self.repo, goal=566, node='candidate',
+            attempt='b' * 32, base_commit=source)
+        candidate_path = Path(candidate['path'])
+        attempts = [{'ref': retained, 'commit': source}]
+        preview = phase.preview_single_commit_candidate(candidate_path, goal=566,
+            base_commit=self.base, source_commit=source,
+            owned_paths=['integration.txt'], retained_attempts=attempts, remote='origin')
+        compacted = phase.apply_single_commit_candidate(candidate_path, preview,
+            owned_paths=['integration.txt'], retained_attempts=attempts, remote='origin')
+        head = compacted['candidate_commit']
+        self.git('merge', '--no-ff', '-qm', 'merge reviewed composition', candidate['branch'])
+        integrated = self.git('rev-parse', 'HEAD').strip()
+        removed = managed.cleanup_delivered_attempt_worktree(self.repo, goal=566,
+            node='integration_verification', attempt='a' * 32, expected_head=source,
+            delivery_base=self.base, delivery_head=head, integrated_commit=integrated,
+            remote='origin', retained_ref=retained, delivery_class='composition')
+        self.assertEqual('removed', removed['outcome'])
+        self.assertFalse(attempt_path.exists())
+        self.assertEqual(source, self.git('ls-remote', 'origin', retained).split()[0])
+        removed_candidate = managed.cleanup_delivered_candidate_worktree(self.repo,
+            goal=566, attempt='b' * 32, expected_head=head,
+            delivery_base=self.base, integrated_commit=integrated,
+            delivery_class='composition')
+        self.assertEqual('removed', removed_candidate['outcome'])
+        self.assertFalse(candidate_path.exists())
+
+
 if __name__ == '__main__':
     unittest.main()
