@@ -5376,8 +5376,100 @@ class Workflow:
             raise ValueError('Composition delivery has conflicting current Git sources')
         return next(iter(sources)) if sources else None
 
+    def node_declared_compaction_inputs(self, snapshot):
+        """Resolve reviewed Git publish declarations to current exact Result proofs."""
+        declarations = {node['id']: node['git_publish'] for node in snapshot['graph']['nodes']
+                        if 'git_publish' in node}
+        if not declarations:
+            return None
+        goal, artifacts = snapshot['number'], snapshot['artifacts']
+        current = {}
+        for key, (_, result) in snapshot['projection']['current'].items():
+            node = result.get('node', {})
+            name = node.get('node')
+            if node.get('goal') != goal or name not in declarations or result.get('non_applicability'):
+                continue
+            if name in current:
+                raise ValueError('Git publication has multiple current Results for one declared node')
+            output = result['outputs'].get(declarations[name]['output'])
+            artifact = artifacts.get(output.get('hash'), {}) if isinstance(output, dict) else {}
+            source = artifact.get('provenance', {}).get('source')
+            proof = artifacts.get(source.get('hash'), {}) if isinstance(source, dict) else {}
+            workspace = snapshot['workspaces'].get(key, {})
+            if (proof.get('kind') != 'git_phase_proof' or not workspace.get('git_workspace')
+                    or 'entry' not in workspace):
+                continue
+            current[name] = {'node': name, 'source': proof['checkpoint']['result_commit'],
+                             'owned': workspace['entry']['owned']}
+        by_series = {}
+        for name, declaration in declarations.items():
+            by_series.setdefault(declaration['series'], set()).add(name)
+        selected = [series for series, members in by_series.items() if members <= current.keys()]
+        if len(selected) != 1:
+            raise ValueError('Git publication requires one complete reviewed declaration series')
+        members = by_series[selected[0]]
+        grouped = {}
+        for name in members:
+            declaration = declarations[name]
+            key = declaration['group']
+            row = grouped.setdefault(key, {'id': key, 'order': declaration['order'],
+                'commit_type': declaration['commit_type'], 'summary': declaration['summary'],
+                'nodes': []})
+            if (row['order'], row['commit_type'], row['summary']) != (
+                    declaration['order'], declaration['commit_type'], declaration['summary']):
+                raise ValueError('Git publication group declarations disagree')
+            row['nodes'].append(current[name])
+        groups = sorted(grouped.values(), key=lambda group: group['order'])
+        for group in groups:
+            group['nodes'].sort(key=lambda member: member['node'])
+        retained = {}
+        prefix = f'refs/heads/zzzops/attempts/{goal}/'
+        def add(ref, commit):
+            if not isinstance(ref, str) or not isinstance(commit, str):
+                raise ValueError('Git publication retained attempt identity is malformed')
+            parts = ref.removeprefix(prefix).split('/') if ref.startswith(prefix) else []
+            if len(parts) != 2 or parts[0] not in members:
+                return
+            if ref in retained and retained[ref] != commit:
+                raise ValueError('Git publication retained attempt ref changed its commit')
+            retained[ref] = commit
+        for reference in snapshot['payload']['evidence']:
+            result = artifacts.get(reference['hash'], {}).get('content', {})
+            if (result.get('node', {}).get('goal') != goal
+                    or result.get('node', {}).get('node') not in members):
+                continue
+            for output in result.get('outputs', {}).values():
+                source = artifacts.get(output['hash'], {}).get('provenance', {}).get('source')
+                proof = artifacts.get(source.get('hash'), {}) if isinstance(source, dict) else {}
+                if proof.get('kind') == 'git_phase_proof':
+                    add(proof['retained_ref'], proof['checkpoint']['result_commit'])
+        for receipt in snapshot['payload']['operational']['receipts']:
+            response = snapshot['resolve'](receipt['result'])
+            for step in response.get('next_steps', []):
+                attempt = step.get('retained_attempt')
+                if attempt and step.get('kind') == 'checkpoint' and step.get('goal') == goal:
+                    add(attempt['ref'], attempt['commit'])
+        attempts = [{'ref': ref, 'commit': commit} for ref, commit in sorted(retained.items())]
+        bases = []
+        for member in groups[0]['nodes']:
+            node_attempts = [attempt for attempt in attempts if attempt['ref'].startswith(
+                prefix + member['node'] + '/')]
+            bases.append(git_phase_state.compaction_base_from_attempts(self.repo,
+                goal=goal, test_source=member['source'], attempts=node_attempts,
+                remote='origin', phase=member['node']))
+        oldest = [base for base in set(bases) if all(subprocess.run(
+            ['git', 'merge-base', '--is-ancestor', base, other], cwd=self.repo,
+            capture_output=True).returncode == 0 for other in bases)]
+        if len(oldest) != 1:
+            raise ValueError('Git publication first group has no unique base')
+        return {'goal': goal, 'delivery_class': 'grouped', 'series': selected[0],
+                'groups': groups, 'base_commit': oldest[0], 'retained_attempts': attempts}
+
     def node_compaction_inputs(self, snapshot):
         """Derive local candidate inputs from current proofs and retained history."""
+        declared = self.node_declared_compaction_inputs(snapshot)
+        if declared is not None:
+            return declared
         composition_source = self.node_composition_source(snapshot)
         if composition_source is not None:
             artifacts = snapshot['artifacts']
@@ -5471,6 +5563,16 @@ class Workflow:
                 'implementation_owned': owned['implement'][0],
                 'retained_attempts': attempts}
 
+    def node_grouped_source(self, inputs):
+        """Find the exact latest source commit of the final declared group."""
+        sources = [member['source'] for member in inputs['groups'][-1]['nodes']]
+        latest = [candidate for candidate in set(sources) if all(subprocess.run(
+            ['git', 'merge-base', '--is-ancestor', other, candidate], cwd=self.repo,
+            capture_output=True).returncode == 0 for other in sources)]
+        if len(latest) != 1:
+            raise ValueError('Git publication final group has no unique source tip')
+        return latest[0]
+
     def node_compaction_authorization(self, snapshot, reference):
         """Require the current reviewed repository grant for this delivery."""
         root = (self.runtime or {}).get('root_id')
@@ -5535,7 +5637,9 @@ class Workflow:
             raise ValueError('Candidate compaction requires exact authorization identity')
         inputs = self.node_compaction_inputs(snapshot)
         composition = inputs.get('delivery_class') == 'composition'
-        source = inputs['integration_source'] if composition else inputs['implementation_source']
+        grouped = inputs.get('delivery_class') == 'grouped'
+        source = (self.node_grouped_source(inputs) if grouped else
+                  inputs['integration_source'] if composition else inputs['implementation_source'])
         attempt = identity[7:39]
         observed = managed_worktrees.inspect_attempt_worktree(
             self.repo, goal=snapshot['number'], node='candidate', attempt=attempt)
@@ -5548,7 +5652,17 @@ class Workflow:
         if observed['status'] != 'clean':
             raise ValueError('Candidate worktree is dirty; preserve it for exact recovery')
         path = Path(observed['path'])
-        if composition:
+        if grouped:
+            preview = git_phase_state.preview_grouped_candidate(path,
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                groups=inputs['groups'], retained_attempts=inputs['retained_attempts'],
+                remote='origin')
+            result = git_phase_state.apply_grouped_candidate(path, preview,
+                groups=inputs['groups'], retained_attempts=inputs['retained_attempts'],
+                remote='origin')
+            head = result['head_commit']
+            phase_commits = {'group_commits': result['commits']}
+        elif composition:
             preview = git_phase_state.preview_single_commit_candidate(path,
                 goal=snapshot['number'], base_commit=inputs['base_commit'],
                 source_commit=source, owned_paths=inputs['integration_owned'],
@@ -5593,9 +5707,12 @@ class Workflow:
         reference = approved[0]
         inputs = self.node_compaction_inputs(snapshot)
         composition = inputs.get('delivery_class') == 'composition'
-        sources = ({'integration_source': inputs['integration_source']} if composition
+        grouped = inputs.get('delivery_class') == 'grouped'
+        sources = ({} if grouped else
+                   {'integration_source': inputs['integration_source']} if composition
                    else self.node_native_sources(snapshot))
-        source = (sources['integration_source'] if composition else sources['implementation_source'])
+        source = (self.node_grouped_source(inputs) if grouped else
+                  sources['integration_source'] if composition else sources['implementation_source'])
         attempt = reference['hash'][7:39]
         observed = managed_worktrees.inspect_attempt_worktree(self.repo,
             goal=snapshot['number'], node='candidate', attempt=attempt)
@@ -5604,7 +5721,17 @@ class Workflow:
             return {'status': 'needs_compaction', 'authorization': reference}
         if observed['status'] != 'clean':
             raise ValueError('Managed candidate worktree is dirty or changed')
-        if composition:
+        if grouped:
+            git_phase_state.preview_grouped_candidate(Path(observed['path']),
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                groups=inputs['groups'], retained_attempts=inputs['retained_attempts'],
+                remote='origin')
+            git_phase_state.verify_grouped_candidate(Path(observed['path']),
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                head_commit=observed['head'], groups=inputs['groups'],
+                retained_attempts=inputs['retained_attempts'], remote='origin')
+            current, candidate = {}, {}
+        elif composition:
             git_phase_state.preview_single_commit_candidate(Path(observed['path']),
                 goal=snapshot['number'], base_commit=inputs['base_commit'],
                 source_commit=source, owned_paths=inputs['integration_owned'],

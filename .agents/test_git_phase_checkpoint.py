@@ -366,6 +366,47 @@ class GitPhaseCheckpointTests(unittest.TestCase):
                 self.repo, goal=566, base_commit=self.base, head_commit=result['head_commit'],
                 groups=groups, retained_attempts=attempts, remote='origin')
 
+    def test_current_graph_declarations_select_exact_reviewed_sources(self):
+        import test_evidence_dag_journeys as journeys
+        self.remote()
+        self.git('switch', '-c', 'feat/declared-sources')
+        artifacts, current, workspaces, evidence, nodes = {}, {}, {}, [], []
+        for order, (name, path) in enumerate((('checks', 'behavior_test.py'),
+                                               ('ship', 'source.py'))):
+            source_commit = self.result(path, f'{name} = True\n')
+            retained = git_phase_state.retain_attempt_ref(self.repo,
+                remote='origin', goal=566, node=name,
+                attempt=f'{order + 1:032x}', commit=source_commit)
+            result_ref = {'hash': f'result-{name}'}
+            output_ref = {'hash': f'output-{name}'}
+            proof_ref = {'hash': f'proof-{name}'}
+            identity = {'goal': 566, 'node': name, 'item': None, 'generation': 1}
+            result = {'node': identity, 'outputs': {'value': output_ref}}
+            artifacts[result_ref['hash']] = {'content': result}
+            artifacts[output_ref['hash']] = {'provenance': {'source': proof_ref}}
+            artifacts[proof_ref['hash']] = {'kind': 'git_phase_proof',
+                'checkpoint': {'result_commit': source_commit},
+                'retained_ref': retained['ref']}
+            key = (566, name, None, 1)
+            current[key] = (result_ref, result)
+            workspaces[key] = {'git_workspace': True, 'entry': {'owned': [path]}}
+            evidence.append(result_ref)
+            nodes.append({'id': name, 'git_publish': {
+                'series': 'release', 'group': name, 'order': order,
+                'output': 'value', 'commit_type': 'test' if order == 0 else 'feat',
+                'summary': 'publish ' + name}})
+        workflow = object.__new__(journeys.z._workflow.Workflow)
+        workflow.repo = self.repo
+        snapshot = {'number': 566, 'graph': {'nodes': nodes}, 'artifacts': artifacts,
+                    'projection': {'current': current}, 'workspaces': workspaces,
+                    'payload': {'evidence': evidence, 'operational': {'receipts': []}},
+                    'resolve': lambda ref: artifacts[ref['hash']]}
+        inputs = workflow.node_compaction_inputs(snapshot)
+        self.assertEqual('grouped', inputs['delivery_class'])
+        self.assertEqual(self.base, inputs['base_commit'])
+        self.assertEqual(['checks', 'ship'], [group['id'] for group in inputs['groups']])
+        self.assertEqual(2, len(inputs['retained_attempts']))
+
     def test_compaction_stops_if_attempt_ref_moves(self):
         self.remote()
         self.git('switch', '-c', 'feat/566')

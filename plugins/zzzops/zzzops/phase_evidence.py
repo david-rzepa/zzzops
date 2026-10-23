@@ -985,7 +985,7 @@ def validate_graph(graph):
         publish = node.get('git_publish')
         if publish is not None:
             contract_fields(publish, {'series', 'group', 'order', 'output', 'commit_type', 'summary'}, 'Git publish')
-            if ('repository_git_workspace' not in executor['resources']
+            if (template or 'repository_git_workspace' not in executor['resources']
                     or any(not task_identifier(publish[key]) for key in ('series', 'group'))
                     or not isinstance(publish['commit_type'], str)
                     or not re.fullmatch(r'[a-z][a-z0-9]*', publish['commit_type'])
@@ -995,7 +995,8 @@ def validate_graph(graph):
                     or not publish['summary'].strip()
                     or publish['summary'] != publish['summary'].strip()
                     or len(publish['summary']) > 120
-                    or any(character in publish['summary'] for character in '\r\n\x00')):
+                    or any(ord(character) < 32 or ord(character) == 127
+                           for character in publish['summary'])):
                 raise ValueError('Git publish requires a bounded reviewed group and Git workspace output')
         for field in ('requires', 'independent_of', 'gates', 'resolves', 'permits'):
             if not isinstance(node[field], list): raise ValueError(f'Node {field} must be an array')
