@@ -449,7 +449,9 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
         bare = Path(remote_dir.name) / 'remote.git'
         subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
         case.session.git('remote', 'add', 'origin', str(bare))
-        case.default_decomposition()
+        case.default_decomposition(implementation_review_members={
+            'items': {'acceptance_contracts': 'Review the exact corrected behavior'},
+            'rationale': 'Independent implementation review is required'})
         case.session.finish(case.session.acquire('decomposition_review'), {
             'value': case.review('approved', 'Atomic disposition accepted'),
             'authorization': case.decomposition_authorization()})
@@ -561,6 +563,43 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
             case.fixture.repo, goal=100, test_source=t2_head,
             attempts=[{'ref': f"refs/heads/zzzops/attempts/100/test_design/{w['lease']['attempt']}",
                        'commit': h} for w, h in ((t1, t1_head), (t2, t2_head))], remote='origin'))
+        case.session.finish(case.session.acquire('implementation_verification'), {
+            'value': 'Observed GREEN check against the exact I2 commit'})
+        case.session.finish(case.session.acquire('select_delivery_candidate'), {'value': {
+            'delivery_class': 'atomic', 'candidate': case.produced('implement'),
+            'integration_applicability': 'not_applicable',
+            'rationale': 'Select the reviewed corrected implementation'}})
+        case.session.finish(case.session.acquire('migration_verification'), {'value': {
+            'applicability': 'not_applicable', 'transition': 'none',
+            'compatibility': 'No released compatibility obligation',
+            'recovery': 'none', 'rationale': 'This fixture changes no released schema'}})
+        case.session.finish(case.session.acquire('migration_review'), {
+            'value': case.review('approved', 'Migration non-applicability confirmed')})
+        if 'retain_migration_findings' in case.names():
+            case.session.finish(case.session.acquire('retain_migration_findings'), {
+                'value': {'items': {}, 'rationale': 'No migration findings'}})
+        case.session.finish(case.session.acquire('implementation_review', item='acceptance_contracts',
+                                                 actor='independent-implementation-reviewer'), {
+            'value': case.review('approved', 'I2 passes the corrected T2 behavior contract')})
+        for registry in ('retain_implementation_review_findings',
+                         'retain_integration_review_findings'):
+            if registry in case.names():
+                case.session.finish(case.session.acquire(registry), {
+                    'value': {'items': {}, 'rationale': 'No admitted findings in this review'}})
+        authorization = {'manifest': case.produced('select_delivery_candidate'),
+                         'tasks': [{'goal': 100, 'node': 'publish', 'item': None, 'generation': 1}],
+                         'policy': journeys.content_hash(case.session.project['policy']),
+                         'decision': 'approved'}
+        response = case.session.finish(case.session.acquire('authorize_repository'), {
+            'authorization': authorization})
+        compaction = next(step for step in response['next_steps']
+                          if step.get('kind') == 'compact_candidate')
+        compacted = case.session.call(100, compaction['submission'])['next_steps'][0]
+        self.assertEqual('candidate_compacted', compacted['kind'])
+        self.assertEqual(2, len(compacted['group_commits']))
+        self.assertEqual(i2_head, case.session.git('ls-remote', 'origin',
+            f"refs/heads/zzzops/attempts/100/implement/{i2['lease']['attempt']}").split()[0])
+        self.assertEqual([100], sorted(case.provider.issues))
 
     def test_correction_attempts_compact_to_two_final_commits(self):
         case = journeys.DefaultCorrectionPublicTests('runTest')

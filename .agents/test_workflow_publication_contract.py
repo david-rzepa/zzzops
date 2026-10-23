@@ -237,7 +237,8 @@ class WorkflowPublicationContractTests(unittest.TestCase):
                                                            'outputs': {'value': manifest}}),
                    'implement': ({'hash': 'implementation-result'}, implementation_result)}
         states = {'authorize': {'contract': {'executor': {'role': 'root'}}}}
-        snapshot = {'number': 7, 'projection': {'current': current, 'states': states},
+        snapshot = {'number': 7, 'graph': {'nodes': []},
+                    'projection': {'current': current, 'states': states},
                     'artifacts': artifacts}
         self.assertEqual(authorization,
                          engine.node_compaction_authorization(snapshot, authorization))
@@ -270,7 +271,8 @@ class WorkflowPublicationContractTests(unittest.TestCase):
                    'integration': ({'hash': 'integration-result'}, {'node': {'goal': 7,
                        'node': 'integration_verification'},
                        'outputs': {'value': integration}})}
-        snapshot = {'number': 7, 'projection': {'current': current,
+        snapshot = {'number': 7, 'graph': {'nodes': []},
+            'projection': {'current': current,
             'states': {'authorize': {'contract': {'executor': {'role': 'root'}}}}},
             'artifacts': artifacts}
         self.assertEqual(authorization,

@@ -3092,7 +3092,7 @@ class WorkspaceAuthorityPublicTests(DagFixture):
 class DefaultCorrectionPublicTests(DagFixture):
     """Exercise the shipped graph, retaining two real correction attempts."""
 
-    def default_decomposition(self):
+    def default_decomposition(self, *, implementation_review_members=None):
         template = json.loads((old.fixtures.PLUGIN_ROOT / "zzzops/templates/project-goals/INIT_PLAN.json").read_text())
         graph = z._workflow_section(template, "workflow_adherence")["configuration"]["phase_dag"]
         self.install(graph)
@@ -3124,7 +3124,7 @@ class DefaultCorrectionPublicTests(DagFixture):
         self.session.finish(self.session.acquire("decompose"), {"value": {
             "delivery_class": "atomic", "rationale": "One bounded delivery",
             "children": {"items": {}, "rationale": "Atomic work has no child goals."},
-            "implementation_review_members": empty_members,
+            "implementation_review_members": implementation_review_members or empty_members,
             "integration_review_members": empty_members,
         }})
 
