@@ -3811,7 +3811,7 @@ class Workflow:
         head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
         legacy_active = any(
             'repository_workspace' in state['contract']['executor']['resources']
-            and (state['state'] == 'ready' or key in projection['leases']
+            and (state['state'] == 'ready' or key in projection.get('leases', {})
                  or (key in projection['current']
                      and not projection['current'][key][1].get('non_applicability'))
                  or (state['state'] == 'blocked'
