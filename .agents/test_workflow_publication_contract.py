@@ -61,6 +61,24 @@ class PublicationAPI:
 
 
 class WorkflowPublicationContractTests(unittest.TestCase):
+    def test_stack_member_rejects_unresolved_findings_before_dispatch(self):
+        engine = workflow.Workflow.__new__(workflow.Workflow)
+        engine.node_snapshot = lambda _goal: {
+            'payload': {'operational': {'leases': []}},
+            'projection': {'unresolved_obligations': [(7, 'changed-contract')]},
+        }
+        with self.assertRaisesRegex(ValueError, 'unresolved findings: changed-contract'):
+            engine.node_stack_member_snapshot({'goal': 7})
+
+    def test_stack_observation_requires_exact_merge_commit_and_time(self):
+        facts = {'merge_commit': 'a' * 40, 'merged_at': '2026-10-24T00:00:00Z'}
+        self.assertEqual(('a' * 40, facts['merged_at']),
+                         workflow.Workflow.node_stack_verified_merge(facts))
+        for changed in ({'merge_commit': None}, {'merged_at': None},
+                        {'merged_at': '2026-10-24T00:00:00'}):
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                workflow.Workflow.node_stack_verified_merge({**facts, **changed})
+
     def test_native_delivery_is_derived_from_goal_evidence(self):
         engine = workflow.Workflow.__new__(workflow.Workflow)
         proof = {'hash': 'proof'}
@@ -1253,6 +1271,32 @@ class GenericPublicationPublicTests(DagFixture):
         self.assertRegex(json.dumps(advanced), r"(?i)observ|reconcile|pending")
         self.assertEqual(evidence_before, self.payload()[1]["evidence"],
                          "Stack administration cannot fabricate semantic Results")
+
+    def test_public_stack_rejects_squash_for_exact_git_candidate(self):
+        self.authorize_context()
+        authority = self.approve_publication()
+        self.submit_role("finish", "Current terminal evidence for the exact reviewed head")
+        prepared = self.session.call(100, {
+            "operation": "stack_prepare", "request_id": "native-squash-prepare",
+            "repository": "owner/repo", "target": "dev", "method": "squash",
+            "members": [{
+                "goal": 100, "pr": 100, "branch": "goal-child", "base": "dev",
+                "head": self.observation["head_oid"],
+                "base_head": self.observation["base_oid"],
+                "implementation_review": "current", "ci": "verified",
+                "release": "eligible", "authorization": authority, "owner": None,
+            }],
+        })["next_steps"][0]
+        with mock.patch.object(z._workflow.Workflow, 'node_native_delivery', return_value=True), \
+             mock.patch.object(z._workflow.Workflow, 'node_candidate_state',
+                               return_value={'status': 'ready', 'branch': 'goal-child',
+                                             'head_oid': self.observation['head_oid']}):
+            rejected = self.session.call(100, {
+                "operation": "stack_advance", "request_id": "native-squash-advance",
+                "plan_id": prepared["plan_id"], "expected_revision": prepared["revision"],
+            }, expected=2)
+        self.assertIn('ancestry-preserving merge', json.dumps(rejected))
+        self.assertEqual([], self.merge_calls)
 
     def test_public_abc_stack_persists_and_resumes_each_authorized_effect(self):
         graph = self.with_merge_observation(copy.deepcopy(self.graph))

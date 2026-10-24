@@ -5796,6 +5796,12 @@ class Workflow:
         snapshot = self.node_snapshot(member['goal'])
         if snapshot['payload']['operational']['leases']:
             raise ValueError('Stack member has current worker ownership')
+        unresolved = snapshot['projection'].get('unresolved_obligations')
+        if not isinstance(unresolved, list):
+            raise ValueError('Stack member finding resolution inventory is unavailable')
+        pending = [identifier for goal, identifier in unresolved if goal == member['goal']]
+        if pending:
+            raise ValueError('Stack member has unresolved findings: ' + ', '.join(sorted(pending)))
         authorities = self.node_publication_authorities(snapshot)
         match = [(ref, publication) for ref, publication in authorities
                  if ref == member.get('authorization')]
@@ -5812,12 +5818,32 @@ class Workflow:
 
     def node_stack_semantic_merge(self, member):
         snapshot = self.node_snapshot(member['goal'])
+        if (snapshot['envelope']['state'] != 'archived'
+                or str(snapshot['issue'].get('state', '')).lower() != 'closed'
+                or snapshot['projection']['complete'] is not True):
+            return False
         for _, result in snapshot['projection']['current'].values():
             for ref in result.get('outputs', {}).values():
                 artifact = snapshot['artifacts'].get(ref.get('hash'))
                 if artifact and artifact.get('type') == 'merge_observation' and artifact['content'].get('head_oid') == member.get('head'):
                     return True
         return False
+
+    @staticmethod
+    def node_stack_verified_merge(facts):
+        """Require exact provider merge identity before recording a stack effect."""
+        commit, merged_at = facts.get('merge_commit'), facts.get('merged_at')
+        if not isinstance(commit, str) or not re.fullmatch(r'[0-9a-f]{40}', commit):
+            raise ValueError('Merged stack member has no exact merge commit')
+        if not isinstance(merged_at, str):
+            raise ValueError('Merged stack member has no exact merge timestamp')
+        try:
+            timestamp = datetime.fromisoformat(merged_at.replace('Z', '+00:00'))
+        except ValueError as exc:
+            raise ValueError('Merged stack member timestamp is invalid') from exc
+        if timestamp.tzinfo is None:
+            raise ValueError('Merged stack member timestamp lacks timezone')
+        return commit, merged_at
 
     def node_stack_operation(self, snapshot, payload, request):
         operation = request['operation']; number = snapshot['number']
@@ -6117,6 +6143,7 @@ class Workflow:
                 raise ValueError('Stack member provider head or base changed')
         provider = {str(goal): ('merged' if facts.get('merged') else 'open') for goal, facts in raw.items()}
         if provider.get(str(current['goal'])) == 'merged':
+            self.node_stack_verified_merge(raw[current['goal']])
             if plan.get('ordered_root'):
                 plan['current_status'] = 'observed'; plan.pop('dispatch', None)
             else:
@@ -6141,6 +6168,13 @@ class Workflow:
             raise ValueError('Prior stack member requires current semantic phase Result reconciliation')
         member_snapshot, publication = self.node_stack_member_snapshot(current)
         self.node_stack_release_authorized(current['goal'], publication['provider'])
+        if self.node_native_delivery(member_snapshot):
+            candidate = self.node_candidate_state(member_snapshot)
+            if (candidate['status'] != 'ready' or candidate['head_oid'] != current['head']
+                    or candidate['branch'] != current['branch']):
+                raise ValueError('Stack member differs from the exact reviewed Git candidate')
+            if plan['method'] != 'merge':
+                raise ValueError('Git-native candidate requires an ancestry-preserving merge')
         command = ['gh', 'pr', 'merge', str(current['pr']), '--' + plan['method'],
                    '--match-head-commit', current['head']]
         admin_required = publication['provider'].get('admin_required') is True
@@ -6214,6 +6248,8 @@ class Workflow:
             raise ValueError('Post-dispatch provider identity differs from authorized effect')
         if not fact.get('merged') and not uncertain:
             raise ValueError('Provider did not confirm exact stack merge')
+        if fact.get('merged'):
+            self.node_stack_verified_merge(fact)
         plan['attempt'] = {'goal': current['goal'], 'head': current['head'],
                            'status': 'unresolved' if uncertain else 'dispatched'}
         plan['next_action'] = 'observe' if uncertain else 'reconcile'
