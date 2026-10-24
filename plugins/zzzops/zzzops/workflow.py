@@ -2210,11 +2210,13 @@ class Workflow:
             definition = self.api._static_workflow.definition(
                 policy_section(self.project, 'workflow_adherence')['configuration']['phase_dag'],
                 self.api._graph_compiler)
+            stored_workflow_graph = None
             if 'workflow' in payload:
                 ev.contract_fields(payload['workflow'], {'version', 'graph'}, 'Workflow definition')
                 if payload['workflow']['version'] != self.api._static_workflow.VERSION:
                     raise ValueError('Unsupported stored workflow definition version')
-                ev.validate_graph(resolve(payload['workflow']['graph']))
+                stored_workflow_graph = resolve(payload['workflow']['graph'])
+                ev.validate_graph(stored_workflow_graph)
             graph = definition['graph'] if envelope['state'] == 'open' else historical_graph
             source_artifact = resolve(payload['spec'])
             if source_artifact.get('type') == 'migration_source':
@@ -2232,6 +2234,14 @@ class Workflow:
             ev.validate_graph(graph)
             snapshot = {'envelope': envelope, 'payload': payload, 'graph': graph, 'resolve': resolve,
                         'historical_graph': historical_graph, 'workflow_definition': definition}
+            if (definition is not None and payload['evidence'] and stored_workflow_graph is not None
+                    and definition['graph'] != stored_workflow_graph):
+                snapshot['policy_dag_cutover'] = {
+                    'old_graph': remember(stored_workflow_graph),
+                    'new_graph': remember(definition['graph']),
+                    'old_policy_revision': digest(stored_workflow_graph),
+                    'new_policy_revision': digest(self.project['policy']),
+                }
             journal = payload.get('phase_data', {'version': 1, 'events': []})
             if (not isinstance(journal, dict) or set(journal) != {'version', 'events'}
                     or journal['version'] != 1 or not isinstance(journal['events'], list)):
@@ -4077,9 +4087,12 @@ class Workflow:
         states = projection['states']; work = {key: state for key, state in states.items()
             if {'repository_workspace', 'repository_git_workspace'}.intersection(state['contract']['executor']['resources'])}
         head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
+        # A merely-ready legacy sibling must not make a fresh commit-backed
+        # task serialize the whole repository. Legacy bytes are observed once
+        # durable ownership or evidence actually makes them part of evaluation.
         legacy_active = any(
             'repository_workspace' in state['contract']['executor']['resources']
-            and (state['state'] == 'ready' or key in projection.get('leases', {})
+            and (key in projection.get('leases', {})
                  or (key in projection['current']
                      and not projection['current'][key][1].get('non_applicability')))
             for key, state in work.items())
@@ -5434,6 +5447,17 @@ class Workflow:
         """Format the same readiness and authority boundaries for both callers."""
         number = snapshot['number']
         resolution_steps = []
+        cutover = snapshot.get('policy_dag_cutover')
+        if cutover:
+            return [{'kind': 'policy_dag_cutover', 'assignment': 'root',
+                     'goal': number,
+                     'reason': ('The reviewed policy DAG differs from the authenticated goal graph; '
+                                'old Results cannot enter the new frontier without an explicit mapping.'),
+                     'contract': {**copy.deepcopy(cutover),
+                         'mapping': '<explicit old node/output/attempt to new contract mapping>',
+                         'receipt': '<authenticated idempotent cutover receipt>'},
+                     'action': ('Review the old/new graph mapping, evidence equivalence, in-flight leases '
+                                'and invalidated consumers before recording one revision-pinned cutover.')}]
         context = snapshot.get('goal_context')
         original = snapshot.get('original_goal_context')
         context_ref = snapshot.get('goal_context_ref')
@@ -7302,6 +7326,14 @@ class Workflow:
                         if any(step.get('provider_state') == 'closed' for step in response['next_steps']) and str(issue.get('state', '')).lower() != 'closed': raise ValueError('Stored closure receipt conflicts with partial provider state; repair required')
                         if str(issue.get('state', '')).lower() == 'closed' and not any(step.get('provider_state') == 'closed' for step in response['next_steps']):
                             raise ValueError('Closed goal cannot resume an execution receipt without explicit reopening')
+                        if request.get('operation') == 'submit':
+                            submitted = response.get('submitted', {})
+                            result_ref = submitted.get('result')
+                            if isinstance(result_ref, dict):
+                                result_artifact = self.artifact_index(number).resolve(result_ref['hash'])[0]
+                                if result_artifact.get('content', {}).get('supersedes_result') is not None:
+                                    response = {'next_steps': [{'kind': 'checkpoint', 'goal': number,
+                                        'action': 'Replacement Result is already committed; observe the current authenticated frontier.'}]}
                         return self.stop_completed_heartbeat(number, request, durable['operational'], response)
             ownership_graph = None
             if request.get('operation') in {'recover', 'release', 'renew'} and envelope.get('schema_version') == 2:
@@ -7398,7 +7430,10 @@ class Workflow:
                 if request.get('policy_receipt') != receipt: raise ValueError('Exact policy receipt is required')
                 lease = {'node': node, 'attempt': uuid.uuid4().hex, 'token': uuid.uuid4().hex, 'owner': root,
                          'worker': root if step['assignment'] == 'root' else None, 'fingerprint': state['input_hash'], 'expires_at': time.time() + 600,
-                         'selection': step['selection'], 'acquisition': {'resolutions': state['resolutions'], 'inputs': state['inputs'], 'contract': state['contract_hash']}}
+                         'selection': step['selection'], 'acquisition': {
+                             'resolutions': state['resolutions'], 'inputs': state['inputs'],
+                             'contract': state['contract_hash'],
+                             'expected_goal_revision': snapshot['envelope']['revision']}}
                 aggregates = {}
                 for binding in state['inputs']:
                     declared = state['contract']['inputs'].get(binding['name'], {})
@@ -7634,6 +7669,26 @@ class Workflow:
                             identity = digest(output); snapshot['artifacts'][identity] = output; outputs[slot] = self.node_ref(identity, number)
                             if slot in previous: snapshot.setdefault('output_bases', {})[identity] = previous[slot]['hash']
                         result = {'node': node, 'attempt': lease['attempt'], 'contract': state['contract_hash'], 'inputs': lease['acquisition']['inputs'], 'executor': lease['worker'], 'outputs': outputs, 'resolutions': lease['acquisition']['resolutions']}
+                        predecessor = snapshot['projection']['current'].get(
+                            self.api._phase_evidence.task_key(node))
+                        if predecessor is None:
+                            predecessor = next(((reference, value['content'])
+                                for reference in reversed(snapshot['payload']['evidence'])
+                                if (value := snapshot['artifacts'][reference['hash']]).get('type') == 'result'
+                                and value.get('content', {}).get('node') == node), None)
+                        if predecessor is not None:
+                            expected_revision = lease['acquisition'].get('expected_goal_revision')
+                            if (type(expected_revision) is not int
+                                    or expected_revision >= snapshot['envelope']['revision']):
+                                raise ValueError('Replacement Result goal revision CAS precondition changed')
+                            observed = next(((reference, value['content'])
+                                for reference in reversed(snapshot['payload']['evidence'])
+                                if (value := snapshot['artifacts'][reference['hash']]).get('type') == 'result'
+                                and value.get('content', {}).get('node') == node), None)
+                            if observed is None or observed[0] != predecessor[0]:
+                                raise ValueError('Replacement Result predecessor CAS precondition changed')
+                            result['supersedes_result'] = predecessor[0]
+                            result['expected_goal_revision'] = expected_revision
                         artifact = {'type': 'result', 'content': result, 'producer': lease['attempt'], 'provenance': {'actor': lease['worker'], 'source': None, 'policy': digest(self.project['policy'])}}
                         identity = digest(artifact); snapshot['artifacts'][identity] = artifact
                         ref = self.node_ref(identity, number); payload['evidence'].append(ref); leases.remove(lease)
