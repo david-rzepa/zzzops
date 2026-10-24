@@ -15,9 +15,9 @@ SPEC.loader.exec_module(archived)
 
 
 class ArchivedPrerequisiteTests(unittest.TestCase):
-    def candidate_inputs(self):
-        repository, goal = 'owner/repo', 100
-        source = {'type': 'migration_source', 'content': {'number': goal, 'body': 'Old goal'},
+    def candidate_inputs(self, repository='owner/repo', goal=100):
+        source = {'type': 'migration_source', 'content': {'number': goal,
+                  'body': 'Old goal\n<!-- zzzops-goal\n{}\nzzzops-goal -->\n'},
                   'producer': None, 'provenance': {'actor': 'manual-schema-reconciliation-522',
                                                   'source': None, 'policy': 'sha256:' + 'd' * 64}}
         policy = {'sections': []}
@@ -46,7 +46,8 @@ class ArchivedPrerequisiteTests(unittest.TestCase):
             'status': 'migrated', 'receipt': ref(receipt)}]}
         archived_payload = copy.deepcopy(target_payload)
         archived_payload['operational']['receipts'].append({
-            'request': 'manual-migrate-100', 'payload': 'sha256:' + 'f' * 64,
+            'request': 'manual-migrate-' + archived.digest({'goal': goal})[7:],
+            'payload': 'sha256:' + 'f' * 64,
             'result': ref(migration_response)})
         envelope = {'schema_version': 2, 'repository': repository, 'issue': goal,
                     'state': 'archived', 'revision': 10, 'parent': None,
@@ -57,7 +58,7 @@ class ArchivedPrerequisiteTests(unittest.TestCase):
                          + json.dumps(envelope) + '\nzzzops-goal -->'}
         pull = {'number': 7, 'baseRepository': repository, 'state': 'MERGED', 'baseRefName': 'dev',
                 'mergedAt': '2026-10-01T00:01:00Z', 'headRefOid': 'c' * 40,
-                'mergeCommit': {'oid': 'e' * 40}, 'body': 'Refs #100.'}
+                'mergeCommit': {'oid': 'e' * 40}, 'body': f'Refs #{goal}.'}
         return {'repository': repository, 'goal': goal, 'integration_branch': 'dev',
                 'issue': issue, 'envelope': envelope, 'archived_payload': archived_payload,
                 'receipt': receipt, 'migration_response': migration_response,
@@ -73,6 +74,12 @@ class ArchivedPrerequisiteTests(unittest.TestCase):
         self.assertNotIn('approved', candidate)
         self.assertEqual('e' * 40, candidate['observation']['merge_commit'])
         self.assertEqual(candidate, archived.candidate(**inputs))
+        changed = copy.deepcopy(inputs)
+        changed['pull']['body'] += ' Additional linked context.'
+        self.assertNotEqual(candidate['identity'], archived.candidate(**changed)['identity'])
+        changed = copy.deepcopy(inputs)
+        changed['issue']['body'] += '\nAdditional linked context.'
+        self.assertNotEqual(candidate['identity'], archived.candidate(**changed)['identity'])
 
     def test_closed_label_or_unrelated_merge_cannot_form_candidate(self):
         original = self.candidate_inputs()

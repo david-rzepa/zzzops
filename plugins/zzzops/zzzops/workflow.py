@@ -198,7 +198,8 @@ class ObservedArtifactIndex(comment_store.ArtifactIndex):
 PUBLIC_OPERATIONS = frozenset({
     'batch', 'bind', 'block', 'phase_finding', 'resolve_goal_blocker',
     'goal_dependency_prepare', 'goal_dependency_review', 'goal_dependency_apply',
-    'goal_external_blocker_prepare',
+    'goal_external_blocker_prepare', 'goal_external_blocker_review',
+    'goal_external_blocker_apply',
     'graph_normalize', 'migration_batch', 'graph_prepare', 'graph_review', 'graph_adopt', 'graph_review_bootstrap',
     'checkpoint_reconcile_prepare', 'checkpoint_reconcile_review', 'checkpoint_reconcile_adopt',
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
@@ -561,7 +562,8 @@ class ProviderReadGateway:
         for name in ('get_issue_comments_full', 'get_issue_comments_since', 'get_issue_comment_tail', 'get_issue_comment_tails'):
             if hasattr(provider, name):
                 setattr(self, name, getattr(provider, name))
-        for name in ('list_issue_metadata', 'get_parent_issue', 'get_sub_issues'):
+        for name in ('list_issue_metadata', 'get_parent_issue', 'get_sub_issues',
+                     'archived_prerequisite_pull', 'archived_prerequisite_reachable'):
             if hasattr(provider, name):
                 setattr(self, name, getattr(provider, name))
 
@@ -2111,7 +2113,7 @@ class Workflow:
                     validated.add(ref['hash'])
                 return value
             payload = resolve(envelope['payload'])
-            ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'} | (set(payload) & {'phase_data', 'goal_context', 'goal_context_resolutions', 'goal_context_dependency_events', 'workflow'}), 'Payload')
+            ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'} | (set(payload) & {'phase_data', 'goal_context', 'goal_context_resolutions', 'goal_context_dependency_events', 'goal_context_archived_prerequisites', 'workflow'}), 'Payload')
             ev.contract_fields(payload['operational'], {'leases', 'receipts'}, 'Operational payload')
             if not isinstance(payload['evidence'], list): raise ValueError('Evidence must be an ordered Ref array')
             historical_graph = resolve(payload['graph'])
@@ -2400,11 +2402,134 @@ class Workflow:
                         raise GoalContextResolutionAuthenticationError(
                             'Goal dependency journal authentication failed: ' + str(exc)) from exc
                 snapshot['goal_context_dependency_events'] = copy.deepcopy(dependency_journal['events'])
+                archived_journal = payload.get('goal_context_archived_prerequisites',
+                                               {'version': 1, 'events': []})
+                if (not isinstance(archived_journal, dict)
+                        or set(archived_journal) != {'version', 'events'}
+                        or archived_journal.get('version') != 1
+                        or not isinstance(archived_journal.get('events'), list)):
+                    raise GoalContextResolutionAuthenticationError(
+                        'Unsupported archived prerequisite journal')
+                archived = {}
+                seen_archived = set()
+                for reference in archived_journal['events']:
+                    try:
+                        ev.validate_ref(reference)
+                        if (self.node_ref_goal(reference, n) != n
+                                or reference['hash'] in seen_archived):
+                            raise ValueError('foreign or duplicate archived event')
+                        seen_archived.add(reference['hash'])
+                        event = resolve(reference)
+                        content = event['content']
+                        provenance = event['provenance']
+                        proposal_ref, review_ref = content['proposal'], content['review']
+                        for item in (proposal_ref, review_ref):
+                            ev.validate_ref(item)
+                            if self.node_ref_goal(item, n) != n:
+                                raise ValueError('foreign proposal or review')
+                        proposal_artifact, review_artifact = resolve(proposal_ref), resolve(review_ref)
+                        proposal = proposal_artifact['content']
+                        review = review_artifact['content']
+                        review_provenance = review_artifact['provenance']
+                        approval = content['human_approval']
+                        prerequisite = content['prerequisite']
+                        if (set(event) != {'type', 'content', 'producer', 'provenance'}
+                                or event['type'] != 'archived_prerequisite_resolution'
+                                or event['producer'] is not None
+                                or set(content) != {'context_hash', 'blocker_hash', 'prerequisite',
+                                                    'candidate', 'proposal', 'review', 'human_approval'}
+                                or set(provenance) != {'actor', 'repository', 'goal', 'request_id'}
+                                or provenance['repository'] != self.repository
+                                or provenance['goal'] != n
+                                or not explicit_approval(provenance['actor'])
+                                or not isinstance(provenance['request_id'], str)
+                                or not provenance['request_id']
+                                or type(prerequisite) is not int
+                                or content['context_hash'] != snapshot['goal_context_ref']['hash']
+                                or not isinstance(approval, dict)
+                                or set(approval) != {'approved_by', 'attribution'}
+                                or not all(explicit_approval(approval[key]) for key in approval)
+                                or proposal_artifact.get('type') != 'archived_prerequisite_proposal'
+                                or proposal_artifact.get('producer') is not None
+                                or proposal_artifact.get('provenance', {}).get('actor') != provenance['actor']
+                                or proposal_artifact.get('provenance', {}).get('source') != snapshot['goal_context_ref']
+                                or review_artifact.get('type') != 'archived_prerequisite_review'
+                                or review_artifact.get('producer') is not None
+                                or review_provenance.get('source') != proposal_ref
+                                or not explicit_approval(review_provenance.get('actor'))
+                                or review_provenance['actor'] == provenance['actor']
+                                or review.get('decision') != 'approved'
+                                or not isinstance(review.get('report'), str)
+                                or not review['report'].strip()
+                                or not isinstance(review.get('adoption'), dict)
+                                or set(review['adoption']) != {'manual_request',
+                                    'terminal_equivalence', 'retained_obligations'}
+                                or review['adoption']['manual_request'] != 'opaque'
+                                or not all(isinstance(review['adoption'].get(key), str)
+                                    and review['adoption'][key].strip() for key in
+                                    ('terminal_equivalence', 'retained_obligations'))
+                                or proposal.get('manual_request') !=
+                                    'opaque_requires_reviewed_adoption'):
+                            raise ValueError('archived event, proposal, review or approval is malformed')
+                        prepared = {'operation': 'goal_external_blocker_prepare',
+                            'request_id': provenance['request_id'],
+                            'context_hash': content['context_hash'],
+                            'blocker_hash': content['blocker_hash'],
+                            'prerequisite': prerequisite,
+                            'pull_number': proposal['pull_number']}
+                        expected_proposal = self.node_external_blocker_proposal(
+                            {'number': n, 'envelope': envelope, **snapshot}, prepared,
+                            historical_edge=True)
+                        expected_proposal['source_envelope'] = proposal['source_envelope']
+                        expected_proposal['policy'] = proposal['policy']
+                        if (proposal != expected_proposal
+                                or proposal['candidate'] != content['candidate']
+                                or proposal_artifact['provenance'].get('policy') != proposal['policy']
+                                or review_provenance.get('policy') != proposal['policy']):
+                            raise ValueError('archived prerequisite evidence changed')
+                        review_request = {'operation': 'goal_external_blocker_review',
+                            'request_id': review_provenance['request_id'],
+                            'actor': review_provenance['actor'], 'proposal': proposal,
+                            'decision': 'approved', 'report': review['report'],
+                            'adoption': review['adoption']}
+                        apply_request = {'operation': 'goal_external_blocker_apply',
+                            'request_id': provenance['request_id'], 'actor': provenance['actor'],
+                            'proposal': proposal_ref, 'review': review_ref,
+                            'human_approval': approval}
+                        review_receipts = [row for row in payload['operational']['receipts']
+                            if row['request'] == review_request['request_id']
+                            and row['payload'] == digest(review_request)]
+                        apply_receipts = [row for row in payload['operational']['receipts']
+                            if row['request'] == apply_request['request_id']
+                            and row['payload'] == digest(apply_request)]
+                        index = self.artifact_index(n)
+                        review_edge = (self.node_receipt_edge(n, index, review_receipts[0])
+                                       if len(review_receipts) == 1 else None)
+                        apply_edge = (self.node_receipt_edge(n, index, apply_receipts[0])
+                                      if len(apply_receipts) == 1 else None)
+                        response = {'next_steps': [{'kind': 'archived_prerequisite_applied',
+                            'goal': n, 'prerequisite': prerequisite, 'resolution': reference}]}
+                        if (review_edge is None or apply_edge is None
+                                or review_edge['source'] != proposal['source_envelope']
+                                or apply_edge['source'] != review_edge['target']
+                                or review_edge['response'].get('next_steps', [{}])[0].get('review') != review_ref
+                                or apply_edge['response'] != response):
+                            raise ValueError('archived event lacks exact committed receipt')
+                        snapshot['goal_context'] = self.api._static_workflow.resolved_goal_context(
+                            snapshot['goal_context'], [content['blocker_hash']])
+                        archived.setdefault(prerequisite, reference)
+                    except (KeyError, TypeError, ValueError) as exc:
+                        raise GoalContextResolutionAuthenticationError(
+                            'Archived prerequisite journal authentication failed: ' + str(exc)) from exc
+                snapshot['archived_prerequisites'] = archived
                 if n == number and dependency_override is not None:
                     snapshot['goal_context'] = copy.deepcopy(dependency_override)
             elif 'goal_context_dependency_events' in payload:
                 raise GoalContextResolutionAuthenticationError(
                     'Goal dependency journal has no authenticated context')
+            elif 'goal_context_archived_prerequisites' in payload:
+                raise GoalContextResolutionAuthenticationError(
+                    'Archived prerequisite journal has no authenticated context')
             retired_nodes = {row['id']: row for row in historical_graph['nodes']} \
                 .keys() - {row['id'] for row in graph['nodes']}
             # Compiler-generated routes are historical evidence, not additional
@@ -2639,7 +2764,8 @@ class Workflow:
             snapshot['context_ref'] = remember({'type': 'relationship_context', 'content': relation, 'producer': None,
                 'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
             related = {ref['goal'] for ref in refs if type(ref['goal']) is int}
-            related.update(snapshot.get('goal_context', {}).get('depends_on', []))
+            related.update(target for target in snapshot.get('goal_context', {}).get('depends_on', [])
+                           if target not in snapshot.get('archived_prerequisites', {}))
             if any(ref['goal'] == '#parent' for ref in refs) and envelope['parent'] is not None: related.add(envelope['parent'])
             related.update(int(key) for key in children)
             for target in related:
@@ -5444,6 +5570,88 @@ class Workflow:
 
     def node_external_blocker_candidate(self, snapshot, request):
         """Preview one historical prerequisite without evaluating its phase DAG."""
+        proposal = self.node_external_blocker_proposal(snapshot, request)
+        return {'next_steps': [{'kind': 'archived_prerequisite_preview',
+            'assignment': 'root', 'goal': snapshot['number'],
+            'blocker_hash': request['blocker_hash'],
+            'context_hash': request['context_hash'],
+            'prerequisite': request['prerequisite'],
+            'candidate': proposal['candidate'], 'proposal': proposal,
+            'action': 'Give this exact candidate and preserved obligation to an independent reviewer; it grants no resource or completion authority.',
+            'submission': {'operation': 'goal_external_blocker_review',
+                'request_id': 'archived-prerequisite-review-' + digest(proposal)[7:],
+                'actor': '<independent reviewer thread>', 'proposal': proposal,
+                'decision': '<approved or changes_requested>',
+                'report': '<independent review report>',
+                'adoption': {'manual_request': 'opaque',
+                    'terminal_equivalence': '<why merged work satisfies the exact old prerequisite>',
+                    'retained_obligations': '<how missing migration obligations remain gated>'}}}]}
+
+    def node_archived_migration_transaction(self, number, envelope, payload,
+                                            receipt, response, target_intent,
+                                            source_bytes):
+        """Bind the manual receipt to its complete provider comment transaction.
+
+        The old manual converter did not publish its request body. Its request
+        fingerprint remains opaque and must receive explicit reviewed adoption.
+        """
+        rows = payload.get('operational', {}).get('receipts', [])
+        if not isinstance(rows, list) or len(rows) != 1:
+            raise ValueError('Archived migration requires one committed request receipt')
+        row = rows[0]
+        receipt_ref = self.node_ref(digest(receipt), number)
+        response_ref = self.node_ref(digest(response), number)
+        if (not isinstance(row, dict) or set(row) != {'request', 'payload', 'result'}
+                or not isinstance(row['request'], str)
+                or re.fullmatch(r'manual-migrate-[0-9a-f]{64}', row['request']) is None
+                or not isinstance(row['payload'], str)
+                or re.fullmatch(r'sha256:[0-9a-f]{64}', row['payload']) is None
+                or row['result'] != response_ref):
+            raise ValueError('Archived migration request fingerprint is malformed')
+        index = self.artifact_index(number)
+        heads = [part for part in index.envelopes
+                 if (part.get('context') or {}).get('request_id') == row['request']]
+        if not heads or len({part.get('transaction') for part in heads}) != 1:
+            raise ValueError('Archived migration has no unique committed comment transaction')
+        transaction = heads[0]['transaction']
+        matching = [comment_store.decode_envelope(comment['body'])
+                    for comment, part in index.envelope_comments
+                    if part.get('transaction') == transaction]
+        if len(matching) != len(heads):
+            raise ValueError('Archived migration transaction has conflicting request identities')
+        comment_store.verify_manifest(matching)
+        if not isinstance(transaction, str) or re.fullmatch(r'sha256:[0-9a-f]{64}', transaction) is None:
+            raise ValueError('Archived migration transaction identity is malformed')
+        context = matching[0].get('context')
+        expected_hashes = {envelope['payload']['hash'], receipt_ref['hash'],
+                           response_ref['hash'], target_intent['payload']['hash'],
+                           digest(target_intent)}
+        included = {record['hash'] for part in matching for record in part['artifacts']}
+        source_envelope = context.get('source_envelope') if isinstance(context, dict) else None
+        source = self.api._archived_prerequisites._published_json(source_bytes, receipt['source'])
+        source_issue = source.get('content') if isinstance(source, dict) else None
+        source_body = source_issue.get('body') if isinstance(source_issue, dict) else None
+        if not isinstance(source_body, str):
+            raise ValueError('Archived migration published source has no issue body')
+        prefix, suffix = self.api._migration_batch.human_parts(self, source_body)
+        if (any(part.get('goal') != number or part.get('context') != context for part in matching)
+                or not expected_hashes <= included
+                or context.get('request_hash') != row['payload']
+                or context.get('response') != response_ref
+                or context.get('migration', {}).get('receipt') != receipt_ref
+                or context.get('target_envelope') != {
+                    **target_intent, 'payload': envelope['payload']}
+                or context.get('entry_payload') != envelope['payload']
+                or context.get('payload') != envelope['payload']
+                or source_envelope != {**target_intent,
+                                       'revision': target_intent['revision'] - 1}
+                or context.get('source_hash') != digest(source_body)
+                or context.get('human_hash') != digest(prefix + suffix)):
+            raise ValueError('Archived migration comment transaction does not bind exact source and target')
+        return transaction
+
+    def node_external_blocker_proposal(self, snapshot, request, *, historical_edge=False):
+        """Reobserve the named archived issue, transaction and integration commit."""
         required = {'operation', 'request_id', 'context_hash', 'blocker_hash',
                     'prerequisite', 'pull_number'}
         if set(request) != required or request['operation'] != 'goal_external_blocker_prepare':
@@ -5452,7 +5660,8 @@ class Workflow:
         context = snapshot.get('goal_context') or {}
         original = snapshot.get('original_goal_context') or {}
         context_ref = snapshot.get('goal_context_ref')
-        if (not isinstance(request['request_id'], str) or not request['request_id']
+        if (not isinstance(request['request_id'], str)
+                or re.fullmatch(r'[A-Za-z0-9._:-]{1,128}', request['request_id']) is None
                 or context_ref is None or request['context_hash'] != context_ref['hash']):
             raise ValueError('Archived blocker preview request or context is stale')
         matches = [row for row in original.get('blockers', [])
@@ -5462,8 +5671,11 @@ class Workflow:
                            for row in context.get('blockers', []))):
             raise ValueError('Archived blocker preview identifies no unique open external obligation')
         prerequisite = request['prerequisite']
+        declared = context.get('depends_on', [])
+        if historical_edge:
+            declared = original.get('depends_on', [])
         if (type(prerequisite) is not int or prerequisite <= 0 or prerequisite == number
-                or prerequisite not in context.get('depends_on', [])):
+                or prerequisite not in declared):
             raise ValueError('Archived blocker preview requires one declared same-goal-context prerequisite')
         pull_number = request['pull_number']
         if type(pull_number) is not int or pull_number <= 0:
@@ -5490,6 +5702,9 @@ class Workflow:
         del source, policy  # The candidate validates the published bytes itself.
         target_intent = self.read_artifact(prerequisite, receipt['target_intent'])
         target_payload = self.read_artifact(prerequisite, receipt['target_payload'])
+        transaction = self.node_archived_migration_transaction(
+            prerequisite, envelope, archived_payload, receipt, response,
+            target_intent, source_bytes)
         pull = self.adapter.archived_prerequisite_pull(pull_number)
         merge = (pull.get('mergeCommit') or {}).get('oid')
         branch = (policy_section(self.project, 'git_review_release')['configuration'].get(
@@ -5504,11 +5719,150 @@ class Workflow:
             target_payload=target_payload, source_bytes=source_bytes,
             policy_bytes=policy_bytes, pull_number=pull_number, pull=pull,
             merge_reachable=reachable)
-        return {'next_steps': [{'kind': 'archived_prerequisite_preview',
-            'assignment': 'root', 'goal': number, 'blocker_hash': request['blocker_hash'],
-            'context_hash': context_ref['hash'], 'prerequisite': prerequisite,
-            'candidate': candidate,
-            'action': 'Give this exact candidate and preserved obligation to an independent reviewer; it grants no resource or completion authority.'}]}
+        return {'kind': 'archived_prerequisite_proposal', 'repository': self.repository,
+            'goal': number, 'context_hash': context_ref['hash'],
+            'blocker_hash': request['blocker_hash'], 'prerequisite': prerequisite,
+            'pull_number': pull_number, 'candidate': candidate,
+            'migration_transaction': transaction,
+            'manual_request': 'opaque_requires_reviewed_adoption',
+            'source_envelope': copy.deepcopy(snapshot['envelope']),
+            'policy': self.node_evidence_policy()}
+
+    def node_external_blocker_review(self, snapshot, payload, request):
+        if set(request) != {'operation', 'request_id', 'actor', 'proposal',
+                            'decision', 'report', 'adoption'}:
+            raise ValueError('Archived prerequisite review requires exact fields')
+        root = (self.runtime or {}).get('root_id')
+        invoking = os.environ.get('CODEX_THREAD_ID')
+        if (not root or not explicit_approval(request['actor']) or request['actor'] == root
+                or invoking != request['actor']):
+            raise ValueError('Archived prerequisite review requires the authenticated independent thread')
+        if (request['decision'] not in {'approved', 'changes_requested'}
+                or not isinstance(request['report'], str) or not request['report'].strip()):
+            raise ValueError('Archived prerequisite review requires decision and report')
+        adoption = request['adoption']
+        if (not isinstance(adoption, dict)
+                or set(adoption) != {'manual_request', 'terminal_equivalence', 'retained_obligations'}
+                or adoption['manual_request'] != 'opaque'
+                or not all(isinstance(adoption[key], str) and adoption[key].strip()
+                           for key in ('terminal_equivalence', 'retained_obligations'))):
+            raise ValueError('Archived prerequisite requires explicit reviewed adoption of opaque manual request')
+        proposal = request['proposal']
+        if (not isinstance(proposal, dict) or proposal.get('kind') != 'archived_prerequisite_proposal'
+                or proposal.get('manual_request') != 'opaque_requires_reviewed_adoption'):
+            raise ValueError('Archived prerequisite review requires the exact proposal')
+        prepared = {'operation': 'goal_external_blocker_prepare', 'request_id': request['request_id'],
+            'context_hash': proposal.get('context_hash'), 'blocker_hash': proposal.get('blocker_hash'),
+            'prerequisite': proposal.get('prerequisite'), 'pull_number': proposal.get('pull_number')}
+        if proposal != self.node_external_blocker_proposal(snapshot, prepared):
+            raise ValueError('Archived prerequisite proposal changed before review')
+        policy = self.node_evidence_policy()
+        proposal_artifact = {'type': 'archived_prerequisite_proposal',
+            'content': copy.deepcopy(proposal), 'producer': None,
+            'provenance': {'actor': root, 'source': snapshot['goal_context_ref'], 'policy': policy}}
+        proposal_ref = self.node_ref(digest(proposal_artifact), snapshot['number'])
+        snapshot['artifacts'][proposal_ref['hash']] = proposal_artifact
+        review_artifact = {'type': 'archived_prerequisite_review',
+            'content': {'decision': request['decision'], 'report': request['report'],
+                        'adoption': copy.deepcopy(adoption)},
+            'producer': None, 'provenance': {'actor': request['actor'],
+                'source': proposal_ref, 'policy': policy, 'request_id': request['request_id']}}
+        review_ref = self.node_ref(digest(review_artifact), snapshot['number'])
+        snapshot['artifacts'][review_ref['hash']] = review_artifact
+        if request['decision'] == 'approved':
+            step = {'kind': 'human_approval', 'assignment': 'root',
+                'goal': snapshot['number'], 'proposal': proposal_ref, 'review': review_ref,
+                'action': 'Approve the exact independently reviewed archived prerequisite equivalence.',
+                'submission': {'operation': 'goal_external_blocker_apply',
+                    'request_id': 'archived-prerequisite-apply-' + digest(review_ref)[7:],
+                    'actor': root, 'proposal': proposal_ref, 'review': review_ref,
+                    'human_approval': {'approved_by': '<user>', 'attribution': '<exact approval>'}}}
+        else:
+            step = {'kind': 'changes_requested', 'goal': snapshot['number'],
+                'proposal': proposal_ref, 'review': review_ref,
+                'action': 'Reconsider the archived evidence; this review grants no authority.'}
+        return self.node_persist(snapshot, payload, {'next_steps': [step]}, request)
+
+    def node_external_blocker_apply(self, snapshot, payload, request):
+        if set(request) != {'operation', 'request_id', 'actor', 'proposal',
+                            'review', 'human_approval'}:
+            raise ValueError('Archived prerequisite application requires exact fields')
+        root = (self.runtime or {}).get('root_id')
+        invoking = os.environ.get('CODEX_THREAD_ID')
+        if not root or request['actor'] != root or (invoking and invoking != root):
+            raise ValueError('Only the coordinating root may apply archived prerequisite evidence')
+        approval = request['human_approval']
+        if (not isinstance(approval, dict) or set(approval) != {'approved_by', 'attribution'}
+                or not all(explicit_approval(approval[key]) for key in approval)):
+            raise ValueError('Archived prerequisite application requires explicit human approval')
+        if payload['operational']['leases']:
+            raise ValueError('Active ownership must be reconciled before archived prerequisite application')
+        for name in ('proposal', 'review'):
+            self.api._phase_evidence.validate_ref(request[name])
+            if self.node_ref_goal(request[name], snapshot['number']) != snapshot['number']:
+                raise ValueError('Archived prerequisite review belongs to another goal')
+        proposal_artifact = snapshot['resolve'](request['proposal'])
+        review_artifact = snapshot['resolve'](request['review'])
+        proposal = proposal_artifact.get('content', {})
+        review = review_artifact.get('content', {})
+        provenance = review_artifact.get('provenance', {})
+        if (proposal_artifact.get('type') != 'archived_prerequisite_proposal'
+                or proposal_artifact.get('provenance', {}).get('actor') != root
+                or proposal_artifact.get('provenance', {}).get('source') != snapshot.get('goal_context_ref')
+                or review_artifact.get('type') != 'archived_prerequisite_review'
+                or not explicit_approval(provenance.get('actor')) or provenance['actor'] == root
+                or provenance.get('source') != request['proposal']
+                or review.get('decision') != 'approved'
+                or not isinstance(review.get('report'), str) or not review['report'].strip()):
+            raise ValueError('Exact independent approved archived prerequisite review is required')
+        adoption = review.get('adoption')
+        if (not isinstance(adoption, dict)
+                or set(adoption) != {'manual_request', 'terminal_equivalence', 'retained_obligations'}
+                or adoption['manual_request'] != 'opaque'
+                or not all(isinstance(adoption.get(key), str) and adoption[key].strip()
+                           for key in ('terminal_equivalence', 'retained_obligations'))):
+            raise ValueError('Archived prerequisite review lacks explicit manual request adoption')
+        review_request = {'operation': 'goal_external_blocker_review',
+            'request_id': provenance.get('request_id'), 'actor': provenance['actor'],
+            'proposal': proposal, 'decision': review['decision'], 'report': review['report'],
+            'adoption': review['adoption']}
+        receipts = [row for row in payload['operational']['receipts']
+                    if row['request'] == review_request['request_id']
+                    and row['payload'] == digest(review_request)]
+        edge = (self.node_receipt_edge(snapshot['number'], self.artifact_index(snapshot['number']),
+                                      receipts[0]) if len(receipts) == 1 else None)
+        if (edge is None or edge['source'] != proposal.get('source_envelope')
+                or edge['target'] != snapshot['envelope']
+                or edge['response'].get('next_steps', [{}])[0].get('review') != request['review']):
+            raise ValueError('Archived prerequisite review lacks its exact committed receipt')
+        prepared = {'operation': 'goal_external_blocker_prepare', 'request_id': request['request_id'],
+            'context_hash': proposal.get('context_hash'), 'blocker_hash': proposal.get('blocker_hash'),
+            'prerequisite': proposal.get('prerequisite'), 'pull_number': proposal.get('pull_number')}
+        expected = self.node_external_blocker_proposal(snapshot, prepared)
+        expected['source_envelope'] = proposal['source_envelope']
+        if proposal != expected or proposal.get('policy') != self.node_evidence_policy():
+            raise ValueError('Archived prerequisite candidate, policy or blocker changed after review')
+        event = {'type': 'archived_prerequisite_resolution',
+            'content': {'context_hash': proposal['context_hash'],
+                'blocker_hash': proposal['blocker_hash'],
+                'prerequisite': proposal['prerequisite'],
+                'candidate': copy.deepcopy(proposal['candidate']),
+                'proposal': request['proposal'], 'review': request['review'],
+                'human_approval': copy.deepcopy(approval)},
+            'producer': None, 'provenance': {'actor': root, 'repository': self.repository,
+                'goal': snapshot['number'], 'request_id': request['request_id']}}
+        reference = self.node_ref(digest(event), snapshot['number'])
+        snapshot['artifacts'][reference['hash']] = event
+        journal = payload.setdefault('goal_context_archived_prerequisites',
+                                     {'version': 1, 'events': []})
+        if (not isinstance(journal, dict) or set(journal) != {'version', 'events'}
+                or journal['version'] != 1 or not isinstance(journal['events'], list)):
+            raise ValueError('Unsupported archived prerequisite journal')
+        journal['events'].append(reference)
+        response = {'next_steps': [{'kind': 'archived_prerequisite_applied',
+            'goal': snapshot['number'], 'prerequisite': proposal['prerequisite'],
+            'resolution': reference}]}
+        return self.node_persist(snapshot, payload, response, request)
 
     def node_resolve_goal_blocker(self, snapshot, payload, request):
         """Append one authenticated resolution without rewriting migration history."""
@@ -5871,6 +6225,10 @@ class Workflow:
                 return self.node_dependency_review(snapshot, payload, request)
             if request['operation'] == 'goal_dependency_apply':
                 return self.node_dependency_apply(snapshot, payload, request)
+            if request['operation'] == 'goal_external_blocker_review':
+                return self.node_external_blocker_review(snapshot, payload, request)
+            if request['operation'] == 'goal_external_blocker_apply':
+                return self.node_external_blocker_apply(snapshot, payload, request)
             if request['operation'] == 'phase_finding':
                 return self.node_phase_finding(snapshot, payload, request)
             if request['operation'] == 'graph_normalize':
@@ -7134,6 +7492,8 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
     if operation == 'goal_external_blocker_prepare' and number is not None:
         snapshot = engine.node_snapshot(number)
         return engine.node_external_blocker_candidate(snapshot, payload)
+    if operation in {'goal_external_blocker_review', 'goal_external_blocker_apply'} and number is not None:
+        return engine.node_mutate_phase(number, payload)
     if operation == 'checkpoint_reconcile_prepare' and number is not None:
         if set(payload) != {'operation', 'transaction', 'rationale', 'request_id'}:
             raise ValueError('Checkpoint reconciliation preparation requires exact transaction and rationale')

@@ -190,6 +190,7 @@ def candidate(*, repository: str, goal: int, integration_branch: str,
              'Historical pull request is not explicitly linked to the archived goal')
     observation = {
         'repository': repository, 'goal': goal,
+        'issue_body': digest(issue_text), 'pull_body': digest(pull_text),
         'envelope': digest(envelope), 'payload': envelope['payload'],
         'closed_at': issue['closed_at'], 'provider_state': 'closed',
         'migration_receipt': digest(receipt), 'source': receipt['source'],

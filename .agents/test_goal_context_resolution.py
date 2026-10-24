@@ -17,6 +17,7 @@ from unittest import mock
 
 import test_batch_goal_conversion as batch
 import test_evidence_dag_journeys as dag
+import test_archived_prerequisites as archive_tests
 
 
 class GoalContextResolutionTests(unittest.TestCase):
@@ -158,6 +159,246 @@ class GoalContextResolutionTests(unittest.TestCase):
         steps = case.session.checkpoint(100)
         self.assertTrue(any((step.get('submission') or {}).get('operation')
                             == 'goal_external_blocker_prepare' for step in steps), steps)
+
+    def test_archived_prerequisite_requires_independent_review_and_exact_receipts(self):
+        case = self.fresh_case()
+        blocker = {'status': 'open', 'category': 'external-dependency',
+                   'question': 'Goal #101 must finish before this goal can use its work.'}
+        other = {'status': 'open', 'category': 'external-dependency',
+                 'question': 'Goal #101 must also finish the publication obligation.'}
+        case.legacy_fields(100, depends_on=[101], blockers=[blocker, other])
+        self.assertEqual('migrated', case.migrate((100,))['members']['100']['status'])
+        original_envelope = dag.z.parse_managed_goal(case.provider.issues[100]['body'], 100)
+        original_context_ref = copy.deepcopy(case.session.read(100, original_envelope['payload'])['goal_context'])
+        prepare = next(step['submission'] for step in case.session.checkpoint(100)
+                       if (step.get('submission') or {}).get('operation')
+                       == 'goal_external_blocker_prepare')
+        prepare.update(request_id='archived-preview-100', pull_number=7)
+
+        def observed(engine, snapshot, request, *, historical_edge=False):
+            if (request['context_hash'] != snapshot['goal_context_ref']['hash']
+                    or request['blocker_hash'] not in {
+                        dag.z._workflow.digest(blocker), dag.z._workflow.digest(other)}
+                    or request['prerequisite'] != 101 or request['pull_number'] != 7):
+                raise ValueError('Archived candidate identity changed')
+            return {'kind': 'archived_prerequisite_proposal',
+                'repository': engine.repository, 'goal': 100,
+                'context_hash': request['context_hash'], 'blocker_hash': request['blocker_hash'],
+                'prerequisite': 101, 'pull_number': 7,
+                'candidate': {'identity': 'sha256:' + 'a' * 64},
+                'manual_request': 'opaque_requires_reviewed_adoption',
+                'migration_transaction': 'sha256:' + 'b' * 64,
+                'source_envelope': copy.deepcopy(snapshot['envelope']),
+                'policy': engine.node_evidence_policy()}
+
+        before = copy.deepcopy((case.provider.issues, case.provider.comments))
+        with mock.patch.object(dag.z._workflow.Workflow,
+                               'node_external_blocker_proposal', observed):
+            preview = case.session.call(100, prepare)
+            self.assertEqual(before, (case.provider.issues, case.provider.comments))
+            review = copy.deepcopy(preview['next_steps'][0]['submission'])
+            review.update(actor='independent-thread', decision='approved',
+                          report='Checked the archived transaction and merged work against the exact obligation.')
+            review['adoption'] = {'manual_request': 'opaque',
+                'terminal_equivalence': 'The reviewed merge satisfies this prerequisite.',
+                'retained_obligations': 'Normal phase and publication gates remain required.'}
+            rejected = case.session.call(100, review, expected=2)
+            self.assertRegex(json.dumps(rejected), r'(?i)independent|thread')
+            current_envelope = dag.z.parse_managed_goal(case.provider.issues[100]['body'], 100)
+            case.replace_legacy_payload(current_envelope,
+                                        case.session.read(100, current_envelope['payload']))
+            with mock.patch.dict(os.environ, {'CODEX_THREAD_ID': 'independent-thread'}):
+                rejected = case.session.call(100, review, expected=2)
+            self.assertRegex(json.dumps(rejected), r'(?i)proposal|changed|stale')
+            case.provider.issues, case.provider.comments = copy.deepcopy(before)
+            with mock.patch.dict(os.environ, {'CODEX_THREAD_ID': 'independent-thread'}):
+                reviewed = case.session.call(100, review)
+            apply = copy.deepcopy(reviewed['next_steps'][0]['submission'])
+            apply['human_approval'] = {'approved_by': 'requesting-user',
+                'attribution': 'Approved this exact archived prerequisite equivalence.'}
+            with mock.patch.dict(os.environ, {'CODEX_THREAD_ID': 'root-thread'}):
+                applied = case.session.call(100, apply)
+                self.assertEqual(applied, case.session.call(100, apply))
+            self.assertEqual('archived_prerequisite_applied', applied['next_steps'][0]['kind'])
+            envelope = dag.z.parse_managed_goal(case.provider.issues[100]['body'], 100)
+            payload = case.session.read(100, envelope['payload'])
+            self.assertEqual(original_context_ref, payload['goal_context'])
+            self.assertEqual(1, len(payload['goal_context_archived_prerequisites']['events']))
+            steps = case.session.checkpoint(100)
+            second = next(step['submission'] for step in steps
+                          if (step.get('submission') or {}).get('operation')
+                          == 'goal_external_blocker_prepare')
+            second.update(request_id='archived-preview-100-second', pull_number=7)
+            second_preview = case.session.call(100, second)
+            second_review = copy.deepcopy(second_preview['next_steps'][0]['submission'])
+            second_review.update(actor='independent-thread', decision='approved',
+                report='The separate publication blocker is satisfied by the same archived merge.')
+            second_review['adoption'] = copy.deepcopy(review['adoption'])
+            with mock.patch.dict(os.environ, {'CODEX_THREAD_ID': 'independent-thread'}):
+                second_reviewed = case.session.call(100, second_review)
+            second_apply = copy.deepcopy(second_reviewed['next_steps'][0]['submission'])
+            second_apply['human_approval'] = copy.deepcopy(apply['human_approval'])
+            with mock.patch.dict(os.environ, {'CODEX_THREAD_ID': 'root-thread'}):
+                case.session.call(100, second_apply)
+            envelope = dag.z.parse_managed_goal(case.provider.issues[100]['body'], 100)
+            payload = case.session.read(100, envelope['payload'])
+            self.assertEqual(2, len(payload['goal_context_archived_prerequisites']['events']))
+            steps = case.session.checkpoint(100)
+            self.assertFalse(any((step.get('submission') or {}).get('operation')
+                                 == 'goal_external_blocker_prepare' for step in steps))
+            self.assertFalse(any('Goal #101 requires current' in step.get('reason', '')
+                                 for step in steps))
+            dependency = case.session.call(100, {'operation': 'goal_dependency_prepare',
+                'request_id': 'retire-adopted-prerequisite', 'old': 101,
+                'replacement': None,
+                'rationale': 'The archived prerequisite has been incorporated.'})['next_steps'][0]
+            dependency_review = copy.deepcopy(dependency['submission'])
+            dependency_review.update(actor='independent-thread', decision='approved',
+                report='The reviewed retirement preserves both archived resolutions.')
+            with mock.patch.dict(os.environ, {'CODEX_THREAD_ID': 'independent-thread'}):
+                dependency_reviewed = case.session.call(100, dependency_review)
+            dependency_apply = copy.deepcopy(dependency_reviewed['next_steps'][0]['submission'])
+            dependency_apply['human_approval'] = {'approved_by': 'requesting-user',
+                'attribution': 'Approved retiring this exact incorporated dependency.'}
+            with mock.patch.dict(os.environ, {'CODEX_THREAD_ID': 'root-thread'}):
+                case.session.call(100, dependency_apply)
+            self.assertTrue(case.session.checkpoint(100))
+            envelope = dag.z.parse_managed_goal(case.provider.issues[100]['body'], 100)
+            payload = case.session.read(100, envelope['payload'])
+            tampered = copy.deepcopy(payload)
+            tampered['operational']['receipts'] = [row for row in tampered['operational']['receipts']
+                if row['request'] != review['request_id']]
+            case.replace_legacy_payload(envelope, tampered)
+            rejected = case.session.call(100, expected=2)
+            self.assertRegex(json.dumps(rejected), r'(?i)archived|receipt|authentication')
+
+    def test_public_archived_preview_checks_exact_remote_evidence_without_writes(self):
+        case = self.fresh_case()
+        blocker = {'status': 'open', 'category': 'external-dependency',
+                   'question': 'Goal #101 must finish before this goal can use its work.'}
+        case.legacy_fields(100, depends_on=[101], blockers=[blocker])
+        self.assertEqual('migrated', case.migrate((100,))['members']['100']['status'])
+        repository = dag.z._project_repository_identity(case.session.project)
+        inputs = archive_tests.ArchivedPrerequisiteTests().candidate_inputs(
+            repository=repository, goal=101)
+        case.provider.issues[101] = copy.deepcopy(inputs['issue'])
+        store = dag.z._workflow.comment_store
+        source_envelope = {**inputs['target_intent'], 'revision': 8,
+                           'payload': inputs['target_intent']['payload']}
+        response_ref = {'hash': store.digest(inputs['migration_response']),
+            'uri': f'zzzops:{repository}:goal:101:{store.digest(inputs["migration_response"])}'}
+        receipt_ref = {'hash': store.digest(inputs['receipt']),
+            'uri': f'zzzops:{repository}:goal:101:{store.digest(inputs["receipt"])}'}
+        row = inputs['archived_payload']['operational']['receipts'][0]
+        context = {'request_id': row['request'], 'request_hash': row['payload'],
+            'response': response_ref, 'migration': {'receipt': receipt_ref},
+            'source_envelope': source_envelope,
+            'target_envelope': {**inputs['target_intent'],
+                                'payload': inputs['envelope']['payload']},
+            'entry_payload': inputs['envelope']['payload'],
+            'payload': inputs['envelope']['payload'],
+            'source_hash': store.digest(json.loads(inputs['source_bytes'])['content']['body']),
+            'human_hash': store.digest('Old goal\n\n')}
+        records = [{'hash': store.digest(value), 'kind': 'full', 'type': 'json',
+                    'text': store.canonical(value)} for value in
+                   (inputs['migration_response'], inputs['receipt'],
+                    inputs['target_intent'], inputs['target_payload'], inputs['archived_payload'])]
+        bodies = store.pack_envelopes({'goal': 101, 'transaction': 'sha256:' + '3' * 64,
+                                       'context': context}, records)
+        case.provider.comments[101] = [{'id': 9100 + i, 'body': body}
+                                       for i, body in enumerate(bodies)]
+        case.provider.archived_prerequisite_pull = lambda _number: copy.deepcopy(inputs['pull'])
+        case.provider.archived_prerequisite_reachable = lambda _commit, _branch: inputs['merge_reachable']
+        values = {dag.z._workflow.digest(value): value for value in
+                  (inputs['archived_payload'], inputs['migration_response'],
+                   inputs['receipt'], inputs['target_intent'], inputs['target_payload'])}
+        original_read = dag.z._workflow.Workflow.read_artifact
+        original_published = dag.z._workflow.Workflow.node_published_artifact
+
+        def read(engine, number, reference):
+            if number == 101:
+                return copy.deepcopy(values[reference['hash']])
+            return original_read(engine, number, reference)
+
+        def published(engine, reference):
+            if reference == inputs['receipt']['source']:
+                return json.loads(inputs['source_bytes']), inputs['source_bytes']
+            if reference == inputs['receipt']['policy']:
+                return json.loads(inputs['policy_bytes']), inputs['policy_bytes']
+            return original_published(engine, reference)
+
+        submission = next(step['submission'] for step in case.session.checkpoint(100)
+                          if (step.get('submission') or {}).get('operation')
+                          == 'goal_external_blocker_prepare')
+        submission.update(request_id='archived-public-preview-100', pull_number=7)
+        before = copy.deepcopy((case.provider.issues, case.provider.comments))
+        with mock.patch.object(dag.z._workflow.Workflow, 'read_artifact', read), \
+             mock.patch.object(dag.z._workflow.Workflow, 'node_published_artifact', published):
+            preview = case.session.call(100, submission)
+            self.assertEqual('archived_prerequisite_preview', preview['next_steps'][0]['kind'])
+            self.assertEqual(before, (case.provider.issues, case.provider.comments))
+            for change in ({'prerequisite': 102}, {'blocker_hash': 'sha256:' + 'a' * 64},
+                           {'context_hash': 'sha256:' + 'b' * 64}):
+                rejected = case.session.call(100, {**submission, **change}, expected=2)
+                self.assertRegex(json.dumps(rejected), r'(?i)archived|blocker|context|prerequisite')
+                self.assertEqual(before, (case.provider.issues, case.provider.comments))
+            inputs['pull']['baseRepository'] = 'foreign/repo'
+            rejected = case.session.call(100, submission, expected=2)
+            self.assertRegex(json.dumps(rejected), r'(?i)pull|repository|branch')
+            inputs['pull']['baseRepository'] = repository
+            inputs['merge_reachable'] = False
+            rejected = case.session.call(100, submission, expected=2)
+            self.assertRegex(json.dumps(rejected), r'(?i)reachable|merge')
+            self.assertEqual(before, (case.provider.issues, case.provider.comments))
+            inputs['merge_reachable'] = True
+            # A hash-consistent archived payload alone is not a historical
+            # conversion: its exact provider comment transaction must exist.
+            case.provider.comments[101] = []
+            rejected = case.session.call(100, submission, expected=2)
+            self.assertRegex(json.dumps(rejected), r'(?i)transaction|migration')
+            self.assertEqual(before[0], case.provider.issues)
+            self.assertEqual(before[1][100], case.provider.comments[100])
+            bad_context = {**context, 'request_hash': 'sha256:' + '4' * 64}
+            bad_bodies = store.pack_envelopes({'goal': 101,
+                'transaction': 'sha256:' + '5' * 64,
+                'context': bad_context}, records)
+            case.provider.comments[101] = [{'id': 9200 + i, 'body': body}
+                                           for i, body in enumerate(bad_bodies)]
+            rejected = case.session.call(100, submission, expected=2)
+            self.assertRegex(json.dumps(rejected), r'(?i)transaction|source|target|migration')
+            case.provider.comments[101] = copy.deepcopy(before[1][101])
+            review = copy.deepcopy(preview['next_steps'][0]['submission'])
+            review.update(actor='independent-thread', decision='approved',
+                report='The original obligation matches the archived conversion and merged PR.')
+            review['adoption'] = {'manual_request': 'opaque',
+                'terminal_equivalence': 'The reviewed merge satisfies this prerequisite.',
+                'retained_obligations': 'Normal phase and publication gates remain required.'}
+            with mock.patch.dict(os.environ, {'CODEX_THREAD_ID': 'independent-thread'}):
+                reviewed = case.session.call(100, review)
+            apply = copy.deepcopy(reviewed['next_steps'][0]['submission'])
+            apply['human_approval'] = {'approved_by': 'requesting-user',
+                'attribution': 'Approved this exact reviewed archived prerequisite.'}
+            inputs['pull']['body'] += ' A later edit retaining the link.'
+            with mock.patch.dict(os.environ, {'CODEX_THREAD_ID': 'root-thread'}):
+                rejected = case.session.call(100, apply, expected=2)
+            self.assertRegex(json.dumps(rejected), r'(?i)candidate|changed|review')
+            inputs['pull']['body'] = 'Refs #101.'
+            with mock.patch.dict(os.environ, {'CODEX_THREAD_ID': 'root-thread'}):
+                applied = case.session.call(100, apply)
+                self.assertEqual(applied, case.session.call(100, apply))
+            self.assertEqual('archived_prerequisite_applied', applied['next_steps'][0]['kind'])
+            steps = case.session.checkpoint(100)
+            self.assertFalse(any((step.get('submission') or {}).get('operation')
+                                 == 'goal_external_blocker_prepare' for step in steps))
+            self.assertFalse(any('Goal #101 requires current' in step.get('reason', '')
+                                 for step in steps))
+            case.provider.issues[101]['body'] += '\nA later edit retaining the link.'
+            rejected = case.session.call(100, expected=2)
+            self.assertRegex(json.dumps(rejected), r'(?i)archived|prerequisite|changed')
+            case.provider.issues[101]['body'] = inputs['issue']['body']
+            case.provider.issues[101]['state'] = 'open'
+            rejected = case.session.call(100, expected=2)
+            self.assertRegex(json.dumps(rejected), r'(?i)archived|prerequisite|closed')
 
     def test_dependency_review_requires_invoking_independent_thread(self):
         step = self.call({'operation': 'goal_dependency_prepare',
