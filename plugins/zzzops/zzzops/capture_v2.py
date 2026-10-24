@@ -6,6 +6,14 @@ import copy
 
 def capture(engine, request, proposal_hash):
     api = engine.api
+    approved_rigor = request['goal'].get('engineering_rigor')
+    rigor_assessment = None
+    if approved_rigor is not None:
+        rigor_assessment = api.derive_engineering_rigor(
+            approved_rigor, api._workflow_section(engine.project, 'engineering_rigor'))
+        if not rigor_assessment['valid']:
+            raise ValueError('Captured engineering rigor cannot be mapped under current policy: '
+                             + ', '.join(rigor_assessment['errors']))
     marker = '<!-- zzzops-capture:' + proposal_hash + ' -->'
     pending_body = request['body'] + marker + '\n'
     created = (engine.adapter.find_capture_goal(marker)
@@ -58,12 +66,13 @@ def capture(engine, request, proposal_hash):
         raise ValueError('Marked capture issue differs from the exact approved request')
 
     legacy = copy.deepcopy(request['goal'])
-    # Capture is not a historical migration: retain the approved planning
-    # inputs verbatim instead of attempting to reinterpret them as legacy
-    # routing policy.
+    # Capture retains the approved planning inputs. Routing consumes the
+    # reviewed policy projection, while the raw request remains in history.
     preserved = {key: copy.deepcopy(value) for key, value in legacy.items()
                  if key not in {'schema_version', 'status', 'revision', 'parent',
                                 'depends_on', 'blockers', 'claim', 'implementation'}}
+    if rigor_assessment is not None:
+        preserved['engineering_rigor'] = rigor_assessment
     compilation = api._migration_batch.normal_graph(engine, number, legacy, preserved)
     artifacts = {}
 
