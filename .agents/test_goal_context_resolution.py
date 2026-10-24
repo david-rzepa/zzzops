@@ -117,6 +117,117 @@ class GoalContextResolutionTests(unittest.TestCase):
         self.assertIsInstance(reference, dict)
         return step, self.case.session.read(100, reference)
 
+    def test_reviewed_dependency_retirement_preserves_blocker_and_history(self):
+        before_comments = copy.deepcopy(self.case.provider.comments[100])
+        preview = self.call({'operation': 'goal_dependency_prepare',
+            'request_id': 'dependency-preview-1', 'old': 101, 'replacement': None,
+            'rationale': 'The user approved moving this exact prerequisite into the goal.'})
+        step = preview['next_steps'][0]
+        self.assertEqual('review_required', step['kind'])
+        proposal = step['proposal']
+        self.assertEqual([101], proposal['before'])
+        self.assertEqual([], proposal['after'])
+        review_request = copy.deepcopy(step['submission'])
+        review_request.update(actor='independent-thread', decision='approved',
+            report='The selected edge is obsolete; unrelated blockers and evidence remain.')
+        with mock.patch.dict(os.environ, {'CODEX_THREAD_ID': 'independent-thread'}):
+            review_response = self.case.session.call(100, review_request)
+        approval = copy.deepcopy(review_response['next_steps'][0]['submission'])
+        approval['human_approval'] = {'approved_by': 'requesting-user',
+            'attribution': 'Approved the exact #101 relationship retirement.'}
+        applied = self.call(approval)
+        self.assertEqual('goal_dependency_changed', applied['next_steps'][0]['kind'])
+        self.assertEqual([101], applied['next_steps'][0]['before'])
+        self.assertEqual([], applied['next_steps'][0]['after'])
+        self.assertEqual(before_comments, self.case.provider.comments[100][:len(before_comments)])
+        self.assertEqual(self.original_context_ref, self.current_payload()['goal_context'])
+        steps = self.case.session.checkpoint(100)
+        self.assertTrue(any(s.get('kind') == 'goal_blocker_resolution' for s in steps))
+        self.assertFalse(any('Goal #101 requires current' in s.get('reason', '') for s in steps))
+        self.assertEqual(applied, self.call(approval), 'exact request replay must be idempotent')
+
+    def test_dependency_review_requires_invoking_independent_thread(self):
+        step = self.call({'operation': 'goal_dependency_prepare',
+            'request_id': 'dependency-preview-auth', 'old': 101, 'replacement': None,
+            'rationale': 'Retire the obsolete prerequisite.'})['next_steps'][0]
+        request = copy.deepcopy(step['submission'])
+        request.update(actor='independent-thread', decision='approved',
+                       report='Reviewed the exact edge and retained gates.')
+        self.assert_rejected_without_write(request, r'(?i)independent|thread|actor')
+        request['actor'] = 'root-thread'
+        self.assert_rejected_without_write(request, r'(?i)independent|thread|actor')
+
+    def test_dependency_event_without_review_receipt_is_rejected(self):
+        step = self.call({'operation': 'goal_dependency_prepare',
+            'request_id': 'dependency-preview-receipt', 'old': 101,
+            'replacement': None, 'rationale': 'Retire the obsolete prerequisite.'})['next_steps'][0]
+        request = copy.deepcopy(step['submission'])
+        request.update(actor='independent-thread', decision='approved',
+                       report='Reviewed the exact edge and retained gates.')
+        with mock.patch.dict(os.environ, {'CODEX_THREAD_ID': 'independent-thread'}):
+            review_response = self.case.session.call(100, request)
+        approval = copy.deepcopy(review_response['next_steps'][0]['submission'])
+        approval['human_approval'] = {'approved_by': 'requesting-user',
+                                     'attribution': 'Approved the exact edge retirement.'}
+        self.call(approval)
+        envelope = dag.z.parse_managed_goal(self.case.provider.issues[100]['body'], 100)
+        payload = copy.deepcopy(self.case.session.read(100, envelope['payload']))
+        payload['operational']['receipts'] = [
+            receipt for receipt in payload['operational']['receipts']
+            if receipt.get('request') != request['request_id']]
+        self.case.replace_legacy_payload(envelope, payload)
+        rejected = self.case.session.call(100, expected=2)
+        self.assertRegex(json.dumps(rejected), r'(?i)dependency|receipt|authentication')
+
+    def test_dependency_review_rejects_changed_goal_revision(self):
+        step = self.call({'operation': 'goal_dependency_prepare',
+            'request_id': 'dependency-preview-stale', 'old': 101,
+            'replacement': None, 'rationale': 'Retire the obsolete prerequisite.'})['next_steps'][0]
+        request = copy.deepcopy(step['submission'])
+        request.update(actor='independent-thread', decision='approved',
+                       report='Reviewed the exact edge and retained gates.')
+        envelope = dag.z.parse_managed_goal(self.case.provider.issues[100]['body'], 100)
+        self.case.replace_legacy_payload(envelope, self.current_payload())
+        before = copy.deepcopy((self.case.provider.issues, self.case.provider.comments))
+        with mock.patch.dict(os.environ, {'CODEX_THREAD_ID': 'independent-thread'}):
+            rejected = self.case.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(rejected), r'(?i)proposal|changed|stale|evidence')
+        self.assertEqual(before, (self.case.provider.issues, self.case.provider.comments))
+
+    def test_dependency_review_exact_retry_rejects_changed_report(self):
+        step = self.call({'operation': 'goal_dependency_prepare',
+            'request_id': 'dependency-preview-retry', 'old': 101,
+            'replacement': None, 'rationale': 'Retire the obsolete prerequisite.'})['next_steps'][0]
+        request = copy.deepcopy(step['submission'])
+        request.update(actor='independent-thread', decision='approved',
+                       report='Reviewed the exact edge and retained gates.')
+        with mock.patch.dict(os.environ, {'CODEX_THREAD_ID': 'independent-thread'}):
+            first = self.case.session.call(100, request)
+            self.assertEqual(first, self.case.session.call(100, request))
+            before = copy.deepcopy((self.case.provider.issues, self.case.provider.comments))
+            changed = {**request, 'report': 'A different review after the same request ID.'}
+            rejected = self.case.session.call(100, changed, expected=2)
+        self.assertRegex(json.dumps(rejected), r'(?i)request|replay|conflict|payload')
+        self.assertEqual(before, (self.case.provider.issues, self.case.provider.comments))
+
+    def test_dependency_change_preserves_unrelated_dependency(self):
+        self.fresh_case()
+        self.case.add(102)
+        self.case.legacy_fields(100, depends_on=[101, 102],
+                                blockers=[copy.deepcopy(self.blocker)])
+        self.case.migrate((100, 102))
+        self.case.normal_setup(100)
+        preview = self.call({'operation': 'goal_dependency_prepare',
+            'request_id': 'dependency-preview-unrelated', 'old': 101,
+            'replacement': None, 'rationale': 'Retire only goal 101.'})
+        proposal = preview['next_steps'][0]['proposal']
+        self.assertEqual([101, 102], proposal['before'])
+        self.assertEqual([102], proposal['after'])
+        envelope = dag.z.parse_managed_goal(self.case.provider.issues[100]['body'], 100)
+        payload = self.case.session.read(100, envelope['payload'])
+        context = self.case.session.read(100, payload['goal_context'])['content']
+        self.assertEqual(self.blocker, context['blockers'][0])
+
     def test_public_discovery_success_and_exact_authenticated_identity(self):
         step = self.discovery()
         submission = step["submission"]
