@@ -39,6 +39,7 @@ REQUIRED_FILES = {
     "rules/EXECUTION_STRATEGY.md", "rules/FEEDBACK.md", "rules/GOAL_SYSTEM.md",
     "rules/INITIALIZATION.md", "zzzops/installation.py", "zzzops/plugin_freshness.py", "zzzops/bootstrap.py", "zzzops/merge_reconciliation.py", "zzzops/entropy.py",
     "zzzops/entropy_review.py", "zzzops/zzzops.py", "zzzops/working_inputs.py",
+    "zzzops/archived_prerequisites.py",
     "zzzops/coaching.py", "zzzops/concepts.py",
     "skills/execute-zzzops/references/ENTROPY_OBSERVATIONS.md",
     "skills/execute-zzzops/references/REVIEW_QUEUE.md",
