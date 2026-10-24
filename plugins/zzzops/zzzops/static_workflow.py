@@ -306,6 +306,36 @@ def resolved_goal_context(context, resolutions):
     return result
 
 
+def changed_goal_dependencies(context, changes):
+    """Project reviewed single-edge changes without rewriting migrated context."""
+    if (not isinstance(context, dict) or set(context) !=
+            {'version', 'depends_on', 'blockers', 'metadata'} or context.get('version') != 1
+            or not isinstance(context.get('depends_on'), list)
+            or any(type(value) is not int or value <= 0 for value in context['depends_on'])
+            or len(context['depends_on']) != len(set(context['depends_on']))
+            or not isinstance(changes, list)):
+        raise ValueError('Unsupported or malformed goal dependency context')
+    result = copy.deepcopy(context)
+    for change in changes:
+        if (not isinstance(change, dict) or set(change) != {'old', 'replacement'}
+                or type(change['old']) is not int or change['old'] <= 0
+                or (change['replacement'] is not None
+                    and (type(change['replacement']) is not int or change['replacement'] <= 0))
+                or change['replacement'] == change['old']):
+            raise ValueError('Goal dependency change has invalid identities')
+        dependencies = result['depends_on']
+        if dependencies.count(change['old']) != 1:
+            raise ValueError('Goal dependency change must select one current edge')
+        if change['replacement'] in dependencies:
+            raise ValueError('Goal dependency replacement duplicates an existing edge')
+        position = dependencies.index(change['old'])
+        if change['replacement'] is None:
+            del dependencies[position]
+        else:
+            dependencies[position] = change['replacement']
+    return result
+
+
 def phase_data(events, graph, goal):
     """Project authenticated event contents without dropping historical versions.
 
