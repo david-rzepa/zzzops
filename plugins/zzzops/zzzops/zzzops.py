@@ -1673,7 +1673,7 @@ def _pull_request_detail_query(numbers: list[int]) -> str:
     fields = "\n".join(
         f"""    pr_{number}:pullRequest(number:{number}){{
       merged mergedAt headRefOid baseRefName baseRefOid
-      mergeCommit{{oid}}
+      mergeCommit{{oid message parents(first:2){{nodes{{oid}} pageInfo{{hasNextPage}}}}}}
       repository{{nameWithOwner}}
       reviewDecision
       commits(last:1){{nodes{{commit{{statusCheckRollup{{contexts(first:100){{nodes{{
@@ -1718,7 +1718,7 @@ def _cached_pull_request_states(repo: Path, marker: list[dict[str, Any]]) -> dic
     except (OSError, UnicodeError, json.JSONDecodeError):
         return None
     states = cache.get("states") if isinstance(cache, dict) else None
-    if cache.get("schema_version") != 1 or cache.get("marker") != marker or not isinstance(states, dict):
+    if cache.get("schema_version") != 2 or cache.get("marker") != marker or not isinstance(states, dict):
         return None
     if any(not isinstance(value, dict) for value in states.values()):
         return None
@@ -1728,7 +1728,7 @@ def _cached_pull_request_states(repo: Path, marker: list[dict[str, Any]]) -> dic
 def _store_pull_request_states(repo: Path, marker: list[dict[str, Any]], states: dict[str, dict[str, Any]]) -> None:
     try:
         atomic_text(_portfolio_pull_request_cache_path(repo), json.dumps(
-            {"schema_version": 1, "marker": marker, "states": states}, sort_keys=True, separators=(",", ":"),
+            {"schema_version": 2, "marker": marker, "states": states}, sort_keys=True, separators=(",", ":"),
         ))
     except OSError:
         pass
@@ -1813,6 +1813,14 @@ def _observe_pull_request_states(
                 "base_oid": pull_request.get("baseRefOid"),
                 "base_ref": pull_request.get("baseRefName"),
                 "merge_commit": merge_commit.get("oid") if isinstance(merge_commit, dict) else None,
+                "merge_message": merge_commit.get("message") if isinstance(merge_commit, dict) else None,
+                "merge_parents": ([row.get("oid") for row in merge_commit["parents"]["nodes"]]
+                                  if isinstance(merge_commit, dict)
+                                  and isinstance(merge_commit.get("parents"), dict)
+                                  and isinstance(merge_commit["parents"].get("pageInfo"), dict)
+                                  and merge_commit["parents"]["pageInfo"].get("hasNextPage") is False
+                                  and isinstance(merge_commit["parents"].get("nodes"), list)
+                                  else None),
                 "repository": pr_repository.get("nameWithOwner") if isinstance(pr_repository, dict) else None,
                 "checks_verified": _pull_request_checks_verified(pull_request),
                 "checks_present": _pull_request_checks_present(pull_request),
