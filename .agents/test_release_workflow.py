@@ -5,6 +5,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import copy
+import subprocess
+import tempfile
 import unittest
 
 
@@ -29,6 +31,49 @@ def goal(key, *, release=None, priority="P2", state="write", depends_on=(), comm
 
 class ReleaseWorkflowContractTests(unittest.TestCase):
     def setUp(self): self.r = load_subject()
+
+    def test_live_trunks_propagate_one_adjacent_edge_and_preserve_same_tree_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            def git(*args):
+                return subprocess.run(['git', *args], cwd=repo, check=True,
+                                      text=True, capture_output=True).stdout.strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Test')
+            git('config', 'user.email', 'test@example.invalid')
+            (repo / 'product.txt').write_text('base\n')
+            git('add', 'product.txt')
+            git('commit', '-qm', 'base')
+            base = git('rev-parse', 'HEAD')
+            git('branch', 'main', base)
+            git('branch', 'release/1', base)
+            git('branch', 'release/2', base)
+            git('branch', 'dev', base)
+            git('checkout', '-q', 'main')
+            git('commit', '--allow-empty', '-qm', 'main: ancestry only')
+            main = git('rev-parse', 'HEAD')
+            refs = [('main', main), ('release/1', base),
+                    ('release/2', base), ('dev', base)]
+            first = self.r.preview_trunk_propagation(repo, refs)
+            self.assertEqual(('main', 'release/1'),
+                             (first['source'], first['target']))
+            self.assertFalse(first['content_change'])
+            git('checkout', '-q', 'release/1')
+            git('merge', '--no-ff', '-m', 'propagate main', 'main')
+            refs[1] = ('release/1', git('rev-parse', 'HEAD'))
+            second = self.r.preview_trunk_propagation(repo, refs)
+            self.assertEqual(('release/1', 'release/2'),
+                             (second['source'], second['target']))
+            self.assertFalse(second['content_change'])
+            git('checkout', '-q', 'release/2')
+            git('merge', '--no-ff', '-m', 'propagate release/1', 'release/1')
+            (repo / 'product.txt').write_text('release change\n')
+            git('commit', '-qam', 'release: content change')
+            refs[2] = ('release/2', git('rev-parse', 'HEAD'))
+            third = self.r.preview_trunk_propagation(repo, refs)
+            self.assertEqual(('release/2', 'dev'),
+                             (third['source'], third['target']))
+            self.assertTrue(third['content_change'])
 
     def test_disabled_mode_preserves_existing_portfolio_order(self):
         records = [goal(1, priority="P2"), goal(2, priority="P0"), goal(3, priority="P1")]
