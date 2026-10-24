@@ -4633,7 +4633,7 @@ class Workflow:
             if key in work or state['state'] == 'blocked': continue
             if (state['contract']['executor']['role'] == 'root'
                     and any(slot.get('type') == 'merge_observation'
-                            for slot in state['contract']['outputs'].values())):
+                            for slot in state['contract'].get('outputs', {}).values())):
                 # This terminal task observes GitHub's already merged commit.
                 # It reads no repository files, so a managed checkout would
                 # add a mutable input after the irreversible provider effect.
