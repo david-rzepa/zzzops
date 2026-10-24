@@ -2168,10 +2168,25 @@ class Workflow:
             recovered = lineage.get('historical_goal_context')
             if 'goal_context' in payload:
                 metadata = resolve(payload['goal_context'])
+                direct_provenance = metadata.get('provenance')
+                direct = False
+                if (isinstance(direct_provenance, dict)
+                        and direct_provenance.get('actor') == 'direct-v2-capture/1'
+                        and direct_provenance.get('source') is None
+                        and direct_provenance == source_artifact.get('provenance')
+                        and isinstance(direct_provenance.get('policy'), dict)):
+                    try:
+                        policy_ref = direct_provenance['policy']
+                        self.api._phase_evidence.validate_ref(policy_ref)
+                        original_policy = resolve(policy_ref)
+                        direct = digest(original_policy) == policy_ref['hash']
+                    except (KeyError, ValueError):
+                        direct = False
                 if (metadata.get('type') != 'goal_context' or metadata.get('producer') is not None
-                        or metadata.get('content', {}).get('version') != 1 or recovered is None
-                        or metadata['content'] != recovered
-                        or metadata.get('provenance') not in lineage.get('goal_context_provenances', [])):
+                        or metadata.get('content', {}).get('version') != 1
+                        or not (direct or (recovered is not None
+                            and metadata['content'] == recovered
+                            and metadata.get('provenance') in lineage.get('goal_context_provenances', [])))):
                     raise ValueError('Goal context lacks its exact authenticated migration source/policy lineage')
                 snapshot['goal_context'] = metadata['content']
                 snapshot['goal_context_ref'] = copy.deepcopy(payload['goal_context'])
@@ -5098,7 +5113,10 @@ class Workflow:
         if snapshot.get('original_goal_context') and 'goal_context' not in payload:
             payload['goal_context'] = add({'type': 'goal_context', 'content': snapshot['original_goal_context'],
                 'producer': None, 'provenance': snapshot['goal_context_provenance']})
-        payload['operational']['receipts'].append({'request': request['request_id'], 'payload': digest(request), 'result': add(response)})
+        if not snapshot.get('capture'):
+            payload['operational']['receipts'].append({'request': request['request_id'], 'payload': digest(request), 'result': add(response)})
+        else:
+            add(response)
         entry_payload = add(payload)
         envelope = {**snapshot['envelope'], 'revision': snapshot['envelope']['revision'] + 1, 'payload': entry_payload}
         if 'activation' in snapshot:
@@ -5108,7 +5126,11 @@ class Workflow:
             envelope = {**activation['envelope'], 'revision': envelope['revision'], 'payload': add(target_payload)}
         if 'parent_change' in snapshot: envelope['parent'] = snapshot['parent_change']
         if snapshot.get('archive'): envelope['state'] = 'archived'
-        issue = snapshot['issue']; prefix, suffix = self.api._migration_batch.human_parts(self, issue['body'])
+        issue = snapshot['issue']
+        if snapshot.get('capture'):
+            prefix, suffix = issue['body'], ''
+        else:
+            prefix, suffix = self.api._migration_batch.human_parts(self, issue['body'])
         body = prefix + self.api._goals.GOAL_BLOCK_START + '\n' + json.dumps(envelope, sort_keys=True) + '\n' + self.api._goals.GOAL_BLOCK_END + suffix
         if self.adapter.get_issue(number)['body'] != issue['body']: raise ValueError('Concurrent predecessor source revision changed before write')
         comments = self.adapter.get_issue_comments(number)
@@ -5131,6 +5153,8 @@ class Workflow:
                 for child in value: retain(child)
         retain(envelope['payload'])
         retain(entry_payload)
+        if snapshot.get('capture'):
+            retain(self.node_ref(digest(response), number))
         proof = snapshot.get('workspace_proof')
         first_identity = digest(response) if snapshot.get('normalization') else (proof or {}).get('hash')
         referenced_continuation = (response.get('type') == 'submission_continuation'
@@ -5217,12 +5241,15 @@ class Workflow:
         if snapshot.get('migration') and digest(self.api.reviewed_project_state(self.repo)['policy']) != snapshot['migration']['policy']:
             raise ValueError('Reviewed policy/graph changed before migration publication')
         observed = self.adapter.get_issue(number)
+        if snapshot.get('capture') and observed.get('number') != number:
+            raise ValueError('Capture provider readback changed issue identity')
         if observed['body'] != issue['body']: raise ValueError('Concurrent source edit before body publication')
         if str(observed.get('state', '')).lower() == 'closed' and not snapshot.get('archive'):
             raise ValueError('Goal closed before body publication; explicit reopening is required')
         # Ordinary checkpoints own only the managed body. Resending snapshot
         # labels/state would overwrite unrelated edits or reopen a closed goal.
         update = {'body': body}
+        if snapshot.get('capture'): update['labels'] = snapshot['capture_labels']
         if snapshot.get('archive'): update['state'] = 'closed'
         try:
             updated = self.adapter.update_issue(number, update)
@@ -5230,10 +5257,21 @@ class Workflow:
             updated = self.adapter.get_issue(number)
             if updated.get('body') != body: raise ValueError('Unconfirmed provider body publication; retry exact request') from exc
         if updated.get('body') != body: raise ValueError('Provider did not confirm exact goal body; retry same request')
+        if snapshot.get('capture'):
+            labels = {row.get('name') if isinstance(row, dict) else row
+                      for row in updated.get('labels', [])}
+            if labels != set(snapshot['capture_labels']):
+                raise ValueError('Provider did not confirm exact capture labels; retry same request')
+            confirmed = self.api.parse_managed_goal(updated.get('body', ''), number)
+            if (confirmed.get('repository') != self.repository
+                    or confirmed.get('issue') != number):
+                raise ValueError('Provider did not confirm capture repository/issue identity')
         if snapshot.get('archive') and str(updated.get('state', '')).lower() != 'closed': raise ValueError('Provider did not confirm goal closure; repair partial state')
         if not snapshot.get('archive') and str(updated.get('state', '')).lower() == 'closed':
             raise ValueError('Goal closed during body publication; execution cannot resume without explicit reopening')
         self.invalidate()
+        if snapshot.get('capture'):
+            return response
         response = self.node_receipt_response(number, request, payload['operational']['receipts'][-1], response, confirmed_target=envelope)
         return self.stop_completed_heartbeat(number, request, payload['operational'], response)
 
@@ -6657,7 +6695,8 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 raise
             except (ValueError, KeyError, OSError) as exc:
                 return {'next_steps': [{'kind': 'blocker', 'goal': number, 'reason': str(exc), 'remediation': api._migration_batch.remediation(number, str(exc))}]}
-    portfolio_rows = engine.portfolio(allow_invalid=True) if operation not in {'read', 'release', 'renew'} else None
+    portfolio_rows = engine.portfolio(allow_invalid=True) if operation not in {
+        'read', 'release', 'renew', 'capture', 'capture_propose'} else None
     if operation == 'start' and number is not None:
         release_policy = policy_section(project, 'git_review_release')['configuration'].get('release_planning')
         if isinstance(release_policy, dict) and release_policy.get('enabled'):
@@ -6739,6 +6778,9 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             raise ValueError('Goal design must contain explicit acceptance bullets covering its required behavior')
         return {'next_steps': [{'kind': 'human_approval', 'assignment': 'root', 'action': 'Review the captured goal design with the user, then approve these exact contents.', 'proposal': request, 'proposal_hash': digest(request), 'submission': {'operation': 'capture', 'request': request, 'proposal_hash': digest(request), 'approved_by': '<user>'}}]}
     if operation == 'capture':
+        capture_errors = api.validate_goal_create(payload.get('request'), allow_deferred=True)
+        if capture_errors:
+            raise ValueError('; '.join(capture_errors))
         if not (runtime or {}).get('root_id'):
             raise ValueError('Goal design approval must be coordinated by root')
         if not explicit_approval(payload.get('approved_by')) or payload.get('proposal_hash') != digest(payload['request']):
@@ -6753,27 +6795,25 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                            if isinstance(release_policy, dict) and release_policy.get('enabled') else None)
         receipt = (release_adapter.capture_receipt(engine.repository, payload['proposal_hash'])
                    if release_adapter is not None and hasattr(release_adapter, 'capture_receipt') else None)
+        publication_error = None
         if receipt is not None:
             if (receipt.get('repository') != engine.repository
                     or receipt.get('proposal_hash') != payload['proposal_hash']
                     or receipt.get('request_digest') != digest(payload['request'])):
                 raise ValueError('capture receipt conflicts with repository or approved proposal')
             created = copy.deepcopy(receipt['goal'])
-        else:
-            marker = '<!-- zzzops-capture:' + payload['proposal_hash'] + ' -->'
-            create_request = copy.deepcopy(payload['request'])
-            create_request['body'] = create_request['body'].rstrip() + '\n\n' + marker + '\n'
-            created = (engine.adapter.find_capture_goal(marker)
-                       if hasattr(engine.adapter, 'find_capture_goal') else None)
-            if created is None:
-                try:
-                    with engine.locked():
-                        created = api.apply_goal_create(engine.adapter, engine.repository, create_request, allow_deferred=True)
-                except (OSError, RuntimeError, TimeoutError, ValueError):
-                    created = (engine.adapter.find_capture_goal(marker)
-                               if hasattr(engine.adapter, 'find_capture_goal') else None)
-                    if created is None:
-                        raise
+        marker = '<!-- zzzops-capture:' + payload['proposal_hash'] + ' -->'
+        try:
+            with engine.locked():
+                created = api._capture_v2.capture(engine, payload['request'], payload['proposal_hash'])
+        except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
+            recovered = (engine.adapter.find_capture_goal(marker)
+                         if hasattr(engine.adapter, 'find_capture_goal') else None)
+            if recovered is None:
+                raise
+            created = recovered
+            publication_error = str(exc)
+        if receipt is None:
             if release_adapter is not None:
                 release_adapter.append_artifact(engine.repository, {
                     'kind': 'zzzops-capture-receipt', 'request_id': payload['proposal_hash'],
@@ -6781,6 +6821,10 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                     'request_digest': digest(payload['request']), 'goal': copy.deepcopy(created)})
         engine.invalidate()
         created_number = created['number']
+        if publication_error is not None:
+            return {'next_steps': [{'kind': 'blocker', 'goal': created_number,
+                    'reason': publication_error,
+                    'action': 'Retry this exact approved capture to complete schema-2 publication.'}]}
         capture = None
         if isinstance(release_policy, dict) and release_policy.get('enabled'):
             effective_target = target_release or release_policy['next_release']
@@ -6805,15 +6849,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
                 capture = api._releases.capture_assignment_result(goal=created, assignment=None,
                     target_release=effective_target, error=str(exc), request_id=payload['proposal_hash'])
-        # Convert only this newly created goal. Its first generic graph is
-        # compiled by the versioned converter before any executable frontier.
-        result = api._migration_batch.run(engine, {'action': 'migrate', 'goals': [created_number]})
-        member = result['next_steps'][0]['members'][str(created_number)]
-        if member['status'] != 'migrated':
-            return {'next_steps': [{'kind': 'blocker', 'goal': created_number,
-                                   'reason': member.get('reason', member['status']),
-                                   'remediation': member.get('remediation')}]}
-        result = {'next_steps': member['next_steps']}
+        result = {'next_steps': api._migration_batch.next_steps(engine, created_number)}
         if capture is not None: result['capture'] = capture
         return result
     if operation == 'batch':
