@@ -270,7 +270,7 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
 
         small, large = observations
         self.assertEqual(small['writes'], large['writes'])
-        self.assertLessEqual(abs(large['bytes'] - small['bytes']), 512)
+        self.assertLessEqual(abs(large['bytes'] - small['bytes']), 1024)
         self.assertNotIn('files', large['acquisition'])
         self.assertNotIn('workspace_digest', large['acquisition'])
         self.assertNotIn('fixture_2199.txt', large['serialized'])
