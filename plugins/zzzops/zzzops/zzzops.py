@@ -142,6 +142,13 @@ _releases = importlib.util.module_from_spec(_RELEASES_MODULE_SPEC)
 sys.modules[_RELEASES_MODULE_SPEC.name] = _releases
 _RELEASES_MODULE_SPEC.loader.exec_module(_releases)
 
+_STACK_INTEGRATION_MODULE_PATH = Path(__file__).with_name("stack_integration.py")
+_STACK_INTEGRATION_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_stack_integration", _STACK_INTEGRATION_MODULE_PATH)
+assert _STACK_INTEGRATION_MODULE_SPEC and _STACK_INTEGRATION_MODULE_SPEC.loader
+_stack_integration = importlib.util.module_from_spec(_STACK_INTEGRATION_MODULE_SPEC)
+sys.modules[_STACK_INTEGRATION_MODULE_SPEC.name] = _stack_integration
+_STACK_INTEGRATION_MODULE_SPEC.loader.exec_module(_stack_integration)
+
 GitHubReleasePlanAdapter = _releases.GitHubReleasePlanAdapter
 GitHubReleaseBranchAdapter = _releases.GitHubReleaseBranchAdapter
 
@@ -1682,12 +1689,19 @@ def _pull_request_detail_query(numbers: list[int]) -> str:
 
 def _github_pr_query(repo: Path, executable: str, owner: str, name: str, query: str, detail: str) -> tuple[dict[str, Any], int]:
     command = [executable, "api", "graphql", "-f", f"query={query}", "-F", f"owner={owner}", "-F", f"name={name}"]
+    remaining = provider_operation_remaining()
+    if remaining is not None and remaining <= 0:
+        raise ValueError(f"GitHub pull-request {detail} read exceeded the provider deadline")
+    timeout = min(60, remaining) if remaining is not None else 60
     try:
-        result = subprocess.run(command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+        result = subprocess.run(command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=timeout, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ValueError(f"GitHub pull-request {detail} read failed: {type(exc).__name__}") from exc
     if result.returncode:
         raise ValueError(f"GitHub pull-request {detail} read failed: " + (result.stderr.strip() or "unknown gh error"))
+    response_bytes = len(result.stdout.encode("utf-8"))
+    if response_bytes > 1024 * 1024:
+        raise ValueError(f"GitHub pull-request {detail} response exceeds 1 MiB limit")
     try:
         payload = json.loads(result.stdout)
         repository = payload["data"]["repository"]
@@ -1695,7 +1709,7 @@ def _github_pr_query(repo: Path, executable: str, owner: str, name: str, query: 
         raise ValueError(f"GitHub pull-request {detail} read returned invalid JSON") from exc
     if not isinstance(repository, dict):
         raise ValueError(f"GitHub pull-request {detail} read is incomplete or malformed")
-    return repository, len(result.stdout.encode("utf-8"))
+    return repository, response_bytes
 
 
 def _cached_pull_request_states(repo: Path, marker: list[dict[str, Any]]) -> dict[str, dict[str, Any]] | None:
