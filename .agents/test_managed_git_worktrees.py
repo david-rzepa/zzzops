@@ -221,6 +221,34 @@ class ManagedWorktreeTests(unittest.TestCase):
                 expected_head=self.base, integrated_commit=integrated)
         self.assertTrue((draft_path / 'unverified.txt').exists())
 
+    def test_linked_checkout_resolves_primary_owner_and_leaves_sibling_untouched(self):
+        sibling = Path(self.temp.name) / 'unmanaged-sibling'
+        self.git('worktree', 'add', '-q', '--detach', str(sibling), self.base)
+        (sibling / 'local-draft.txt').write_text('unmanaged sibling draft\n')
+
+        prepared = managed.prepare_worktree(sibling, goal=566, node='implement',
+                                            attempt='e' * 32, base_commit=self.base)
+        path = Path(prepared['path'])
+        self.assertEqual(self.repo / '.zzzops/worktrees/566/implement' / ('e' * 32), path)
+        self.assertEqual('clean', managed.inspect_attempt_worktree(
+            sibling, goal=566, node='implement', attempt='e' * 32)['status'])
+
+        (path / 'output.txt').write_text('verified result\n')
+        self.git('add', 'output.txt', cwd=path)
+        self.git('commit', '-qm', 'feat(goal-566): verify linked checkout owner', cwd=path)
+        head = self.git('rev-parse', 'HEAD', cwd=path).strip()
+        retained = phase.retain_attempt_ref(path, remote='origin', goal=566,
+            node='implement', attempt='e' * 32, commit=head)['ref']
+        self.git('merge', '--ff-only', prepared['branch'])
+
+        removed = managed.cleanup_integrated_worktree(sibling, goal=566,
+            node='implement', attempt='e' * 32, expected_head=head,
+            integrated_commit=head, remote='origin', retained_ref=retained)
+        self.assertEqual('removed', removed['outcome'])
+        self.assertFalse(path.exists())
+        self.assertTrue((sibling / 'local-draft.txt').exists())
+        self.assertIn(str(sibling.resolve()), self.git('worktree', 'list', '--porcelain'))
+
 
 if __name__ == '__main__':
     unittest.main()

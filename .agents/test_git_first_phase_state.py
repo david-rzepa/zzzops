@@ -53,6 +53,30 @@ class FreshGoalGitCheckpointTests(DagFixture):
         self.assertTrue(all(len(comment['body']) <= 65536
                             for comment in self.provider.comments[100]))
 
+    def test_fresh_readonly_acquisition_from_nonowning_checkout_uses_registered_owner(self):
+        sibling_root = tempfile.TemporaryDirectory()
+        self.addCleanup(sibling_root.cleanup)
+        sibling = Path(sibling_root.name) / 'unmanaged-sibling'
+        self.session.git('worktree', 'add', '-q', '--detach', str(sibling), 'HEAD')
+        self.addCleanup(subprocess.run, ['git', '-C', str(self.fixture.repo),
+                                        'worktree', 'remove', '--force', str(sibling)],
+                        capture_output=True)
+        (sibling / 'local-review-notes.txt').write_text('not part of the committed input\n')
+        self.session.repo = sibling
+        self.default_graph()
+
+        work = self.session.acquire('requirements')
+
+        self.assertEqual(self.session.git('rev-parse', 'HEAD').strip(),
+                         work['lease']['acquisition']['read_commit'])
+        self.assertEqual(self.fixture.repo / '.zzzops/worktrees/100/requirements' /
+                         work['lease']['attempt'], Path(work['managed_worktree']['path']))
+        self.assertFalse((Path(work['managed_worktree']['path']) /
+                          'local-review-notes.txt').exists())
+        self.assertTrue((sibling / 'local-review-notes.txt').exists())
+        self.assertNotIn('files', work['lease']['acquisition'])
+        self.assertEqual([100], sorted(self.provider.issues))
+
     def test_first_acquisition_with_many_files_is_bounded_and_replayable(self):
         paths = self.fixture.repo / 'many'
         paths.mkdir()
@@ -183,6 +207,30 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         self.assertNotIn('workspace_digest', acquisition)
         self.assertEqual([100], sorted(fixture.provider.issues))
         self.assertTrue(all(len(comment['body']) <= 65536 for comment in fixture.provider.comments[100]))
+
+    def test_large_workspace_does_not_scale_first_acquisition_provider_writes(self):
+        observations = []
+        for many_files in (0, 2200):
+            fixture = self.fixture_with_git_workspace(many_files=many_files)
+            work = fixture.acquire_workspace('alpha')
+            comments = fixture.provider.comments[100]
+            serialized = json.dumps({
+                'issue': fixture.provider.issues[100],
+                'comments': comments,
+            }, sort_keys=True, separators=(',', ':'))
+            observations.append({
+                'writes': len(comments),
+                'bytes': len(serialized.encode()),
+                'acquisition': work['lease']['acquisition'],
+                'serialized': serialized,
+            })
+
+        small, large = observations
+        self.assertEqual(small['writes'], large['writes'])
+        self.assertLessEqual(abs(large['bytes'] - small['bytes']), 512)
+        self.assertNotIn('files', large['acquisition'])
+        self.assertNotIn('workspace_digest', large['acquisition'])
+        self.assertNotIn('fixture_2199.txt', large['serialized'])
 
     def test_dirty_primary_checkout_does_not_enter_isolated_git_attempt(self):
         fixture = self.fixture_with_git_workspace()
