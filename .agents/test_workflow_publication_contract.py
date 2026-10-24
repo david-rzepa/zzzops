@@ -1230,9 +1230,9 @@ class GenericPublicationPublicTests(DagFixture):
                 self.session.call(100, self.session.submission(work, {"value": {**value, key: wrong}}, "wrong-merge-" + key), expected=2)
                 self.assertEqual(before, (self.provider.issues, self.provider.comments))
         self.session.finish(work, {"value": value})
-        self.assertIn(self.ids["finish"], self.names())
-        self.submit_role("finish", "Exact post-effect evidence consumed")
-        self.assertEqual(set(), self.names())
+        self.assertNotIn(self.ids["finish"], self.names(),
+                         "Postmerge work is limited to observation and reconciliation")
+        self.assertEqual("open", self.provider.issues[100]["state"])
 
     def test_unmerged_provider_cannot_issue_merge_observation_then_external_merge_is_readable(self):
         self.install(self.with_merge_observation(copy.deepcopy(self.graph)))
@@ -1247,7 +1247,8 @@ class GenericPublicationPublicTests(DagFixture):
         self.mark_merged()  # External provider event; no lease takeover or semantic Result fabrication.
         self.session.finish(work, {"value": self.merge_value()})
         self.assertEqual(0, len(self.merge_calls))
-        self.submit_role("finish", "Observed external merge has exact evidence")
+        self.assertNotIn(self.ids["finish"], self.names())
+        self.assertEqual("open", self.provider.issues[100]["state"])
 
     def test_declared_base_is_not_replaced_by_unrelated_checkout_head(self):
         self.authorize_context()
@@ -1769,12 +1770,13 @@ class GenericPublicationPublicTests(DagFixture):
                 self.configure()
                 self.authorize_context()
                 authority = self.approve_publication()
-                self.mark_merged()
+                self.submit_role("finish", "Current complete graph")
                 before = copy.deepcopy((self.provider.issues, self.provider.comments))
                 request = {"operation": "complete", "authorization": authority, "request_id": "complete-" + mode}
                 self.session.call(100, request, expected=2)
-                self.assertEqual(before, (self.provider.issues, self.provider.comments), "Even disabled CI cannot replace missing terminal Result")
-                self.submit_role("finish", "Current complete graph")
+                self.assertEqual(before, (self.provider.issues, self.provider.comments),
+                                 "A failed completion preflight must preserve provider state")
+                self.mark_merged()
                 self.observation["checks_verified"] = False
                 if mode == "inspect_exact_pr_head":
                     before = copy.deepcopy((self.provider.issues, self.provider.comments))
@@ -1944,7 +1946,8 @@ class GenericDeliveryPublicTests(DagFixture):
         self.assertTrue(self.observation["merged"])
         post_effect = self.session.acquire("observed_merge")
         self.session.finish(post_effect, {"value": self.merge_value()})
-        self.submit_role("finish", "Current connected delivery and observed merge evidence")
+        self.assertNotIn(self.ids["finish"], self.names(),
+                         "The observed merge cannot start a new substantive terminal")
         self.assertEqual(red, self.read_blob(red_reference))
         self.assertEqual(green, self.read_blob(green_reference))
         self.assertEqual(0, green["commands"][0]["exit_code"])
