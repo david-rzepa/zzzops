@@ -263,17 +263,21 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
             }, sort_keys=True, separators=(',', ':'))
             observations.append({
                 'writes': len(comments),
-                'bytes': len(serialized.encode()),
+                'acquisition_bytes': len(json.dumps(
+                    work['lease']['acquisition'], sort_keys=True,
+                    separators=(',', ':')).encode()),
                 'acquisition': work['lease']['acquisition'],
                 'serialized': serialized,
             })
 
         small, large = observations
         self.assertEqual(small['writes'], large['writes'])
-        self.assertLessEqual(abs(large['bytes'] - small['bytes']), 1024)
+        self.assertEqual(small['acquisition_bytes'], large['acquisition_bytes'])
         self.assertNotIn('files', large['acquisition'])
         self.assertNotIn('workspace_digest', large['acquisition'])
         self.assertNotIn('fixture_2199.txt', large['serialized'])
+        self.assertTrue(all(len(comment['body']) <= 65536
+                            for comment in fixture.provider.comments[100]))
 
     def test_dirty_primary_checkout_does_not_enter_isolated_git_attempt(self):
         fixture = self.fixture_with_git_workspace()
