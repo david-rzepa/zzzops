@@ -25,6 +25,49 @@ class FreshGoalGitCheckpointTests(DagFixture):
                                side_effect=AssertionError('inactive legacy phase scanned files')):
             self.session.acquire('requirements')
 
+    def test_fresh_commit_only_acquisition_is_bounded_with_active_legacy_sibling(self):
+        paths = self.fixture.repo / 'large-coexistence'
+        paths.mkdir()
+        for index in range(2200):
+            (paths / f'fixture_{index:04d}.txt').write_text(f'file {index}\n')
+        self.session.git('add', 'large-coexistence')
+        self.session.git('commit', '-qm', 'large mixed workspace base')
+        template = json.loads((fixtures.PLUGIN_ROOT /
+                               'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
+        graph = z._workflow_section(
+            template, 'workflow_adherence')['configuration']['phase_dag']
+        legacy = journeys.task('legacy_sibling')
+        legacy['executor']['resources'] = ['repository_workspace']
+        graph['nodes'].append(legacy)
+        graph['terminals'].append(journeys.selector('legacy_sibling'))
+        z._workflow_section(self.session.project, 'workflow_adherence')[
+            'configuration']['phase_dag'] = graph
+        self.install(graph)
+        frontier = self.session.ready()
+        self.assertIn('requirements', {step['node']['node'] for step in frontier})
+        self.assertEqual([], legacy['requires'])
+        self.assertIn(journeys.selector('legacy_sibling'), graph['terminals'])
+
+        original = z._workflow.Workflow.workspace_files
+        scans = []
+        def observe_legacy_scan(engine):
+            scans.append(True)
+            return original(engine)
+        with mock.patch.object(z._workflow.Workflow, 'workspace_files',
+                               autospec=True, side_effect=observe_legacy_scan):
+            work = self.session.acquire('requirements', frontier=frontier)
+
+        acquisition = work['lease']['acquisition']
+        self.assertEqual(self.session.git('rev-parse', 'HEAD').strip(),
+                         acquisition['read_commit'])
+        self.assertNotIn('files', acquisition)
+        self.assertNotIn('read_files', acquisition)
+        self.assertEqual([], scans, 'Fresh commit-only acquisition scanned active legacy scope')
+        serialized = json.dumps(self.provider.comments[100], sort_keys=True)
+        self.assertNotIn('fixture_2199.txt', serialized)
+        self.assertTrue(all(len(comment['body']) <= 65536
+                            for comment in self.provider.comments[100]))
+
     def test_fresh_readonly_acquisition_skips_future_legacy_scopes_and_dirty_primary(self):
         paths = self.fixture.repo / 'many'
         paths.mkdir()
