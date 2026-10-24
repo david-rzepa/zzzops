@@ -146,6 +146,19 @@ class GoalContextResolutionTests(unittest.TestCase):
         self.assertFalse(any('Goal #101 requires current' in s.get('reason', '') for s in steps))
         self.assertEqual(applied, self.call(approval), 'exact request replay must be idempotent')
 
+    def test_external_blocker_without_current_results_offers_reviewed_resolution(self):
+        case = self.fresh_case()
+        blocker = {'status': 'open', 'category': 'external-dependency',
+                   'question': 'Goal #101 must finish before this goal can use its work.'}
+        case.legacy_fields(100, depends_on=[101], blockers=[blocker])
+        self.assertEqual('migrated', case.migrate((100,))['members']['100']['status'])
+        envelope = dag.z.parse_managed_goal(case.provider.issues[100]['body'], 100)
+        payload = case.session.read(100, envelope['payload'])
+        self.assertEqual([], payload['evidence'])
+        steps = case.session.checkpoint(100)
+        self.assertTrue(any((step.get('submission') or {}).get('operation')
+                            == 'goal_external_blocker_prepare' for step in steps), steps)
+
     def test_dependency_review_requires_invoking_independent_thread(self):
         step = self.call({'operation': 'goal_dependency_prepare',
             'request_id': 'dependency-preview-auth', 'old': 101, 'replacement': None,
