@@ -357,7 +357,6 @@ class DagFixture(unittest.TestCase):
         self.session.finish(acquired, outputs, "valid-after-negative-" + acquired["lease"]["attempt"])
 
 class EvidenceDagPublicTests(DagFixture):
-    @unittest.expectedFailure
     def test_policy_dag_change_requires_authenticated_cutover_before_old_result_reuse(self):
         produce = task("produce")
         finish = task("finish", ["produce"], role="root")
@@ -381,6 +380,25 @@ class EvidenceDagPublicTests(DagFixture):
         contract = json.dumps(cutovers[0], sort_keys=True).lower()
         for required in ("old", "new", "mapping", "policy", "revision", "receipt"):
             self.assertIn(required, contract)
+
+    def test_corrected_result_names_exact_predecessor_and_goal_head_for_cas(self):
+        self.findings()
+        predecessor, _record = self.result("produce")
+        before_envelope, _payload = self.payload()
+        corrected = self.session.acquire("produce")
+        self.session.finish(corrected, {"value": "corrected candidate"},
+                            "result-supersession-cas")
+
+        _current, replacement = self.result("produce")
+        self.assertIn("supersedes_result", replacement)
+        self.assertIn("expected_goal_tree_head", replacement)
+        self.assertEqual(predecessor, replacement["supersedes_result"])
+        self.assertEqual(before_envelope["payload"],
+                         replacement["expected_goal_tree_head"])
+        replay = self.session.call(100, self.session.submission(
+            corrected, {"value": "corrected candidate"},
+            "result-supersession-cas"))
+        self.assertEqual("checkpoint", replay["next_steps"][0]["kind"])
 
     def test_committed_submit_survives_compact_response_store_failure(self):
         """A post-commit formatting fault cannot invite duplicate execution."""
