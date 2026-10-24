@@ -357,29 +357,113 @@ class DagFixture(unittest.TestCase):
         self.session.finish(acquired, outputs, "valid-after-negative-" + acquired["lease"]["attempt"])
 
 class EvidenceDagPublicTests(DagFixture):
-    def test_policy_dag_change_requires_authenticated_cutover_before_old_result_reuse(self):
-        produce = task("produce")
-        finish = task("finish", ["produce"], role="root")
-        old_graph = {"nodes": [produce, finish], "task_sets": [],
-                     "terminals": [selector("finish")]}
+    def policy_cutover_fixture(self, *, alternate=False, acquire_old_lease=False):
+        producer = "alpha" if alternate else "produce"
+        terminal = "omega" if alternate else "finish"
+        old_graph = {"nodes": [task(producer), task(terminal, [producer], role="root")],
+                     "task_sets": [], "terminals": [selector(terminal)]}
         self.install(old_graph)
-        self.session.finish(self.session.acquire("produce"), {"value": "graph A result"})
+        self.session.finish(self.session.acquire(producer), {"value": "old result"})
+        old_result = self.result(producer)[0]
+        old_lease = self.session.acquire(terminal) if acquire_old_lease else None
+        audit = task("sigma" if alternate else "audit", [producer])
+        audit["inputs"] = {"subject": subject_input(producer)}
+        audit["independent_of"] = [selector(producer)]
+        new_graph = {"nodes": [copy.deepcopy(old_graph["nodes"][0]), audit,
+                               copy.deepcopy(old_graph["nodes"][1])],
+                     "task_sets": [], "terminals": [selector(terminal)]}
+        z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = new_graph
+        step = self.session.checkpoint(100)[0]
+        self.assertEqual("policy_dag_cutover", step["kind"])
+        mapping = [{"old": {"node": producer, "output": "value"},
+                    "new": {"node": producer, "output": "value"},
+                    "result": old_result, "equivalence": {
+                        "inputs": True, "outputs": True, "scope": True,
+                        "role": True, "independence": True, "approval": True}}]
+        return old_graph, new_graph, old_result, old_lease, mapping, step
 
-        audit = task("audit", ["produce"])
-        audit["inputs"] = {"subject": subject_input("produce")}
-        new_graph = {"nodes": [copy.deepcopy(produce), audit, copy.deepcopy(finish)],
-                     "task_sets": [], "terminals": [selector("finish")]}
-        configuration = z._workflow_section(
-            self.session.project, "workflow_adherence")["configuration"]
-        configuration["phase_dag"] = new_graph
-
-        steps = self.session.checkpoint(100)
-        self.assertFalse(any(step.get("kind") == "execute" for step in steps), steps)
-        cutovers = [step for step in steps if "cutover" in json.dumps(step).lower()]
-        self.assertEqual(1, len(cutovers), steps)
-        contract = json.dumps(cutovers[0], sort_keys=True).lower()
+    def test_policy_dag_change_requires_authenticated_cutover_before_old_result_reuse(self):
+        _old, _new, _result, _lease, _mapping, step = self.policy_cutover_fixture()
+        contract = json.dumps(step, sort_keys=True).lower()
         for required in ("old", "new", "mapping", "policy", "revision", "receipt"):
             self.assertIn(required, contract)
+        self.assertIn("prepare", step)
+        self.assertEqual("policy_dag_cutover_prepare", step["prepare"]["operation"])
+        for field in ("expected_goal_revision", "expected_goal_payload", "old_graph",
+                      "new_graph", "old_policy_digest", "new_policy_digest"):
+            self.assertIn(field, step["prepare"])
+
+    def test_reviewed_policy_dag_cutover_apply_retry_and_reverse_transition(self):
+        old, new, old_result, _lease, mapping, step = self.policy_cutover_fixture(alternate=True)
+        self.assertIn("prepare", step)
+        prepared = self.session.call(100, {**step["prepare"], "actor": "root-thread",
+            "mapping": mapping, "request_id": "prepare-alternate-cutover"})["next_steps"][0]
+        self.assertEqual("policy_dag_cutover_proposed", prepared["kind"])
+        reviewed = self.session.call(100, {**prepared["review"],
+            "actor": "independent-cutover-reviewer", "decision": "approved",
+            "report": "Exact mapping and evidence are equivalent",
+            "request_id": "review-alternate-cutover"})["next_steps"][0]
+        self.assertEqual("policy_dag_cutover_reviewed", reviewed["kind"])
+        self.assertNotEqual(step["prepare"]["expected_goal_revision"],
+                            reviewed["apply"]["expected_goal_revision"])
+        apply = {**reviewed["apply"], "actor": "root-thread",
+                 "request_id": "apply-alternate-cutover"}
+        original_body = self.provider.issues[100]["body"]
+        self.replace_spec("Intervening provider write after cutover review")
+        stale = self.session.call(100, apply, expected=2)
+        self.assertRegex(json.dumps(stale), r"(?i)stale|revision|payload|changed")
+        self.provider.issues[100]["body"] = original_body
+        update = self.provider.update_issue
+        lost = []
+        def uncertain(number, payload):
+            result = update(number, payload)
+            if not lost:
+                lost.append(True)
+                raise z.GoalTransitionProviderError("Cutover committed; response lost")
+            return result
+        with mock.patch.object(self.provider, "update_issue", side_effect=uncertain):
+            self.session.call(100, apply, expected=None)
+        self.assertTrue(lost)
+        first = self.session.call(100, apply)
+        comments = len(self.provider.comments[100])
+        self.assertEqual(first, self.session.call(100, apply))
+        self.assertEqual(comments, len(self.provider.comments[100]))
+        self.assertEqual(old_result, self.result("alpha")[0])
+        self.assertEqual({"sigma"}, self.names())
+        z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = old
+        reverse = self.session.checkpoint(100)[0]
+        self.assertEqual("policy_dag_cutover", reverse["kind"])
+        self.assertEqual(new, self.read_blob(reverse["contract"]["old_graph"]))
+
+    def test_policy_dag_cutover_rejects_bad_mapping_and_live_old_lease(self):
+        _old, _new, _result, lease, mapping, step = self.policy_cutover_fixture(
+            acquire_old_lease=True)
+        self.assertIn("prepare", step)
+        variants = {
+            "missing-output": [{**mapping[0], "new": {"node": "produce", "output": "missing"}}],
+            "ambiguous": mapping + copy.deepcopy(mapping),
+            "changed-independence": [{**mapping[0], "equivalence": {
+                **mapping[0]["equivalence"], "independence": False}}],
+            "changed-scope": [{**mapping[0], "equivalence": {
+                **mapping[0]["equivalence"], "scope": False}}],
+            "changed-role": [{**mapping[0], "equivalence": {
+                **mapping[0]["equivalence"], "role": False}}],
+            "changed-approval": [{**mapping[0], "equivalence": {
+                **mapping[0]["equivalence"], "approval": False}}],
+        }
+        for label, candidate in variants.items():
+            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+            response = self.session.call(100, {**step["prepare"], "actor": "root-thread",
+                "mapping": candidate, "request_id": "reject-cutover-" + label}, expected=2)
+            self.assertRegex(json.dumps(response), r"(?i)mapping|output|ambiguous|equival|independen")
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        response = self.session.call(100, {**step["prepare"], "actor": "root-thread",
+            "mapping": mapping, "request_id": "live-lease-cutover"}, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)lease|owner|active|resolve")
+        self.assertEqual(lease["lease"]["token"],
+                         self.payload()[1]["operational"]["leases"][0]["token"])
 
     def test_corrected_result_names_exact_predecessor_and_provider_revision_for_cas(self):
         self.findings()
@@ -667,8 +751,25 @@ class EvidenceDagPublicTests(DagFixture):
         graph["nodes"].append(extra)
         graph["nodes"][-2]["requires"].append(selector("additional_check"))
         self.adopt_graph(graph)
-        # Reviewed policy activates the new requirement directly. The goal's
-        # original graph remains immutable and requires no second approval.
+        # Policy review authorizes the topology proposal, but cannot make old
+        # Results current under the new DAG without a separate reviewed cutover.
+        cutover = self.session.checkpoint(100)[0]
+        self.assertEqual("policy_dag_cutover", cutover["kind"])
+        self.assertIn("prepare", cutover)
+        mapping = [{"old": {"node": name, "output": "value"},
+                    "new": {"node": name, "output": "value"},
+                    "result": self.result(name)[0], "equivalence": {
+                        "inputs": True, "outputs": True, "scope": True,
+                        "role": True, "independence": True, "approval": True}}
+                   for name in ("produce", "review_a", "review_b")]
+        proposed = self.session.call(100, {**cutover["prepare"], "actor": "root-thread",
+            "mapping": mapping, "request_id": "prepare-stronger-policy"})["next_steps"][0]
+        reviewed = self.session.call(100, {**proposed["review"],
+            "actor": "independent-policy-cutover-reviewer", "decision": "approved",
+            "report": "Existing Results retain exact contracts; added review remains unsatisfied",
+            "request_id": "review-stronger-policy"})["next_steps"][0]
+        self.session.call(100, {**reviewed["apply"], "actor": "root-thread",
+                               "request_id": "apply-stronger-policy"})
         self.assertNotIn("additional_check", {
             row["id"] for row in self.read_blob(self.payload()[1]["graph"])["nodes"]})
         self.assertNotIn("finish", self.names_after_confirmed_normalization(),
