@@ -10,14 +10,9 @@ workspace, dependency, review, CI, merge, or publication gates.
 from __future__ import annotations
 
 import copy
-import io
 import json
 import os
-import sys
-import tempfile
 import unittest
-from pathlib import Path
-from types import SimpleNamespace
 from unittest import mock
 
 import test_batch_goal_conversion as batch
@@ -150,90 +145,6 @@ class GoalContextResolutionTests(unittest.TestCase):
         self.assertTrue(any(s.get('kind') == 'goal_blocker_resolution' for s in steps))
         self.assertFalse(any('Goal #101 requires current' in s.get('reason', '') for s in steps))
         self.assertEqual(applied, self.call(approval), 'exact request replay must be idempotent')
-
-    def test_shared_goal_mutation_routes_from_feature_to_coordinator_worktree(self):
-        request = self.request('feature-worktree-blocker-resolution')
-        primary = self.case.fixture.repo
-        feature = primary.parent / (primary.name + '-feature-admin-worktree')
-        import subprocess
-        subprocess.run(['git', '-C', str(primary), 'worktree', 'add', '-q', '-b',
-                        'feature-admin-probe', str(feature), 'dev'], check=True)
-        self.addCleanup(lambda: subprocess.run(['git', '-C', str(primary), 'worktree',
-                                                'remove', '--force', str(feature)], check=False))
-        self.case.session.repo = feature
-        self.addCleanup(setattr, self.case.session, 'repo', primary)
-        before = copy.deepcopy((self.case.provider.issues, self.case.provider.comments))
-        response = self.call(request, expected=2)
-        self.assertEqual('workspace_route', response['next_steps'][0]['kind'])
-        self.assertEqual(str(primary), response['next_steps'][0]['cwd'])
-        routed = response['next_steps'][0]['command']
-        self.assertEqual(str(primary), routed[routed.index('--repo') + 1])
-        frozen_path = routed[routed.index('--input') + 1]
-        with open(frozen_path, encoding='utf-8') as frozen:
-            self.assertEqual(request['request_id'], json.load(frozen)['request_id'])
-        with open(frozen_path, 'a', encoding='utf-8') as changed:
-            changed.write(' ')
-        output = io.StringIO()
-        with (mock.patch.object(sys, 'argv', routed[1:]), mock.patch.object(sys, 'stdout', output)):
-            self.assertEqual(2, dag.z.main())
-        self.assertIn('Frozen input bytes changed', output.getvalue())
-        self.assertEqual(before, (self.case.provider.issues, self.case.provider.comments))
-        self.case.session.repo = primary
-        applied = self.call(request)
-        self.assertEqual('goal_blocker_resolved', applied['next_steps'][0]['kind'])
-
-    def test_release_mutation_routes_before_provider_access(self):
-        primary = self.case.fixture.repo
-        feature = primary.parent / (primary.name + '-feature-release-worktree')
-        import subprocess
-        subprocess.run(['git', '-C', str(primary), 'worktree', 'add', '-q', '-b',
-                        'feature-release-probe', str(feature), 'dev'], check=True)
-        self.addCleanup(lambda: subprocess.run(['git', '-C', str(primary), 'worktree',
-                                                'remove', '--force', str(feature)], check=False))
-        (feature / 'frozen.json').write_text('{}', encoding='utf-8')
-        api = dag.z
-        output = io.StringIO()
-        with (mock.patch.object(api, 'reviewed_project_state', return_value=self.case.session.project),
-              mock.patch.object(api, 'release_cli', side_effect=AssertionError('provider reached')),
-              mock.patch.object(sys, 'stdout', output)):
-            code = api.release_main(['--repo', str(feature), 'configure', '--input',
-                                     str(feature / 'frozen.json')])
-        self.assertEqual(2, code)
-        response = json.loads(output.getvalue())
-        step = response['next_steps'][0]
-        self.assertEqual('workspace_route', step['kind'])
-        self.assertEqual(str(primary), step['cwd'])
-        self.assertEqual(str(feature / 'frozen.json'),
-                         step['command'][step['command'].index('--input') + 1])
-        (feature / 'frozen.json').write_text('{ }', encoding='utf-8')
-        changed = io.StringIO()
-        with (mock.patch.object(sys, 'stdout', changed),
-              mock.patch.object(api, 'release_cli', side_effect=AssertionError('provider reached'))):
-            self.assertEqual(2, api.release_main(step['command'][3:]))
-        self.assertIn('Frozen release input bytes changed', changed.getvalue())
-
-    def test_prepolicy_setup_uses_registered_primary_worktree(self):
-        import subprocess
-        with tempfile.TemporaryDirectory() as directory:
-            primary = Path(directory) / 'primary'
-            feature = Path(directory) / 'feature'
-            subprocess.run(['git', 'init', '-q', '-b', 'dev', str(primary)], check=True)
-            subprocess.run(['git', '-C', str(primary), '-c', 'user.name=Test',
-                            '-c', 'user.email=test@example.invalid', 'commit', '--allow-empty',
-                            '-qm', 'init'], check=True)
-            subprocess.run(['git', '-C', str(primary), 'worktree', 'add', '-q', '-b',
-                            'feature', str(feature), 'dev'], check=True)
-            args = SimpleNamespace(repo=feature, intent='inspect', goal=None,
-                runtime=None, runtime_sha256=None, input=None, input_sha256=None,
-                timeout=None, response='full', skip_installation_validation=False)
-            with mock.patch.object(dag.z, 'reviewed_project_state',
-                                   side_effect=ValueError('Project policy is not ready')):
-                step = dag.z._workflow_workspace_route(args, '$review-zzzops-policy',
-                                                        {'operation': 'policy_propose'})
-                self.assertEqual(str(primary), step['cwd'])
-                args.repo = primary
-                self.assertIsNone(dag.z._workflow_workspace_route(
-                    args, '$review-zzzops-policy', {'operation': 'policy_propose'}))
 
     def test_dependency_review_requires_invoking_independent_thread(self):
         step = self.call({'operation': 'goal_dependency_prepare',

@@ -135,14 +135,6 @@ _working_inputs = importlib.util.module_from_spec(_WORKING_INPUTS_MODULE_SPEC)
 sys.modules[_WORKING_INPUTS_MODULE_SPEC.name] = _working_inputs
 _WORKING_INPUTS_MODULE_SPEC.loader.exec_module(_working_inputs)
 
-_WORKSPACE_ROLES_MODULE_PATH = Path(__file__).with_name("workspace_roles.py")
-_WORKSPACE_ROLES_MODULE_SPEC = importlib.util.spec_from_file_location(
-    "zzzops_workspace_roles", _WORKSPACE_ROLES_MODULE_PATH)
-assert _WORKSPACE_ROLES_MODULE_SPEC and _WORKSPACE_ROLES_MODULE_SPEC.loader
-_workspace_roles = importlib.util.module_from_spec(_WORKSPACE_ROLES_MODULE_SPEC)
-sys.modules[_WORKSPACE_ROLES_MODULE_SPEC.name] = _workspace_roles
-_WORKSPACE_ROLES_MODULE_SPEC.loader.exec_module(_workspace_roles)
-
 _RELEASES_MODULE_PATH = Path(__file__).with_name("releases.py")
 _RELEASES_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_releases", _RELEASES_MODULE_PATH)
 assert _RELEASES_MODULE_SPEC and _RELEASES_MODULE_SPEC.loader
@@ -2863,13 +2855,11 @@ def _release_policy(project):
         "release_branch_prefix": "release/", "execution_scope": "active_only"})
 
 
-def release_cli(repo: Path, command: str, input_path: Path | None = None,
-                *, request_bytes: bytes | None = None):
+def release_cli(repo: Path, command: str, input_path: Path | None = None):
     project = reviewed_project_state(repo); repository = _project_repository_identity(project)
     policy = _release_policy(project)
     adapter = GitHubReleasePlanAdapter(repo, repository)
-    request = None if input_path is None else json.loads(
-        request_bytes if request_bytes is not None else input_path.resolve().read_bytes())
+    request = None if input_path is None else json.loads(input_path.resolve().read_text(encoding="utf-8-sig"))
     if command == "status":
         plan = adapter.read(repository)
         return plan or {**_releases.new_release_plan(policy["next_release"]), "status": "disabled" if not policy["enabled"] else "unconfigured"}
@@ -4514,54 +4504,6 @@ def hydrate_workflow_request(repo: Path, goal: int | None, intent: str, request:
     return hydrated
 
 
-def _workflow_workspace_route(args, source: str, payload: Any, *,
-                              runtime_digest: str | None = None,
-                              input_digest: str | None = None) -> dict | None:
-    """Reject shared effects outside the reviewed integration worktree."""
-    operation = payload.get('operation') if isinstance(payload, dict) else None
-    if (args.intent == 'preview'
-            or (args.intent == 'inspect' and payload is None)
-            or operation in {'capture_propose', 'goal_dependency_prepare'}
-            or (payload is None and args.intent == 'capture')):
-        return None
-    try:
-        project = reviewed_project_state(args.repo.resolve())
-    except ValueError:
-        if operation not in {'policy_propose', 'policy_approve', 'installation_record'}:
-            raise
-        _path, policy_text, prior_state = _policy.read_project_state(args.repo.resolve())
-        if policy_text or prior_state is not None:
-            raise
-        context = _workspace_roles.classify(args.repo, None, provisional=True)
-    else:
-        configuration = _workflow_section(project, 'git_review_release')['configuration']
-        release_policy = configuration.get('release_planning', {})
-        context = _workspace_roles.classify(args.repo, release_policy.get('integration_branch'))
-    if context['role'] == 'coordinator':
-        return None
-    command = [sys.executable, str(Path(__file__).resolve()), 'workflow',
-               '--repo', context['coordinator'], '--intent', args.intent,
-               '--source-skill', source]
-    if args.goal is not None:
-        command += ['--goal', str(args.goal)]
-    if args.runtime is not None:
-        if runtime_digest is None:
-            raise ValueError('Frozen runtime digest is required for workspace routing')
-        command += ['--runtime', str(args.runtime.resolve()),
-                    '--runtime-sha256', runtime_digest]
-    if args.input is not None:
-        if input_digest is None:
-            raise ValueError('Frozen input digest is required for workspace routing')
-        command += ['--input', str(args.input.resolve()),
-                    '--input-sha256', input_digest]
-    if args.timeout is not None:
-        command += ['--timeout', str(args.timeout)]
-    command += ['--response', args.response]
-    if args.skip_installation_validation:
-        command.append('--skip-installation-validation')
-    return _workspace_roles.route_step(context, command, operation=operation)
-
-
 def main() -> int:
     """Only the intent checkpoint is public; legacy parsers are internal adapters."""
     configure_cli_stdout()
@@ -4599,9 +4541,7 @@ def main() -> int:
     parser.add_argument("--source-skill", choices=sorted(WORKFLOW_SKILL_INTENTS))
     parser.add_argument("--goal", type=int)
     parser.add_argument("--runtime", type=Path)
-    parser.add_argument("--runtime-sha256")
     parser.add_argument("--input", type=Path)
-    parser.add_argument("--input-sha256")
     parser.add_argument("--timeout", type=positive_finite_seconds,
                         help="Override the provider deadline for this workflow invocation")
     parser.add_argument("--response", choices=("compact", "full"), default="compact")
@@ -4624,24 +4564,8 @@ def main() -> int:
             return 0
         if args.intent is None:
             raise ValueError("--intent is required unless --read-response is used")
-        if args.runtime_sha256 and args.runtime is None:
-            raise ValueError('--runtime-sha256 requires --runtime')
-        if args.input_sha256 and args.input is None:
-            raise ValueError('--input-sha256 requires --input')
-        runtime_bytes = args.runtime.read_bytes() if args.runtime else None
-        input_bytes = args.input.read_bytes() if args.input else None
-        if args.runtime_sha256 and hashlib.sha256(runtime_bytes).hexdigest() != args.runtime_sha256:
-            raise ValueError('Frozen runtime bytes changed after workspace routing')
-        if args.input_sha256 and hashlib.sha256(input_bytes).hexdigest() != args.input_sha256:
-            raise ValueError('Frozen input bytes changed after workspace routing')
-        runtime = json.loads(runtime_bytes) if runtime_bytes is not None else codex_thread_runtime()
-        payload = json.loads(input_bytes) if input_bytes is not None else None
-        if not isinstance(runtime, dict):
-            raise ValueError('Runtime evidence must be a JSON object')
-        if input_bytes is not None and payload is None:
-            raise ValueError('Submission must be a JSON object; explicit JSON null is not omitted input')
-        if payload is not None and not isinstance(payload, dict):
-            raise ValueError('Submission must be a JSON object')
+        runtime = json.loads(args.runtime.read_text()) if args.runtime else codex_thread_runtime()
+        payload = json.loads(args.input.read_text()) if args.input else None
         if isinstance(payload, dict) and payload.get('operation') == 'capture_propose':
             capture_errors = validate_goal_create(payload.get('request'), allow_deferred=True)
             if capture_errors:
@@ -4649,13 +4573,6 @@ def main() -> int:
         if isinstance(payload, dict) and isinstance(payload.get("context"), dict):
             payload = hydrate_workflow_request(args.repo.resolve(), args.goal, args.intent, payload)
         source = args.source_skill or WORKFLOW_DEFAULT_SKILLS[args.intent]
-        route = _workflow_workspace_route(args, source, payload,
-            runtime_digest=hashlib.sha256(runtime_bytes).hexdigest() if runtime_bytes is not None else None,
-            input_digest=hashlib.sha256(input_bytes).hexdigest() if input_bytes is not None else None)
-        if route is not None:
-            print(json.dumps({'next_steps': [route]}, ensure_ascii=False, sort_keys=True,
-                             separators=(',', ':')))
-            return 2
         services = SimpleNamespace(**globals())
         services.runtime_path = args.runtime.resolve() if args.runtime else None
         services.workflow_timeout_seconds = args.timeout
@@ -4736,32 +4653,10 @@ def release_main(argv: list[str]) -> int:
     for name in ('status', 'configure', 'assign', 'checkpoint', 'approve', 'publication'):
         command = commands.add_parser(name)
         command.add_argument('--repo', type=Path, default=argparse.SUPPRESS)
-        if name != 'status':
-            command.add_argument('--input', type=Path, required=True)
-            command.add_argument('--input-sha256')
+        if name != 'status': command.add_argument('--input', type=Path, required=True)
     try:
         args = parser.parse_args(argv)
-        request_bytes = args.input.resolve().read_bytes() if args.command != 'status' else None
-        if args.command != 'status' and args.input_sha256:
-            if hashlib.sha256(request_bytes).hexdigest() != args.input_sha256:
-                raise ValueError('Frozen release input bytes changed after workspace routing')
-        if args.command != 'status':
-            project = reviewed_project_state(args.repo.resolve())
-            configuration = _workflow_section(project, 'git_review_release')['configuration']
-            branch = (configuration.get('release_planning') or {}).get('integration_branch')
-            context = _workspace_roles.classify(args.repo, branch)
-            if context['role'] != 'coordinator':
-                command = [sys.executable, str(Path(__file__).resolve()), 'release',
-                           '--repo', context['coordinator'], args.command]
-                if getattr(args, 'input', None) is not None:
-                    command += ['--input', str(args.input.resolve()), '--input-sha256',
-                                hashlib.sha256(request_bytes).hexdigest()]
-                step = _workspace_roles.route_step(context, command, operation=args.command)
-                print(json.dumps({'status': 'blocked', 'next_steps': [step]},
-                                 ensure_ascii=False, sort_keys=True, separators=(',', ':')))
-                return 2
-        result = release_cli(args.repo.resolve(), args.command, getattr(args, 'input', None),
-                             request_bytes=request_bytes)
+        result = release_cli(args.repo.resolve(), args.command, getattr(args, 'input', None))
         print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(',', ':')))
         return 2 if result.get('status') == 'blocked' else 0
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:

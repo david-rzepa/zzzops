@@ -97,17 +97,11 @@ class ReleasePublicBoundaryTests(unittest.TestCase):
                     if command != 'status': args += ['--input', str(payload)]
                     with self.subTest(command=command, prefix=prefix), \
                          mock.patch.object(sys, 'argv', [str(fixtures.MODULE_PATH), *args]), \
-                         mock.patch.object(z, 'reviewed_project_state', return_value={
-                             'policy': {'sections': [{'id': 'git_review_release',
-                                 'configuration': {'release_planning': {'integration_branch': 'dev'}}}]}}), \
-                         mock.patch.object(z._workspace_roles, 'classify',
-                             return_value={'role': 'coordinator'}), \
                          mock.patch.object(z, 'release_cli', return_value={'ok': True}) as operation, \
                          contextlib.redirect_stdout(io.StringIO()) as out:
                         self.assertEqual(0, z.main())
                         self.assertEqual({'ok': True}, json.loads(out.getvalue()))
-                        operation.assert_called_once_with(repo, command, None if command == 'status' else payload,
-                            request_bytes=None if command == 'status' else b'{}')
+                        operation.assert_called_once_with(repo, command, None if command == 'status' else payload)
 
     def test_enabled_portfolio_passes_identity_to_real_transport(self):
         project = {'backend': 'github_issues', 'repository': {'identity': 'owner/repo'}, 'policy': {'sections': [
