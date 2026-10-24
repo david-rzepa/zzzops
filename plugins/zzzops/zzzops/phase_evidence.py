@@ -1592,6 +1592,10 @@ def _derive_task_steps(graph, payload, context):
                         raise ValueError('Malformed goal-context dependency identities')
                     dependency_phase = 'observe_merge' if publication_gate else 'review_implement'
                     for dependency in sorted(dependencies):
+                        archived_ref = snapshots[number].get('archived_prerequisites', {}).get(dependency)
+                        if archived_ref is not None:
+                            data_bindings.append(('__goal_dependency_' + str(dependency), archived_ref))
+                            continue
                         dependency_key = (dependency, dependency_phase, None, 1)
                         if dependency not in snapshots or dependency_key not in instances:
                             raise ValueError(f'Goal #{dependency} requires current {dependency_phase} evidence; evidence unavailable')
