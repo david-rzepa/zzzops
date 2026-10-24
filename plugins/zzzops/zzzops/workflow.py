@@ -6797,7 +6797,8 @@ class Workflow:
         """Confirm the observed merge remains in its exact remote target."""
         merged = {digest(state['publication']['provider']): state['publication']['provider']
                   for state in snapshot['projection']['states'].values()
-                  if state.get('publication', {}).get('provider', {}).get('merged')}
+                  if state['node']['goal'] == snapshot['number']
+                  and state.get('publication', {}).get('provider', {}).get('merged')}
         if len(merged) != 1:
             raise ValueError('Local cleanup requires one observed merged candidate')
         facts = next(iter(merged.values()))
